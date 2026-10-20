@@ -195,6 +195,28 @@ pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// The events received from outside, by where they came from and the
+/// sender's own id (area 11, "Receiving from outside"; chunk 7.7): a
+/// webhook's provider event id, under `webhook <connection>`, so a repeat
+/// is dropped. Committed with the event's outbox row, in the store webhook
+/// events are kept in, and deleted by the tick once a provider no longer
+/// sends it again.
+pub const RECEIVED_EVENTS: SystemTable = SystemTable {
+    table: "jadpo_received_events",
+    columns: &[
+        column("source", "text", false),
+        column("event_id", "text", false),
+        column("received_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["source", "event_id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["received_at"],
+        reason: "system received events",
+    }],
+};
+
 /// Idempotency keys (area 7): one stored response per key and caller.
 pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
     table: "jadpo_idempotency_keys",
@@ -397,6 +419,64 @@ pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
     indexes: &[SystemIndex {
         columns: &["expires_at"],
         reason: "system passkey challenges",
+    }],
+};
+
+/// Magic-link sign-ins (area 8, "Magic links"; chunk 7.3b): one row per
+/// address, found by the address's digest, never the address. It holds
+/// the latest request's link and code, each only as a verifier and filled
+/// as its email is sent, the address sealed under the link's token so a
+/// confirmed link can name it, where to go after signing in, the browser
+/// a `same_browser:` link is bound to, and the counts the send and
+/// wrong-code limits read. Nothing in it signs anyone in.
+pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
+    table: "jadpo_sign_in_requests",
+    columns: &[
+        column("id", "uuid", false),
+        // The address's digest in lower case, so the limits count every
+        // way of writing it as one; and as it was written, which the
+        // address a code is confirmed with must match.
+        column("address", "text", false),
+        column("exact", "text", true),
+        // The latest request, which its email's delivery names; `NULL`
+        // once its link or code is used.
+        column("request", "uuid", true),
+        column("token", "text", true),
+        column("code", "text", true),
+        column("sealed", "bytea", true),
+        column("return_to", "text", true),
+        column("binding", "text", true),
+        column("wrong_codes", "integer", false),
+        column("requested_at", "timestamptz(3)", true),
+        column("expires_at", "timestamptz(3)", true),
+        // The hour the sends are counted in, and how many.
+        column("sends_since", "timestamptz(3)", true),
+        column("sends", "integer", false),
+        // The UTC day the wrong codes are counted in, and how many.
+        column("failed_since", "timestamptz(3)", true),
+        column("failed", "integer", false),
+        // When nothing in the row counts any more.
+        column("kept_until", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[
+        SystemUnique {
+            columns: &["address"],
+            rule: "system sign-in requests",
+        },
+        SystemUnique {
+            columns: &["request"],
+            rule: "system sign-in requests",
+        },
+        SystemUnique {
+            columns: &["token"],
+            rule: "system sign-in requests",
+        },
+    ],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["kept_until"],
+        reason: "system sign-in requests",
     }],
 };
 
@@ -618,7 +698,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 17] = [
+pub const ALL: [&SystemTable; 19] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -631,11 +711,13 @@ pub const ALL: [&SystemTable; 17] = [
     &SERVICE_KEYS,
     &PASSKEYS,
     &PASSKEY_CHALLENGES,
+    &SIGN_IN_REQUESTS,
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,
     &STEP_RECORDS,
     &STEPS,
+    &RECEIVED_EVENTS,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

@@ -211,6 +211,10 @@ pub struct ProviderPlan {
     pub application: String,
     pub connections: Vec<ConnectionPlan>,
     pub operations: Vec<OperationPlan>,
+    /// Each connection given a webhook secret, whose provider's events the
+    /// runtime receives at its generated route (area 11, "Receiving from
+    /// outside"; chunk 7.7).
+    pub webhooks: Vec<WebhookPlan>,
     /// Every recording of the app's own integrations (area 11,
     /// "Provenance and confirmation"; chunk 7.2d2), which `jadpo test` and
     /// the publishing bar decode with its operation's decoders.
@@ -388,6 +392,95 @@ pub struct CallSite {
     /// Whether a timeout is the call's `timed_out` failure, which its
     /// `attempt` maps, rather than the runtime's `unavailable`.
     pub timed_out: bool,
+}
+
+/// How a provider signs its webhooks (area 11, "Receiving from outside";
+/// chunk 7.7): the built-in schemes, extended by Jadpo releases, each
+/// checked over the request's raw body.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum SignatureScheme {
+    /// Stripe's `Stripe-Signature: t=<seconds>,v1=<hex>`: HMAC-SHA-256 of
+    /// `<t>.<body>` under the secret as written.
+    Stripe,
+    /// Standard Webhooks (Svix and others): `webhook-id`,
+    /// `webhook-timestamp` and `webhook-signature: v1,<base64>`, or the
+    /// same headers under `svix-`; HMAC-SHA-256 of `<id>.<timestamp>.<body>`
+    /// under the Base64 after the secret's `whsec_`.
+    StandardWebhooks,
+    /// HMAC-SHA-256 of the body under the secret, in the header named here,
+    /// as hex or Base64, with or without a leading `sha256=`. It carries
+    /// no time, so no age is checked.
+    HmacSha256 { header: String },
+    /// No signature: HTTP basic authentication with the secret as
+    /// `user:password` (Postmark).
+    Basic,
+}
+
+impl SignatureScheme {
+    /// The schemes built so far, by their names after `SignatureScheme.`;
+    /// `twilio` and `sns` wait for chunk 7.7b.
+    pub const BUILT: [&'static str; 4] = ["stripe", "standard_webhooks", "hmac_sha256", "basic"];
+
+    /// Every scheme the language names, built or not.
+    pub const NAMED: [&'static str; 6] = [
+        "stripe",
+        "standard_webhooks",
+        "hmac_sha256",
+        "basic",
+        "twilio",
+        "sns",
+    ];
+
+    /// The scheme called `name`, with `header` for `hmac_sha256`.
+    pub fn from_name(name: &str, header: Option<&str>) -> Option<SignatureScheme> {
+        Some(match name {
+            "stripe" => SignatureScheme::Stripe,
+            "standard_webhooks" => SignatureScheme::StandardWebhooks,
+            "hmac_sha256" => SignatureScheme::HmacSha256 {
+                header: header?.to_string(),
+            },
+            "basic" => SignatureScheme::Basic,
+            _ => return None,
+        })
+    }
+}
+
+/// One connection's webhooks: where the runtime receives them, how they
+/// are signed, where each event's id, type and time are in its body, the
+/// events its package declares, and the store they are kept in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebhookPlan {
+    /// The connection's name in `connections:`, `payments`.
+    pub connection: String,
+    /// The generated route's path, by segment: the `webhooks` API's
+    /// prefix, then the connection's name.
+    pub segments: Vec<String>,
+    pub scheme: SignatureScheme,
+    /// The number of the secret setting the signature is checked with.
+    pub secret: u32,
+    /// Where the provider's event id, its event type and the time the
+    /// event happened are in the body, dotted from its root; `occurred_at`
+    /// is `None` when the provider gives none there.
+    pub event_id: String,
+    pub event_type: String,
+    pub occurred_at: Option<String>,
+    /// The store the events and the ids already received are kept in.
+    pub store: String,
+    /// Each event the package declares, by its `wire_name:`.
+    pub events: Vec<WebhookEvent>,
+}
+
+/// An event a provider's webhook carries (chunk 7.7).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebhookEvent {
+    /// The type the provider names it with in `event_type:`'s place,
+    /// `payment_intent.succeeded`.
+    pub wire_name: String,
+    /// The event type's identity key, which its outbox row records.
+    pub key: String,
+    /// Its number in the plan's JSON table: the body is read with its
+    /// codec, and its payload kept with it.
+    pub number: u32,
 }
 
 #[cfg(test)]

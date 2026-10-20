@@ -11,7 +11,9 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::TypeRef;
 use jadpo_sql::identity as statements;
 use jadpo_sql::{Bind, Value};
-use jadpo_std::http::{GatedStatements, IdentityPlan, PasskeyPlan, PrincipalKind, PrincipalPlan};
+use jadpo_std::http::{
+    GatedStatements, IdentityPlan, MagicLinkPlan, PasskeyPlan, PrincipalKind, PrincipalPlan,
+};
 use jadpo_std::read::SqlType;
 
 use crate::queries::{Planner, Reach};
@@ -95,7 +97,55 @@ impl Planner<'_> {
                     ))?,
                 })
             }),
+            magic_links: identity.magic_links().and_then(|magic| {
+                Some(MagicLinkPlan {
+                    path: magic.path.clone(),
+                    link: magic.link.clone(),
+                    expires_after_ms: magic.expires_after_ms,
+                    code_attempts: magic.code_attempts,
+                    codes_per_hour: magic.codes_per_hour,
+                    failed_codes_per_day: magic.failed_codes_per_day,
+                    resend_after_ms: magic.resend_after_ms,
+                    same_browser: magic.same_browser,
+                    lookup: self.user_lookup(user?, Some(&magic.address))?,
+                    lookup_id: self.user_lookup(user?, None)?,
+                    // Numbered once every callable is (`crate::Plan`).
+                    first_sign_in: None,
+                })
+            }),
         })
+    }
+
+    /// How a magic link finds its user, by the field `address` names or,
+    /// without one, by its `id` (area 8, "Magic links"): `$1` the address
+    /// or the `id`, `$2` the time now.
+    fn user_lookup(
+        &self,
+        variant: &jadpo_check::identity::Variant,
+        address: Option<&str>,
+    ) -> Option<String> {
+        let entity = self.model.entity(&variant.entity)?;
+        let column = match address {
+            Some(address) => entity
+                .fields
+                .iter()
+                .find(|f| f.name == address)?
+                .born
+                .clone(),
+            None => "id".to_string(),
+        };
+        let mut bind = Lookup;
+        let active = match &variant.active {
+            Some(condition) => Some(jadpo_sql::condition(&mut bind, entity, condition, false)?),
+            None => None,
+        };
+        let wheres = self.access(&mut bind, entity, Reach::Read)?;
+        Some(statements::user_by(
+            &entity.table,
+            &column,
+            &statements::active(active.as_deref()),
+            &wheres,
+        ))
     }
 
     /// How a passkey is found by its credential ID with its user's record

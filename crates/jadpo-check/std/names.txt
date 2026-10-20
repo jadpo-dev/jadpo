@@ -10,6 +10,7 @@
 # Built-in types that later areas define (areas 3 to 19), and the setting
 # options they use. `DecodeProblem` is what a failure mapped from
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
+# `FirstSignIn` is what `on_first_sign_in:`'s action is given (area 8).
 # The batch types are what `batches` gives and `finished:` receives (area
 # 12), their fields in `jadpo-std`'s `batch`; `BatchState` is an enum
 # there, and `CsvFormat`, who a written CSV is for, another. `File` is a stored file and `FileContents` what `store.read`
@@ -17,7 +18,7 @@
 [types]
 Page Nearest
 File FileContents Principal Response Access
-IssuedToken IssuedKey DecodeProblem
+IssuedToken IssuedKey DecodeProblem FirstSignIn
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange

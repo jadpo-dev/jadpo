@@ -290,6 +290,11 @@ impl Events<'_> {
     /// later release's, is never guessed at (chunk 6.8).
     pub fn read(&self, event: &str, payload: &str, encoding: &SqlValue) -> Result<Value, String> {
         crate::read::kept_encoding(encoding)?;
+        // Jadpo's own magic-link email, whose payload is the runtime's
+        // (chunk 7.3b).
+        if event == jadpo_std::email::MAGIC_LINK_EMAIL {
+            return crate::http::magic_links::read_payload(payload);
+        }
         let number = self
             .numbers
             .iter()

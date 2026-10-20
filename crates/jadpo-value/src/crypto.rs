@@ -340,6 +340,28 @@ pub fn verify_hmac(value: &[u8], mac: &[u8], keys: &KeyRing) -> bool {
     matched
 }
 
+/// Whether `mac` is the HMAC-SHA-256 of `parts`, one after another, under
+/// `key`, compared in constant time: a webhook's signature, checked by the
+/// runtime with the secret its provider gave (area 11, "Receiving from
+/// outside"; chunk 7.7).
+pub fn signed_by(key: &[u8], parts: &[&[u8]], mac: &[u8]) -> bool {
+    let Ok(mut check) = <HmacSha256 as KeyInit>::new_from_slice(key) else {
+        return false;
+    };
+    for part in parts {
+        check.update(part);
+    }
+    check.verify_slice(mac).is_ok()
+}
+
+/// Whether `given` and `expected` are the same bytes, compared in constant
+/// time for their length: a webhook's basic credential against the
+/// secret (chunk 7.7).
+pub fn same_secret(given: &[u8], expected: &[u8]) -> bool {
+    use subtle::ConstantTimeEq;
+    given.len() == expected.len() && bool::from(given.ct_eq(expected))
+}
+
 /// `crypto.sign(value, key:)`: the 64-byte Ed25519 signature of `value`
 /// under the `PrivateKey`'s seed.
 pub fn sign(value: &[u8], keys: &KeyRing) -> Result<[u8; SIGNATURE_BYTES], Fault> {

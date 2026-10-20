@@ -748,6 +748,15 @@ impl Executor for Program {
         })
     }
 
+    fn webhooks(&self) -> Option<jadpo_runtime::webhooks::Webhooks<'_>> {
+        let plan = &self.plan().providers().webhooks;
+        (!plan.is_empty()).then(|| jadpo_runtime::webhooks::Webhooks {
+            plan,
+            credentials: &self.credentials,
+            json: self.stored_json(),
+        })
+    }
+
     fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
         Some(self.plan().schedules())
     }

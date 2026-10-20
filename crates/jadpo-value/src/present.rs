@@ -45,6 +45,8 @@ mod relative;
 pub mod units;
 
 pub use message::{number, translate};
+/// A duration in words, "15 minutes", in a locale (Jadpo's own emails).
+pub use names::duration as duration_words;
 pub use percent::percent;
 pub use relative::format_relative;
 

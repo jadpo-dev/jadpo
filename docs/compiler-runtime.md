@@ -1624,6 +1624,21 @@ pure-Rust release; `jadpo_host_native::test_authenticator` (feature
 `test-authenticator`, tests only) is a software device the live tests
 sign in with.
 
+Built in chunk 7.3b: magic links (area 8, "Magic links"). The identity
+reads `sign_in: { magic_link: }` into `Identity::magic_link` and
+`on_first_sign_in:` into `Identity::first_sign_in`, whose action
+`first_sign_in_action` checks once every signature is known; the schema
+adds `jadpo_sign_in_requests` beside `jadpo_sessions`. The plan appends a
+`RoutePlan` per `jadpo_std::http::MagicLinkStep` with `Run::MagicLink`
+in the first API that accepts browser sessions, writes
+`MagicLinkPlan::lookup` and `lookup_id` (a user by its address or `id`,
+with its `active:`), numbers the first sign-in's callable, and adds
+Jadpo's own email to the email plan (`EmailPlan::builtin`) with its
+subscriber. The HTTP component answers the routes in
+`http::magic_links`, with no idempotency key; the email's delivery makes
+the link and the code (`magic_links::mint`) and `email::message` writes
+it from Jadpo's messages, wrapped in the app's layout.
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving
@@ -2337,6 +2352,31 @@ before decoding. `jadpo package record` calls the sandbox through
 `Program::call_provider` on a `NativeHost` with the package driver, its
 keyed call given a step outside an action (`Ctx::allow_standalone_calls`),
 and keeps the answer the call log hands it.
+
+**Webhooks as events** (chunk 7.7; area 11, "Chosen in chunk 7.7"). The
+checker reads a provider's `webhooks:` into `connections::WebhookReach`
+(checked by `packages`), a connection's `webhooks: { secret: }`, and each
+event of a package with webhooks (`webhooks::package_events`: its
+`wire_name:` and `occurred_at: Instant`), gathering every connection
+given a secret into a `webhooks::WebhookModel`: its route under the
+`webhooks` API's prefix, its scheme, the places of the event's id, type
+and time, its store and its events by key. The plan holds each as a
+`jadpo_std::provider::WebhookPlan` on `ProviderPlan::webhooks`, its events
+numbered in the JSON table as every event is, and `jadpo_std::system::
+RECEIVED_EVENTS` joins that store's schema. The executor gives them with
+the secrets `provider::Credentials` holds (`Executor::webhooks`), and the
+HTTP component answers a request at a webhook's path before routing
+(`jadpo_runtime::webhooks::answer`), after its address's rate limit:
+`webhooks::check` reads the scheme's signature (pure, over the raw body,
+every candidate compared in constant time through
+`jadpo_value::crypto::signed_by` and `same_secret`), the body is read
+with the event's codec on the provider's wire (a `Coder` that runs the
+built-in encodings and no package function), `occurred_at` set first,
+and one read-committed transaction records the provider's id (`RECEIVE`,
+`ON CONFLICT DO NOTHING`) and writes the outbox row and deliveries with
+`outbox::write`, the deliveries deferred as an action's are. The tick
+deletes ids received 30 days before (`OLD_RECEIVED`, the plan's
+`SchedulesPlan::received`). Live tests in `crates/jadpo-cli/tests/webhooks.rs`.
 
 **Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
 6.4b"; area 12, "How a file's run is kept"). The `files` capability's

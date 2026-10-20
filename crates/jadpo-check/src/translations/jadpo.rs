@@ -94,6 +94,12 @@ pub fn features(db: &dyn Db, project: Project) -> BTreeSet<Feature> {
     if crate::identity::identity(db, project).passkeys().is_some() {
         out.insert(Feature::Passkey);
     }
+    if crate::identity::identity(db, project)
+        .magic_links()
+        .is_some()
+    {
+        out.insert(Feature::MagicLink);
+    }
     out
 }
 
@@ -265,10 +271,31 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     for file in &files {
         out.problems.extend(file.problems.iter().cloned());
     }
+    let on = features(db, project);
     let Some(plan) = &declared.plan else {
+        // Without `locales { }`, Jadpo's own emails are in `en_gb`, as
+        // Jadpo words them (area 16, "Built-in emails", level 1; chunk
+        // 7.3b).
+        let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
+        for message in jadpo_text::MESSAGES.iter().filter(|message| {
+            message.kind == jadpo_text::Kind::Message && on.contains(&message.feature)
+        }) {
+            out.entries.push(jadpo_std::translation::TranslationEntry {
+                key: member_name(message.key),
+                params: message
+                    .placeholders()
+                    .map(|(name, kind)| jadpo_std::translation::TranslationParam {
+                        name: name.to_string(),
+                        kind,
+                    })
+                    .collect(),
+                wordings: ships_wording(message, "en_gb")
+                    .map(|wording| vec![(en_gb, wording)])
+                    .unwrap_or_default(),
+            });
+        }
         return out;
     };
-    let on = features(db, project);
     let subjects = subjects();
     // A library package's group is checked with the package
     // ([`super::packages`]).
@@ -348,6 +375,34 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
                     _ => None,
                 })
                 .collect(),
+        });
+    }
+    // The wording of each of Jadpo's messages the app has on, in every
+    // supported locale: the app's own, then what Jadpo ships. What Jadpo's
+    // own emails are written with (area 16, "Built-in emails"; chunk
+    // 7.3b), each given its fields and then `app_name`.
+    for message in jadpo_text::MESSAGES.iter().filter(|message| {
+        message.kind == jadpo_text::Kind::Message && on.contains(&message.feature)
+    }) {
+        let mut by_locale = found.remove(message.key).unwrap_or_default();
+        for &locale in &plan.supported {
+            if by_locale.iter().any(|(at, _)| *at == locale) {
+                continue;
+            }
+            if let Some(wording) = ships_wording(message, variant_name(locale)) {
+                by_locale.push((locale, wording));
+            }
+        }
+        out.entries.push(jadpo_std::translation::TranslationEntry {
+            key: member_name(message.key),
+            params: message
+                .placeholders()
+                .map(|(name, kind)| jadpo_std::translation::TranslationParam {
+                    name: name.to_string(),
+                    kind,
+                })
+                .collect(),
+            wordings: by_locale,
         });
     }
     // The wording of each of Jadpo's enums the app has on, in every

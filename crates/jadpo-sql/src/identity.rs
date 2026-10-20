@@ -116,3 +116,21 @@ pub fn caller_lookup(
         ends = ident("ends_at"),
     )
 }
+
+/// How a magic link finds its user (area 8, "Magic links"): `$1` the
+/// address it was sent to, exactly as the field holds it, or the user's
+/// `id`, `$2` the time now, read from `entity_table` where `column` is
+/// `$1` and `wheres` hold: the user's `id`, and its `active` worked out as
+/// given.
+pub fn user_by(entity_table: &str, column: &str, active: &str, wheres: &[String]) -> String {
+    let mut conditions = vec![format!("{} = $1", ident(column))];
+    conditions.extend(wheres.iter().cloned());
+    conditions.push("$2::timestamptz IS NOT NULL".to_string());
+    format!(
+        "SELECT {id}, {active} AS {active_name} FROM {entity_table} WHERE {conditions} LIMIT 1",
+        id = ident("id"),
+        active_name = ident("active"),
+        entity_table = ident(entity_table),
+        conditions = conditions.join(" AND "),
+    )
+}

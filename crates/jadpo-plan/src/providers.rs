@@ -11,7 +11,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan,
-    PathPart, ProviderPlan, RecordedPlan,
+    PathPart, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan,
 };
 use jadpo_std::subscriber::Repeat;
 
@@ -135,6 +135,32 @@ pub(crate) fn plan(
                 operation_plan(&lookup, types, &mut number, operation, u32::MAX, false)
             }),
             text: text.clone(),
+        });
+    }
+    // Each connection's webhooks (chunk 7.7): the body is read with its
+    // event's codec, numbered here, and its payload kept with it.
+    for route in &jadpo_check::webhooks::webhooks(db, project).routes {
+        let (Some(scheme), Some(secret)) = (route.scheme(), setting(&route.secret)) else {
+            continue;
+        };
+        out.webhooks.push(WebhookPlan {
+            connection: route.connection.clone(),
+            segments: route.segments.clone(),
+            scheme,
+            secret,
+            event_id: route.event_id.clone(),
+            event_type: route.event_type.clone(),
+            occurred_at: route.occurred_at.clone(),
+            store: route.store.clone(),
+            events: route
+                .events
+                .iter()
+                .map(|event| WebhookEvent {
+                    wire_name: event.wire_name.clone(),
+                    key: event.key.as_str().to_string(),
+                    number: number(TypeRef::Node(event.key.clone())),
+                })
+                .collect(),
         });
     }
     out

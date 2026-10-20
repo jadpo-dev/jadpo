@@ -230,7 +230,7 @@ and `shared/providers/`.
 | `oauth:` | The provider's authorize, token and revoke addresses, for a connection whose credential is an `OAuthGrant` (see "Acting for each user") |
 | `idempotency:` | `header:` (where the key goes), `window:` (how long the provider keeps a key; required), `max_length:`, the provider's error codes `in_use:` (the key's first request is still running), `reused:` (the key came with a different request) and `new_key_on:` (the first attempt failed and the key cannot be used again), and `replays_failures: true` (default false) for a provider that replays a failed answer under the same key. Left out when the API takes no key |
 | `error_code:` | Where the provider's error code is in a failed response |
-| `webhooks:` | `check:` (the signature scheme), `event_id:`, `event_type:`, and `handshake:` where the provider needs one |
+| `webhooks:` | `check:` (the signature scheme), `event_id:`, `event_type:`, `occurred_at:` where the body says when the event happened, `header:` for `SignatureScheme.hmac_sha256`, and `handshake:` where the provider needs one |
 | `polls:` | Operations the runtime calls on a schedule, each with a default interval and the event emitted when the answer changes |
 | `erasure:` | The operation that deletes a person at the provider and the key it takes (`by:`) |
 | `max_concurrent:` | How many of its calls run at once per app instance |
@@ -2714,6 +2714,76 @@ and AWS SNS certificates (question 25). Every event carries the provider's
 `occurred_at`; out-of-order delivery is the app's to handle, by ignoring
 an event older than what it stored, and a recipe shows how.
 
+> **Built (chunk 7.7)**, with its choices under "Chosen in chunk 7.7"
+> below: `webhooks:` in `provider.jadpo` (`SignatureScheme.stripe`,
+> `.standard_webhooks`, `.hmac_sha256` with `header:`, and `.basic`;
+> `.twilio`, `.sns` and `handshake:` say `toolchain.not_built_yet` until
+> chunk 7.7b), a package's `events/` with each event's `wire_name:` and
+> `occurred_at: Instant`, a connection's `webhooks: { secret: }`, and the
+> generated route the runtime answers, its events kept in the outbox for
+> the app's subscribers. A package that receives webhooks, its events and
+> how its provider signs them:
+
+```jadpo check project=e77-webhooks file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/provider.jadpo
+/// Acme Pay's API, which signs its webhooks as Stripe does.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.stripe
+        event_id: "id"
+        event_type: "type"
+        occurred_at: "created"
+    }
+}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/types/payment_id.jadpo hidden
+/// Acme Pay's reference for a payment.
+public type PaymentId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/events/payment_succeeded.jadpo
+/// A payment was taken.
+public type PaymentSucceeded = Event {
+    wire_name: "payment.succeeded"
+    occurred_at: Instant
+    payment_id: PaymentId {
+        wire_name: "paymentId"
+    }
+    pence: Int {
+        min: 0
+    }
+}
+```
+
+A connection to it with `webhooks: { secret: config.payments_webhook_secret }`
+has `POST /webhooks/payments`, listed by `jadpo routes` as `generated
+webhook` with `signature` for its authentication, and an app's subscriber
+takes its events with `on: AcmePay.PaymentSucceeded`, as
+`crates/jadpo-cli/tests/webhooks.rs` shows against live PostgreSQL. Its
+body's `paymentId` and `pence` are the event's fields; its `id`, `type` and
+`created` are read from the places `webhooks:` names, and every other
+member is left out, as a provider's answer's are.
+
 ### Webhooks that need a reply
 
 Some providers wait for an answer in the webhook's own response (Twilio's
@@ -4293,6 +4363,58 @@ error: `wire_name` is for a provider package's fields
   help: docs/language/11-integrations.html#package-wire-name-invalid
 
 check failed: 1 error, 3 files
+```
+
+A package that receives webhooks names each event as its provider sends
+it, so the runtime can find the event a body carries:
+
+```jadpo check project=e77-wire-name file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e77-wire-name file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77-wire-name file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+    }
+    webhooks: {
+        check: SignatureScheme.standard_webhooks
+        event_id: "id"
+        event_type: "type"
+    }
+}
+```
+
+```jadpo check project=e77-wire-name file=shared/providers/acme_pay/v1/events/payment_refunded.jadpo expect=package.wire_name_invalid
+/// A payment was given back.
+public type PaymentRefunded = Event {
+    occurred_at: Instant
+    reference: Text
+}
+```
+
+```text output
+error: Webhook event `PaymentRefunded` doesn't give `wire_name:`
+ --> shared/providers/acme_pay/v1/events/payment_refunded.jadpo:2:13
+  |
+2 | public type PaymentRefunded = Event {
+  |             ^^^^^^^^^^^^^^^ no `wire_name:`
+  reason: `AcmePay.v1` declares `webhooks:`, so each event it declares gives the type its provider names it by, `wire_name:`, which the runtime matches a webhook's event type against.
+  next: Add `wire_name:` with the provider's name for the event, such as `wire_name: "payment.succeeded"` (agent)
+  rule: package.wire_name_invalid
+  help: docs/language/11-integrations.html#package-wire-name-invalid
+
+check failed: 1 error, 4 files
 ```
 
 ### `package.standard_candidate`
@@ -6278,7 +6400,7 @@ side (below); the rest is still to build.
 | The scoped review of an import's types, tracked per type, and unconfirmed operations | 7.2e2 |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
-| Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes and queues, chunks 7.7b and 7.7c; webhooks as events built in 7.7); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -7326,6 +7448,85 @@ Recordings, each choice the most conservative reading:
   again leaves the file as it was. An operation with no `output:` is
   `toolchain.not_built_yet`: writing the type from the answer comes with
   chunk 7.2e.
+
+### Chosen in chunk 7.7
+
+Webhooks as events (the first part of chunk 7.7, split on 2026-10-20:
+replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
+`receiving` 7.7c), each the most conservative reading:
+
+- **Where the route is.** `POST <prefix>/<connection>`, the prefix the
+  app's `webhooks` API declares, or `/webhooks` when it declares none, in
+  which case the routes belong to no declared API and have no record or
+  OpenAPI document of their own; `jadpo routes` lists them under
+  `webhooks  /webhooks`. In a declared `webhooks` API each is in its record
+  (`generated webhook`, its connection, `authentication signature`,
+  `status 204`) and its OpenAPI document. The path changes only with the
+  API's prefix. Any method is the runtime's at that path (`OPTIONS` and
+  `405` with `Allow: OPTIONS, POST`), so an app route there is
+  `route.path_overlap`.
+- **The signature.** Checked over the raw body with the connection's
+  secret, and the value it replaced while a deployment rotates it, every
+  candidate compared in constant time. `stripe`: `Stripe-Signature:
+  t=<seconds>,v1=<hex>`, each `v1` tried, over `<t>.<body>` under the
+  secret as written. `standard_webhooks`: `webhook-id`,
+  `webhook-timestamp` and `webhook-signature` (or Svix's `svix-` headers),
+  each `v1,<base64>` tried, over `<id>.<timestamp>.<body>` under the Base64
+  after the secret's `whsec_` (the secret as written when it has none).
+  `hmac_sha256`: the body's HMAC in the header `header:` names, as 64 hex
+  digits or Base64, with or without `sha256=`; it signs no time, so its age
+  isn't checked. `basic`: `Authorization: Basic` against the secret as
+  `user:password`. A signed time more than five minutes from the host's
+  clock, either way, is refused. Any refusal is `401 unauthenticated`,
+  "The webhook's signature doesn't match.", saying nothing of why; the
+  host's log line says (`unsigned`, `stale`, `mismatch`, `no secret`).
+- **Reading the body.** It is JSON (`400 invalid_request` otherwise). The
+  event's id is the text or whole number at `event_id:`, its type the text
+  at `event_type:` (`400` when either is missing). A type the package
+  declares no event for is answered `204` and not kept, since a provider
+  sends every type the account subscribes to. The event's fields are read
+  from the body's root with its type's codec on the provider's wire, its
+  `wire_name:` and `wire:` spellings included, every member it doesn't
+  declare left out; a body it doesn't read is `422 invalid_input`, each
+  problem by the provider's field, so the provider keeps it and sends it
+  again once the package is fixed. A field read by the package's own
+  `decode:` and `encode:` is `toolchain.not_built_yet` on a webhook's
+  event, since those run at a call's site.
+- **`occurred_at`.** Every event of a package with `webhooks:` declares
+  `occurred_at: Instant`, with no `wire_name:` or `wire:`
+  (`package.wire_invalid`), and the runtime fills it, whatever the body
+  holds of that name: from the place `webhooks: { occurred_at: }` names (a
+  whole number of seconds since 1970, or RFC 3339 text; `400` when it holds
+  neither), else the signature's time, else when the request arrived. Each
+  event names the type its provider sends with a text `wire_name:`, no two
+  of one package alike (`package.wire_name_invalid`). An app's own event
+  giving `wire_name:` is `toolchain.not_built_yet` until queues (7.7c).
+- **Keeping it once.** In one read-committed transaction in the events'
+  store, the provider's id is recorded under `webhook <connection>` in
+  `jadpo_received_events`, then the event's outbox row and a delivery for
+  each subscriber are written, as an action's events are (its trace the
+  request's, `traceparent` continued; depth 0; `within:` counted from
+  arrival). An id already recorded is a repeat: answered `204` as the
+  first was, nothing kept. The tick deletes ids received more than 30 days
+  ago, longer than any provider retries. A store that can't be reached is
+  `503 unavailable`, nothing kept, so the provider sends it again.
+- **The store.** `events: { store: }`, or the only store that holds the
+  app's records; with none, or several and none named, the connection's
+  `secret:` is `event.store_required`. `jadpo_received_events` is in that
+  store's migration only when some connection receives webhooks.
+- **The connection.** `webhooks:` takes `secret:`, a secret setting
+  (`connection.value_invalid` otherwise, `connection.key_missing` when it
+  is left out), and `replies:`, which is `toolchain.not_built_yet` until
+  7.7b; given to a package whose provider declares no `webhooks:` it is
+  `connection.key_invalid`. A package with `webhooks:` and no connection
+  giving a secret receives nothing.
+- **What answers.** Every request is answered once it is kept or dropped:
+  `204` with no body, deliveries running after the response. An event
+  whose payload is over 64 KB, every event's limit (area 12), is `413
+  request_too_large`. It is counted
+  against its address's rate limit, whatever credential it carries. A
+  non-public package event is kept and reaches no subscriber, subscribing
+  to one being `package.not_public`; package subscribers come with 7.6.
 
 ### Chosen in chunk 7.1e
 

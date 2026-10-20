@@ -88,6 +88,17 @@ mod wire;
 
 pub use document::{Numbers, parse};
 
+/// What a provider sent in `encoding`, one of the built-in encodings, as
+/// the contract's JSON for its type: what reads a value from outside a
+/// type's own fields, a webhook's time (area 11, "Receiving from outside";
+/// chunk 7.7). The rule broken when it isn't one.
+pub fn from_wire(
+    encoding: jadpo_std::provider::WireEncoding,
+    sent: &serde_json::Value,
+) -> Result<serde_json::Value, &'static str> {
+    wire::read(encoding, None, sent, None)
+}
+
 /// A standard type's part and the member of the object holding its field
 /// it is spelled as on a provider's wire (`wire_parts:`, chunk 7.2e).
 type Spelled = (String, String);

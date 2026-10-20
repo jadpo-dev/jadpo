@@ -84,6 +84,24 @@ pub struct Reach {
     /// `error_code:`: where a failed answer's code is, dotted from its
     /// root (`error.code`).
     pub error_code: Option<String>,
+    /// `webhooks:`, when the provider sends them (chunk 7.7).
+    pub webhooks: Option<WebhookReach>,
+}
+
+/// A provider's `webhooks:` (area 11, "Receiving from outside"; chunk
+/// 7.7): how its webhooks are signed and where each event's id, type and
+/// time are in its body, as written; [`crate::packages`] checks them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct WebhookReach {
+    /// `check:`'s scheme after `SignatureScheme.`, `stripe`.
+    pub check: Option<String>,
+    /// `header:`, the header `SignatureScheme.hmac_sha256` reads.
+    pub header: Option<String>,
+    /// `event_id:`, `event_type:` and `occurred_at:`, dotted from the
+    /// body's root.
+    pub event_id: Option<String>,
+    pub event_type: Option<String>,
+    pub occurred_at: Option<String>,
 }
 
 /// A provider's `idempotency:` (area 11, "How the API is reached"): what
@@ -134,6 +152,10 @@ pub struct PackageConnection {
     /// is tried, when the connection gives it (area 11, question 8; chunk
     /// 7.2c2).
     pub retry: Option<jadpo_std::provider::RetryPlan>,
+    /// `webhooks: { secret: config.<name> }`: the secret setting its
+    /// provider's webhooks are checked with, when it receives them (area
+    /// 11, "Receiving from outside"; chunk 7.7), and where it is written.
+    pub webhook_secret: Option<(String, (String, u32, u32))>,
     pub reach: Reach,
 }
 
@@ -398,6 +420,28 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                 });
             }
             Some("error_code") => reach.error_code = text_of(&member),
+            Some("webhooks") => {
+                let mut webhooks = WebhookReach::default();
+                for (key, inner) in tree::members(member.block()) {
+                    match name_text(&key).as_deref() {
+                        Some("check") => {
+                            webhooks.check = inner.value().map(|value| {
+                                let written = tree::written(value.syntax());
+                                written
+                                    .strip_prefix("SignatureScheme.")
+                                    .unwrap_or(&written)
+                                    .to_string()
+                            });
+                        }
+                        Some("header") => webhooks.header = text_of(&inner),
+                        Some("event_id") => webhooks.event_id = text_of(&inner),
+                        Some("event_type") => webhooks.event_type = text_of(&inner),
+                        Some("occurred_at") => webhooks.occurred_at = text_of(&inner),
+                        _ => {}
+                    }
+                }
+                reach.webhooks = Some(webhooks);
+            }
             Some("idempotency") => {
                 let mut idempotency = Idempotency::default();
                 for (key, inner) in tree::members(member.block()) {
@@ -619,6 +663,7 @@ impl Reader<'_> {
             timeout_ms: None,
             sandbox: Vec::new(),
             retry: None,
+            webhook_secret: None,
             reach: reach.clone(),
         };
         let mut given: BTreeSet<String> = BTreeSet::new();
@@ -634,6 +679,16 @@ impl Reader<'_> {
                 "timeout" => read.timeout_ms = self.timeout(member, out),
                 "development" => read.sandbox = self.development(member, out),
                 "retry" => read.retry = self.retry(member, out),
+                "webhooks" => match &reach.webhooks {
+                    Some(_) => read.webhook_secret = self.webhooks(member, out),
+                    None => out.push(
+                        self.not_taken(key_span, "webhooks", &package)
+                            .reason(format!(
+                                "`{package}`'s `provider.jadpo` declares no `webhooks:`, so its provider sends none to receive."
+                            ))
+                            .next("Remove `webhooks:`, or declare how the provider signs its webhooks in the package's `provider.jadpo`"),
+                    ),
+                },
                 "credential" => match &reach.credential {
                     Some(_) => read.credential = self.credential(member, out),
                     None => out.push(
@@ -1055,6 +1110,110 @@ impl Reader<'_> {
             return None;
         };
         // An unknown or unreadable setting is reported where it is read.
+        let setting = config(self.db, self.project).setting(&field)?;
+        if !setting.secret {
+            out.push(
+                self.invalid(headline, span, format!("`{field}` isn't secret").as_str())
+                    .reason(reason)
+                    .next(format!("Add `secret: true` to `{field}` in `config.jadpo`")),
+            );
+            return None;
+        }
+        Some(field)
+    }
+
+    /// `webhooks: { secret: config.<name> }` (chunk 7.7): the secret
+    /// setting the provider's webhooks are checked with, and where it is
+    /// written. `replies:` waits for chunk 7.7b.
+    fn webhooks(
+        &self,
+        member: &ast::Member,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<(String, (String, u32, u32))> {
+        let Some(block) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `webhooks:` isn't a block", self.connection),
+                    self.value_span(member),
+                    "not a block",
+                )
+                .reason("`webhooks:` gives the secret the provider signs its webhooks with, from a secret setting, which turns on the route that receives them.")
+                .next("Write `webhooks: { secret: config.<name> }`"),
+            );
+            return None;
+        };
+        let mut secret = None;
+        let mut given = false;
+        for (key, entry) in tree::members(Some(block)) {
+            let Some(written) = name_text(&key) else {
+                continue;
+            };
+            let key_span = node_span(self.path, key.syntax());
+            match written.as_str() {
+                "secret" => {
+                    given = true;
+                    secret = self
+                        .secret(&entry, "webhook secret", out)
+                        .map(|field| (field, (key_span.path, key_span.start, key_span.end)));
+                }
+                "replies" => out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        "Webhook replies aren't built yet",
+                    )
+                    .at(key_span, "declared, not built")
+                    .reason("The language lets an app's action answer a webhook in its own response, but this compiler can't run one yet.")
+                    .next("Do without `replies:` for now"),
+                ),
+                other => out.push(
+                    Diagnostic::new(
+                        &rule::CONNECTION_KEY_INVALID,
+                        format!("`{}`'s `webhooks:` has no key `{other}:`", self.connection),
+                    )
+                    .at(key_span.clone(), "not a webhooks key")
+                    .reason("`webhooks:` takes `secret:`, the secret setting the provider's webhooks are checked with, and `replies:`, the actions that answer the webhooks that need a reply.")
+                    .next(match nearest(other, ["secret", "replies"]) {
+                        Some(near) => format!("Use `{near}:` instead of `{other}:`"),
+                        None => format!("Remove `{other}:`"),
+                    }),
+                ),
+            }
+        }
+        if !given {
+            out.push(
+                Diagnostic::new(
+                    &rule::CONNECTION_KEY_MISSING,
+                    format!("`{}`'s `webhooks:` doesn't give `secret:`", self.connection),
+                )
+                .at(node_span(self.path, member.syntax()), "no `secret:`")
+                .reason("The runtime checks each webhook's signature with the secret the provider gave, read from a secret setting, before anything in it is kept.")
+                .next("Declare `<name>: Text { secret: true }` in `config.jadpo`, and add `secret: config.<name>`"),
+            );
+        }
+        secret
+    }
+
+    /// A key read from a secret setting, `config.<name>`: `what` names it
+    /// for a problem.
+    fn secret(
+        &self,
+        member: &ast::Member,
+        what: &str,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<String> {
+        let span = self.value_span(member);
+        let headline = format!("`{}`'s {what} must be a secret setting", self.connection);
+        let reason = format!(
+            "A {what} is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>` (area 10, \"Secrets\")."
+        );
+        let Some(field) = self.reads(member) else {
+            out.push(
+                self.invalid(headline, span, format!("a {what} written in source").as_str())
+                    .reason(reason)
+                    .next("Declare `<name>: Text { secret: true }` in `config.jadpo`, and read it as `config.<name>`"),
+            );
+            return None;
+        };
         let setting = config(self.db, self.project).setting(&field)?;
         if !setting.secret {
             out.push(

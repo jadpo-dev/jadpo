@@ -147,6 +147,42 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::identity::TOKENS.to_string(),
         ),
         (
+            "http::magic_links::ASKED",
+            crate::http::magic_links::ASKED.to_string(),
+        ),
+        (
+            "http::magic_links::BY_ADDRESS",
+            crate::http::magic_links::BY_ADDRESS.to_string(),
+        ),
+        (
+            "http::magic_links::BY_TOKEN",
+            crate::http::magic_links::BY_TOKEN.to_string(),
+        ),
+        (
+            "http::magic_links::ENSURE",
+            crate::http::magic_links::ENSURE.to_string(),
+        ),
+        (
+            "http::magic_links::LOCK",
+            crate::http::magic_links::LOCK.to_string(),
+        ),
+        (
+            "http::magic_links::MINT",
+            crate::http::magic_links::MINT.to_string(),
+        ),
+        (
+            "http::magic_links::SWEEP",
+            crate::http::magic_links::SWEEP.to_string(),
+        ),
+        (
+            "http::magic_links::USED",
+            crate::http::magic_links::USED.to_string(),
+        ),
+        (
+            "http::magic_links::WRONG",
+            crate::http::magic_links::WRONG.to_string(),
+        ),
+        (
             "http::passkeys::ADD",
             crate::http::passkeys::ADD.to_string(),
         ),
@@ -298,6 +334,11 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ("steps::OPEN", crate::steps::OPEN.to_string()),
         ("steps::SEND", crate::steps::SEND.to_string()),
         ("steps::STEPS", crate::steps::STEPS.to_string()),
+        (
+            "webhooks::OLD_RECEIVED",
+            crate::webhooks::OLD_RECEIVED.to_string(),
+        ),
+        ("webhooks::RECEIVE", crate::webhooks::RECEIVE.to_string()),
     ]
 }
 

@@ -65,6 +65,13 @@ pub trait Executor {
         None
     }
 
+    /// The program's webhooks, the secrets they are checked with and the
+    /// codecs their events are read with (area 11, "Receiving from
+    /// outside"; chunk 7.7). `None` for a program that receives none.
+    fn webhooks(&self) -> Option<crate::webhooks::Webhooks<'_>> {
+        None
+    }
+
     /// The program's schedules, where their state is kept, and the stores
     /// the tick sweeps (area 12, chunk 6.2). `None` for a program the tick
     /// has nothing to do for.
