@@ -44,6 +44,15 @@ fn digest(text: &str) -> u64 {
     })
 }
 
+/// The order a test's deliveries are drawn in between its steps (area
+/// 13, "Caches and events"; chunk 6.11): from the run's order seed, which
+/// the report prints and `--seed` gives again, and the test's key, so
+/// tests of one run are shuffled apart and rerunning one alone keeps its
+/// order.
+pub(crate) fn delivery_order(order_seed: u64, key: &str) -> u64 {
+    splitmix(order_seed ^ digest(key))
+}
+
 impl TestEnv {
     /// The environment of the test with key `key`: its seed comes from
     /// the key alone, so every run gives the test the same identities,

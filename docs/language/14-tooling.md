@@ -65,7 +65,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo fix` | Applies the fix the author picks for a finding, through the same code as the editor's quick fix; first for a release that adds a standard type an app already names (swap to it, or rename) | Built (chunk 5.5a2), with `--json`: alone it lists each `type.standard_clash` and `type.standard_exists` finding with the fixes it takes; `jadpo fix <name> swap` and `jadpo fix <name> rename <NewName>` list what changed file by file; a fix whose result would add an error changes nothing and shows it; a name with nothing to fix, a fix it doesn't take or a taken name is `cli.fix_arguments`. The rename is not `jadpo rename`: it writes no identity line (area 19, "A release that adds a standard type") |
 | `jadpo suggest` / `--catalogue` / `ignore <number> "<why>"` / `found <file>:<line> <Type or operation> "<why>"` / `share` / `share --approve` / `--decline` / `--new-token` | Hints where code could use a standard type or operation, never editing; lists every signal; keeps a suggestion quiet; teaches a miss; sends what was learned to Jadpo HQ | Built (chunk 5.5x), with `--json`: formats, then reports numbered findings from the signals on the standard types' entries and the loop table, and ends with the agent's instruction; `ignore` writes `ignored_suggestions.jadpo_record`, `found` writes `taught_suggestions.jadpo_record` (chunk 5.5y), both add to `.jadpo/suggest_pending`; a wrong number, place, type or operation is `cli.suggest_arguments`. `share` built in chunk 5.5y against a fake of Jadpo HQ: sends the pending hashes, shows the snippets HQ asks for and the exact payload, and sends them only with `--approve`; stops at once when sharing is turned off; an unreachable or refusing HQ is `suggest.share_failed` ("Suggestions" and "Sharing with Jadpo HQ" below) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
-| `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries; `show <id>` lists an unfinished multi-step action's steps, and `retry <id> --not-done` and `abandon <id>` act on it (area 11) | Decided (question 13; `show`, `--not-done` and `abandon` 2026-10-16), not built: roadmap 6.12, and `show`, `--not-done` and `abandon` with multi-step calls (7.5) |
+| `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries; `show <id>` lists an unfinished multi-step action's steps, and `retry <id> --not-done` and `abandon <id>` act on it (area 11) | Built (chunk 6.12), with `--json`, synonym `delivery`: a table of what is `failed` or `outcome_unknown`, newest first, 20 a page (`--page`), `--state` for `pending`, `running`, `dismissed` or `cancelled`, a footer and one hint; `retry`, `dismiss`, `cancel` and `resolve <id> --done` or `--not-done` by an id's last 8 hex digits, each from its state only (`deliveries.wrong_state`, `deliveries.not_found`) and logged with the operator's name and database role; a schedule's failed run retried through the app's tick, as `jadpo schedules run` (area 12, "What an operator sees"); `show`, `retry --not-done` and `abandon` with multi-step calls (7.5), and batch runs and parked queue messages with 6.4b and 7.7 |
 | `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Built (chunk 6.2b), with `--json`: a table of each schedule's last run and next due time (or `‖ paused`), the alerts that hold and a footer; `history <name>` 20 records a page (`--page`), grouped by day, then the metrics; `pause` and `resume` set the state row; `run` runs it now in this process under its lease (`schedules.lease_held`, `schedules.run_failed`), and since chunk 6.2d does so only against a running `jadpo dev`'s own database, asking a deployment's own tick to run it otherwise and waiting for its record (`schedules.no_tick`; area 12, "Running a schedule by hand"); since chunk 6.2c each entity's built-in purge schedule is listed too, as `Member.purge`, its runs showing the records they purged; the database is `--url`'s, the connection's setting's, or a running `jadpo dev`'s; an unknown name is `cli.schedules_arguments` with the nearest (area 12, "Watching schedules") |
 | `jadpo package new <Name> --library` / `--provider` | Writes a package's own repository: the package format, `recipes/`, a `sample/` app and `GUIDE.md` | Decided in area 11 (2026-10-16), not built |
 | `jadpo package add <name or source>` | Installs a package into `packages/<name>/<version>/` and `jadpo.lock`: from the registry (the fixed order of area 11's question 13), a git repository (`github.com/acme/acme-pricing@v2.1.0`), a path in this repository (another Jadpo app's OpenAPI, `../orders`) or a URL serving an OpenAPI document; regenerates the surface and refuses one that differs from its committed `surface.jadpo_record`; a third party's git package needs an acceptance | Decided in area 11 (2026-10-16), not built: chunk 7.1b2 (path and git; the registry after the first build); until then it says `toolchain.not_built_yet` |
@@ -854,6 +854,7 @@ each command is built.
 | `cli.config_arguments` | `config` | Config command has invalid arguments |
 | `cli.config_prompt_failed` | `config` | Secure configuration prompt failed |
 | `cli.config_tty_required` | `config` | Configuration entry requires an interactive terminal |
+| `cli.deliveries_arguments` | `deliveries` | Deliveries command has invalid arguments |
 | `cli.dev_arguments` | `dev` | Dev command has invalid arguments |
 | `cli.dev_port_invalid` | `dev` | Development port is invalid |
 | `cli.dev_start_failed` | `dev` | Development server could not start |
@@ -899,6 +900,9 @@ each command is built.
 | `configuration.move_type_unsupported` | `config move`, the editor | Constant's type can't be a setting |
 | `configuration.value_invalid` | `config`, `dev` | Local configuration value is invalid |
 | `configuration.value_missing` | `config`, `dev` | Required local configuration is missing |
+| `deliveries.not_found` | `deliveries` | No delivery or schedule run has the id given |
+| `deliveries.unavailable` | `deliveries` | Deliveries' database couldn't be read |
+| `deliveries.wrong_state` | `deliveries` | Delivery or schedule run isn't in a state the action applies to |
 | `format.changes_required` | `fmt` | Source files are not canonically formatted |
 | `format.write_failed` | `fmt` | Formatted source could not be written |
 | `index.accept_check_failed` | `schema index-accept` | Index edit did not pass project checks |
@@ -971,9 +975,9 @@ each command is built.
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
-| `schedules.lease_held` | `schedules run` | Schedule is already running |
-| `schedules.no_tick` | `schedules run` | No tick picked up the run asked for |
-| `schedules.run_failed` | `schedules run` | Schedule's run failed |
+| `schedules.lease_held` | `schedules run`, `deliveries retry` | Schedule is already running |
+| `schedules.no_tick` | `schedules run`, `deliveries retry` | No tick picked up the run asked for |
+| `schedules.run_failed` | `schedules run`, `deliveries retry` | Schedule's run failed |
 | `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
 | `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
@@ -1266,7 +1270,11 @@ what other areas carried here and where this page answers it.
     environment through its configuration, each action logged with who did
     it. Alerts are log events the hosting platform's alerting picks up. A web
     screen can come later on the same operations, as Sidekiq and Temporal
-    offer both. *Decided 2026-10-13:* yes, as recommended.
+    offer both. *Decided 2026-10-13:* yes, as recommended. Built in chunk
+    6.12, its choices (the `dismissed` and `cancelled` states, a retry's
+    fresh budget, a schedule's latest run as its item, and the log in
+    `jadpo_operator_actions` with the operator's name and the database
+    role) in area 12, "What an operator sees".
 14. **How is a deployable declared and built?** (carried from area 1, where
     no area took it) Area 1 decided that deployables (API, worker,
     back-office) are declarations in one project, each compiled from what it

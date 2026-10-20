@@ -27,7 +27,7 @@ it isn't finished.
 7. **Answering at once.** `status: SuccessStatus.accepted` answers 202 and leaves the pinning to happen after the response. See `domains/cafe/routes/repairs.jadpo`.
 8. **An action that only emits.** `leave_thanks` writes nothing, so `events: { store: }` names the outbox its event is kept in, and root `policy.jadpo` lists who may run it, since it reaches no entity. See `app.jadpo`, `domains/cafe/actions/leave_thanks.jadpo`, `policy.jadpo` and [area 12, `event.store_required`](../../docs/language/12-jobs-and-events.md#eventstore_required).
 9. **The event record.** `jadpo records update` writes `domains/cafe/events/events.jadpo_record`, what each event carries, so a change to an event shows as a diff of one file, and an event still waiting in the outbox is read with the shape it was written in. See [area 12, The event record](../../docs/language/12-jobs-and-events.md#the-event-record).
-10. **Route tests see the follow-on work.** A route test sends its request through the real boundary, `settle:` included, so it sees the ticket the kiosk would. See `domains/cafe/routes/repairs.test.jadpo`.
+10. **Tests see the follow-on work.** A route test sends its request through the real boundary, `settle:` included, so it sees the ticket the kiosk would; what a step leaves for later, such as pinning a note up after a 202, is delivered before the test's next line, so the test reads the note on the board. See `domains/cafe/routes/repairs.test.jadpo` and [area 13, Caches and events](../../docs/language/13-testing.md#caches-and-events).
 
 ## Run it
 

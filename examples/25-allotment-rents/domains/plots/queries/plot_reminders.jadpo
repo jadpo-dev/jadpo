@@ -1,0 +1,9 @@
+use plots/entities { Plot, Reminder }
+
+/// The reminders sent for a plot, oldest first.
+query plot_reminders(plot_id: Plot.id) -> List<Reminder> {
+    from: Reminder
+    where: Reminder.plot_id == plot_id
+    order: [Reminder.sent_on asc, Reminder.id asc]
+    limit: 100
+}
