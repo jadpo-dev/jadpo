@@ -1078,13 +1078,40 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `SignInRefused` for passkeys, `PasskeyAdded` and `PasskeyRemoved`. Done
   when a person with no passkey left recovers through a magic link and
   adds a new one, in a route test written with `test_passkeys`.
-- [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
+- [x] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
   call checked by its row version, and a change rerunning the action with
-  the call repeated under its key. Done when a test holds a provider call
-  open and shows no transaction open meanwhile, and a change made during
-  the call reruns the action.
+  the call repeated under its key. Built: at the capability seam, what an
+  action has only read when a call goes out is its snapshot, which reads
+  the `xmin` of the rows it loaded (`RowVersions` on each plan `Select`
+  that reads an entity's `id`, one statement per table) and rolls back
+  before the call; the next store operation begins a new transaction
+  (`Ctx::read_transaction` for reads, `Ctx::transaction` marking it
+  written); every update and delete plan's `RowCheck` holds a row loaded
+  before a call to that version, read `FOR NO KEY UPDATE` once per
+  transaction, and a reference to a record deleted meanwhile is a
+  concurrent change too; a change reruns the action within the budget, its
+  keyed call repeated under its key; a call after a write is still
+  `call_in_transaction`; and a caught action whose call closed the
+  snapshot rolls its own transaction back whole. Live tests in
+  `call_snapshots.rs` hold the provider's request while they check
+  `pg_stat_activity` and change or delete the shipment the action read;
+  the SQL goldens show both statements. Batch items' calls and the
+  compile-time order check split to 7.4b. Choices in area 6's "Outside
+  calls hold no transaction" and compiler-runtime.md §2.6.
+- [ ] **7.4b Calls from a batch's items, and calls checked before writes**
+  `opus · xhigh`, after 7.4 (split from 7.4 on 2026-10-20): when
+  `each:`'s action makes outside calls, each item a batch of its own, run
+  as a subscriber's delivery is, its calls first under keys derived from
+  the run and the item's position, then its writes and the run's position
+  committed together (area 12, "How a run goes"); and a write placed
+  before a later outside call a compile error naming the call it must
+  follow (area 6, "Several outside calls"), so checked code never reaches
+  `call_in_transaction`. Done when a batch whose `each:` action books a
+  collection commits each item's booking with the run's position, a run
+  resumed after a crash sending a repeated item's call under its first
+  key, and `jadpo check` refuses a write before a call.
 - [ ] **7.5 Multi-step calls** `opus · xhigh` (areas 11 and 12, decided
   2026-10-16, with the edge-case review's ten fixes): several keyed
   changing calls per action where the key survives a retry, each recorded

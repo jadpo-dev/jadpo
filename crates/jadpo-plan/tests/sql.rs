@@ -137,6 +137,17 @@ fn select(out: &mut String, select: &Select, depth: usize) {
         format!("{}: {}", record.ty, fields.join(", "))
     }
     out.push_str(&format!("{indent}-- record {}\n", shown(&select.record)));
+    // What an outside call reads of the rows it loaded before it closes
+    // the snapshot (chunk 7.4).
+    if let Some(versions) = &select.versions {
+        out.push_str(&format!(
+            "{indent}-- row versions of {}, by the id in column {}:\n",
+            versions.table, versions.id
+        ));
+        for line in versions.sql.lines() {
+            out.push_str(&format!("{indent}--   {line}\n"));
+        }
+    }
     for (i, include) in select.includes.iter().enumerate() {
         let shape = match include.shape {
             IncludeShape::One => "one",
@@ -279,6 +290,22 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
     }
     if plan.missing.is_some() {
         out.push_str("-- no row: the entity's not-found failure\n");
+    }
+    // A row loaded before an outside call is held to its version first
+    // (chunk 7.4).
+    if let Some(row) = &plan.row {
+        let id = match &row.id {
+            WriteSource::Input(at) => format!("input {at}"),
+            WriteSource::Field { input, field } => format!("input {input}.{field}"),
+            other => format!("{other:?}"),
+        };
+        out.push_str(&format!(
+            "-- loaded before a call: {} row {id} held to its version first\n",
+            row.table
+        ));
+        for line in row.sql.lines() {
+            out.push_str(&format!("--   {line}\n"));
+        }
     }
     out
 }

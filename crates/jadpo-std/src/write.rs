@@ -121,6 +121,27 @@ pub struct WritePlan {
     /// "References stay inside the tenant"): then writing no row without
     /// policy, a create or a record that is there, is `not_permitted` too.
     pub kept_in_tenant: bool,
+    /// For an update or a delete, a lifecycle's transitions among them:
+    /// how its row is checked to be the version loaded before an outside
+    /// call (area 6, "Outside calls hold no transaction"; chunk 7.4).
+    pub row: Option<RowCheck>,
+}
+
+/// What a write checks first when its action loaded its row in a snapshot
+/// an outside call closed (area 6, "Outside calls hold no transaction";
+/// chunk 7.4): that the row is still the version loaded, by PostgreSQL's
+/// row version, locked as the write would lock it. A row changed or gone
+/// since is a concurrent change, which runs the action again.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RowCheck {
+    /// The entity's table, which names the row among those loaded, as
+    /// [`crate::read::RowVersions::table`] does.
+    pub table: String,
+    /// Where the row's `id` comes from: the `id` the write is given, or
+    /// its loaded record's.
+    pub id: WriteSource,
+    /// `SELECT "xmin"::text FROM <table> WHERE "id" = $1 FOR NO KEY UPDATE`.
+    pub sql: String,
 }
 
 /// A constraint whose refusal a write maps (area 6, "When a write is

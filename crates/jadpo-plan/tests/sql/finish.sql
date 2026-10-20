@@ -10,3 +10,8 @@ RETURNING "id", "owner_id", "project_id", "title", "status", "score", "due_at", 
 -- $3: input 0.id as Uuid
 -- $4: caller User as Uuid
 -- returns: uuid, uuid, uuid, text, enum TodoStatus, int, instant, instant, instant
+-- loaded before a call: todo row input 0.id held to its version first
+--   SELECT "xmin"::text
+--   FROM "todo"
+--   WHERE "id" = $1
+--   FOR NO KEY UPDATE

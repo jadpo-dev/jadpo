@@ -67,7 +67,7 @@ pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
                     _ => SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
                 })
                 .collect();
-            let found = match ctx.transaction(store).await {
+            let found = match ctx.read_transaction(store).await {
                 Ok(transaction) => transaction.query(sql, &values).await,
                 Err(error) => Err(error),
             };

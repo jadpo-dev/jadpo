@@ -7,3 +7,7 @@ WHERE "id" = $1
 -- columns: uuid, uuid, text, bool
 -- the caller may read a row: column 3
 -- record Profile: id = column 0, user_id = column 1, bio = column 2
+-- row versions of profile, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "profile"
+--   WHERE "id" = ANY($1)

@@ -254,6 +254,32 @@ pub fn select_one(table: &str) -> String {
     format!("SELECT 1\nFROM {}", ident(table))
 }
 
+/// The row version (PostgreSQL's `xmin`, as text) of each of `table`'s
+/// rows whose `id` is among the array `$1`, with its `id`: what a snapshot
+/// read before an outside call loaded, read again in that snapshot before
+/// it closes (area 6, "Outside calls hold no transaction"; chunk 7.4).
+pub fn row_versions(table: &str) -> String {
+    format!(
+        "SELECT {}, {}::text\nFROM {}\nWHERE {} = ANY($1)",
+        ident("id"),
+        ident("xmin"),
+        ident(table),
+        ident("id")
+    )
+}
+
+/// The row version of `table`'s row whose `id` is `$1`, locked as an
+/// update locks it: what a write after an outside call compares with the
+/// version loaded before it (chunk 7.4).
+pub fn row_version(table: &str) -> String {
+    format!(
+        "SELECT {}::text\nFROM {}\nWHERE {} = $1\nFOR NO KEY UPDATE",
+        ident("xmin"),
+        ident(table),
+        ident("id")
+    )
+}
+
 /// Adds `conditions` to `sql` as its `WHERE`, one to a line.
 pub fn where_clause(sql: &mut String, conditions: &[String], indent: &str) {
     for (i, condition) in conditions.iter().enumerate() {

@@ -1880,8 +1880,41 @@ call repeats harmlessly under its idempotency key (area 11).
 So a slow provider holds no database connection, and the time it takes
 never widens the window in which another request's change forces a rerun.
 The guarantee is the one repeatable read gives: every record the action
-writes is checked against the copy it loaded. Built with outside calls in
-chunk 7.4.
+writes is checked against the copy it loaded.
+
+Built in chunk 7.4, at the capability seam every outside call goes
+through:
+
+- **The snapshot is what the action has only read.** An action's
+  transaction still begins at its first store operation, at its level. If
+  it has run nothing but reads when a call goes out, it is the snapshot:
+  it reads the row versions of the records it loaded (one statement per
+  table, `xmin` by `id`) and rolls back, before the call is sent. Once it
+  has written, a call is refused as before (`call_in_transaction`), so no
+  transaction is ever open while a call is out. An action with no call
+  keeps its one transaction, unchanged.
+- **The transaction after the call.** The next store operation begins a
+  new transaction at the same level, in the same store. Reads after a call
+  run in it; if another call comes before any write, they were a snapshot
+  of their own and close the same way.
+- **The row version check.** An update, delete or transition of a row
+  loaded in a snapshot a call closed first reads that row's version in the
+  new transaction, locked as an update locks it (`FOR NO KEY UPDATE`),
+  once per transaction. A different version, or no row, is a concurrent
+  change. A write by `id` is held to it too when the action loaded that
+  row before the call, as repeatable read holds any write to a row changed
+  since the snapshot. A row is held to the version the action first
+  loaded, so one read again after the call, or in a second snapshot, is
+  still checked against it.
+- **A change reruns the action.** A concurrent change throws the attempt
+  away and runs the action again, within the existing budget of three
+  attempts. Its keyed calls take the same steps again, so each repeats
+  under the key it was first sent with (area 11). A reference to a record
+  loaded before a call that was deleted while the call was out is a
+  concurrent change too, so the rerun's fresh read finds the record gone.
+- **Not yet.** The items of a batch run inside its page's transaction, so
+  an item's call is still refused; a write placed before a later call is
+  refused when it runs, not yet at compile time (both chunk 7.4b).
 
 ### Several outside calls
 

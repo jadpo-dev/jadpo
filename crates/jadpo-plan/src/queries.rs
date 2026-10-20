@@ -38,7 +38,7 @@ use jadpo_std::Op;
 use jadpo_std::read::{
     Cardinality, Check, Column, EnvelopePart, Field, FieldRules, IncludeRead, IncludeShape,
     MissingPlan, MissingValue, Operand, PageRead, Param, ReadPlan, Recheck, RecheckOrder, Record,
-    Select, Size, Source, SqlType,
+    RowVersions, Select, Size, Source, SqlType,
 };
 
 use crate::constant::Constant;
@@ -510,6 +510,7 @@ impl Planner<'_> {
             held,
             record,
             includes,
+            versions: versions(entity, &columns.names),
         };
         let page = if page {
             let size = match (&query.limit, size) {
@@ -687,6 +688,7 @@ impl Planner<'_> {
             };
             let includes = self.includes(target, &include.includes, &columns)?;
             let held = self.rules_held(target, &columns.names, &columns.kinds);
+            let versions = versions(target, &columns.names);
             out.push(IncludeRead {
                 shape,
                 key,
@@ -699,6 +701,7 @@ impl Planner<'_> {
                     held,
                     record,
                     includes,
+                    versions,
                 },
             });
         }
@@ -1001,6 +1004,7 @@ impl Planner<'_> {
             &|_| {},
         );
         let held = self.rules_held(entity, &columns.names, &columns.kinds);
+        let versions = versions(entity, &columns.names);
         let mut kinds = columns.kinds;
         if permitted.is_some() {
             kinds.push(Column::Bool);
@@ -1028,6 +1032,7 @@ impl Planner<'_> {
                     fields: fields.clone(),
                 },
                 includes: Vec::new(),
+                versions,
             },
             page: None,
             missing: not_found,
@@ -1100,6 +1105,19 @@ fn granted(
     let permitted =
         (policy != jadpo_sql::policy::ANYONE).then(|| u32::try_from(columns.len()).unwrap_or(0));
     (sql, None, permitted)
+}
+
+/// How the rows a statement of `entity` reading the fields `names` loads
+/// are checked unchanged when a write follows an outside call (area 6,
+/// "Outside calls hold no transaction"; chunk 7.4): only a statement that
+/// reads the entity's `id` names its rows.
+fn versions(entity: &EntityModel, names: &[String]) -> Option<RowVersions> {
+    let id = names.iter().position(|name| name == "id")?;
+    Some(RowVersions {
+        table: entity.table.clone(),
+        id: u32::try_from(id).ok()?,
+        sql: text::row_versions(&entity.table),
+    })
 }
 
 // --- columns -------------------------------------------------------------------

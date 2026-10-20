@@ -7,3 +7,7 @@ WHERE "id" = $1
 -- columns: uuid, text, instant, bool
 -- the caller may read a row: column 3
 -- record Board: id = column 0, name = column 1, deleted_at = column 2
+-- row versions of board, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "board"
+--   WHERE "id" = ANY($1)
