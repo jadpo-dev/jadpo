@@ -112,7 +112,7 @@ pub fn check(call: &Call) -> Reply {
     // A linked package's problems are shown in its checkout, where they
     // are fixed.
     if !loaded.links.is_empty() {
-        crate::package::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
+        jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
     }
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
     let root = jadpo_db::shown_root(&cwd, &loaded.root);
