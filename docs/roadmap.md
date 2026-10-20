@@ -739,6 +739,10 @@ chunks below, taken before Phase 7, in this order.
   truncates the routes file, then writes it 400 ms later, and the old
   version serves between; `config.rs` saves `.env.local` atomically.
 
+- [ ] **6.13 Keeping what an operator settled** `opus · high` (found in
+  chunk 6.12): deliveries an operator dismissed or cancelled, and their
+  events and log rows, deleted by the tick after a window (30 days, as
+  run records), so they stop piling up; recorded in area 12.
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in
