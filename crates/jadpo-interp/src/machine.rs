@@ -229,6 +229,9 @@ enum Task<'p> {
         at: SiteId,
     },
     Field(SiteId),
+    /// A test's `fakes:` scripting one answer of a provider operation
+    /// (area 13; chunk 7.2d), with its value on top when it gives one.
+    Fake(SiteId),
     /// `Principal.user(record)` (area 8): the caller made from the record
     /// on top.
     Caller {
@@ -518,6 +521,39 @@ impl<'p> Machine<'p> {
             }) => Some((connection.as_str(), operation.as_str())),
             _ => None,
         }
+    }
+
+    /// Gives the fake of the connection the `fakes:` answer at `at`
+    /// scripts its answer (chunk 7.2d): a value, on top, written as the
+    /// provider sends it where the operation's `output_at:` reads it, so
+    /// it is read back through the operation's real decoding.
+    fn script_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<(), &'static str> {
+        use jadpo_graph::body::{FakeAnswer, FakeCondition};
+        use jadpo_runtime::fakes::Script;
+        let Some(Node::Expr(Expr::Call {
+            callee:
+                Callee::Fake {
+                    connection,
+                    operation,
+                    answer,
+                },
+            ..
+        })) = self.site(at).map(|site| &site.node)
+        else {
+            return Err("a scripted answer the plan doesn't have");
+        };
+        let given = match answer {
+            FakeAnswer::Value => Script::Value(self.pop()),
+            FakeAnswer::Failed(code) => Script::Failed(code.clone()),
+            FakeAnswer::Condition(FakeCondition::Unavailable | FakeCondition::InUse) => {
+                Script::Unavailable
+            }
+            FakeAnswer::Condition(FakeCondition::Lost) => Script::Lost,
+            FakeAnswer::Condition(FakeCondition::Misconfigured) => Script::Misconfigured,
+        };
+        ctx.at(at.0);
+        let providers = self.program.providers();
+        jadpo_runtime::fakes::script(ctx, &providers, (connection, operation), given)
     }
 
     /// What the provider call at `at` reads of its answer, and whether it
@@ -958,6 +994,12 @@ impl<'p> Machine<'p> {
                         next: 0,
                     });
                 }
+            }
+            Task::Fake(at) => {
+                if let Err(why) = self.script_fake(ctx, at) {
+                    return Err(self.defect(ctx, why, at));
+                }
+                self.values.push(Value::Unit);
             }
             Task::Caller { kind, at } => {
                 let record = self.pop();
@@ -2074,6 +2116,17 @@ impl<'p> Machine<'p> {
                 };
                 self.tasks.push(Task::Construct(id));
                 self.tasks.push(Task::Expr(*arg));
+            }
+            // A test's `fakes:` scripting a provider operation's answer,
+            // given to its connection's fake (area 13; chunk 7.2d).
+            Callee::Fake { answer, .. } => {
+                self.tasks.push(Task::Fake(id));
+                if *answer == jadpo_graph::body::FakeAnswer::Value {
+                    let [Some(arg)] = args else {
+                        return Err(self.defect(ctx, "a scripted answer without its value", id));
+                    };
+                    self.tasks.push(Task::Expr(*arg));
+                }
             }
             // A caller made from a record, in a test (area 8).
             Callee::Caller(kind) => {

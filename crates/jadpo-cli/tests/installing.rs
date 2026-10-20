@@ -649,6 +649,8 @@ fn dev_watches_a_linked_checkout() {
         no_run: true,
         json: false,
         choice: jadpo_term::ColorChoice::Never,
+        fake: Vec::new(),
+        sandbox: Vec::new(),
     };
     let session = {
         let mut out = out.clone();

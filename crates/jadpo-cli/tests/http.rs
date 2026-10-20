@@ -308,15 +308,25 @@ impl Dev {
     pub(super) fn start(root: &Path) -> Dev {
         let server = jadpo_test::database::server().expect("a PostgreSQL server");
         let url = server.create_database("http").expect("a database");
-        Dev::launch(root, Some(url))
+        Dev::launch(root, Some(url), Vec::new(), Vec::new())
     }
 
     /// A project with no entities, so no database to serve.
     pub(super) fn start_without_database(root: &Path) -> Dev {
-        Dev::launch(root, None)
+        Dev::launch(root, None, Vec::new(), Vec::new())
     }
 
-    fn launch(root: &Path, url: Option<String>) -> Dev {
+    /// As [`Dev::start_without_database`], with `--fake` and `--sandbox`
+    /// (chunk 7.2d).
+    pub(super) fn start_with_providers(
+        root: &Path,
+        fake: Vec<String>,
+        sandbox: Vec<String>,
+    ) -> Dev {
+        Dev::launch(root, None, fake, sandbox)
+    }
+
+    fn launch(root: &Path, url: Option<String>, fake: Vec<String>, sandbox: Vec<String>) -> Dev {
         let out = Buffer::default();
         let stop = Arc::new(AtomicBool::new(false));
         let args = DevArgs {
@@ -326,6 +336,8 @@ impl Dev {
             no_run: false,
             json: true,
             choice: ColorChoice::Never,
+            fake,
+            sandbox,
         };
         let thread = {
             let mut out = out.clone();

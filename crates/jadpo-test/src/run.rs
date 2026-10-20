@@ -7,11 +7,14 @@
 //! whichever thread finished first, so a run reads the same however its
 //! tests were spread.
 
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use jadpo_interp::{CallError, Prepared, Program, STACK_BYTES};
+use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::config::Mode;
+use jadpo_runtime::fakes::ProviderFake;
 use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Host, Outcome, Sources, block_on};
 
 use crate::database::{TestDatabases, TestHost};
@@ -150,6 +153,11 @@ fn one<E: Executor>(
         env.env.clock = jadpo_runtime::Clock::fixed(start);
     }
     let places = executor.places();
+    // Every provider package's connection is answered by its fake (area
+    // 13; chunk 7.2d): what the test's `fakes:` scripts, the generated
+    // default otherwise.
+    let fake = Rc::new(ProviderFake::new());
+    let connections = executor.provider_connections();
     // Only a test that calls an action, query or fixture, sends a request
     // through a route or runs a schedule can touch a store.
     if let (
@@ -168,6 +176,7 @@ fn one<E: Executor>(
                 .map(|store| store.name.as_str()),
         );
         let (outcome, undelivered) = {
+            let host = faked(&host, &connections, &fake);
             let mut ctx = Ctx::new(places, &host, env.env);
             ctx.set_settings(executor.settings(callable));
             // What each step emits is delivered before the next statement,
@@ -187,6 +196,7 @@ fn one<E: Executor>(
                 undelivered.as_ref(),
             ))),
         };
+        let failure = outcome::fakes_used(places, sources, test, &fake.usage(), failure, rerun);
         let kept = host.finish(failure.is_some());
         return failure.map(|mut failure| {
             failure.kept = kept;
@@ -194,6 +204,7 @@ fn one<E: Executor>(
         });
     }
     let host = env.host();
+    let host = faked(&host, &connections, &fake);
     let mut ctx = Ctx::new(places, &host, env.env);
     ctx.set_settings(executor.settings(callable));
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
@@ -203,12 +214,23 @@ fn one<E: Executor>(
             Frame::ENTRY,
         ))
     });
-    match outcome {
+    let failure = match outcome {
         Outcome::Value(_) => None,
         other => Some(Box::new(outcome::failure(
             places, sources, test, &other, rerun, None,
         ))),
-    }
+    };
+    drop(ctx);
+    outcome::fakes_used(places, sources, test, &fake.usage(), failure, rerun)
+}
+
+/// `host` with `fake` in each of `connections`' place.
+fn faked<H: Host>(host: H, connections: &[&str], fake: &Rc<ProviderFake>) -> Faked<H> {
+    connections
+        .iter()
+        .fold(Faked::new(host), |faked, connection| {
+            faked.with(connection, Rc::clone(fake) as Rc<dyn Capability>)
+        })
 }
 
 #[cfg(test)]

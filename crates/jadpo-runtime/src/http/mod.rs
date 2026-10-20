@@ -923,6 +923,7 @@ async fn run_with_caller(
         Some(guard) => ctx.set_call_key(guard.scope.clone(), guard.key.clone()),
         None => ctx.set_call_key("request", request_id),
     }
+    ctx.set_request_id(request_id);
     let claimed = Cell::new(false);
     // What was left for after the response before this route ran: only
     // its own action's work is waited for (chunk 6.3).

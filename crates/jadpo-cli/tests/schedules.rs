@@ -1509,6 +1509,8 @@ fn jadpo_dev_prints_each_run_and_each_alert_once() {
         no_run: false,
         json: false,
         choice: jadpo_term::ColorChoice::Never,
+        fake: Vec::new(),
+        sandbox: Vec::new(),
     };
     let session = {
         let mut out = out.clone();

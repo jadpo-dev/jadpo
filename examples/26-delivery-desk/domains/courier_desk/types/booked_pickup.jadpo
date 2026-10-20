@@ -1,0 +1,7 @@
+use shared/providers/swift_couriers
+
+/// A pickup the courier booked, as the desk shows it.
+type BookedPickup = Output {
+    id: SwiftCouriers.PickupId
+    collect_at: Instant
+}

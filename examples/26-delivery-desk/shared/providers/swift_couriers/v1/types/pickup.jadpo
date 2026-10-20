@@ -4,7 +4,7 @@
 
 /// A booked pickup.
 public type Pickup = Object {
-    id: Text
+    id: PickupId
     collect_at: Instant {
         wire_name: "collectAt"
     }

@@ -2112,8 +2112,9 @@ when there is none. The invocation's `Capabilities` log each call as it
 goes out and when it is answered (`capability::Logged`: connection,
 operation, `Repeat`, `Source`, when, how long on the monotonic clock,
 `Ended`), never its input or answer; `Ctx::take_calls` takes it, and
-`serve_request` leaves a request's on `Response::calls` for `jadpo
-calls` (its screen and full values in development are chunk 7.2d's). A
+`serve_request` leaves a request's on `Response::calls`, which `jadpo
+dev` lists under the request's line (full values in development are the
+host's call log, chunk 7.2d, below). A
 driver's `Answer` decides what the call gives: its value, its
 operation's own failure for the site to map (`effects::Unanswered::
 Failed`), or the runtime's `unavailable`, `misconfigured` or, for an
@@ -2227,8 +2228,40 @@ at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
 in `FaultKind::Provider`. Natively the host's `Fetch` is
 `jadpo_host_native::fetch::NativeFetch`: HTTPS through OpenSSL, or plain
 HTTP to this machine, each exchange on tokio's blocking pool within the
-call's timeout. `jadpo dev`'s and `jadpo test`'s hosts give a package
-connection no driver until chunk 7.2d's fakes.
+call's timeout.
+
+**Fakes and the call log** (chunk 7.2d; area 11, "Chosen in chunk 7.2d";
+area 13, "Fakes for integrations"). A package's fake is a capability,
+`jadpo_runtime::fakes::ProviderFake`: each call of an operation a test
+scripted takes its next scripted `Answer`, and any other call is
+answered `Answer::Generated`, which the call's site turns into the
+operation's generated default (`fakes::default_answer`: `fakes::generated`
+walks the output's codec, trying values that keep its rules and reading
+each back, then `fakes::enveloped` puts it where `output_at:` reads it)
+and decodes as any wire answer; `Capability::source_of` tells the log a
+scripted answer from a generated one (`Source::Scripted`,
+`Source::Generated`, `Source::Sandbox`). A test's `fakes:` is checked by
+`types::body::fakes` (each answer a value of the output type, one of the
+operation's failures' codes or a `FakeCondition`) and lowered to a
+statement per answer, `Callee::Fake`, before the test's first statement;
+the interpreter runs it through `fakes::script`, which writes a value as
+the provider sends it (`fakes::as_sent`) and hands it to the fake its host
+gives for the connection (`Capability::script`). `jadpo test`'s runner
+wraps each test's host in `capability::Faked` with one fake in every
+connection `Executor::provider_connections` names, and after the run
+reports a script the calls ran past or left answers in
+(`fakes::Usage`; `test.fake_exhausted`, `test.fake_unused`). `jadpo dev`
+gives its `NativeHost` one driver for every provider connection
+(`NativeHost::with_providers`), `jadpo_cli::dev_calls::DevProviders`: the
+package driver for the operations the plan's `ConnectionPlan::sandbox`
+(the connection's `development: { sandbox: }`) or `--sandbox` lets
+through, the fake otherwise, answering what `jadpo calls script` left
+in `build/dev/script/`. A host may keep a development call log
+(`Host::call_log`, `call_log::CallLog`): a provider call's site hands it
+each call as it ends, with the request as made but its headers and the
+answer as sent or generated (`call_log::Seen`), and the request's id
+(`Ctx::request_id`, which the HTTP component sets); only `jadpo dev`'s
+host has one, writing `build/dev/calls.jsonl` for `jadpo calls`.
 
 **Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
 6.4b"; area 12, "How a file's run is kept"). The `files` capability's

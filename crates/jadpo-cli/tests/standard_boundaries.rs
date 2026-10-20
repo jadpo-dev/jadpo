@@ -683,6 +683,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "turns a row's column into a value by the column kind the plan chose",
     ),
     (
+        "crates/jadpo-runtime/src/fakes.rs",
+        "makes a provider fake's generated default: an instant at the invocation's clock and its date, written by the type's own codec (chunk 7.2d)",
+    ),
+    (
         "crates/jadpo-runtime/src/effects.rs",
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),
@@ -706,6 +710,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-cli/src/deliveries.rs",
         "shows a delivery's and a schedule run's own times (tried, due, acted on) to an operator, never an app's value (chunk 6.12)",
+    ),
+    (
+        "crates/jadpo-cli/src/dev_calls.rs",
+        "writes a provider call's own time in `jadpo dev`'s call log, never an app's value (chunk 7.2d)",
     ),
     (
         "crates/jadpo-cli/src/schedules.rs",

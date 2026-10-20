@@ -1,0 +1,16 @@
+use courier_desk/types { BookedPickup, PickupForm }
+use courier_desk/actions { book_pickup }
+
+/// Booking pickups with the courier.
+routes Pickups {
+    prefix: /pickups
+
+    /// Anyone at the desk books a pickup.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: PickupForm
+        output: BookedPickup
+        status: SuccessStatus.created
+        run: book_pickup(input)
+    }
+}

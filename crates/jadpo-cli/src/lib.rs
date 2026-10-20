@@ -4,6 +4,7 @@
 
 mod ai;
 mod api;
+mod calls;
 mod check;
 mod commands;
 mod completion;
@@ -12,6 +13,7 @@ mod declines;
 mod deliveries;
 mod derived;
 pub mod dev;
+mod dev_calls;
 mod exchange;
 mod failure_text;
 mod fix;
