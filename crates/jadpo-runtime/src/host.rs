@@ -470,6 +470,15 @@ pub trait Host {
         let _ = (key, limit, now);
         Box::pin(async { crate::Allowed::Yes })
     }
+
+    /// The slots that cap each connection's calls at once (area 11,
+    /// `max_concurrent:`; chunk 7.6c): the app instance's own. Natively
+    /// the process's, which every worker thread shares, and an isolate's
+    /// on Workers ([`crate::slots::Slots::process`]); a test's host keeps
+    /// its own, so tests side by side never wait on each other.
+    fn slots(&self) -> &crate::slots::Slots {
+        crate::slots::Slots::process()
+    }
 }
 
 /// A host borrowed is the host: what a wrapper such as
@@ -551,6 +560,10 @@ impl<H: Host + ?Sized> Host for &H {
         now: i64,
     ) -> LocalFuture<'a, crate::Allowed> {
         (**self).rate_limit(key, limit, now)
+    }
+
+    fn slots(&self) -> &crate::slots::Slots {
+        (**self).slots()
     }
 }
 

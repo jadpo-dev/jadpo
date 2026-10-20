@@ -26,8 +26,9 @@
 
 use std::rc::Rc;
 
+use jadpo_std::HttpMethod;
 use jadpo_std::RuleKey;
-use jadpo_std::ai::AiUrl;
+use jadpo_std::ai::{AiDriver, AiUrl};
 use jadpo_std::embed::{EmbedSite, MOST_TEXTS, OPERATION};
 use jadpo_std::subscriber::Repeat;
 use jadpo_value::Value;
@@ -37,11 +38,12 @@ use crate::FaultKind;
 use crate::ai::{Ai, CONTEXT_LENGTH_EXCEEDED, Done, Kept, Reused};
 use crate::capability::{Answer, Call, Source};
 use crate::effects::Unanswered;
+use crate::provider::{Reading, Request};
 
 /// The settings a call reads, by number, for its model and its address.
 pub fn settings_read(ai: &Ai<'_>, site: &EmbedSite) -> Vec<u32> {
     let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
-    if let AiUrl::Setting(at) = &ai.plan.url {
+    if let AiDriver::OpenAiCompatible(AiUrl::Setting(at)) = &ai.plan.driver {
         read.push(*at);
     }
     read
@@ -110,12 +112,15 @@ pub async fn embed(
             Ok(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         });
-    let base = match &ai.plan.url {
-        AiUrl::Written(text) => Some(text.clone()),
-        AiUrl::Setting(at) => match setting(*at) {
+    // A package's `provide ai` maps no `embed:` yet (chunk 5.5v7), which
+    // the checker refuses.
+    let base = match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(AiUrl::Written(text)) => Some(text.clone()),
+        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => match setting(*at) {
             Some(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         },
+        AiDriver::Package(_) => None,
     };
     let made = Call::new(&ai.plan.connection, OPERATION, given, Repeat::Safe);
     let (Some(model), Some(base)) = (
@@ -180,8 +185,23 @@ pub async fn embed(
     let began = ctx.host().monotonic_ms();
     let mut call = made.clone();
     call.step = step_at;
-    let answer = match crate::ai::sent(ctx, call, &url, &body, began, site.timeout_ms).await {
-        Ok(answer) => answer,
+    let request = Request {
+        method: HttpMethod::Post,
+        url: url.clone(),
+        headers: vec![
+            ("Accept".to_string(), "application/json".to_string()),
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("user-agent".to_string(), "jadpo".to_string()),
+        ],
+        body: Some(body.clone()),
+        timeout_ms: site.timeout_ms,
+        reading: Reading {
+            error_code: Some("error.code".to_string()),
+            ..Reading::default()
+        },
+    };
+    let (answer, _) = match crate::ai::sent(ctx, call, request, began, site.timeout_ms).await {
+        Ok(sent) => sent,
         Err(done) => return done,
     };
     // A fake's own: the vectors made from each text and the seed.

@@ -17,7 +17,7 @@ pub use jadpo_std::Builtin as Prim;
 /// `Message` (area 10) and `Prompt` (area 21), and
 /// `TimeFormat`, which declares a format for showing dates and times
 /// (area 10).
-pub const BASES: [&str; 10] = [
+pub const BASES: [&str; 11] = [
     "Object",
     "Enum",
     "Input",
@@ -25,6 +25,7 @@ pub const BASES: [&str; 10] = [
     "Failure",
     "Event",
     "EmailMessage",
+    "EmailPartial",
     "Message",
     "Prompt",
     TIME_FORMAT,

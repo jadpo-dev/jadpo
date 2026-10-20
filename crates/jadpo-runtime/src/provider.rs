@@ -622,6 +622,7 @@ pub async fn call(
         input.as_ref(),
         settings,
         site,
+        None,
     ) {
         Ok(made) => made,
         Err(Unready::Misconfigured) => {
@@ -657,9 +658,26 @@ pub async fn call(
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
     };
+    // The key it goes under, which a fake keeps its answer under as the
+    // provider would (chunk 7.5d).
+    let mut sent_key = None;
     if let Some(keying) = &keying
         && let Some(header) = keying.header(providers, plan, step.map_or(0, |at| at.key_generation))
     {
+        sent_key = Some(crate::capability::SentKey {
+            key: header.1.clone(),
+            reused: plan
+                .idempotency
+                .as_ref()
+                .and_then(|idempotency| idempotency.reused.clone()),
+            did_nothing: op
+                .failures
+                .iter()
+                .filter_map(|key| providers.failures.iter().find(|plan| plan.key == *key))
+                .filter(|plan| matches!(plan.kind.as_deref(), Some("unavailable" | "rate_limited")))
+                .map(|plan| plan.code.clone())
+                .collect(),
+        });
         request.headers.push(header);
     }
     // What the development call log shows of the request (chunk 7.2d).
@@ -672,8 +690,9 @@ pub async fn call(
     });
     let mut made = made.with_request(request);
     made.step = step;
+    made.key = sent_key;
     let mut step = step;
-    let mut answer = match retried(ctx, &made, plan.retry).await {
+    let mut answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
         Ok(answer) => answer,
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -706,11 +725,14 @@ pub async fn call(
             request
                 .headers
                 .retain(|(name, _)| !name.eq_ignore_ascii_case(&header));
+            if let Some(sent) = made.key.as_mut() {
+                sent.key.clone_from(&key);
+            }
             request.headers.push((header, key));
         }
         step = next;
         made.step = next;
-        answer = match retried(ctx, &made, plan.retry).await {
+        answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
             Ok(answer) => answer,
             Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
             Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -895,13 +917,27 @@ pub fn timed_out() -> Failure {
 /// acted only when it changes nothing or takes its package's key, which it
 /// sends again unchanged. Each attempt is logged as the call it is. On a
 /// host with no timer, as a test's, it is sent again at once, as many
-/// times as `retry:` allows. The last attempt's answer.
-async fn retried(ctx: &mut Ctx<'_>, made: &Call, retry: RetryPlan) -> Result<Answer, Unanswered> {
+/// times as `retry:` allows. Under its connection's `max_concurrent:`,
+/// each attempt waits for one of the connection's slots and gives it back
+/// once answered (chunk 7.6c), so no slot is held while it waits to be
+/// sent again. The last attempt's answer.
+async fn retried(
+    ctx: &mut Ctx<'_>,
+    made: &Call,
+    retry: RetryPlan,
+    max_concurrent: Option<u32>,
+) -> Result<Answer, Unanswered> {
     let host = ctx.host();
     let began = host.monotonic_ms();
     let mut attempt = 1;
     loop {
-        let answer = crate::effects::exchange(ctx, made.clone()).await?;
+        let slot = match max_concurrent {
+            Some(limit) => Some(host.slots().take(&made.connection, limit).await),
+            None => None,
+        };
+        let answer = crate::effects::exchange(ctx, made.clone()).await;
+        drop(slot);
+        let answer = answer?;
         let asked = match &answer {
             Answer::Unavailable => None,
             Answer::RetryAfter(millis) => Some(*millis),
@@ -931,10 +967,65 @@ async fn retried(ctx: &mut Ctx<'_>, made: &Call, retry: RetryPlan) -> Result<Ans
 }
 
 /// Why a request couldn't be made.
-enum Unready {
+pub(crate) enum Unready {
     /// The connection's address or credential isn't usable.
     Misconfigured,
     Fault(FaultKind),
+}
+
+/// `value` written at `place`, dotted, in `members`, each object on the
+/// way made where it isn't there.
+fn add_at(
+    members: &mut serde_json::Map<String, serde_json::Value>,
+    place: &str,
+    value: serde_json::Value,
+) {
+    let mut steps: Vec<&str> = place.split('.').collect();
+    let Some(last) = steps.pop() else {
+        return;
+    };
+    let mut at = members;
+    for step in steps {
+        let next = at
+            .entry(step.to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if !next.is_object() {
+            *next = serde_json::Value::Object(serde_json::Map::new());
+        }
+        let serde_json::Value::Object(inner) = next else {
+            return;
+        };
+        at = inner;
+    }
+    at.insert(last.to_string(), value);
+}
+
+/// The request operation `operation` of connection `connection` sends
+/// with `input`, `added`'s value written at its place beside it (area 21,
+/// "How a provider fills it"; chunk 5.5v3b): what a package filling `ai`
+/// is sent, through the capability seam by the `ai` call's own site.
+pub(crate) fn request_adding(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    (connection, operation): (&str, &str),
+    input: Option<&Value>,
+    settings: &[(u32, Value)],
+    site: Site<'_>,
+    added: Option<(&str, serde_json::Value)>,
+) -> Result<Request, Unready> {
+    let Some((plan, op)) = providers.plan.operation(connection, operation) else {
+        return Err(Unready::Fault(FaultKind::Defect(format!(
+            "`{connection}.{operation}`, which the plan doesn't have"
+        ))));
+    };
+    let at = providers
+        .plan
+        .connections
+        .iter()
+        .position(|known| known.name == plan.name)
+        .and_then(|at| u32::try_from(at).ok())
+        .unwrap_or(u32::MAX);
+    request(ctx, providers, (plan, op, at), input, settings, site, added).map(|made| made.request)
 }
 
 /// The request `op` sends with `input`, its fields written as the
@@ -946,6 +1037,7 @@ fn request(
     input: Option<&Value>,
     settings: &[(u32, Value)],
     site: Site<'_>,
+    added: Option<(&str, serde_json::Value)>,
 ) -> Result<Made, Unready> {
     let setting = |number: u32| {
         settings
@@ -1018,6 +1110,11 @@ fn request(
         }
         _ => serde_json::Map::new(),
     };
+    // What the call's site writes beside its input, at its place: a
+    // model's structured-output setting (area 21; chunk 5.5v3b).
+    if let Some((place, value)) = added {
+        add_at(&mut members, place, value);
+    }
     // Each top-level field as written, for the fingerprint a step of an
     // action with several changing calls keeps (chunk 7.5b).
     let fields: Vec<(String, Vec<u8>)> = members
@@ -1356,7 +1453,7 @@ pub fn sendable(address: &str) -> Option<String> {
 /// The value `text`, an answer as sent, holds as `op`'s output, read at
 /// `site`: only the fields it reads, or, for an operation with
 /// `wire_output:`, the whole answer as sent, given to its `decode:`.
-fn decode(
+pub(crate) fn decode(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     op: &OperationPlan,

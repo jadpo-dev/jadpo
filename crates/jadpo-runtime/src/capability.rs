@@ -53,10 +53,34 @@ pub struct Call {
     /// is kept and the call is a step (chunk 7.5b): written before it goes
     /// out.
     pub step: Option<crate::steps::StepAt>,
+    /// The idempotency key a keyed provider call is sent under, which a
+    /// package's fake keeps its answer under as its provider would
+    /// (chunk 7.5d). Never logged.
+    pub key: Option<SentKey>,
     /// Which of a call's answers it asks for, from 1: an `ai.generate`
     /// call's repair asks again (area 21; chunk 5.5v3), which a fake's
     /// `.requests` doesn't list as a call of its own.
     pub attempt: u32,
+}
+
+/// The idempotency key a provider call goes under, and its package's code
+/// for a key that came with a different request (`reused:`), which a fake
+/// answers such a call with (area 11, "Tests and tools"; chunk 7.5d).
+#[derive(Clone, PartialEq, Eq)]
+pub struct SentKey {
+    pub key: String,
+    pub reused: Option<String>,
+    /// Its operation's failure codes that say it did nothing and is worth
+    /// sending again (their kind `unavailable` or `rate_limited`), which
+    /// keep nothing under the key.
+    pub did_nothing: Vec<String>,
+}
+
+impl std::fmt::Debug for SentKey {
+    /// Never the key.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SentKey").finish_non_exhaustive()
+    }
 }
 
 impl Call {
@@ -74,6 +98,7 @@ impl Call {
             repeat,
             request: None,
             step: None,
+            key: None,
             attempt: 1,
         }
     }
@@ -220,6 +245,21 @@ pub trait Capability {
     fn source_of(&self, call: &Call) -> Source {
         let _ = call;
         self.source()
+    }
+
+    /// The messages it caught in place of sending them, in the order they
+    /// were sent: what `email.sent` reads of the email connection's fake
+    /// in a test (area 16; chunk 7.3c). A driver that sends catches none.
+    fn caught(&self) -> Vec<Value> {
+        Vec::new()
+    }
+
+    /// Whether it catches mail in place of sending it, so the message the
+    /// runtime rendered is handed to it whole, whatever connection it
+    /// stands in for, a mail package's included (area 13, "One fake per
+    /// capability"; chunk 7.3c).
+    fn catches_mail(&self) -> bool {
+        false
     }
 
     /// Scripts the next answer to a call of `operation` through
@@ -438,6 +478,20 @@ impl Capability for Fake {
     fn source(&self) -> Source {
         Source::Fake
     }
+
+    fn catches_mail(&self) -> bool {
+        true
+    }
+
+    /// Each message a `send` gave it.
+    fn caught(&self) -> Vec<Value> {
+        self.sent
+            .borrow()
+            .iter()
+            .filter(|call| call.operation == jadpo_std::email::SEND)
+            .map(|call| call.input.clone())
+            .collect()
+    }
 }
 
 /// `host` with fakes in some connections' place (area 13): a test runs on
@@ -556,6 +610,10 @@ impl<H: Host> Host for Faked<H> {
         now: i64,
     ) -> LocalFuture<'a, crate::Allowed> {
         self.host.rate_limit(key, limit, now)
+    }
+
+    fn slots(&self) -> &crate::slots::Slots {
+        self.host.slots()
     }
 }
 

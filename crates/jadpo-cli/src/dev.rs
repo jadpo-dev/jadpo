@@ -707,10 +707,12 @@ pub fn serve_to(
                 Ok(current) => Arc::clone(&current.0),
                 Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
             };
-            current
-                .plan()
-                .ai()
-                .is_some_and(|ai| ai.connection == connection)
+            // A package filling `ai` is one of the provider connections
+            // above, faked or let through to its sandbox (chunk 5.5v3b).
+            current.plan().ai().is_some_and(|ai| {
+                ai.connection == connection
+                    && matches!(ai.driver, jadpo_std::ai::AiDriver::OpenAiCompatible(_))
+            })
         });
         for (store, url) in &make_shared.urls {
             if let Ok(database) = postgres(url) {

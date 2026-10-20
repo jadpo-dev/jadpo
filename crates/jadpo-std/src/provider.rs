@@ -223,6 +223,41 @@ pub struct ProviderPlan {
     /// from outside"; chunk 7.7c), fetched by the tick through its
     /// connection's package.
     pub queues: Vec<crate::receiving::QueuePlan>,
+    /// Each connection's polls whose event the app subscribes to (area
+    /// 11, "Polls"; chunk 7.6c), called by the tick through it.
+    pub polls: Vec<PollPlan>,
+}
+
+/// One poll the tick runs (area 11, "Polls"; chunk 7.6c): a connection's
+/// call of its package's operation, at its interval, whose answer is made
+/// into the package's event and kept only when it changed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PollPlan {
+    /// The connection it calls through, `fuel`.
+    pub connection: String,
+    /// Its name in the package's `polls:`, `latest`.
+    pub name: String,
+    /// The operation it calls, `prices.latest`, which takes nothing.
+    pub operation: String,
+    /// How often it is called: the connection's interval, or its
+    /// package's `every:`.
+    pub every_ms: u64,
+    /// The event's identity key, which its outbox row records.
+    pub event: String,
+    /// The event's number in the plan's JSON table: its payload is
+    /// written with its codec.
+    pub number: u32,
+    /// The event's fields, each taken from the answer's field of its name.
+    pub fields: Vec<String>,
+    /// The store its events, and what it last saw, are kept in.
+    pub store: String,
+}
+
+impl PollPlan {
+    /// How its state is named in `jadpo_polls`: `poll fuel.latest`.
+    pub fn key(&self) -> String {
+        format!("poll {}.{}", self.connection, self.name)
+    }
 }
 
 /// One recording, `recordings/<resource>.<operation>.json`, of a package
@@ -364,6 +399,10 @@ pub struct ConnectionPlan {
     /// `pickups.create` (area 11, "Provider calls in development"; chunk
     /// 7.2d); every other call there is faked.
     pub sandbox: Vec<String>,
+    /// How many of its calls go out at once per app instance (area 11,
+    /// "Calling"; chunk 7.6c): its package's `max_concurrent:`, or the
+    /// connection's lower one; `None` for no cap.
+    pub max_concurrent: Option<u32>,
 }
 
 /// One part of an operation's path.

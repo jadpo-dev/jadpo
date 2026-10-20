@@ -2196,7 +2196,19 @@ fn an_api_token_signs_its_app_in_until_it_is_ended() {
         .expect("devices")
         .clone();
     assert_eq!(devices.len(), 2, "{}", listed.body);
-    assert!(devices[0]["signed_in_at"].as_str() <= devices[1]["signed_in_at"].as_str());
+    // Compared as instants: as text, `…:15Z` sorts after `…:15.250Z`, since
+    // an instant on a whole second is written without its milliseconds.
+    let signed_in = |device: &serde_json::Value| {
+        device["signed_in_at"]
+            .as_str()
+            .and_then(jadpo_std::instant_millis)
+            .unwrap_or_else(|| panic!("an instant: {device}"))
+    };
+    assert!(
+        signed_in(&devices[0]) <= signed_in(&devices[1]),
+        "{}",
+        listed.body
+    );
 
     // Signing out ends the token it came with, and only that one.
     let out = dev.send("POST", "/account/sign-out", &[("authorization", &auth)], "");

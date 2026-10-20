@@ -79,6 +79,13 @@ pub trait Executor {
         None
     }
 
+    /// The program's polls and how a call through their connections is
+    /// made (area 11, "Polls"; chunk 7.6c). `None` for a program that
+    /// runs none.
+    fn polls(&self) -> Option<crate::polls::Polls<'_>> {
+        None
+    }
+
     /// The program's schedules, where their state is kept, and the stores
     /// the tick sweeps (area 12, chunk 6.2). `None` for a program the tick
     /// has nothing to do for.
@@ -107,6 +114,13 @@ pub trait Executor {
     /// 7.2d): what a test's host gives a package's fake for.
     fn provider_connections(&self) -> Vec<&str> {
         Vec::new()
+    }
+
+    /// What a provider call runs with outside an action's site: an email
+    /// sent through a mail package (area 16; chunk 7.3c). `None` for a
+    /// program with no provider packages.
+    fn package_calls(&self) -> Option<crate::provider::Providers<'_>> {
+        None
     }
 
     /// The connection `ai:` names (area 21; chunk 5.5v3): what a test's

@@ -141,7 +141,7 @@ fn cases() -> Vec<Case> {
         let at = out.len();
         let ty = match (entry.holds, entry.examples.of) {
             // A built-in type is named by a type built on it.
-            (Holds::Builtin(_), _) => format!("Sent{}", entry.name),
+            (Holds::Builtin(_), _) => format!("Echoed{}", entry.name),
             (_, Some(item)) => format!("{}<{item}>", entry.name),
             _ => entry.name.to_string(),
         };
@@ -609,6 +609,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-check/src/routes/mod.rs",
         "checks a route's durations, read by the contract's own reader",
+    ),
+    (
+        "crates/jadpo-check/src/polls.rs",
+        "checks a poll's `every:`, a duration read by the contract's own reader",
     ),
     (
         "crates/jadpo-check/src/schedules.rs",

@@ -173,6 +173,18 @@ fn test(order: usize, result: &TestResult) -> Json {
                             ("subscriber", Json::from(&delivery.subscriber)),
                             ("attempt", Json::from(i64::from(delivery.attempt))),
                             ("attempts", Json::from(i64::from(delivery.attempts))),
+                            ("diverged", Json::from(delivery.diverged)),
+                        ])
+                    }),
+                ),
+                (
+                    "crash",
+                    failure.crash.as_ref().map_or(Json::Null, |crash| {
+                        Json::object([
+                            ("action", Json::from(&crash.step.action)),
+                            ("step", Json::from(i64::from(crash.step.position))),
+                            ("operation", Json::from(&crash.step.operation)),
+                            ("boundary", Json::from(crash.boundary.word())),
                         ])
                     }),
                 ),
@@ -421,7 +433,11 @@ pub fn schema() -> Json {
                 ),
                 (
                     "delivery",
-                    "For test.subscriber_failed: the delivery between the test's steps that failed for good, its event, subscriber, attempt and attempts (how many its retry: allows); its failure or fault is beside it",
+                    "For test.subscriber_failed: the delivery between the test's steps that failed for good, its event, subscriber, attempt, attempts (how many its retry: allows) and diverged (whether it stopped as diverged rather than failing); its failure or fault is beside it",
+                ),
+                (
+                    "crash",
+                    "For a run jadpo test crashed at a step of an action with several changing calls: the action, the step (from 1), its operation and the boundary (before_send, after_send or after_answer); null for the run without a crash",
                 ),
                 (
                     "rerun",

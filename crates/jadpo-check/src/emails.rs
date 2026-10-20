@@ -110,6 +110,9 @@ pub struct EmailFacts {
     pub fields: Vec<(String, Ty, Span)>,
     /// Its `File` fields, each an attachment.
     pub attachments: Vec<String>,
+    /// Each attachment with its `max_size:` in bytes, when it gives one,
+    /// and where it is written (chunk 7.3c).
+    pub attachment_sizes: Vec<(String, Option<u64>, Span)>,
 }
 
 impl EmailFacts {
@@ -124,10 +127,70 @@ impl EmailFacts {
     }
 }
 
+/// One partial and its templates (area 16, "Email"; chunk 7.3c): a
+/// `type Name = EmailPartial { ... }` in `shared/emails/` or a domain's
+/// `emails/`, included from a template with its fields by name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartialFacts {
+    /// The name the checker's tables know it by.
+    pub canonical: String,
+    /// As written in its file.
+    pub type_name: String,
+    /// How a template includes it: `button`.
+    pub called: String,
+    /// The `.jadpo` file declaring it.
+    pub path: String,
+    pub name_span: Span,
+    pub ownership: Ownership,
+    /// Its templates that exist: `<name>.html` and `<name>.txt`.
+    pub html: Option<String>,
+    pub text: Option<String>,
+    /// Its fields, `locale` first, with their types and where each is
+    /// written (its type's name for `locale`, which it is given).
+    pub fields: Vec<(String, Ty, Span)>,
+}
+
+impl PartialFacts {
+    /// Its templates, the HTML first.
+    pub fn templates(&self) -> impl Iterator<Item = &String> {
+        self.html.iter().chain(&self.text)
+    }
+
+    /// How a log names it: `shared.Button`, `accounts.Signature`.
+    pub fn name(&self) -> String {
+        match crate::translations::scope_of(&self.ownership) {
+            Some(scope) => format!("{scope}.{}", self.type_name),
+            None => self.type_name.clone(),
+        }
+    }
+
+    /// The key of the callable its template of either kind became.
+    pub fn key(&self, html: bool) -> Key {
+        Key::new(
+            jadpo_graph::Kind::Function,
+            &partial_label(&self.name(), html),
+        )
+    }
+}
+
+/// How a partial's template's callable is named: `email partial
+/// shared.Button html`.
+pub fn partial_label(name: &str, html: bool) -> String {
+    format!(
+        "{PARTIAL_LABEL}{name} {}",
+        if html { "html" } else { "text" }
+    )
+}
+
+/// What every partial's callable is named after.
+pub const PARTIAL_LABEL: &str = "email partial ";
+
 /// Every email and the shared layout.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Analysis {
     pub emails: Vec<EmailFacts>,
+    /// Every partial, in canonical order.
+    pub partials: Vec<PartialFacts>,
     /// The layout's files that exist.
     pub layout_html: Option<String>,
     pub layout_text: Option<String>,
@@ -141,6 +204,20 @@ impl Analysis {
             .iter()
             .find(|email| email.templates().any(|template| template == path))
     }
+
+    /// The partial whose template is at `path`.
+    pub fn partial_of(&self, path: &str) -> Option<&PartialFacts> {
+        self.partials
+            .iter()
+            .find(|partial| partial.templates().any(|template| template == path))
+    }
+
+    /// The partial a template includes as `called`, wherever it is.
+    pub fn partial_called(&self, called: &str) -> Option<&PartialFacts> {
+        self.partials
+            .iter()
+            .find(|partial| partial.called == called)
+    }
 }
 
 /// What a template is written for (area 16).
@@ -148,6 +225,8 @@ impl Analysis {
 pub enum Host {
     /// An email's `.html` or `.txt`, by the name the tables know its type.
     Email(String),
+    /// A partial's, likewise (chunk 7.3c).
+    Partial(String),
     /// The shared layout.
     Layout,
 }
@@ -168,8 +247,16 @@ pub struct TemplateHost {
 
 /// Whether a symbol is an email type the application sends.
 fn is_email(symbol: &Symbol) -> bool {
-    symbol.kind == ItemKind::Type(Base::EmailMessage)
-        && !symbol.test
+    symbol.kind == ItemKind::Type(Base::EmailMessage) && is_app_own(symbol)
+}
+
+/// Whether a symbol is one of the application's email partials.
+fn is_partial(symbol: &Symbol) -> bool {
+    symbol.kind == ItemKind::Type(Base::EmailPartial) && is_app_own(symbol)
+}
+
+fn is_app_own(symbol: &Symbol) -> bool {
+    !symbol.test
         && symbol.library.is_none()
         && symbol.provided.is_none()
         && symbol.ownership.package().is_none()
@@ -213,6 +300,19 @@ fn literal_text(value: &ast::Expr) -> Option<String> {
         crate::types::Const::Str(text) => Some(text),
         _ => None,
     }
+}
+
+/// The connection `application { email: { connection: } }` names, as
+/// written, read from the syntax alone so that reading connections can
+/// ask it (chunk 7.3c).
+pub fn written_connection(db: &dyn Db, project: Project) -> Option<String> {
+    application(db, project)
+        .into_iter()
+        .filter(|(_, key, _)| name_text(key).as_deref() == Some("email"))
+        .flat_map(|(_, _, member)| tree::members(member.block()))
+        .find(|(key, _)| name_text(key).as_deref() == Some("connection"))
+        .and_then(|(_, member)| member.value())
+        .map(|value| tree::written(value.syntax()))
 }
 
 /// `application { email: display_name: }`.
@@ -268,8 +368,24 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                     let Some(value) = entry.value() else { continue };
                     if name == "connection" {
                         let written = tree::written(value.syntax());
+                        let package = connections.kind(&written) == Some(ConnectionKind::Package);
+                        let provides = package
+                            && crate::connections::package_connections(db, project)
+                                .connections
+                                .iter()
+                                .find(|known| known.name == written)
+                                .is_some_and(|known| {
+                                    let mappings = crate::mail::mappings(db, project);
+                                    mappings.of.contains_key(&known.folder)
+                                        || mappings.broken.contains(&known.folder)
+                                });
                         match connections.kind(&written) {
                             Some(ConnectionKind::Smtp) => out.connection = Some(written),
+                            // A mail package (chunk 7.3c): one whose
+                            // mapping doesn't read is reported there.
+                            Some(ConnectionKind::Package) if provides => {
+                                out.connection = Some(written);
+                            }
                             found => {
                                 let smtp: Vec<String> = connections
                                     .declared
@@ -279,7 +395,7 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                                     .collect();
                                 let what = match found {
                                     Some(ConnectionKind::Package) => format!(
-                                        "`{written}` is a package's connection, and a package that provides `email` comes in a later release"
+                                        "`{written}` is a connection to a package with no `provides/email.jadpo`"
                                     ),
                                     Some(_) => {
                                         format!("`{written}` is a connection that sends no email")
@@ -288,11 +404,11 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                                 };
                                 let reason = if smtp.is_empty() {
                                     format!(
-                                        "`email: {{ connection: }}` names a connection that provides `email`, one with `driver: Driver.smtp`; {what}, and `app.jadpo` declares none."
+                                        "`email: {{ connection: }}` names a connection that provides `email`: one with `driver: Driver.smtp`, or to a mail package that maps `send` in its `provides/email.jadpo`; {what}, and `app.jadpo` declares none with `driver: Driver.smtp`."
                                     )
                                 } else {
                                     format!(
-                                        "`email: {{ connection: }}` names a connection that provides `email`, one with `driver: Driver.smtp`; {what}. The application's are {}.",
+                                        "`email: {{ connection: }}` names a connection that provides `email`: one with `driver: Driver.smtp`, or to a mail package that maps `send` in its `provides/email.jadpo`; {what}. The application's with `driver: Driver.smtp` are {}.",
                                         crate::and_list(&smtp)
                                     )
                                 };
@@ -526,7 +642,7 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
         .declarations
         .values()
         .flatten()
-        .filter(|symbol| is_email(symbol))
+        .filter(|symbol| is_email(symbol) || is_partial(symbol))
         .collect();
     found.sort_by(|a, b| (&a.path, a.index).cmp(&(&b.path, b.index)));
     let records = project.records(db);
@@ -571,13 +687,41 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
                 (field.name.clone(), field.declared.clone(), span)
             })
             .collect();
-        let attachments = defs
+        let attachments: Vec<String> = defs
             .iter()
             .filter(|field| {
                 matches!(field.declared.strip_nullable(), Ty::Opaque(held, args)
                     if held == jadpo_std::files::FILE && args.is_empty())
             })
             .map(|field| field.name.clone())
+            .collect();
+        // Each attachment's `max_size:`, which a mail package's limit is
+        // checked against (chunk 7.3c); one that isn't a size counts as
+        // none.
+        let attachment_sizes: Vec<(String, Option<u64>, Span)> = attachments
+            .iter()
+            .map(|name: &String| {
+                let found = tree::members(decl.member_list())
+                    .into_iter()
+                    .find(|(field, _)| tree::name_text(field).as_deref() == Some(name.as_str()));
+                let span = fields
+                    .iter()
+                    .find(|(field, ..)| field == name)
+                    .map_or_else(|| name_span.clone(), |(_, _, span)| span.clone());
+                let size = found.and_then(|(_, member)| {
+                    let settings = match member.value() {
+                        Some(ast::Expr::RecordExpr(record)) => tree::members(record.member_list()),
+                        _ => Vec::new(),
+                    };
+                    settings
+                        .into_iter()
+                        .find(|(key, _)| tree::name_text(key).as_deref() == Some("max_size"))
+                        .and_then(|(_, setting)| setting.value())
+                        .and_then(|value| jadpo_std::files::size(&tree::written(value.syntax())))
+                        .filter(|bytes| *bytes > 0)
+                });
+                (name.clone(), size, span)
+            })
             .collect();
         let stem = format!("{}{}", folder_of(&symbol.path), to_snake(&symbol.name));
         let html = format!("{stem}.html");
@@ -595,13 +739,28 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
                 )
                 .at(name_span.clone(), "nothing to send")
                 .reason(format!(
-                    "An email's words live beside its type: `{file}.html`, its HTML, and `{file}.txt`, its plain text, each reading its fields inside `{{{{ }}}}`. It needs at least one."
+                    "{} words live beside its type: `{file}.html`, its HTML, and `{file}.txt`, its plain text, each reading its fields inside `{{{{ }}}}`. It needs at least one.",
+                    if is_partial(symbol) { "A partial's" } else { "An email's" }
                 ))
                 .next(format!(
                     "Create `{stem}.html` and `{stem}.txt` beside `{}`",
                     symbol.path.rsplit('/').next().unwrap_or(&symbol.path)
                 )),
             );
+        }
+        if is_partial(symbol) {
+            out.partials.push(PartialFacts {
+                canonical,
+                type_name: symbol.name.clone(),
+                called: to_snake(&symbol.name),
+                path: symbol.path.clone(),
+                name_span,
+                ownership: symbol.ownership.clone(),
+                html,
+                text,
+                fields,
+            });
+            continue;
         }
         out.emails.push(EmailFacts {
             canonical,
@@ -614,6 +773,7 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             text,
             fields,
             attachments,
+            attachment_sizes,
         });
     }
     out.layout_html = exists(LAYOUT_HTML).then(|| LAYOUT_HTML.to_string());
@@ -640,13 +800,14 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             .map_or(0, str::len);
         let at = Span::new(path, 0, u32::try_from(first).unwrap_or(0));
         let diagnostic = if path.starts_with("shared/emails/") {
+            let type_name = crate::case::to_camel(stem);
             Diagnostic::new(
                 &rule::EMAIL_TEMPLATE_MISSING,
                 format!("`{file}` belongs to no email"),
             )
             .at(at, "not the layout")
-            .reason("`shared/emails/` holds the layout every email is wrapped in, `layout.html` and `layout.txt`, and nothing else; an email's own templates sit beside its type in its domain's `emails/`.")
-            .next(format!("Move `{file}` beside the email it belongs to, or remove it"))
+            .reason("`shared/emails/` holds the layout every email is wrapped in, `layout.html` and `layout.txt`, and the partials every domain's emails may include, each a `type X = EmailPartial { ... }` with its templates beside it; an email's own templates sit beside its type in its domain's `emails/`.")
+            .next(format!("Declare `type {type_name} = EmailPartial {{ ... }}` in `shared/emails/{stem}.jadpo`, or move `{file}` beside the email it belongs to, or remove it"))
         } else {
             let type_name = crate::case::to_camel(stem);
             Diagnostic::new(
@@ -665,6 +826,7 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
         out.problems.push(diagnostic);
     }
     out.emails.sort_by(|a, b| a.canonical.cmp(&b.canonical));
+    out.partials.sort_by(|a, b| a.canonical.cmp(&b.canonical));
     out
 }
 
@@ -700,6 +862,15 @@ pub fn template_host(db: &dyn Db, project: Project, path: &str) -> Option<Templa
             label: format!("email layout {kind}"),
         });
     }
+    if let Some(partial) = analysis.partial_of(path) {
+        return Some(TemplateHost {
+            host: Host::Partial(partial.canonical.clone()),
+            html,
+            names: partial.fields.clone(),
+            ownership: partial.ownership.clone(),
+            label: partial_label(&partial.name(), html),
+        });
+    }
     let email = analysis.email_of(path)?;
     Some(TemplateHost {
         host: Host::Email(email.canonical.clone()),
@@ -725,6 +896,12 @@ pub fn template_paths(db: &dyn Db, project: Project) -> Vec<String> {
         .emails
         .iter()
         .flat_map(|email| email.templates().cloned())
+        .chain(
+            analysis
+                .partials
+                .iter()
+                .flat_map(|partial| partial.templates().cloned()),
+        )
         .chain(analysis.layout_html.clone())
         .chain(analysis.layout_text.clone())
         .collect()
@@ -759,7 +936,166 @@ pub fn email_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
     }
     out.extend(unused_fields(db, project));
+    out.extend(unused_partial_fields(db, project));
+    out.extend(crate::mail::attachment_problems(db, project));
+    out.extend(include_cycles(db, project));
     out.extend(unsent(db, project));
+    out
+}
+
+/// The partials each template includes, by the callable each include
+/// runs, with where the include is written.
+fn included(db: &dyn Db, project: Project, path: &str) -> Vec<(Key, Span)> {
+    let checked = crate::types::template_body(db, project, Name::new(db, path.to_string()));
+    checked
+        .body
+        .sites
+        .iter()
+        .filter_map(|site| match &site.node {
+            jadpo_graph::body::Node::Expr(jadpo_graph::body::Expr::Call {
+                callee: jadpo_graph::body::Callee::Function(key),
+                ..
+            }) if key.name().starts_with(PARTIAL_LABEL) => {
+                Some((key.clone(), Span::new(path, site.start, site.end)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// `email.partial_invalid`: a partial that includes itself, at once or
+/// through others, which would never finish writing (chunk 7.3c).
+fn include_cycles(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let analysis = analysis(db, project);
+    // Each partial's template, by the key of its callable.
+    let mut templates: Vec<(Key, &PartialFacts, &String)> = Vec::new();
+    for partial in &analysis.partials {
+        for (html, path) in [(true, &partial.html), (false, &partial.text)] {
+            if let Some(path) = path {
+                templates.push((partial.key(html), partial, path));
+            }
+        }
+    }
+    let edges: Vec<Vec<(Key, Span)>> = templates
+        .iter()
+        .map(|(_, _, path)| included(db, project, path))
+        .collect();
+    let mut out = Vec::new();
+    let mut reported: BTreeSet<String> = BTreeSet::new();
+    for (start, (key, partial, _)) in templates.iter().enumerate() {
+        if reported.contains(&partial.canonical) {
+            continue;
+        }
+        // Walks what it includes, breadth first, keeping the way back.
+        let mut seen: Vec<Option<usize>> = vec![None; templates.len()];
+        let mut queue = std::collections::VecDeque::from([start]);
+        let mut found = None;
+        'walk: while let Some(at) = queue.pop_front() {
+            for (included, _) in &edges[at] {
+                if included == key {
+                    found = Some(at);
+                    break 'walk;
+                }
+                if let Some(next) = templates.iter().position(|(k, ..)| k == included)
+                    && next != start
+                    && seen[next].is_none()
+                {
+                    seen[next] = Some(at);
+                    queue.push_back(next);
+                }
+            }
+        }
+        let Some(last) = found else { continue };
+        // The partials the cycle goes through, from the first included.
+        let mut through = Vec::new();
+        let mut at = last;
+        while at != start {
+            through.push(templates[at].1.called.clone());
+            at = seen[at].unwrap_or(start);
+        }
+        through.reverse();
+        let first = edges[start]
+            .iter()
+            .find(|(included, _)| {
+                through.first().map_or(included == key, |name| {
+                    templates
+                        .iter()
+                        .any(|(k, p, _)| k == included && p.called == *name)
+                })
+            })
+            .map(|(_, span)| span.clone());
+        let Some(span) = first else { continue };
+        for (_, partial, _) in templates
+            .iter()
+            .filter(|(_, p, _)| *p == templates[start].1 || through.contains(&p.called))
+        {
+            reported.insert(partial.canonical.clone());
+        }
+        let called = &partial.called;
+        let message = if through.is_empty() {
+            format!("`{called}` includes itself")
+        } else {
+            let names: Vec<String> = through.iter().map(|name| format!("`{name}`")).collect();
+            format!(
+                "`{called}` includes itself through {}",
+                crate::and_list(&names)
+            )
+        };
+        out.push(
+            Diagnostic::new(&rule::EMAIL_PARTIAL_INVALID, message)
+                .at(span, "would never finish")
+                .reason("A partial writes its own templates' text where it is included, so one that includes itself, at once or through other partials, would never finish writing.")
+                .next(format!("Remove the `{{{{ include }}}}` that leads back to `{called}`")),
+        );
+    }
+    out
+}
+
+/// `email.field_unused` for a partial: a field none of its templates
+/// reads, besides the `locale` it is given (chunk 7.3c).
+fn unused_partial_fields(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for partial in &analysis(db, project).partials {
+        if partial.html.is_none() && partial.text.is_none() {
+            continue;
+        }
+        let mut read: BTreeSet<String> = BTreeSet::new();
+        let mut broken = false;
+        for path in partial.templates() {
+            let checked = crate::types::template_body(db, project, Name::new(db, path.clone()));
+            if !checked.problems.is_empty() {
+                broken = true;
+            }
+            read.extend(crate::types::template_reads(&checked.body));
+        }
+        if broken {
+            continue;
+        }
+        for (name, _, span) in &partial.fields {
+            if crate::types::PARTIAL_FIELDS
+                .iter()
+                .any(|(own, _)| own == name)
+                || read.contains(name)
+            {
+                continue;
+            }
+            out.push(
+                Diagnostic::new(
+                    &rule::EMAIL_FIELD_UNUSED,
+                    format!("`{}.{name}` is written nowhere", partial.type_name),
+                )
+                .at(span.clone(), "no template writes it")
+                .reason(format!(
+                    "A partial's fields are what its templates read, so a field none of them reads is given for nothing, or is a value a template was meant to show; no template of `{}` reads `{name}`.",
+                    partial.type_name
+                ))
+                .next(format!(
+                    "Read `{name}` in a template, or remove it from `{}`",
+                    partial.type_name
+                )),
+            );
+        }
+    }
     out
 }
 

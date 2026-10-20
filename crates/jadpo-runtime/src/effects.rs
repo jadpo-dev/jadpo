@@ -52,6 +52,9 @@ pub enum Effect<'s> {
     /// `emit` of an event of the type whose identity key is `event`
     /// (area 12), given the event's value.
     Emit { event: &'s str },
+    /// `email.sent` in a test (area 16; chunk 7.3c): every email the test
+    /// sent, as the email connection's fake caught it.
+    SentEmails,
 }
 
 /// What an effect runs with besides its values: the program's tables.
@@ -135,6 +138,23 @@ pub fn run(
 ) -> Result<Value, Refused> {
     match effect {
         Effect::Now => Ok(Value::Instant(ctx.now())),
+        Effect::SentEmails => {
+            let caught = effects
+                .events
+                .emails
+                .connection
+                .as_deref()
+                .and_then(|connection| ctx.host().capability(connection))
+                .map(crate::capability::Capability::caught)
+                .unwrap_or_default();
+            Ok(Value::List(
+                caught
+                    .iter()
+                    .map(crate::email::sent_email)
+                    .collect::<Vec<_>>()
+                    .into(),
+            ))
+        }
         Effect::Emit { event } => {
             let [value] = values else {
                 return Err(defect("an `emit` without its event"));
@@ -280,6 +300,11 @@ pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswere
     let answer = driver.call(&call).await;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     ctx.capabilities_mut().ended(place, &answer, took);
+    // A step answered, its answer not kept yet, which `jadpo test` may
+    // crash after (chunk 7.5d).
+    if call.step.is_some() && crate::crashes::due(ctx, crate::crashes::Boundary::AfterSend) {
+        return Err(Unanswered::Fault(FaultKind::Crashed));
+    }
     Ok(answer)
 }
 

@@ -32,6 +32,16 @@ pub const DEFAULT_MODEL: &str = "default";
 /// the call's `timeout:`.
 pub const SENDS: u32 = 3;
 
+/// `ai.generate`'s five conditions, as an `attempt`'s arms, a test's
+/// `fakes:` and `jadpo calls script` name them.
+pub const CONDITIONS: [crate::RuleKey; 5] = [
+    crate::RuleKey::Refused,
+    crate::RuleKey::Malformed,
+    crate::RuleKey::TimedOut,
+    crate::RuleKey::OverBudget,
+    crate::RuleKey::TooLong,
+];
+
 /// The keys `ai:` takes now: `embedding_dimensions:` since chunk 5.5v4.
 pub const KEYS: [&str; 3] = ["connection", "models", "embedding_dimensions"];
 
@@ -74,13 +84,108 @@ pub enum AiUrl {
 pub struct AiPlan {
     /// The connection every `ai` call goes through, `local_model`.
     pub connection: String,
-    /// Its driver's address: `Driver.openai_compatible { url: }`, the
-    /// base its `/chat/completions` is under.
-    pub url: AiUrl,
+    /// What fills `ai` through it.
+    pub driver: AiDriver,
     /// Each model `models:` names, with the number of the `ModelId`
     /// setting it reads.
     pub models: Vec<(String, u32)>,
     pub schema: SchemaMode,
+}
+
+/// What fills `ai` (area 21, "How a provider fills it").
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AiDriver {
+    /// The built-in `Driver.openai_compatible { url: }`, the base its
+    /// `/chat/completions` is under (chunk 5.5v3).
+    OpenAiCompatible(AiUrl),
+    /// A provider package's `provides/ai.jadpo` (chunk 5.5v3b).
+    Package(Box<PackageAi>),
+}
+
+/// A package's `provide ai { generate: }`, as data: the operation it
+/// calls, what its input is made of, and where the answer and what it
+/// says about it are in the operation's output.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PackageAi {
+    /// `chat.completions.create`, one of the connection's operations.
+    pub operation: String,
+    /// Each member of its input, by its spelling on the wire.
+    pub input: Vec<(String, AiInput)>,
+    /// Whether the input reads `request.instructions`: the instructions
+    /// are then left out of `request.messages`, which otherwise opens
+    /// with them as the `system` message.
+    pub instructions_apart: bool,
+    /// Where the answer's text is in the output, by field names; `0` is
+    /// a list's first item.
+    pub answer: Vec<String>,
+    /// Where the model's refusal is, by field names: the call is
+    /// `refused` when it holds anything.
+    pub refused_when: Option<Vec<String>>,
+    /// Where the answer as sent says it was cut off, dotted, and the JSON
+    /// value there that says so.
+    pub cut_off_when: Option<(String, String)>,
+    /// Where the tokens used are, by field names; counted by chunk
+    /// 5.5v5's budgets.
+    pub usage: Option<AiUsage>,
+    /// Where in the request the structured mode's envelope is written,
+    /// dotted; `None` where the mode takes none.
+    pub schema_at: Option<String>,
+    /// Each model's context window in tokens, by the model's name as its
+    /// `ModelId` writes it after its provider, from the package's table.
+    pub contexts: Vec<(String, u64)>,
+}
+
+impl PackageAi {
+    /// The context window of the model named `name`, if the package's
+    /// table has it.
+    pub fn context(&self, name: &str) -> Option<u64> {
+        self.contexts
+            .iter()
+            .find(|(model, _)| model == name)
+            .map(|(_, tokens)| *tokens)
+    }
+}
+
+/// A value a package's `generate:` gives a member of its operation's
+/// input: data, never code.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AiInput {
+    /// `request.model`: the model's name after its provider.
+    Model,
+    /// `request.max_output`.
+    MaxOutput,
+    /// `request.instructions`: the prompt's instructions, the schema's
+    /// added where the mode asks for it there.
+    Instructions,
+    /// `{ each: request.messages  as: { } }`: one object for each message,
+    /// each member by its spelling on the wire.
+    Messages(Vec<(String, AiInput)>),
+    /// `item.role` and `item.content`, inside `as:`.
+    Role,
+    Content,
+    /// The value of the setting numbered here, from the connection's
+    /// setting of the package (`settings.<name>`).
+    Setting(u32),
+    Text(String),
+    Int(i64),
+    Bool(bool),
+}
+
+/// Where a package's answer says how many tokens it used, by field
+/// names; `None` for one written as `0`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AiUsage {
+    pub input: Option<Vec<String>>,
+    pub output: Option<Vec<String>>,
+    pub cached: Option<Vec<String>>,
+}
+
+/// How many tokens `text` is taken to be when it is checked against a
+/// model's context before sending: one for each four bytes of its UTF-8,
+/// rounded up, the rule of thumb OpenAI gives. The provider's own count
+/// is what its usage reports.
+pub fn estimated_tokens(text: &str) -> u64 {
+    (text.len() as u64).div_ceil(4)
 }
 
 impl AiPlan {

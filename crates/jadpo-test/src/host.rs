@@ -51,6 +51,8 @@ pub struct Harness<D = jadpo_host_native::Postgres> {
     /// What the runtime fetches on its own account, when the test gives
     /// it (chunk 7.7b).
     outbound: Option<std::rc::Rc<dyn jadpo_runtime::Outbound>>,
+    /// Each connection's calls at once, the harness's own (chunk 7.6c).
+    slots: jadpo_runtime::slots::Slots,
 }
 
 impl<D> std::fmt::Debug for Harness<D> {
@@ -93,6 +95,7 @@ impl<D: Database> Harness<D> {
             deferred: RefCell::new(Vec::new()),
             handed: RefCell::new(Vec::new()),
             outbound: None,
+            slots: jadpo_runtime::slots::Slots::new(),
         }
     }
 
@@ -311,5 +314,10 @@ impl<D: Database> Host for Harness<D> {
 
     fn hand_on(&self, work: LocalFuture<'static, ()>) {
         self.handed.borrow_mut().push(work);
+    }
+
+    /// Its own, so tests side by side never wait on each other.
+    fn slots(&self) -> &jadpo_runtime::slots::Slots {
+        &self.slots
     }
 }

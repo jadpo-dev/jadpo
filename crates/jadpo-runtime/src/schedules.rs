@@ -332,6 +332,9 @@ pub struct Ticked {
     /// What it received from the app's queues, when it received anything
     /// (chunk 7.7c).
     pub received: Option<Tally>,
+    /// How many polls it called, and how many of those saw a change, when
+    /// it called any (chunk 7.6c).
+    pub polled: Option<(u64, u64)>,
 }
 
 /// How many rows a tick deleted.
@@ -511,6 +514,16 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             left: received.left,
         })
         .filter(|tally| *tally != Tally::default());
+    }
+    // Each poll that is due, its changes kept as events and delivered
+    // within what is left of the budget (chunk 7.6c).
+    if !budget.spent() {
+        let polled = crate::polls::poll(executor, &budget, now).await;
+        ticked.problems.extend(polled.problems);
+        ticked
+            .deliveries
+            .extend(runner::run_within(executor, host, &budget, polled.deferred).await);
+        ticked.polled = Some((polled.called, polled.changed)).filter(|&(called, _)| called > 0);
     }
     // Unfinished records of several changing calls keep their answers 30
     // days after their last run, then only their step list; an abandoned

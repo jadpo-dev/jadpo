@@ -552,6 +552,14 @@ impl StdNames {
         self.namespace(name).is_some()
     }
 
+    /// Whether a parameter or variable may take the namespace's name, and
+    /// is read before it: `email`, whose one member is a test's
+    /// `email.sent` (area 16; chunk 7.3c), since an address or an email is
+    /// often called that. Declarations, domains and libraries still can't.
+    pub fn yields_to_locals(&self, name: &str) -> bool {
+        name == jadpo_std::email::NAMESPACE && self.namespace(name) == Some(Namespace::Generated)
+    }
+
     pub fn is_generic(&self, name: &str) -> bool {
         self.generic.contains(name)
     }

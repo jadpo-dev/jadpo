@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use jadpo_std::email::{
     ATTACHMENT, ATTACHMENT_FIELDS, BuiltinEmail, EmailPlan, EmailsPlan, MESSAGE, MESSAGE_FIELDS,
-    MagicLinkEmailPlan, Sender, escape_html,
+    MagicLinkEmailPlan, MailInput, PackageEmail, Sender, escape_html,
 };
 use jadpo_value::Value;
 
@@ -389,6 +389,390 @@ async fn render(
     }
 }
 
+/// Sends `message` through the mail package connection `connection` names
+/// (chunk 7.3c): its mapping builds the input of the package's operation
+/// from the message as data, and the call goes as any provider call does,
+/// with no key. A message whose attachments are over what the provider
+/// accepts is refused before it goes out, as `message_rejected`; the
+/// operation's failures the mapping names are an email's.
+pub async fn send_package(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    connection: &str,
+    plan: &PackageEmail,
+    message: &Value,
+) -> Outcome {
+    let name = format!("{connection}.{}", jadpo_std::email::SEND);
+    let rejected = |code: &str| Outcome::Failed(Box::new(crate::Failure::new(&name, code, code)));
+    let Some(providers) = executor.package_calls() else {
+        return defect(ctx, "an email through a package this build doesn't have");
+    };
+    let field = |name: &str| match message {
+        Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let attachments: Vec<Value> = match field("attachments") {
+        Value::List(items) => items.to_vec(),
+        _ => Vec::new(),
+    };
+    let total: u64 = attachments
+        .iter()
+        .map(|item| match item {
+            Value::Record(record) => match record.get("content") {
+                Some(Value::Bytes(bytes)) => bytes.len() as u64,
+                _ => 0,
+            },
+            _ => 0,
+        })
+        .sum();
+    if total > plan.attachments {
+        return rejected(jadpo_std::email::MESSAGE_REJECTED);
+    }
+    let Some((connection_plan, op)) = providers.plan.operation(connection, &plan.operation) else {
+        return defect(ctx, "an email package's operation this build doesn't have");
+    };
+    let Some(number) = op.input else {
+        return defect(ctx, "an email package's operation that takes no input");
+    };
+    let built = mail_json(executor, &plan.input, message, None);
+    let Some(built) = built else {
+        // A setting nothing gives: the connection is misconfigured.
+        return Outcome::Failed(Box::new(crate::misconfigured()));
+    };
+    let text = built.to_string();
+    let Some((json, numbers)) = jadpo_value::json::parse(text.as_bytes()) else {
+        return defect(ctx, "an email package's input that isn't JSON");
+    };
+    let input = match crate::webhooks::read(providers.json, number, &json, &numbers) {
+        Ok(input) => input,
+        Err(problems) => {
+            let described: Vec<String> = problems
+                .iter()
+                .map(|problem| format!("{} {}", problem.field, problem.rule))
+                .collect();
+            return defect(
+                ctx,
+                &format!(
+                    "`{connection}.{}`'s mapped input doesn't read: {}",
+                    plan.operation,
+                    described.join(", ")
+                ),
+            );
+        }
+    };
+    // A part the message doesn't have, its HTML or text or an attachment's
+    // media type, is left out of the provider's input rather than sent as
+    // `null`, which a provider needn't take.
+    let input = left_out_when_none(input);
+    let settings: Vec<(u32, Value)> = crate::provider::settings_read(connection_plan)
+        .into_iter()
+        .filter_map(|at| Some((at, executor.setting(at)?)))
+        .collect();
+    let site = jadpo_std::provider::CallSite::default();
+    let done = crate::provider::call(
+        ctx,
+        &providers,
+        (connection, &plan.operation),
+        Some(input),
+        &settings,
+        crate::provider::Site {
+            call: &site,
+            functions: &crate::receiving::NoFunctions,
+            at: 0,
+        },
+    )
+    .await;
+    match done {
+        crate::provider::Done::Value(answer) => {
+            let receipt = plan.receipt.as_ref().and_then(|path| {
+                path.iter().try_fold(&answer, |at, name| match at {
+                    Value::Record(record) => record.get(name),
+                    _ => None,
+                })
+            });
+            Outcome::Value(receipt.cloned().unwrap_or(Value::Unit))
+        }
+        crate::provider::Done::Failed(failure) => {
+            match plan.failures.iter().find(|(code, _)| *code == failure.code) {
+                Some((_, mapped)) => rejected(mapped),
+                None => Outcome::Failed(failure),
+            }
+        }
+        crate::provider::Done::Fault(kind) => Outcome::Fault(ctx.fault(kind, Frame::ENTRY)),
+    }
+}
+
+/// `value` with every field that is `none`, in it or in the records it
+/// holds, marked left out, so the provider's input never writes it.
+fn left_out_when_none(value: Value) -> Value {
+    match value {
+        Value::Record(record) => {
+            let mut record = (*record).clone();
+            let mut omitted: Vec<u32> = record.omitted.as_deref().unwrap_or(&[]).to_vec();
+            for (at, (_, field)) in record.fields.iter_mut().enumerate() {
+                if *field == Value::None {
+                    if let Ok(at) = u32::try_from(at)
+                        && !omitted.contains(&at)
+                    {
+                        omitted.push(at);
+                    }
+                } else {
+                    *field = left_out_when_none(std::mem::replace(field, Value::Unit));
+                }
+            }
+            record.omitted = (!omitted.is_empty()).then(|| Rc::from(omitted));
+            Value::Record(Rc::new(record))
+        }
+        Value::List(items) => Value::List(
+            items
+                .iter()
+                .cloned()
+                .map(left_out_when_none)
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        other => other,
+    }
+}
+
+/// The JSON a mapping's input gives, from `message` and, inside `each:`,
+/// the attachment `item`: `None` when a setting it reads has no value.
+fn mail_json(
+    executor: &dyn Executor,
+    input: &[(String, MailInput)],
+    message: &Value,
+    item: Option<&Value>,
+) -> Option<serde_json::Value> {
+    let part = |value: Option<&Value>, name: &str| match value {
+        Some(Value::Record(record)) => record.get(name).cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let mut members = serde_json::Map::new();
+    for (name, mapped) in input {
+        let json = match mapped {
+            MailInput::Message(name) => plain_json(&part(Some(message), name)),
+            MailInput::Item(name) => plain_json(&part(item, name)),
+            MailInput::Text(text) => serde_json::Value::from(text.as_str()),
+            MailInput::Int(n) => serde_json::Value::from(*n),
+            MailInput::Bool(flag) => serde_json::Value::from(*flag),
+            MailInput::Setting(at) => match executor.setting(*at)? {
+                Value::Text(text) => serde_json::Value::from(&*text),
+                Value::Int(n) => serde_json::Value::from(n),
+                Value::Bool(flag) => serde_json::Value::from(flag),
+                _ => return None,
+            },
+            MailInput::Object(fields) => mail_json(executor, fields, message, item)?,
+            MailInput::Each(fields) => {
+                let items = match part(Some(message), "attachments") {
+                    Value::List(items) => items.to_vec(),
+                    _ => Vec::new(),
+                };
+                serde_json::Value::Array(
+                    items
+                        .iter()
+                        .map(|each| mail_json(executor, fields, message, Some(each)))
+                        .collect::<Option<Vec<_>>>()?,
+                )
+            }
+        };
+        members.insert(name.clone(), json);
+    }
+    Some(serde_json::Value::Object(members))
+}
+
+/// A part of the message as JSON: text as a string, bytes in base64, as
+/// a `Bytes` field is read, and `none` as `null`.
+fn plain_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Text(text) => serde_json::Value::from(&**text),
+        Value::Bytes(bytes) => serde_json::Value::from(jadpo_value::encoding::to_base64(bytes)),
+        _ => serde_json::Value::Null,
+    }
+}
+
+/// A message a test's email connection caught, as `email.sent` lists it
+/// (chunk 7.3c): a `SentEmail` of its address, sender, subject, HTML and
+/// text, every link in it, and its attachments' file names.
+pub fn sent_email(message: &Value) -> Value {
+    let field = |name: &str| match message {
+        Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let text_of = |value: &Value| match value {
+        Value::Text(text) => Some(text.to_string()),
+        _ => None,
+    };
+    let html = field("html");
+    let text = field("text");
+    let mut links: Vec<String> = Vec::new();
+    for found in text_of(&html)
+        .map(|html| html_links(&html))
+        .unwrap_or_default()
+        .into_iter()
+        .chain(
+            text_of(&text)
+                .map(|text| text_links(&text))
+                .unwrap_or_default(),
+        )
+    {
+        if !links.contains(&found) {
+            links.push(found);
+        }
+    }
+    let attachments: Vec<Value> = match field("attachments") {
+        Value::List(items) => items
+            .iter()
+            .filter_map(|item| match item {
+                Value::Record(record) => record.get("name").cloned(),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    Value::record(
+        jadpo_std::email::SENT_EMAIL,
+        jadpo_std::email::SENT_EMAIL_FIELDS
+            .iter()
+            .zip([
+                field("to"),
+                field("from"),
+                field("subject"),
+                html,
+                text,
+                Value::List(
+                    links
+                        .iter()
+                        .map(|link| Value::text(link))
+                        .collect::<Vec<_>>()
+                        .into(),
+                ),
+                Value::List(attachments.into()),
+            ])
+            .map(|(name, value)| (Rc::from(*name), value))
+            .collect(),
+    )
+}
+
+/// Every `href` in `html`, its character references read back, in order.
+pub fn html_links(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let lower = html.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(at) = lower[from..].find("href=") {
+        let start = from + at + "href=".len();
+        from = start;
+        let rest = &html[start..];
+        let (value, used) = match rest.chars().next() {
+            Some(quote @ ('"' | '\'')) => match rest[1..].find(quote) {
+                Some(end) => (&rest[1..=end], end + 2),
+                None => continue,
+            },
+            Some(_) => {
+                let end = rest
+                    .find(|c: char| c.is_whitespace() || c == '>')
+                    .unwrap_or(rest.len());
+                (&rest[..end], end)
+            }
+            None => continue,
+        };
+        from = start + used;
+        let link = unescape_html(value.trim());
+        if !link.is_empty() {
+            out.push(link);
+        }
+    }
+    out
+}
+
+/// Every `http://` or `https://` address written in `text`, in order.
+pub fn text_links(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(at) = ["https://", "http://"]
+        .iter()
+        .filter_map(|scheme| text[from..].find(scheme))
+        .min()
+    {
+        let start = from + at;
+        let end = text[start..]
+            .find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"'))
+            .map_or(text.len(), |end| start + end);
+        let link = text[start..end].trim_end_matches(['.', ',', ')', ';', ':', '!', '?']);
+        if link.len() > "https://".len() {
+            out.push(link.to_string());
+        }
+        from = end.max(start + 1);
+    }
+    out
+}
+
+/// `&amp;`, `&lt;`, `&gt;`, `&quot;` and `&#39;`, as [`escape_html`]
+/// writes them, read back.
+fn unescape_html(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
 fn defect(ctx: &mut Ctx<'_>, what: &str) -> Outcome {
     Outcome::Fault(ctx.fault(FaultKind::Defect(what.to_string()), Frame::ENTRY))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_link_in_html_and_text_is_found_once() {
+        assert_eq!(
+            html_links(
+                "<a href=\"https://notes.example/sign-in?a=1&amp;b=2\">Sign in</a> <A HREF='https://notes.example/help'>Help</a> <a href=/x>x</a>"
+            ),
+            vec![
+                "https://notes.example/sign-in?a=1&b=2",
+                "https://notes.example/help",
+                "/x"
+            ]
+        );
+        assert_eq!(
+            text_links(
+                "Sign in: https://notes.example/sign-in?a=1&b=2.\nOr http://notes.example/help, later"
+            ),
+            vec![
+                "https://notes.example/sign-in?a=1&b=2",
+                "http://notes.example/help"
+            ]
+        );
+        let message = Value::record(
+            MESSAGE,
+            MESSAGE_FIELDS
+                .iter()
+                .zip([
+                    Value::text("hello@notes.example"),
+                    Value::text("ana@example.test"),
+                    Value::text("Welcome"),
+                    Value::text("<a href=\"https://notes.example/a\">a</a>"),
+                    Value::text("https://notes.example/a\nhttps://notes.example/b"),
+                    Value::List(Vec::new().into()),
+                ])
+                .map(|(name, value)| (Rc::from(*name), value))
+                .collect(),
+        );
+        let Value::Record(sent) = sent_email(&message) else {
+            panic!("a record");
+        };
+        assert_eq!(
+            sent.get("links"),
+            Some(&Value::List(
+                vec![
+                    Value::text("https://notes.example/a"),
+                    Value::text("https://notes.example/b")
+                ]
+                .into()
+            ))
+        );
+        assert_eq!(sent.get("to"), Some(&Value::text("ana@example.test")));
+    }
 }

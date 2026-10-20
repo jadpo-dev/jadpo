@@ -45,13 +45,7 @@ use crate::tree;
 const OPTIONS: [&str; 5] = ["as", "model", "max_output", "timeout", "attempts"];
 
 /// `ai.generate`'s five conditions, as an `attempt`'s arms name them.
-pub(crate) const CONDITIONS: [jadpo_std::RuleKey; 5] = [
-    jadpo_std::RuleKey::Refused,
-    jadpo_std::RuleKey::Malformed,
-    jadpo_std::RuleKey::TimedOut,
-    jadpo_std::RuleKey::OverBudget,
-    jadpo_std::RuleKey::TooLong,
-];
+pub(crate) const CONDITIONS: [jadpo_std::RuleKey; 5] = jadpo_std::ai::CONDITIONS;
 
 impl Body<'_> {
     /// `ai.generate(prompt, as: T)`.

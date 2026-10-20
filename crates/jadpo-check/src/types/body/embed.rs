@@ -253,6 +253,25 @@ impl Body<'_> {
                 .next("Add `ai: { connection: <name>  models: { default: config.<name>  embedding: config.<name> }  embedding_dimensions: <n> }` to `application { }` in `app.jadpo`"),
             );
             ok = false;
+        } else if let Some(connection) = settings.connection.as_ref().filter(|connection| {
+            !crate::ai::model_connections(self.db, self.project)
+                .list
+                .iter()
+                .any(|model| model.name == **connection)
+        }) {
+            // A package's `provide ai` maps `generate:` alone so far.
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{written}` through a package isn't built yet"),
+                )
+                .at(span.clone(), "a package's connection")
+                .reason(format!(
+                    "`{connection}` is a package's connection, and a package's `provides/ai.jadpo` maps `generate:` alone so far; its `embed:` comes with roadmap chunk 5.5v7. An embedding is asked through a connection with `driver: Driver.openai_compatible`."
+                ))
+                .next("Name a connection with `driver: Driver.openai_compatible` in `ai:` to embed, for now"),
+            );
+            ok = false;
         } else if settings.connection.is_some() && settings.complete() {
             let names = settings.model_names();
             let listed: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();

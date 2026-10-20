@@ -168,24 +168,6 @@ fn ai_s_settings_are_checked() {
     );
 }
 
-/// A package's connection fills `ai` with chunk 5.5v3b; until then
-/// naming one is `toolchain.not_built_yet`.
-#[test]
-fn a_package_filling_ai_is_not_built_yet() {
-    let answer = action("", ALL_ARMS);
-    let found = problems_with(
-        "application {\n    connections: {\n        openai: {\n            package: OpenAi.v1\n            domains: [support]\n        }\n    }\n    ai: {\n        connection: openai\n        models: {\n            default: config.drafting_model\n        }\n    }\n}\n",
-        &[(ACTION_PATH, answer.as_str())],
-    );
-    assert!(
-        found.contains(
-            &"app.jadpo toolchain.not_built_yet: A package filling `ai` isn't built yet"
-                .to_string()
-        ),
-        "{found:#?}"
-    );
-}
-
 /// A model connection gives `url:`, an address a call may be sent to:
 /// HTTPS, or plain HTTP only to this machine.
 #[test]
@@ -604,6 +586,11 @@ fn the_schema_is_the_types_own_with_its_descriptions() {
             "x-jadpo-constraints"
         ]),
         None
+    );
+    // The field's inline rule is the schema's, as OpenAPI's is (chunk 7.7d).
+    assert_eq!(
+        at(&["$defs", "SupportAnswer", "properties", "reply", "maxLength"]),
+        Some(jadpo_graph::json::Value::from(2000u32))
     );
     // A type built on `Text` asks for plain text.
     let text = graph

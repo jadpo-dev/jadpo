@@ -11,8 +11,8 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, AwsPlan, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan,
-    OperationPlan, PathPart, Protocol, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan,
-    WebhookReply,
+    OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan, RecordedPlan, WebhookEvent,
+    WebhookPlan, WebhookReply,
 };
 use jadpo_std::receiving::{
     AcknowledgePlan, CloudflareQueue, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
@@ -115,6 +115,12 @@ pub(crate) fn plan(
             idempotency,
             error_code: reach.error_code.clone(),
             sandbox: jadpo_check::connections::sandboxed(db, project, connection),
+            // The package's cap, or the connection's lower one (chunk
+            // 7.6c).
+            max_concurrent: match (reach.max_concurrent, connection.max_concurrent) {
+                (Some(package), Some(own)) => Some(package.min(own)),
+                (package, own) => package.or(own),
+            },
         });
         // Every operation, public or not: a package's own actions call
         // the ones it keeps to itself (chunk 7.6).
@@ -188,6 +194,20 @@ pub(crate) fn plan(
                     }),
                 })
                 .collect(),
+        });
+    }
+    // Each connection's polls the app subscribes to (chunk 7.6c): the
+    // event made from the answer is written with its codec, numbered here.
+    for poll in &jadpo_check::polls::polls(db, project).polls {
+        out.polls.push(PollPlan {
+            connection: poll.connection.clone(),
+            name: poll.name.clone(),
+            operation: poll.call.clone(),
+            every_ms: poll.every_ms,
+            event: poll.event.as_str().to_string(),
+            number: number(TypeRef::Node(poll.event.clone())),
+            fields: poll.fields.clone(),
+            store: poll.store.clone(),
         });
     }
     // Each queue `receiving:` names (chunk 7.7c): a message's body is read

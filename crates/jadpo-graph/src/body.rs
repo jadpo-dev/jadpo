@@ -395,6 +395,10 @@ pub enum Expr {
     /// (`jadpo_runtime::effects`, chunk 7.0b), never told by its source
     /// text.
     Now,
+    /// `email.sent` in a test (area 16, "Email"; chunk 7.3c): every email
+    /// the test has sent so far, rendered whole, as `SentEmail`s, which
+    /// the runtime reads from the mail its host caught.
+    SentEmails,
     /// Nothing to run: a mistake already reported, or something a later
     /// area builds.
     Unchecked,

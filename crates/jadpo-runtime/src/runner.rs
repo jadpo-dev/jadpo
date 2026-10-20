@@ -164,6 +164,14 @@ pub async fn settle_within(
                     {
                         true
                     }
+                    // A crash `jadpo test` made (chunk 7.5d): delivered
+                    // again at once, as the request still waits.
+                    Some((Outcome::Fault(fault), GIVEN_BACK))
+                        if fault.kind == FaultKind::Crashed =>
+                    {
+                        queue.push_front(Piece::Delivery(delivery));
+                        true
+                    }
                     Some((_, GIVEN_BACK)) => {
                         queue.push_front(Piece::Delivery(delivery));
                         false
@@ -572,21 +580,25 @@ pub(crate) async fn attempt_delivery(
             FAILED,
         ));
     }
+    // Given back to run later, its attempt not counted, while a connection
+    // it calls out through has every slot out (area 11, `max_concurrent:`;
+    // chunk 7.6c): it waits in the outbox rather than in the worker.
+    let through = subscriber.calls_through();
+    if through
+        .iter()
+        .any(|connection| host.slots().full(connection))
+    {
+        let later = now.saturating_add(crate::slots::WAIT_MS);
+        crate::lease::release(database, &lease, later).await;
+        return None;
+    }
     // Held, its attempt given back, while a provider it calls out to is
     // unavailable and isn't due a probe (chunk 7.2b).
-    let watch = match crate::breaker::gate(
-        database,
-        &subscriber.calls_through(),
-        delivery.id,
-        attempt,
-        budget,
-        now,
-    )
-    .await
-    {
-        crate::breaker::Gate::Held => return None,
-        crate::breaker::Gate::Run(watch) => watch,
-    };
+    let watch =
+        match crate::breaker::gate(database, &through, delivery.id, attempt, budget, now).await {
+            crate::breaker::Gate::Held => return None,
+            crate::breaker::Gate::Run(watch) => watch,
+        };
     // What the run sends outside is logged from here (chunk 7.0c).
     let mark = ctx.capabilities().calls().len();
     // A provider call's key is derived from the delivery's id, which every
@@ -649,13 +661,39 @@ pub(crate) async fn attempt_delivery(
                         ctx.set_resumable(None);
                         return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                     }
-                    let call = Call::new(
-                        connection.clone(),
-                        jadpo_std::email::SEND,
-                        message,
-                        Repeat::Unkeyed,
-                    );
-                    send(ctx, call, budget, within).await
+                    // A mail package's operation, as its mapping builds
+                    // its input (chunk 7.3c), unless the host catches the
+                    // mail in its place, as a test's does.
+                    let caught = ctx
+                        .host()
+                        .capability(connection)
+                        .is_some_and(|driver| driver.catches_mail());
+                    match (&emails.package, caught) {
+                        (Some(package), false) => {
+                            let sending = crate::email::send_package(
+                                executor, ctx, connection, package, &message,
+                            );
+                            match within {
+                                Some(stop) => match race(sending, stop).await {
+                                    First::Left(outcome) => Ok(outcome),
+                                    First::Right(()) => Err(Cut::ShuttingDown),
+                                },
+                                None => match race(sending, budget.cut()).await {
+                                    First::Left(outcome) => Ok(outcome),
+                                    First::Right(cut) => Err(cut),
+                                },
+                            }
+                        }
+                        _ => {
+                            let call = Call::new(
+                                connection.clone(),
+                                jadpo_std::email::SEND,
+                                message,
+                                Repeat::Unkeyed,
+                            );
+                            send(ctx, call, budget, within).await
+                        }
+                    }
                 }
             }
         }
@@ -760,6 +798,13 @@ pub(crate) async fn attempt_delivery(
         // settled as one that timed out.
         Err(_) => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
     };
+    // A crash `jadpo test` made at a step (chunk 7.5d): nothing the run
+    // did was kept, and the delivery is given back, due now, as a
+    // restart's sweep would find it, without counting the attempt.
+    if matches!(&outcome, Outcome::Fault(fault) if fault.kind == FaultKind::Crashed) {
+        crate::lease::release(database, &lease, now).await;
+        return Some((outcome, GIVEN_BACK));
+    }
     let after = outbox::after(&outcome);
     let after = if acted { after.once_acted() } else { after };
     let state = match after {

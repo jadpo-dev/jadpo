@@ -659,6 +659,18 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             "runs" => nested_keys(&path, &key, &member, &RUNS_KEYS, out),
             "aws" => nested_keys(&path, &key, &member, &AWS_KEYS, out),
             "webhooks" => webhooks(&path, &member, out),
+            "max_concurrent" if crate::connections::whole(&member).is_none() => out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    "`max_concurrent:` must be a whole number of at least 1",
+                )
+                .at(
+                    member.value().map_or_else(|| span.clone(), |value| node_span(&path, value.syntax())),
+                    "not 1 or more",
+                )
+                .reason("`max_concurrent:` caps how many calls through each connection to the package go out at once per app instance, as the provider allows; further calls wait, and a connection may lower it.")
+                .next("Write the provider's limit, such as `max_concurrent: 4`, or remove it"),
+            ),
             "settings" => crate::connections::provider_settings(&path, &member, out),
             "imported" => {
                 crate::review::imported_problems(db, project, &home.folder, &path, &member, out);
@@ -1237,9 +1249,10 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's capability mappings (chunk 7.3c). Its events
-/// are read since chunk 7.7, each a webhook's event the app subscribes
-/// to, its actions since chunk 7.6, and its subscribers since chunk 7.6b.
+/// doesn't run: a package's capability mappings but `receiving`'s (chunk
+/// 7.7c) and `email`'s (chunk 7.3c). Its events are read since chunk 7.7,
+/// each a webhook's event the app subscribes to, its actions since chunk
+/// 7.6, and its subscribers since chunk 7.6b.
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -1247,8 +1260,15 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let what = match location.place {
-        // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]).
-        Place::Folder(Folder::Provides) if location.stem == "receiving" => return Vec::new(),
+        // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]),
+        // `ai`'s since chunk 5.5v3b ([`crate::ai_mapping`]), `email`'s
+        // since chunk 7.3c ([`crate::mail`]).
+        Place::Folder(Folder::Provides)
+            if matches!(location.stem.as_str(), "receiving" | "ai")
+                || location.stem == jadpo_std::email::NAMESPACE =>
+        {
+            return Vec::new();
+        }
         Place::Folder(Folder::Provides) => "A package's capability mappings",
         _ => return Vec::new(),
     };
