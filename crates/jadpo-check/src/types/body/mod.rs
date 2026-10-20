@@ -33,6 +33,8 @@ mod files;
 mod generate;
 mod identity;
 mod json;
+
+pub(crate) use identity::sign_in_object_fields;
 mod known;
 mod lower;
 mod matching;
@@ -1451,13 +1453,18 @@ impl Body<'_> {
             }
             Stmt::EmitStmt(emit) => {
                 // A package's action emits only about the outside world,
-                // run by its own subscribers (area 11; chunk 7.6).
+                // run by its own subscribers (area 11; chunks 7.6, 7.6b).
                 if let Ownership::Package(home) = self.ownership
                     && self.context == Context::Action
                 {
                     let folder = home.folder.clone();
-                    self.package_emits(&folder, emit);
-                    return true;
+                    if !self.package_emits(&folder, emit) {
+                        // Refused, its values still read.
+                        if let Some(expr) = emit.expr() {
+                            self.infer(&expr);
+                        }
+                        return true;
+                    }
                 }
                 if let Some(expr) = emit.expr() {
                     let before = self.out.len();
@@ -1503,6 +1510,32 @@ impl Body<'_> {
     /// emitting it (area 16, "Email").
     fn emitted(&mut self, emit: &ast::EmitStmt, expr: &Expr, ty: &Ty) {
         if ty.has_error() {
+            return;
+        }
+        // The events sign-in publishes are the runtime's alone (area 8,
+        // "Events"; chunk 7.3b4).
+        if let Ty::Opaque(name, _) = ty
+            && jadpo_std::http::sign_in_event_key(name).is_some()
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::EVENT_EMIT_INVALID,
+                    format!(
+                        "`{name}` is published only by {}",
+                        jadpo_std::http::published_by(name)
+                    ),
+                )
+                .at(self.span(expr), "a sign-in event")
+                .reason(format!(
+                    "Jadpo publishes `{name}` itself as {}, so its subscribers can trust that it happened; code never emits it.",
+                    match name.as_str() {
+                        jadpo_std::http::PASSKEY_ADDED => "a person adds a passkey",
+                        jadpo_std::http::PASSKEY_REMOVED => "a person removes a passkey",
+                        _ => "a person signs in",
+                    }
+                ))
+                .next("Remove the `emit`, or emit an event of the application's own"),
+            );
             return;
         }
         let event = match ty {

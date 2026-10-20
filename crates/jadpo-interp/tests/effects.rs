@@ -206,7 +206,7 @@ const EFFECTS_ONLY: &[(&str, &str)] = &[
     ("read_value", "reads JSON with the plan's codec"),
     ("ctx.emit(", "keeps an event in the outbox"),
     ("EmitRefused", "says why an `emit` wasn't kept"),
-    ("subscribers_of", "finds an event's subscribers"),
+    (".hearing(", "finds an event's subscribers"),
     (
         ".capability(",
         "sends a call outside the process of its own",

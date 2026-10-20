@@ -672,12 +672,51 @@ pub async fn call(
     });
     let mut made = made.with_request(request);
     made.step = step;
-    let answer = match retried(ctx, &made, plan.retry).await {
+    let mut step = step;
+    let mut answer = match retried(ctx, &made, plan.retry).await {
         Ok(answer) => answer,
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
     };
+    // The provider's "use a new key" (its package's `new_key_on:`): the
+    // key can't be used again, so the call goes again, once, under the
+    // next key generation, which a step's record keeps first so a rerun
+    // sends under it too (area 11, "Keys and windows"; chunk 7.5c).
+    let new_key_on = plan
+        .idempotency
+        .as_ref()
+        .and_then(|idempotency| idempotency.new_key_on.as_deref());
+    if let (Answer::Failed(code), Some(keying), Some(marker)) = (&answer, &keying, new_key_on)
+        && code == marker
+    {
+        let next = match step {
+            Some(at) => match crate::steps::new_key(ctx, at).await {
+                Ok(next) => Some(next),
+                Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
+                Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+                Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+            },
+            None => None,
+        };
+        let generation = next.map_or(1, |at| at.key_generation);
+        if let Some((header, key)) = keying.header(providers, plan, generation)
+            && let Some(request) = made.request.as_mut()
+        {
+            request
+                .headers
+                .retain(|(name, _)| !name.eq_ignore_ascii_case(&header));
+            request.headers.push((header, key));
+        }
+        step = next;
+        made.step = next;
+        answer = match retried(ctx, &made, plan.retry).await {
+            Ok(answer) => answer,
+            Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
+            Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+            Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+        };
+    }
     // A fake's generated default or recording, made as the provider
     // would send it, is an answer as sent from here: a step keeps it as it
     // keeps any other.

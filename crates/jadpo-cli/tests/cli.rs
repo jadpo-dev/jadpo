@@ -84,6 +84,7 @@ Change safely
 Production
   schedules     Watch and control schedules   run, pause, resume, history
   deliveries    Retry, dismiss or cancel deliveries
+  runs          Check runs before a deploy    unfinished
 
 Set up
   config        Check and set local settings  check, move, set
@@ -156,6 +157,7 @@ Change safely
 Production
   schedules     Watch and control schedules   run · pause · resume · history
   deliveries    Retry, dismiss or cancel deliveries
+  runs          Check runs before a deploy    unfinished
 
 Set up
   config        Check and set local settings  check · move · set
@@ -324,6 +326,7 @@ fn help_json_is_the_whole_command_reference() {
             "translations",
             "schedules",
             "deliveries",
+            "runs",
             "config",
             "completions",
             "lsp",
@@ -725,6 +728,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "translations\tKeep translations up to date",
             "schedules\tWatch and control schedules",
             "deliveries\tRetry, dismiss or cancel deliveries",
+            "runs\tCheck runs before a deploy",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",

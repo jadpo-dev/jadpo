@@ -1776,6 +1776,11 @@ impl Lower<'_> {
                     {
                         Callee::Object(Key::new(jadpo_graph::Kind::Type, name))
                     }
+                    // `FirstSignIn` or a sign-in event a test builds
+                    // (chunk 7.3b4): its shape is its listed fields.
+                    None if jadpo_std::http::test_built_fields(name).is_some() => {
+                        Callee::Object(Key::new(jadpo_graph::Kind::Type, name))
+                    }
                     None => Callee::Unknown,
                 },
                 name.clone(),

@@ -22,6 +22,16 @@
 //!   use only if the counter is still what was read, in this release's
 //!   encoding, then starts a browser session in the same transaction.
 //!
+//! - **Events** (chunk 5.5z2): a sign-in publishes `SignedIn` with the
+//!   session it starts, in its transaction, and `SignInRefused` for an
+//!   answer refused (`passkey_challenge_expired`, `passkey_rejected` or
+//!   `user_disabled`), its reason kept for the request's log line too;
+//!   adding and removing a passkey publish `PasskeyAdded` and
+//!   `PasskeyRemoved` with it ([`super::sign_in_events`]).
+//! - **The device lists a passkey** under the person's address, the field
+//!   `magic_link:`'s `address:` names, since magic links are how a person
+//!   with no passkey left gets back in.
+//!
 //! Every failure is one of area 8's: `passkey_challenge_expired`,
 //! `passkey_rejected`, `passkey_already_registered`,
 //! `passkey_limit_reached`, `passkey_not_found`, or the usual
@@ -34,6 +44,7 @@ use jadpo_std::http::{IdentityPlan, PASSKEY_LIMIT, PasskeyPlan, PasskeyStep, SES
 use jadpo_std::read::SqlType;
 use jadpo_std::standard::ENCODING;
 use jadpo_std::standard::security::WEB_AUTHN_CREDENTIAL;
+use jadpo_std::{SignInMethod, SignInRefusal};
 use jadpo_value::Value;
 use jadpo_value::encoding::from_base64;
 
@@ -41,9 +52,10 @@ use super::identity::{
     AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED, START, USER_DISABLED,
     set_cookies,
 };
+use super::sign_in_events::{self, SignInEvent};
 use super::{App, Problem, Request, Response, invalid_input, runtime_failure};
-use crate::ctx::{Caller, SessionEffect};
-use crate::{Ctx, PasskeyParts, Passkeys, SqlValue, StoreError};
+use crate::ctx::{Caller, SessionEffect, SignInRefused};
+use crate::{Ctx, Executor, PasskeyParts, Passkeys, SqlValue, StoreError};
 
 pub(crate) const CHALLENGE_EXPIRED: (u16, &str, &str) = (
     401,
@@ -113,8 +125,10 @@ fn binding_cookie(plan: &IdentityPlan) -> Option<String> {
 }
 
 /// Answers `step` for `caller` (none on the sign-in routes).
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn answer(
     app: &App<'_>,
+    executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
@@ -122,7 +136,11 @@ pub(crate) async fn answer(
     segments: &[String],
     caller: Option<&Caller>,
 ) -> Response {
-    let mut response = match run(app, ctx, request, request_id, step, segments, caller).await {
+    let mut response = match run(
+        app, executor, ctx, request, request_id, step, segments, caller,
+    )
+    .await
+    {
         Ok(response) => response,
         Err(stopped) => *stopped,
     };
@@ -132,8 +150,10 @@ pub(crate) async fn answer(
     response
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run(
     app: &App<'_>,
+    executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
@@ -163,6 +183,7 @@ async fn run(
         json: &app.json,
         origin,
         ceremonies,
+        executor,
         request_id,
     };
     match step {
@@ -177,14 +198,36 @@ async fn run(
 }
 
 /// What every step reads: the plan, the codecs a passkey is kept with, the
-/// configured origin, the host's ceremonies and the request's id.
+/// configured origin, the host's ceremonies, the executor whose
+/// subscribers hear its events, and the request's id.
 struct Site<'s> {
     plan: &'s IdentityPlan,
     passkeys: &'s PasskeyPlan,
     json: &'s crate::JsonCodecs<'s>,
     origin: &'s str,
     ceremonies: &'s dyn Passkeys,
+    executor: &'s dyn Executor,
     request_id: &'s str,
+}
+
+/// Why a sign-in stopped: a refusal, which the log and `SignInRefused`
+/// record with the passkey's user when it is known, or any other answer.
+enum Stopped {
+    Refused(SignInRefusal, Option<[u8; 16]>),
+    Other(Stop),
+}
+
+impl From<Stop> for Stopped {
+    /// A step's own refusal of the answer, by its code; anything else as
+    /// it is.
+    fn from(stop: Stop) -> Stopped {
+        let reason = match stop.code.as_deref() {
+            Some(code) if code == CHALLENGE_EXPIRED.1 => SignInRefusal::PasskeyChallengeExpired,
+            Some(code) if code == REJECTED.1 => SignInRefusal::PasskeyRejected,
+            _ => return Stopped::Other(stop),
+        };
+        Stopped::Refused(reason, None)
+    }
 }
 
 impl Site<'_> {
@@ -464,7 +507,32 @@ impl Site<'_> {
         Ok(response)
     }
 
+    /// The sign-in's answer; a refusal is kept for the log and published
+    /// as `SignInRefused`.
     async fn sign_in(&self, ctx: &mut Ctx<'_>, request: &Request) -> Result<Response, Stop> {
+        let (reason, user) = match self.signing_in(ctx, request).await {
+            Ok(response) => return Ok(response),
+            Err(Stopped::Other(stop)) => return Err(stop),
+            Err(Stopped::Refused(reason, user)) => (reason, user),
+        };
+        ctx.refuse_sign_in(SignInRefused {
+            reason: reason.name(),
+            failure: None,
+        });
+        let event = SignInEvent::Refused {
+            method: SignInMethod::Passkey,
+            reason,
+            user,
+        };
+        sign_in_events::publish(ctx, self.executor, &self.plan.store, &[event]).await;
+        Err(self.fail(match reason {
+            SignInRefusal::PasskeyChallengeExpired => CHALLENGE_EXPIRED,
+            SignInRefusal::UserDisabled => USER_DISABLED,
+            _ => REJECTED,
+        }))
+    }
+
+    async fn signing_in(&self, ctx: &mut Ctx<'_>, request: &Request) -> Result<Response, Stopped> {
         self.same_site(request)?;
         let body = self.body(request, &["credential"])?;
         let credential = body
@@ -472,7 +540,7 @@ impl Site<'_> {
             .map(serde_json::Value::to_string)
             .unwrap_or_default();
         let Some(cookie) = binding_cookie(self.plan) else {
-            return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
+            return Err(self.fail(AUTHENTICATION_MISCONFIGURED).into());
         };
         let binding = cookie_value(request, &cookie)
             .filter(|token| is_token(token))
@@ -503,13 +571,14 @@ impl Site<'_> {
             ],
         ) = rows.first().map(Vec::as_slice)
         else {
-            return Err(self.fail(REJECTED));
+            return Err(self.fail(REJECTED).into());
         };
+        let refused = |reason| Stopped::Refused(reason, Some(*user));
         let (Some(parts), Ok(handle)) = (
             self.read_kept(stored, encoding),
             <[u8; 16]>::try_from(handle.as_slice()),
         ) else {
-            return Err(self.fail(REJECTED));
+            return Err(refused(SignInRefusal::PasskeyRejected));
         };
         // The answer must name the user handle the passkey was made with.
         if taken
@@ -518,7 +587,7 @@ impl Site<'_> {
             .as_deref()
             .is_none_or(|given| !constant_eq(given, &handle))
         {
-            return Err(self.fail(REJECTED));
+            return Err(refused(SignInRefusal::PasskeyRejected));
         }
         let updated = self
             .ceremonies
@@ -530,9 +599,9 @@ impl Site<'_> {
                 &parts.ceremony,
                 handle,
             )
-            .map_err(|_| self.fail(REJECTED))?;
+            .map_err(|_| refused(SignInRefusal::PasskeyRejected))?;
         if !*active {
-            return Err(self.fail(USER_DISABLED));
+            return Err(refused(SignInRefusal::UserDisabled));
         }
         // The passkey's new counter and last use, and the session, together.
         let written = Credential {
@@ -545,10 +614,10 @@ impl Site<'_> {
         let (Some(token), Some(csrf), Some(session)) =
             (new_token(ctx), new_token(ctx), ctx.new_id())
         else {
-            return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
+            return Err(self.fail(AUTHENTICATION_MISCONFIGURED).into());
         };
         let Some(database) = ctx.host().database(&self.plan.store) else {
-            return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
+            return Err(self.fail(AUTHENTICATION_MISCONFIGURED).into());
         };
         let unavailable = || self.fail(AUTHENTICATION_UNAVAILABLE);
         let mut transaction = database.begin().await.map_err(|_| unavailable())?;
@@ -566,8 +635,10 @@ impl Site<'_> {
         if changed != Ok(1) {
             let _ = transaction.rollback().await;
             return Err(match changed {
-                Ok(_) | Err(StoreError::ConcurrentChange) => self.fail(REJECTED),
-                Err(_) => unavailable(),
+                Ok(_) | Err(StoreError::ConcurrentChange) => {
+                    refused(SignInRefusal::PasskeyRejected)
+                }
+                Err(_) => unavailable().into(),
             });
         }
         let started = transaction
@@ -587,9 +658,16 @@ impl Site<'_> {
             .await;
         if started.is_err() {
             let _ = transaction.rollback().await;
-            return Err(unavailable());
+            return Err(unavailable().into());
         }
-        transaction.commit().await.map_err(|_| unavailable())?;
+        let event = SignInEvent::SignedIn {
+            user: *user,
+            method: SignInMethod::Passkey,
+            first_time: false,
+        };
+        sign_in_events::commit_with(ctx, self.executor, &self.plan.store, transaction, &[event])
+            .await
+            .map_err(|_| unavailable())?;
         let mut response = Response {
             status: 204,
             ..Response::default()
@@ -612,7 +690,13 @@ impl Site<'_> {
         caller: Option<&Caller>,
     ) -> Result<Response, Stop> {
         self.no_body(request)?;
-        let (user, session, name) = self.holder(caller)?;
+        let (user, session, subject) = self.holder(caller)?;
+        // The device lists the passkey under the person's address, the
+        // one a magic link gets them back in with.
+        let name = match self.address(ctx, user).await? {
+            Some(address) => address,
+            None => subject,
+        };
         // A passkey is added from a session, whose challenge is bound to it.
         let Some(session) = session else {
             return Err(self.fail(CHALLENGE_EXPIRED));
@@ -704,7 +788,18 @@ impl Site<'_> {
         let mut transaction = database.begin().await.map_err(|_| unavailable())?;
         let added = transaction.execute(ADD, &params).await;
         match added {
-            Ok(1) => transaction.commit().await.map_err(|_| unavailable())?,
+            Ok(1) => {
+                let event = SignInEvent::PasskeyAdded { user, passkey: id };
+                sign_in_events::commit_with(
+                    ctx,
+                    self.executor,
+                    &self.plan.store,
+                    transaction,
+                    &[event],
+                )
+                .await
+                .map_err(|_| unavailable())?;
+            }
             Ok(_) => {
                 let _ = transaction.rollback().await;
                 return Err(self.fail(LIMIT_REACHED));
@@ -794,7 +889,18 @@ impl Site<'_> {
             .execute(REMOVE, &[SqlValue::Uuid(id), SqlValue::Uuid(user)])
             .await;
         match removed {
-            Ok(1) => transaction.commit().await.map_err(|_| unavailable())?,
+            Ok(1) => {
+                let event = SignInEvent::PasskeyRemoved { user, passkey: id };
+                sign_in_events::commit_with(
+                    ctx,
+                    self.executor,
+                    &self.plan.store,
+                    transaction,
+                    &[event],
+                )
+                .await
+                .map_err(|_| unavailable())?;
+            }
             Ok(_) => {
                 let _ = transaction.rollback().await;
                 return Err(self.fail(NOT_FOUND));
@@ -832,6 +938,29 @@ impl Site<'_> {
             _ => caller.key.clone(),
         };
         Ok((user, session, name))
+    }
+
+    /// The person's address, which magic links send to; `None` without
+    /// magic links.
+    async fn address(&self, ctx: &Ctx<'_>, user: [u8; 16]) -> Result<Option<String>, Stop> {
+        let Some(statement) = self.passkeys.address.as_deref() else {
+            return Ok(None);
+        };
+        let now = ctx.now();
+        let rows = self
+            .once(
+                ctx,
+                statement,
+                &[
+                    SqlValue::Uuid(user),
+                    SqlValue::Timestamp(now.saturating_mul(1000)),
+                ],
+            )
+            .await?;
+        Ok(match rows.first().map(Vec::as_slice) {
+            Some([SqlValue::Text(address)]) => Some(address.clone()),
+            _ => None,
+        })
     }
 
     /// The `{passkey_id}` the path names, or 404 when it can't be one.

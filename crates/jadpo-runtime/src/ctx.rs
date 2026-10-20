@@ -59,6 +59,16 @@ pub enum SessionEffect {
     End,
 }
 
+/// Why a sign-in was refused (area 8, "Events"; chunk 7.3b4), which the
+/// log keeps while the person sees only the refusal's own failure: a
+/// `SignInRefusal`'s name, and for `refused_by_app` the failure the
+/// application's action refused with. Never an address, a link or a code.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignInRefused {
+    pub reason: &'static str,
+    pub failure: Option<String>,
+}
+
 /// What an action did to the cookie binding a `same_browser:` magic link
 /// to the browser that asked for it (area 8, "Writing the routes
 /// yourself"; chunk 7.3b3): the response of the route whose action calls
@@ -180,6 +190,9 @@ pub struct Ctx<'p> {
     /// The cookie binding a `same_browser:` magic link to this browser,
     /// as the request being answered sent it (area 8; chunk 7.3b3).
     sign_in_cookie: Option<String>,
+    /// Why a sign-in was refused while answering the request, for the
+    /// host's log line (area 8, "Events"; chunk 7.3b4).
+    sign_in_refused: Option<SignInRefused>,
     /// Whether the statements it runs leave their policy out: only for a
     /// call a test, fixture or seed makes without a caller (area 9).
     unpoliced: bool,
@@ -274,6 +287,7 @@ impl<'p> Ctx<'p> {
             caller: None,
             client: None,
             sign_in_cookie: None,
+            sign_in_refused: None,
             unpoliced: false,
             deadline: None,
             settings: Vec::new(),
@@ -522,6 +536,16 @@ impl<'p> Ctx<'p> {
     /// Sets the cookie binding a magic link to the request's browser.
     pub fn set_sign_in_cookie(&mut self, cookie: Option<String>) {
         self.sign_in_cookie = cookie;
+    }
+
+    /// Keeps why a sign-in was refused, for the request's log line.
+    pub fn refuse_sign_in(&mut self, refused: SignInRefused) {
+        self.sign_in_refused = Some(refused);
+    }
+
+    /// Why a sign-in was refused while answering the request, once.
+    pub fn take_sign_in_refused(&mut self) -> Option<SignInRefused> {
+        self.sign_in_refused.take()
     }
 
     /// Records what the running action did to a magic link's binding

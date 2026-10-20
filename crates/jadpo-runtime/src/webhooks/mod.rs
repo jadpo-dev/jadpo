@@ -591,6 +591,7 @@ async fn receive(
         store: &plan.store,
         source: source(plan),
         event: &event.key,
+        connection: Some(&plan.connection),
     };
     match keep(executor, &kept, ctx, &id, value, payload).await {
         Ok(deliveries) => {
@@ -707,11 +708,14 @@ impl jadpo_value::json::Coder for Wire {
 }
 
 /// Where an event received from outside is kept: its store, the source
-/// its id is recorded under, and its event type's key.
+/// its id is recorded under, its event type's key, and the connection
+/// whose webhook it came in on, whose package's own subscribers hear it
+/// (chunk 7.6b); `None` for a queue's message.
 pub(crate) struct Kept<'a> {
     pub(crate) store: &'a str,
     pub(crate) source: String,
     pub(crate) event: &'a str,
+    pub(crate) connection: Option<&'a str>,
 }
 
 /// Keeps event `value` with the sender's id `id` as `kept` says: its id
@@ -733,7 +737,7 @@ pub(crate) async fn keep(
         .map(|events| {
             events
                 .plan
-                .subscribers_of(kept.event)
+                .hearing(kept.event, kept.connection)
                 .map(|subscriber| subscriber.key.clone())
                 .collect()
         })

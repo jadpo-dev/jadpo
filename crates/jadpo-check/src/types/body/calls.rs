@@ -470,6 +470,11 @@ impl Body<'_> {
             {
                 return self.magic_link_call(op, call, callee, &written);
             }
+            if head == jadpo_std::http::TEST_PASSKEYS
+                && let Some(op) = jadpo_std::http::SessionOp::test_passkey_op(member)
+            {
+                return self.test_passkey_call(op, call, callee, &written);
+            }
             if head == "batches"
                 && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)
             {

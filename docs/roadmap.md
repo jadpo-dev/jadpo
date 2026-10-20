@@ -1126,14 +1126,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and an unmapped latitude and longitude; the summary's `standard` count,
   "Mapped by shape" list and each guess under "To check", `mapped` in
   `--json`. Choices in area 11's "Chosen in chunk 7.2e".
-- [ ] **7.2e2 The scoped review and unconfirmed operations** `opus ·
+- [x] **7.2e2 The scoped review and unconfirmed operations** `opus ·
   high`, after 7.2d2 and 7.2e (area 11, "Mapping imported types to
   standard types", layers 4 and 5): the import's one review instruction
   scoped to the types the app's operations reach, each imported type
   tracked as reviewed or not in `jadpo check` (and recorded for `jadpo
   approval`, which comes after the first build), growing when the app
   calls something new; operations the app calls still unconfirmed by a
-  recording, listed in `jadpo check` and the import's summary.
+  recording, listed in `jadpo check` and the import's summary. Built:
+  `reviewed:` in `provider.jadpo`'s `imported:`, each one of the
+  package's own types once (`package.provider_invalid`); the scope worked
+  out from the app's calls on every check, the types their input and
+  output reach; `jadpo check` listing the types still to review and the
+  calls no recording confirms once it passes, counted in its footer and
+  given as `providers` in `--json`, and writing both to
+  `build/report/providers.md` and `.json` for `jadpo approval`; the
+  import ending with the scoped instruction and the unconfirmed calls,
+  keeping `reviewed:` when it merges, less any type the description
+  added to. Choices in area 11's "Chosen in chunk 7.2e2".
 - [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
@@ -1187,7 +1197,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   mail package as a second connection proving the swap (`provides/email.jadpo`'s
   `provide email`, `limits: { attachments: }` checked against a `File`
   field's `max_size`); partials (`{{ include }}`), once where a partial is
-  declared is decided; `email.sent` in tests; the dev inbox in `jadpo dev`
+  declared is decided; `email.sent` in tests, with which area 8's
+  passkey route test recovers through the magic link (chunk 5.5z2); the
+  dev inbox in `jadpo dev`
   and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
   score, `jadpo check`'s warnings about templates that would fail it, and
   `jadpo email check-domain`.
@@ -1254,12 +1266,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   operations' limits; `sign_in_return_invalid`. Live tests in
   `crates/jadpo-cli/tests/magic_links.rs`. Choices in area 8's "The app's
   own routes (chosen in chunk 7.3b3)".
-- [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
+- [x] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
   on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
   `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;
   `FirstSignIn` made in tests to call `on_first_sign_in:`'s action
-  directly.
-- [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
+  directly. Built: the three events as built-in types a subscriber names
+  in `on:` (needing `magic_link:`), only the runtime emitting them, kept
+  under `jadpo.<Name>` in the sessions' store's outbox only when a
+  subscriber listens; `SignedIn` committed with the session or token, or
+  as the app's own action's event from its own routes; refusals and
+  codes stopping kept in a transaction of their own, with the user's `id`
+  where the address has one, for links, codes and first sign-ins through
+  the generated and the app's own routes; the reason, and the failure
+  the app's action refused with, on `jadpo dev`'s request line, never in
+  the answer; `FirstSignIn` and the events built in tests, fixtures and
+  seeds. Live tests in `crates/jadpo-cli/tests/magic_links.rs`. Choices
+  in area 8's "Sign-in events (chosen in chunk 7.3b4)".
+- [x] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
   from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
@@ -1267,7 +1290,16 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and `.sign_in` with `TestPasskey` in route tests; `SignedIn` and
   `SignInRefused` for passkeys, `PasskeyAdded` and `PasskeyRemoved`. Done
   when a person with no passkey left recovers through a magic link and
-  adds a new one, in a route test written with `test_passkeys`.
+  adds a new one, in a route test written with `test_passkeys`. Built: the
+  check and area 8's example with magic links and a route test; the
+  device's name read from the address field; the passkey events published
+  through 7.3b4's code, committed with the session or passkey, refusals
+  logged; `test_passkeys` checked in tests only and run on the test
+  host's software authenticator. Recovery through the link's code is
+  proved live (`crates/jadpo-cli/tests/passkeys.rs`); in a route test
+  `as:` stands in for the link until `email.sent` (7.3c). Choices in area
+  8's "Passkey recovery, events and route tests (chosen in chunk
+  5.5z2)".
 - [x] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
@@ -1366,17 +1398,32 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `in_use` and `reused`, an older generation writing nothing, an answer
   past 1 MB, area 6's rerun, a route's client retry, and a recorded step
   never reached. Choices in area 12's "The record, chosen in chunk 7.5b".
-- [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
-  high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
-  as an operator item (`jadpo deliveries show`, `retry --not-done` under
-  the next key generation, `abandon`, a route's key lapsing), kept 30
-  days, with 7.5b's `diverged` deliveries listed and retried, and the
-  provider's `new_key_on:` sending under the next key generation; `jadpo runs unfinished
-  --build`; fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
-  crash at each step boundary; each step's state in `jadpo dev` and
-  `jadpo watch`; the late-failure warning (a declinable error) and the
-  deadline sum; the personal-data report's entry, and the metric and
-  alert.
+- [x] **7.5c Multi-step calls: operators** `opus · high`, after 7.5b
+  (split from 7.5 on 2026-10-20, and again into this and 7.5d): an
+  unfinished record as an operator item (`jadpo deliveries show`, `retry
+  --not-done` under the next key generation, `abandon`, a route's key
+  lapsing), kept 30 days, with 7.5b's `diverged` deliveries listed and
+  retried, and the provider's `new_key_on:` sending under the next key
+  generation; `jadpo runs unfinished --build`. Built: the runtime's
+  `unfinished` module reads a record's steps (never a request, answer or
+  key) and changes it beside its delivery, in one statement with the log
+  row in the same store; `deliveries` gains `diverged`, `unfinished` (a
+  route's record a day after its last run) and `abandoned`, the actions
+  `retry_not_done` and `abandon`, and a retry resetting the record's
+  generation; the tick drops answers after 30 days and deletes abandoned
+  records and deliveries 30 days on; an abandoned record refuses a rerun;
+  `steps::new_key` and the provider call's resend on `new_key_on:`;
+  `jadpo deliveries show` and `abandon`, `retry --not-done`, and the
+  `jadpo runs unfinished` command (`cli.runs_arguments`,
+  `runs.unavailable`). Live tests in `step_operators.rs`. Choices in area
+  12's "Operators, chosen in chunk 7.5c".
+- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
+  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
+  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
+  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
+  warning (a declinable error) and the deadline sum; the metric and alert
+  on unfinished records; the personal-data report's entry, with the report
+  itself if it isn't built by then.
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1396,18 +1443,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/package_actions.rs` and `package_recipes.rs`;
   example 26 calls a package action. Choices in area 11's "Chosen in
   chunk 7.6".
-- [ ] **7.6b Package subscribers, polls and `max_concurrent:`** `opus ·
-  high`, after 7.6 (split from 7.6 on 2026-10-20): package subscribers on
-  their own webhooks (non-public events included), running a non-public
-  package action that enriches the event through the connection the
-  webhook came in on and emits the package's own declared events through
-  the app's outbox; `polls:` in `provider.jadpo` and the connection's
-  `polls: { <name>: <interval> }`, run only while something subscribes to
-  the poll's event, what it last saw kept as runtime state and only
-  changes emitted; `max_concurrent:` in `provider.jadpo`, lowered by a
-  connection, capping calls at once per app instance (further calls wait,
-  waiting deliveries retry later); and recipes compiled against the
-  package's `sample/` app by `jadpo package check`.
+- [x] **7.6b Package subscribers and recipes in `sample/`** `opus ·
+  high`, after 7.6 (split from 7.6 on 2026-10-20, and again on
+  2026-10-20: polls and `max_concurrent:` are 7.6c). Built: a package's
+  subscribers on its own webhooks' events, public or not
+  (`subscriber.event_invalid` for any other), each heard once per
+  connection receiving them (`subscriber AcmePay.renewal payments`) and
+  running one of the package's actions with its operations going through
+  that connection; a package action without `public` emitting the
+  package's own events, declared without `wire_name:`, kept in the
+  outbox where the webhooks are and delivered to the app's subscribers
+  of its public ones (`package.action_invalid` for emitting a webhook's
+  event); and `jadpo package check`'s `recipes` row, each recipe compiled
+  in the one domain of the package's `sample/` app, shown at its own path
+  (`publish.sample_missing` without such an app). Tests in
+  `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
+  `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
+  `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
+- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
+  connection's `polls: { <name>: <interval> }`, run only while something
+  subscribes to the poll's event, what it last saw kept as runtime state
+  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, capping calls at once per app instance
+  (further calls wait, waiting deliveries retry later). Both keys are
+  accepted without effect today; they are checked and run here.
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's

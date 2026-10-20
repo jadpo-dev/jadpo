@@ -29,6 +29,7 @@ mod stores;
 mod table;
 mod ty;
 
+pub(crate) use body::sign_in_object_fields;
 pub(crate) use body::transition_key;
 pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{

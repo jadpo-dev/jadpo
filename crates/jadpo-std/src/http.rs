@@ -371,6 +371,11 @@ pub struct PasskeyPlan {
     /// `WebAuthnCredential`'s number in the plan's JSON table, whose codec
     /// writes and reads a passkey as the contract's JSON (chunk 5.9).
     pub credential: u32,
+    /// The user's address, the field `magic_link:`'s `address:` names,
+    /// `$1` the user's `id` and `$2` the time now: what the person's
+    /// device lists a new passkey under (chunk 5.5z2). `None` without
+    /// magic links, when the subject is listed instead.
+    pub address: Option<String>,
 }
 
 /// The routes `sign_in: { magic_link: }` generates (area 8, "Magic
@@ -518,9 +523,91 @@ pub struct MagicLinkPlan {
 /// what `on_first_sign_in:`'s action is given.
 pub const FIRST_SIGN_IN: &str = "FirstSignIn";
 
+/// The built-in events every sign-in publishes (area 8, "Events"; chunk
+/// 7.3b4), which only the runtime emits: a session or API token started
+/// (`SignedIn`), a link, code or first sign-in refused (`SignInRefused`),
+/// and an address past `failed_codes_per_day:` (`SignInCodesDisabled`).
+/// None carries an address, a link, a code or a token.
+pub const SIGNED_IN: &str = "SignedIn";
+pub const SIGN_IN_REFUSED: &str = "SignInRefused";
+pub const SIGN_IN_CODES_DISABLED: &str = "SignInCodesDisabled";
+/// A person registered a passkey (`PasskeyAdded`) or removed one of
+/// theirs (`PasskeyRemoved`; chunk 5.5z2): the user's `id` and the
+/// passkey's, never its credential ID or key.
+pub const PASSKEY_ADDED: &str = "PasskeyAdded";
+pub const PASSKEY_REMOVED: &str = "PasskeyRemoved";
+pub const SIGN_IN_EVENTS: [&str; 5] = [
+    SIGNED_IN,
+    SIGN_IN_REFUSED,
+    SIGN_IN_CODES_DISABLED,
+    PASSKEY_ADDED,
+    PASSKEY_REMOVED,
+];
+
+/// The identity key the outbox keeps the built-in sign-in event `name`
+/// under, and its subscribers listen for: `jadpo.SignedIn`.
+pub fn sign_in_event_key(name: &str) -> Option<&'static str> {
+    match name {
+        SIGNED_IN => Some("jadpo.SignedIn"),
+        SIGN_IN_REFUSED => Some("jadpo.SignInRefused"),
+        SIGN_IN_CODES_DISABLED => Some("jadpo.SignInCodesDisabled"),
+        PASSKEY_ADDED => Some("jadpo.PasskeyAdded"),
+        PASSKEY_REMOVED => Some("jadpo.PasskeyRemoved"),
+        _ => None,
+    }
+}
+
+/// Whether the built-in event `name` is a passkey's own, which only
+/// `passkey:` publishes, rather than one every way in publishes.
+pub fn passkey_event(name: &str) -> bool {
+    matches!(name, PASSKEY_ADDED | PASSKEY_REMOVED)
+}
+
+/// What publishes the built-in event `name`, for a message: `signing in`,
+/// `adding a passkey` or `removing a passkey`.
+pub fn published_by(name: &str) -> &'static str {
+    match name {
+        PASSKEY_ADDED => "adding a passkey",
+        PASSKEY_REMOVED => "removing a passkey",
+        _ => "signing in",
+    }
+}
+
+/// The fields, in order, of the built-in objects a test, fixture or seed
+/// may build to call an action directly (chunk 7.3b4): `FirstSignIn`,
+/// which `on_first_sign_in:`'s action is given, and the sign-in events,
+/// which a subscriber's action is given. Only the runtime makes them
+/// anywhere else.
+pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        FIRST_SIGN_IN => Some(&["method", "address", "address_verified", "subject", "name"]),
+        SIGNED_IN => Some(&["user_id", "method", "first_time"]),
+        SIGN_IN_REFUSED => Some(&["method", "reason", "user_id"]),
+        SIGN_IN_CODES_DISABLED => Some(&["user_id", "until"]),
+        PASSKEY_ADDED | PASSKEY_REMOVED => Some(&["user_id", "passkey_id"]),
+        _ => None,
+    }
+}
+
+/// The built-in sign-in event whose identity key is `key`.
+pub fn sign_in_event_named(key: &str) -> Option<&'static str> {
+    SIGN_IN_EVENTS
+        .into_iter()
+        .find(|name| sign_in_event_key(name) == Some(key))
+}
+
 /// The namespace of magic links' generated operations (area 8, "Writing
 /// the routes yourself").
 pub const MAGIC_LINKS: &str = "magic_links";
+
+/// The namespace only route tests call (area 8, "In development and
+/// tests"; chunk 5.5z2): a software authenticator driving the generated
+/// passkey routes, `test_passkeys.register` and `.sign_in`.
+pub const TEST_PASSKEYS: &str = "test_passkeys";
+
+/// The device holding a passkey `test_passkeys.register` added: only a
+/// test holds one, and nothing reads its parts.
+pub const TEST_PASSKEY: &str = "TestPasskey";
 
 /// The built-in `MagicLinkRedeemed`: what `magic_links.redeem` and
 /// `.redeem_code` give, the user's `id` (`user_id`) and the path the
@@ -625,10 +712,18 @@ pub enum SessionOp {
     MagicLinkRedeem,
     /// `magic_links.redeem_code(address, code)`: the same for a code.
     MagicLinkRedeemCode,
+    /// `test_passkeys.register(user, name)` (area 8, "In development and
+    /// tests"; chunk 5.5z2): only a test calls it, adding a passkey on a
+    /// software authenticator through the generated routes, signed in as
+    /// `as:` signs in, and giving the `TestPasskey` that holds it.
+    TestPasskeyRegister,
+    /// `test_passkeys.sign_in(passkey)`: signs in with it through the two
+    /// sign-in routes, giving the second's `Response`.
+    TestPasskeySignIn,
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 11] = [
+    pub const ALL: [SessionOp; 13] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -640,6 +735,8 @@ impl SessionOp {
         SessionOp::MagicLinkRequest,
         SessionOp::MagicLinkRedeem,
         SessionOp::MagicLinkRedeemCode,
+        SessionOp::TestPasskeyRegister,
+        SessionOp::TestPasskeySignIn,
     ];
 
     pub fn name(self) -> &'static str {
@@ -655,6 +752,8 @@ impl SessionOp {
             SessionOp::MagicLinkRequest => "request",
             SessionOp::MagicLinkRedeem => "redeem",
             SessionOp::MagicLinkRedeemCode => "redeem_code",
+            SessionOp::TestPasskeyRegister => "register",
+            SessionOp::TestPasskeySignIn => "sign_in",
         }
     }
 
@@ -665,6 +764,8 @@ impl SessionOp {
             None
         } else if self.magic_link() {
             Some(MAGIC_LINKS)
+        } else if self.test_passkey() {
+            Some(TEST_PASSKEYS)
         } else {
             Some("sessions")
         }
@@ -692,6 +793,22 @@ impl SessionOp {
             SessionOp::MagicLinkRequest
                 | SessionOp::MagicLinkRedeem
                 | SessionOp::MagicLinkRedeemCode
+        )
+    }
+
+    /// The operation `test_passkeys.<name>` names.
+    pub fn test_passkey_op(name: &str) -> Option<SessionOp> {
+        SessionOp::ALL
+            .into_iter()
+            .find(|op| op.test_passkey() && op.name() == name)
+    }
+
+    /// Whether it is one of `test_passkeys`' operations, which only route
+    /// tests call.
+    pub fn test_passkey(self) -> bool {
+        matches!(
+            self,
+            SessionOp::TestPasskeyRegister | SessionOp::TestPasskeySignIn
         )
     }
 
@@ -725,7 +842,9 @@ impl SessionOp {
             | SessionOp::End
             | SessionOp::MagicLinkRequest
             | SessionOp::MagicLinkRedeem
-            | SessionOp::MagicLinkRedeemCode => crate::AuthenticationMethod::BrowserSession,
+            | SessionOp::MagicLinkRedeemCode
+            | SessionOp::TestPasskeyRegister
+            | SessionOp::TestPasskeySignIn => crate::AuthenticationMethod::BrowserSession,
             SessionOp::IssueToken | SessionOp::Tokens | SessionOp::RevokeToken => {
                 crate::AuthenticationMethod::ApiToken
             }

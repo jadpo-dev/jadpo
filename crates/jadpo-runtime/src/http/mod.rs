@@ -47,7 +47,9 @@ pub mod idempotency;
 pub mod identity;
 pub mod magic_links;
 pub(crate) mod passkeys;
+pub(crate) mod sign_in_events;
 pub mod signed;
+pub mod test_passkeys;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -123,6 +125,9 @@ pub struct Response {
     /// seam logged them, without their values (chunk 7.0c): what `jadpo
     /// calls` lists by request (chunk 7.2); never sent.
     pub calls: Vec<crate::capability::Logged>,
+    /// Why a sign-in was refused, for the host's log line (area 8,
+    /// "Events"; chunk 7.3b4); never sent.
+    pub refused: Option<crate::ctx::SignInRefused>,
 }
 
 impl Response {
@@ -357,6 +362,7 @@ async fn answer_request(
     ctx.set_trace(Some(trace));
     let mut response = respond(app, executor, ctx, request, request_id, ready).await;
     response.client = ctx.client().map(str::to_string);
+    response.refused = ctx.take_sign_in_refused();
     response
         .headers
         .push(("x-request-id".to_string(), request_id.to_string()));
@@ -673,6 +679,7 @@ async fn run_route(
         (None, Run::Passkey(step)) => {
             let answered = passkeys::answer(
                 app,
+                executor,
                 ctx,
                 request,
                 request_id,
@@ -1426,6 +1433,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         client: None,
         deferred: Vec::new(),
         calls: Vec::new(),
+        refused: None,
     }
 }
 

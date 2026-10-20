@@ -1265,6 +1265,7 @@ impl Reader<'_> {
             }
             self.out.methods.push(read);
         }
+        let magic_link_written = ways.magic_link_written;
         // A magic link starts a browser session at its origin.
         if let Some((read, span)) = ways.magic_link {
             let session = self.out.method(AuthenticationMethod::BrowserSession);
@@ -1311,6 +1312,17 @@ impl Reader<'_> {
                     .at(span, "no origin to bind to")
                     .reason("A passkey works only on the site it was made for: every answer from a device is checked against the origin `browser_session:`'s `origin:` reads from configuration (area 10), never one the request names.")
                     .next("Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting"),
+                ),
+                // A person with no passkey left gets back in with a
+                // magic link (chunk 5.5z2).
+                Some(true) if !magic_link_written => self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`passkey:` needs `magic_link:` beside it",
+                    )
+                    .at(span, "no way back in")
+                    .reason("A person who loses every device holding a passkey signs in with a magic link or its code and adds a new one; with no `magic_link:` in the same `sign_in:`, nothing gets them back in.")
+                    .next("Add `magic_link: { link: \"<path>\" }` to `sign_in:`, beside `passkey:`"),
                 ),
                 Some(true) => self.out.passkey = Some(read),
             }
@@ -1651,6 +1663,7 @@ impl Reader<'_> {
                         .map(|read| (read, key_span));
                 }
                 "magic_link" => {
+                    ways.magic_link_written = true;
                     ways.magic_link = self
                         .magic_link(path, &key_span, &setting)
                         .map(|read| (read, key_span));
@@ -2293,6 +2306,8 @@ impl Reader<'_> {
 struct Ways {
     passkey: Option<(Passkey, Span)>,
     magic_link: Option<(MagicLink, Span)>,
+    /// Whether `magic_link:` is written, read cleanly or not.
+    magic_link_written: bool,
 }
 
 /// Whether `text` is a path on the application's own site, which a

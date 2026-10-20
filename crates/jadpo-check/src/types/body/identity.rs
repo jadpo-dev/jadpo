@@ -51,10 +51,7 @@ pub(crate) fn sign_in_object_fields(
     };
     match name {
         jadpo_std::http::FIRST_SIGN_IN => Some(vec![
-            (
-                "method",
-                Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
-            ),
+            ("method", method()),
             ("address", Ty::Prim(Prim::Email).nullable()),
             ("address_verified", Ty::Prim(Prim::Bool)),
             ("subject", Ty::Prim(Prim::Text).nullable()),
@@ -74,18 +71,48 @@ pub(crate) fn sign_in_object_fields(
             ("locale", Ty::Named(jadpo_std::LOCALE.to_string())),
         ]),
         jadpo_std::http::MAGIC_LINK_REDEEMED => Some(vec![
-            (
-                "user_id",
-                identity
-                    .variant(PrincipalKind::User)
-                    .map_or(Ty::Prim(Prim::Uuid), |variant| {
-                        Ty::Field(variant.entity.clone(), vec!["id".to_string()])
-                    }),
-            ),
+            ("user_id", user_id(identity)),
             ("return_to", Ty::Prim(Prim::Text)),
+        ]),
+        // The events every sign-in publishes (area 8, "Events"; chunk
+        // 7.3b4), in the order `test_built_fields` lists them.
+        jadpo_std::http::SIGNED_IN => Some(vec![
+            ("user_id", user_id(identity)),
+            ("method", method()),
+            ("first_time", Ty::Prim(Prim::Bool)),
+        ]),
+        jadpo_std::http::SIGN_IN_REFUSED => Some(vec![
+            ("method", method()),
+            (
+                "reason",
+                Ty::Named(jadpo_std::SignInRefusal::NAME.to_string()),
+            ),
+            ("user_id", user_id(identity).nullable()),
+        ]),
+        jadpo_std::http::SIGN_IN_CODES_DISABLED => Some(vec![
+            ("user_id", user_id(identity).nullable()),
+            ("until", Ty::Prim(Prim::Instant)),
+        ]),
+        // A passkey's own events (chunk 5.5z2).
+        jadpo_std::http::PASSKEY_ADDED | jadpo_std::http::PASSKEY_REMOVED => Some(vec![
+            ("user_id", user_id(identity)),
+            ("passkey_id", Ty::Prim(Prim::Uuid)),
         ]),
         _ => None,
     }
+}
+
+/// The user entity's `id`, as a sign-in object names its user.
+fn user_id(identity: &crate::identity::Identity) -> Ty {
+    identity
+        .variant(PrincipalKind::User)
+        .map_or(Ty::Prim(Prim::Uuid), |variant| {
+            Ty::Field(variant.entity.clone(), vec!["id".to_string()])
+        })
+}
+
+fn method() -> Ty {
+    Ty::Named(jadpo_std::SignInMethod::NAME.to_string())
 }
 
 impl Body<'_> {
@@ -243,6 +270,9 @@ impl Body<'_> {
         if op.magic_link() {
             return self.magic_link_call(op, call, callee, written);
         }
+        if op.test_passkey() {
+            return self.test_passkey_call(op, call, callee, written);
+        }
         let span = self.span(callee);
         let args: Vec<ast::Arg> = call
             .arg_list()
@@ -369,6 +399,9 @@ impl Body<'_> {
             | SessionOp::MagicLinkRedeem
             | SessionOp::MagicLinkRedeemCode => {
                 return self.magic_link_call(op, call, callee, written);
+            }
+            SessionOp::TestPasskeyRegister | SessionOp::TestPasskeySignIn => {
+                return self.test_passkey_call(op, call, callee, written);
             }
         };
         if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
@@ -578,6 +611,123 @@ impl Body<'_> {
                 }
                 // An `Email`, a `SignInToken` or a `SignInCode`, or a type
                 // built on one, such as the user's address field.
+                _ => self.check(&value, ty),
+            }
+        }
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Session(op),
+        )
+    }
+
+    /// `test_passkeys.register(user, name)` and `test_passkeys.sign_in(
+    /// passkey)`: a software authenticator driving the generated passkey
+    /// routes for real (area 8, "In development and tests"; chunk 5.5z2).
+    /// Only a test calls them, so only a test ever holds a `TestPasskey`.
+    pub(super) fn test_passkey_call(
+        &mut self,
+        op: SessionOp,
+        call: &ast::CallExpr,
+        callee: &ast::Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let span = self.span(callee);
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        if !self.test {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_REQUEST_INVALID,
+                    format!("`{written}` is only for route tests"),
+                )
+                .at(span, "outside a test")
+                .reason("`test_passkeys` is a software authenticator a route test drives the generated passkey routes with; a real person's device answers them anywhere else, so application code never holds one.")
+                .next(format!("Call `{written}` in a test, or remove it")),
+            );
+            return failed(self);
+        }
+        if self.identity().passkeys().is_none() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{written}` needs passkeys"),
+                )
+                .at(span, "no `passkey:` declared")
+                .reason("`test_passkeys` signs in and adds passkeys through the routes `sign_in: { passkey: }` generates, and `authentication { }` declares none.")
+                .next("Declare `passkey: {}` in `sign_in:`"),
+            );
+            return failed(self);
+        }
+        // Each parameter's name, how a message describes it, and its type.
+        type Param<'a> = (&'a str, &'a str, Ty);
+        let (params, result): (Vec<Param>, Ty) = match op {
+            SessionOp::TestPasskeyRegister => (
+                vec![
+                    (
+                        "user",
+                        "the",
+                        Ty::Opaque(PrincipalKind::User.type_name().to_string(), Vec::new()),
+                    ),
+                    ("name", "the passkey's", Ty::Prim(Prim::Text)),
+                ],
+                Ty::Opaque(jadpo_std::http::TEST_PASSKEY.to_string(), Vec::new()),
+            ),
+            _ => (
+                vec![(
+                    "passkey",
+                    "the device's",
+                    Ty::Opaque(jadpo_std::http::TEST_PASSKEY.to_string(), Vec::new()),
+                )],
+                Ty::Opaque(
+                    super::request::RESPONSE.to_string(),
+                    vec![Ty::Prim(Prim::Unit)],
+                ),
+            ),
+        };
+        if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
+            let at = call
+                .arg_list()
+                .map_or_else(|| self.span(call), |list| self.span(&list));
+            let takes: Vec<String> = params
+                .iter()
+                .map(|(_, whose, ty)| format!("{whose} `{ty}`"))
+                .collect();
+            let takes = crate::and_list(&takes);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes {takes}"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(if op == SessionOp::TestPasskeyRegister {
+                    format!("`{written}` adds a passkey for a user, signed in as `as:` signs in, under the name its person gives it: {takes}, in that order.")
+                } else {
+                    format!("`{written}` signs in with the passkey a device holds: {takes}.")
+                })
+                .next(format!("Pass {takes}")),
+            );
+            return failed(self);
+        }
+        for (arg, (name, _, ty)) in args.iter().zip(&params) {
+            let Some(value) = arg.expr() else { continue };
+            match ty {
+                // Text, or a type built on it.
+                Ty::Prim(prim) => {
+                    let inferred = (!super::is_literal(&value)).then(|| self.infer(&value));
+                    self.built_on_argument(&value, inferred, &[*prim], written, name);
+                }
                 _ => self.check(&value, ty),
             }
         }

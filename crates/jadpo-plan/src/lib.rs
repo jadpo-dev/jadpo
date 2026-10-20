@@ -194,12 +194,37 @@ fn events_plan(
     let written = jadpo_check::types::written_stores(db, project);
     let called = jadpo_check::types::called_connections(db, project);
     let (emails, sending) = emails::plan(db, project, by_key, setting);
-    let mut subscribers: Vec<SubscriberPlan> = jadpo_check::events::subscribers(db, project)
-        .iter()
-        .filter_map(|model| {
-            let callable = *by_key.get(&model.run)?;
-            Some(SubscriberPlan {
-                key: model.key.as_str().to_string(),
+    // A package's own subscriber listens to each connection receiving its
+    // package's webhooks, and its action calls the API through that one
+    // (chunk 7.6b): one plan for each, named by the connection.
+    let receiving = jadpo_check::webhooks::webhooks(db, project);
+    let mut subscribers: Vec<SubscriberPlan> = Vec::new();
+    for model in jadpo_check::events::subscribers(db, project).iter() {
+        let Some(&callable) = by_key.get(&model.run) else {
+            continue;
+        };
+        let throughs: Vec<Option<String>> = match &model.package {
+            Some(folder) => receiving
+                .routes
+                .iter()
+                .filter(|route| {
+                    jadpo_check::connections::package_connections(db, project)
+                        .connections
+                        .iter()
+                        .any(|connection| {
+                            connection.name == route.connection && connection.folder == *folder
+                        })
+                })
+                .map(|route| Some(route.connection.clone()))
+                .collect(),
+            None => vec![None],
+        };
+        for through in throughs {
+            subscribers.push(SubscriberPlan {
+                key: match &through {
+                    Some(connection) => format!("{} {connection}", model.key.as_str()),
+                    None => model.key.as_str().to_string(),
+                },
                 name: model.name.clone(),
                 event: model.event.as_str().to_string(),
                 target: Target::Action {
@@ -220,16 +245,21 @@ fn events_plan(
                     .and_then(|stores| stores.keys().next().cloned())
                     .or_else(|| jadpo_check::events::outbox_store(db, project, model.run.name())),
                 // What its action calls out through, which a circuit
-                // breaker holds it for (chunk 7.2b).
-                connections: called
-                    .get(model.run.name())
-                    .map(|connections| connections.iter().cloned().collect())
-                    .unwrap_or_default(),
+                // breaker holds it for (chunk 7.2b): a package's own, the
+                // connection it hears.
+                connections: match &through {
+                    Some(connection) => vec![connection.clone()],
+                    None => called
+                        .get(model.run.name())
+                        .map(|connections| connections.iter().cloned().collect())
+                        .unwrap_or_default(),
+                },
+                through,
                 file: model.path.clone(),
                 line: model.line,
-            })
-        })
-        .collect();
+            });
+        }
+    }
     // Each email's delivery (area 16; chunk 7.3).
     subscribers.extend(sending);
     subscribers.sort_by(|a, b| a.key.cmp(&b.key));
@@ -292,7 +322,9 @@ fn schedules_plan(
             .filter(move |(_, store)| store.tables.contains_key(table))
             .map(|(name, _)| name.clone())
     };
-    use jadpo_std::system::{IDEMPOTENCY_KEYS, RECEIVED_EVENTS, SERVICE_KEYS, SESSIONS};
+    use jadpo_std::system::{
+        IDEMPOTENCY_KEYS, RECEIVED_EVENTS, SERVICE_KEYS, SESSIONS, STEP_RECORDS,
+    };
     SchedulesPlan {
         schedules,
         store,
@@ -300,6 +332,7 @@ fn schedules_plan(
         sessions: holding(SESSIONS.table).next(),
         keys: holding(SERVICE_KEYS.table).next(),
         received: holding(RECEIVED_EVENTS.table).next(),
+        steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
     }
 }

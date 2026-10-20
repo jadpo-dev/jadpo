@@ -698,6 +698,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "crates/jadpo-runtime/src/http/magic_links.rs",
         "makes the `MagicLinkRequest` the application's own sending is given, a value in memory, never sent by the runtime",
     ),
+    (
+        "crates/jadpo-runtime/src/http/sign_in_events.rs",
+        "makes the sign-in events a subscriber's action is given, values in memory; their payload keeps ids and times as the runtime's own text and numbers",
+    ),
     ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
     (
         "crates/jadpo-runtime/src/test_steps.rs",
@@ -726,6 +730,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-cli/src/schedules.rs",
         "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
+    ),
+    (
+        "crates/jadpo-cli/src/runs.rs",
+        "shows an unfinished run's own start time to an operator, never an app's value (chunk 7.5c)",
     ),
     (
         "crates/jadpo-runtime/src/policy.rs",

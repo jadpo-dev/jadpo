@@ -1398,6 +1398,12 @@ impl Body<'_> {
                 self.walk(|walk| walk.member_values(record.member_list()));
                 Ty::Error
             }
+            // What sign-in gives code: the runtime's to build, but a test,
+            // fixture or seed builds one to call the action it is given
+            // directly (area 8; chunk 7.3b4).
+            ([], None) if jadpo_std::http::test_built_fields(&name).is_some() => {
+                self.sign_in_literal(record, &name, head_span)
+            }
             // What `magic_links.redeem` gives: the runtime's to build, from
             // a link or a code it checked (area 8; chunk 7.3b3).
             ([], None) if name == jadpo_std::http::MAGIC_LINK_REDEEMED => {
@@ -1457,6 +1463,64 @@ impl Body<'_> {
                 Ty::Error
             }
         }
+    }
+
+    /// `FirstSignIn { ... }` or a sign-in event: built only in a test,
+    /// fixture or seed, every field given, to call `on_first_sign_in:`'s
+    /// action or a subscriber's directly (chunk 7.3b4).
+    fn sign_in_literal(&mut self, record: &ast::RecordExpr, name: &str, head_span: Span) -> Ty {
+        if self.context != super::Context::Test {
+            let (reason, next) = if name == jadpo_std::http::FIRST_SIGN_IN {
+                (
+                    format!(
+                        "Only the runtime builds a `{name}`, from a way in it checked, and gives it to `on_first_sign_in:`'s action; a test builds one to call that action directly."
+                    ),
+                    "Take the `FirstSignIn` the runtime gives as the action's parameter, and remove this value",
+                )
+            } else {
+                (
+                    format!(
+                        "Only the runtime builds a `{name}`, as a person signs in, and gives it to the subscribers that listen for it; a test builds one to call a subscriber's action directly."
+                    ),
+                    "Take the event the runtime gives as the subscriber's action's parameter, and remove this value",
+                )
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_NOT_RECORD,
+                    format!("`{name}` isn't built with `{{ ... }}`"),
+                )
+                .at(self.span(record), "only the runtime builds it")
+                .reason(reason)
+                .next(next),
+            );
+            self.walk(|walk| walk.member_values(record.member_list()));
+            return Ty::Error;
+        }
+        let identity = self.identity();
+        let Some(fields) = super::identity::sign_in_object_fields(&identity, name) else {
+            self.walk(|walk| walk.member_values(record.member_list()));
+            return Ty::Error;
+        };
+        let fields: Vec<FieldDef> = fields
+            .into_iter()
+            .map(|(field, ty)| plain_field(field, ty))
+            .collect();
+        self.facts.builds.insert(
+            node_key(record.syntax()),
+            super::facts::BuildFact::Object(name.to_string()),
+        );
+        self.fields_given(
+            record.member_list(),
+            name,
+            &[],
+            &fields,
+            Required::All,
+            head_span,
+            &[],
+        );
+        self.object_built(record);
+        Ty::Opaque(name.to_string(), Vec::new())
     }
 
     /// `Certificate { ... }`: a standard type read only from what it

@@ -136,3 +136,42 @@ pub fn action_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     }
     out
 }
+
+/// The event `emit` names, as written: `SubscriptionRenewed` for `emit
+/// SubscriptionRenewed { ... }`.
+pub fn emitted_name(emit: &jadpo_syntax::ast::EmitStmt) -> Option<String> {
+    use jadpo_syntax::ast::{AstNode, Expr};
+    let expr = emit.expr()?;
+    Some(match &expr {
+        Expr::RecordExpr(record) => tree::written(record.expr()?.syntax()),
+        other => tree::written(other.syntax()),
+    })
+}
+
+/// The events each provider package's actions emit, by the package's
+/// folder, as written (chunk 7.6b): read from the source alone, so the
+/// webhook events a package declares are told from its own without
+/// checking a body. An event a package's action emits is the package's
+/// own, and needs no `wire_name:`.
+#[salsa::tracked(returns(ref))]
+pub fn emitted(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<String>> {
+    use jadpo_syntax::ast::{AstNode, EmitStmt};
+    let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for &file in project.files(db) {
+        let location = location(db, project, file);
+        let (Ownership::Package(home), Place::Folder(Folder::Actions)) =
+            (&location.ownership, &location.place)
+        else {
+            continue;
+        };
+        let Some(source) = tree::source(db, file) else {
+            continue;
+        };
+        for emit in source.syntax().descendants().filter_map(EmitStmt::cast) {
+            if let Some(name) = emitted_name(&emit) {
+                out.entry(home.folder.clone()).or_default().insert(name);
+            }
+        }
+    }
+    out
+}

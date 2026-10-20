@@ -376,8 +376,10 @@ fn a_public_package_action_never_emits() {
     );
 }
 
+/// One without `public`, which only the package's subscribers run, emits
+/// the package's own events (chunk 7.6b).
 #[test]
-fn a_package_action_that_emits_waits_for_package_subscribers() {
+fn a_package_action_without_public_emits() {
     let open = "/// Opens the customer.\npublic action open(input: PayRequest) fails CardDeclined -> PayReply {\n    return attempt customers.create(input)\n}\n";
     assert_eq!(
         problems(
@@ -385,9 +387,7 @@ fn a_package_action_that_emits_waits_for_package_subscribers() {
             "pay.open",
             &[SUBSCRIBER, ATTACHED]
         ),
-        [
-            "shared/providers/acme_pay/v1/actions/start_subscription.jadpo toolchain.not_built_yet: A package's action that emits isn't built yet"
-        ]
+        Vec::<String>::new()
     );
 }
 
