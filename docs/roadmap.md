@@ -1230,11 +1230,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   templates where their own text answers a check (`mail_health`); and
   `check-domain`'s SPF, DKIM (`--selector`) and DMARC rules over
   `jadpo_host_native::dns`. Choices in area 16's "Chosen in chunk 7.3c2".
-- [ ] **7.3c3 Email: SpamAssassin's rules in the health score** `opus ·
+- [x] **7.3c3 Email: SpamAssassin's rules in the health score** `opus ·
   high`, after 7.3c2 (split from it on 2026-10-20): when SpamAssassin is
   installed, the dev inbox's score and `jadpo email show` add its open
   rules (area 16, "A mail health score"), the mail run through it as the
-  SMTP driver writes it, its run behind a seam its tests fake.
+  SMTP driver writes it, its run behind a seam its tests fake. Built:
+  each caught mail written by the SMTP driver and handed to
+  `spamassassin -L -t -x` on the `PATH` off the worker's thread
+  (`jadpo_host_native::spamassassin`), its report kept with the mail
+  (`spam`); spam one more problem, its rules after Jadpo's checks in
+  `jadpo email show` and the page's health view; not installed, not run
+  or no report said as such, never as clean ("Chosen in chunk 7.3c3").
 - [x] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16; split on 2026-10-20, the rest in 7.3b2): `sign_in:` with
   `magic_link:`, the generated endpoints, link and six-digit code, the

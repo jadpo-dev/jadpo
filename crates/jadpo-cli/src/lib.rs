@@ -42,6 +42,7 @@ mod run;
 mod runs;
 mod schedules;
 mod share;
+mod spam;
 mod sql;
 mod suggest;
 mod suggestions;

@@ -14,6 +14,10 @@
 //! needs: the inbox is the one place they are written. `jadpo dev`'s
 //! line for a caught mail names its id, its email and its address, never
 //! its subject or words.
+//!
+//! Before a mail is kept it is run through SpamAssassin when that is
+//! installed ([`crate::spam`]; chunk 7.3c3), as the SMTP driver writes
+//! it, and what it found is kept with the mail.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -23,6 +27,8 @@ use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability, MailSent, Source};
 use jadpo_std::email_health::{self, Finding};
 use jadpo_value::Value;
+
+use crate::spam::{Spam, SpamFilter};
 
 /// The inbox, relative to the project.
 pub(crate) const INBOX: &str = "build/dev/inbox";
@@ -57,6 +63,8 @@ pub(crate) struct Mail {
     pub html: Option<String>,
     pub text: Option<String>,
     pub attachments: Vec<Attachment>,
+    /// What SpamAssassin made of it.
+    pub spam: Spam,
 }
 
 impl Mail {
@@ -88,13 +96,19 @@ impl Mail {
         email_health::check_message(&self.subject, self.html.as_deref(), self.text.as_deref())
     }
 
+    /// How many problems its health has: Jadpo's checks', and one more
+    /// when SpamAssassin calls it spam.
+    pub fn problems(&self) -> usize {
+        self.health().len() + usize::from(self.spam.is_spam())
+    }
+
     /// The email as people read it: its type's name, without its domain.
     pub fn email_short(&self) -> &str {
         self.email.rsplit('.').next().unwrap_or(&self.email)
     }
 
     fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
+        let mut json = serde_json::json!({
             "id": self.id,
             "at": self.at,
             "email": self.email,
@@ -109,7 +123,11 @@ impl Mail {
                 "contentType": attachment.content_type,
                 "size": attachment.size,
             })).collect::<Vec<_>>(),
-        })
+        });
+        if let (Some(spam), Some(members)) = (self.spam.to_json(), json.as_object_mut()) {
+            members.insert("spamassassin".to_string(), spam);
+        }
+        json
     }
 
     fn from_json(json: &serde_json::Value) -> Option<Mail> {
@@ -139,6 +157,7 @@ impl Mail {
                     })
                 })
                 .collect(),
+            spam: Spam::from_json(json.get("spamassassin")),
         })
     }
 }
@@ -222,12 +241,14 @@ fn remove(root: &Path, id: &str) -> std::io::Result<()> {
 }
 
 /// Keeps `message`, the rendered mail a delivery handed over, sent as
-/// `sent`, caught at `at_ms`; the oldest past [`KEPT`] go.
+/// `sent`, caught at `at_ms`, with what SpamAssassin made of it; the
+/// oldest past [`KEPT`] go.
 pub(crate) fn keep(
     root: &Path,
     message: &Value,
     sent: Option<&MailSent>,
     at_ms: i64,
+    spam: Spam,
 ) -> std::io::Result<Mail> {
     let folder = folder(root);
     std::fs::create_dir_all(&folder)?;
@@ -285,6 +306,7 @@ pub(crate) fn keep(
         html: text_of(field("html")),
         text: text_of(field("text")),
         attachments,
+        spam,
     };
     let partial = folder.join(format!("{id}.json.partial"));
     std::fs::write(&partial, format!("{}\n", mail.to_json()))?;
@@ -309,6 +331,8 @@ pub(crate) struct Catcher {
     /// Told of each mail kept, for `jadpo dev`'s line.
     pub caught: Arc<dyn Fn(&Mail) + Send + Sync>,
     pub other: Option<Rc<dyn Capability>>,
+    /// Where each mail is scored before it is kept.
+    pub spam: Rc<dyn SpamFilter>,
 }
 
 impl Capability for Catcher {
@@ -323,14 +347,21 @@ impl Capability for Catcher {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
             .unwrap_or_default();
-        let kept = {
-            let _held = match self.lock.lock() {
-                Ok(held) => held,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            keep(&self.root, &call.input, call.mail.as_deref(), at)
-        };
         Box::pin(async move {
+            // Scored first, on another thread, then numbered and kept.
+            let spam = match crate::spam::as_sent(&call.input, at) {
+                Some(message) => self.spam.score(message).await,
+                None => {
+                    Spam::Failed("it couldn't be written as the SMTP driver writes it".to_string())
+                }
+            };
+            let kept = {
+                let _held = match self.lock.lock() {
+                    Ok(held) => held,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                keep(&self.root, &call.input, call.mail.as_deref(), at, spam)
+            };
             match kept {
                 Ok(mail) => {
                     (self.caught)(&mail);
@@ -417,6 +448,7 @@ mod tests {
             &message("Welcome, Ada", Some(b"%PDF")),
             Some(&sent),
             0,
+            Spam::NotInstalled,
         )
         .expect("kept");
         assert_eq!(first.id, "mail_1");
@@ -429,13 +461,14 @@ mod tests {
         );
         let read = read(&root, "1").expect("read back");
         assert_eq!(read, first);
+        assert_eq!(read.spam, Spam::NotInstalled);
         assert_eq!(attachment(&root, &read, 0).as_deref(), Some(&b"%PDF"[..]));
         assert_eq!(attachment(&root, &read, 1), None);
-        keep(&root, &message("Again", None), None, 1).expect("kept");
+        keep(&root, &message("Again", None), None, 1, Spam::NotRun).expect("kept");
         assert_eq!(clear(&root).expect("cleared"), 2);
         assert!(read_all(&root).is_empty());
         // Numbers carry on past a clear.
-        let next = keep(&root, &message("Later", None), None, 2).expect("kept");
+        let next = keep(&root, &message("Later", None), None, 2, Spam::NotRun).expect("kept");
         assert_eq!(next.id, "mail_3");
         assert_eq!(super::read(&root, "../x"), None);
     }
@@ -444,10 +477,78 @@ mod tests {
     fn the_inbox_keeps_the_last_mails() {
         let root = root("last");
         for at in 0..(KEPT as i64 + 3) {
-            keep(&root, &message("Hi there", None), None, at).expect("kept");
+            keep(&root, &message("Hi there", None), None, at, Spam::NotRun).expect("kept");
         }
         let all = read_all(&root);
         assert_eq!(all.len(), KEPT);
         assert_eq!(all[0].id, "mail_4");
+    }
+
+    /// Answers every mail with one report, keeping what it was given.
+    struct FakeFilter {
+        given: std::cell::RefCell<Vec<Vec<u8>>>,
+        answer: Spam,
+    }
+
+    impl SpamFilter for FakeFilter {
+        fn score(&self, message: Vec<u8>) -> LocalFuture<'_, Spam> {
+            self.given.borrow_mut().push(message);
+            let answer = self.answer.clone();
+            Box::pin(async move { answer })
+        }
+    }
+
+    #[test]
+    fn each_mail_is_scored_as_the_smtp_driver_writes_it_before_it_is_kept() {
+        let root = root("scored");
+        let report = crate::spam::Report {
+            score: "6.2".to_string(),
+            required: "5.0".to_string(),
+            rules: vec![crate::spam::Rule {
+                name: "MISSING_DATE".to_string(),
+                points: "1.4".to_string(),
+                description: "Missing Date: header".to_string(),
+            }],
+        };
+        let filter = Rc::new(FakeFilter {
+            given: std::cell::RefCell::new(Vec::new()),
+            answer: Spam::Ran(report.clone()),
+        });
+        let catcher = Catcher {
+            root: root.clone(),
+            lock: Arc::new(Mutex::new(())),
+            caught: Arc::new(|_: &Mail| {}),
+            other: None,
+            spam: filter.clone(),
+        };
+        let call = Call {
+            connection: "mail".to_string(),
+            operation: jadpo_std::email::SEND.to_string(),
+            input: message("Welcome, Ada", None),
+            repeat: jadpo_runtime::capability::Repeat::Unkeyed,
+            request: None,
+            step: None,
+            key: None,
+            attempt: 1,
+            mail: None,
+        };
+        let answer = jadpo_runtime::block_on(catcher.call(&call)).expect("answered");
+        assert!(matches!(answer, Answer::Value(Value::Unit)));
+        let given = filter.given.borrow();
+        let written = String::from_utf8_lossy(&given[0]);
+        assert!(written.starts_with("Message-ID: <"), "{written}");
+        assert!(
+            written.contains("\r\nTo: ada@notes.example\r\n"),
+            "{written}"
+        );
+        assert!(
+            written.contains("Content-Transfer-Encoding: base64"),
+            "{written}"
+        );
+        let kept = super::read(&root, "mail_1").expect("kept");
+        assert_eq!(kept.spam, Spam::Ran(report));
+        // SpamAssassin calling it spam is one more problem.
+        assert_eq!(kept.health().len(), 1);
+        assert_eq!(kept.problems(), 2);
     }
 }

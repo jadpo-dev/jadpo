@@ -1046,8 +1046,8 @@ test "signing up welcomes the new user, with a link to sign in" {
   it. Phoenix's dev mailbox and Mailpit offer the browser half; the
   agent commands and the trace link are new.
 - **A mail health score: an early indication, not a guarantee** (Richard,
-  2026-10-13; built in chunk 7.3c2 but SpamAssassin's rules, which come in
-  chunk 7.3c3). Every mail in the dev inbox, and `jadpo email show <id>`,
+  2026-10-13; built in chunk 7.3c2, SpamAssassin's rules in chunk 7.3c3,
+  "Chosen in chunk 7.3c3" below). Every mail in the dev inbox, and `jadpo email show <id>`,
   shows what Jadpo's own checks found and how to fix each: no plain-text
   part, image-only content, broken HTML, links that are not absolute HTTPS,
   link shorteners, an all-capitals subject, a missing unsubscribe header on
@@ -2429,8 +2429,8 @@ and the app's own sending given them ("Chosen in chunk 7.3b2" below); in
 chunk 7.3c: a mail package as the connection, partials and `email.sent`
 ("Chosen in chunk 7.3c" below); in chunk 7.3c2: the dev inbox, `jadpo
 email`, the health score, `email.health_problem` and `jadpo email
-check-domain` ("Chosen in chunk 7.3c2" below), SpamAssassin's rules coming
-in chunk 7.3c3. Default rate limits came with routes (chunk
+check-domain` ("Chosen in chunk 7.3c2" below); in chunk 7.3c3:
+SpamAssassin's rules in the score ("Chosen in chunk 7.3c3" below). Default rate limits came with routes (chunk
 4.1); flags, the rest of files (multipart slots, and image variants and
 scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
@@ -2503,7 +2503,7 @@ each the most conservative reading (designed with the design skills,
   102 KB. A score is the problems found and "N of 7 checks pass", with the
   note that it can't predict inbox placement. The unsubscribe header's
   check waits for bulk mail, which no email is yet; SpamAssassin's rules
-  come in chunk 7.3c3.
+  came in chunk 7.3c3.
 - **What `jadpo check` scores** (`email.health_problem`, declinable on
   the email's or partial's type) is what a template's own text answers:
   an `.html` with no `.txt`; a link written out whole, not built inside
@@ -2529,6 +2529,38 @@ each the most conservative reading (designed with the design skills,
   `/etc/resolv.conf` names, over UDP, then TCP when the answer is cut
   short, behind a seam its tests fake. It exits 0 with its verdicts, and
   `--json` says whether every record `passed`.
+
+### Chosen in chunk 7.3c3
+
+What "A mail health score" leaves to the build of SpamAssassin's rules,
+each the most conservative reading (designed with the design skills,
+2026-10-20):
+
+- **Run as each mail is caught.** `jadpo dev` hands each mail, as the
+  SMTP driver writes it with the `Message-ID:` a submission server adds,
+  to `spamassassin` on the `PATH` before keeping it, off the worker's
+  thread, and keeps what it found with the mail; a mail is never scored
+  again. Only `spamassassin`, never `spamc`, whose daemon's network
+  tests aren't Jadpo's to switch off. It runs with `-L -t -x` and
+  `bayes_auto_learn 0`: no network tests, no preferences made, nothing
+  learnt; given up after 30 seconds. The mail goes to its standard input
+  only; its standard error is thrown away and nothing it read is logged.
+- **What is kept.** The last report it prints: its score, the score it
+  calls spam at, and each rule that matched with its points and
+  description, the most points first, a line quoting the mail
+  (`[URIs: …]`) left out. Decimals stay as SpamAssassin wrote them, as
+  text in `--json`.
+- **In the score.** A mail SpamAssassin calls spam (its score at or over
+  its threshold) has one more problem; "N of 7 checks pass" stays Jadpo's.
+  `jadpo email show` and the page's health view list the rules after
+  Jadpo's checks, points over zero in the warning colour; the score's
+  line and the page's strip name SpamAssassin's verdict. "Clean" is said
+  only of a mail SpamAssassin scored too.
+- **When it wasn't run.** Not installed, caught before it was run on
+  mail, or no report (a failed or slow run, a report that couldn't be
+  read): each says SpamAssassin wasn't run or couldn't score it, that
+  its rules aren't in the score, and what to do, never that the mail is
+  clean. Its tests fake its run; nothing is installed for them.
 
 ### Chosen in chunk 7.3c
 
@@ -3270,4 +3302,5 @@ leave to the build of reading gzip, each the most conservative reading:
 | `email.sent` (chunk 7.3c) | Only in tests (`email.sent_context`): a `List<SentEmail>` of `to`, `from`, `subject`, `html`, `text`, `links` and attachment names; mail through a mail package caught the same way (decided for Richard) | 2026-10-20 |
 | Mail package mapping (chunk 7.3c) | `provide email { send: { call: input: receipt: failures: } limits: { attachments: } }`, input keys the input's field names; every part of the message and the attachments given; unmapped failures stay the package's; `File` fields need `max_size:` through a package, their sum within the limit (`email.attachment_limit`); Resend the second connection (decided for Richard) | 2026-10-20 |
 | Dev inbox (chunk 7.3c2) | The test's catching driver for `email:`'s connection in `jadpo dev`, each mail kept whole in `build/dev/inbox/` (last 200, ids never reused), codes and links only there; a read-only page on `127.0.0.1` at the app's port plus one, answering `localhost` only, the mail's HTML sandboxed; `jadpo email list/show/links/open/clear`; the trace id shown until `jadpo trace` links it (decided for Richard) | 2026-10-20 |
+| SpamAssassin's rules (chunk 7.3c3) | `spamassassin -L -t -x` with `bayes_auto_learn 0` on the `PATH`, never `spamc`, run on each mail as the SMTP driver writes it (a `Message-ID:` added) as `jadpo dev` catches it, its report kept with the mail; spam at its threshold one more problem, its rules listed after Jadpo's checks; not installed, not run or no report said as such, never as clean (decided for Richard) | 2026-10-20 |
 | Health score (chunk 7.3c2) | Seven checks with fixes and "N of 7 checks pass", the inbox-placement caveat on every score; `email.health_problem` on templates where their own text answers a check, declinable on the type; `check-domain` reads SPF, DKIM with `--selector` and DMARC with generic rules, provider-specific needs waiting for packages to declare them; the unsubscribe check waits for bulk mail and SpamAssassin's rules for chunk 7.3c3 (decided for Richard) | 2026-10-20 |

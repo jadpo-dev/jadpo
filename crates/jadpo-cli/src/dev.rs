@@ -915,6 +915,9 @@ pub fn serve_to(
                     }
                 }),
                 other: Some(Rc::clone(&fakes)),
+                // SpamAssassin, when installed, on this machine only
+                // (chunk 7.3c3).
+                spam: Rc::new(crate::spam::SystemSpamAssassin),
             }),
             move |connection| {
                 let current = match mail.current.lock() {
