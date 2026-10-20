@@ -92,6 +92,7 @@ pub(crate) fn plan(
             retry: connection.retry.unwrap_or_default(),
             idempotency,
             error_code: reach.error_code.clone(),
+            sandbox: jadpo_check::connections::sandboxed(db, project, connection),
         });
         for operation in operations.of(&connection.folder) {
             if !operation.public {

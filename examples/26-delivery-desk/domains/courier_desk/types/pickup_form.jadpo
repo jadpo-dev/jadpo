@@ -1,0 +1,7 @@
+use shared/providers/swift_couriers
+
+/// What the desk sends to book a pickup.
+type PickupForm = Input {
+    postcode: SwiftCouriers.Postcode
+    slot: SwiftCouriers.Slot
+}

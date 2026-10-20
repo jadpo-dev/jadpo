@@ -1,0 +1,4 @@
+/// A postcode as the courier reads it.
+public type Postcode = Text {
+    max_length: 8
+}

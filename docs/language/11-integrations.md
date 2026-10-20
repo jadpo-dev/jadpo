@@ -2919,6 +2919,158 @@ recommends.
   This changes area 17's hashing of text for call payloads in development
   only; production keeps area 16's spans with no values.
 
+> **Built (chunk 7.2d)**, but for recordings (chunk 7.2d2), `jadpo trace`
+> and the timelines: every provider call `jadpo dev` makes is answered by
+> the package's fake, with what `jadpo calls script` scripted or else the
+> operation's generated default ("Tests and fakes"), and a provider
+> connection's setting that nothing gives (its credential, environment or
+> address) gets a stand-in, so the app starts with no credential set.
+> `development: { sandbox: }` names operations, `resource.operation`, or
+> whole resources, checked against the package (`connection.value_invalid`):
+
+```jadpo check project=e72d-development file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e72d-development file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e72d-development file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e72d-development file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+            development: {
+                sandbox: [bookings.create]
+            }
+        }
+    }
+}
+```
+
+> They go to the sandbox once its credential is set; until then the
+> connection stays faked and `jadpo dev` names the variable to set. A
+> connection whose environment is `live` stops `jadpo dev` starting, or a
+> save reloading, with `cli.dev_start_failed`. `--sandbox
+> couriers.pickups.create` (or a resource) and `--fake couriers` change one
+> session. Each request's line lists its calls, and `jadpo calls` lists
+> them all (area 17):
+>
+> ```text
+> jadpo dev, started 07:34:33
+> listening on http://localhost:3918
+>     routes     2 routes
+>     settings   2 checked
+>     providers  couriers faked
+> serving: saves reload, press ctrl-c to quit
+> req_58d4  POST /pickups                      201   9 ms   127.0.0.1
+>   └─ couriers.pickups.create · generated · answered
+> req_9588  POST /pickups                      409 pickup_slot_gone   1 ms   127.0.0.1
+>   └─ couriers.pickups.create · scripted · slot_taken
+> ```
+>
+> The choices are in "Chosen in chunk 7.2d" below.
+
 ## Compile time
 
 Provider descriptions are large. Sizes checked on 2026-10-13 by
@@ -2956,6 +3108,12 @@ test "a taken slot is reported" {
     ...
 }
 ```
+
+> **Built (chunk 7.2d)**, as area 13's "Fakes for integrations" shows:
+> the test host gives one fake in every provider connection's place, and
+> `fakes:` scripts each operation's answers in order. Keeping keys,
+> `lost` and `in_use` as several changing calls use them, crash-point
+> reruns, grants and the contract run come with those features.
 
 The compiler checks every scripted response against the package's types, so
 a fake cannot return a shape the provider never would; tests script the
@@ -2999,7 +3157,7 @@ example and real output under "Errors".
 | A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1c; both `hosts:` and `runs:` 7.1 |
 | A capability's connection whose package does not provide it | By `jadpo check` | 7.3 |
 | A function call or expression in a `provide` mapping | By `jadpo check` | 7.3 |
-| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d |
+| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
 | Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | Not yet on the roadmap |
@@ -4402,6 +4560,143 @@ error: `couriers`'s credential must be a secret setting
 check failed: 1 error, 6 files
 ```
 
+`development: { sandbox: }` names the package's own operations and
+resources (chunk 7.2d):
+
+```jadpo check project=e72d-sandbox-unknown file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=app.jadpo expect=connection.value_invalid
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+            development: {
+                sandbox: [bookings.creat]
+            }
+        }
+    }
+}
+```
+
+```text output
+error: `couriers`'s `sandbox:` lists `bookings.creat`, which `AcmeCouriers.v1` doesn't have
+ --> app.jadpo:8:27
+  |
+8 |                 sandbox: [bookings.creat]
+  |                           ^^^^^^^^^^^^^^ no such operation or resource
+  reason: `sandbox:` lets the package's public operations and resources through to its sandbox in `jadpo dev`; `AcmeCouriers.v1` has `bookings.create` and `bookings`.
+  next: Use `bookings.create` instead of `bookings.creat` (agent)
+  rule: connection.value_invalid
+  help: docs/language/11-integrations.html#connection-value-invalid
+
+check failed: 1 error, 12 files
+```
+
 ### `connection.domain_not_listed`
 
 > Built in chunk 7.2c: only the actions of the domains a connection's
@@ -5419,7 +5714,8 @@ side (below); the rest is still to build.
 | The OpenAPI importer (writing into `shared/providers/`, reading `x-jadpo` fields) | 7.2 |
 | Provider calls through the connection by the package driver, a package's operations checked, `output_at:`, `failed_when:`, `wire_name:`, derived idempotency keys, `domains:` enforced | 7.2c |
 | Hand-written packages' `wire:`, `decode:` and `encode:`, `wire_output:`, lazy decoding, `retry:` | 7.2c2 |
-| Generated fakes, recordings checked by decoders, `jadpo package record`, provider calls faked in `jadpo dev`, `jadpo calls` | 7.2d |
+| Generated fakes, `fakes:` in tests, provider calls faked in `jadpo dev` with `development: { sandbox: }`, `jadpo calls` | 7.2d |
+| Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
 | Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3 |
 | No transaction open during a call | 7.4 |
@@ -5535,6 +5831,19 @@ side (below); the rest is still to build.
 > safe to send again. The error is `package.wire_invalid` under "Package
 > errors"; the choices are in "Chosen in chunk 7.2c2" below, with one
 > flagged for Richard (`Wire.number`).
+
+> **Built (chunk 7.2d).** A package's fake in tests and `jadpo dev`,
+> under "Tests and fakes", "Provider calls in development" and area 13's
+> "Fakes for integrations": every provider call answered with the
+> operation's generated default, read back through its real decoding,
+> unless a test's `fakes:` or `jadpo calls script` scripts it;
+> `development: { sandbox: }` letting named operations through to the
+> sandbox, never live; and the call log, `jadpo calls`, `calls show` and
+> `calls script` (area 17). The errors are area 13's
+> `semantic.fake_invalid`, `test.fake_exhausted` and `test.fake_unused`,
+> and `connection.value_invalid` for a `sandbox:` name the package
+> doesn't have; the choices are in "Chosen in chunk 7.2d" below. Next:
+> recordings and `jadpo package record` (chunk 7.2d2).
 
 ### Chosen in chunk 7.1
 
@@ -5792,7 +6101,8 @@ What the pages leave to the build, each the most conservative reading:
   and `outbound:`, and each setting its package declares; anything else is
   `connection.key_invalid`, with the nearest key. This chunk reads the
   first five and the settings; the rest are read with the chunks that use
-  them (7.2c, 7.2d, 7.6 and services), as 7.1 did for `provider.jadpo`.
+  them (7.2c, 7.2d, 7.6 and services), as 7.1 did for `provider.jadpo`;
+  chunk 7.2c read `timeout:` and chunk 7.2d `development:`.
   Driver connections' keys are unchanged.
 - **What a package needs.** `domains:` always, a list of the app's
   domains by name, each once and at least one (question 18).
@@ -6109,7 +6419,7 @@ Provider calls, each choice the most conservative reading:
   `unavailable`. `reused:` is a code like any other, so a key sent with a
   different request is a fault. The dev and test hosts still give a
   package's connection no driver, so a call there is refused, until
-  chunk 7.2d's fakes and `development: { sandbox: }`.
+  chunk 7.2d's fakes and `development: { sandbox: }`, since built.
 - **The answer** is kept as sent on a recording, and decoded again by the
   build that replays it. It is read from `output_at:` (nothing there is a
   fault) with its output type's codec, every field it declares decoded as
@@ -6220,6 +6530,77 @@ reading:
   `wire_output X decode Y`, so the answer as sent shows beside its
   output, and `jadpo package show` gives it as "sent as"; the manifest
   gives a field's `wire`.
+
+### Chosen in chunk 7.2d
+
+Fakes and the development call log, each the most conservative reading:
+
+- **One fake per test, in every provider connection's place.** The test
+  host gives a package's fake (`jadpo_runtime::fakes::ProviderFake`) for
+  each connection to a provider package, so a subscriber's call between
+  the test's steps answers from the same script. An unscripted call
+  answers with the operation's generated default.
+- **The generated default** is the value of the operation's output type a
+  provider would send, keeping its rules where a simple value can: text
+  of its least length (`example` where that fits), a number at its least,
+  the first plain variant, empty lists and maps, `null` for what is
+  optional, the invocation's clock for an instant and its date, a fresh
+  UUID. It is written as the provider sends it, its `wire_name:`
+  spellings and `output_at:` envelope included, and read back through the
+  operation's decoding, so a type whose rules no such value keeps (a
+  pattern, say) faults where it is read, naming the field and the rule,
+  and the test scripts it instead.
+- **A scripted answer** is a value of the operation's output type, written
+  and read back the same way; one of its failures, by its code; or a
+  condition: `unavailable`, `lost` (the request went and no answer came:
+  `outcome_unknown` for an unkeyed change, `unavailable` otherwise),
+  `in_use` (answered as `unavailable` until several changing calls, chunk
+  7.5) or `misconfigured`. A bare name is only a code or a condition, never
+  a constant; an operation is scripted once, with at least one answer
+  (`semantic.fake_invalid`). `fakes:` sits among the test's settings, and
+  its answers are given to the fake before the test's first statement.
+- **A script's use.** Each call of a scripted operation takes its next
+  answer; a call past the last gets the generated default and fails the
+  test as `test.fake_exhausted`, which reports in place of whatever the
+  test went on to fail with, being the first thing that went wrong. Answers
+  left fail a test that otherwise passed as `test.fake_unused`. Both name
+  the operation, at its first scripted answer. `.requests` is not built
+  yet.
+- **`jadpo dev`** gives every provider connection of the program it runs
+  now one driver: the sandbox, through the package driver, for what is
+  let through; otherwise the fake, answering what `jadpo calls script`
+  scripted, then the generated default. A provider connection's
+  credential, environment or address setting that no variable or default
+  gives gets a stand-in, so the app starts; such a connection stays faked
+  whatever `sandbox:` says, and `jadpo dev` names the variables to set.
+  Its environment set to `live` refuses to start, or to reload a save,
+  with `cli.dev_start_failed` naming the variable and `--fake`. The
+  session's `--sandbox` takes `connection.resource.operation` or
+  `connection.resource`, and `--fake` a connection, each checked
+  (`cli.dev_arguments`).
+- **`development: { sandbox: }`** takes only `sandbox:`, a list of
+  `resource.operation` and `resource` names, each once, each one of the
+  package's public operations or resources (`connection.key_invalid`,
+  `connection.value_invalid`).
+- **Scripting by hand.** `jadpo calls script <operation> <answer>` takes
+  an operation as the code calls it and one of its failures' codes or a
+  condition, checked against the project's plan; a value can't be given on
+  the command line. Each answer waits as a file of its own under
+  `build/dev/script/`, oldest first, and the call that takes it removes
+  it, so each answers one call, whichever worker makes it.
+- **The call log** is `build/dev/calls.jsonl`, one call a line: its id
+  (`call_31`, counted on from the last the log holds), when it went out,
+  its connection and operation, its source (`generated`, `scripted`,
+  `sandbox`; `recording` with chunk 7.2d2), its request's id, how long it
+  took, the request as made (method, address and body, never its headers,
+  which hold the credential) and the answer as sent or generated, and how
+  it ended with a failure's code. It keeps the last 500 calls rather than
+  timelines, which aren't built. A call `retry:` sends again (chunk
+  7.2c2) is one entry, its last attempt's, where the invocation's own log
+  keeps each attempt. Only provider calls are logged, a host's other capabilities'
+  calls (files) are not, and a delivery's or a schedule's call has no
+  request. Each request's line in `jadpo dev` lists its calls, and its
+  `--json` event gives them.
 
 ### Consistency with the rest of the language
 

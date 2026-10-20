@@ -248,6 +248,56 @@ next call to stripe.payment_intents.create answers card_declined
 - `jadpo dev grants add <connection> --owner <id>` makes a fake OAuth grant
   for an owner (area 11).
 
+> **Built (chunk 7.2d)**, but for `jadpo trace`, `jadpo watch call`, the
+> request timelines and recordings (chunk 7.2d2): `jadpo dev` logs each
+> provider call as it ends in `build/dev/calls.jsonl`, and `jadpo calls`
+> reads it. The list, plain, after a booking answered with the generated
+> default and one scripted to find its slot taken:
+>
+> ```text
+> $ jadpo calls
+>   call    operation                source     answer        time  request
+>   call_1  couriers.pickups.create  generated  + answered    0 ms  req_58d4
+>   call_2  couriers.pickups.create  scripted   x slot_taken  0 ms  req_9588
+>
+> calls: 2 calls, 1 answered, 1 failed
+>
+> next: jadpo calls show call_2  shows what was sent and what came back
+> ```
+>
+> In a terminal the answers are `✓ answered` and `✗ slot_taken` in their
+> colours, and the footer reads `✓ 2 calls  1 answered · 1 failed`. One
+> call in full, its request as made and its answer laid out a member a
+> line:
+>
+> ```text
+> $ jadpo calls show call_2
+> `couriers.pickups.create` failed with `slot_taken`
+>     call     call_2
+>     source   scripted
+>     request  req_9588e1fb3505d4a7
+>     at       2026-10-20T06:34:34.202Z
+>     time     0 ms
+>
+> sent
+>   POST https://sandbox.swift-couriers.example/v1/pickups
+>   {
+>     "postcode": "N1 9GU",
+>     "slot": "pm"
+>   }
+>
+> $ jadpo calls script couriers.pickups.create slot_taken
+> Scripted `slot_taken` for the next call to `couriers.pickups.create`
+>
+> next: jadpo calls  shows the call once the app makes it
+> ```
+>
+> The request id in the list is cut as `jadpo dev`'s request lines cut
+> it, and `--request` takes any start of it. With no calls yet the list
+> says `No calls yet` and points at `jadpo dev`; with filters that match
+> none, `No calls match` and the filters. The choices are area 11's
+> "Chosen in chunk 7.2d".
+
 ## Traces, metrics and logs in development
 
 Decided 2026-10-16 (Richard). In development the app's telemetry (area 16)

@@ -1500,7 +1500,8 @@ reading:
   where its answer came from (the driver, a fake, a replay), when it went
   out, how long it took, and how it ended. Never its input or its
   answer, which can hold secrets and personal data; `jadpo calls`'s full
-  values in development (area 17) are chunk 7.2d's, with its screen. A
+  values in development (area 17) are kept apart, by `jadpo dev`'s host
+  only (built in chunk 7.2d, with its screen). A
   response carries its request's log.
 - **Recorded and replayed with the other effects.** A recording keeps
   each call's answer, in order, beside the random bytes it keeps, and a
@@ -1542,7 +1543,8 @@ reading:
   chunk 7.4b's.
 - **Fakes wrap the host.** A fake is a host wrapper giving a scripted
   driver in some connections' place, everything else the host's own: a
-  test runs on it, and `jadpo dev` will (chunk 7.2d). The runtime's Rust
+  test runs on it, and `jadpo dev`'s host gives a package's fake the same
+  way (built in chunk 7.2d). The runtime's Rust
   tests share one test host, which fakes wrap the same way.
 
 ### Chosen in chunk 6.4b

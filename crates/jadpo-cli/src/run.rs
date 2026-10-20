@@ -66,6 +66,16 @@ impl Call {
         self.flags.contains(&name)
     }
 
+    /// Every value a flag that takes one and may be given again was
+    /// given, in order.
+    pub fn all(&self, name: &str) -> Vec<&str> {
+        self.values
+            .iter()
+            .filter(|(flag, _)| *flag == name)
+            .map(|(_, value)| value.as_str())
+            .collect()
+    }
+
     /// The value a flag that takes one was given.
     pub fn value(&self, name: &str) -> Option<&str> {
         self.values

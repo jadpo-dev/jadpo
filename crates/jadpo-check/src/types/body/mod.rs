@@ -27,6 +27,7 @@ mod exports;
 mod expr;
 pub(crate) mod facts;
 mod failing;
+mod fakes;
 mod features;
 mod files;
 mod identity;
@@ -1242,6 +1243,14 @@ impl Body<'_> {
                 // block, a test's settings): its names are resolved.
                 BlockItem::Member(member) => {
                     self.walk(|walk| walk.member(&member));
+                    // A test's `fakes:` (area 13; chunk 7.2d).
+                    if self.test
+                        && member
+                            .member_key()
+                            .is_some_and(|key| tree::written(key.syntax()) == "fakes")
+                    {
+                        self.fakes(&member);
+                    }
                     continue;
                 }
                 BlockItem::Elision(_) => continue,

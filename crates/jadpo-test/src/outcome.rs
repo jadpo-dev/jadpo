@@ -41,6 +41,99 @@ pub enum Detail {
     /// A failure `attempt` passed on out of the test.
     Failure(Box<FailureInfo>),
     Fault(Box<FaultInfo>),
+    /// A faked provider operation called more or fewer times than the
+    /// test's `fakes:` scripts (chunk 7.2d).
+    Fake(Box<FakeInfo>),
+}
+
+/// How a scripted provider operation was used (area 13, "Fakes for
+/// integrations"): `test.fake_exhausted` or `test.fake_unused`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FakeInfo {
+    /// `couriers.pickups.create`.
+    pub operation: String,
+    pub scripted: usize,
+    pub called: usize,
+}
+
+impl FakeInfo {
+    /// What happened, as the report says it.
+    pub fn subject(&self) -> String {
+        let times = |n: usize| match n {
+            0 => "never".to_string(),
+            1 => "once".to_string(),
+            2 => "twice".to_string(),
+            n => format!("{n} times"),
+        };
+        let answers = match self.scripted {
+            1 => "1 answer".to_string(),
+            n => format!("{n} answers"),
+        };
+        format!(
+            "`{}` was called {}, and its `fakes:` scripts {answers}",
+            self.operation,
+            times(self.called)
+        )
+    }
+
+    /// Why that fails the test.
+    pub fn reason(&self) -> String {
+        if self.called > self.scripted {
+            "A scripted operation answers each call with the next scripted answer, so a call past the last means the code calls it more often than the test says; that call was answered with the generated default.".to_string()
+        } else {
+            "Each scripted answer is for a call the test expects, so one left over means the code calls the operation less often than the test says.".to_string()
+        }
+    }
+
+    /// What to do.
+    pub fn next(&self) -> String {
+        if self.called > self.scripted {
+            format!(
+                "Script an answer for every call of `{}`, or find why the code calls it again (agent)",
+                self.operation
+            )
+        } else {
+            format!(
+                "Remove the answers no call takes, or find why the code doesn't call `{}` (agent)",
+                self.operation
+            )
+        }
+    }
+}
+
+/// The failure a scripted operation's use gives a test that otherwise
+/// ended as `failed` says (chunk 7.2d): one called past its script fails
+/// it, whatever else happened, since that is what went wrong first; one
+/// with answers left fails a test that otherwise passed.
+pub(crate) fn fakes_used(
+    places: &Places,
+    sources: &dyn Sources,
+    test: &Test,
+    used: &[jadpo_runtime::fakes::Usage],
+    failed: Option<Box<TestFailure>>,
+    rerun: &Rerun,
+) -> Option<Box<TestFailure>> {
+    let (usage, rule) = match used.iter().find(|usage| usage.exhausted()) {
+        Some(usage) => (usage, &rule::TEST_FAKE_EXHAUSTED),
+        None => match (&failed, used.iter().find(|usage| usage.unused())) {
+            (None, Some(usage)) => (usage, &rule::TEST_FAKE_UNUSED),
+            _ => return failed,
+        },
+    };
+    let location = located_frame(places, sources, usage.from)
+        .unwrap_or_else(|| Located::new(sources, &test.file, None, test.line, ""));
+    Some(Box::new(TestFailure {
+        rule,
+        delivery: None,
+        rerun: rerun.command(&location.path, location.line),
+        kept: failed.map(|failed| failed.kept).unwrap_or_default(),
+        location,
+        detail: Detail::Fake(Box::new(FakeInfo {
+            operation: usage.operation.clone(),
+            scripted: usage.scripted,
+            called: usage.called,
+        })),
+    }))
 }
 
 /// An `assert` that didn't hold.
