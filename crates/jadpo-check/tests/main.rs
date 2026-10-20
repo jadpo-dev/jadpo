@@ -30,6 +30,7 @@ mod determinism;
 mod domain_names;
 mod events;
 mod examples;
+mod exports;
 mod failures;
 mod files;
 mod fixes;

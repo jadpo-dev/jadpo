@@ -446,6 +446,40 @@ impl<'p> Machine<'p> {
         }
     }
 
+    /// A file helper's write's row (area 12, "Batches"; chunk 6.4b2): the
+    /// inline function body at `body` in callable `callee`'s body, run in
+    /// a frame of that callable whose only locals are `locals`, the item
+    /// and what the run saved for the action's locals it reads. An inline
+    /// function is pure, so it never pauses.
+    pub fn row(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        callee: u32,
+        body: SiteId,
+        locals: Vec<(u32, Value)>,
+    ) -> Result<Value, Stop> {
+        let program = self.program;
+        let Some(callable) = program.plan().callable(callee) else {
+            return Err(self.defect(ctx, "a row in a callable that has no body", body));
+        };
+        ctx.enter(callee, body.0).map_err(Stop::Fault)?;
+        let mut held = vec![Value::Unit; callable.body.locals.len()];
+        for (local, value) in locals {
+            if let Some(slot) = held.get_mut(local as usize) {
+                *slot = value;
+            }
+        }
+        self.activations.push(Activation {
+            callable,
+            locals: held,
+            handling: Vec::new(),
+        });
+        let result = self.nested(ctx, body);
+        self.activations.pop();
+        ctx.leave();
+        result
+    }
+
     /// The `files` connection the call at `at` goes through (chunk 6.4b).
     pub fn files_connection(&self, at: SiteId) -> Option<&'p str> {
         match &self.site(at)?.node {
@@ -1938,9 +1972,7 @@ impl<'p> Machine<'p> {
             // in the action's transaction (area 12): `batches.each` works
             // out only what its run saves, never its query or its actions,
             // which the run calls later.
-            Callee::Batch(
-                op @ (jadpo_std::batch::BatchOp::Each | jadpo_std::batch::BatchOp::Read(_)),
-            ) => {
+            Callee::Batch(op) if op.starts() => {
                 let Some(Decoded::Batch { number, sites }) = self.decoded(id) else {
                     return Err(self.defect(ctx, "a batch with no plan", id));
                 };

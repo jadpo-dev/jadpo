@@ -54,7 +54,7 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::body::{ArmBody, Body, Callee, Expr, LocalId, Node, SiteId, Stmt};
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::Op;
-use jadpo_std::batch::{BatchOp, IMPORT_SUMMARY_FIELDS};
+use jadpo_std::batch::{BatchOp, EXPORT_SUMMARY_FIELDS, IMPORT_SUMMARY_FIELDS};
 use jadpo_std::http::PrincipalKind;
 use jadpo_std::read::Cardinality;
 use jadpo_std::write::WriteOp;
@@ -1790,12 +1790,10 @@ impl Walk<'_> {
         callee: &Callee,
         args: &[Option<SiteId>],
     ) -> Prov {
-        if matches!(callee, Callee::Batch(BatchOp::Each | BatchOp::Read(_))) {
-            return self.batch(
-                flow,
-                args,
-                matches!(callee, Callee::Batch(BatchOp::Read(_))),
-            );
+        if let Callee::Batch(op) = callee
+            && op.starts()
+        {
+            return self.batch(flow, args, *op);
         }
         // An inline function's parameter holds the list it is given.
         let first = match args.first() {
@@ -1940,31 +1938,48 @@ impl Walk<'_> {
     /// counts and problems only: how many items there were, which shows
     /// nothing of them, as a count of records doesn't, and which failed
     /// and why, decided by what decides whether `each:`'s action fails.
-    fn batch(&mut self, flow: &Flow<'_>, args: &[Option<SiteId>], file: bool) -> Prov {
+    fn batch(&mut self, flow: &Flow<'_>, args: &[Option<SiteId>], op: BatchOp) -> Prov {
         // A file helper's read (chunk 6.4b) has its file, then `as:`, a
-        // type, in place of `from:`; the rest as `batches.each`'s.
-        let skip = usize::from(file);
-        let arg = |at: usize| {
-            let at = if at == 0 { 0 } else { at + skip };
-            args.get(at).copied().flatten()
-        };
+        // type, in place of `from:`; a write (chunk 6.4b2) its store,
+        // `name:` and `format:` before it; the rest as `batches.each`'s.
+        let file = matches!(op, BatchOp::Read(_));
+        let write = matches!(op, BatchOp::Write(_));
+        let (from_at, each_at, finished_at) = crate::types::run_places(op);
+        let arg = |at: Option<usize>| at.and_then(|at| args.get(at).copied().flatten());
+        let from_arg = arg(from_at);
         // A row read from a file holds no record's values: what it holds
         // came in from outside, as a request's input does.
-        let page = match arg(0) {
-            Some(from) if !file => self.eval(flow, from),
-            _ => Prov::default(),
+        let page = match from_arg {
+            Some(from) => self.eval(flow, from),
+            None => Prov::default(),
         };
-        let each = self.run_call(arg(1));
-        let finished = self.run_call(arg(2));
+        // A write's `each:` gives the row, a pure expression, not an
+        // action's call.
+        let row = if write { arg(Some(each_at)) } else { None };
+        let each = if write {
+            None
+        } else {
+            self.run_call(arg(Some(each_at)))
+        };
+        let finished = self.run_call(arg(Some(finished_at)));
         // What the run saves: `from:`'s arguments (walked with its query
-        // already, so again without reporting), or the file, what `each:`
-        // and `finished:` capture, and `key:`.
+        // already, so again without reporting), or the file, a write's
+        // `name:` and `format:`, what `each:` and `finished:` capture, and
+        // `key:`.
         let mut saved: Vec<(SiteId, Prov)> = Vec::new();
-        if file && let Some(read) = arg(0) {
+        if file && let Some(read) = arg(Some(0)) {
             let prov = self.eval(flow, read);
             saved.push((read, prov));
         }
-        if let Some(from) = arg(0)
+        if write {
+            for at in [1, 2] {
+                if let Some(value) = arg(Some(at)) {
+                    let prov = self.eval(flow, value);
+                    saved.push((value, prov));
+                }
+            }
+        }
+        if let Some(from) = from_arg
             && let Node::Expr(Expr::Call {
                 callee: Callee::Query(_),
                 args: given,
@@ -1989,7 +2004,14 @@ impl Walk<'_> {
                 saved.push((*at, prov));
             }
         }
-        if let Some(key) = arg(3) {
+        // What a write's row reads of the action.
+        if let Some(inline) = row {
+            for (_, at) in self.body.outer_reads(inline) {
+                let prov = self.eval(flow, at);
+                saved.push((at, prov));
+            }
+        }
+        if let Some(key) = arg(Some(finished_at + 1)) {
             let prov = self.eval(flow, key);
             saved.push((key, prov));
         }
@@ -2023,9 +2045,10 @@ impl Walk<'_> {
         // Each item, one turn's own record.
         self.looping += 1;
         let items = page.field("items");
-        let item = match &each {
-            Some(call) => self.item(call.inline, &items),
-            None => items,
+        let item = match (&each, row) {
+            (Some(call), _) => self.item(call.inline, &items),
+            (None, Some(inline)) => self.item(inline, &items),
+            (None, None) => items,
         };
         let item = item.retold(&of_run);
         let live: Vec<u32> = item
@@ -2048,6 +2071,19 @@ impl Walk<'_> {
                     origin
                 })
             })
+        };
+        // A write's file holds every row, each made of its item and what
+        // the row reads of the action, once the item's turn is over.
+        let rows = match row {
+            Some(inline) => {
+                let rowed = self.row(flow, inline, &item);
+                Prov {
+                    whole: rowed.flat().iter().map(&gone).collect(),
+                    fields: BTreeMap::new(),
+                }
+                .retold(&left)
+            }
+            None => Prov::default(),
         };
         let mut fails: Vec<Src> = Vec::new();
         if let Some(call) = &each {
@@ -2081,8 +2117,17 @@ impl Walk<'_> {
         self.batch_failed(&failed.whole);
         if let Some(call) = &finished {
             let mut summary = Prov::default();
-            for (name, _) in IMPORT_SUMMARY_FIELDS {
-                let prov = if name == "items" { &counted } else { &failed };
+            let fields: &[(&str, _)] = if write {
+                &EXPORT_SUMMARY_FIELDS
+            } else {
+                &IMPORT_SUMMARY_FIELDS
+            };
+            for (name, _) in fields {
+                let prov = match *name {
+                    "items" => &counted,
+                    "file" => &rows,
+                    _ => &failed,
+                };
                 summary.fields.insert(name.to_string(), prov.clone());
             }
             let provs = self.run_args(flow, call, &summary, &captured);
@@ -2133,6 +2178,21 @@ impl Walk<'_> {
             out.add(decided(src.clone()).unwrap_or(src));
         }
         out
+    }
+
+    /// What a write's row (chunk 6.4b2), the inline function at `inline`,
+    /// is made of, given `item`: its body walked with its parameter
+    /// holding the item.
+    fn row(&mut self, flow: &Flow<'_>, inline: SiteId, item: &Prov) -> Prov {
+        let Node::Expr(Expr::Inline {
+            params,
+            body: Some(body),
+        }) = self.body.site(inline).node.clone()
+        else {
+            return Prov::default();
+        };
+        self.local(params.first().copied(), item);
+        self.eval(flow, body)
     }
 
     /// `each:`'s or `finished:`'s inline function at `at`: the action it

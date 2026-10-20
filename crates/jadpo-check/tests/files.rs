@@ -252,16 +252,10 @@ fn a_file_helpers_rows_are_an_input_a_cell_one_value_and_a_column_read_once() {
         ]);
         assert_eq!(found, expected, "{row_type} {file} {helper}");
     }
-    // Only an action starts a run, and a writer isn't built yet.
+    // Only an action starts a run; the writers are `exports.rs`'s.
     let function = "use pantry/types { ShelfRow }\n\nfunction read_sheet(sheet: File) -> BatchRun {\n    return csv.read(sheet, as: ShelfRow, each: listed -> note_shelf(listed))\n}\n";
     assert!(
         ids(&[("domains/pantry/libraries/read_sheet.jadpo", function)])
             .contains(&"type.batch_context".to_string())
-    );
-    let writer =
-        action("action write_sheet(sheet: File) -> BatchRun {\n    return csv.write(sheet)\n}\n");
-    assert!(
-        ids(&[("domains/pantry/actions/write_sheet.jadpo", &writer)])
-            .contains(&"toolchain.not_built_yet".to_string())
     );
 }

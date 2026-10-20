@@ -354,8 +354,11 @@ impl<'a> Canon<'a> {
             Callee::Translation(key) => format!("translations.{key}"),
             Callee::Caller(kind) => format!("{kind:?}"),
             Callee::Session(op) => format!("{op:?}"),
-            Callee::Batch(jadpo_std::batch::BatchOp::Read(format)) => {
-                format!("{}.read", format.namespace())
+            Callee::Batch(
+                op @ (jadpo_std::batch::BatchOp::Read(format)
+                | jadpo_std::batch::BatchOp::Write(format)),
+            ) => {
+                format!("{}.{}", format.namespace(), op.name())
             }
             Callee::Batch(op) => format!("batches.{}", op.name()),
             Callee::Files { connection, op } => format!("{connection}.{}", op.name()),

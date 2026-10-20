@@ -1,6 +1,8 @@
 //! Batches in a body (area 12, "Batches: work over many items"; chunk
 //! 6.4): `batches.each(from:, each:, finished:, key:)`, `batches.status`
-//! and `batches.cancel`, which only an action calls.
+//! and `batches.cancel`, which only an action calls; and the file
+//! helpers' reads (chunk 6.4b) and writes (chunk 6.4b2), which start runs
+//! the same way.
 //!
 //! `from:` is a call of a named query giving a `Page`, which the run walks
 //! a page at a time; its arguments are worked out as the action runs and
@@ -29,7 +31,7 @@ use super::{Body, CallKind, Context, LocalKind, node_key, text};
 use crate::tree;
 
 /// A batch type as the checker holds it.
-fn batch_type(name: &str) -> Ty {
+pub(super) fn batch_type(name: &str) -> Ty {
     Ty::Opaque(name.to_string(), Vec::new())
 }
 
@@ -41,6 +43,7 @@ pub(crate) fn part_ty(part: jadpo_std::batch::Part) -> Ty {
         Part::Optional(builtin) => Ty::Prim(builtin).nullable(),
         Part::Enum(name) => Ty::Named(name.to_string()),
         Part::List(name) => Ty::List(Box::new(batch_type(name))),
+        Part::Kept(name) => batch_type(name),
     }
 }
 
@@ -75,7 +78,7 @@ fn item_path(expr: &Expr, item: &str) -> bool {
 
 /// Which of a batch's values is saved, for a message.
 #[derive(Clone, Copy)]
-enum Saved {
+pub(super) enum Saved {
     /// One of `from:`'s query's arguments.
     From,
     /// A value `each:` or `finished:` captures.
@@ -118,6 +121,9 @@ impl Body<'_> {
                 BatchOp::Read(_) => {
                     "starts a run over a stored file's rows once the action calling it commits, keeping it in that action's transaction"
                 }
+                BatchOp::Write(_) => {
+                    "starts a run writing a query's records into a stored file once the action calling it commits, keeping it in that action's transaction"
+                }
             };
             self.out.push(
                 Diagnostic::new(
@@ -133,6 +139,7 @@ impl Body<'_> {
         match op {
             BatchOp::Each => self.batch_each(call, written),
             BatchOp::Read(format) => self.batch_read(format, call, written),
+            BatchOp::Write(format) => self.batch_write(format, call, written),
             BatchOp::Status | BatchOp::Cancel => {
                 let args = Self::arguments(call);
                 if args.len() != 1 || args.iter().any(|arg| arg.name().is_some()) {
@@ -475,7 +482,7 @@ impl Body<'_> {
     /// What a CSV cell can't hold that `ty` is, after "holds": a list, a
     /// map, an object, an enum with data, or a standard type with no one
     /// text form (area 19, "Data formats").
-    fn not_one_value(&self, ty: &Ty) -> Option<&'static str> {
+    pub(super) fn not_one_value(&self, ty: &Ty) -> Option<&'static str> {
         let structure = self.table.structure(ty.strip_nullable());
         match &structure {
             Ty::List(_) | Ty::Set(_) => Some("a list"),
@@ -503,7 +510,7 @@ impl Body<'_> {
 
     /// `from:`: a call of a named query giving a `Page<T>`, whose
     /// arguments are saved with the run; the item type `T`.
-    fn batch_from(&mut self, from: &Expr, written: &str) -> Ty {
+    pub(super) fn batch_from(&mut self, from: &Expr, written: &str) -> Ty {
         let refused = |body: &mut Self, at: Span, label: &str| {
             body.out.push(
                 Diagnostic::new(
@@ -563,7 +570,13 @@ impl Body<'_> {
     /// `each:` or `finished:`: `item -> action(...)`, one call of an action
     /// in this domain, given `param`; what it captures is saved with the
     /// run.
-    fn batch_function(&mut self, value: &Expr, param: &Ty, written: &str, which: &'static str) {
+    pub(super) fn batch_function(
+        &mut self,
+        value: &Expr,
+        param: &Ty,
+        written: &str,
+        which: &'static str,
+    ) {
         let refused = |body: &mut Self, at: Span, label: &str, reason: String| {
             body.out.push(
                 Diagnostic::new(
@@ -705,7 +718,7 @@ impl Body<'_> {
 
     /// A value saved with the run: one with no stored form is refused,
     /// naming the value (area 3, "The batch helpers take the same form").
-    fn batch_saved(&mut self, value: &Expr, ty: &Ty, saved: Saved, written: &str) {
+    pub(super) fn batch_saved(&mut self, value: &Expr, ty: &Ty, saved: Saved, written: &str) {
         if ty.has_error() {
             return;
         }
