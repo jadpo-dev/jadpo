@@ -670,6 +670,10 @@ impl Executor for Program {
         Some(self.plan().schedules())
     }
 
+    fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
+        self.plan().file_stores()
+    }
+
     fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
         let purges = self.plan().purges();
         let at = purges.iter().position(|plan| plan.entity == entity)?;

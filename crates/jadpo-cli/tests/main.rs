@@ -19,6 +19,7 @@ mod check;
 mod cli;
 mod client_address;
 mod config;
+mod connections;
 mod crate_graph;
 mod declines;
 mod decode_problems;

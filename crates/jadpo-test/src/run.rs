@@ -161,7 +161,12 @@ fn one<E: Executor>(
         env.database = TestDatabase::Copied {
             stores: databases.stores(),
         };
-        let host = TestHost::new(databases);
+        let host = TestHost::new(databases).with_file_stores(
+            executor
+                .file_stores()
+                .iter()
+                .map(|store| store.name.as_str()),
+        );
         let (outcome, undelivered) = {
             let mut ctx = Ctx::new(places, &host, env.env);
             ctx.set_settings(executor.settings(callable));

@@ -161,11 +161,23 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
 #[derive(Debug, Default)]
 pub struct NativeHost {
     stores: BTreeMap<String, Postgres>,
-    /// Every store of files, on the local disk (chunk 6.4b).
-    files: Option<files::DiskFiles>,
+    /// Every store of files, on the local disk (chunk 6.4b), and which
+    /// connections are stores of files (chunk 7.1c).
+    files: Option<(files::DiskFiles, FileStores)>,
     limits: RateLimits,
     deferred: Deferred,
     background: Rc<Background>,
+}
+
+/// Which connections are stores of files: what a host gives the disk
+/// driver for, and nothing else (chunk 7.1c).
+#[derive(Clone)]
+struct FileStores(Rc<dyn Fn(&str) -> bool>);
+
+impl std::fmt::Debug for FileStores {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("FileStores")
+    }
 }
 
 /// How long a host draining waits for its background work to give back
@@ -242,9 +254,15 @@ impl NativeHost {
     }
 
     /// Keeps every store of files on the local disk, as `files` says
-    /// (chunk 6.4b).
-    pub fn with_files(mut self, files: files::DiskFiles) -> NativeHost {
-        self.files = Some(files);
+    /// (chunk 6.4b): the connections `stores` says are stores of files,
+    /// which `jadpo dev` reads from the program it runs now, and no other
+    /// (chunk 7.1c).
+    pub fn with_files(
+        mut self,
+        files: files::DiskFiles,
+        stores: impl Fn(&str) -> bool + 'static,
+    ) -> NativeHost {
+        self.files = Some((files, FileStores(Rc::new(stores))));
         self
     }
 
@@ -296,12 +314,13 @@ impl NativeHost {
 static PASSKEYS: passkeys::WebauthnPasskeys = passkeys::WebauthnPasskeys;
 
 impl Host for NativeHost {
-    /// The disk driver, for every connection's files (chunk 6.4b): the
-    /// only outside capability a program reaches yet.
-    fn capability(&self, _connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
-        self.files
-            .as_ref()
-            .map(|files| files as &dyn jadpo_runtime::capability::Capability)
+    /// The disk driver, for a connection that is a store of files (chunk
+    /// 6.4b; narrowed to those in chunk 7.1c): the only driver a native
+    /// host carries yet, so any other connection, a package's included,
+    /// has none until its driver is built (chunk 7.2c).
+    fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
+        let (files, stores) = self.files.as_ref()?;
+        (stores.0)(connection).then_some(files as &dyn jadpo_runtime::capability::Capability)
     }
 
     /// `webauthn-rs` (area 8, "Passkeys").

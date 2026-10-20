@@ -864,6 +864,9 @@ pub struct TestHost<'d> {
     /// The in-memory store every `files` connection is in a test (area
     /// 13, "Provider calls and capabilities in tests"; chunk 6.4b).
     files: jadpo_runtime::files::MemoryFiles,
+    /// The connections that keep files, which it is given for (chunk
+    /// 7.1c).
+    file_stores: Vec<String>,
 }
 
 enum Held {
@@ -898,7 +901,18 @@ impl<'d> TestHost<'d> {
             databases,
             held: std::cell::OnceCell::new(),
             files: jadpo_runtime::files::MemoryFiles::new(),
+            file_stores: Vec::new(),
         }
+    }
+
+    /// Gives its store of files for the connections in `stores`, and
+    /// nothing for any other (chunk 7.1c).
+    pub fn with_file_stores<'s>(
+        mut self,
+        stores: impl IntoIterator<Item = &'s str>,
+    ) -> TestHost<'d> {
+        self.file_stores = stores.into_iter().map(str::to_string).collect();
+        self
     }
 
     fn held(&self) -> &Held {
@@ -962,11 +976,15 @@ impl jadpo_runtime::Host for TestHost<'_> {
         false
     }
 
-    /// Every connection's files in memory: `files` is the only outside
-    /// capability a program reaches yet (chunk 6.4b), and nothing in a
-    /// test leaves the process.
-    fn capability(&self, _connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
-        Some(&self.files)
+    /// A store of files' connection in memory (chunk 6.4b), and only
+    /// one (chunk 7.1c): nothing in a test leaves the process, and a
+    /// package's connection has no driver until provider calls are built
+    /// (chunk 7.2c), where a test fakes it.
+    fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
+        self.file_stores
+            .iter()
+            .any(|store| store == connection)
+            .then_some(&self.files as &dyn jadpo_runtime::capability::Capability)
     }
 
     /// Two rows a batch, so every file a test reads resumes between

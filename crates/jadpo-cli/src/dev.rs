@@ -539,7 +539,19 @@ pub fn serve_to(
         let _ = crate::suggestions::local_folder(&root);
     }
     let make: MakeHandler = Arc::new(move || {
-        let mut host = NativeHost::new().with_files(DiskFiles::under(&files));
+        // Only the connections the program running now keeps files in.
+        let stores = Arc::clone(&make_shared);
+        let mut host = NativeHost::new().with_files(DiskFiles::under(&files), move |connection| {
+            let current = match stores.current.lock() {
+                Ok(current) => Arc::clone(&current.0),
+                Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
+            };
+            current
+                .plan()
+                .file_stores()
+                .iter()
+                .any(|store| store.name == connection)
+        });
         for (store, url) in &make_shared.urls {
             if let Ok(database) = postgres(url) {
                 host = host.with_store(store.clone(), database);
@@ -753,7 +765,8 @@ pub(crate) fn prepare(
     );
     let permissions = jadpo_check::policy::policy_clean(db, project)
         .then(|| jadpo_check::policy::report::report(db, project));
-    let surfaces = crate::derived::surfaces(db, project);
+    let mut surfaces = crate::derived::surfaces(db, project);
+    surfaces.extend(crate::derived::network(db, project));
     let _ = crate::derived::write(
         root,
         graph,
