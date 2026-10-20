@@ -386,7 +386,9 @@ page per subscriber delivery.
 > below). Built in chunk 6.4b3: `json.read`'s file form and gzip read
 > with `max_unpacked_size:` ("How a file's run is kept"), the declinable
 > error for a `from:` ordered by a field that can be updated, and
-> `estimated_total` ("How a run is kept").
+> `estimated_total` ("How a run is kept"). Built in chunk 7.4b: an item
+> whose `each:` action makes outside calls a batch of its own, and
+> `finished:` the same ("How a run is kept").
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -545,6 +547,27 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   item's: the whole page is undone; one another transaction's change
   undid runs again, up to three times, and otherwise the run waits for
   the tick.
+- **Items that make outside calls** (chosen in chunk 7.4b). When
+  `each:`'s action makes outside calls, itself or through an action it
+  calls, each item is a batch of its own, as "How a run goes" decides, so
+  no call goes out while a transaction is open (area 6). The run's place
+  is read in a statement of its own, locking nothing; the item is read in
+  a snapshot (a query's page of one item, or a file's next row) that its
+  first call closes; its action runs as the system, as a subscriber's
+  delivery does; then, in the transaction its writes are in, the run's row
+  is locked and held to the position the item was read at, and the item's
+  problem, if it failed, and the run's next position commit with its
+  writes. A query's run is then at the item's own cursor, a file's after
+  its row, so a run resumed after a crash meets the same item at the same
+  place. Each call's key is derived from the run and that place (the
+  item's cursor, or where its row begins in the file), so the repeated
+  item's calls go out under the keys they were first sent with. A
+  concurrent change runs the item again, up to three times, as it would a
+  page. A `finished:` whose action makes outside calls runs the same way,
+  its calls keyed from the run, and the run's end commits with its
+  writes. An unkeyed call that may have acted (`outcome_unknown`) is the
+  item's problem, never sent again; one lost with its runner waits for
+  multi-step calls' step record, as a subscriber's does.
 - **Who runs it.** Each page's read, its items and `finished:` act as the
   system ("Background work and tenants"), and read the clock as their page
   began; each page begins at repeatable read when `each:`'s or

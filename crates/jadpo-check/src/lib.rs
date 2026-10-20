@@ -146,6 +146,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
+            out.extend(
+                types::call_order_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(types::store_problems(db, project, file).iter().cloned());
             out.extend(
                 types::batch_store_problems(db, project, file)

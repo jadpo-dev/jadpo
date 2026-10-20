@@ -1160,7 +1160,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the SQL goldens show both statements. Batch items' calls and the
   compile-time order check split to 7.4b. Choices in area 6's "Outside
   calls hold no transaction" and compiler-runtime.md §2.6.
-- [ ] **7.4b Calls from a batch's items, and calls checked before writes**
+- [x] **7.4b Calls from a batch's items, and calls checked before writes**
   `opus · xhigh`, after 7.4 (split from 7.4 on 2026-10-20): when
   `each:`'s action makes outside calls, each item a batch of its own, run
   as a subscriber's delivery is, its calls first under keys derived from
@@ -1168,10 +1168,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   committed together (area 12, "How a run goes"); and a write placed
   before a later outside call a compile error naming the call it must
   follow (area 6, "Several outside calls"), so checked code never reaches
-  `call_in_transaction`. Done when a batch whose `each:` action books a
-  collection commits each item's booking with the run's position, a run
-  resumed after a crash sending a repeated item's call under its first
-  key, and `jadpo check` refuses a write before a call.
+  `call_in_transaction`. Built: `outside_calls` in the checker works out
+  which actions make outside calls and which write, through the actions
+  they call, and `data.write_before_call` (not declinable) is reported at
+  a write some way through the body runs before a call, naming the last
+  one; the plan marks an `each:` or `finished:` action that calls, and
+  the runner's `batches::calling` runs each such item as a batch of its
+  own: the run's place read on its own, the item read as a page of one
+  giving its own cursor (or a file's next row), its action run with no
+  transaction open and its calls keyed from the run and that cursor or
+  row, then the run's row locked and held to that place and the item's
+  writes, problem and next position committed together; `finished:`
+  likewise. Live tests in `batch_calls.rs` hold each call to
+  `pg_stat_activity` showing no open transaction, crash an item between
+  its call and its commit and resume it under the same key, and run
+  `jadpo check` on a write before a call; `provider_calls.rs`'s write
+  before a call is now refused by `jadpo check`. Choices in area 6's
+  "Several outside calls" and area 12's "How a run is kept".
 - [ ] **7.5 Multi-step calls** `opus · xhigh` (areas 11 and 12, decided
   2026-10-16, with the edge-case review's ten fixes): several keyed
   changing calls per action where the key survives a retry, each recorded

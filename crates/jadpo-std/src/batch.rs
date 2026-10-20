@@ -437,6 +437,12 @@ pub struct FileWrite {
 pub struct BatchCall {
     pub callable: u32,
     pub args: Vec<BatchArg>,
+    /// Whether the action makes outside calls, itself or through an
+    /// action it calls (chunk 7.4b): then each item is a batch of its
+    /// own, and `finished:` too, its calls sent before its transaction
+    /// opens and its writes committed with the run's position after them
+    /// (area 12, "How a run goes").
+    pub calls: bool,
 }
 
 /// Where one argument of a batch's call comes from.
