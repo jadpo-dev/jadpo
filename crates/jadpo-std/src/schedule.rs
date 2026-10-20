@@ -36,6 +36,11 @@ pub struct SchedulesPlan {
     /// whose abandoned records it deletes after 30 days (area 12; chunk
     /// 7.5c).
     pub steps: Vec<String>,
+    /// The store queue messages are parked in for an operator
+    /// (`jadpo_parked_messages`), whose dismissed ones the tick deletes,
+    /// beside the queues' events (chunk 7.7c); `None` when the app
+    /// receives no queue, and the tick receives each queue's messages.
+    pub parked: Option<String>,
 }
 
 impl SchedulesPlan {

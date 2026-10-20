@@ -912,9 +912,8 @@ fn a_webhooks_events_are_checked() {
                 "domains/billing/events/refund_asked.jadpo",
                 "/// A customer asked for a refund.\ntype RefundAsked = Event {\n    wire_name: \"refund.asked\"\n    reference: Text\n}\n",
             )],
-            &[
-                "toolchain.not_built_yet: An app's event names its `wire_name:` for a queue, which isn't built yet",
-            ],
+            // It names the event on a queue the app receives (chunk 7.7c).
+            &[],
         ),
     ];
     for (name, changes, expected) in cases {

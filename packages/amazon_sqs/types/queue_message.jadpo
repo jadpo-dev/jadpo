@@ -1,0 +1,13 @@
+/// One message as SQS gives it: its id, the handle it is deleted by, and
+/// its body.
+public type QueueMessage = Object {
+    message_id: Text {
+        wire_name: "MessageId"
+    }
+    receipt_handle: Text {
+        wire_name: "ReceiptHandle"
+    }
+    body: Text {
+        wire_name: "Body"
+    }
+}

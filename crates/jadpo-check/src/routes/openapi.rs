@@ -206,7 +206,7 @@ pub fn document(
     // accepts browser sessions (area 8).
     let here = super::served::sign_in_api(db, project).as_deref() == Some(api);
     let passkeys = identity.passkeys().filter(|_| here);
-    let magic_links = identity.magic_links().filter(|_| here);
+    let magic_links = identity.magic_link_routes().filter(|_| here);
     let webhooks = crate::webhooks::declared_in(db, project, api);
     if routes.is_empty() && passkeys.is_none() && magic_links.is_none() && webhooks.is_empty() {
         return None;

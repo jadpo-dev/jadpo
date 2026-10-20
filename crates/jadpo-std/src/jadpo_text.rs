@@ -42,6 +42,10 @@ pub enum Feature {
     MagicLink,
     /// Passkeys (area 8, "Passkeys"): their failures.
     Passkey,
+    /// Magic links' routes the application writes itself, with
+    /// `generate_routes: false` (area 8; chunk 7.3b3): the failure of a
+    /// return path `magic_links.request` refuses.
+    MagicLinkRoutes,
 }
 
 impl Feature {
@@ -57,6 +61,7 @@ impl Feature {
             Feature::Locales => "Locales",
             Feature::MagicLink => "Magic links",
             Feature::Passkey => "Passkeys",
+            Feature::MagicLinkRoutes => "Magic-link routes",
         }
     }
 
@@ -71,6 +76,7 @@ impl Feature {
             Feature::Locales => "locales",
             Feature::MagicLink => "magic_link",
             Feature::Passkey => "passkey",
+            Feature::MagicLinkRoutes => "magic_link_routes",
         }
     }
 
@@ -85,10 +91,11 @@ impl Feature {
             Feature::Locales => "the application declares its locales",
             Feature::MagicLink => "the application signs users in with magic links",
             Feature::Passkey => "the application signs users in with passkeys",
+            Feature::MagicLinkRoutes => "the application writes its own magic-link routes",
         }
     }
 
-    pub const ALL: [Feature; 8] = [
+    pub const ALL: [Feature; 9] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
@@ -97,6 +104,7 @@ impl Feature {
         Feature::Locales,
         Feature::MagicLink,
         Feature::Passkey,
+        Feature::MagicLinkRoutes,
     ];
 }
 
@@ -216,7 +224,7 @@ const fn message(
 
 /// Every message, in the order `jadpo translations builtin` lists a
 /// feature's.
-pub static MESSAGES: [Message; 36] = [
+pub static MESSAGES: [Message; 37] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -413,6 +421,12 @@ pub static MESSAGES: [Message; 36] = [
         Feature::MagicLink,
         "The sign-in was refused.",
         "We couldn't sign you in.",
+    ),
+    failure(
+        "sign_in_return_invalid",
+        Feature::MagicLinkRoutes,
+        "The path to go back to after signing in isn't a path on the application's own site.",
+        "We can't send you back there after signing in. Start again from this site.",
     ),
     failure(
         "passkey_challenge_expired",

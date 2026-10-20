@@ -794,3 +794,372 @@ policy {
         "{found:?}"
     );
 }
+
+// --- The application's own routes (area 8, "Writing the routes yourself";
+// chunk 7.3b3) ---------------------------------------------------------------
+
+/// The application's own sign-in routes, over magic links' operations.
+const OWN_ROUTES: (&str, &str) = (
+    "domains/accounts/routes/sign_in.jadpo",
+    r#"use accounts/actions { ask_for_link, confirm_code, confirm_link }
+use accounts/types { CodeGiven, LinkAsked, LinkGiven, SignedIn }
+
+routes SignIn {
+    prefix: /sign-in
+
+    POST /ask {
+        authentication: RouteAuthentication.none
+        input: LinkAsked
+        status: SuccessStatus.no_content
+        run: ask_for_link(input)
+    }
+
+    POST /link {
+        authentication: RouteAuthentication.none
+        input: LinkGiven
+        output: SignedIn
+        run: confirm_link(input)
+    }
+
+    POST /code {
+        authentication: RouteAuthentication.none
+        input: CodeGiven
+        output: SignedIn
+        run: confirm_code(input)
+    }
+}
+"#,
+);
+
+const OWN_TYPES: [(&str, &str); 5] = [
+    (
+        "domains/accounts/types/return_path.jadpo",
+        "type ReturnPath = Text {\n    max_length: 2000\n}\n",
+    ),
+    (
+        "domains/accounts/types/link_asked.jadpo",
+        "use accounts/types { ReturnPath }\n\ntype LinkAsked = Input {\n    address: Email\n    locale: Locale\n    return_to: ReturnPath?\n}\n",
+    ),
+    (
+        "domains/accounts/types/link_given.jadpo",
+        "type LinkGiven = Input {\n    token: SignInToken\n}\n",
+    ),
+    (
+        "domains/accounts/types/code_given.jadpo",
+        "type CodeGiven = Input {\n    address: Email\n    code: SignInCode\n}\n",
+    ),
+    (
+        "domains/accounts/types/signed_in.jadpo",
+        "type SignedIn = Output {\n    return_to: Text\n}\n",
+    ),
+];
+
+const OWN_ACTIONS: [(&str, &str); 3] = [
+    (
+        "domains/accounts/actions/ask_for_link.jadpo",
+        r#"use accounts/types { LinkAsked }
+
+/// Sends a link and a code to the address asked for.
+action ask_for_link(input: LinkAsked) -> Unit {
+    magic_links.request(input.address, input.locale, input.return_to)
+}
+"#,
+    ),
+    (
+        "domains/accounts/actions/confirm_link.jadpo",
+        r#"use accounts/types { LinkGiven, SignedIn }
+
+/// Signs this browser in with a link's token.
+action confirm_link(input: LinkGiven) -> SignedIn {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
+    sessions.start(redeemed.user_id)
+    return SignedIn {
+        return_to: redeemed.return_to
+    }
+}
+"#,
+    ),
+    (
+        "domains/accounts/actions/confirm_code.jadpo",
+        r#"use accounts/types { CodeGiven, SignedIn }
+
+/// Signs this browser in with a code.
+action confirm_code(input: CodeGiven) -> SignedIn {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem_code(input.address, input.code)
+    sessions.start(redeemed.user_id)
+    return SignedIn {
+        return_to: redeemed.return_to
+    }
+}
+"#,
+    ),
+];
+
+const OWN_POLICY: (&str, &str) = (
+    "policy.jadpo",
+    r#"use accounts
+
+policy {
+    actions: {
+        accounts.ask_for_link: [Access.public]
+        accounts.confirm_link: [Access.public]
+        accounts.confirm_code: [Access.public]
+    }
+}
+"#,
+);
+
+fn own(setting: &str, extra: &[(&str, &str)]) -> Vec<String> {
+    let mut files = vec![OWN_ROUTES, OWN_POLICY];
+    files.extend_from_slice(&OWN_TYPES);
+    files.extend_from_slice(&OWN_ACTIONS);
+    files.extend_from_slice(extra);
+    project(SENDS, setting, &files)
+        .into_iter()
+        .filter(|problem| !problem.contains("import.unused: `accounts` is imported"))
+        .collect()
+}
+
+#[test]
+fn the_apps_own_routes_call_magic_links_operations() {
+    assert_eq!(own("generate_routes: false", &[]), Vec::<String>::new());
+}
+
+#[test]
+fn without_generated_routes_their_paths_are_the_apps() {
+    // The application's own route at the generated path overlaps nothing.
+    let at_generated = (
+        "domains/accounts/routes/auth.jadpo",
+        r#"use accounts/actions { ask_for_link }
+use accounts/types { LinkAsked }
+
+routes Auth {
+    prefix: /auth
+
+    POST /magic-link {
+        authentication: RouteAuthentication.none
+        input: LinkAsked
+        status: SuccessStatus.no_content
+        run: ask_for_link(input)
+    }
+}
+"#,
+    );
+    let found = own("generate_routes: false", &[at_generated]);
+    assert!(!has(&found, "route.path_overlap"), "{found:?}");
+}
+
+#[test]
+fn generate_routes_is_true_or_false_and_never_beside_path() {
+    let found = magic("            generate_routes: 1");
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `generate_routes:` must be `true` or `false`"
+        ),
+        "{found:?}"
+    );
+    let found = magic("            generate_routes: false\n            path: \"/login\"");
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `magic_link:` has both `path:` and `generate_routes: false`"
+        ),
+        "{found:?}"
+    );
+    let found = magic("            routes: false");
+    assert!(
+        !has(&found, "semantic.auth_setting_unknown: `generate_routes`"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn the_operations_need_generate_routes_false() {
+    let found = own("", &[]);
+    for wanted in [
+        "semantic.auth_setting_required: `magic_links.request` needs `generate_routes: false`",
+        "semantic.auth_setting_required: `magic_links.redeem` needs `generate_routes: false`",
+        "semantic.auth_setting_required: `magic_links.redeem_code` needs `generate_routes: false`",
+    ] {
+        assert!(has(&found, wanted), "{wanted}: {found:?}");
+    }
+}
+
+#[test]
+fn the_operations_need_magic_links() {
+    let text = r#"principal {
+    user: {
+        subject: Member.email
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "session"
+    }
+}
+
+entity Member {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+}
+
+type AskForLink = Input {
+    address: Email
+}
+
+action ask_for_link(input: AskForLink) -> Unit {
+    magic_links.request(input.address, Locale.en_gb, none)
+}
+"#;
+    let found = support::problems(Layout::Loose, &[("app.jadpo", text)]);
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_required: `magic_links.request` needs magic links"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn only_an_action_calls_the_operations() {
+    let function = (
+        "domains/accounts/functions/redeem_here.jadpo",
+        r#"function redeem_here(token: SignInToken) -> MagicLinkRedeemed {
+    return magic_links.redeem(token)
+}
+"#,
+    );
+    let found = own("generate_routes: false", &[function]);
+    assert!(
+        has(
+            &found,
+            "type.auth_sessions_context: A function can't call `magic_links.redeem`"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn the_operations_take_their_arguments_in_order() {
+    let short = (
+        "domains/accounts/actions/ask_short.jadpo",
+        r#"use accounts/types { LinkAsked }
+
+action ask_short(input: LinkAsked) -> Unit {
+    magic_links.request(input.address, input.locale)
+}
+"#,
+    );
+    let text = (
+        "domains/accounts/actions/redeem_address.jadpo",
+        r#"use accounts/types { LinkAsked }
+
+action redeem_address(input: LinkAsked) -> Unit {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem(input.address)
+}
+"#,
+    );
+    let found = own("generate_routes: false", &[short, text]);
+    for wanted in [
+        "type.argument_count: `magic_links.request` takes the address, an `Email`, the email's `Locale` and the path to go back to, a `Text?`",
+        "type.mismatch",
+    ] {
+        assert!(has(&found, wanted), "{wanted}: {found:?}");
+    }
+}
+
+#[test]
+fn a_route_runs_no_magic_link_operation_itself() {
+    let route = (
+        "domains/accounts/routes/direct.jadpo",
+        r#"use accounts/types { LinkGiven }
+
+routes Direct {
+    prefix: /direct
+
+    POST /link {
+        authentication: RouteAuthentication.none
+        input: LinkGiven
+        status: SuccessStatus.no_content
+        run: magic_links.redeem(input.token)
+    }
+}
+"#,
+    );
+    let found = own("generate_routes: false", &[route]);
+    assert!(
+        has(
+            &found,
+            "route.run_invalid: `magic_links.redeem` writes, and a route doesn't run it"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_sign_in_token_is_never_kept_or_given_out() {
+    let kept = (
+        "domains/accounts/entities/kept_token.jadpo",
+        "entity KeptToken {\n    id: Uuid\n    token: SignInToken\n}\n",
+    );
+    let shown = (
+        "domains/accounts/types/token_view.jadpo",
+        "type TokenView = Output {\n    token: SignInToken\n}\n",
+    );
+    let failed = (
+        "domains/accounts/failures/wrong_token.jadpo",
+        "type WrongToken = Failure {\n    kind: FailureKind.rejected\n    client: {\n        token: SignInToken\n    }\n}\n",
+    );
+    let event = (
+        "domains/accounts/events/token_used.jadpo",
+        "type TokenUsed = Event {\n    tokens: List<SignInToken>\n}\n",
+    );
+    let mailed = (
+        "domains/accounts/emails/token_mail.jadpo",
+        "type TokenMail = EmailMessage {\n    token: SignInToken\n}\n",
+    );
+    let found = own(
+        "generate_routes: false",
+        &[kept, shown, failed, event, mailed],
+    );
+    for wanted in [
+        "type.auth_credential_stored: `KeptToken.token` keeps a sign-in link's token",
+        "type.secret_exposed: `TokenView.token` holds a `SignInToken`",
+        "type.secret_exposed: `WrongToken.token` holds a `SignInToken`",
+        "type.secret_exposed: `TokenUsed.tokens` holds a `SignInToken`",
+        "type.secret_exposed: `TokenMail.token` holds a `SignInToken`",
+    ] {
+        assert!(has(&found, wanted), "{wanted}: {found:?}");
+    }
+}
+
+#[test]
+fn only_the_runtime_makes_a_magic_link_redeemed() {
+    let made = (
+        "domains/accounts/actions/pretend.jadpo",
+        r#"use accounts/entities { Member }
+use accounts/types { LinkGiven }
+
+action pretend(input: LinkGiven, member: Member) -> Unit {
+    var redeemed: MagicLinkRedeemed = MagicLinkRedeemed {
+        user_id: member.id
+        return_to: "/"
+    }
+    sessions.start(redeemed.user_id)
+}
+"#,
+    );
+    let found = own("generate_routes: false", &[made]);
+    assert!(
+        has(
+            &found,
+            "type.not_record: `MagicLinkRedeemed` isn't built with `{ ... }`"
+        ),
+        "{found:?}"
+    );
+}

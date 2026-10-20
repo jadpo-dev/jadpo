@@ -1120,10 +1120,15 @@ impl Reader<'_> {
             let (what, kept, given) = match credential {
                 jadpo_std::Builtin::ApiToken => ("An API token", "an API token", "token"),
                 jadpo_std::Builtin::SignInCode => ("A sign-in code", "a sign-in code", "code"),
+                jadpo_std::Builtin::SignInToken => {
+                    ("A sign-in link's token", "a sign-in link's token", "token")
+                }
                 _ => ("A service key", "a service key", "key"),
             };
             let reason = if credential == jadpo_std::Builtin::SignInCode {
                 "A sign-in code is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own email and sending are given it only to send it.".to_string()
+            } else if credential == jadpo_std::Builtin::SignInToken {
+                "A sign-in link's token is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own route is given it only to redeem it.".to_string()
             } else {
                 format!(
                     "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
@@ -1131,6 +1136,8 @@ impl Reader<'_> {
             };
             let next = if credential == jadpo_std::Builtin::SignInCode {
                 format!("Remove `{name}`; send the code, never keep it")
+            } else if credential == jadpo_std::Builtin::SignInToken {
+                format!("Remove `{name}`; redeem the token, never keep it")
             } else {
                 format!(
                     "Remove `{name}`, and give the {given} in the output of the action that issues it"
@@ -2523,7 +2530,8 @@ fn held_credential(
         Ty::Prim(
             credential @ (jadpo_std::Builtin::ApiToken
             | jadpo_std::Builtin::ServiceKey
-            | jadpo_std::Builtin::SignInCode),
+            | jadpo_std::Builtin::SignInCode
+            | jadpo_std::Builtin::SignInToken),
         ) => Some(credential),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
             held_credential(lookup, &inner, seen)
@@ -2663,6 +2671,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             system::RECEIVED_EVENTS.table.to_string(),
             columns::system_table(&system::RECEIVED_EVENTS),
         );
+    }
+    // A queue's events are kept as a webhook's are, with the ids received
+    // and the messages parked for an operator beside them (chunk 7.7c).
+    if let Some(store) = crate::receiving::store(db, project)
+        && let Some(found) = schema.stores.get_mut(&store)
+    {
+        for system in [&system::RECEIVED_EVENTS, &system::PARKED_MESSAGES] {
+            found
+                .tables
+                .insert(system.table.to_string(), columns::system_table(system));
+        }
     }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).

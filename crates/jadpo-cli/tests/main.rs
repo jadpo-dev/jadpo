@@ -64,6 +64,7 @@ mod provider_parts;
 mod provider_wire;
 mod purge_schedule;
 mod queries;
+mod receiving;
 mod recordings;
 mod records;
 mod round_trips;

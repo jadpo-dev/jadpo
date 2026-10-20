@@ -465,6 +465,11 @@ impl Body<'_> {
             {
                 return self.session_call(op, call, callee, &written);
             }
+            if head == jadpo_std::http::MAGIC_LINKS
+                && let Some(op) = jadpo_std::http::SessionOp::magic_link_op(member)
+            {
+                return self.magic_link_call(op, call, callee, &written);
+            }
             if head == "batches"
                 && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)
             {

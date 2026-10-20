@@ -119,7 +119,15 @@ fn acts<'db>(db: &'db dyn Db, project: Project, name: &str) -> &'db BTreeSet<Act
 /// sign a caller in or out.
 pub fn session_act(op: SessionOp, user: Option<&str>, service: Option<&str>) -> Option<Act> {
     Some(match op {
-        SessionOp::Start | SessionOp::End | SessionOp::IssueToken => Act::SignsIn,
+        // Magic links' operations ask for and use a sign-in, which the
+        // runtime's own checks decide (area 8, "Writing the routes
+        // yourself").
+        SessionOp::Start
+        | SessionOp::End
+        | SessionOp::IssueToken
+        | SessionOp::MagicLinkRequest
+        | SessionOp::MagicLinkRedeem
+        | SessionOp::MagicLinkRedeemCode => Act::SignsIn,
         SessionOp::Tokens => Act::Entity(user?.to_string(), Effect::Read),
         SessionOp::RevokeToken => Act::Entity(user?.to_string(), Effect::Update),
         SessionOp::Keys => Act::Entity(service?.to_string(), Effect::Read),

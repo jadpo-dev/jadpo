@@ -329,6 +329,9 @@ pub struct Ticked {
     /// 6.9), and each circuit breaker's that opened (chunk 7.2b). A host
     /// reports each, once.
     pub raised: Vec<watch::Alert>,
+    /// What it received from the app's queues, when it received anything
+    /// (chunk 7.7c).
+    pub received: Option<Tally>,
 }
 
 /// How many rows a tick deleted.
@@ -358,6 +361,20 @@ pub struct Deleted {
     /// Records of several changing calls an operator abandoned, 30 days
     /// on (chunk 7.5c).
     pub step_records: u64,
+    /// Parked queue messages an operator dismissed 30 days before (chunk
+    /// 7.7c).
+    pub parked: u64,
+}
+
+/// How many queue messages one tick kept as events, dropped as repeats,
+/// parked for an operator and left for the queue to send again (chunk
+/// 7.7c).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Tally {
+    pub kept: u64,
+    pub repeats: u64,
+    pub parked: u64,
+    pub left: u64,
 }
 
 /// Runs one tick at `now` on `host`, within the budget its host gives a
@@ -465,6 +482,35 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
                 Err(error) => ticked.problems.push((store.clone(), error)),
             }
         }
+        // Parked queue messages an operator dismissed, and the log rows of
+        // those gone (chunk 7.7c).
+        if plan.parked.as_ref() == Some(store) {
+            let before = now.saturating_sub(crate::receiving::DISMISSED_KEPT_MS);
+            match delete(host, store, crate::receiving::OLD_DISMISSED, before).await {
+                Ok(count) => ticked.deleted.parked += count,
+                Err(error) => ticked.problems.push((store.clone(), error)),
+            }
+            match delete(host, store, crate::receiving::OLD_MESSAGE_ACTIONS, kept).await {
+                Ok(count) => ticked.deleted.actions += count,
+                Err(error) => ticked.problems.push((store.clone(), error)),
+            }
+        }
+    }
+    // Each queue's messages, kept as events and delivered within what is
+    // left of the budget (chunk 7.7c).
+    if !budget.spent() {
+        let received = crate::receiving::receive(executor, &budget, now).await;
+        ticked.problems.extend(received.problems);
+        ticked
+            .deliveries
+            .extend(runner::run_within(executor, host, &budget, received.deferred).await);
+        ticked.received = Some(Tally {
+            kept: received.kept,
+            repeats: received.repeats,
+            parked: received.parked,
+            left: received.left,
+        })
+        .filter(|tally| *tally != Tally::default());
     }
     // Unfinished records of several changing calls keep their answers 30
     // days after their last run, then only their step list; an abandoned
@@ -519,9 +565,19 @@ async fn raise(
 /// second.
 pub fn tick_every_ms(plan: Option<&SchedulesPlan>) -> u64 {
     let minute = 60_000;
+    // A queue is received on the tick, so an app that receives one ticks
+    // at least every 10 seconds (chunk 7.7c).
+    let most = if plan.is_some_and(|plan| plan.parked.is_some()) {
+        QUEUE_TICK_MS
+    } else {
+        minute
+    };
     plan.and_then(SchedulesPlan::shortest_every)
-        .map_or(minute, |shortest| shortest.clamp(1_000, minute))
+        .map_or(most, |shortest| shortest.clamp(1_000, most))
 }
+
+/// How often at least a host ticks while its app receives a queue.
+pub const QUEUE_TICK_MS: u64 = 10_000;
 
 /// The state of a schedule's row, as a tick reads it.
 #[derive(Clone, Copy, Debug)]

@@ -583,6 +583,7 @@ async fn operate(host: &Stores, id: &str, action: Action, now: i64) {
         deliveries: true,
         runs: false,
         steps: false,
+        messages: false,
     };
     let found = find(&host.main, holds, id, now)
         .await

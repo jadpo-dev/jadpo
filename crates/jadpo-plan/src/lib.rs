@@ -303,6 +303,7 @@ fn schedules_plan(
         keys: holding(SERVICE_KEYS.table).next(),
         received: holding(RECEIVED_EVENTS.table).next(),
         steps: holding(STEP_RECORDS.table).collect(),
+        parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
     }
 }
 

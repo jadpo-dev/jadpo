@@ -395,6 +395,33 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::webhooks::OLD_RECEIVED.to_string(),
         ),
         ("webhooks::RECEIVE", crate::webhooks::RECEIVE.to_string()),
+        ("receiving::PARK", crate::receiving::PARK.to_string()),
+        ("receiving::RETRIED", crate::receiving::RETRIED.to_string()),
+        ("receiving::DONE", crate::receiving::DONE.to_string()),
+        (
+            "receiving::OLD_DISMISSED",
+            crate::receiving::OLD_DISMISSED.to_string(),
+        ),
+        (
+            "receiving::OLD_MESSAGE_ACTIONS",
+            crate::receiving::OLD_MESSAGE_ACTIONS.to_string(),
+        ),
+        (
+            "deliveries::ACT_MESSAGE",
+            crate::deliveries::ACT_MESSAGE.to_string(),
+        ),
+        (
+            "deliveries::MESSAGE_COUNTS",
+            crate::deliveries::MESSAGE_COUNTS.to_string(),
+        ),
+        (
+            "deliveries::messages_sql",
+            crate::deliveries::messages_sql(),
+        ),
+        (
+            "deliveries::find_message_sql",
+            crate::deliveries::find_message_sql(),
+        ),
         (
             "webhooks::replies::CLAIM",
             crate::webhooks::replies::CLAIM.to_string(),

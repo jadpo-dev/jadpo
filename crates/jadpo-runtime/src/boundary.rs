@@ -23,7 +23,7 @@ use jadpo_std::policy::Gate;
 use jadpo_std::read::RowVersions;
 use jadpo_std::write::RowCheck;
 
-use crate::ctx::{Capabilities, EmitRefused, Held, SessionEffect};
+use crate::ctx::{Binding, Capabilities, EmitRefused, Held, SessionEffect};
 use crate::{
     Ctx, Event, Failure, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError, Stored,
     Transaction,
@@ -66,6 +66,12 @@ pub(crate) struct Boundary {
     /// Whether the body issued an API token or a service key, whose
     /// response is never kept for an idempotent repeat (area 8).
     issued: bool,
+    /// What the body did to a `same_browser:` magic link's cookie, whose
+    /// response is never kept for a repeat either (chunk 7.3b3).
+    binding: Option<Binding>,
+    /// Whether the body asked for a magic link, whose row its transaction
+    /// holds: using one in the same action would wait on itself.
+    asked: bool,
     /// Whether its open transaction has run anything but reads. One that
     /// has only read is a snapshot, which an outside call closes before
     /// it goes out (area 6, "Outside calls hold no transaction"; chunk
@@ -261,6 +267,18 @@ impl Boundary {
 
     pub(crate) fn set_issued(&mut self) {
         self.issued = true;
+    }
+
+    pub(crate) fn set_binding(&mut self, binding: Binding) {
+        self.binding = Some(binding);
+    }
+
+    pub(crate) fn ask_sign_in(&mut self) {
+        self.asked = true;
+    }
+
+    pub(crate) fn asked_sign_in(&self) -> bool {
+        self.asked
     }
 
     /// Another transaction changed what this one read.
@@ -470,6 +488,7 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 kept: boundary.kept,
                 session: boundary.session,
                 issued: boundary.issued,
+                binding: boundary.binding,
             });
             return outcome;
         }
@@ -709,6 +728,7 @@ pub(crate) struct Undo {
     emitted: usize,
     session: Option<SessionEffect>,
     issued: bool,
+    binding: Option<Binding>,
 }
 
 impl Undo {
@@ -722,6 +742,7 @@ impl Undo {
                 emitted: boundary.outbox.len(),
                 session: boundary.session.clone(),
                 issued: boundary.issued,
+                binding: boundary.binding.clone(),
             },
             None => Undo {
                 open: false,
@@ -729,6 +750,7 @@ impl Undo {
                 emitted: 0,
                 session: None,
                 issued: false,
+                binding: None,
             },
         };
         if undo.open
@@ -768,6 +790,7 @@ impl Undo {
             boundary.outbox.truncate(self.emitted);
             boundary.session = self.session;
             boundary.issued = self.issued;
+            boundary.binding = self.binding;
         }
         outcome
     }
