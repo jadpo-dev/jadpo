@@ -47,6 +47,10 @@ pub enum Builtin {
     ApiToken,
     /// A service key as `Service.issue_key` gives it, once (area 8).
     ServiceKey,
+    /// A magic link's six-digit code (area 8, "Magic links"), text so a
+    /// leading `0` stays: what the application's own sign-in email
+    /// writes out and its own sending sends, which no entity can keep.
+    SignInCode,
     /// A PostgreSQL address, `postgres://` or `postgresql://` (area 10,
     /// "Database and other connection URLs"). Always secret: it normally
     /// carries a password.
@@ -115,7 +119,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 46] = [
+    pub const ALL: [Builtin; 47] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -155,6 +159,7 @@ impl Builtin {
         Builtin::PageSize,
         Builtin::ApiToken,
         Builtin::ServiceKey,
+        Builtin::SignInCode,
         Builtin::PostgresUrl,
         Builtin::RedisUrl,
         Builtin::SigningKey,
@@ -187,6 +192,7 @@ impl Builtin {
             Builtin::PageSize => "PageSize",
             Builtin::ApiToken => "ApiToken",
             Builtin::ServiceKey => "ServiceKey",
+            Builtin::SignInCode => "SignInCode",
             Builtin::PostgresUrl => "PostgresUrl",
             Builtin::RedisUrl => "RedisUrl",
             Builtin::SigningKey => "SigningKey",
@@ -212,6 +218,7 @@ impl Builtin {
             | Builtin::PageCursor
             | Builtin::ApiToken
             | Builtin::ServiceKey
+            | Builtin::SignInCode
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
             | Builtin::SigningKey
@@ -236,6 +243,7 @@ impl Builtin {
                 | Builtin::PageSize
                 | Builtin::ApiToken
                 | Builtin::ServiceKey
+                | Builtin::SignInCode
                 | Builtin::PostgresUrl
                 | Builtin::RedisUrl
                 | Builtin::SigningKey

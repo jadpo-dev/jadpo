@@ -75,6 +75,11 @@ pub(crate) fn no_json_form(
                 "a secret, which only a route's `Output` or the setting it is read from ever holds"
                     .to_string(),
             )),
+            Prim::SignInCode => Some((
+                found.to_string(),
+                "a sign-in code, which only the email or the sending that carries it ever holds"
+                    .to_string(),
+            )),
             Prim::PluralCount => Some((
                 found.to_string(),
                 "a message's plural count, used only as a `Message` field".to_string(),

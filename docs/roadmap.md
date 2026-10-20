@@ -1218,20 +1218,37 @@ The design is area 11 as revised on 2026-10-16, with its research in
   "Magic links (chosen in chunk 7.3b)" rows and area 16's "Chosen in
   chunk 7.3b"; area 8's question 15 (`routes` is a reserved word)
   decided as `generate_routes: false`.
-- [ ] **7.3b2 Magic links: the app's own email, its own routes, and the
-  sign-in events** `opus · high`, after 7.3b (split from 7.3b on
-  2026-10-20):
-  `magic_link: { email: }` (level 4, `MagicLinkEmail` with `pick:`,
-  `SignInCode`) and `send:` (level 5, an action taking
-  `MagicLinkRequest`, retried as a subscriber), `email.connection_required`
-  waived with `send:`; `generate_routes: false`
-  and `magic_links.request`, `.redeem` and `.redeem_code` for the app's
-  own routes, keeping every protection; the events `SignedIn`,
-  `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, the
-  refusal's reason logged; `FirstSignIn` made in tests to call
-  `on_first_sign_in:`'s action directly.
+- [x] **7.3b2 Magic links: the app's own email and sending** `opus · high`,
+  after 7.3b (split from 7.3b on 2026-10-20, and again on 2026-10-20 into
+  7.3b2, 7.3b3 and 7.3b4): `magic_link: { email: }` (level 4,
+  `MagicLinkEmail` with `pick:`, `SignInCode`) and `send:` (level 5, an
+  action taking `MagicLinkRequest`, retried as a subscriber),
+  `email.connection_required` waived with `send:`. Built: `email:`
+  checked as an `EmailMessage` of the app's whose every field besides
+  `to:` and `locale:` is picked from the built-in `MagicLinkEmail`
+  (`address`, `sign_in_link`, `code`, `expires_in`), never emitted;
+  `send:` checked as an action taking one `MagicLinkRequest` and
+  returning `Unit`, needing no email connection; `SignInCode`, six digits
+  of text, never kept, answered, put in a failure or an event, or written
+  as JSON, and `MagicLinkEmail` copied only into an email; the one
+  `jadpo.MagicLinkEmail` delivery filling and rendering the app's email
+  from the link and the code it makes, or running the app's action as a
+  subscriber's, each attempt with a new link and code. Live tests in
+  `crates/jadpo-cli/tests/magic_links.rs`, the provider faked. Choices in
+  area 8's "The app's own sign-in email and sending (chosen in chunk
+  7.3b2)" and area 16's "Chosen in chunk 7.3b2".
+- [ ] **7.3b3 Magic links: the app's own routes** `opus · high`, after
+  7.3b2 (split from 7.3b2 on 2026-10-20): `generate_routes: false` and
+  `magic_links.request`, `.redeem` and `.redeem_code` for the app's own
+  routes, keeping every protection (`SignInToken`, `MagicLinkRedeemed`,
+  `same_browser:`'s cookie on the response of the route whose action asks).
+- [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
+  on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
+  `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;
+  `FirstSignIn` made in tests to call `on_first_sign_in:`'s action
+  directly.
 - [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
-  from 5.5z), after 7.3b2 and the events of area 12: `passkey:` needs
+  from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
   `address:` rather than the principal's subject; `test_passkeys.register`
