@@ -83,15 +83,19 @@ impl Body<'_> {
         written: &str,
     ) -> (Ty, CallKind, Reach) {
         let text = Ty::Prim(Prim::PresentationText);
+        // `package` is how the code names it: `Postcodes`, or `Postcodes.v3`
+        // while two versions are held, each worded under its own key
+        // (chunk 7.1c3).
+        let code = package.split('.').next().unwrap_or(package);
         let home = jadpo_db::symbols(self.db, self.project)
             .homes
-            .get(package)
-            .and_then(|homes| homes.first())
+            .get(code)
+            .and_then(|homes| homes.iter().find(|home| home.through == package))
             .cloned();
         let scope = home
             .as_ref()
-            .filter(|home| package_of(self.db, self.project, &home.name).is_some())
-            .map(|home| home.name.clone());
+            .map(jadpo_db::PackageHome::wording_key)
+            .filter(|key| package_of(self.db, self.project, key).is_some());
         let (Some(scope), [key]) = (scope, rest) else {
             self.args_only(call);
             let span = self.span(callee);
@@ -213,7 +217,7 @@ impl Body<'_> {
         key: &str,
     ) {
         let span = self.span(callee);
-        let right = format!("{}.translations.{key}", home.code);
+        let right = format!("{}.translations.{key}", home.through);
         self.out.push(
             Diagnostic::new(
                 &rule::TRANSLATION_MESSAGE_UNKNOWN,
@@ -222,7 +226,7 @@ impl Body<'_> {
             .at(span.clone(), "a package's message")
             .reason(format!(
                 "`{}` is a package, not a domain: a library package's messages are called through its name in code, as its other names are, `{right}(...)`.",
-                home.name
+                home.wording_key()
             ))
             .next(format!("Call `{right}(...)`"))
             .edit(span, right),

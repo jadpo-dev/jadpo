@@ -134,13 +134,15 @@ impl Subjects {
 }
 
 /// The scope an owner's translations are in: the domain's name, `shared`,
-/// or a library package's folder name (`postcodes`), which no domain can
-/// share (`package.name_taken`) and which names its group in the root file.
+/// or a library package's wording key, which no domain can share
+/// (`package.name_taken`) and which names its group in the root file: its
+/// folder's name (`postcodes`), or with the version (`postcodes_v3`)
+/// while two versions are held side by side (chunk 7.1c3).
 pub fn scope_of(ownership: &Ownership) -> Option<String> {
     match ownership {
         Ownership::Domain(domain) => Some(domain.clone()),
         Ownership::Shared => Some(SHARED.to_string()),
-        Ownership::Package(home) => Some(home.name.clone()),
+        Ownership::Package(home) => Some(home.wording_key()),
         _ => None,
     }
 }
@@ -184,7 +186,7 @@ pub fn package_scopes(db: &dyn Db, project: Project) -> Vec<(String, jadpo_db::P
             && !location.test
         {
             found
-                .entry(home.name.clone())
+                .entry(home.wording_key())
                 .or_insert_with(|| home.clone());
         }
     }

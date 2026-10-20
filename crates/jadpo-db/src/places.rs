@@ -81,6 +81,19 @@ impl PackageHome {
         format!("{}.{}", self.code, self.version)
     }
 
+    /// The key the app words its text under in the root translation
+    /// files, its record and the translation commands: the folder's name,
+    /// `postcodes`, or with the version, `postcodes_v3`, while two
+    /// versions are held side by side (area 11, "Wording two versions of
+    /// a package"; chunk 7.1c3).
+    pub fn wording_key(&self) -> String {
+        if self.through == self.code {
+            self.name.clone()
+        } else {
+            format!("{}_{}", self.name, self.version)
+        }
+    }
+
     /// How a `use` line names it: `packages/postcodes` or
     /// `shared/providers/acme_couriers`.
     pub fn use_path(&self) -> String {
