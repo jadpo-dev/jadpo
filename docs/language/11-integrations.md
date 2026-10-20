@@ -1526,9 +1526,11 @@ var postcode: Postcodes.UkPostcode = attempt Postcodes.uk.parse(input.postcode) 
   key generation, 36 characters, cut to the package's `max_length:` where
   the provider allows fewer. Two callers who send the same
   `Idempotency-Key` never meet at a provider that keys by account.
-- **Retries** (question 8). `timeout:` (default 10s) and
+- **Retries** (question 8). `timeout:` (default 3s) and
   `retry: { attempts: within: }` (default 3 within 30s), exponential backoff
-  with full jitter. Only safe repeats are retried: the request never left,
+  with full jitter. The defaults' 9 seconds fit a route's 10-second default
+  deadline, so a route making one call needs no `deadline:` of its own
+  (Richard, 2026-10-20). Only safe repeats are retried: the request never left,
   the provider said it did nothing (honouring `Retry-After`), or the call
   is idempotent. The package's rate limits space calls out before the
   provider refuses them, and `max_concurrent:` caps how many run at once
@@ -6533,7 +6535,7 @@ check failed: 1 error, 9 files
 > "The late-failure warning and the deadline sum, chosen in chunk 7.5e".
 
 Each outside call can wait its `timeout:` on each of its attempts: a
-provider's operation its connection's `timeout:` (10 seconds by default)
+provider's operation its connection's `timeout:` (3 seconds by default)
 times its `retry: { attempts: }` (3), an `ai` call its own `timeout:`
 times its `attempts:` (area 21). A route's deadline covers every such
 call on the longest way through its action, those of the actions and
@@ -8342,7 +8344,7 @@ Provider calls, each choice the most conservative reading:
   server; any other address, or a connection whose address or credential
   has no value, is `misconfigured` and logged as refused, sent to nobody.
   A host holding a setting's placeholder (`{project_ref}`) isn't filled
-  yet. The call waits `timeout:` (10 seconds by default), a duration
+  yet. The call waits `timeout:` (3 seconds by default), a duration
   written out (`connection.value_invalid` otherwise). It sends `Accept`
   and `Content-Type: application/json`, `User-Agent: jadpo`, the
   credential as `Authorization`, and the key in the package's header.
@@ -9447,6 +9449,10 @@ packages and extension points, as each note says; 26 was decided then.
    *Revised 2026-10-16 (Richard):* `max_concurrent:` in `provider.jadpo`
    caps calls at once per app instance, and a connection may lower it; a
    step in doubt is resent only within the provider's key window.
+   *Revised 2026-10-20 (Richard):* `timeout:` defaults to 3s, so a call's
+   3 attempts, 9 seconds, fit a route's 10-second default deadline; at
+   10s, the checked deadline sum (`route.calls_past_deadline`) refused
+   almost every route that calls out.
 9. **How is the outbound host controlled?** *Reopened 2026-10-13;* first
    answered as derived from `base_url`. *Recommendation:* the package lists
    its live and sandbox hosts and the connection's `environment:` picks one;
@@ -9750,7 +9756,7 @@ packages and extension points, as each note says; 26 was decided then.
 | Failure conditions | Contract error responses map to declarable failures; `timed_out` to `unavailable` only with an idempotency key; unmapped is a fault (Superseded 2026-10-13: reopened as question 5.) | 2026-10-12 |
 | Idempotency keys | Supplied by the runtime: delivery key in subscribers and schedules, the client's `Idempotency-Key` or request id in routes (Revised 2026-10-16: the key sent is derived from these by hashing, per step) | 2026-10-12 |
 | Call then write | Allowed when the call comes first; writes commit after it; a failed commit retries the call with the same key; area 3's text amended (Revised 2026-10-16: up to 8 keyed changing calls, recorded and replayed) | 2026-10-12 |
-| Retry settings | `timeout:` (10s) and `retry: { attempts: within: }` (3 within 30s); backoff fixed | 2026-10-12 |
+| Retry settings | `timeout:` (10s) and `retry: { attempts: within: }` (3 within 30s); backoff fixed (Revised 2026-10-20: `timeout:` 3s, under "Default timeouts") | 2026-10-12 |
 | Outbound host | From `base_url`, HTTPS only, no redirects or proxies; a sandbox host chosen by configuration (Superseded 2026-10-13: reopened as question 9.) | 2026-10-12 |
 | Credential schemes | `CredentialScheme.bearer`, `.header`, `.basic` first (Superseded 2026-10-13: reopened as question 10.) | 2026-10-12 |
 | Webhook signatures | On the integration (`webhooks: { signature: SignatureScheme.x secret: }`), used as `authentication: StripeV2024.signature`; five-minute tolerance (Superseded 2026-10-13: reopened as question 11.) | 2026-10-12 |
@@ -9818,3 +9824,4 @@ packages and extension points, as each note says; 26 was decided then.
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
 | Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |
+| Default timeouts (Richard, 2026-10-20) | A connection's `timeout:` defaults to 3s, its attempts staying 3, so one call's 9 seconds fit a route's 10-second default deadline; `ai.generate`'s to 25s (area 21). At 10s a call could take 30 seconds, and the deadline sum refused almost every route that calls out (option A, Richard) | 2026-10-20 |

@@ -10,9 +10,10 @@ pub const DEFAULT_MAX_OUTPUT: u32 = 1_000;
 /// The most `max_output:` may be.
 pub const MOST_MAX_OUTPUT: u32 = 1_000_000;
 
-/// What `timeout:` is when a call leaves it out, in milliseconds: 60
-/// seconds.
-pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
+/// What `timeout:` is when a call leaves it out, in milliseconds: 25
+/// seconds, so `ai.generate`'s 2 attempts fit a route's longest deadline,
+/// 60 seconds (Richard, 2026-10-20).
+pub const DEFAULT_TIMEOUT_MS: u64 = 25_000;
 
 /// The longest `timeout:` may be, in milliseconds: 10 minutes.
 pub const MOST_TIMEOUT_MS: u64 = 600_000;

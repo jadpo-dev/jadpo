@@ -196,6 +196,40 @@ fn a_package_action_calls_its_own_operations_and_the_app_calls_it() {
     );
 }
 
+/// Inside its own code a package's failure has one name, the bare one it
+/// declares (`CardDeclined`): a `match` on its own operation's outcome
+/// handles it under that name, and is told of a missing arm under it
+/// (chunk 7.7e).
+#[test]
+fn a_package_matches_its_own_operations_failures_by_their_bare_names() {
+    let matched = "/// Creates the customer, giving a declined card back as a reply.\npublic action start_subscription(input: PayRequest) -> PayReply {\n    return match customers.create(input) {\n        success(reply) -> reply\n        CardDeclined -> PayReply {\n            id: input.reference\n        }\n    }\n}\n";
+    assert_eq!(
+        problems(
+            &[("start_subscription", matched)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        )
+        .into_iter()
+        .filter(|problem| problem.starts_with(HOME))
+        .collect::<Vec<_>>(),
+        Vec::<String>::new()
+    );
+    let unhandled = "/// Creates the customer.\npublic action start_subscription(input: PayRequest) -> PayReply {\n    return match customers.create(input) {\n        success(reply) -> reply\n    }\n}\n";
+    assert_eq!(
+        problems(
+            &[("start_subscription", unhandled)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        )
+        .into_iter()
+        .filter(|problem| problem.starts_with(HOME))
+        .collect::<Vec<_>>(),
+        [format!(
+            "{HOME}/actions/start_subscription.jadpo failure.outcome_missing_arm: This `match` doesn't handle `CardDeclined`"
+        )]
+    );
+}
+
 #[test]
 fn an_own_operation_that_doesnt_exist_is_named_with_the_nearest() {
     let start = START.replace("customers.create", "customers.craete");
