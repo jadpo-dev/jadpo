@@ -59,6 +59,7 @@ mod builtin;
 pub mod config;
 pub mod constant;
 pub mod email;
+pub mod embed;
 mod enums;
 pub mod files;
 pub mod fixed;

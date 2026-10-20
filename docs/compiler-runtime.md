@@ -2133,7 +2133,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
-| AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3) | same, through Workers' `fetch` |
+| AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4) | same, through Workers' `fetch` |
 | Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer hands each batch to `receiving::consume`, which answers each message (chunk 7.7c2) |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
@@ -2430,6 +2430,27 @@ record (`steps::step` with `changes: false`). The native host gives
 `jadpo dev` sets; `ai::AiFake` is in its place in every test, scripted by
 `Callee::AiFake` and read by `Callee::AiRequests` through
 `Capability::requests`.
+
+**Embeddings and recordings** (chunk 5.5v4; area 21, "Chosen in chunk
+5.5v4"). The checker reads `embedding_dimensions:` into
+`ai::AiSettings` and checks `ai.embed` and `ai.embed_all`
+(`types::body::embed`) as outside calls with three construction-style
+conditions, lowered to `Callee::Embed` with the model, timeout and the
+vector type's dimensions; the plan decodes the site to a
+`jadpo_std::embed::EmbedSite` (the vector type's JSON-table number).
+`jadpo_runtime::embed::embed` sends OpenAI's embeddings request through
+`ai::sent`, as `generate` sends its attempts, reads each vector through
+the type's codec, and keeps the answer for a rerun and as a step as
+`generate` does; on `Answer::Generated`, the `ai` fake's default, it makes
+each vector from the text's SHA-256 and `Env::seed` (`embed::seeded`).
+Recordings of a prompt's answer are records (`jadpo_db::is_prompt_recording`)
+found by `jadpo_check::prompt_recordings` and planned as
+`Plan::prompt_recordings`, each with the JSON-table numbers of the types
+its prompt's `ai.generate` sites decode into; `recorded(...)` lowers to
+`AiFakeAnswer::Recorded`, which the interpreter scripts with the answer
+`prompt_recordings::answer` fills (area 11's `recorded::filled_value`),
+and `jadpo test` runs `Executor::prompt_recording` for each as a
+`recording` test, listing stale ones as `Run::alerts`.
 
 **Webhooks as events** (chunk 7.7; area 11, "Chosen in chunk 7.7"). The
 checker reads a provider's `webhooks:` into `connections::WebhookReach`

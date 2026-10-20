@@ -126,6 +126,9 @@ pub enum Decoded {
     /// type its answer is decoded into and that type's schema, and its
     /// options.
     Generate(Box<jadpo_std::ai::GenerateSite>),
+    /// `ai.embed` or `ai.embed_all` (area 21, chunk 5.5v4): the vector type
+    /// each embedding is read as, its length, the model and the timeout.
+    Embed(Box<jadpo_std::embed::EmbedSite>),
     /// Something a later area builds, as written up to its arguments or
     /// block: `query open_todos`, `Todo.update`.
     Written(String),
@@ -821,6 +824,31 @@ impl Decoder<'_> {
                     }
                     None => Decoded::Nothing,
                 },
+                // A model asked for embeddings (chunk 5.5v4): each read as
+                // the vector type, the call's own or its list's item.
+                Callee::Embed {
+                    model,
+                    timeout_ms,
+                    all,
+                    dimensions,
+                } => {
+                    let vector = match &site.ty {
+                        TypeRef::List(item) if *all => (**item).clone(),
+                        other => other.clone(),
+                    };
+                    match self.json_type(vector) {
+                        Decoded::Json(number) => {
+                            Decoded::Embed(Box::new(jadpo_std::embed::EmbedSite {
+                                vector: number,
+                                dimensions: *dimensions,
+                                model: model.clone(),
+                                timeout_ms: *timeout_ms,
+                                all: *all,
+                            }))
+                        }
+                        _ => Decoded::Nothing,
+                    }
+                }
                 // A model's scripted answer, a value of its call's type,
                 // written as the model would send it (chunk 5.5v3).
                 Callee::AiFake {

@@ -102,6 +102,10 @@ async fn body(
                         let site = machine.generate_site(at).cloned();
                         generate(program, ctx, site.as_ref(), args, at.0).await
                     }
+                    Target::Embed => {
+                        let site = machine.embed_site(at).cloned();
+                        embed(program, ctx, site.as_ref(), args, at.0).await
+                    }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
                         schedule(program, ctx, action, at.0, caught).await
@@ -207,6 +211,7 @@ fn store<'a, 'p: 'a>(
             | Target::Files(..)
             | Target::Provider
             | Target::Generate
+            | Target::Embed
             | Target::Schedule(_)
             | Target::AdvanceClock => None,
         };
@@ -222,6 +227,7 @@ fn store<'a, 'p: 'a>(
                 | Target::Files(..)
                 | Target::Provider
                 | Target::Generate
+                | Target::Embed
                 | Target::Schedule(_)
                 | Target::AdvanceClock => "a call run as a read",
             };
@@ -495,6 +501,48 @@ async fn generate(
         .collect();
     let prompt = args.into_iter().next().unwrap_or(Value::Unit);
     match ai::generate(ctx, &ai, site, prompt, &settings).await {
+        Done::Value(value) => Ok(value),
+        Done::Broke { rule, problem } => Err(Stop::Invalid {
+            rule,
+            written: rule.word().to_string(),
+            problem,
+            name: None,
+        }),
+        Done::Failed(failure) => Err(Stop::Failed(failure)),
+        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
+    }
+}
+
+/// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` at site `at`
+/// (area 21, chunk 5.5v4): the runtime asks the model through the
+/// connection `ai:` names for each text's embedding, read as `V`; a
+/// condition it ends in is the call's, for its `attempt` to map.
+async fn embed(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    site: Option<&jadpo_std::embed::EmbedSite>,
+    args: Vec<Value>,
+    at: u32,
+) -> Result<Value, Stop> {
+    use jadpo_runtime::ai::Done;
+    let (Some(site), Some(ai)) = (site, program.ai()) else {
+        return Err(Stop::Fault(ctx.fault(
+            FaultKind::Defect("an embedding asked in a program that names no model".into()),
+            at,
+        )));
+    };
+    let settings: Vec<(u32, Value)> = jadpo_runtime::embed::settings_read(&ai, site)
+        .into_iter()
+        .filter_map(|number| {
+            let value = ctx
+                .setting(number)
+                .cloned()
+                .or_else(|| program.setting(number))?;
+            Some((number, value))
+        })
+        .collect();
+    let texts = args.into_iter().next().unwrap_or(Value::Unit);
+    match jadpo_runtime::embed::embed(ctx, &ai, site, texts, &settings).await {
         Done::Value(value) => Ok(value),
         Done::Broke { rule, problem } => Err(Stop::Invalid {
             rule,
