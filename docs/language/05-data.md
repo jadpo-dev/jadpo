@@ -1231,10 +1231,11 @@ that holds an entity, since any of them can be written:
 | Table | Holds | Behaviour |
 |---|---|---|
 | `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | Area 12, built in chunk 6.1b |
-| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, built in chunk 6.1b |
+| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure, and while a circuit breaker holds it, its connection and time held | Area 12, built in chunks 6.1b and 7.2b |
 | `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | Area 12, built in chunk 6.1b |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
 | `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | Area 12, built in chunk 6.12 |
+| `jadpo_circuit_breakers` | Each connection's circuit breaker over the deliveries beside it: its state, the run of failures, when it opened, its pauses and probe, and when its alert was raised | Area 12, built in chunk 7.2b |
 
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
@@ -2283,7 +2284,7 @@ error: No migration creates these entities' tables yet
   |
 1 | entity Note {
   |        ^^^^ no table yet
-  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for deliveries, new system table for handled deliveries, new system table for idempotency keys, new system table for operator actions, and 1 more.
+  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for idempotency keys, and 2 more.
   next: Run `jadpo migrate new initial` (agent)
   rule: migration.out_of_date
   help: docs/language/05-data.html#migration-out-of-date

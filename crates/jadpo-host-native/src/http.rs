@@ -605,6 +605,7 @@ mod tests {
                     codecs: &[],
                     validators: &[],
                     shapes: &[],
+                    coder: None,
                 },
                 failures: &[],
                 json: jadpo_runtime::JsonCodecs::NONE,

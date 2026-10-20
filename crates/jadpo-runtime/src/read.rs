@@ -88,6 +88,29 @@ pub(crate) async fn read(
     args: &[Value],
     site: u32,
 ) -> Result<Found, Interrupt> {
+    read_as(ctx, plan, json, args, site, PageCursor::Next).await
+}
+
+/// The cursor a page gives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PageCursor {
+    /// The next page's, when more follow: what a program reads.
+    Next,
+    /// Its last item's own, whether or not more follow: where a run whose
+    /// items are each a batch of their own is once an item is done, and
+    /// what that item's calls are keyed by (chunk 7.4b).
+    Last,
+}
+
+/// [`read`], its page giving the cursor `gives` says.
+pub(crate) async fn read_as(
+    ctx: &mut Ctx<'_>,
+    plan: &ReadPlan,
+    json: JsonCodecs<'_>,
+    args: &[Value],
+    site: u32,
+    gives: PageCursor,
+) -> Result<Found, Interrupt> {
     let now = ctx.now();
     let loaded = RefCell::new(Vec::new());
     let mut env = Env {
@@ -160,9 +183,10 @@ pub(crate) async fn read(
             let size = usize::try_from(env.size).unwrap_or(0);
             let more = values.len() > size;
             let items: Vec<Value> = values.into_iter().take(size).collect();
+            let given = more || gives == PageCursor::Last;
             let next = match (
                 &plan.page,
-                more,
+                given,
                 size.checked_sub(1).and_then(|last| rows.get(last)),
             ) {
                 (Some(page), true, Some(last)) => {
@@ -748,6 +772,7 @@ impl JsonCodecs<'static> {
             codecs: &[],
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         types: &[],
     };
@@ -1575,6 +1600,7 @@ mod tests {
                 codecs: &[],
                 validators: &validators,
                 shapes: &[],
+                coder: None,
             },
             types: &[],
         };

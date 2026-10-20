@@ -594,6 +594,7 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             path,
             input,
             output,
+            wire_output,
             output_at,
             changes,
             idempotent,
@@ -607,6 +608,11 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             }
             if let Some(output) = output {
                 fields.push(("output".into(), output.clone()));
+            }
+            // The answer as sent, beside the output it is decoded into
+            // (chunk 7.2c2).
+            if let Some((wire, decode)) = wire_output {
+                fields.push(("sent as".into(), format!("{wire}, decoded by {decode}")));
             }
             if let Some(at) = output_at {
                 fields.push(("output at".into(), at.clone()));
@@ -1919,6 +1925,10 @@ fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String) {
                 "Run as a test of the package, it faulted: {}.",
                 info.subject
             ),
+        ),
+        jadpo_test::Detail::Fake(info) => (
+            "its fakes don't match its calls".to_string(),
+            format!("Run as a test of the package, {}.", info.subject()),
         ),
     }
 }

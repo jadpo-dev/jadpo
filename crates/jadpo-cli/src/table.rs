@@ -397,6 +397,18 @@ pub static COMMANDS: &[Command] = &[
                 description: "Only check on every save; serve nothing",
                 values: &[],
             },
+            Flag {
+                name: "--fake",
+                value: Some("connection"),
+                description: "Fake this connection for this session",
+                values: &[],
+            },
+            Flag {
+                name: "--sandbox",
+                value: Some("operation"),
+                description: "Let this operation through to its sandbox",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -1001,6 +1013,78 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::deliveries,
+    },
+    Command {
+        name: "calls",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "Show provider calls in dev",
+        description: "Lists the provider calls `jadpo dev` made (area 17), oldest first: each \
+                      call's id, its operation, where its answer came from (generated, scripted or \
+                      sandbox), how it ended, how long it took and its request. Calls are faked \
+                      unless a connection's `development: { sandbox: }` lets them through to the \
+                      provider's sandbox. `show` prints one call in full, what was sent and what \
+                      came back, never a credential; `script` sets the next answer of an operation \
+                      `jadpo dev` fakes: one of its failures by its code, or `unavailable`, \
+                      `lost`, `in_use` or `misconfigured`. The log keeps the last 500 calls in \
+                      build/dev/, which is never committed.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list, show or script",
+                required: false,
+                values: Values::Fixed(crate::calls::ACTIONS),
+            },
+            Argument {
+                name: "call",
+                description: "The call's id for show; the operation for script",
+                required: false,
+                values: Values::Id,
+            },
+            Argument {
+                name: "answer",
+                description: "The next answer, for script",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--connection",
+                value: Some("connection"),
+                description: "List only this connection's calls",
+                values: &[],
+            },
+            Flag {
+                name: "--operation",
+                value: Some("operation"),
+                description: "List only this operation's calls",
+                values: &[],
+            },
+            Flag {
+                name: "--request",
+                value: Some("id"),
+                description: "List only the calls this request made",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See the calls the app made",
+                command: "jadpo calls",
+            },
+            Example {
+                description: "See what one call sent and what came back",
+                command: "jadpo calls show call_31",
+            },
+            Example {
+                description: "Make the next payment's card declined",
+                command: "jadpo calls script stripe.payment_intents.create card_declined",
+            },
+        ],
+        arguments_rule: &rule::CLI_CALLS_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::calls,
     },
     Command {
         name: "why",

@@ -1,0 +1,4 @@
+/// The courier's reference for a pickup.
+public type PickupId = Text {
+    max_length: 64
+}

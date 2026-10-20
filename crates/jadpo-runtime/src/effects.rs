@@ -195,8 +195,9 @@ pub enum Unanswered {
 pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
     match send(ctx, call).await? {
         Given::Value(value) => Ok(value),
-        // Only a provider's operation is answered as it was sent.
-        Given::Wire(_) => Err(Unanswered::Fault(FaultKind::Defect(
+        // Only a provider's operation is answered as it was sent, or with
+        // its generated default.
+        Given::Wire(_) | Given::Generated => Err(Unanswered::Fault(FaultKind::Defect(
             "an answer as sent where a capability's value was expected".into(),
         ))),
     }
@@ -210,11 +211,23 @@ pub enum Given {
     /// A provider's answer as it was sent, for its site to decode (area
     /// 11, "Decoding"; chunk 7.2c).
     Wire(std::rc::Rc<str>),
+    /// A provider operation's generated default, for its site to make
+    /// from the operation's output type (chunk 7.2d).
+    Generated,
 }
 
 /// [`call`], giving a provider's answer as it was sent where its driver
 /// answers so (chunk 7.2c).
 pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
+    let repeat = call.repeat;
+    answered(repeat, exchange(ctx, call).await?)
+}
+
+/// [`send`], giving the driver's answer as it classified it, for a caller
+/// that decides whether to send it again (a provider's call, chunk 7.2c2):
+/// refused inside an open transaction or with no driver, a replayed run's
+/// recorded answer, or the driver's.
+pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswered> {
     let now = ctx.now();
     // No transaction stays open while the call is out: one that has only
     // read closes, and the next store operation begins another (area 6,
@@ -233,7 +246,7 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
                 let capabilities = ctx.capabilities_mut();
                 let place = capabilities.sent(&call, crate::capability::Source::Replayed, now);
                 capabilities.ended(place, &answer, Some(0));
-                answered(call.repeat, answer)
+                Ok(answer)
             }
             Err(recorded) => {
                 ctx.capabilities_mut().refused(&call, now);
@@ -250,25 +263,30 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
         return Err(Unanswered::Failure(Box::new(crate::misconfigured())));
     };
     let began = host.monotonic_ms();
-    let place = ctx.capabilities_mut().sent(&call, driver.source(), now);
+    let place = ctx
+        .capabilities_mut()
+        .sent(&call, driver.source_of(&call), now);
     let answer = driver.call(&call).await;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     ctx.capabilities_mut().ended(place, &answer, took);
-    answered(call.repeat, answer)
+    Ok(answer)
 }
 
 /// What `answer` gives a call that may be sent again as `repeat` says.
-fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
+pub(crate) fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
     let raised = |failure: Failure| Err(Unanswered::Failure(Box::new(failure)));
     match answer {
         Answer::Value(value) => Ok(Given::Value(value)),
         Answer::Wire(text) => Ok(Given::Wire(text)),
+        Answer::Generated => Ok(Given::Generated),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
-        Answer::Unavailable => raised(crate::unavailable()),
+        Answer::Unavailable | Answer::RetryAfter(_) => raised(crate::unavailable()),
         // Sent again under its key, or a call that changes nothing, it
         // acts once: a retry is safe.
-        Answer::Unknown if repeat != Repeat::Unkeyed => raised(crate::unavailable()),
-        Answer::Unknown => raised(crate::outcome_unknown()),
+        Answer::Unknown | Answer::TimedOut if repeat != Repeat::Unkeyed => {
+            raised(crate::unavailable())
+        }
+        Answer::Unknown | Answer::TimedOut => raised(crate::outcome_unknown()),
         Answer::Misconfigured => raised(crate::misconfigured()),
     }
 }

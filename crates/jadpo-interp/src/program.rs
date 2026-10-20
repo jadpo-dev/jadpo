@@ -477,7 +477,14 @@ impl Program {
                 given: args.len(),
             });
         }
-        let host = MemoryHost::new();
+        // Every provider connection answered by its package's fake, as in
+        // a test (chunk 7.2d): nothing leaves the process.
+        let fake: std::rc::Rc<dyn jadpo_runtime::capability::Capability> =
+            std::rc::Rc::new(jadpo_runtime::fakes::ProviderFake::new());
+        let host = self.plan().providers().connections.iter().fold(
+            jadpo_runtime::capability::Faked::new(MemoryHost::new()),
+            |host, connection| host.with(&connection.name, std::rc::Rc::clone(&fake)),
+        );
         let mut ctx = Ctx::new(self.places(), &host, Env::default());
         let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));
         Ok(ran.unwrap_or_else(|_| {
@@ -499,6 +506,7 @@ impl Program {
                 codecs: &table.codecs,
                 validators: &self.prepared.validators,
                 shapes: &self.shapes,
+                coder: None,
             },
             failures: self.plan().types().failures(),
             json: self.stored_json(),
@@ -541,6 +549,7 @@ impl Program {
             codecs: &self.plan().json().codecs,
             validators: &self.prepared.validators,
             shapes: &self.shapes,
+            coder: None,
         }
     }
 
@@ -703,6 +712,15 @@ impl Executor for Program {
         self.plan().file_stores()
     }
 
+    fn provider_connections(&self) -> Vec<&str> {
+        self.plan()
+            .providers()
+            .connections
+            .iter()
+            .map(|connection| connection.name.as_str())
+            .collect()
+    }
+
     fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
         let purges = self.plan().purges();
         let at = purges.iter().position(|plan| plan.entity == entity)?;
@@ -728,5 +746,18 @@ impl Executor for Program {
         saved: &'a [Value],
     ) -> LocalFuture<'a, Outcome> {
         Box::pin(async move { drive::row(self, ctx, row, item, saved) })
+    }
+}
+
+/// A provider package's own functions run at a call's site (chunk 7.2c2).
+impl jadpo_runtime::provider::Functions for Program {
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        function: &str,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String> {
+        drive::package_function(self, ctx, function, args, at)
     }
 }

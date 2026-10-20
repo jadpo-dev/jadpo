@@ -1,4 +1,4 @@
--- 20261020T0737_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T0743_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "booking" (
@@ -12,6 +12,18 @@ CREATE TABLE "booking" (
     "language" text NOT NULL,
     CONSTRAINT "booking_pkey" PRIMARY KEY ("id")
 );
+CREATE TABLE "jadpo_circuit_breakers" (
+    "connection" text NOT NULL,
+    "state" text NOT NULL,
+    "failures" integer NOT NULL,
+    "opened_at" timestamptz(3),
+    "pauses" integer NOT NULL,
+    "probe_at" timestamptz(3),
+    "probe_id" uuid,
+    "probe_until" timestamptz(3),
+    "alerted_at" timestamptz(3),
+    CONSTRAINT "jadpo_circuit_breakers_pkey" PRIMARY KEY ("connection")
+);
 CREATE TABLE "jadpo_deliveries" (
     "id" uuid NOT NULL,
     "outbox_id" uuid NOT NULL,
@@ -22,6 +34,9 @@ CREATE TABLE "jadpo_deliveries" (
     "last_failure" jsonb,
     "last_tried_at" timestamptz(3),
     "retried_at" timestamptz(3),
+    "held_for" text,
+    "held_since" timestamptz(3),
+    "held_ms" bigint,
     CONSTRAINT "jadpo_deliveries_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "jadpo_handled_deliveries" (

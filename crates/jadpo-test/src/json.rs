@@ -93,6 +93,15 @@ fn test(order: usize, result: &TestResult) -> Json {
             Detail::Assertion(assertion) => (assertion_json(assertion), Json::Null, Json::Null),
             Detail::Failure(info) => (Json::Null, failure_json(info), Json::Null),
             Detail::Fault(info) => (Json::Null, Json::Null, fault_json(info)),
+            Detail::Fake(_) => (Json::Null, Json::Null, Json::Null),
+        };
+        let fake = match &failure.detail {
+            Detail::Fake(info) => Json::object([
+                ("operation", Json::from(&info.operation)),
+                ("scripted", Json::from(info.scripted as i64)),
+                ("called", Json::from(info.called as i64)),
+            ]),
+            _ => Json::Null,
         };
         entries.push((
             "failure".to_string(),
@@ -103,6 +112,7 @@ fn test(order: usize, result: &TestResult) -> Json {
                 ("assertion", assertion),
                 ("failure", raised),
                 ("fault", fault),
+                ("fake", fake),
                 (
                     "delivery",
                     failure.delivery.as_ref().map_or(Json::Null, |delivery| {
@@ -326,7 +336,7 @@ pub fn schema() -> Json {
             fields(&[
                 (
                     "code",
-                    "test.assertion_failed, test.unexpected_failure, test.fault or test.subscriber_failed",
+                    "test.assertion_failed, test.unexpected_failure, test.fault, test.subscriber_failed, test.fake_exhausted or test.fake_unused",
                 ),
                 ("help", "The code's entry on the language pages"),
                 ("location", "Where in the test it failed (a location)"),
@@ -341,6 +351,10 @@ pub fn schema() -> Json {
                 (
                     "fault",
                     "For a fault: kind, message, rule, at (a location), reason, next and stack (stack frames, innermost first)",
+                ),
+                (
+                    "fake",
+                    "For test.fake_exhausted and test.fake_unused: the faked operation (connection.resource.operation), how many answers its fakes: scripts and how many times it was called",
                 ),
                 (
                     "delivery",

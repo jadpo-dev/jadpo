@@ -11,12 +11,14 @@
 
 pub(crate) mod across;
 mod body;
+mod connections;
 pub(crate) mod decl;
 mod facts;
 mod formats;
 pub(crate) mod json_form;
 pub(crate) mod literal;
 mod loading;
+mod outside;
 mod recursion;
 pub(crate) mod rules;
 pub(crate) mod secrets;
@@ -33,6 +35,7 @@ pub use body::{
     call_problems, callables_of, failure_set, failure_sets, rule_callables, template_body,
     template_reads, typed_body,
 };
+pub use connections::called_connections;
 pub use decl::type_problems;
 
 /// Whether `name` is `Feature` or `FeatureCollection` (area 20), whose
@@ -45,11 +48,12 @@ pub use facts::{
     BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve, run_places,
 };
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
+pub use outside::{Outside, call_order_problems, outside_calls};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules, show as show_number};
 pub use shape::{
-    COPY_LINES, FieldsBase, Shape, WIRE_NAME, is_wire_name, looks_like_type, type_shapes,
-    variant_block,
+    COPY_LINES, DECODE, ENCODE, FieldsBase, Shape, WIRE, WIRE_NAME, is_wire_name, looks_like_type,
+    type_shapes, variant_block,
 };
 pub use signatures::{Callables, Sig, callables};
 pub use stores::{
@@ -57,6 +61,7 @@ pub use stores::{
     store_problems, store_reaches, unkept_responses, used_stores, written_stores,
 };
 pub use table::{
-    Def, EMAIL_FIELDS, FieldDef, TypeTable, TypeView, VariantDef, standard_fields, type_table,
+    Def, EMAIL_FIELDS, FieldDef, TypeTable, TypeView, VariantDef, WrittenCoding, standard_fields,
+    type_table,
 };
 pub use ty::{BASES, Prim, TIME_FORMAT, Ty, TypeRef, container_arity, shown};

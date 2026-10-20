@@ -595,7 +595,7 @@ fn keys_differ_by_caller_and_step_and_repeat_for_the_same_call() {
 /// `failed_when:` marks or a refusal, with the provider's kept as the
 /// cause; a code the call maps to nothing, or the operation doesn't
 /// declare, is a fault; a rejected credential is `misconfigured`; and a
-/// server's error on a keyed call is `unavailable`.
+/// server's error on a keyed call, every attempt, is `unavailable`.
 #[test]
 fn failures_are_mapped_by_their_codes_at_the_call() {
     let provider = FakeProvider::start();
@@ -606,7 +606,11 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
     provider.answer(409, r#"{"error": {"code": "slot_taken"}}"#);
     provider.answer(422, r#"{"error": {"code": "postcode_unserved"}}"#);
     provider.answer(401, r#"{"error": {"code": "unauthorised"}}"#);
-    provider.answer(503, "");
+    // A keyed call is sent again on a server's error while `retry:` lasts
+    // (chunk 7.2c2): three attempts by default.
+    for _ in 0..3 {
+        provider.answer(503, "");
+    }
     provider.answer(
         200,
         r#"{"ok": true, "data": {"id": "b-1", "collectAt": "soon", "window": "morning"}}"#,
@@ -880,9 +884,13 @@ action book_and_keep(postcode: AcmeCouriers.Postcode, slot: AcmeCouriers.SlotId)
 "#
             .to_string(),
         ),
-        (
-            "domains/shipping/actions/keep_then_book.jadpo",
-            r#"use app { couriers }
+    ]);
+    out
+}
+
+/// Keeps a reference, then books: the call comes after the action's first
+/// write, which `jadpo check` refuses (chunk 7.4b).
+const KEEP_THEN_BOOK: &str = r#"use app { couriers }
 use shipping/entities { Collection }
 use shipping/failures { CollectionSlotGone }
 use shipping/types { CourierRef }
@@ -907,18 +915,15 @@ action keep_then_book(reference: CourierRef, postcode: AcmeCouriers.Postcode, sl
     }
     return kept
 }
-"#
-            .to_string(),
-        ),
-    ]);
-    out
-}
+"#;
 
 /// No transaction is open while a call is out (area 6, "Outside calls
 /// hold no transaction"; 7.0c's guard, which chunk 7.4 restructures): a
 /// call before the action's first write goes out, and what the action
-/// writes after it commits; a call after a write is refused before it
-/// goes out, and the write is rolled back.
+/// writes after it commits; a call after a write is refused by `jadpo
+/// check` (chunk 7.4b), so checked code never reaches the runtime's
+/// refusal, which `capability.rs`'s tests hold to refusing it before it
+/// goes out.
 #[test]
 fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
     let provider = FakeProvider::start();
@@ -937,6 +942,18 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
         &terminal,
     );
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    // A call after a write is refused before anything runs.
+    let late = root.join("domains/shipping/actions/keep_then_book.jadpo");
+    std::fs::write(&late, KEEP_THEN_BOOK).expect("write");
+    let checked = jadpo_cli::run(&["check".to_string()], &terminal);
+    let printed = format!("{}{}", checked.stdout, checked.stderr);
+    assert_eq!(checked.code, 1, "{printed}");
+    assert!(
+        printed
+            .contains("`Collection.create` writes before the call to `couriers.bookings.create`"),
+        "{printed}"
+    );
+    std::fs::remove_file(&late).expect("remove");
     if !jadpo_test::live() {
         return;
     }
@@ -986,28 +1003,7 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
     assert_eq!(field(&collection, "reference"), &text("b-7"));
     assert_eq!(provider.requests().len(), 1);
 
-    let mut ctx = Ctx::new(program.places(), &host, env());
-    let refused = run(
-        &runtime,
-        &program,
-        &mut ctx,
-        "keep_then_book",
-        vec![text("kept-first"), text("N1"), text("am")],
-    );
-    match &refused {
-        Outcome::Fault(fault) => assert_eq!(
-            fault.kind,
-            FaultKind::CallInTransaction("couriers.bookings.create".into())
-        ),
-        other => panic!("{other:?}"),
-    }
-    assert_eq!(
-        provider.requests().len(),
-        1,
-        "the call after the write never went out"
-    );
-    assert_eq!(ctx.capabilities().calls()[0].ended, Ended::Refused);
-    // Only the first action's record was kept.
+    // The action's record was kept.
     let rows = runtime
         .block_on(jadpo_runtime::Database::query_once(
             jadpo_runtime::Host::database(host.host(), "main").expect("main"),

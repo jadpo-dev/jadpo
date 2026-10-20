@@ -1,0 +1,49 @@
+// A test never reaches the courier: every call answers through the
+// package's fake. Unscripted, a call gets the operation's generated
+// default; `fakes:` scripts the answers a test needs, in order, each a
+// value of the operation's output type or one of its failures by code.
+
+use app { couriers }
+use courier_desk/types { BookedPickup, PickupForm }
+use courier_desk/failures { PickupSlotGone }
+use shared/providers/swift_couriers
+
+test "a pickup is booked with the courier's reference" {
+    fakes: {
+        couriers.pickups.create: [
+            SwiftCouriers.Pickup {
+                id: "swift-4471"
+                collect_at: "2026-10-21T09:00:00Z"
+            }
+        ]
+    }
+    var booked: BookedPickup = attempt book_pickup(
+        PickupForm {
+            postcode: "N1 9GU"
+            slot: "am"
+        }
+    )
+    assert booked.id == "swift-4471"
+}
+
+test "a slot taken at the courier is the desk's own failure" {
+    fakes: {
+        couriers.pickups.create: [slot_taken]
+    }
+    assert book_pickup(
+        PickupForm {
+            postcode: "N1 9GU"
+            slot: "am"
+        }
+    ) fails PickupSlotGone
+}
+
+test "an unscripted booking gets the generated default" {
+    var booked: BookedPickup = attempt book_pickup(
+        PickupForm {
+            postcode: "N1 9GU"
+            slot: "pm"
+        }
+    )
+    assert booked.collect_at == clock.now
+}

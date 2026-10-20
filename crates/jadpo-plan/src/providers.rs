@@ -89,8 +89,10 @@ pub(crate) fn plan(
             address,
             credential,
             timeout_ms: connection.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+            retry: connection.retry.unwrap_or_default(),
             idempotency,
             error_code: reach.error_code.clone(),
+            sandbox: jadpo_check::connections::sandboxed(db, project, connection),
         });
         for operation in operations.of(&connection.folder) {
             if !operation.public {
@@ -130,6 +132,14 @@ pub(crate) fn plan(
                     .collect(),
                 input,
                 output,
+                // The whole answer as sent, and the package's function
+                // that turns it into the output (chunk 7.2c2).
+                decode: operation.decode.as_ref().map(|(wire, decode)| {
+                    (
+                        number(jadpo_check::graph::type_ref(&lookup, wire)),
+                        decode.as_str().to_string(),
+                    )
+                }),
                 output_at: operation.output_at.clone(),
                 failed_when: operation
                     .failed_when

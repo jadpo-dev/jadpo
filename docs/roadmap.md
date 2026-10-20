@@ -1029,19 +1029,69 @@ The design is area 11 as revised on 2026-10-16, with its research in
   after it refused (`call_in_transaction`, until 7.4); example 26 books a
   pickup. Choices in area 11's "Chosen in chunk 7.2c"; `jadpo dev` and
   `jadpo test` give a package connection no driver until 7.2d.
-- [ ] **7.2c2 Wire encodings and decoders** `opus · high`, after 7.2c:
+- [x] **7.2c2 Wire encodings and decoders** `opus · high`, after 7.2c:
   hand-written packages' `wire:` (the built-in encodings), `decode:` and
   `encode:` on fields, and `wire_output:` with `decode:` on operations,
   each package function run by the executor at the call's site; decoding
   lazily, only the fields code reads (7.2c decodes every declared field
   as the answer arrives); `timed_out:` mapped on an idempotent operation;
-  and `retry:` with its backoff.
-- [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
-  7.2c2: a generated fake per package and `fakes:` for provider
-  operations in tests; recordings and `jadpo package record`, every
-  decoder run over every recording; provider calls faked by default in
-  `jadpo dev`, with `development: { sandbox: }`; and the call log screen,
-  `jadpo calls` and `jadpo calls script`, on 7.0c's data.
+  and `retry:` with its backoff. Built: ten built-in encodings
+  (`Wire.unix_seconds` to `Wire.minor_units`, `Wire.number` flagged for
+  Richard) applied on the provider's wire only, the contract's JSON
+  everywhere else, through a codec of the field's own; a field's
+  `decode:` and `encode:` and an operation's `wire_output:` with
+  `decode:`, checked against the package's functions
+  (`package.wire_invalid`, `package.operation_invalid`) and run by the
+  interpreter at the call's site (`provider::Functions`); only the
+  top-level fields an action reads decoded, worked out per call site in
+  the plan; numbers kept as written both ways; a connection's `retry:`
+  (`attempts:`, `within:`) sending again what is safe to, with full
+  jitter and `Retry-After`; and `timed_out:` mapped on an operation safe
+  to send again, the driver telling a timeout apart. Live tests in
+  `provider_wire.rs`; the surface and `jadpo package show` give an
+  operation's answer as sent. Choices in area 11's "Chosen in chunk
+  7.2c2".
+- [x] **7.2d Fakes and the call log** `opus · high`, after 7.2c (split
+  from 7.2d Fakes, recordings and the call log on 2026-10-20): a
+  generated fake per package and `fakes:` for provider operations in
+  tests; provider calls faked by default in `jadpo dev`, with
+  `development: { sandbox: }`; and the call log screen, `jadpo calls`,
+  `jadpo calls show` and `jadpo calls script`, on 7.0c's data. Built:
+  a package's fake (`jadpo_runtime::fakes::ProviderFake`) in every
+  provider connection's place in tests, answering the operation's
+  generated default, a value of its output type keeping its rules,
+  written as the provider sends it and read back through the real
+  decoding; a test's `fakes:` scripting each operation's answers in
+  order (a value, a failure's code, or `unavailable`, `lost`, `in_use`,
+  `misconfigured`), checked against the package
+  (`semantic.fake_invalid`), a script run past `test.fake_exhausted`
+  and one with answers left `test.fake_unused`; `jadpo dev` faking every
+  provider call with no credential needed (a missing provider setting
+  gets a stand-in, and the connection stays faked with an alert naming
+  the variable), letting `development: { sandbox: }`'s operations or
+  resources through to the sandbox once its credential is set, never
+  live (`cli.dev_start_failed`), `--fake` and `--sandbox` for a session;
+  each request's line listing its calls; and the call log in
+  `build/dev/calls.jsonl`, with `jadpo calls`, `calls show` and `calls
+  script` (`cli.calls_arguments`). Example 26 books a pickup through
+  `POST /pickups`, faked in its tests and in `jadpo dev`. Choices in
+  area 11's "Chosen in chunk 7.2d". Not built: `.requests`, `jadpo
+  trace`, timelines; enum variants written through a package's name in
+  an expression (`AcmeCouriers.Window.morning`) are refused as
+  `type.not_a_value`, so a scripted value can't give an enum field yet
+  (built in 7.1e).
+- [x] **7.1e Enum values through a package's name** `opus · high` (found
+  in chunk 7.2d). Built: a package enum's value written through the
+  package, and its version while two are held
+  (`AcmeCouriers.Window.morning`, `Postcodes.v3.Round.morning`), in code,
+  constants, a test's `fakes:`, a variant built with its fields and a
+  `match` pattern, one path with a type's name through a package. Choices
+  in area 11's "Chosen in chunk 7.1e".
+- [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
+  recordings and `jadpo package record` (against a local HTTP server in
+  tests), every decoder run over every recording in `jadpo test` and the
+  publishing bar, and `jadpo dev`'s fakes answering from a package's
+  recordings, their placeholders filled.
 - [ ] **7.2e Mapping imported types to standard types** `opus · high`,
   after 7.2d and 7.1b (area 11, "Mapping imported types to standard
   types", Richard 2026-10-17): shape and name detection decoded at the
@@ -1049,12 +1099,25 @@ The design is area 11 as revised on 2026-10-16, with its research in
   scoped to the types the app's operations reach and tracked per type in
   `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
   it in the import's summary.
-- [ ] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
+- [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
   than attempted, one probe delivery is tried after a pause, and success
   releases the rest; held deliveries keep their retry budget, are shown
-  in `jadpo deliveries` and alerted.
+  in `jadpo deliveries` and alerted. Built: `jadpo_circuit_breakers` in
+  every store that keeps deliveries, and `held_for`, `held_since` and
+  `held_ms` on `jadpo_deliveries`; five delivery attempts in a row whose
+  call through a connection found its provider unavailable open its
+  breaker, and the deliveries whose action calls it (the plan's
+  `connections`, from the checker's `called_connections`) are held at
+  their claim, the attempt given back; a probe after a minute, doubling
+  after each failed one up to ten minutes, the sweep waking the delivery
+  held longest; an answer closes it and releases them all; the time held
+  not counted towards `within:`; the tick raising
+  `connection_unavailable` once per outage; `held` in `jadpo deliveries`
+  with an alert line per connection. Live tests in
+  `circuit_breaker.rs` against a local server answering `503`. Choices
+  in area 12's "When a provider keeps failing".
 - [x] **7.3 Email: templates and the capability over SMTP** `opus · high`
   (split from 7.3 Email on 2026-10-20): every `EmailMessage`'s `to:` and
   `locale:`; its `.html` and `.txt` templates in `emails/` under the strict
@@ -1131,7 +1194,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the SQL goldens show both statements. Batch items' calls and the
   compile-time order check split to 7.4b. Choices in area 6's "Outside
   calls hold no transaction" and compiler-runtime.md §2.6.
-- [ ] **7.4b Calls from a batch's items, and calls checked before writes**
+- [x] **7.4b Calls from a batch's items, and calls checked before writes**
   `opus · xhigh`, after 7.4 (split from 7.4 on 2026-10-20): when
   `each:`'s action makes outside calls, each item a batch of its own, run
   as a subscriber's delivery is, its calls first under keys derived from
@@ -1139,10 +1202,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   committed together (area 12, "How a run goes"); and a write placed
   before a later outside call a compile error naming the call it must
   follow (area 6, "Several outside calls"), so checked code never reaches
-  `call_in_transaction`. Done when a batch whose `each:` action books a
-  collection commits each item's booking with the run's position, a run
-  resumed after a crash sending a repeated item's call under its first
-  key, and `jadpo check` refuses a write before a call.
+  `call_in_transaction`. Built: `outside_calls` in the checker works out
+  which actions make outside calls and which write, through the actions
+  they call, and `data.write_before_call` (not declinable) is reported at
+  a write some way through the body runs before a call, naming the last
+  one; the plan marks an `each:` or `finished:` action that calls, and
+  the runner's `batches::calling` runs each such item as a batch of its
+  own: the run's place read on its own, the item read as a page of one
+  giving its own cursor (or a file's next row), its action run with no
+  transaction open and its calls keyed from the run and that cursor or
+  row, then the run's row locked and held to that place and the item's
+  writes, problem and next position committed together; `finished:`
+  likewise. Live tests in `batch_calls.rs` hold each call to
+  `pg_stat_activity` showing no open transaction, crash an item between
+  its call and its commit and resume it under the same key, and run
+  `jadpo check` on a write before a call; `provider_calls.rs`'s write
+  before a call is now refused by `jadpo check`. Choices in area 6's
+  "Several outside calls" and area 12's "How a run is kept".
 - [ ] **7.5 Multi-step calls** `opus · xhigh` (areas 11 and 12, decided
   2026-10-16, with the edge-case review's ten fixes): several keyed
   changing calls per action where the key survives a retry, each recorded

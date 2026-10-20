@@ -305,7 +305,8 @@ replaces, a `DELETE`). An operation of a connection whose credential is
 an OAuth grant also names the scope it needs, `scope: "calendar.events"`.
 
 Inside the package, names are bare. An app names them through the package:
-`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16). A failure's
+`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16), and an
+enum's values the same way, `AcmeCouriers.Window.morning`. A failure's
 code (`slot_taken`, from its name) is the provider's error code, read from
 the place `error_code:` names.
 
@@ -1584,7 +1585,155 @@ public type SlotTaken = Failure {
   version it was loaded at (area 6, "Outside calls hold no transaction").
   A call after the action's first write is still the fault
   `call_in_transaction`, sent to nobody, and a change made while the call
-  is out runs the action again, the call repeated under its key.
+  is out runs the action again, the call repeated under its key. Since
+  chunk 7.4b `jadpo check` refuses a write placed before a later call
+  (area 6's `data.write_before_call`), so checked code never meets the
+  fault, and an item of a batch whose `each:` action calls is a batch of
+  its own (area 12, "How a run is kept").
+
+Built in chunk 7.2c2 and checked by this checkout's `jadpo`: a
+connection's `retry:`, and `timed_out:` mapped at the call of an
+operation safe to send again. Here the courier is tried up to four times
+within 20 seconds, and a lookup it doesn't answer within five seconds
+is the shop's own `CourierUnavailable`:
+
+```jadpo check project=p72c2-retry file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+            retry: {
+                attempts: 4
+                within: 20s
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=p72c2-retry file=domains/shipping/actions/parcel_status.jadpo
+use app { couriers }
+use shipping/failures { CourierUnavailable }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, or the shop's own failure when the courier doesn't
+/// answer in time.
+action parcel_status(
+    parcel: AcmeCouriers.ParcelRef
+) fails CourierUnavailable -> AcmeCouriers.Status {
+    var tracked_parcel: AcmeCouriers.Parcel = attempt couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: parcel
+        }
+    ) {
+        timed_out: CourierUnavailable
+    }
+    return tracked_parcel.status
+}
+```
+
+```jadpo check project=p72c2-retry file=domains/shipping/failures/courier_unavailable.jadpo hidden
+/// The courier isn't answering.
+type CourierUnavailable = Failure {
+    kind: FailureKind.unavailable
+    message: "The courier isn't answering just now."
+}
+```
+
+```jadpo check project=p72c2-retry file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/status.jadpo hidden
+/// Where a parcel is, in the courier's words.
+public type Status = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: Status
+}
+```
+
+- **What is sent again.** A call that never left, or that the provider
+  said did nothing (`408`, `429`, its key still in use), whatever it
+  changes; and one that may have acted (a server's error, no answer in
+  time) only when it changes nothing or takes its package's key, sent
+  again unchanged under the same key. A change with no key that may have
+  acted is never sent again: it is `outcome_unknown`.
+- **How long it waits between.** 200 milliseconds before the second
+  attempt, doubled before each after it, each wait drawn evenly from zero
+  to that (full jitter); a provider's `Retry-After` in seconds instead,
+  where it gives one. A wait that would end after `within:` ends the
+  retrying, and the last answer stands. Each attempt is logged as a call
+  of its own.
+- **`timed_out:`** maps the runtime's `timed_out` (area 4) on a call of
+  an operation that changes nothing or is `idempotent: true`, to one of
+  the app's `unavailable` failures, with `timed_out` as its cause, once
+  every attempt has gone unanswered in time. Unmapped, a call that timed
+  out is `unavailable` where it was safe to send again, and
+  `outcome_unknown` where it wasn't; mapping it on an operation that
+  changes something with no key is `failure.unknown_mapping`.
 
 ## Decoding
 
@@ -1731,8 +1880,301 @@ public resource bookings {
 So `{"ok": true, "data": {"id": "b-1", "collectAt": "2026-10-20T09:00:00Z",
 "partOfDay": "after-noon"}}` is read as a `Booking` with `collect_at`
 and `part_of_day: SlotWindow.after_noon`, and `{"ok": false, "error": {"code":
-"slot_taken"}}` as the operation's `SlotTaken`. `wire:`, `decode:` and
-`encode:`, and `wire_output:` come with chunk 7.2c2.
+"slot_taken"}}` as the operation's `SlotTaken`.
+
+Built in chunk 7.2c2 and checked by this checkout's `jadpo`: `wire:`,
+`decode:` and `encode:` on a provider package's fields, and
+`wire_output:` with `decode:` on an operation. The built-in encodings are
+these ten:
+
+| `wire:` | On a field of | The provider sends |
+|---|---|---|
+| `Wire.unix_seconds` | `Instant` | A whole number of seconds since 1970: `1792400400` |
+| `Wire.unix_milliseconds` | `Instant` | A whole number of milliseconds since 1970 |
+| `Wire.iso_8601` | `Instant` | ISO 8601 text with any offset from UTC, `"2026-10-19T10:00:00+01:00"`; written in UTC |
+| `Wire.day_month_year` | `CalendarDate` | `"19/10/2026"` |
+| `Wire.text` | `Int`, `Decimal` | The number as text: `"3"`, `"2.50"` |
+| `Wire.number` | `Int`, `Decimal` | A JSON number, every place written kept: `2.50` |
+| `Wire.comma_separated` | A list of text, numbers or an enum's plain variants | One text, joined by commas: `"fragile,heavy"` |
+| `Wire.base64` | `Text` | The Base64 of its UTF-8 |
+| `Wire.json_text` | Anything | Its JSON, inside a string |
+| `Wire.minor_units` | `Money` whose type fixes its `currency:` | A whole number of the currency's minor units: `1250` |
+
+A field's own pair of functions is for anything else: `decode:` takes the
+value as the provider sends it and gives the field's type, failing when
+it can't, and `encode:` takes the field's type back without failing.
+Both are in the package's own `libraries/`, so they may be internal:
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel.jadpo
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: Status
+    collect_at: CollectionTime {
+        wire: Wire.unix_seconds
+        wire_name: "collectAt"
+    }
+    weight: Weight {
+        wire: Wire.number
+    }
+    price: ParcelPrice {
+        wire: Wire.minor_units
+    }
+    slot: SlotWindow {
+        decode: courier_windows.parse_window
+        encode: courier_windows.format_window
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/courier_windows.jadpo
+/// The courier's collection windows, which it writes as "AM" and "PM".
+library courier_windows {
+    /// The window the courier's code names.
+    function parse_window(code: WindowCode) fails WindowUnknown -> SlotWindow {
+        if (code == "AM") {
+            return SlotWindow.morning
+        }
+        if (code == "PM") {
+            return SlotWindow.afternoon
+        }
+        reject WindowUnknown
+    }
+
+    /// The courier's code for a window.
+    function format_window(pickup_window: SlotWindow) -> WindowCode {
+        if (pickup_window == SlotWindow.morning) {
+            return "AM"
+        }
+        return "PM"
+    }
+}
+```
+
+An operation's `wire_output:` is the whole answer as sent, read from
+inside `output_at:`, and its `decode:` turns it into `output:`:
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/resources/tracking.jadpo
+public resource tracking {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}/tracking"
+        input: ParcelLookup
+        wire_output: TrackingTable
+        output: List<TrackingEvent>
+        decode: tracking_sheets.to_events
+        output_at: "data"
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/tracking_sheets.jadpo
+/// The courier's tracking history, as a list of where a parcel was seen.
+library tracking_sheets {
+    /// Each sighting as an event.
+    function to_events(history_sheet: TrackingTable) -> List<TrackingEvent> {
+        return list.map(
+            history_sheet.sightings,
+            sighting -> TrackingEvent {
+                hub: sighting.hub
+            }
+        )
+    }
+}
+```
+
+An action reading one field of an answer decodes that field alone, so
+`{"id": "p-1", "status": "held", "collectAt": "soon", "slot": "NOON"}` is
+read for its `status` though its time and its window would never decode:
+
+```jadpo check project=p72c2-wire file=domains/shipping/actions/parcel_status.jadpo
+use app { couriers }
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+action parcel_status(parcel: AcmeCouriers.ParcelRef) -> AcmeCouriers.Status {
+    var tracked_parcel: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: parcel
+        }
+    )
+    return tracked_parcel.status
+}
+```
+
+```jadpo check project=p72c2-wire file=domains/shipping/actions/parcel_history.jadpo hidden
+use app { couriers }
+use shared/providers/acme_couriers
+
+/// Where a parcel has been.
+action parcel_history(parcel: AcmeCouriers.ParcelRef) -> List<AcmeCouriers.TrackingEvent> {
+    return couriers.tracking.get(
+        AcmeCouriers.ParcelLookup {
+            id: parcel
+        }
+    )
+}
+```
+
+```jadpo check project=p72c2-wire file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/status.jadpo hidden
+/// Where a parcel is, in the courier's words.
+public type Status = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/collection_time.jadpo hidden
+/// When a parcel is collected.
+public type CollectionTime = Instant {}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/weight.jadpo hidden
+/// A parcel's weight in kilograms.
+public type Weight = Decimal {
+    scale: 2
+    min: 0.0
+    max: 1000.0
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel_price.jadpo hidden
+/// What sending a parcel costs, in pounds.
+public type ParcelPrice = Money {
+    currency: Currency.gbp
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/slot_window.jadpo hidden
+/// When in the day a collection comes.
+public type SlotWindow = Enum {
+    morning
+    afternoon
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/window_code.jadpo hidden
+/// A collection window as the courier writes it.
+public type WindowCode = Text {
+    max_length: 2
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/tracking_table.jadpo hidden
+/// The courier's tracking history as it sends it.
+public type TrackingTable = Object {
+    sightings: List<Scan>
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/scan.jadpo hidden
+/// One sighting as the courier sends it.
+public type Scan = Object {
+    hub: Text {
+        wire_name: "where"
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/tracking_event.jadpo hidden
+/// Where a parcel was seen.
+public type TrackingEvent = Object {
+    hub: Text
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/failures/window_unknown.jadpo hidden
+/// A collection window this package doesn't know.
+type WindowUnknown = Failure {
+    kind: FailureKind.invalid_value
+    message: "The courier named a collection window this package doesn't know."
+}
+```
+
+- **Where they apply.** On the provider's wire: an operation's input,
+  its answer and, with chunk 7.6, its webhooks. Everywhere else, a
+  `json.write`, a route's answer or an event's payload, the field is
+  written as the contract writes its type, so the app's clients never see
+  a provider's encoding.
+- **Run at the call's site.** A field's `decode:` and `encode:`, and an
+  operation's `decode:`, run on the executor where the call is made, as
+  any function the action calls would; one that fails, or gives no value,
+  is a fault naming the operation and the field, never the value.
+- **Only the fields read.** The answer to a call held in a variable that
+  code only reads fields of (`tracked_parcel.status`) is decoded for those fields
+  alone; returning it, passing it on, or anything else uses it whole.
+  Fields further in are decoded with the field that holds them. An
+  answer decoded whole by an operation's `decode:` is read whole.
 
 ## What package code may do
 
@@ -2482,6 +2924,158 @@ recommends.
   This changes area 17's hashing of text for call payloads in development
   only; production keeps area 16's spans with no values.
 
+> **Built (chunk 7.2d)**, but for recordings (chunk 7.2d2), `jadpo trace`
+> and the timelines: every provider call `jadpo dev` makes is answered by
+> the package's fake, with what `jadpo calls script` scripted or else the
+> operation's generated default ("Tests and fakes"), and a provider
+> connection's setting that nothing gives (its credential, environment or
+> address) gets a stand-in, so the app starts with no credential set.
+> `development: { sandbox: }` names operations, `resource.operation`, or
+> whole resources, checked against the package (`connection.value_invalid`):
+
+```jadpo check project=e72d-development file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e72d-development file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e72d-development file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e72d-development file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e72d-development file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+            development: {
+                sandbox: [bookings.create]
+            }
+        }
+    }
+}
+```
+
+> They go to the sandbox once its credential is set; until then the
+> connection stays faked and `jadpo dev` names the variable to set. A
+> connection whose environment is `live` stops `jadpo dev` starting, or a
+> save reloading, with `cli.dev_start_failed`. `--sandbox
+> couriers.pickups.create` (or a resource) and `--fake couriers` change one
+> session. Each request's line lists its calls, and `jadpo calls` lists
+> them all (area 17):
+>
+> ```text
+> jadpo dev, started 07:34:33
+> listening on http://localhost:3918
+>     routes     2 routes
+>     settings   2 checked
+>     providers  couriers faked
+> serving: saves reload, press ctrl-c to quit
+> req_58d4  POST /pickups                      201   9 ms   127.0.0.1
+>   └─ couriers.pickups.create · generated · answered
+> req_9588  POST /pickups                      409 pickup_slot_gone   1 ms   127.0.0.1
+>   └─ couriers.pickups.create · scripted · slot_taken
+> ```
+>
+> The choices are in "Chosen in chunk 7.2d" below.
+
 ## Compile time
 
 Provider descriptions are large. Sizes checked on 2026-10-13 by
@@ -2519,6 +3113,12 @@ test "a taken slot is reported" {
     ...
 }
 ```
+
+> **Built (chunk 7.2d)**, as area 13's "Fakes for integrations" shows:
+> the test host gives one fake in every provider connection's place, and
+> `fakes:` scripts each operation's answers in order. Keeping keys,
+> `lost` and `in_use` as several changing calls use them, crash-point
+> reruns, grants and the contract run come with those features.
 
 The compiler checks every scripted response against the package's types, so
 a fake cannot return a shape the provider never would; tests script the
@@ -2562,7 +3162,7 @@ example and real output under "Errors".
 | A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1c; both `hosts:` and `runs:` 7.1 |
 | A capability's connection whose package does not provide it | By `jadpo check` | 7.3c |
 | A function call or expression in a `provide` mapping | By `jadpo check` | 7.3c |
-| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d |
+| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
 | Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | Not yet on the roadmap |
@@ -3374,6 +3974,64 @@ error: `parcels.get`'s path names `{parcelId}`, which its input doesn't give
 check failed: 1 error, 6 files
 ```
 
+### `package.wire_invalid`
+
+> Built in chunk 7.2c2: a provider package's field says how it is sent
+> with `wire:`, one of the built-in encodings, or with its package's own
+> `decode:` and `encode:` functions, given together. Either is refused
+> outside a provider package, both on one field, an encoding that doesn't
+> hold the field's type or `Wire.minor_units` without the field's one
+> currency, and a function that isn't the package's or doesn't take and
+> give the right types.
+
+An encoding holds the types its provider sends that way:
+
+```jadpo check project=e72c2-wire file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/types/parcel.jadpo expect=package.wire_invalid
+/// A parcel and where it is.
+public type Parcel = Object {
+    status: Text
+    collected_on: Text {
+        wire: Wire.unix_seconds
+    }
+}
+```
+
+```text output
+error: `Wire.unix_seconds` sends an `Instant`, and `collected_on` is a `Text`
+ --> shared/providers/acme_couriers/v1/types/parcel.jadpo:5:15
+  |
+5 |         wire: Wire.unix_seconds
+  |               ^^^^^^^^^^^^^^^^^ a `Text` field
+  reason: `Wire.unix_seconds` is how a provider sends an `Instant`; a field of another type is sent as the contract writes it, in another encoding, or by the package's own `decode:` and `encode:` functions.
+  next: Name the encoding the provider sends a `Text` in, or remove `wire:` (agent)
+  rule: package.wire_invalid
+  help: docs/language/11-integrations.html#package-wire-invalid
+
+check failed: 1 error, 4 files
+```
+
 ### `package.wire_name_invalid`
 
 > Built in chunk 7.2c (area 11, decided 2026-10-20): `wire_name:` gives a
@@ -3905,6 +4563,143 @@ error: `couriers`'s credential must be a secret setting
   help: docs/language/11-integrations.html#connection-value-invalid
 
 check failed: 1 error, 6 files
+```
+
+`development: { sandbox: }` names the package's own operations and
+resources (chunk 7.2d):
+
+```jadpo check project=e72d-sandbox-unknown file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e72d-sandbox-unknown file=app.jadpo expect=connection.value_invalid
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+            development: {
+                sandbox: [bookings.creat]
+            }
+        }
+    }
+}
+```
+
+```text output
+error: `couriers`'s `sandbox:` lists `bookings.creat`, which `AcmeCouriers.v1` doesn't have
+ --> app.jadpo:8:27
+  |
+8 |                 sandbox: [bookings.creat]
+  |                           ^^^^^^^^^^^^^^ no such operation or resource
+  reason: `sandbox:` lets the package's public operations and resources through to its sandbox in `jadpo dev`; `AcmeCouriers.v1` has `bookings.create` and `bookings`.
+  next: Use `bookings.create` instead of `bookings.creat` (agent)
+  rule: connection.value_invalid
+  help: docs/language/11-integrations.html#connection-value-invalid
+
+check failed: 1 error, 12 files
 ```
 
 ### `connection.domain_not_listed`
@@ -4924,7 +5719,8 @@ side (below); the rest is still to build.
 | The OpenAPI importer (writing into `shared/providers/`, reading `x-jadpo` fields) | 7.2 |
 | Provider calls through the connection by the package driver, a package's operations checked, `output_at:`, `failed_when:`, `wire_name:`, derived idempotency keys, `domains:` enforced | 7.2c |
 | Hand-written packages' `wire:`, `decode:` and `encode:`, `wire_output:`, lazy decoding, `retry:` | 7.2c2 |
-| Generated fakes, recordings checked by decoders, `jadpo package record`, provider calls faked in `jadpo dev`, `jadpo calls` | 7.2d |
+| Generated fakes, `fakes:` in tests, provider calls faked in `jadpo dev` with `development: { sandbox: }`, `jadpo calls` | 7.2d |
+| Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
 | Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
@@ -5029,6 +5825,30 @@ side (below); the rest is still to build.
 > "Connection errors"; the choices are in "Chosen in chunk 7.2c" below.
 > Next: `wire:`, `decode:` and `encode:`, `wire_output:` and `retry:`
 > (chunk 7.2c2).
+
+> **Built (chunk 7.2c2).** Wire encodings and decoders, under "Decoding":
+> the ten built-in encodings a provider package's field names with
+> `wire:`, its own `decode:` and `encode:` functions, and an operation's
+> `wire_output:` decoded whole by its `decode:`, each package function run
+> by the executor at the call's site; an answer decoded only for the
+> fields its action reads; and, under "Calling", a connection's `retry:`
+> with its backoff, and `timed_out:` mapped at the call of an operation
+> safe to send again. The error is `package.wire_invalid` under "Package
+> errors"; the choices are in "Chosen in chunk 7.2c2" below, with one
+> flagged for Richard (`Wire.number`).
+
+> **Built (chunk 7.2d).** A package's fake in tests and `jadpo dev`,
+> under "Tests and fakes", "Provider calls in development" and area 13's
+> "Fakes for integrations": every provider call answered with the
+> operation's generated default, read back through its real decoding,
+> unless a test's `fakes:` or `jadpo calls script` scripts it;
+> `development: { sandbox: }` letting named operations through to the
+> sandbox, never live; and the call log, `jadpo calls`, `calls show` and
+> `calls script` (area 17). The errors are area 13's
+> `semantic.fake_invalid`, `test.fake_exhausted` and `test.fake_unused`,
+> and `connection.value_invalid` for a `sandbox:` name the package
+> doesn't have; the choices are in "Chosen in chunk 7.2d" below. Next:
+> recordings and `jadpo package record` (chunk 7.2d2).
 
 ### Chosen in chunk 7.1
 
@@ -5286,7 +6106,8 @@ What the pages leave to the build, each the most conservative reading:
   and `outbound:`, and each setting its package declares; anything else is
   `connection.key_invalid`, with the nearest key. This chunk reads the
   first five and the settings; the rest are read with the chunks that use
-  them (7.2c, 7.2d, 7.6 and services), as 7.1 did for `provider.jadpo`.
+  them (7.2c, 7.2d, 7.6 and services), as 7.1 did for `provider.jadpo`;
+  chunk 7.2c read `timeout:` and chunk 7.2d `development:`.
   Driver connections' keys are unchanged.
 - **What a package needs.** `domains:` always, a list of the app's
   domains by name, each once and at least one (question 18).
@@ -5603,7 +6424,7 @@ Provider calls, each choice the most conservative reading:
   `unavailable`. `reused:` is a code like any other, so a key sent with a
   different request is a fault. The dev and test hosts still give a
   package's connection no driver, so a call there is refused, until
-  chunk 7.2d's fakes and `development: { sandbox: }`.
+  chunk 7.2d's fakes and `development: { sandbox: }`, since built.
 - **The answer** is kept as sent on a recording, and decoded again by the
   build that replays it. It is read from `output_at:` (nothing there is a
   fault) with its output type's codec, every field it declares decoded as
@@ -5622,6 +6443,187 @@ Provider calls, each choice the most conservative reading:
 - **A package's object types are built through its name**,
   `AcmeCouriers.CreateBooking { ... }`, as its other types are written;
   before this chunk such a value was checked as nothing.
+
+### Chosen in chunk 7.2c2
+
+Wire encodings, decoders and retries, each choice the most conservative
+reading:
+
+- **The built-in encodings** are ten, by these names: `unix_seconds` and
+  `unix_milliseconds` (an `Instant` as a whole number), `iso_8601` (the
+  page's "ISO dates": an `Instant` with any offset from UTC, which the
+  contract refuses, since it writes only `Z`), `day_month_year` (a
+  `CalendarDate`, the encoding areas 12 and 19 name for file rows, here
+  built for providers), `text` (an `Int` or a `Decimal` as text),
+  `comma_separated` (a list of single values), `base64` (`Text` as the
+  Base64 of its UTF-8), `json_text` (any value's JSON in a string) and
+  `minor_units` (`Money` in the one currency its type's `currency:`
+  fixes, which `Wire.minor_units` needs). *Flagged for Richard:*
+  `number`, an `Int` or a `Decimal` as a JSON number, is beyond the
+  page's list: the contract writes a `Decimal` as text and reads no
+  number for one, so without it a provider sending `2.50` could not be
+  read at all, not even by a package's own decoder. Its digits are kept as
+  written, both ways.
+- **Where they apply.** On the provider's wire only: a call's input and
+  its answer (webhooks with chunk 7.6). `json.write`, a route's answer
+  and an event's payload write the field as the contract writes its
+  type, so an app's clients never see a provider's encoding, where a
+  field's `wire_name:` (chunk 7.2c) is its spelling everywhere. In the
+  plan a field that says how it is sent has a codec of its own, holding
+  its type's contract codec and how the provider sends it.
+- **What each refuses.** `wire:` holds `Wire.<name>` naming one of the
+  ten, on a field of a type that encoding holds; outside a provider
+  package, beside `decode:` or `encode:`, or naming anything else, it is
+  `package.wire_invalid`. A value the provider sends that its encoding
+  can't read is a fault naming the operation, the field and the rule
+  (`type`, `format`, `max` for an instant past the years an `Instant`
+  holds), and a list item holding a comma, which `comma_separated` would
+  split, is the fault `comma_separated` when the call is sent.
+- **A field's own functions.** `decode:` and `encode:` come together,
+  each `library.function` in the package's own `libraries/`, internal or
+  public. `decode:` takes one value, the field as the provider sends it,
+  and gives the field's type; it may fail, which is a fault. `encode:`
+  takes the field's type and gives what `decode:` takes, and may not
+  fail. Either named but not the package's, or of another shape, is
+  `package.wire_invalid`; they count as the functions' use. That the
+  pair round-trips, and that they read every recording, is chunk 7.2d's.
+- **An operation's whole decoder.** `wire_output:` and `decode:` come
+  together, with `output:` (`package.operation_invalid` otherwise):
+  `decode:` takes the `wire_output:` type and gives the `output:` type.
+  The answer is read from `output_at:` as `wire_output:`, its own
+  fields' encodings applied, and given whole to `decode:`.
+- **Run at the call's site.** The runtime asks the executor to run each
+  package function where the call is made (`provider::Functions`); a
+  field decoder that fails is the problem `decode` on that field, and an
+  operation's decoder that fails names how it ended (its failure's code
+  or its fault's classification), never a value.
+- **Only the fields read.** Worked out per call site from its action's
+  body: when the call's value, or its `attempt`'s, is a variable's and
+  every use of that variable is a field read, only those top-level fields
+  are decoded and checked; the others hold `none`, which no code can
+  read. Fields inside a read field are decoded with it. Rules across the
+  type's fields are checked only when every field is read. An operation
+  decoded whole is read whole.
+- **Numbers as written.** An answer is parsed with Jadpo's own reader
+  (chunk 5.8c), so a number keeps the digits the provider wrote and an
+  answer naming a member twice isn't JSON; a request's body and query
+  are written with each number's digits as the input's codec wrote them.
+- **`retry:`** takes `attempts:`, 1 to 10, and `within:`, a duration up
+  to 5 minutes, each defaulting to 3 and 30 seconds;
+  `connection.value_invalid` otherwise. A call is sent again when it
+  never left or the provider said it did nothing (`408`, `429`, its
+  `in_use:` code), whatever it changes, and when it may have acted (a
+  server's error, no whole answer, no answer in time) only if it changes
+  nothing or takes its key, under the same key. Waits are 200
+  milliseconds doubled before each further attempt, drawn evenly from
+  zero (full jitter, from the host's randomness), or a `408` or `429`'s
+  `Retry-After` in seconds; a wait past `within:` stops the retrying. A
+  host with no timer, as a test's, sends again at once and measures
+  nothing. Each attempt goes through the capability seam and is logged,
+  recorded and replayed as a call of its own.
+- **`timed_out:`** The driver tells an answer that didn't come within
+  `timeout:` apart from other missing answers (`Answer::TimedOut`). Where
+  the call's `attempt` maps `timed_out:` and the operation is safe to
+  send again, the last attempt's timeout is the runtime's `timed_out`
+  failure (kind `timed_out`, 504), mapped to the app's failure with it
+  as the cause; anywhere else it is `unavailable` or `outcome_unknown`
+  as before. `timed_out:` on an operation that changes something without
+  a key is `failure.unknown_mapping`, to a failure that isn't
+  `unavailable` `failure.mapping_kind`; an operation listing no failures
+  may still be attempted for `timed_out:` alone.
+- **What reviewers see.** The package's surface writes an operation's
+  `wire_output X decode Y`, so the answer as sent shows beside its
+  output, and `jadpo package show` gives it as "sent as"; the manifest
+  gives a field's `wire`.
+
+### Chosen in chunk 7.2d
+
+Fakes and the development call log, each the most conservative reading:
+
+- **One fake per test, in every provider connection's place.** The test
+  host gives a package's fake (`jadpo_runtime::fakes::ProviderFake`) for
+  each connection to a provider package, so a subscriber's call between
+  the test's steps answers from the same script. An unscripted call
+  answers with the operation's generated default.
+- **The generated default** is the value of the operation's output type a
+  provider would send, keeping its rules where a simple value can: text
+  of its least length (`example` where that fits), a number at its least,
+  the first plain variant, empty lists and maps, `null` for what is
+  optional, the invocation's clock for an instant and its date, a fresh
+  UUID. It is written as the provider sends it, its `wire_name:`
+  spellings and `output_at:` envelope included, and read back through the
+  operation's decoding, so a type whose rules no such value keeps (a
+  pattern, say) faults where it is read, naming the field and the rule,
+  and the test scripts it instead.
+- **A scripted answer** is a value of the operation's output type, written
+  and read back the same way; one of its failures, by its code; or a
+  condition: `unavailable`, `lost` (the request went and no answer came:
+  `outcome_unknown` for an unkeyed change, `unavailable` otherwise),
+  `in_use` (answered as `unavailable` until several changing calls, chunk
+  7.5) or `misconfigured`. A bare name is only a code or a condition, never
+  a constant; an operation is scripted once, with at least one answer
+  (`semantic.fake_invalid`). `fakes:` sits among the test's settings, and
+  its answers are given to the fake before the test's first statement.
+- **A script's use.** Each call of a scripted operation takes its next
+  answer; a call past the last gets the generated default and fails the
+  test as `test.fake_exhausted`, which reports in place of whatever the
+  test went on to fail with, being the first thing that went wrong. Answers
+  left fail a test that otherwise passed as `test.fake_unused`. Both name
+  the operation, at its first scripted answer. `.requests` is not built
+  yet.
+- **`jadpo dev`** gives every provider connection of the program it runs
+  now one driver: the sandbox, through the package driver, for what is
+  let through; otherwise the fake, answering what `jadpo calls script`
+  scripted, then the generated default. A provider connection's
+  credential, environment or address setting that no variable or default
+  gives gets a stand-in, so the app starts; such a connection stays faked
+  whatever `sandbox:` says, and `jadpo dev` names the variables to set.
+  Its environment set to `live` refuses to start, or to reload a save,
+  with `cli.dev_start_failed` naming the variable and `--fake`. The
+  session's `--sandbox` takes `connection.resource.operation` or
+  `connection.resource`, and `--fake` a connection, each checked
+  (`cli.dev_arguments`).
+- **`development: { sandbox: }`** takes only `sandbox:`, a list of
+  `resource.operation` and `resource` names, each once, each one of the
+  package's public operations or resources (`connection.key_invalid`,
+  `connection.value_invalid`).
+- **Scripting by hand.** `jadpo calls script <operation> <answer>` takes
+  an operation as the code calls it and one of its failures' codes or a
+  condition, checked against the project's plan; a value can't be given on
+  the command line. Each answer waits as a file of its own under
+  `build/dev/script/`, oldest first, and the call that takes it removes
+  it, so each answers one call, whichever worker makes it.
+- **The call log** is `build/dev/calls.jsonl`, one call a line: its id
+  (`call_31`, counted on from the last the log holds), when it went out,
+  its connection and operation, its source (`generated`, `scripted`,
+  `sandbox`; `recording` with chunk 7.2d2), its request's id, how long it
+  took, the request as made (method, address and body, never its headers,
+  which hold the credential) and the answer as sent or generated, and how
+  it ended with a failure's code. It keeps the last 500 calls rather than
+  timelines, which aren't built. A call `retry:` sends again (chunk
+  7.2c2) is one entry, its last attempt's, where the invocation's own log
+  keeps each attempt. Only provider calls are logged, a host's other capabilities'
+  calls (files) are not, and a delivery's or a schedule's call has no
+  request. Each request's line in `jadpo dev` lists its calls, and its
+  `--json` event gives them.
+
+### Chosen in chunk 7.1e
+
+Enum values through a package's name, each the most conservative reading:
+
+- **One path for every name through a package.** An enum's value is
+  written through its package as its type is, `AcmeCouriers.Window.morning`,
+  and through the package and its version while two are held,
+  `Postcodes.v3.Round.morning`; the version is missing or needless exactly
+  as for a type (`package.version_needed`, `package.version_unneeded`), and
+  the type must be one the package makes public. The same holds wherever a
+  value is written: in a body, a constant, a test's `fakes:`, a variant
+  built with its fields (`Postcodes.v3.Round.shared { ... }`, which before
+  this chunk took no version) and a `match` arm's pattern, whose names
+  resolution now checks as a value's; a pattern resolution refuses leaves
+  its arm's case unknown, so the `match` isn't also reported as not
+  covering it. The enum written alone, `Postcodes.Round`, is
+  `type.not_a_value` naming the enum, not the package.
 
 ### Consistency with the rest of the language
 
@@ -6156,3 +7158,4 @@ packages and extension points, as each note says; 26 was decided then.
 | A package's changelog (question 28) | `jadpo package check` writes a section per version holding the list of changes it works out from the surface, and the author adds why beneath it (Richard, as recommended, 2026-10-19 standing instruction; built with 7.1b2) | 2026-10-20 |
 | A provider field's spelling on the wire (after chunk 7.2) | A field or enum variant in a provider package may say its spelling on the wire with `wire_name:`, written only where it differs from the Jadpo name (`collectAt`, `after-noon`); the importer writes it, and the runtime reads and writes that spelling (Richard, as recommended under the 2026-10-19 standing instruction; built in 7.2c) | 2026-10-20 |
 | Wording two versions of a package (after chunk 7.1c2) | While the app holds two versions of a library package that carries translations, the app words each under a key that carries the version (`postcodes_v3: { }`), as its names do; with one version held, the key stays the folder name (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
+| `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |

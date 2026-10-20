@@ -772,8 +772,66 @@ impl Lower<'_> {
         for item in block.iter().flat_map(ast::Block::block_items) {
             match item {
                 BlockItem::Stmt(stmt) => out.push(self.stmt(&stmt)),
-                BlockItem::Member(member) => self.scan(member.syntax()),
+                BlockItem::Member(member) => {
+                    self.scan(member.syntax());
+                    out.extend(self.fakes(&member));
+                }
                 BlockItem::Elision(_) => {}
+            }
+        }
+        out
+    }
+
+    /// A test's `fakes:` (area 13; chunk 7.2d): each answer the check
+    /// read, in order, a statement scripting it, which runs before the
+    /// test's first statement.
+    fn fakes(&mut self, member: &ast::Member) -> Vec<SiteId> {
+        let mut out = Vec::new();
+        for item in member
+            .block()
+            .iter()
+            .flat_map(ast::MemberList::member_items)
+        {
+            let ast::MemberItem::Member(entry) = item else {
+                continue;
+            };
+            let Some(Expr::ListExpr(list)) = entry.value() else {
+                continue;
+            };
+            for answer in list.exprs() {
+                let Some(fact) = self.facts.fakes.get(&node_key(answer.syntax())).cloned() else {
+                    continue;
+                };
+                let stmt = self.alloc();
+                let call = self.alloc();
+                let args = if fact.answer == typed::FakeAnswer::Value {
+                    vec![Some(self.expr(&answer))]
+                } else {
+                    Vec::new()
+                };
+                self.fill(
+                    call,
+                    answer.syntax(),
+                    TypeRef::Builtin(Prim::Unit),
+                    typed::Node::Expr(typed::Expr::Call {
+                        callee: Callee::Fake {
+                            connection: fact.connection,
+                            operation: fact.operation,
+                            answer: fact.answer,
+                        },
+                        args,
+                        fallible: typed::Fallible::Never,
+                    }),
+                );
+                self.fill(
+                    stmt,
+                    answer.syntax(),
+                    TypeRef::Builtin(Prim::Unit),
+                    typed::Node::Stmt(TypedStmt::Expr {
+                        value: Some(SiteId(call as u32)),
+                    }),
+                );
+                out.push(SiteId(stmt as u32));
             }
         }
         out

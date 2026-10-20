@@ -122,6 +122,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             header,
             column,
             wire_name,
+            coding,
             section,
             copied_from,
             replaces,
@@ -134,6 +135,15 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("header", header.as_deref());
             out.set_some("column", column.as_deref());
             out.set_some("wireName", wire_name.as_deref());
+            out.set_some(
+                "wire",
+                coding.as_ref().map(|coding| match coding {
+                    crate::FieldCoding::Encoding(encoding) => format!("Wire.{encoding}"),
+                    crate::FieldCoding::Functions { decode, encode, .. } => {
+                        format!("decode {}, encode {}", name(decode), name(encode))
+                    }
+                }),
+            );
             out.set_some("section", section.map(|s| s.word()));
             out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
             out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));
@@ -307,6 +317,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "wireName",
         "A provider package's field's or variant's spelling on the wire, when not its name",
+    ),
+    (
+        "wire",
+        "How a provider package's field is sent: its built-in encoding, or the package's functions that decode and encode it",
     ),
     ("section", "A failure field's block: client or internal"),
     ("copiedFrom", "The field an include or pick line copied"),

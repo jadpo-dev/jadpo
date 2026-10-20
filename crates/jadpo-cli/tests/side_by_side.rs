@@ -235,6 +235,58 @@ fn callers_move_across_then_the_old_version_goes() {
     assert_eq!(checked.code, 0, "{}", checked.stdout);
 }
 
+// --- a package's enum values in two versions ------------------------------
+
+/// The app's own `Postcodes` at `v2` and `v3`, each with a `Round` enum,
+/// one caller on each, and a test of each that writes the enum's values
+/// through the package and its version (chunk 7.1e).
+#[test]
+fn a_package_enum_s_values_carry_the_version_and_run() {
+    let dir = tempdir::Dir::new("side-by-side-enum-7.1e");
+    let app = dir.path();
+    write(app, "app.jadpo", "application {}\n");
+    for version in ["v2", "v3"] {
+        let folder = format!("shared/providers/postcodes/{version}");
+        write(
+            app,
+            &format!("{folder}/package.jadpo"),
+            &format!(
+                "/// UK postcodes' collection rounds.\npackage Postcodes.{version} {{\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}}\n"
+            ),
+        );
+        write(
+            app,
+            &format!("{folder}/types/round.jadpo"),
+            "/// When a postcode's collections run.\npublic type Round = Enum {\n    morning\n    evening\n    /// Collected with another round.\n    shared: {\n        with: RoundName\n    }\n}\n",
+        );
+        write(
+            app,
+            &format!("{folder}/types/round_name.jadpo"),
+            "/// A round's name.\npublic type RoundName = Text {\n    max_length: 20\n}\n",
+        );
+        let action = format!("later_round_{version}");
+        write(
+            app,
+            &format!("domains/rounds/actions/{action}.jadpo"),
+            &format!(
+                "use shared/providers/postcodes\n\n/// The round after `round`.\naction {action}(round: Postcodes.{version}.Round) -> Postcodes.{version}.Round {{\n    return match round {{\n        Postcodes.{version}.Round.morning -> Postcodes.{version}.Round.evening\n        Postcodes.{version}.Round.evening -> Postcodes.{version}.Round.shared {{\n            with: \"late\"\n        }}\n        Postcodes.{version}.Round.shared -> round\n    }}\n}}\n"
+            ),
+        );
+        write(
+            app,
+            &format!("domains/rounds/actions/{action}.test.jadpo"),
+            &format!(
+                "use shared/providers/postcodes\n\ntest \"{version}'s round moves on\" {{\n    assert {action}(Postcodes.{version}.Round.morning) == Postcodes.{version}.Round.evening\n    assert {action}(Postcodes.{version}.Round.evening) == Postcodes.{version}.Round.shared {{\n        with: \"late\"\n    }}\n}}\n"
+            ),
+        );
+    }
+    let checked = jadpo(app, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let tested = jadpo(app, &["test"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+}
+
 // --- lazy loading ------------------------------------------------------------
 
 /// An installed provider package with two resources, one of which

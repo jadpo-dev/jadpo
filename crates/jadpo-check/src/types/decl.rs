@@ -1162,6 +1162,13 @@ impl Decls<'_> {
                 self.wire_name(&value, key_span, value_span, &name, "field");
                 continue;
             }
+            // How a provider package's field is sent (area 11, "Decoding";
+            // chunk 7.2c2): checked once the block is read, as a whole.
+            if field.is_some()
+                && [shape::WIRE, shape::DECODE, shape::ENCODE].contains(&key.as_str())
+            {
+                continue;
+            }
             if let Some(field) = field
                 && FIELD_SETTINGS.contains(&key.as_str())
             {
@@ -1313,7 +1320,244 @@ impl Decls<'_> {
         );
         self.inherited(&seen, &rules, parent);
         self.fixed_currencies(&written, &rules, parent);
+        if let Some(field) = field {
+            self.coding(&written, field, &rules);
+        }
         rules
+    }
+
+    /// A provider package's field's `wire:`, or its `decode:` and
+    /// `encode:` (area 11, "Decoding"; chunk 7.2c2): only in a provider
+    /// package, one way or the other, `wire:` naming a built-in encoding
+    /// that holds the field's type, and `decode:` and `encode:` each one of
+    /// the package's functions, `library.function`, given together. Whether
+    /// those functions take and give the right types is checked with the
+    /// package's operations (`crate::providers`).
+    fn coding(&mut self, written: &BTreeMap<String, ast::Member>, field: &FieldCtx, own: &Rules) {
+        let given: Vec<(&str, &ast::Member)> = [shape::WIRE, shape::DECODE, shape::ENCODE]
+            .into_iter()
+            .filter_map(|key| written.get(key).map(|member| (key, member)))
+            .collect();
+        if given.is_empty() {
+            return;
+        }
+        let name = match &field.ty {
+            Ty::Field(_, path) => path.last().cloned().unwrap_or_default(),
+            _ => String::new(),
+        };
+        let key_span = |this: &Self, member: &ast::Member| {
+            member
+                .member_key()
+                .map_or_else(|| this.span(member.syntax()), |key| this.span(key.syntax()))
+        };
+        let value_span = |this: &Self, member: &ast::Member| {
+            member
+                .value()
+                .map_or_else(|| this.span(member.syntax()), |v| this.span(v.syntax()))
+        };
+        let invalid = |message: String| Diagnostic::new(&rule::PACKAGE_WIRE_INVALID, message);
+        if !self.provider {
+            for (key, member) in given {
+                let span = key_span(self, member);
+                self.out.push(
+                    invalid(format!("`{key}` is for a provider package's fields"))
+                        .at(span, "outside a provider package")
+                        .reason(format!(
+                            "`{key}:` says how a provider sends a field, so only a provider package's types say it; the app's own types are sent as its contract writes them."
+                        ))
+                        .next(format!("Remove `{key}:`")),
+                );
+            }
+            return;
+        }
+        let wire = written.get(shape::WIRE);
+        let decode = written.get(shape::DECODE);
+        let encode = written.get(shape::ENCODE);
+        if let (Some(wire), Some(other)) = (wire, decode.or(encode)) {
+            let which = if decode.is_some() { "decode" } else { "encode" };
+            let span = key_span(self, other);
+            self.out.push(
+                invalid(format!("`{name}` gives both `wire:` and `{which}:`"))
+                    .at(span, "a second way to send it")
+                    .also(key_span(self, wire), "the first")
+                    .reason("A field is sent one way: in one of the built-in encodings its `wire:` names, or by the package's own `decode:` and `encode:` functions.")
+                    .next("Keep `wire:`, or `decode:` and `encode:`, and remove the other"),
+            );
+            return;
+        }
+        if let Some(wire) = wire {
+            self.wire_encoding(wire, &name, field, own, value_span(self, wire));
+            return;
+        }
+        for (key, member) in [(shape::DECODE, decode), (shape::ENCODE, encode)] {
+            let Some(member) = member else {
+                continue;
+            };
+            let value = member
+                .value()
+                .as_ref()
+                .map_or(Const::Other, Const::from_expr);
+            if !matches!(&value, Const::Path(names) if names.len() == 2) {
+                let span = value_span(self, member);
+                self.out.push(
+                    invalid(format!("`{key}` names one of the package's functions"))
+                        .at(span, format!("{} here", value.describe()))
+                        .reason(format!(
+                            "`{key}:` is a function in the package's own `libraries/`, written `library.function`, that the runtime runs to {} the field.",
+                            if key == shape::DECODE { "read" } else { "write" }
+                        ))
+                        .next(format!("Write `{key}: <library>.<function>`")),
+                );
+            }
+        }
+        let (missing, present) = match (decode, encode) {
+            (Some(decode), None) => ("encode", decode),
+            (None, Some(encode)) => ("decode", encode),
+            _ => return,
+        };
+        let span = key_span(self, present);
+        let declared = field.declared.to_string();
+        let given = if missing == "encode" {
+            "decode"
+        } else {
+            "encode"
+        };
+        self.out.push(
+            invalid(format!("`{name}` gives `{given}:` without `{missing}:`"))
+                .at(span, format!("no `{missing}:`"))
+                .reason("A field the package's own function decodes is encoded by its counterpart, so every value can be sent as well as read, and the two are checked to give back what they were given.")
+                .next(if missing == "encode" {
+                    format!("Add `encode: <library>.<function>`, turning a `{declared}` back into what the provider sends")
+                } else {
+                    format!("Add `decode: <library>.<function>`, turning what the provider sends into a `{declared}`")
+                }),
+        );
+    }
+
+    /// `wire: Wire.<name>`: one of the built-in encodings, holding the
+    /// field's type.
+    fn wire_encoding(
+        &mut self,
+        member: &ast::Member,
+        name: &str,
+        field: &FieldCtx,
+        own: &Rules,
+        span: Span,
+    ) {
+        use jadpo_std::provider::WireEncoding;
+        let invalid = |message: String| Diagnostic::new(&rule::PACKAGE_WIRE_INVALID, message);
+        let listed = || {
+            crate::and_list(
+                &WireEncoding::ALL
+                    .iter()
+                    .map(|encoding| format!("`Wire.{}`", encoding.name()))
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let value = member
+            .value()
+            .as_ref()
+            .map_or(Const::Other, Const::from_expr);
+        let written = match &value {
+            Const::Path(names) if names.len() == 2 && names[0] == "Wire" => names[1].clone(),
+            other => {
+                self.out.push(
+                    invalid("`wire` takes one of the built-in encodings".to_string())
+                        .at(span, format!("{} here", other.describe()))
+                        .reason(format!(
+                            "`wire:` names how the provider sends the field: {}.",
+                            listed()
+                        ))
+                        .next("Write `wire: Wire.unix_seconds`, or the encoding the provider uses"),
+                );
+                return;
+            }
+        };
+        let Some(encoding) = WireEncoding::from_name(&written) else {
+            let near = nearest(
+                &written,
+                WireEncoding::ALL.iter().map(|encoding| encoding.name()),
+            );
+            let mut problem = invalid(format!("`Wire.{written}` isn't one of the built-in encodings"))
+                .at(span.clone(), "no such encoding")
+                .reason(format!(
+                    "The built-in encodings are {}; anything else is decoded by the package's own `decode:` and `encode:` functions.",
+                    listed()
+                ));
+            problem = match near {
+                Some(near) => problem
+                    .next(format!("Use `Wire.{near}` instead"))
+                    .edit(span, format!("Wire.{near}")),
+                None => problem.next(
+                    "Name a built-in encoding, or decode the field with `decode:` and `encode:`",
+                ),
+            };
+            self.out.push(problem);
+            return;
+        };
+        let declared = field.declared.strip_nullable().clone();
+        let prim = self.table.base_prim(&declared);
+        let representation = prim.map(Prim::representation);
+        let single = |this: &Self, item: &Ty| -> bool {
+            match this.table.representation(item) {
+                Some(Prim::Text | Prim::Int | Prim::Decimal) => true,
+                _ => match item.strip_nullable() {
+                    Ty::Named(name) => matches!(
+                        this.table.def(name),
+                        Some(Def::Enum { variants }) if variants.iter().all(|v| v.fields.is_none())
+                    ),
+                    _ => false,
+                },
+            }
+        };
+        let fits = match encoding {
+            WireEncoding::UnixSeconds | WireEncoding::UnixMilliseconds | WireEncoding::Iso8601 => {
+                prim == Some(Prim::Instant)
+            }
+            WireEncoding::DayMonthYear => prim == Some(Prim::CalendarDate),
+            WireEncoding::Text | WireEncoding::Number => {
+                matches!(representation, Some(Prim::Int | Prim::Decimal))
+            }
+            WireEncoding::CommaSeparated => match &declared {
+                Ty::List(item) => single(self, item),
+                _ => false,
+            },
+            WireEncoding::Base64 => representation == Some(Prim::Text),
+            WireEncoding::JsonText => true,
+            WireEncoding::MinorUnits => prim == Some(Prim::Money),
+        };
+        let shown = field.declared.to_string();
+        if !fits {
+            self.out.push(
+                invalid(format!(
+                    "`Wire.{written}` sends {}, and `{name}` is a `{shown}`",
+                    encoding.holds()
+                ))
+                .at(span, format!("a `{shown}` field"))
+                .reason(format!(
+                    "`Wire.{written}` is how a provider sends {}; a field of another type is sent as the contract writes it, in another encoding, or by the package's own `decode:` and `encode:` functions.",
+                    encoding.holds()
+                ))
+                .next(format!("Name the encoding the provider sends a `{shown}` in, or remove `wire:`")),
+            );
+            return;
+        }
+        // An amount sent as a number of minor units carries no currency,
+        // so the field's type fixes the one it is in.
+        let currency = own.currency.is_some()
+            || self
+                .table
+                .rule_chain(&field.ty)
+                .iter()
+                .any(|(_, rules)| rules.currency.is_some());
+        if encoding == WireEncoding::MinorUnits && !currency {
+            self.out.push(
+                invalid(format!("`Wire.minor_units` needs `{name}`'s one currency"))
+                    .at(span, "no currency")
+                    .reason("An amount sent as a whole number of minor units carries no currency, so the field's type fixes the one currency it is in with `currency:`.")
+                    .next(format!("Add `currency: Currency.gbp` to `{name}`, or the currency the provider uses")),
+            );
+        }
     }
 
     /// A currency the type built on fixes already, given again as another

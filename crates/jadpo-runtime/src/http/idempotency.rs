@@ -443,6 +443,7 @@ mod tests {
             codecs: &codecs,
             validators: &[],
             shapes: &shapes,
+            coder: None,
         });
     }
 

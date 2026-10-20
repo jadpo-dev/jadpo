@@ -135,6 +135,9 @@ pub(crate) fn plan(
             // It runs no action, so reaches no tenant's records.
             tenant: TenantFrom::Nowhere,
             store: None,
+            // No action: what it calls out through is its connection
+            // (`SubscriberPlan::calls_through`; chunk 7.2b).
+            connections: Vec::new(),
             file,
             line: 1,
         })

@@ -513,6 +513,17 @@ pub enum Callee {
         connection: String,
         operation: String,
     },
+    /// One answer a test's `fakes:` scripts for a provider operation
+    /// (area 13, "Fakes for integrations"; chunk 7.2d), given to the
+    /// connection's fake before the test's first statement: a value of the
+    /// operation's output type, its call's one argument, or what the
+    /// answer names.
+    Fake {
+        connection: String,
+        /// `pickups.create`.
+        operation: String,
+        answer: FakeAnswer,
+    },
     /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
     /// the test's clock moved on.
     AdvanceClock,
@@ -557,6 +568,7 @@ impl Callee {
             | Callee::Batch(_)
             | Callee::Files { .. }
             | Callee::Provider { .. }
+            | Callee::Fake { .. }
             | Callee::AdvanceClock
             | Callee::Translation(_)
             | Callee::Prompt(_)
@@ -577,6 +589,58 @@ impl Callee {
                 | Callee::LibraryFunction(_)
                 | Callee::Schedule { .. }
         )
+    }
+}
+
+/// What a test's `fakes:` scripts a provider operation to answer (area 13;
+/// chunk 7.2d).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FakeAnswer {
+    /// A value of the operation's output type: the call's one argument.
+    Value,
+    /// One of the operation's package failures, by its code.
+    Failed(String),
+    /// What the runtime raises in the provider's place.
+    Condition(FakeCondition),
+}
+
+/// The conditions a fake can answer with besides the operation's own
+/// failures (area 11, "Tests and fakes").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FakeCondition {
+    /// It surely did nothing: the provider couldn't be reached.
+    Unavailable,
+    /// The request went and no answer came back: it may have acted.
+    Lost,
+    /// Another runner holds its key (area 12): it did nothing yet.
+    InUse,
+    /// The connection's credential or settings were refused.
+    Misconfigured,
+}
+
+impl FakeCondition {
+    pub const ALL: [FakeCondition; 4] = [
+        FakeCondition::Unavailable,
+        FakeCondition::Lost,
+        FakeCondition::InUse,
+        FakeCondition::Misconfigured,
+    ];
+
+    /// As a script writes it.
+    pub fn word(self) -> &'static str {
+        match self {
+            FakeCondition::Unavailable => "unavailable",
+            FakeCondition::Lost => "lost",
+            FakeCondition::InUse => "in_use",
+            FakeCondition::Misconfigured => "misconfigured",
+        }
+    }
+
+    /// The condition a script names, `lost`.
+    pub fn named(word: &str) -> Option<FakeCondition> {
+        FakeCondition::ALL
+            .into_iter()
+            .find(|condition| condition.word() == word)
     }
 }
 

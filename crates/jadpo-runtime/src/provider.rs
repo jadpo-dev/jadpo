@@ -28,13 +28,28 @@
 //! site decodes an answer from `output_at:` into the operation's output
 //! with its codec; one that doesn't decode is a fault naming the
 //! operation, the field and the rule, never the value.
+//!
+//! Since chunk 7.2c2 the input and the answer go through the codecs on the
+//! provider's wire ([`jadpo_value::json::Coder`]): a field in a built-in
+//! encoding, `wire: Wire.unix_seconds`, is written and read as the
+//! provider sends it, and one with its package's own `decode:` and
+//! `encode:` by those functions, which the executor runs at the call's
+//! site ([`Functions`]); an operation's `wire_output:` is read whole and
+//! turned into its output by its `decode:`. Only the fields of the answer
+//! its site reads are decoded ([`CallSite`]). A call that may be sent again
+//! is retried as its connection's `retry:` allows ([`retry_wait`]), and one
+//! safe to repeat that gets no answer in time is its site's `timed_out`
+//! failure where its `attempt` maps it.
 
 use std::fmt;
 use std::rc::Rc;
 
+use std::cell::RefCell;
+
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
-    Address, ConnectionPlan, CredentialScheme, OperationPlan, PathPart, ProviderPlan,
+    Address, CallSite, ConnectionPlan, CredentialScheme, OperationPlan, PathPart, ProviderPlan,
+    RETRY_BASE_MS, RetryPlan,
 };
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::types::FailurePlan;
@@ -159,8 +174,12 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
         // A rejected credential, and a redirect, which is never followed
         // (area 11, question 9): the connection's settings are wrong.
         300..=399 | 401 | 403 => Answer::Misconfigured,
-        // It did nothing: sending it again is safe.
-        408 | 429 => Answer::Unavailable,
+        // It did nothing: sending it again is safe, after the wait it
+        // asks for, if any (chunk 7.2c2).
+        408 | 429 => match retry_after(response) {
+            Some(millis) => Answer::RetryAfter(millis),
+            None => Answer::Unavailable,
+        },
         400..=499 => match code() {
             Some(code) if reading.in_use.as_deref() == Some(code.as_str()) => Answer::Unavailable,
             Some(code) => Answer::Failed(code),
@@ -169,6 +188,43 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
         // A server's error may come after it acted.
         _ => Answer::Unknown,
     }
+}
+
+/// The wait a refusal's `Retry-After` asks for, in milliseconds: a whole
+/// number of seconds (RFC 9110 §10.2.3); a date, which says when rather
+/// than how long, is read as no wait given.
+fn retry_after(response: &Response) -> Option<u64> {
+    let (_, value) = response
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("retry-after"))?;
+    let seconds: u64 = value.trim().parse().ok()?;
+    seconds.checked_mul(1000)
+}
+
+/// How long to wait before sending a call again after attempt `attempt`
+/// (1 for the first), with `left` milliseconds of its `retry:` left: the
+/// provider's `Retry-After` when it gave one, otherwise [`RETRY_BASE_MS`]
+/// doubled for each attempt before, drawn evenly from zero to that ceiling
+/// with `random`'s eight bytes (full jitter), or the ceiling itself without
+/// them. `None` when the wait would outlast `retry:`.
+pub fn retry_wait(
+    attempt: u32,
+    asked: Option<u64>,
+    left: u64,
+    random: Option<[u8; 8]>,
+) -> Option<u64> {
+    let wait = match asked {
+        Some(asked) => asked,
+        None => {
+            let ceiling = RETRY_BASE_MS.saturating_mul(1 << attempt.saturating_sub(1).min(20));
+            match random {
+                Some(bytes) => u64::from_be_bytes(bytes) % (ceiling + 1),
+                None => ceiling,
+            }
+        }
+    };
+    (wait < left).then_some(wait)
 }
 
 /// The value at `path`, dotted from the root of `json`: object members by
@@ -297,6 +353,93 @@ impl Credentials {
 
 // --- the call -----------------------------------------------------------------
 
+/// What runs a package's own functions at a call's site (area 11,
+/// "Decoding"; chunk 7.2c2): a field's `decode:` and `encode:`, and an
+/// operation's whole-answer `decode:`, each pure. The executor, which runs
+/// every other function.
+pub trait Functions {
+    /// Runs the package's function with identity key `function` on `args`,
+    /// from the site numbered `at` in the frame on top of `ctx`: what it
+    /// gives, or a description of how it ended instead, its failure's code
+    /// or its fault, never a value.
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        function: &str,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String>;
+}
+
+/// The site a call is made from: what it reads of the answer, whether it
+/// maps `timed_out:`, and what runs the package's functions there.
+#[derive(Clone, Copy)]
+pub struct Site<'a> {
+    pub call: &'a CallSite,
+    pub functions: &'a dyn Functions,
+    /// The site's number in the frame on top of the context.
+    pub at: u32,
+}
+
+impl fmt::Debug for Site<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Site")
+            .field("call", self.call)
+            .field("at", &self.at)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The package's field decoders and encoders run at a call's site, for
+/// the codecs on the provider's wire ([`jadpo_value::json::Coder`]),
+/// keeping how the first that ended without a value ended.
+struct SiteCoder<'c, 'x> {
+    ctx: RefCell<&'c mut Ctx<'x>>,
+    functions: &'c dyn Functions,
+    at: u32,
+    ended: RefCell<Option<String>>,
+}
+
+impl fmt::Debug for SiteCoder<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SiteCoder")
+            .field("at", &self.at)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SiteCoder<'_, '_> {
+    fn run(&self, function: &str, value: Value) -> Option<Value> {
+        let mut ctx = self.ctx.borrow_mut();
+        match self
+            .functions
+            .function(&mut ctx, function, vec![value], self.at)
+        {
+            Ok(value) => Some(value),
+            Err(how) => {
+                self.ended.borrow_mut().get_or_insert(how);
+                None
+            }
+        }
+    }
+}
+
+impl jadpo_value::json::Coder for SiteCoder<'_, '_> {
+    fn decode(&self, function: &str, wire: Value) -> Option<Value> {
+        self.run(function, wire)
+    }
+
+    fn encode(&self, function: &str, value: Value) -> Option<Value> {
+        self.run(function, value)
+    }
+
+    fn unwritten(&self, rule: &str) {
+        self.ended
+            .borrow_mut()
+            .get_or_insert_with(|| format!("`{rule}`"));
+    }
+}
+
 /// What a provider call runs with besides its input: the program's
 /// provider plan, the codecs its operations' types are written and read
 /// with, and its failures.
@@ -341,14 +484,15 @@ pub fn settings_read(connection: &ConnectionPlan) -> Vec<u32> {
 }
 
 /// Calls operation `operation` (`bookings.create`) of connection
-/// `connection` with `input`, from `ctx`: `settings` gives the values of
-/// the settings [`settings_read`] names.
+/// `connection` with `input`, from `ctx` at `site`: `settings` gives the
+/// values of the settings [`settings_read`] names.
 pub async fn call(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     (connection, operation): (&str, &str),
     input: Option<Value>,
     settings: &[(u32, Value)],
+    site: Site<'_>,
 ) -> Done {
     let Some((plan, op)) = providers.plan.operation(connection, operation) else {
         return Done::Fault(FaultKind::Defect(format!(
@@ -369,7 +513,14 @@ pub async fn call(
         input.clone().unwrap_or(Value::Unit),
         op.repeat,
     );
-    let request = match request(ctx, providers, (plan, op, at), input.as_ref(), settings) {
+    let request = match request(
+        ctx,
+        providers,
+        (plan, op, at),
+        input.as_ref(),
+        settings,
+        site,
+    ) {
         Ok(request) => request,
         Err(Unready::Misconfigured) => {
             let now = ctx.now();
@@ -378,13 +529,118 @@ pub async fn call(
         }
         Err(Unready::Fault(kind)) => return Done::Fault(kind),
     };
-    let sent = crate::effects::send(ctx, made.with_request(request)).await;
-    match sent {
-        Ok(Given::Value(value)) => Done::Value(value),
-        Ok(Given::Wire(text)) => decode(providers, op, &name, &text),
-        Err(Unanswered::Failed(code)) => failed(providers, op, &name, &code),
-        Err(Unanswered::Failure(failure)) => Done::Failed(failure),
-        Err(Unanswered::Fault(kind)) => Done::Fault(kind),
+    // What the development call log shows of the request (chunk 7.2d).
+    let shown = ctx.host().call_log().map(|_| {
+        (
+            request.method.word(),
+            request.url.clone(),
+            request.body.clone(),
+        )
+    });
+    let made = made.with_request(request);
+    let answer = match retried(ctx, &made, plan.retry).await {
+        Ok(answer) => answer,
+        Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
+        Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+        Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+    };
+    let mut sent: Option<Rc<str>> = None;
+    // No answer in time from a call safe to send again is the site's
+    // `timed_out`, which its `attempt` maps (chunk 7.2c2).
+    let done = if answer == Answer::TimedOut && site.call.timed_out && op.repeat != Repeat::Unkeyed
+    {
+        Done::Failed(Box::new(timed_out()))
+    } else {
+        match crate::effects::answered(op.repeat, answer) {
+            Ok(Given::Value(value)) => Done::Value(value),
+            Ok(Given::Wire(text)) => {
+                let done = decode(ctx, providers, op, &name, &text, site);
+                sent = Some(text);
+                done
+            }
+            // A package's fake answering with the operation's generated
+            // default, made as the provider would send it and read back as
+            // any answer is (area 11, "Tests and fakes"; chunk 7.2d).
+            Ok(Given::Generated) => {
+                let text = crate::fakes::default_answer(ctx, providers, op);
+                let done = decode(ctx, providers, op, &name, &text, site);
+                sent = Some(text);
+                done
+            }
+            Err(Unanswered::Failed(code)) => failed(providers, op, &name, &code),
+            Err(Unanswered::Failure(failure)) => Done::Failed(failure),
+            Err(Unanswered::Fault(kind)) => Done::Fault(kind),
+        }
+    };
+    if let (Some((method, url, body)), Some(log)) = (shown, ctx.host().call_log())
+        && let Some(logged) = ctx.capabilities().calls().last()
+    {
+        log.seen(&crate::call_log::Seen {
+            connection,
+            operation,
+            request_id: ctx.request_id(),
+            at: logged.at,
+            source: logged.source,
+            took_ms: logged.took_ms,
+            method,
+            url: &url,
+            body: body.as_deref(),
+            answer: sent.as_deref(),
+            ended: &logged.ended,
+        });
+    }
+    done
+}
+
+/// What the runtime raises when a call safe to send again gets no answer
+/// within its timeout, for its site to map (area 4: `timed_out`, 504, "a
+/// dependency or deadline ran out of time"; chunk 7.2c2).
+pub fn timed_out() -> Failure {
+    let mut failure = Failure::new("runtime timed_out", "TimedOut", "timed_out");
+    failure.kind = Some("timed_out".to_string());
+    failure.status = Some(504);
+    failure
+}
+
+/// Sends `made` through the capability seam, and again while `retry`
+/// lasts when sending it again is safe (area 11, question 8; chunk
+/// 7.2c2): a call that never left or that the provider said did nothing,
+/// whatever it changes, honouring its `Retry-After`; and one that may have
+/// acted only when it changes nothing or takes its package's key, which it
+/// sends again unchanged. Each attempt is logged as the call it is. On a
+/// host with no timer, as a test's, it is sent again at once, as many
+/// times as `retry:` allows. The last attempt's answer.
+async fn retried(ctx: &mut Ctx<'_>, made: &Call, retry: RetryPlan) -> Result<Answer, Unanswered> {
+    let host = ctx.host();
+    let began = host.monotonic_ms();
+    let mut attempt = 1;
+    loop {
+        let answer = crate::effects::exchange(ctx, made.clone()).await?;
+        let asked = match &answer {
+            Answer::Unavailable => None,
+            Answer::RetryAfter(millis) => Some(*millis),
+            Answer::Unknown | Answer::TimedOut if made.repeat != Repeat::Unkeyed => None,
+            _ => return Ok(answer),
+        };
+        if attempt >= retry.attempts {
+            return Ok(answer);
+        }
+        let Some(began) = began else {
+            // No timer: nothing measures `within:` or waits.
+            attempt += 1;
+            continue;
+        };
+        let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
+        let left = retry.within_ms.saturating_sub(spent);
+        let mut random = [0u8; 8];
+        let random = host.random(&mut random).then_some(random);
+        let Some(wait) = retry_wait(attempt, asked, left, random) else {
+            return Ok(answer);
+        };
+        if wait > 0 {
+            host.sleep(wait).await;
+        }
+        attempt += 1;
     }
 }
 
@@ -395,13 +651,15 @@ enum Unready {
     Fault(FaultKind),
 }
 
-/// The request `op` sends with `input`.
+/// The request `op` sends with `input`, its fields written as the
+/// provider takes them, each field's own encoder run at `site`.
 fn request(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     (plan, op, at): (&ConnectionPlan, &OperationPlan, u32),
     input: Option<&Value>,
     settings: &[(u32, Value)],
+    site: Site<'_>,
 ) -> Result<Request, Unready> {
     let setting = |number: u32| {
         settings
@@ -434,7 +692,8 @@ fn request(
     };
     let base = sendable(&base).ok_or(Unready::Misconfigured)?;
     // The input as the package's JSON, its members by their spellings on
-    // the wire.
+    // the wire, each number as written so no place is lost (chunk 7.2c2).
+    let mut numbers = jadpo_value::json::Numbers::default();
     let mut members = match (op.input, input) {
         (Some(number), Some(value)) => {
             let Some(codec) = providers.json.codec_of(number) else {
@@ -442,9 +701,28 @@ fn request(
                     "a provider's input the plan gave no codec".into(),
                 )));
             };
-            let written = providers.json.codecs.write_value(codec, value);
-            match serde_json::from_str::<serde_json::Value>(&written) {
-                Ok(serde_json::Value::Object(members)) => members,
+            let coder = SiteCoder {
+                ctx: RefCell::new(&mut *ctx),
+                functions: site.functions,
+                at: site.at,
+                ended: RefCell::new(None),
+            };
+            let codecs = jadpo_value::json::Codecs {
+                coder: Some(&coder),
+                ..providers.json.codecs
+            };
+            let written = codecs.write_value(codec, value);
+            if let Some(how) = coder.ended.into_inner() {
+                return Err(Unready::Fault(FaultKind::Provider(format!(
+                    "`{}.{}`'s input doesn't encode: {how}",
+                    plan.name, op.name
+                ))));
+            }
+            match jadpo_value::json::parse(written.as_bytes()) {
+                Some((serde_json::Value::Object(members), written)) => {
+                    numbers = written;
+                    members
+                }
                 _ => {
                     return Err(Unready::Fault(FaultKind::Defect(
                         "a provider's input that isn't an object".into(),
@@ -459,7 +737,7 @@ fn request(
         match part {
             PathPart::Fixed(text) => url.push_str(text),
             PathPart::Field(name) => match members.remove(name) {
-                Some(value) => match plain(&value) {
+                Some(value) => match plain(&value, &numbers, name) {
                     Some(text) => url.push_str(&jadpo_value::encoding::to_url_component(&text)),
                     None => {
                         return Err(Unready::Fault(FaultKind::Defect(format!(
@@ -479,22 +757,26 @@ fn request(
     }
     let body = if op.method.reads_query() {
         let mut query = Vec::new();
-        for (name, value) in &members {
-            let name = jadpo_value::encoding::to_url_component(name);
+        for (member, value) in &members {
+            let name = jadpo_value::encoding::to_url_component(member);
+            let mut at = vec![member.clone()];
             match value {
                 serde_json::Value::Null => {}
                 serde_json::Value::Array(items) => {
-                    for item in items {
-                        if let Some(text) = plain(item).or_else(|| Some(item.to_string())) {
-                            query.push(format!(
-                                "{name}={}",
-                                jadpo_value::encoding::to_url_component(&text)
-                            ));
-                        }
+                    for (place, item) in items.iter().enumerate() {
+                        at.push(place.to_string());
+                        let text = plain_at(item, &numbers, &at)
+                            .unwrap_or_else(|| json_text(item, &numbers, &mut at));
+                        at.pop();
+                        query.push(format!(
+                            "{name}={}",
+                            jadpo_value::encoding::to_url_component(&text)
+                        ));
                     }
                 }
                 other => {
-                    let text = plain(other).unwrap_or_else(|| other.to_string());
+                    let text = plain_at(other, &numbers, &at)
+                        .unwrap_or_else(|| json_text(other, &numbers, &mut at));
                     query.push(format!(
                         "{name}={}",
                         jadpo_value::encoding::to_url_component(&text)
@@ -508,7 +790,11 @@ fn request(
         }
         None
     } else {
-        Some(serde_json::Value::Object(members).to_string())
+        Some(json_text(
+            &serde_json::Value::Object(members),
+            &numbers,
+            &mut Vec::new(),
+        ))
     };
     let mut headers = vec![
         ("Accept".to_string(), "application/json".to_string()),
@@ -571,14 +857,85 @@ fn request(
     })
 }
 
-/// A JSON value as text in a path or a query: a string as it is, a number
-/// or a flag as JSON writes it.
-fn plain(value: &serde_json::Value) -> Option<String> {
+/// The input's member `name` as text in a path: a string as it is, a
+/// number as written, a flag as JSON writes it.
+fn plain(
+    value: &serde_json::Value,
+    numbers: &jadpo_value::json::Numbers,
+    name: &str,
+) -> Option<String> {
+    plain_at(value, numbers, &[name.to_string()])
+}
+
+/// A JSON value at `at` as text in a path or a query: a string as it is, a
+/// number as the input wrote it, a flag as JSON writes it.
+fn plain_at(
+    value: &serde_json::Value,
+    numbers: &jadpo_value::json::Numbers,
+    at: &[String],
+) -> Option<String> {
     match value {
         serde_json::Value::String(text) => Some(text.clone()),
-        serde_json::Value::Number(number) => Some(number.to_string()),
+        serde_json::Value::Number(number) => Some(
+            numbers
+                .get(at)
+                .map_or_else(|| number.to_string(), str::to_string),
+        ),
         serde_json::Value::Bool(flag) => Some(flag.to_string()),
         _ => None,
+    }
+}
+
+/// `value`, standing at `at` in the input, as compact JSON, each number as
+/// the input wrote it (`2.50`, never `2.5`), members in the order held.
+fn json_text(
+    value: &serde_json::Value,
+    numbers: &jadpo_value::json::Numbers,
+    at: &mut Vec<String>,
+) -> String {
+    let mut out = String::new();
+    write_json(value, numbers, at, &mut out);
+    out
+}
+
+fn write_json(
+    value: &serde_json::Value,
+    numbers: &jadpo_value::json::Numbers,
+    at: &mut Vec<String>,
+    out: &mut String,
+) {
+    match value {
+        serde_json::Value::Number(number) => match numbers.get(at) {
+            Some(written) => out.push_str(written),
+            None => out.push_str(&number.to_string()),
+        },
+        serde_json::Value::Array(items) => {
+            out.push('[');
+            for (place, item) in items.iter().enumerate() {
+                if place > 0 {
+                    out.push(',');
+                }
+                at.push(place.to_string());
+                write_json(item, numbers, at, out);
+                at.pop();
+            }
+            out.push(']');
+        }
+        serde_json::Value::Object(members) => {
+            out.push('{');
+            for (place, (name, member)) in members.iter().enumerate() {
+                if place > 0 {
+                    out.push(',');
+                }
+                jadpo_value::json::write_string(name, out);
+                out.push(':');
+                at.push(name.clone());
+                write_json(member, numbers, at, out);
+                at.pop();
+            }
+            out.push('}');
+        }
+        other => out.push_str(&other.to_string()),
     }
 }
 
@@ -615,45 +972,83 @@ pub fn sendable(address: &str) -> Option<String> {
     (secure || loopback).then(|| address.to_string())
 }
 
-/// The value `text`, an answer as sent, holds as `op`'s output.
-fn decode(providers: &Providers<'_>, op: &OperationPlan, name: &str, text: &str) -> Done {
+/// The value `text`, an answer as sent, holds as `op`'s output, read at
+/// `site`: only the fields it reads, or, for an operation with
+/// `wire_output:`, the whole answer as sent, given to its `decode:`.
+fn decode(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    op: &OperationPlan,
+    name: &str,
+    text: &str,
+    site: Site<'_>,
+) -> Done {
     let Some(number) = op.output else {
         return Done::Value(Value::Unit);
     };
     let unreadable =
         |why: String| Done::Fault(FaultKind::Provider(format!("`{name}`'s answer {why}")));
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+    // Each number as the provider wrote it, so a decimal sent as a number
+    // loses no place (chunk 7.2c2).
+    let Some((json, numbers)) = jadpo_value::json::parse(text.as_bytes()) else {
         return unreadable("isn't JSON".to_string());
     };
-    let at = match &op.output_at {
+    let (at, numbers) = match &op.output_at {
         Some(path) => match at_path(&json, path) {
-            Some(at) => at,
+            Some(at) => {
+                let prefix: Vec<String> = path.split('.').map(str::to_string).collect();
+                (at, numbers.within(&prefix))
+            }
             None => return unreadable(format!("has nothing at `{path}`")),
         },
-        None => &json,
+        None => (&json, numbers),
     };
-    let Some(codec) = providers.json.codec_of(number) else {
+    // The answer as sent, read as `wire_output:`, then given whole to the
+    // package's `decode:` (chunk 7.2c2).
+    let read_as = op.decode.as_ref().map_or(number, |(wire, _)| *wire);
+    let Some(codec) = providers.json.codec_of(read_as) else {
         return Done::Fault(FaultKind::Defect(
             "a provider's output the plan gave no codec".into(),
         ));
     };
     let mut problems = Vec::new();
-    let read = providers.json.codecs.read(
-        codec,
-        at,
-        &jadpo_value::json::Path::default(),
-        &mut problems,
-    );
-    match (read, problems.first()) {
-        (Some(value), None) => Done::Value(value),
+    let coder = SiteCoder {
+        ctx: RefCell::new(&mut *ctx),
+        functions: site.functions,
+        at: site.at,
+        ended: RefCell::new(None),
+    };
+    let codecs = jadpo_value::json::Codecs {
+        coder: Some(&coder),
+        ..providers.json.codecs
+    };
+    let path = jadpo_value::json::Path::default().numbered(&numbers);
+    let read = match (&site.call.reads, &op.decode) {
+        (Some(reads), None) => codecs.read_fields(codec, at, &path, &mut problems, reads),
+        _ => codecs.read(codec, at, &path, &mut problems),
+    };
+    let value = match (read, problems.first()) {
+        (Some(value), None) => value,
         (_, Some(problem)) if problem.field.is_empty() => {
-            unreadable(format!("doesn't decode: `{}`", problem.rule))
+            return unreadable(format!("doesn't decode: `{}`", problem.rule));
         }
-        (_, Some(problem)) => unreadable(format!(
-            "doesn't decode: `{}` on `{}`",
-            problem.rule, problem.field
+        (_, Some(problem)) => {
+            return unreadable(format!(
+                "doesn't decode: `{}` on `{}`",
+                problem.rule, problem.field
+            ));
+        }
+        (None, None) => return unreadable("doesn't decode".to_string()),
+    };
+    let Some((_, function)) = &op.decode else {
+        return Done::Value(value);
+    };
+    match coder.run(function, value) {
+        Some(value) => Done::Value(value),
+        None => unreadable(format!(
+            "doesn't decode: {}",
+            coder.ended.into_inner().unwrap_or_default()
         )),
-        (None, None) => unreadable("doesn't decode".to_string()),
     }
 }
 
@@ -796,6 +1191,27 @@ mod tests {
         assert!(
             !shown.contains("secret") && !shown.contains("sk_live"),
             "{shown}"
+        );
+    }
+
+    /// A retry waits twice as long each time, drawn up to that ceiling,
+    /// or as long as the provider's `Retry-After` asks, and never past
+    /// the end of its `within:` (chunk 7.2c2).
+    #[test]
+    fn a_retry_waits_longer_each_time_and_never_past_its_window() {
+        assert_eq!(retry_wait(1, None, 30_000, None), Some(200));
+        assert_eq!(retry_wait(2, None, 30_000, None), Some(400));
+        assert_eq!(retry_wait(3, None, 30_000, None), Some(800));
+        let drawn = retry_wait(3, None, 30_000, Some([0xff; 8])).expect("a wait");
+        assert!(drawn <= 800, "{drawn}");
+        assert_eq!(retry_wait(1, Some(5_000), 30_000, None), Some(5_000));
+        assert_eq!(retry_wait(1, Some(40_000), 30_000, None), None);
+        assert_eq!(retry_wait(5, None, 1_000, None), None);
+        let mut refused = answer(429, "");
+        refused.headers = vec![("Retry-After".into(), "2".into())];
+        assert_eq!(
+            classify(&request(Reading::default()), &refused),
+            Answer::RetryAfter(2_000)
         );
     }
 

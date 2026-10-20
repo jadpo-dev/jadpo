@@ -58,9 +58,27 @@ pub struct SubscriberPlan {
     /// commits with them (chunk 6.6a); `None` when it does neither, as a
     /// capability's delivery, whose record alone says it was sent.
     pub store: Option<String>,
+    /// The connections to providers its action calls, itself or through
+    /// an action it calls (area 11): a delivery is held while one of
+    /// their circuit breakers is open (area 12, question 18; chunk 7.2b).
+    /// In name order.
+    pub connections: Vec<String>,
     /// Where it is written, for logs.
     pub file: String,
     pub line: u32,
+}
+
+impl SubscriberPlan {
+    /// The connections a delivery to it calls out through: its action's,
+    /// or the capability's it hands the event to.
+    pub fn calls_through(&self) -> Vec<String> {
+        match &self.target {
+            Target::Capability { connection, .. } | Target::Email { connection } => {
+                vec![connection.clone()]
+            }
+            Target::Action { .. } => self.connections.clone(),
+        }
+    }
 }
 
 /// What a delivery hands its event to (area 12; chunk 7.0c): a

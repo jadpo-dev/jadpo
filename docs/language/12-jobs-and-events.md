@@ -386,7 +386,9 @@ page per subscriber delivery.
 > below). Built in chunk 6.4b3: `json.read`'s file form and gzip read
 > with `max_unpacked_size:` ("How a file's run is kept"), the declinable
 > error for a `from:` ordered by a field that can be updated, and
-> `estimated_total` ("How a run is kept").
+> `estimated_total` ("How a run is kept"). Built in chunk 7.4b: an item
+> whose `each:` action makes outside calls a batch of its own, and
+> `finished:` the same ("How a run is kept").
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -545,6 +547,27 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   item's: the whole page is undone; one another transaction's change
   undid runs again, up to three times, and otherwise the run waits for
   the tick.
+- **Items that make outside calls** (chosen in chunk 7.4b). When
+  `each:`'s action makes outside calls, itself or through an action it
+  calls, each item is a batch of its own, as "How a run goes" decides, so
+  no call goes out while a transaction is open (area 6). The run's place
+  is read in a statement of its own, locking nothing; the item is read in
+  a snapshot (a query's page of one item, or a file's next row) that its
+  first call closes; its action runs as the system, as a subscriber's
+  delivery does; then, in the transaction its writes are in, the run's row
+  is locked and held to the position the item was read at, and the item's
+  problem, if it failed, and the run's next position commit with its
+  writes. A query's run is then at the item's own cursor, a file's after
+  its row, so a run resumed after a crash meets the same item at the same
+  place. Each call's key is derived from the run and that place (the
+  item's cursor, or where its row begins in the file), so the repeated
+  item's calls go out under the keys they were first sent with. A
+  concurrent change runs the item again, up to three times, as it would a
+  page. A `finished:` whose action makes outside calls runs the same way,
+  its calls keyed from the run, and the run's end commits with its
+  writes. An unkeyed call that may have acted (`outcome_unknown`) is the
+  item's problem, never sent again; one lost with its runner waits for
+  multi-step calls' step record, as a subscriber's does.
 - **Who runs it.** Each page's read, its items and `finished:` act as the
   system ("Background work and tenants"), and read the clock as their page
   began; each page begins at repeatable read when `each:`'s or
@@ -1950,6 +1973,64 @@ subscriber record_payment_webhook {
 }
 ```
 
+### When a provider keeps failing
+
+Jitter keeps retries from arriving together, but 5,000 deliveries calling
+a provider that is down would still each be tried ten times (question 18).
+So the outbox keeps a circuit breaker per connection: after a run of
+`unavailable` failures from one provider, the deliveries that call it are
+held rather than attempted; after a pause one of them, the probe, is
+tried, and its success releases the rest. Held deliveries keep their
+retry budget, are shown in `jadpo deliveries` and are alerted on.
+Chosen in chunk 7.2b, where the pages left it open:
+
+- **The run.** Five delivery attempts in a row whose call through the
+  connection found its provider unavailable open its breaker. An attempt
+  counts once per connection it called through, by how the last such
+  call ended: unavailable when the call surely did nothing or no answer
+  came back (a `5xx`, `408`, `429`, a timeout, a call that never left);
+  answered, ending the run, when the provider answered at all, a refusal
+  or a rejected credential included. A delivery attempt counts once
+  however many times the connection's own `retry:` sent its call (area
+  11, question 8): by how the last of them ended, so one a retry got
+  through ends the run, and five attempts of three refused sends each
+  open the breaker, not fifteen sends. Only calls to the connection's own
+  driver count, never a fake's or a recording's answer, and only calls a
+  delivery makes: a route's calls are its caller's to retry.
+- **Which deliveries.** A subscriber's, when its action calls out through
+  the connection, itself or through an action it calls (an action a
+  batch's run calls runs after the commit, not in the delivery), or when
+  it hands its event to a capability the connection fills. Each is held at
+  its claim, before it runs: `held`, not due, the attempt its claim
+  counted given back, its connection and the time it was held from kept
+  on its record.
+- **The pause and the probe.** The first pause is a minute. Once it has
+  passed, the first delivery claimed for the connection is the probe, the
+  rest still held; the tick's sweep wakes the delivery held longest to be
+  one, so a probe goes even when nothing new arrives. A probe the provider
+  answers closes the breaker and releases every delivery it held, due at
+  once; one that finds it unavailable opens it again for twice the last
+  pause, at most ten minutes. A probe whose run calls the provider no
+  more gives the probe back, and one whose worker is lost loses it when
+  its claim's lease ends. A delivery already running when the breaker
+  opened finishes, and its answer closes the breaker too.
+- **The budget.** Being held spends no attempt, and the time held doesn't
+  count towards `within:`: a delivery's `within:` counts from its event,
+  or an operator's retry, moved on by the time it was held. An operator's
+  retry gives a fresh budget, the time held included.
+- **Where it is kept.** In `jadpo_circuit_breakers` (area 5, "System
+  tables"), in every store that keeps deliveries, each store's breakers
+  holding its own deliveries; every change is one conditional statement,
+  so it holds across processes and on Workers. The sweep also releases
+  any delivery whose breaker has closed, which a release racing a hold can
+  leave.
+- **The alert.** The tick raises one alert per outage, `connection_unavailable`,
+  recorded on the breaker's row as a schedule's alerts are on its state,
+  so of several instances one raises it; it is raised again only after
+  the breaker has closed and opened again. Its log event is `{"event":
+  "delivery.alert", "alert": "connection_unavailable", "connection": …,
+  "since": …, "held": …}`, and `jadpo dev` prints it with the schedules'.
+
 ## What an operator sees
 
 Every delivery and schedule run has a state:
@@ -1958,6 +2039,7 @@ Every delivery and schedule run has a state:
 |---|---|---|
 | `pending` | Waiting to run, or waiting to retry | Cancel it |
 | `running` | A worker has it | Wait; a worker that dies loses it after its time limit |
+| `held` | Held while a provider it calls is unavailable ("When a provider keeps failing") | Wait; a probe that gets through releases it |
 | `succeeded` | Done | Nothing |
 | `failed` | Gave up, or a failure that is not retried (the dead-letter list) | Retry it once the cause is fixed, or dismiss it |
 | `outcome_unknown` | An outside call may have happened | Check with the provider, then mark it done or not done; "not done" retries it |
@@ -1970,8 +2052,11 @@ event and counts towards an alert. The screens and commands are area 14's.
 
 **`jadpo deliveries`** (area 14, question 13; chunk 6.12) lists the
 items that need an operator, `failed` and `outcome_unknown`, newest
-first, 20 a page, and `--state` those `pending`, `running`, `dismissed`
-or `cancelled`; an operator acts on one by its id, the last 8 hex digits
+first, 20 a page, and `--state` those `pending`, `running`, `held`,
+`dismissed` or `cancelled`; a connection whose circuit breaker holds
+deliveries is an alert line on the list and on the held ones, with when
+it became unavailable, how many it holds and when one is tried again
+(chunk 7.2b); an operator acts on one by its id, the last 8 hex digits
 of its UUID (random in a version 7 UUID, whose first are its time), or
 more. Chosen in chunk 6.12, where the pages left it open:
 
@@ -3484,7 +3569,9 @@ kept"). Built in chunk 6.13: the tick deleting what an operator settled,
 and the operator's log, after 30 days. Built in chunk 6.4b3: `json.read`'s
 file form, gzip read with `max_unpacked_size:`, `estimated_total`, and
 `type.batch_order_updatable` for a `from:` ordered by a field that can be
-updated, declinable.
+updated, declinable. Built in chunk 7.2b: the outbox's circuit breaker
+per connection ("When a provider keeps failing"), held deliveries in
+`jadpo deliveries`, and its alert.
 
 Not yet:
 
@@ -3492,7 +3579,7 @@ Not yet:
   with its generated fakes. Delivering events in tests after each step,
   in an order the printed seed shuffles, and retrying or giving up a
   call a fake fails, is built (area 13, "Caches and events"; chunk 6.11).
-- The circuit breaker (question 18): roadmap 7.2b. `Retry-After`, several
+- `Retry-After`, several
   changing calls in one action, polls, `receiving`, publishing outward,
   webhooks and a package's own events come with Phase 7; their errors are
   built with them.
@@ -3712,6 +3799,8 @@ Not yet:
     Held deliveries do not spend their retry budget. Shown in
     `jadpo deliveries` and alerted. Resilience4j and Polly offer the same
     pattern; built in, nobody has to remember it. *Decided 2026-10-13:* yes, as recommended.
+    Built in chunk 7.2b, its thresholds chosen there ("When a provider
+    keeps failing").
 19. **How is work over many items done: a file's rows, a large query,
     every page of a provider's list?** *Decided 2026-10-16 (Richard):* by
     batches, the one way, through explicit helpers per format and

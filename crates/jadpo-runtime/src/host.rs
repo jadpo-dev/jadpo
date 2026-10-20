@@ -279,6 +279,12 @@ pub trait Host {
         None
     }
 
+    /// The development call log (area 17; chunk 7.2d), which keeps each
+    /// provider call with its values: only `jadpo dev`'s host has one.
+    fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
+        None
+    }
+
     /// The passkey ceremonies (area 8, "Passkeys"): `None` on a host that
     /// carries no WebAuthn implementation, whose passkey routes answer
     /// `authentication_misconfigured`.
@@ -424,6 +430,10 @@ pub trait Host {
 impl<H: Host + ?Sized> Host for &H {
     fn capability(&self, connection: &str) -> Option<&dyn crate::capability::Capability> {
         (**self).capability(connection)
+    }
+
+    fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
+        (**self).call_log()
     }
 
     fn passkeys(&self) -> Option<&dyn Passkeys> {

@@ -387,6 +387,16 @@ impl Types {
         last(self.name(key))
     }
 
+    /// How the provider package's field `key` is sent, when its `wire:`
+    /// or its `decode:` and `encode:` say (area 11, "Decoding"; chunk
+    /// 7.2c2).
+    pub fn field_coding(&self, key: &Key) -> Option<&jadpo_graph::FieldCoding> {
+        match &self.node(key)?.detail {
+            Detail::Field { coding, .. } => coding.as_ref(),
+            _ => None,
+        }
+    }
+
     /// The type or entity called `name` now.
     pub fn named(&self, name: &str) -> Option<Key> {
         [Kind::Type, Kind::Entity]

@@ -26,7 +26,7 @@ use std::fmt::Write as _;
 use std::rc::Rc;
 
 use jadpo_std::Builtin;
-use jadpo_std::http::{Codec, CodecId};
+use jadpo_std::http::{Codec, CodecId, WireCoding};
 
 use crate::shape::Shape;
 use crate::{Validator, Value};
@@ -57,9 +57,34 @@ pub struct Codecs<'a> {
     pub validators: &'a [Validator],
     /// The plan's shapes, by number.
     pub shapes: &'a [Shape],
+    /// On a provider's wire (area 11, "Decoding"; chunk 7.2c2): what runs
+    /// a field's own decoder and encoder. A provider package's field that
+    /// says how it is sent is read and written as it says only here, and
+    /// as the contract writes its type everywhere else.
+    pub coder: Option<&'a dyn Coder>,
+}
+
+/// What reads and writes a provider's wire runs the package's own field
+/// decoders and encoders with ([`Codecs::coder`]): the executor, at the
+/// call's site (area 11, "Decoding"; chunk 7.2c2).
+pub trait Coder: std::fmt::Debug {
+    /// The field's value from `wire`, what the provider sent, by the
+    /// package's function with identity key `function`; `None` when it
+    /// doesn't decode.
+    fn decode(&self, function: &str, wire: Value) -> Option<Value>;
+
+    /// What the provider takes for the field's `value`, by the package's
+    /// function with identity key `function`; `None` when it doesn't
+    /// encode.
+    fn encode(&self, function: &str, value: Value) -> Option<Value>;
+
+    /// A value its built-in encoding can't hold, by the rule it broke: it
+    /// was written as `null`, and the call goes no further.
+    fn unwritten(&self, rule: &str);
 }
 
 mod document;
+mod wire;
 
 pub use document::{Numbers, parse};
 
@@ -150,6 +175,29 @@ impl Codecs<'_> {
             Codec::Nullable(inner) => match json {
                 serde_json::Value::Null => Some(Value::None),
                 _ => self.read(*inner, json, path, problems),
+            },
+            // A provider package's field, as the provider sends it (chunk
+            // 7.2c2), and as the contract writes it anywhere else.
+            Codec::Wired { contract, coding } => match (self.coder, coding) {
+                (None, _) => self.read(*contract, json, path, problems),
+                _ if json.is_null() => self.read(*contract, json, path, problems),
+                (Some(_), WireCoding::Encoding { encoding, currency }) => {
+                    match wire::read(*encoding, currency.as_deref(), json, path.written_number()) {
+                        Ok(contract_json) => self.read(*contract, &contract_json, path, problems),
+                        Err(rule) => {
+                            Self::problem(problems, path, rule);
+                            None
+                        }
+                    }
+                }
+                (Some(coder), WireCoding::Functions { decode, wire, .. }) => {
+                    let sent = self.read(*wire, json, path, problems)?;
+                    let decoded = coder.decode(decode, sent);
+                    if decoded.is_none() {
+                        Self::problem(problems, path, "decode");
+                    }
+                    decoded
+                }
             },
             _ if json.is_null() => {
                 Self::problem(problems, path, "required");
@@ -530,6 +578,69 @@ impl Codecs<'_> {
             }
         }
         (problems.len() == before).then_some(entries)
+    }
+
+    /// `json` read as codec `id`'s object, only the fields named in
+    /// `only` read and checked, each other holding `none` (area 11,
+    /// "Decoding": a provider's answer decoded lazily, only the fields
+    /// code reads; chunk 7.2c2). Its rules across its fields are checked
+    /// only when every field is read. Anything but an object, or `null` for
+    /// one that may be left out, is read whole.
+    pub fn read_fields(
+        &self,
+        id: CodecId,
+        json: &serde_json::Value,
+        path: &Path,
+        problems: &mut Vec<Problem>,
+        only: &[String],
+    ) -> Option<Value> {
+        let (id, nullable) = match self.codec(id) {
+            Some(Codec::Nullable(inner)) => (*inner, true),
+            _ => (id, false),
+        };
+        let (Some(Codec::Object { shape, fields, .. }), serde_json::Value::Object(entries)) =
+            (self.codec(id), json)
+        else {
+            return match (nullable, json) {
+                (true, serde_json::Value::Null) => Some(Value::None),
+                _ => self.read(id, json, path, problems),
+            };
+        };
+        let shape = self.shapes.get(shape.0 as usize)?;
+        let every = (0..shape.len())
+            .filter_map(|slot| shape.field(slot))
+            .all(|(name, _)| only.iter().any(|read| read == name));
+        if every {
+            return self.read(id, json, path, problems);
+        }
+        let before = problems.len();
+        let mut given = Vec::new();
+        for (slot, codec) in fields.iter().enumerate() {
+            let Some((name, absent)) = shape.field(slot) else {
+                continue;
+            };
+            if !only.iter().any(|read| read == name) {
+                given.push((Some(slot as u32), Value::None));
+                continue;
+            }
+            let Some(member) = shape.json_name(slot) else {
+                continue;
+            };
+            let at = path.with(member);
+            match entries.get(member) {
+                None if absent => {}
+                None => Self::problem(problems, &at, "required"),
+                Some(json) => {
+                    if let Some(value) = self.read(*codec, json, &at, problems) {
+                        given.push((Some(slot as u32), value));
+                    }
+                }
+            }
+        }
+        if problems.len() > before {
+            return None;
+        }
+        shape.build(given)
     }
 
     fn object(
@@ -967,6 +1078,28 @@ impl Codecs<'_> {
         match (codec, value) {
             (_, Value::None) | (_, Value::Unit) => out.push_str("null"),
             (Some(Codec::Nullable(inner)), value) => self.write(*inner, value, out),
+            // A provider package's field, as the provider takes it (chunk
+            // 7.2c2), and as the contract writes it anywhere else.
+            (Some(Codec::Wired { contract, coding }), value) => match (self.coder, coding) {
+                (None, _) => self.write(*contract, value, out),
+                (Some(coder), WireCoding::Encoding { encoding, .. }) => {
+                    let mut written = String::new();
+                    self.write(*contract, value, &mut written);
+                    match wire::write(*encoding, &written) {
+                        Ok(sent) => out.push_str(&sent),
+                        Err(rule) => {
+                            coder.unwritten(rule);
+                            out.push_str("null");
+                        }
+                    }
+                }
+                (Some(coder), WireCoding::Functions { encode, wire, .. }) => {
+                    match coder.encode(encode, value.clone()) {
+                        Some(sent) => self.write(*wire, &sent, out),
+                        None => out.push_str("null"),
+                    }
+                }
+            },
             (Some(Codec::Scalar { int_as_number, .. }), value) => {
                 write_scalar(value, *int_as_number, out)
             }
@@ -1202,6 +1335,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         let hello = Value::Bytes(Rc::from(&b"hello"[..]));
         assert_eq!(codecs.write_value(CodecId(0), &hello), r#""aGVsbG8=""#);
@@ -1274,6 +1408,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &shapes,
+            coder: None,
         };
         let read = |text: &str| {
             let mut problems = Vec::new();
@@ -1376,6 +1511,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         let read = |id: u32, text: &str| {
             let mut problems = Vec::new();
@@ -1420,6 +1556,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         let page = Value::record(
             "Page",
@@ -1473,6 +1610,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         let zoned = Value::Zoned(crate::Zoned {
             millis: jadpo_std::instant_millis("2026-10-25T08:30:00Z").unwrap(),
@@ -1581,6 +1719,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         // Just above the midpoint of 1 and the float after it, but nearer
         // the midpoint than any other double: read as a double first, the
@@ -1627,6 +1766,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         let problem = |id: u32, text: &str| match codecs.read_value(CodecId(id), &Value::text(text))
         {
@@ -1672,6 +1812,7 @@ mod tests {
             codecs: &codecs,
             validators: &validators,
             shapes: &[],
+            coder: None,
         };
         assert!(
             codecs

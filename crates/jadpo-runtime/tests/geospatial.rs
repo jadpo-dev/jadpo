@@ -23,6 +23,7 @@ fn written(ty: &str, value: &Value) -> String {
         codecs: &codecs,
         validators: &[],
         shapes: &[],
+        coder: None,
     };
     let mut out = String::new();
     codecs.write(CodecId(0), value, &mut out);
@@ -35,6 +36,7 @@ fn read(ty: &str, json: &str) -> Option<Value> {
         codecs: &codecs,
         validators: &[],
         shapes: &[],
+        coder: None,
     };
     let mut problems = Vec::new();
     codecs.read(
@@ -237,6 +239,7 @@ fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
         codecs: &codecs,
         validators: &validators,
         shapes: &shapes,
+        coder: None,
     };
     let layer = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"label":"Crumbs"}}]}"#;
     let mut problems = Vec::new();

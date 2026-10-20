@@ -110,6 +110,8 @@ rules! {
         "14-tooling.html#command-errors", "AI command has invalid arguments";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Api command has invalid arguments";
+    CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Calls command has invalid arguments";
     CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Check command has invalid arguments";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
@@ -346,6 +348,8 @@ rules! {
         "06-reads-and-writes.html#data-update-by-id-value", "Update by `id` sets a value from something it can't use";
     DATA_VECTOR_STORE_UNSUPPORTED: "data.vector_store_unsupported", area 21, Error, Agent,
         "21-ai.html#data-vector-store-unsupported", "Vector field on a store that isn't PostgreSQL";
+    DATA_WRITE_BEFORE_CALL: "data.write_before_call", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-write-before-call", "Write comes before a later outside call";
     DATA_WRITE_NOT_ENTITY: "data.write_not_entity", area 6, Error, Agent,
         "06-reads-and-writes.html#data-write-not-entity", "Write names a type that isn't an entity";
     DATA_WRITE_SECTION_REQUIRED: "data.write_section_required", area 6, Error, Agent,
@@ -556,6 +560,8 @@ rules! {
         "11-integrations.html#package-version-needed", "Name written through a package held in two versions doesn't say which";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
         "11-integrations.html#package-version-unneeded", "Name written through a package held in one version carries a version";
+    PACKAGE_WIRE_INVALID: "package.wire_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-wire-invalid", "Field says how it is sent in a way it can't";
     PACKAGE_WIRE_NAME_INVALID: "package.wire_name_invalid", area 11, Error, Agent,
         "11-integrations.html#package-wire-name-invalid", "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
@@ -774,6 +780,8 @@ rules! {
         "08-identity.html#semantic-auth-setting-unknown", "Sign-in setting is not one the method takes";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
+    SEMANTIC_FAKE_INVALID: "semantic.fake_invalid", area 13, Error, Agent,
+        "13-testing.html#semantic-fake-invalid", "Test's fakes script something no provider operation answers";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
         "03-logic.html#semantic-missing-return", "Callable can end without returning its result";
     SEMANTIC_MULTIPLE_APPLICATIONS: "semantic.multiple_applications", area 8, Error, Agent,
@@ -956,6 +964,10 @@ rules! {
         "13-testing.html#test-assertion-failed", "Test assertion does not hold";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Test run failed";
+    TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
+        "13-testing.html#test-fake-exhausted", "Test called a faked operation more times than its fakes script";
+    TEST_FAKE_UNUSED: "test.fake_unused", area 13, Error, Agent,
+        "13-testing.html#test-fake-unused", "Test left a faked operation's scripted answers unused";
     TEST_FAULT: "test.fault", area 13, Error, Agent,
         "13-testing.html#test-fault", "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,

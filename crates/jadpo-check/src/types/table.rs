@@ -38,6 +38,10 @@ pub struct FieldDef {
     /// A provider package's field's spelling on the wire, its `wire_name:`
     /// (area 11, decided 2026-10-20), when it differs from its name.
     pub wire_name: Option<String>,
+    /// How a provider package's field is sent, its `wire:` or its
+    /// `decode:` and `encode:` (area 11, "Decoding"; chunk 7.2c2), as
+    /// written.
+    pub coding: Option<WrittenCoding>,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
     /// For a written field that replaces one an `include` or `pick` above
@@ -56,6 +60,50 @@ pub struct VariantDef {
     /// A provider package's variant's spelling on the wire (area 11,
     /// decided 2026-10-20), when it differs from its name.
     pub wire_name: Option<String>,
+}
+
+/// How a provider package's field says it is sent (area 11, "Decoding";
+/// chunk 7.2c2), as written in its block: `wire: Wire.unix_seconds`, or
+/// `decode: slots.parse_window` with `encode: slots.format_window`. The
+/// declaration check holds it to what it may say.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum WrittenCoding {
+    /// `wire: Wire.<name>`: the name after `Wire.`.
+    Encoding(String),
+    /// `decode:` and `encode:`, each a library and a function, as written.
+    Functions {
+        decode: Option<(String, String)>,
+        encode: Option<(String, String)>,
+    },
+}
+
+impl WrittenCoding {
+    /// What a field's settings say; `None` when they say none of it.
+    pub fn from_settings(settings: &[Setting]) -> Option<WrittenCoding> {
+        let given = |key: &str| settings.iter().find(|(name, _)| name == key);
+        let function = |key: &str| match given(key) {
+            Some((_, rules::Const::Path(names))) => match names.as_slice() {
+                [library, function] => Some((library.clone(), function.clone())),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some((_, value)) = given(super::shape::WIRE) {
+            return match value {
+                rules::Const::Path(names) => match names.as_slice() {
+                    [wire, name] if wire == "Wire" => Some(WrittenCoding::Encoding(name.clone())),
+                    _ => None,
+                },
+                _ => None,
+            };
+        }
+        let (decode, encode) = (
+            function(super::shape::DECODE),
+            function(super::shape::ENCODE),
+        );
+        (decode.is_some() || encode.is_some())
+            .then_some(WrittenCoding::Functions { decode, encode })
+    }
 }
 
 /// What a type name means.
@@ -191,6 +239,8 @@ pub struct RawField {
     pub column: Option<String>,
     /// A provider package's field's `wire_name:`, as written.
     pub wire_name: Option<String>,
+    /// Its `wire:`, `decode:` and `encode:`, as written (chunk 7.2c2).
+    pub coding: Option<WrittenCoding>,
     /// The type a copied field it replaced came from.
     pub replaces: Option<String>,
 }
@@ -289,6 +339,7 @@ pub fn derive(
                             rules::Const::Str(text) if !text.is_empty() => Some(text.clone()),
                             _ => None,
                         }),
+                    coding: WrittenCoding::from_settings(settings),
                     replaces: None,
                 };
                 match fields.iter().position(|f| f.name == *name) {
@@ -427,6 +478,7 @@ fn email_fields() -> Vec<RawField> {
             header: None,
             column: None,
             wire_name: None,
+            coding: None,
             replaces: None,
         })
         .collect()
@@ -454,6 +506,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
         header: None,
         column: None,
         wire_name: None,
+        coding: None,
         replaces: None,
     });
 }
@@ -539,6 +592,7 @@ impl TypeTable {
             header: raw.header.clone(),
             column: raw.column.clone(),
             wire_name: raw.wire_name.clone(),
+            coding: raw.coding.clone(),
             copied: matches!(raw.source, Source::Copied { .. }),
             replaces: raw.replaces.clone(),
         };
@@ -1440,6 +1494,7 @@ fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
         header: None,
         column: None,
         wire_name: None,
+        coding: None,
         copied: false,
         replaces: None,
         generated: false,

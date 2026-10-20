@@ -118,6 +118,16 @@ pub struct PackageConnection {
     /// `timeout:`, how long a call waits for its answer, in milliseconds,
     /// when the connection gives one (area 11, question 8; chunk 7.2c).
     pub timeout_ms: Option<u64>,
+    /// `development: { sandbox: [...] }` (area 11, "Provider calls in
+    /// development"; chunk 7.2d): the operations, `resource.operation`, and
+    /// resources `jadpo dev` lets through to the provider's sandbox, each
+    /// where it is written; checked against the package by
+    /// [`connection_problems`].
+    pub sandbox: Vec<(String, (String, u32, u32))>,
+    /// `retry:`, how often and for how long a call that may be sent again
+    /// is tried, when the connection gives it (area 11, question 8; chunk
+    /// 7.2c2).
+    pub retry: Option<jadpo_std::provider::RetryPlan>,
     pub reach: Reach,
 }
 
@@ -196,6 +206,86 @@ pub fn names_package(list: &Option<ast::MemberList>, name: &str) -> bool {
 pub fn connection_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = package_connections(db, project).problems.clone();
     out.extend(name_clashes(db, project));
+    out.extend(sandbox_problems(db, project));
+    out
+}
+
+/// The operations a connection's `development: { sandbox: }` lets
+/// through (chunk 7.2d): each named operation, and every public operation
+/// of each named resource, by `resource.operation`.
+pub fn sandboxed(db: &dyn Db, project: Project, connection: &PackageConnection) -> Vec<String> {
+    let operations = crate::providers::operations(db, project);
+    let mut out: Vec<String> = Vec::new();
+    for (name, _) in &connection.sandbox {
+        for operation in operations.of(&connection.folder) {
+            let full = operation.full_name();
+            if operation.public
+                && (full == *name || operation.resource == *name)
+                && !out.contains(&full)
+            {
+                out.push(full);
+            }
+        }
+    }
+    out
+}
+
+/// Each name a connection's `sandbox:` lists that is no public operation
+/// or resource of its package.
+fn sandbox_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let operations = crate::providers::operations(db, project);
+    let mut out = Vec::new();
+    for connection in &package_connections(db, project).connections {
+        if connection.sandbox.is_empty()
+            || crate::providers::has_problems(db, project, &connection.folder)
+        {
+            continue;
+        }
+        let public: Vec<&crate::providers::Operation> = operations
+            .of(&connection.folder)
+            .filter(|operation| operation.public)
+            .collect();
+        let mut known: Vec<String> = public
+            .iter()
+            .map(|operation| operation.full_name())
+            .collect();
+        for operation in &public {
+            if !known.contains(&operation.resource) {
+                known.push(operation.resource.clone());
+            }
+        }
+        for (name, (path, start, end)) in &connection.sandbox {
+            if known.contains(name) {
+                continue;
+            }
+            let span = Span::new(path.clone(), *start, *end);
+            let near = nearest(name, known.iter().map(String::as_str));
+            let mut problem = Diagnostic::new(
+                &rule::CONNECTION_VALUE_INVALID,
+                format!(
+                    "`{}`'s `sandbox:` lists `{name}`, which `{}` doesn't have",
+                    connection.name, connection.package
+                ),
+            )
+            .at(span.clone(), "no such operation or resource")
+            .reason(format!(
+                "`sandbox:` lets the package's public operations and resources through to its sandbox in `jadpo dev`; `{}` has {}.",
+                connection.package,
+                if known.is_empty() {
+                    "none".to_string()
+                } else {
+                    crate::and_list(&known.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>())
+                }
+            ));
+            problem = match near {
+                Some(near) => problem
+                    .next(format!("Use `{near}` instead of `{name}`"))
+                    .edit(span.clone(), near),
+                None => problem.next(format!("Remove `{name}`")),
+            };
+            out.push(problem);
+        }
+    }
     out
 }
 
@@ -507,6 +597,8 @@ impl Reader<'_> {
             environment: None,
             host: None,
             timeout_ms: None,
+            sandbox: Vec::new(),
+            retry: None,
             reach: reach.clone(),
         };
         let mut given: BTreeSet<String> = BTreeSet::new();
@@ -520,6 +612,8 @@ impl Reader<'_> {
                 "package" => {}
                 "domains" => read.domains = self.domains(member, out),
                 "timeout" => read.timeout_ms = self.timeout(member, out),
+                "development" => read.sandbox = self.development(member, out),
+                "retry" => read.retry = self.retry(member, out),
                 "credential" => match &reach.credential {
                     Some(_) => read.credential = self.credential(member, out),
                     None => out.push(
@@ -821,6 +915,102 @@ impl Reader<'_> {
         tree::name_ref_text(&rest[0])
     }
 
+    /// `development: { sandbox: [payment_intents.retrieve, customers] }`
+    /// (chunk 7.2d): the operations and resources `jadpo dev` lets
+    /// through to the sandbox, each `resource.operation` or `resource`.
+    fn development(
+        &self,
+        member: &ast::Member,
+        out: &mut Vec<Diagnostic>,
+    ) -> Vec<(String, (String, u32, u32))> {
+        let Some(list) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `development:` isn't a block", self.connection),
+                    self.value_span(member),
+                    "not a block",
+                )
+                .reason("`development:` says what `jadpo dev` does with the connection's calls: `sandbox:` lists the operations and resources it lets through to the provider's sandbox; every other call is faked.")
+                .next("Write `development: { sandbox: [<resource>.<operation>] }`"),
+            );
+            return Vec::new();
+        };
+        let mut read = Vec::new();
+        for (key, entry) in tree::members(Some(list)) {
+            let Some(written) = name_text(&key) else {
+                continue;
+            };
+            let key_span = node_span(self.path, key.syntax());
+            if written != "sandbox" {
+                out.push(
+                    Diagnostic::new(
+                        &rule::CONNECTION_KEY_INVALID,
+                        format!(
+                            "`{}`'s `development:` has no key `{written}:`",
+                            self.connection
+                        ),
+                    )
+                    .at(key_span, "not a development key")
+                    .reason("`development:` takes `sandbox:`, the operations and resources `jadpo dev` lets through to the provider's sandbox.")
+                    .next(format!("Remove `{written}:`")),
+                );
+                continue;
+            }
+            let Some(Expr::ListExpr(names)) = entry.value() else {
+                out.push(
+                    self.invalid(
+                        format!("`{}`'s `sandbox:` isn't a list", self.connection),
+                        self.value_span(&entry),
+                        "not a list",
+                    )
+                    .reason("`sandbox:` lists the operations, `resource.operation`, and resources `jadpo dev` lets through to the provider's sandbox.")
+                    .next("Write `sandbox: [<resource>.<operation>]`"),
+                );
+                continue;
+            };
+            for name in names.exprs() {
+                let at = node_span(self.path, name.syntax());
+                let parts = dotted(&name).map(|(first, rest)| {
+                    std::iter::once(first)
+                        .chain(rest)
+                        .filter_map(|part| tree::name_ref_text(&part))
+                        .collect::<Vec<_>>()
+                });
+                match parts {
+                    Some(parts) if (1..=2).contains(&parts.len()) => {
+                        let joined = parts.join(".");
+                        if read.iter().any(|(known, _)| *known == joined) {
+                            out.push(
+                                self.invalid(
+                                    format!("`{}`'s `sandbox:` lists `{joined}` twice", self.connection),
+                                    at,
+                                    "listed already",
+                                )
+                                .reason("`sandbox:` lists each operation or resource once.")
+                                .next(format!("Remove the second `{joined}`")),
+                            );
+                            continue;
+                        }
+                        read.push((joined, (at.path, at.start, at.end)));
+                    }
+                    _ => out.push(
+                        self.invalid(
+                            format!(
+                                "`{}`'s `sandbox:` lists something other than an operation or a resource",
+                                self.connection
+                            ),
+                            at,
+                            "not an operation",
+                        )
+                        .reason("`sandbox:` names each operation as `resource.operation` and each resource by its name, as the package's `resources/` declare them.")
+                        .next("Write `sandbox: [<resource>.<operation>]`"),
+                    ),
+                }
+            }
+        }
+        read
+    }
+
     fn value_span(&self, member: &ast::Member) -> Span {
         member.value().map_or_else(
             || node_span(self.path, member.syntax()),
@@ -942,6 +1132,95 @@ impl Reader<'_> {
             );
         }
         given
+    }
+
+    /// `retry: { attempts: 3 within: 30s }` (chunk 7.2c2): how many times
+    /// a call that may be sent again is tried, the first included, from 1
+    /// to [`jadpo_std::provider::MAX_ATTEMPTS`], and within how long of the
+    /// first, a duration up to [`jadpo_std::provider::MAX_WITHIN_MS`]; each
+    /// left out keeps its default.
+    fn retry(
+        &self,
+        member: &ast::Member,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<jadpo_std::provider::RetryPlan> {
+        use jadpo_std::provider::{DEFAULT_RETRY, MAX_ATTEMPTS, MAX_WITHIN_MS};
+        let reason = format!(
+            "`retry:` holds `attempts:`, how many times a call that may be sent again is tried, from 1 to {MAX_ATTEMPTS} (3 by default), and `within:`, a duration up to 5 minutes after the first attempt (30 seconds by default)."
+        );
+        let next =
+            "Write `retry: { attempts: 3 within: 30s }`, or leave `retry:` out for the default";
+        let Some(block) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `retry:` holds no block", self.connection),
+                    self.value_span(member),
+                    "not a block",
+                )
+                .reason(reason)
+                .next(next),
+            );
+            return None;
+        };
+        let mut retry = DEFAULT_RETRY;
+        let before = out.len();
+        for (setting, entry) in tree::members(Some(block)) {
+            let name = name_text(&setting).unwrap_or_default();
+            let span = self.value_span(&entry);
+            let value = entry.value().as_ref().map(Const::from_expr);
+            match name.as_str() {
+                "attempts" => match value {
+                    Some(Const::Number {
+                        value,
+                        decimal: false,
+                    }) if value.mantissa >= 1 && value.mantissa <= i128::from(MAX_ATTEMPTS) => {
+                        retry.attempts = u32::try_from(value.mantissa).unwrap_or(1);
+                    }
+                    _ => out.push(
+                        self.invalid(
+                            format!(
+                                "`{}`'s `retry: {{ attempts: }}` must be from 1 to {MAX_ATTEMPTS}",
+                                self.connection
+                            ),
+                            span,
+                            &format!("not 1 to {MAX_ATTEMPTS}"),
+                        )
+                        .reason(reason.clone())
+                        .next(next),
+                    ),
+                },
+                "within" => {
+                    let millis = match value {
+                        Some(Const::Duration(text)) => jadpo_std::Dur::parse(&text)
+                            .and_then(|dur| u64::try_from(dur.millis).ok())
+                            .filter(|millis| *millis > 0 && *millis <= MAX_WITHIN_MS),
+                        _ => None,
+                    };
+                    match millis {
+                        Some(millis) => retry.within_ms = millis,
+                        None => out.push(
+                            self.invalid(
+                                format!("`{}`'s `retry: {{ within: }}` must be a duration up to 5 minutes", self.connection),
+                                span,
+                                "not a duration up to 5 minutes",
+                            )
+                            .reason(reason.clone())
+                            .next(next),
+                        ),
+                    }
+                }
+                other => out.push(
+                    self.invalid(
+                        format!("`{other}` isn't part of `retry:`"),
+                        node_span(self.path, setting.syntax()),
+                        "not a retry setting",
+                    )
+                    .reason(reason.clone())
+                    .next(next),
+                ),
+            }
+        }
+        (out.len() == before).then_some(retry)
     }
 
     /// A setting the package declares: a value of its type, or a setting
