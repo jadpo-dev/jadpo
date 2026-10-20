@@ -294,6 +294,14 @@ fn a_jadpo_applications_document_imports_exactly() {
     types       3
     failures    2
 
+To review
+  Once the app calls its operations, go through each type they reach against
+  the provider's documentation: use the standard type wherever one fits, add a
+  decoding wherever a format is undocumented (seconds, cents, comma-separated
+  lists), and mark which operations change something and which are idempotent;
+  then add the type to `reviewed:` in `imported:`. `jadpo check` lists them
+  (agent)
+
 imported: 2 operations, 3 types, 2 failures
 
 next: jadpo check  checks the package with the app
@@ -744,6 +752,14 @@ To check
   decline `package.standard_candidate` with the reason (agent)
     Charge.created
 
+To review
+  Once the app calls its operations, go through each type they reach against
+  the provider's documentation: use the standard type wherever one fits, add a
+  decoding wherever a format is undocumented (seconds, cents, comma-separated
+  lists), and mark which operations change something and which are idempotent;
+  then add the type to `reviewed:` in `imported:`. `jadpo check` lists them
+  (agent)
+
 imported: 1 operation, 3 types, 4 to check
 
 next: jadpo check  checks the package with the app
@@ -860,5 +876,181 @@ fn a_guess_declined_with_a_reason_passes() {
         listed.stdout.contains("A count of refunds, not money"),
         "{}",
         listed.stdout
+    );
+}
+
+/// The scoped review and the unconfirmed operations (area 11, "Mapping
+/// imported types to standard types", layers 4 and 5; chunk 7.2e2): the
+/// import ends with one review instruction for the types the app's calls
+/// reach, none until it calls something; `jadpo check` lists the types
+/// still to review and the calls no recording confirms, writes both to
+/// `build/report/providers.json` for `jadpo approval`, and grows the
+/// review when the app calls something new; an agent's `reviewed:` list
+/// survives importing again, less any type the description added to.
+#[test]
+fn the_review_is_scoped_to_what_the_app_calls() {
+    let dir = tempdir::Dir::new("import-review");
+    let root = caller(&dir);
+    write(&root, "tidepay.json", PAYMENTS);
+    let imported = jadpo(&root, &["package", "import", "openapi", "tidepay.json"]);
+    assert_eq!(imported.code, 0, "{}", imported.stdout);
+    assert!(
+        imported.stdout.contains(
+            "To review
+  Once the app calls its operations, go through each type they reach against
+  the provider's documentation: use the standard type wherever one fits, add a
+  decoding wherever a format is undocumented (seconds, cents, comma-separated
+  lists), and mark which operations change something and which are idempotent;
+  then add the type to `reviewed:` in `imported:`. `jadpo check` lists them
+  (agent)
+
+imported: 1 operation, 3 types, 4 to check
+"
+        ),
+        "{}",
+        imported.stdout
+    );
+    let folder = "shared/providers/tidepay/v2024_06_20";
+    let charge = format!("{folder}/types/charge.jadpo");
+    let declined = read(&root, &charge)
+        .replace(
+            "    amount_refunded: Int\n",
+            "    decline package.standard_candidate: \"A count of refunds, not money\"\n    amount_refunded: Int\n",
+        )
+        .replace(
+            "    created: Int\n",
+            "    decline package.standard_candidate: \"A sequence number, not a time\"\n    created: Int\n",
+        );
+    write(&root, &charge, &declined);
+    // Nothing called, nothing to review.
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.stdout, "checked: 7 files\n");
+    // The app calls one operation: the types it reaches are to review,
+    // and the call to confirm.
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    connections: {\n        payments: {\n            package: Tidepay.v2024_06_20\n            domains: [till]\n            environment: config.payments_environment\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    payments_environment: ProviderEnvironment {\n        default: ProviderEnvironment.sandbox\n    }\n}\n",
+    );
+    write(
+        &root,
+        "domains/till/actions/look_up.jadpo",
+        "use app { payments }\nuse shared/providers/tidepay\n\n/// Looks a charge up.\naction look_up(input: Tidepay.ChargesGetChargesInput) -> Tidepay.Charge {\n    return payments.charges.get_charges(input)\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    assert_eq!(
+        checked.stdout,
+        "To review
+  Go through each type against the provider's documentation, then add it to
+  `reviewed:` in `imported:` in its package's `provider.jadpo` (agent)
+    Tidepay.v2024_06_20  Charge, ChargesGetChargesInput, Shop; 0 of 3 reviewed
+
+Not yet confirmed
+  Record each with `jadpo package record`, which checks a sandbox answer
+  against its types (agent)
+    payments.charges.get_charges
+
+checked: 3 to review, 1 unconfirmed, 9 files
+"
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(&read(&root, "build/report/providers.json")).expect("JSON");
+    assert_eq!(
+        report["providers"][0]["calls"][0],
+        serde_json::json!({
+            "call": "payments.charges.get_charges",
+            "confirmed": false,
+            "connection": "payments",
+            "operation": "charges.get_charges"
+        })
+    );
+    assert_eq!(
+        report["providers"][0]["types"][2],
+        serde_json::json!({ "name": "Shop", "reviewed": false })
+    );
+    // A name that isn't one of the package's types.
+    let provider = format!("{folder}/provider.jadpo");
+    let original = read(&root, &provider);
+    let listed = |names: &str| {
+        original.replace(
+            "        digest:",
+            &format!("        reviewed: [{names}]\n        digest:"),
+        )
+    };
+    write(&root, &provider, &listed("Chrage"));
+    let checked = jadpo(&root, &["check", "--json"]);
+    assert_ne!(checked.code, 0);
+    let diagnostics = &json(&checked)["diagnostics"];
+    assert_eq!(diagnostics[0]["rule"], "package.provider_invalid");
+    assert_eq!(
+        diagnostics[0]["message"],
+        "`Chrage` in `reviewed:` isn't one of the package's types"
+    );
+    // The agent goes through each and lists it; a recording confirms the
+    // call. Then the check is one line again.
+    write(
+        &root,
+        &provider,
+        &listed("Charge, ChargesGetChargesInput, Shop"),
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(
+        checked.stdout,
+        "Not yet confirmed
+  Record each with `jadpo package record`, which checks a sandbox answer
+  against its types (agent)
+    payments.charges.get_charges
+
+checked: 1 unconfirmed, 9 files
+"
+    );
+    write(
+        &root,
+        &format!("{folder}/recordings/charges.get_charges.json"),
+        "{}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.stdout, "checked: 9 files\n");
+    // Importing again keeps the list, less `Shop`, which the description
+    // added to and so is to review again.
+    write(
+        &root,
+        "tidepay.json",
+        &PAYMENTS.replace(
+            "\"name\": { \"type\": \"string\" },",
+            "\"name\": { \"type\": \"string\" },\n          \"phone\": { \"type\": \"string\" },",
+        ),
+    );
+    let again = jadpo(&root, &["package", "import", "openapi", "tidepay.json"]);
+    assert_eq!(again.code, 0, "{}", again.stdout);
+    assert!(
+        again.stdout.contains(
+            "  To review again, as the description added to them
+    ~ Shop
+"
+        ),
+        "{}",
+        again.stdout
+    );
+    assert!(
+        again.stdout.contains(
+            "  and mark which operations change something and which are idempotent; then
+  add the type to `reviewed:` in `imported:` (agent)
+    Shop
+"
+        ),
+        "{}",
+        again.stdout
+    );
+    assert!(
+        read(&root, &provider).contains("        reviewed: [Charge, ChargesGetChargesInput]\n"),
+        "{}",
+        read(&root, &provider)
     );
 }

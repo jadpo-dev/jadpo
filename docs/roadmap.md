@@ -1126,14 +1126,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and an unmapped latitude and longitude; the summary's `standard` count,
   "Mapped by shape" list and each guess under "To check", `mapped` in
   `--json`. Choices in area 11's "Chosen in chunk 7.2e".
-- [ ] **7.2e2 The scoped review and unconfirmed operations** `opus ·
+- [x] **7.2e2 The scoped review and unconfirmed operations** `opus ·
   high`, after 7.2d2 and 7.2e (area 11, "Mapping imported types to
   standard types", layers 4 and 5): the import's one review instruction
   scoped to the types the app's operations reach, each imported type
   tracked as reviewed or not in `jadpo check` (and recorded for `jadpo
   approval`, which comes after the first build), growing when the app
   calls something new; operations the app calls still unconfirmed by a
-  recording, listed in `jadpo check` and the import's summary.
+  recording, listed in `jadpo check` and the import's summary. Built:
+  `reviewed:` in `provider.jadpo`'s `imported:`, each one of the
+  package's own types once (`package.provider_invalid`); the scope worked
+  out from the app's calls on every check, the types their input and
+  output reach; `jadpo check` listing the types still to review and the
+  calls no recording confirms once it passes, counted in its footer and
+  given as `providers` in `--json`, and writing both to
+  `build/report/providers.md` and `.json` for `jadpo approval`; the
+  import ending with the scoped instruction and the unconfirmed calls,
+  keeping `reviewed:` when it merges, less any type the description
+  added to. Choices in area 11's "Chosen in chunk 7.2e2".
 - [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
@@ -1422,18 +1432,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/package_actions.rs` and `package_recipes.rs`;
   example 26 calls a package action. Choices in area 11's "Chosen in
   chunk 7.6".
-- [ ] **7.6b Package subscribers, polls and `max_concurrent:`** `opus ·
-  high`, after 7.6 (split from 7.6 on 2026-10-20): package subscribers on
-  their own webhooks (non-public events included), running a non-public
-  package action that enriches the event through the connection the
-  webhook came in on and emits the package's own declared events through
-  the app's outbox; `polls:` in `provider.jadpo` and the connection's
-  `polls: { <name>: <interval> }`, run only while something subscribes to
-  the poll's event, what it last saw kept as runtime state and only
-  changes emitted; `max_concurrent:` in `provider.jadpo`, lowered by a
-  connection, capping calls at once per app instance (further calls wait,
-  waiting deliveries retry later); and recipes compiled against the
-  package's `sample/` app by `jadpo package check`.
+- [x] **7.6b Package subscribers and recipes in `sample/`** `opus ·
+  high`, after 7.6 (split from 7.6 on 2026-10-20, and again on
+  2026-10-20: polls and `max_concurrent:` are 7.6c). Built: a package's
+  subscribers on its own webhooks' events, public or not
+  (`subscriber.event_invalid` for any other), each heard once per
+  connection receiving them (`subscriber AcmePay.renewal payments`) and
+  running one of the package's actions with its operations going through
+  that connection; a package action without `public` emitting the
+  package's own events, declared without `wire_name:`, kept in the
+  outbox where the webhooks are and delivered to the app's subscribers
+  of its public ones (`package.action_invalid` for emitting a webhook's
+  event); and `jadpo package check`'s `recipes` row, each recipe compiled
+  in the one domain of the package's `sample/` app, shown at its own path
+  (`publish.sample_missing` without such an app). Tests in
+  `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
+  `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
+  `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
+- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
+  connection's `polls: { <name>: <interval> }`, run only while something
+  subscribes to the poll's event, what it last saw kept as runtime state
+  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, capping calls at once per app instance
+  (further calls wait, waiting deliveries retry later). Both keys are
+  accepted without effect today; they are checked and run here.
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's

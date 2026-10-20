@@ -145,3 +145,127 @@ fn a_recipe_command_names_what_it_cant_find() {
     }
     assert!(!root.join("domains/shipping/actions").exists());
 }
+
+// --- recipes compiled in `sample/` (chunk 7.6b) ------------------------------
+
+/// A package's own repository, the provider package `Couriers.v1` with
+/// its `sample/` app and the recipe `track_parcels`, whose action is
+/// `action`.
+fn repository(name: &str, action: &str) -> tempdir::Dir {
+    let dir = tempdir::Dir::new(name);
+    let root = dir.path();
+    write(
+        root,
+        "package.jadpo",
+        "/// Parcel tracking.\npackage Couriers.v1 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+    );
+    write(
+        root,
+        "provider.jadpo",
+        "/// The couriers' tracking API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.couriers.example\"\n        sandbox: \"https://sandbox.couriers.example\"\n    }\n    credential: CredentialScheme.bearer\n}\n",
+    );
+    write(
+        root,
+        "types/parcel_code.jadpo",
+        "/// A parcel's tracking code.\npublic type ParcelCode = Text {\n    max_length: 20\n}\n",
+    );
+    write(
+        root,
+        "types/track_request.jadpo",
+        "/// Which parcel to track.\npublic type TrackRequest = Object {\n    code: ParcelCode\n}\n",
+    );
+    write(
+        root,
+        "types/parcel_status.jadpo",
+        "/// Where a parcel is.\npublic type ParcelStatus = Object {\n    code: ParcelCode\n    delivered: Bool\n}\n",
+    );
+    write(
+        root,
+        "resources/parcels.jadpo",
+        "public resource parcels {\n    track: {\n        method: HttpMethod.post\n        path: \"/v1/parcels/track\"\n        input: TrackRequest\n        output: ParcelStatus\n        source: PackageSource.written\n    }\n}\n",
+    );
+    write(
+        root,
+        "sample/app.jadpo",
+        "application {\n    connections: {\n        couriers: {\n            package: Couriers.v1\n            domains: [shipping]\n            credential: config.couriers_key\n            environment: config.couriers_environment\n        }\n    }\n}\n",
+    );
+    write(
+        root,
+        "sample/config.jadpo",
+        "config {\n    couriers_environment: ProviderEnvironment\n    couriers_key: Text {\n        secret: true\n    }\n}\n",
+    );
+    write(
+        root,
+        "sample/domains/shipping/types/note.jadpo",
+        "/// A note about a parcel.\ntype Note = Text {\n    max_length: 200\n}\n",
+    );
+    write(
+        root,
+        "sample/domains/shipping/actions/noted.jadpo",
+        "use shipping/types { Note }\n\n/// Gives a note back as it was written.\naction noted(note: Note) -> Note {\n    return note\n}\n",
+    );
+    write(
+        root,
+        "recipes/track_parcels/actions/track_parcel.jadpo",
+        action,
+    );
+    dir
+}
+
+const TRACK: &str = "use app { couriers }\nuse shared/providers/couriers\n\n/// Tracks one parcel.\naction track_parcel(code: Couriers.ParcelCode) -> Couriers.ParcelStatus {\n    return couriers.parcels.track(Couriers.TrackRequest {\n        code: code\n    })\n}\n";
+
+/// The publishing bar's row `item`, from `jadpo package check --json`.
+fn bar_row(root: &std::path::Path, item: &str) -> serde_json::Value {
+    let checked = jadpo(root, &["package", "check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&checked.stdout)
+        .unwrap_or_else(|_| panic!("JSON: {}{}", checked.stdout, checked.stderr));
+    document["data"]["bar"]
+        .as_array()
+        .and_then(|bar| bar.iter().find(|row| row["item"] == item))
+        .cloned()
+        .unwrap_or_else(|| panic!("a {item} row: {document}"))
+}
+
+#[test]
+fn each_recipe_compiles_in_the_sample_app() {
+    let dir = repository("recipe-sample", TRACK);
+    let row = bar_row(dir.path(), "recipes");
+    assert_eq!(row["state"], "passed", "{row}");
+    assert_eq!(row["detail"], "1 recipe compiles in sample/");
+}
+
+#[test]
+fn a_recipe_that_doesnt_compile_is_shown_at_its_own_path() {
+    let broken = TRACK.replace("parcels.track", "parcels.trace");
+    let dir = repository("recipe-broken", &broken);
+    let row = bar_row(dir.path(), "recipes");
+    assert_eq!(row["state"], "failed", "{row}");
+    assert_eq!(row["detail"], "track_parcels doesn't compile");
+    let checked = jadpo(dir.path(), &["package", "check"]);
+    assert_eq!(checked.code, 1);
+    assert!(
+        checked.stdout.contains(
+            "error: `couriers` has no operation `parcels.trace`\n --> recipes/track_parcels/actions/track_parcel.jadpo:"
+        ),
+        "{}",
+        checked.stdout
+    );
+}
+
+#[test]
+fn recipes_with_no_sample_app_fail_the_bar() {
+    let dir = repository("recipe-no-sample", TRACK);
+    std::fs::remove_dir_all(dir.path().join("sample")).expect("remove the sample");
+    let row = bar_row(dir.path(), "recipes");
+    assert_eq!(row["state"], "failed", "{row}");
+    assert_eq!(row["detail"], "no sample/ app");
+    let checked = jadpo(dir.path(), &["package", "check"]);
+    assert!(
+        checked
+            .stdout
+            .starts_with("error: `Couriers.v1`'s recipes have no sample app to compile in\n"),
+        "{}",
+        checked.stdout
+    );
+    assert!(checked.stdout.contains("  rule: publish.sample_missing\n"));
+}
