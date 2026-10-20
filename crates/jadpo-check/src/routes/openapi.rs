@@ -41,7 +41,7 @@ use jadpo_graph::json::Value;
 use jadpo_graph::{Base, Detail, Key, Section};
 use jadpo_std::http::PrincipalKind;
 
-use super::wire::{Wire, reference};
+use super::wire::{Wire, field_type, reference};
 use super::{GroupModel, RouteModel, Segment, groups, routes_clean};
 use crate::graph::{declaration_key, type_ref};
 use crate::lookups::Lookup;
@@ -1372,7 +1372,6 @@ fn operation(
     if let Some(key) = &input_key {
         for field in wire.fields(key) {
             let Detail::Field {
-                ty,
                 optional,
                 default,
                 header,
@@ -1391,7 +1390,7 @@ fn operation(
             parameter.set("name", header.clone().unwrap_or_else(|| name.to_string()));
             parameter.set("in", place);
             parameter.set_some("required", !optional && default.is_none());
-            parameter.set("schema", constrained(wire, ty, refs));
+            parameter.set("schema", constrained(wire, &field_type(field), refs));
             parameters.push(parameter);
         }
         if !route.method.reads_query() {
@@ -1498,13 +1497,12 @@ fn operation(
         let mut required = Vec::new();
         for field in wire.fields(&key) {
             if let Detail::Field {
-                ty,
                 section: Some(Section::Client),
                 ..
             } = &field.detail
             {
                 let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                properties.set(field_name, wire.schema(ty, refs));
+                properties.set(field_name, wire.schema(&field_type(field), refs));
                 required.push(Value::from(field_name));
             }
         }
@@ -1720,10 +1718,11 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
                         properties.set("tag", tag);
                         let mut required = vec![Value::from("tag")];
                         for field in fields {
-                            if let Detail::Field { ty, .. } = &field.detail {
+                            if let Detail::Field { .. } = &field.detail {
                                 let field_name =
                                     field.name.rsplit('.').next().unwrap_or(&field.name);
-                                properties.set(field_name, constrained(wire, ty, refs));
+                                properties
+                                    .set(field_name, constrained(wire, &field_type(field), refs));
                                 required.push(Value::from(field_name));
                             }
                         }
@@ -1751,7 +1750,6 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
             let mut required = Vec::new();
             for field in wire.fields(key) {
                 let Detail::Field {
-                    ty,
                     optional,
                     default,
                     header,
@@ -1764,7 +1762,7 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
                     continue;
                 }
                 let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                let mut schema = constrained(wire, ty, refs);
+                let mut schema = constrained(wire, &field_type(field), refs);
                 if let Some(default) = default {
                     schema.set(
                         "description",

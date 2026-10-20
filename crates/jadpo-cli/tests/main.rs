@@ -55,6 +55,7 @@ mod migrate;
 mod operation_conditions;
 mod package_actions;
 mod package_import;
+mod package_polls;
 mod package_recipes;
 mod package_subscribers;
 mod package_translation_versions;

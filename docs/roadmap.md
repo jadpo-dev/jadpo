@@ -1482,14 +1482,21 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
   `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
   `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
-- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
-  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
-  connection's `polls: { <name>: <interval> }`, run only while something
-  subscribes to the poll's event, what it last saw kept as runtime state
-  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
-  lowered by a connection, capping calls at once per app instance
-  (further calls wait, waiting deliveries retry later). Both keys are
-  accepted without effect today; they are checked and run here.
+- [x] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20). Built: `polls:` in `provider.jadpo`
+  (`call:` an operation that takes and changes nothing, `every:` a
+  minute or more, `emits:` a public event of the package's own made from
+  the answer's fields) and the connection's `polls: { <name>: <interval>
+  }`, each connection's poll run by the tick only while the app
+  subscribes to its event, claimed by one instance, what it last saw kept
+  in `jadpo_polls` beside the outbox and its event kept with the new
+  digest in one transaction only when the answer changed, a failed call
+  tried again a minute later; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, a slot per call attempt per app instance
+  (further calls wait, a delivery that would wait given back to the
+  outbox uncounted). Tests in `crates/jadpo-check/tests/package_polls.rs`,
+  live ones in `crates/jadpo-cli/tests/package_polls.rs`. Choices in
+  area 11's "Chosen in chunk 7.6c".
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's
@@ -1618,13 +1625,18 @@ The design is area 11 as revised on 2026-10-16, with its research in
   after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
   <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
-- [ ] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
+- [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
   the `ai` schema); and the two tests that failed once and passed on
   rerun made deterministic: `http::an_api_token_signs_its_app_in_until_it_is_ended`
   (compares timestamps as text) and
   `batch_calls::a_files_rows_that_call_are_each_a_batch_of_their_own`.
+  Built: every field's schema, parameter and record line reads the field
+  itself (`wire::field_type`), so its inline rules come before its
+  type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
+  the token test compares instants as instants, and the open-transaction
+  count of the call tests leaves out the server's autovacuum workers.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

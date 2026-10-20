@@ -659,6 +659,18 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             "runs" => nested_keys(&path, &key, &member, &RUNS_KEYS, out),
             "aws" => nested_keys(&path, &key, &member, &AWS_KEYS, out),
             "webhooks" => webhooks(&path, &member, out),
+            "max_concurrent" if crate::connections::whole(&member).is_none() => out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    "`max_concurrent:` must be a whole number of at least 1",
+                )
+                .at(
+                    member.value().map_or_else(|| span.clone(), |value| node_span(&path, value.syntax())),
+                    "not 1 or more",
+                )
+                .reason("`max_concurrent:` caps how many calls through each connection to the package go out at once per app instance, as the provider allows; further calls wait, and a connection may lower it.")
+                .next("Write the provider's limit, such as `max_concurrent: 4`, or remove it"),
+            ),
             "settings" => crate::connections::provider_settings(&path, &member, out),
             "imported" => {
                 crate::review::imported_problems(db, project, &home.folder, &path, &member, out);

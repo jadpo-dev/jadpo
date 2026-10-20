@@ -396,6 +396,9 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("webhooks::RECEIVE", crate::webhooks::RECEIVE.to_string()),
         ("receiving::PARK", crate::receiving::PARK.to_string()),
+        ("polls::CLAIM", crate::polls::CLAIM.to_string()),
+        ("polls::AGAIN", crate::polls::AGAIN.to_string()),
+        ("polls::CHANGED", crate::polls::CHANGED.to_string()),
         ("receiving::RETRIED", crate::receiving::RETRIED.to_string()),
         ("receiving::DONE", crate::receiving::DONE.to_string()),
         (

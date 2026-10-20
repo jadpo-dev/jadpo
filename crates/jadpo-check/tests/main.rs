@@ -62,6 +62,7 @@ mod numbers;
 mod one_error;
 mod operation_conditions;
 mod package_actions;
+mod package_polls;
 mod package_subscribers;
 mod package_translation_versions;
 mod package_translations;

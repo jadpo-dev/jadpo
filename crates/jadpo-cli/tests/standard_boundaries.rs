@@ -611,6 +611,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "checks a route's durations, read by the contract's own reader",
     ),
     (
+        "crates/jadpo-check/src/polls.rs",
+        "checks a poll's `every:`, a duration read by the contract's own reader",
+    ),
+    (
         "crates/jadpo-check/src/schedules.rs",
         "checks a schedule's `every:`, a duration read by the contract's own reader",
     ),
