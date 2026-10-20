@@ -26,10 +26,10 @@ use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, RUN_LIMIT_MS, Settled, run_deferred, settle_within, sweep};
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Executor, Host, Isolation, LocalFuture, Outcome, Row, SqlValue,
-    StoreError, Transaction,
+    Database, Executor, Isolation, LocalFuture, Outcome, Row, SqlValue, StoreError, Transaction,
 };
 use jadpo_term::Environment;
+use jadpo_test::host::{Bench, Timer};
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -205,53 +205,17 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// The store, its transactions noting when a commit begins; a clock the
-/// test sets, which moves on `step` each time the host reads it, as a
-/// sweep's work takes time; random bytes from a counter; and the 15-minute
-/// limit of a run, which passes at once when the test says so.
-struct Store {
+/// The store, its transactions noting when a commit begins: what the
+/// test's bench runs on, with a clock the test sets, which moves on each
+/// time the host reads it when the test says so, as a sweep's work takes
+/// time; random bytes from a counter; and the 15-minute limit of a run,
+/// which passes at once when the test says so.
+struct Noting {
     db: Postgres,
     committing: Rc<Cell<bool>>,
-    seeds: Cell<u64>,
-    clock: Cell<i64>,
-    step: Cell<i64>,
-    drawn: Cell<u64>,
-    limit_passes: Cell<bool>,
 }
 
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(self)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        let now = self.clock.get();
-        self.clock.set(now + self.step.get());
-        Some(now)
-    }
-
-    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
-        if millis == RUN_LIMIT_MS && self.limit_passes.get() {
-            Box::pin(async {})
-        } else {
-            Box::pin(std::future::pending())
-        }
-    }
-}
-
-impl Database for Store {
+impl Database for Noting {
     fn begin_at(
         &self,
         isolation: Isolation,
@@ -312,86 +276,60 @@ impl Transaction for Noted {
 /// When the test starts: 2026-10-19T09:00:00Z.
 const T0: i64 = 1_792_400_400_000;
 
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::fixed(self.clock.get()),
-        };
-        Ctx::new(program.places(), self, env)
-    }
+/// How many events of type `event` the outbox keeps.
+async fn events(host: &Bench<Noting>, event: &str) -> i64 {
+    host.count(&format!(
+        "SELECT count(*) FROM \"jadpo_outbox\" WHERE \"event\" LIKE '%{event}'"
+    ))
+    .await
+}
 
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    async fn count(&self, sql: &str) -> i64 {
-        match self.rows(sql).await.first().and_then(|row| row.first()) {
-            Some(SqlValue::Int8(n)) => *n,
-            Some(SqlValue::Int4(n)) => i64::from(*n),
-            other => panic!("not a count: {other:?}"),
-        }
-    }
-
-    /// How many events of type `event` the outbox keeps.
-    async fn events(&self, event: &str) -> i64 {
-        self.count(&format!(
-            "SELECT count(*) FROM \"jadpo_outbox\" WHERE \"event\" LIKE '%{event}'"
-        ))
+/// Each delivery to `subscriber` of the note with `words`: its state,
+/// attempts and last failure's code.
+async fn deliveries(
+    host: &Bench<Noting>,
+    subscriber: &str,
+    words: &str,
+) -> Vec<(String, i32, Option<String>)> {
+    let sql = format!(
+        "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" JOIN \"note\" AS \"n\" ON \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"n\".\"words\" = '{words}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
+    );
+    host.rows(&sql)
         .await
-    }
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(status), SqlValue::Int4(attempts), code] => (
+                status.clone(),
+                *attempts,
+                match code {
+                    SqlValue::Text(code) => Some(code.clone()),
+                    _ => None,
+                },
+            ),
+            other => panic!("not a delivery: {other:?}"),
+        })
+        .collect()
+}
 
-    /// Each delivery to `subscriber` of the note with `words`: its state,
-    /// attempts and last failure's code.
-    async fn deliveries(
-        &self,
-        subscriber: &str,
-        words: &str,
-    ) -> Vec<(String, i32, Option<String>)> {
-        let sql = format!(
-            "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" JOIN \"note\" AS \"n\" ON \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"n\".\"words\" = '{words}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
-        );
-        self.rows(&sql)
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(status), SqlValue::Int4(attempts), code] => (
-                    status.clone(),
-                    *attempts,
-                    match code {
-                        SqlValue::Text(code) => Some(code.clone()),
-                        _ => None,
-                    },
-                ),
-                other => panic!("not a delivery: {other:?}"),
-            })
-            .collect()
-    }
+/// Sets the delivery to `subscriber` of the note with `words` as `set`
+/// says, as a crash or a dropped run would have left it.
+async fn leave(host: &Bench<Noting>, subscriber: &str, words: &str, set: &str) {
+    host.rows(&format!(
+        "UPDATE \"jadpo_deliveries\" AS \"d\" SET {set} FROM \"jadpo_outbox\" AS \"o\", \"note\" AS \"n\" WHERE \"o\".\"id\" = \"d\".\"outbox_id\" AND \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' AND \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"n\".\"words\" = '{words}' RETURNING \"d\".\"id\""
+    ))
+    .await;
+}
 
-    /// Sets the delivery to `subscriber` of the note with `words` as `set`
-    /// says, as a crash or a dropped run would have left it.
-    async fn leave(&self, subscriber: &str, words: &str, set: &str) {
-        self.rows(&format!(
-            "UPDATE \"jadpo_deliveries\" AS \"d\" SET {set} FROM \"jadpo_outbox\" AS \"o\", \"note\" AS \"n\" WHERE \"o\".\"id\" = \"d\".\"outbox_id\" AND \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' AND \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"n\".\"words\" = '{words}' RETURNING \"d\".\"id\""
-        ))
-        .await;
+/// Posts a note saying `words` at the clock's time, giving the work it
+/// left for after its response.
+async fn post(host: &Bench<Noting>, program: &Program, words: &str) -> Vec<Deferred> {
+    let id = program.plan().find("post_note").expect("the action");
+    let mut ctx = host.ctx(program.places());
+    match program.run(&mut ctx, id, vec![Value::text(words)]).await {
+        Outcome::Value(_) => {}
+        other => panic!("the note is posted: {other:?}"),
     }
-
-    /// Posts a note saying `words` at the clock's time, giving the work it
-    /// left for after its response.
-    async fn post(&self, program: &Program, words: &str) -> Vec<Deferred> {
-        let id = program.plan().find("post_note").expect("the action");
-        let mut ctx = self.ctx(program);
-        match program.run(&mut ctx, id, vec![Value::text(words)]).await {
-            Outcome::Value(_) => {}
-            other => panic!("the note is posted: {other:?}"),
-        }
-        ctx.take_deferred()
-    }
+    ctx.take_deferred()
 }
 
 /// A timestamp as its SQL literal, `ms` after [`T0`].
@@ -430,16 +368,13 @@ fn load(name: &str) -> Option<Loaded> {
     })
 }
 
-fn host(url: &str) -> Store {
-    Store {
+fn host(url: &str) -> Bench<Noting> {
+    Bench::new(Noting {
         db: postgres(url).expect("store"),
         committing: Rc::new(Cell::new(false)),
-        seeds: Cell::new(0),
-        clock: Cell::new(T0),
-        step: Cell::new(0),
-        drawn: Cell::new(0),
-        limit_passes: Cell::new(false),
-    }
+    })
+    .at(T0)
+    .random_from(0)
 }
 
 fn succeeded(attempts: i32) -> Vec<(String, i32, Option<String>)> {
@@ -461,11 +396,11 @@ fn an_emit_only_subscriber_keeps_a_handled_record_so_a_repeat_sets_nothing_off_t
     let (program, host) = (&loaded.program, host(&loaded.url));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
-        let work = host.post(program, "hello").await;
+        let work = post(&host, program, "hello").await;
         run_deferred(program, &host, work).await;
-        assert_eq!(host.deliveries("relay_note", "hello").await, succeeded(1));
-        assert_eq!(host.deliveries("echo_note", "hello").await, succeeded(1));
-        assert_eq!(host.events("NoteRelayed").await, 1);
+        assert_eq!(deliveries(&host, "relay_note", "hello").await, succeeded(1));
+        assert_eq!(deliveries(&host, "echo_note", "hello").await, succeeded(1));
+        assert_eq!(events(&host, "NoteRelayed").await, 1);
         assert_eq!(
             host.count("SELECT count(*) FROM \"jadpo_handled_deliveries\"")
                 .await,
@@ -476,19 +411,20 @@ fn an_emit_only_subscriber_keeps_a_handled_record_so_a_repeat_sets_nothing_off_t
         // The relay's delivery repeated, as after a crash between its
         // commit and its record: its handled record is found, and the note
         // is relayed and echoed once.
-        host.leave(
+        leave(
+            &host,
             "relay_note",
             "hello",
             &format!("\"status\" = 'pending', \"next_attempt_at\" = {}", at(0)),
         )
         .await;
-        host.clock.set(T0 + 1_000);
+        host.set_now(T0 + 1_000);
         let repeated = sweep(program, &host, "main", T0 + 1_000)
             .await
             .expect("the sweep runs");
         assert_eq!(repeated.len(), 1, "{repeated:?}");
-        assert_eq!(host.deliveries("relay_note", "hello").await, succeeded(2));
-        assert_eq!(host.events("NoteRelayed").await, 1, "relayed once");
+        assert_eq!(deliveries(&host, "relay_note", "hello").await, succeeded(2));
+        assert_eq!(events(&host, "NoteRelayed").await, 1, "relayed once");
         assert_eq!(host.count("SELECT count(*) FROM \"echo\"").await, 1);
     });
 }
@@ -506,13 +442,13 @@ fn the_sweep_runs_each_delivery_at_the_hosts_time_and_leases_it_from_its_claim()
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         // Two notes posted, their work dropped with the process.
-        drop(host.post(program, "first").await);
-        drop(host.post(program, "second").await);
+        drop(post(&host, program, "first").await);
+        drop(post(&host, program, "second").await);
         // The tick a minute on, each reading of the clock ten minutes
         // after the last, as long deliveries would take.
         let tick = T0 + 60_000;
-        host.clock.set(tick);
-        host.step.set(600_000);
+        host.set_now(tick);
+        host.step(600_000);
         let swept = sweep(program, &host, "main", tick)
             .await
             .expect("the sweep runs");
@@ -552,7 +488,7 @@ fn a_delivery_claimed_again_over_its_budget_or_past_within_fails_without_running
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         for words in ["spent", "lost", "late", "kept"] {
-            drop(host.post(program, words).await);
+            drop(post(&host, program, words).await);
         }
         // Its second attempt, the last of its budget, was lost with its
         // worker; and another's first was, with time left.
@@ -560,51 +496,51 @@ fn a_delivery_claimed_again_over_its_budget_or_past_within_fails_without_running
             "\"status\" = 'running', \"attempts\" = 2, \"next_attempt_at\" = {}",
             at(30_000)
         );
-        host.leave("relay_note", "spent", &lapsed).await;
+        leave(&host, "relay_note", "spent", &lapsed).await;
         let lapsed = format!(
             "\"status\" = 'running', \"attempts\" = 1, \"next_attempt_at\" = {}",
             at(30_000)
         );
-        host.leave("relay_note", "kept", &lapsed).await;
+        leave(&host, "relay_note", "kept", &lapsed).await;
         // Two not due until after `within:` (an hour) has passed: one
         // whose first attempt was lost, one never tried.
         let lapsed = format!(
             "\"status\" = 'running', \"attempts\" = 1, \"next_attempt_at\" = {}",
             at(5_400_000)
         );
-        host.leave("relay_note", "lost", &lapsed).await;
+        leave(&host, "relay_note", "lost", &lapsed).await;
         let waiting = format!("\"next_attempt_at\" = {}", at(5_400_000));
-        host.leave("relay_note", "late", &waiting).await;
+        leave(&host, "relay_note", "late", &waiting).await;
 
-        host.clock.set(T0 + 60_000);
+        host.set_now(T0 + 60_000);
         sweep(program, &host, "main", T0 + 60_000)
             .await
             .expect("the sweep runs");
         assert_eq!(
-            host.deliveries("relay_note", "spent").await,
+            deliveries(&host, "relay_note", "spent").await,
             failed(2, "lease_expired"),
             "over its budget: failed, its lost attempt the last"
         );
         assert_eq!(
-            host.deliveries("relay_note", "kept").await,
+            deliveries(&host, "relay_note", "kept").await,
             succeeded(2),
             "within its budget, a lost attempt is tried again"
         );
 
-        host.clock.set(T0 + 7_200_000);
+        host.set_now(T0 + 7_200_000);
         sweep(program, &host, "main", T0 + 7_200_000)
             .await
             .expect("the sweep runs");
         assert_eq!(
-            host.deliveries("relay_note", "lost").await,
+            deliveries(&host, "relay_note", "lost").await,
             failed(1, "lease_expired")
         );
         assert_eq!(
-            host.deliveries("relay_note", "late").await,
+            deliveries(&host, "relay_note", "late").await,
             failed(0, "deadline_exceeded")
         );
         assert_eq!(
-            host.events("NoteRelayed").await,
+            events(&host, "NoteRelayed").await,
             1,
             "only the delivery within both ran"
         );
@@ -622,12 +558,12 @@ fn a_delivery_stopped_by_the_run_limit_is_settled_against_its_budget() {
     let (program, host) = (&loaded.program, host(&loaded.url));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
-        let work = host.post(program, "slow").await;
-        host.limit_passes.set(true);
+        let work = post(&host, program, "slow").await;
+        host.set_timer(RUN_LIMIT_MS, Timer::Now);
         let ran = run_deferred(program, &host, work).await;
         assert_eq!(ran.len(), 1, "{ran:?}");
         assert_eq!(
-            host.deliveries("relay_note", "slow").await,
+            deliveries(&host, "relay_note", "slow").await,
             [(
                 "pending".to_string(),
                 1,
@@ -640,18 +576,18 @@ fn a_delivery_stopped_by_the_run_limit_is_settled_against_its_budget() {
             ))
             .await;
         assert!((1_000..=30_000).contains(&wait), "the first wait: {wait}");
-        assert_eq!(host.events("NoteRelayed").await, 0, "nothing it did kept");
+        assert_eq!(events(&host, "NoteRelayed").await, 0, "nothing it did kept");
 
         // Its second attempt, the last of its budget, runs out of time too.
-        host.clock.set(T0 + 31_000);
+        host.set_now(T0 + 31_000);
         sweep(program, &host, "main", T0 + 31_000)
             .await
             .expect("the sweep runs");
         assert_eq!(
-            host.deliveries("relay_note", "slow").await,
+            deliveries(&host, "relay_note", "slow").await,
             failed(2, "deadline_exceeded")
         );
-        assert_eq!(host.events("NoteRelayed").await, 0);
+        assert_eq!(events(&host, "NoteRelayed").await, 0);
     });
 }
 
@@ -666,10 +602,10 @@ fn a_routes_within_races_a_subscribers_body_never_its_commit() {
     let (program, host) = (&loaded.program, host(&loaded.url));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
-        let work = host.post(program, "quick").await;
+        let work = post(&host, program, "quick").await;
         // `within:` passes the moment a commit begins.
-        host.committing.set(false);
-        let committing = Rc::clone(&host.committing);
+        host.database().committing.set(false);
+        let committing = Rc::clone(&host.database().committing);
         let mut within: LocalFuture<'_, ()> = Box::pin(std::future::poll_fn(move |_| {
             if committing.get() {
                 std::task::Poll::Ready(())
@@ -677,19 +613,19 @@ fn a_routes_within_races_a_subscribers_body_never_its_commit() {
                 std::task::Poll::Pending
             }
         }));
-        let mut ctx = host.ctx(program);
+        let mut ctx = host.ctx(program.places());
         let settled = settle_within(program, &mut ctx, work, &mut within).await;
         assert_eq!(
-            host.deliveries("relay_note", "quick").await,
+            deliveries(&host, "relay_note", "quick").await,
             succeeded(1),
             "its work committed, so it is recorded as done"
         );
-        assert_eq!(host.events("NoteRelayed").await, 1);
+        assert_eq!(events(&host, "NoteRelayed").await, 1);
         // `within:` had passed by the next piece: the echo is left for
         // after the response.
         assert_eq!(settled, Settled::Unsettled);
         assert_eq!(
-            host.deliveries("echo_note", "quick").await,
+            deliveries(&host, "echo_note", "quick").await,
             [("pending".to_string(), 0, None)]
         );
         assert_eq!(ctx.take_deferred().len(), 1);

@@ -16,20 +16,18 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::outbox::Trace;
 use jadpo_runtime::runner::{Deferred, run_deferred, sweep};
-use jadpo_runtime::{
-    Caller, Clock, Ctx, Database, Env, Executor, Host, Outcome, Row, SqlType, SqlValue,
-};
+use jadpo_runtime::{Caller, Executor, Outcome, SqlType, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
+use jadpo_test::host::Bench;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -454,108 +452,53 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// A store, a clock the test moves, and random bytes from a counter.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    clock: Cell<i64>,
-    drawn: Cell<u64>,
+/// Each delivery of `subscriber`'s state, attempts and last failure's
+/// code, oldest event first.
+async fn deliveries(host: &Bench, subscriber: &str) -> Vec<(String, i32, Option<String>)> {
+    let sql = format!(
+        "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
+    );
+    host.rows(&sql)
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(status), SqlValue::Int4(attempts), code] => (
+                status.clone(),
+                *attempts,
+                match code {
+                    SqlValue::Text(code) => Some(code.clone()),
+                    _ => None,
+                },
+            ),
+            other => panic!("not a delivery: {other:?}"),
+        })
+        .collect()
 }
 
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(self.clock.get())
-    }
-}
-
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::fixed(self.clock.get()),
-        };
-        Ctx::new(program.places(), self, env)
-    }
-
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    async fn count(&self, sql: &str) -> i32 {
-        match self.rows(sql).await.first().and_then(|row| row.first()) {
-            Some(SqlValue::Int4(n)) => *n,
-            other => panic!("not a count: {other:?}"),
-        }
-    }
-
-    /// Each delivery of `subscriber`'s state, attempts and last failure's
-    /// code, oldest event first.
-    async fn deliveries(&self, subscriber: &str) -> Vec<(String, i32, Option<String>)> {
-        let sql = format!(
-            "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
-        );
-        self.rows(&sql)
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(status), SqlValue::Int4(attempts), code] => (
-                    status.clone(),
-                    *attempts,
-                    match code {
-                        SqlValue::Text(code) => Some(code.clone()),
-                        _ => None,
-                    },
-                ),
-                other => panic!("not a delivery: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// Each tally's household's name and how many chores it saw, by name.
-    async fn tallies(&self) -> Vec<(String, i32)> {
-        self.rows("SELECT \"h\".\"name\", \"t\".\"seen\"::int4 FROM \"tally\" AS \"t\" JOIN \"household\" AS \"h\" ON \"h\".\"id\" = \"t\".\"household_id\" ORDER BY \"h\".\"name\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(name), SqlValue::Int4(seen)] => (name.clone(), *seen),
-                other => panic!("not a tally: {other:?}"),
-            })
-            .collect()
-    }
+/// Each tally's household's name and how many chores it saw, by name.
+async fn tallies(host: &Bench) -> Vec<(String, i32)> {
+    host.rows("SELECT \"h\".\"name\", \"t\".\"seen\"::int4 FROM \"tally\" AS \"t\" JOIN \"household\" AS \"h\" ON \"h\".\"id\" = \"t\".\"household_id\" ORDER BY \"h\".\"name\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(name), SqlValue::Int4(seen)] => (name.clone(), *seen),
+            other => panic!("not a tally: {other:?}"),
+        })
+        .collect()
 }
 
 /// Runs `action` with `args` as `caller`, signed in, or as no one, and
 /// gives back its outcome and the work it left for after its response.
 async fn call(
     program: &Program,
-    host: &Store,
+    host: &Bench,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
     trace: Option<Trace>,
 ) -> (Outcome, Vec<Deferred>) {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program);
+    let mut ctx = host.ctx(program.places());
     ctx.set_caller(caller.map(|person| Caller {
         value: person.clone(),
         key: "user".to_string(),
@@ -612,12 +555,7 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        clock: Cell::new(T0),
-        drawn: Cell::new(0),
-    };
+    let host = Bench::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let join = |handle: &str| {
@@ -678,9 +616,9 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
             other => panic!("not the outbox row: {other:?}"),
         }
         let pending = ("pending".to_string(), 0, None);
-        assert_eq!(host.deliveries("tally_chores").await, vec![pending.clone()]);
-        assert_eq!(host.deliveries("ring_bell").await, vec![pending]);
-        assert_eq!(host.tallies().await, [], "nothing delivered in the request");
+        assert_eq!(deliveries(&host, "tally_chores").await, vec![pending.clone()]);
+        assert_eq!(deliveries(&host, "ring_bell").await, vec![pending]);
+        assert_eq!(tallies(&host).await, [], "nothing delivered in the request");
 
         // An action that fails emits nothing: its outbox row rolls back
         // with it.
@@ -702,13 +640,13 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
         // bell, with none hung, fails `unavailable` and waits to retry.
         let ran = run_deferred(&program, &host, after_sweep).await;
         assert_eq!(ran.len(), 2, "{ran:?}");
-        assert_eq!(host.tallies().await, [("Ash Lane".to_string(), 1)]);
+        assert_eq!(tallies(&host).await, [("Ash Lane".to_string(), 1)]);
         assert_eq!(
-            host.deliveries("tally_chores").await,
+            deliveries(&host, "tally_chores").await,
             [("succeeded".to_string(), 1, None)]
         );
         assert_eq!(
-            host.deliveries("ring_bell").await,
+            deliveries(&host, "ring_bell").await,
             [("pending".to_string(), 1, Some("bell_missing".to_string()))]
         );
         let next = host
@@ -736,18 +674,18 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
         .await;
         value(added);
         drop(dropped);
-        host.clock.set(T0 + 31_000);
+        host.set_now(T0 + 31_000);
         let swept = sweep(&program, &host, "main", T0 + 31_000)
             .await
             .expect("the sweep runs");
         assert_eq!(swept.len(), 3, "both bells and the new tally: {swept:?}");
         assert_eq!(
-            host.tallies().await,
+            tallies(&host).await,
             [("Ash Lane".to_string(), 1), ("Birch Row".to_string(), 1)],
             "each subscriber reaches only its event's household"
         );
         assert_eq!(
-            host.deliveries("ring_bell").await,
+            deliveries(&host, "ring_bell").await,
             [
                 ("pending".to_string(), 2, Some("bell_missing".to_string())),
                 ("pending".to_string(), 1, Some("bell_missing".to_string())),
@@ -758,10 +696,10 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
         assert!(early.is_empty(), "{early:?}");
 
         // Its budget is three attempts: the first bell's third fails for good.
-        host.clock.set(T0 + 300_000);
+        host.set_now(T0 + 300_000);
         sweep(&program, &host, "main", T0 + 300_000).await.expect("runs");
         assert_eq!(
-            host.deliveries("ring_bell").await,
+            deliveries(&host, "ring_bell").await,
             [
                 ("failed".to_string(), 3, Some("bell_missing".to_string())),
                 ("pending".to_string(), 2, Some("bell_missing".to_string())),
@@ -770,10 +708,10 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
 
         // Once a bell is hung, the retry succeeds.
         value(call(&program, &host, "hang_bell", vec![], Some(&ann_in), None).await.0);
-        host.clock.set(T0 + 1_800_000);
+        host.set_now(T0 + 1_800_000);
         sweep(&program, &host, "main", T0 + 1_800_000).await.expect("runs");
         assert_eq!(
-            host.deliveries("ring_bell").await,
+            deliveries(&host, "ring_bell").await,
             [
                 ("failed".to_string(), 3, Some("bell_missing".to_string())),
                 ("succeeded".to_string(), 3, None),
@@ -786,9 +724,9 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
             .await;
         let repeated = sweep(&program, &host, "main", T0 + 1_800_000).await.expect("runs");
         assert_eq!(repeated.len(), 2);
-        assert_eq!(host.tallies().await.len(), 2, "no second tally");
+        assert_eq!(tallies(&host).await.len(), 2, "no second tally");
         assert_eq!(
-            host.deliveries("tally_chores").await,
+            deliveries(&host, "tally_chores").await,
             [
                 ("succeeded".to_string(), 2, None),
                 ("succeeded".to_string(), 2, None),
@@ -820,12 +758,7 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        clock: Cell::new(T0),
-        drawn: Cell::new(0),
-    };
+    let host = Bench::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let ann = value(call(&program, &host, "join", vec![Value::text("ann")], None, None).await.0);
@@ -854,7 +787,7 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
             ))
             .await;
         }
-        host.clock.set(T0 + 1_000);
+        host.set_now(T0 + 1_000);
         sweep(&program, &host, "main", T0 + 1_000)
             .await
             .expect("the sweep runs");

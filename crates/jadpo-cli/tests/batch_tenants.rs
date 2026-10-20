@@ -13,17 +13,17 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, run_deferred};
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlValue};
+use jadpo_runtime::{Database, Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
+use jadpo_test::host::Bench;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -367,107 +367,66 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// The store, a fixed clock and randomness of its own.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    random: Cell<u64>,
+async fn execute(host: &Bench, sql: &str, params: &[SqlValue]) {
+    host.database()
+        .query_once(sql, params)
+        .await
+        .expect("the statement");
 }
 
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for byte in bytes.iter_mut() {
-            let next = self
-                .random
-                .get()
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1);
-            self.random.set(next);
-            *byte = (next >> 33) as u8;
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(1_800_000_000_000)
-    }
+/// Each chore's title and how many times it was ticked, by title.
+async fn ticks(host: &Bench) -> Vec<(String, i64)> {
+    host.database()
+        .query_once(
+            "SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"",
+            &[],
+        )
+        .await
+        .expect("the query")
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(title), SqlValue::Int8(n)] => (title.clone(), *n),
+            other => panic!("a chore's row: {other:?}"),
+        })
+        .collect()
 }
 
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::TEST,
-        };
-        Ctx::new(program.places(), self, env)
-    }
+/// Each tally's household, items walked and items skipped.
+async fn tallies(host: &Bench) -> Vec<(String, i64, i64)> {
+    host.database()
+        .query_once(
+            "SELECT \"household_id\"::text, \"walked\"::int8, \"skipped\"::int8 FROM \"tally\" ORDER BY 1",
+            &[],
+        )
+        .await
+        .expect("the query")
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(household), SqlValue::Int8(walked), SqlValue::Int8(skipped)] => {
+                (household.clone(), *walked, *skipped)
+            }
+            other => panic!("a tally's row: {other:?}"),
+        })
+        .collect()
+}
 
-    async fn execute(&self, sql: &str, params: &[SqlValue]) {
-        self.db
-            .query_once(sql, params)
-            .await
-            .expect("the statement");
-    }
-
-    /// Each chore's title and how many times it was ticked, by title.
-    async fn ticks(&self) -> Vec<(String, i64)> {
-        self.db
-            .query_once(
-                "SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"",
-                &[],
-            )
-            .await
-            .expect("the query")
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(title), SqlValue::Int8(n)] => (title.clone(), *n),
-                other => panic!("a chore's row: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// Each tally's household, items walked and items skipped.
-    async fn tallies(&self) -> Vec<(String, i64, i64)> {
-        self.db
-            .query_once(
-                "SELECT \"household_id\"::text, \"walked\"::int8, \"skipped\"::int8 FROM \"tally\" ORDER BY 1",
-                &[],
-            )
-            .await
-            .expect("the query")
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(household), SqlValue::Int8(walked), SqlValue::Int8(skipped)] => {
-                    (household.clone(), *walked, *skipped)
-                }
-                other => panic!("a tally's row: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// The run's state and items done, as its row keeps them.
-    async fn kept(&self, run: &Value) -> (String, i64) {
-        let id = match jadpo_runtime::to_sql(&field(run, "id"), jadpo_runtime::SqlType::Uuid) {
-            Ok(id) => id,
-            other => panic!("not an identity: {other:?}"),
-        };
-        let rows = self
-            .db
-            .query_once(
-                "SELECT \"state\", \"items_done\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1",
-                &[id],
-            )
-            .await
-            .expect("the query");
-        match rows.first().map(Vec::as_slice) {
-            Some([SqlValue::Text(state), SqlValue::Int8(done)]) => (state.clone(), *done),
-            other => panic!("the run's row: {other:?}"),
-        }
+/// The run's state and items done, as its row keeps them.
+async fn kept(host: &Bench, run: &Value) -> (String, i64) {
+    let id = match jadpo_runtime::to_sql(&field(run, "id"), jadpo_runtime::SqlType::Uuid) {
+        Ok(id) => id,
+        other => panic!("not an identity: {other:?}"),
+    };
+    let rows = host
+        .database()
+        .query_once(
+            "SELECT \"state\", \"items_done\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1",
+            &[id],
+        )
+        .await
+        .expect("the query");
+    match rows.first().map(Vec::as_slice) {
+        Some([SqlValue::Text(state), SqlValue::Int8(done)]) => (state.clone(), *done),
+        other => panic!("the run's row: {other:?}"),
     }
 }
 
@@ -504,9 +463,9 @@ const BIRCH: &str = "0b000000-0000-4000-8000-000000000002";
 
 /// Runs `action` with `args` as no one signed in, then the run it
 /// started, to its end; gives the run.
-async fn sweep(program: &Program, host: &Store, action: &str, args: Vec<Value>) -> Value {
+async fn sweep(program: &Program, host: &Bench, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program);
+    let mut ctx = host.ctx(program.places());
     let outcome = program.run(&mut ctx, id, args).await;
     let work = ctx.take_deferred();
     let run = match outcome {
@@ -538,15 +497,11 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        random: Cell::new(7),
-    };
+    let host = Bench::postgres(&url).at(1_800_000_000_000).random_from(7);
     let program = &program;
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
-        host.execute(
+        execute(&host,
             "INSERT INTO \"household\" (\"id\", \"name\") VALUES ($1::uuid, 'Ash'), ($2::uuid, 'Birch')",
             &[SqlValue::Text(ASH.into()), SqlValue::Text(BIRCH.into())],
         )
@@ -561,7 +516,7 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
         .into_iter()
         .enumerate()
         {
-            host.execute(
+            execute(&host,
                 "INSERT INTO \"chore\" (\"id\", \"household_id\", \"title\", \"ticks\") VALUES ($1::uuid, $2::uuid, $3, 0)",
                 &[
                     SqlValue::Text(format!("0c000000-0000-4000-8000-00000000000{n}")),
@@ -586,9 +541,9 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
             vec![ash.clone(), page(2)],
         )
         .await;
-        assert_eq!(host.kept(&run).await, ("finished".to_string(), 3));
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 3));
         assert_eq!(
-            host.ticks().await,
+            ticks(&host).await,
             [
                 ("ash-1".to_string(), 1),
                 ("ash-2".to_string(), 1),
@@ -600,7 +555,7 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
 
         // No saved tenant id: the run reaches no tenant's records.
         let run = sweep(program, &host, "sweep_unnamed", vec![page(2)]).await;
-        assert_eq!(host.kept(&run).await, ("finished".to_string(), 0));
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 0));
 
         // Two saved tenant ids naming different tenants: none either.
         let run = sweep(
@@ -610,7 +565,7 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
             vec![ash.clone(), birch.clone(), page(2)],
         )
         .await;
-        assert_eq!(host.kept(&run).await, ("finished".to_string(), 0));
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 0));
 
         // Two naming the same tenant name that one: Birch's chores only.
         let run = sweep(
@@ -620,9 +575,9 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
             vec![birch.clone(), birch.clone(), page(2)],
         )
         .await;
-        assert_eq!(host.kept(&run).await, ("finished".to_string(), 2));
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 2));
         assert_eq!(
-            host.ticks().await,
+            ticks(&host).await,
             [
                 ("ash-1".to_string(), 1),
                 ("ash-2".to_string(), 1),
@@ -654,15 +609,11 @@ fn a_runs_finished_keeps_its_counts_in_its_tenants_record() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        random: Cell::new(11),
-    };
+    let host = Bench::postgres(&url).at(1_800_000_000_000).random_from(11);
     let program = &program;
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
-        host.execute(
+        execute(&host,
             "INSERT INTO \"household\" (\"id\", \"name\") VALUES ($1::uuid, 'Ash'), ($2::uuid, 'Birch')",
             &[SqlValue::Text(ASH.into()), SqlValue::Text(BIRCH.into())],
         )
@@ -677,7 +628,7 @@ fn a_runs_finished_keeps_its_counts_in_its_tenants_record() {
         .into_iter()
         .enumerate()
         {
-            host.execute(
+            execute(&host,
                 "INSERT INTO \"chore\" (\"id\", \"household_id\", \"title\", \"ticks\") VALUES ($1::uuid, $2::uuid, $3, $4)",
                 &[
                     SqlValue::Text(format!("0c000000-0000-4000-8000-00000000000{n}")),
@@ -701,10 +652,10 @@ fn a_runs_finished_keeps_its_counts_in_its_tenants_record() {
             ],
         );
         let run = sweep(program, &host, "sweep_and_tally", vec![ash_chore, page(2)]).await;
-        assert_eq!(host.kept(&run).await, ("finished".to_string(), 3));
-        assert_eq!(host.tallies().await, [(ASH.to_string(), 3, 1)]);
+        assert_eq!(kept(&host, &run).await, ("finished".to_string(), 3));
+        assert_eq!(tallies(&host).await, [(ASH.to_string(), 3, 1)]);
         assert_eq!(
-            host.ticks().await,
+            ticks(&host).await,
             [
                 ("ash-1".to_string(), 1),
                 ("ash-2".to_string(), 1),

@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlValue};
+use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
+use jadpo_test::host::Bench;
 use jadpo_value::{Quantity, Value};
 
 use crate::support;
@@ -103,19 +104,6 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// A host whose one store is a PostgreSQL database.
-struct Store(jadpo_host_native::Postgres);
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.0)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 /// A UUID from a number, as version 4 lays one out.
 fn uuid(n: u8) -> [u8; 16] {
     let mut id = [n; 16];
@@ -163,7 +151,7 @@ fn a_get_route_sends_a_query_s_layer_as_plain_geojson() {
     assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let host = Bench::postgres(&url);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     runtime.block_on(async {
         let store = jadpo_host_native::postgres(&url).expect("store");

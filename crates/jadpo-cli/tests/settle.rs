@@ -15,18 +15,18 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use jadpo_runtime::runner::run_deferred;
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, LocalFuture, Row, SqlValue};
+use jadpo_runtime::{Executor, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
+use jadpo_test::host::{Bench, Timer};
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -230,109 +230,34 @@ fn settle_refuses_what_it_cannot_wait_for() {
     );
 }
 
-/// A store, a clock, random bytes from a counter, and a `within:` that
-/// passes as soon as it is waited on when the test says so; every other
-/// timer never ends.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    clock: Cell<i64>,
-    drawn: Cell<u64>,
-    within_passes: Cell<bool>,
-}
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(self.clock.get())
-    }
-
-    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
-        if millis == WITHIN_MS && self.within_passes.get() {
-            Box::pin(Passes(false))
-        } else {
-            Box::pin(std::future::pending())
-        }
-    }
-}
-
-/// A timer that has not finished the first time it is looked at, and has
-/// every time after: `within:` passing while the first follow-on runs.
-struct Passes(bool);
-
-impl std::future::Future for Passes {
-    type Output = ();
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<()> {
-        if self.0 {
-            return std::task::Poll::Ready(());
-        }
-        self.0 = true;
-        cx.waker().wake_by_ref();
-        std::task::Poll::Pending
-    }
-}
-
 /// The route's `within:`.
 const WITHIN_MS: u64 = 2_000;
 
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::fixed(self.clock.get()),
-        };
-        Ctx::new(program.places(), self, env)
-    }
-
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    /// Each delivery to `subscriber` of the order for `item`: its state,
-    /// attempts and last failure's code.
-    async fn deliveries(&self, subscriber: &str, item: &str) -> Vec<(String, i32, Option<String>)> {
-        let sql = format!(
-            "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" JOIN \"order\" AS \"r\" ON \"r\".\"id\"::text = \"o\".\"payload\" ->> 'order_id' WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"r\".\"item\" = '{item}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
-        );
-        self.rows(&sql)
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(status), SqlValue::Int4(attempts), code] => (
-                    status.clone(),
-                    *attempts,
-                    match code {
-                        SqlValue::Text(code) => Some(code.clone()),
-                        _ => None,
-                    },
-                ),
-                other => panic!("not a delivery: {other:?}"),
-            })
-            .collect()
-    }
+/// Each delivery to `subscriber` of the order for `item`: its state,
+/// attempts and last failure's code.
+async fn deliveries(
+    host: &Bench,
+    subscriber: &str,
+    item: &str,
+) -> Vec<(String, i32, Option<String>)> {
+    let sql = format!(
+        "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" JOIN \"order\" AS \"r\" ON \"r\".\"id\"::text = \"o\".\"payload\" ->> 'order_id' WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"r\".\"item\" = '{item}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
+    );
+    host.rows(&sql)
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(status), SqlValue::Int4(attempts), code] => (
+                status.clone(),
+                *attempts,
+                match code {
+                    SqlValue::Text(code) => Some(code.clone()),
+                    _ => None,
+                },
+            ),
+            other => panic!("not a delivery: {other:?}"),
+        })
+        .collect()
 }
 
 fn field(record: &Value, name: &str) -> Value {
@@ -378,13 +303,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        clock: Cell::new(T0),
-        drawn: Cell::new(0),
-        within_passes: Cell::new(false),
-    };
+    let host = Bench::postgres(&url).at(T0).random_from(0);
     let app = program.app();
     let route = app
         .table
@@ -396,7 +315,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let join = program.plan().find("join").expect("join");
-        let mut ctx = host.ctx(&program);
+        let mut ctx = host.ctx(program.places());
         let ann = match program.run(&mut ctx, join, vec![Value::text("ann")]).await {
             jadpo_runtime::Outcome::Value(person) => person,
             other => panic!("ann joins: {other:?}"),
@@ -406,7 +325,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
             field(&ann, "id"),
             field(&ann, "handle"),
         );
-        let mut ctx = host.ctx(&program);
+        let mut ctx = host.ctx(program.places());
         let signed_in = jadpo_runtime::http::identity::test_credentials(
             &mut ctx, app.table, app.auth, route, &caller,
         )
@@ -443,11 +362,11 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
         assert_eq!(progress(&teapot), (true, true));
         assert!(teapot.deferred.is_empty(), "{:?}", teapot.deferred);
         assert_eq!(
-            host.deliveries("confirm_order", "teapot").await,
+            deliveries(&host, "confirm_order", "teapot").await,
             [("succeeded".to_string(), 1, None)]
         );
         assert_eq!(
-            host.deliveries("stamp_order", "teapot").await,
+            deliveries(&host, "stamp_order", "teapot").await,
             [("succeeded".to_string(), 1, None)]
         );
 
@@ -457,7 +376,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
         assert_eq!(fragile.status, 201);
         assert_eq!(progress(&fragile), (false, false));
         assert_eq!(
-            host.deliveries("confirm_order", "fragile").await,
+            deliveries(&host, "confirm_order", "fragile").await,
             [("failed".to_string(), 1, Some("out_of_stock".to_string()))]
         );
         assert!(fragile.deferred.is_empty());
@@ -468,7 +387,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
         assert_eq!(later.status, 202);
         assert_eq!(progress(&later), (false, false));
         assert_eq!(
-            host.deliveries("confirm_order", "later").await,
+            deliveries(&host, "confirm_order", "later").await,
             [(
                 "pending".to_string(),
                 1,
@@ -481,9 +400,10 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
         // its delivery given back as it was: 202 with the order as it is,
         // and the work carries on after the response, exactly as it would
         // without `settle:`.
-        host.within_passes.set(true);
+        // `within:` passes while the first follow-on runs.
+        host.set_timer(WITHIN_MS, Timer::Later);
         let kettle = send(order("kettle", "k-kettle")).await;
-        host.within_passes.set(false);
+        host.set_timer(WITHIN_MS, Timer::Never);
         assert_eq!(
             kettle.status,
             202,
@@ -492,19 +412,19 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
         );
         assert_eq!(progress(&kettle), (false, false));
         assert_eq!(
-            host.deliveries("confirm_order", "kettle").await,
+            deliveries(&host, "confirm_order", "kettle").await,
             [("pending".to_string(), 0, None)],
             "given back as it was, its cut-short attempt not counted"
         );
         assert!(!kettle.deferred.is_empty());
-        host.clock.set(T0 + 1_000);
+        host.set_now(T0 + 1_000);
         run_deferred(&program, &host, kettle.deferred.clone()).await;
         assert_eq!(
-            host.deliveries("confirm_order", "kettle").await,
+            deliveries(&host, "confirm_order", "kettle").await,
             [("succeeded".to_string(), 1, None)]
         );
         assert_eq!(
-            host.deliveries("stamp_order", "kettle").await,
+            deliveries(&host, "stamp_order", "kettle").await,
             [("succeeded".to_string(), 1, None)]
         );
 
