@@ -589,7 +589,7 @@ impl Body<'_> {
         given.is_some()
     }
 
-    fn option_invalid(
+    pub(super) fn option_invalid(
         &mut self,
         value: &Expr,
         written: &str,

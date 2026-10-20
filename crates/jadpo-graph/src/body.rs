@@ -581,9 +581,23 @@ pub enum Callee {
         max_output: u32,
         timeout_ms: u64,
     },
+    /// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` in an action
+    /// (area 21, "The `ai` capability"; chunk 5.5v4): an outside call
+    /// through the connection `ai:` names, asking the model `model:` names
+    /// for each text's embedding, a `V`. Its options are written out.
+    Embed {
+        /// The model's name in `ai: { models: }`.
+        model: String,
+        timeout_ms: u64,
+        /// `ai.embed_all`: a list of texts, a list of vectors back.
+        all: bool,
+        /// `V`'s `dimensions:`, how long each vector is.
+        dimensions: u64,
+    },
     /// One answer a test's `fakes: { ai.<prompt>: [...] }` scripts (area
     /// 21, "Tests"; chunk 5.5v3), given to the `ai` fake before the test's
-    /// first statement.
+    /// first statement. `ai.embed`'s own are scripted with the prompt
+    /// `embed` (chunk 5.5v4).
     AiFake {
         /// The prompt's name.
         prompt: String,
@@ -634,6 +648,7 @@ impl Callee {
             | Callee::Prompt(_)
             | Callee::Generate { .. }
             | Callee::Stream { .. }
+            | Callee::Embed { .. }
             | Callee::AiFake { .. }
             | Callee::AiRequests { .. }
             | Callee::Escape
@@ -686,6 +701,10 @@ pub enum AiFakeAnswer {
     /// pieces, then stops with the condition, by its word (chunk 5.5v6):
     /// the call's one argument is the text.
     Partial(String),
+    /// `recorded("<name>")`: the answer the prompt's recording of that name
+    /// keeps, its placeholders filled, run through the real decoding
+    /// (chunk 5.5v4).
+    Recorded(String),
 }
 
 /// The conditions a fake can answer with besides the operation's own

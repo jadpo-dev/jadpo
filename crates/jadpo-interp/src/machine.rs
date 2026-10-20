@@ -105,6 +105,9 @@ pub(crate) enum Target {
     /// `ai.stream(prompt)` through the connection `ai:` names (area 21,
     /// chunk 5.5v6): an outside call.
     Stream,
+    /// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` through the
+    /// connection `ai:` names (area 21, chunk 5.5v4): an outside call.
+    Embed,
     /// A test's run of a schedule, by the callable number of the action it
     /// runs (area 13; chunk 6.2c).
     Schedule(u32),
@@ -597,6 +600,17 @@ impl<'p> Machine<'p> {
         let Some(ai) = program.ai() else {
             return Err("a model's scripted answer in a program that asks none");
         };
+        // An embedding's failure (chunk 5.5v4).
+        if prompt == jadpo_std::embed::OPERATION {
+            let AiFakeAnswer::Failed(word) = answer else {
+                return Err("an embedding scripted with what isn't a failure");
+            };
+            let Some(rule) = jadpo_std::RuleKey::from_word(word) else {
+                return Err("a scripted failure an embedding has none of");
+            };
+            ctx.at(at.0);
+            return jadpo_runtime::embed::script(ctx, &ai, rule);
+        }
         let given = match answer {
             AiFakeAnswer::Value => {
                 let value = self.pop();
@@ -634,9 +648,43 @@ impl<'p> Machine<'p> {
                 Some(rule) => Script::Condition(rule),
                 None => return Err("a scripted failure `ai.generate` has none of"),
             },
+            // The prompt's recording, its placeholders filled, sent as the
+            // model sends an answer (chunk 5.5v4).
+            AiFakeAnswer::Recorded(name) => {
+                let Some(generate) = program.generate_site_of(prompt) else {
+                    return Err("a recorded answer of a prompt no call asks");
+                };
+                let Some(recording) = program
+                    .plan()
+                    .prompt_recordings()
+                    .iter()
+                    .find(|recording| recording.prompt == *prompt && recording.name == *name)
+                else {
+                    return Err("a recording the plan doesn't have");
+                };
+                match jadpo_runtime::prompt_recordings::answer_at(
+                    ctx,
+                    &ai.json,
+                    generate.answer,
+                    &recording.text,
+                ) {
+                    Some(json) => Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json)),
+                    // One that keeps no answer, which its own test reports,
+                    // answers with nothing to decode.
+                    None => Script::Condition(jadpo_std::RuleKey::Malformed),
+                }
+            }
         };
         ctx.at(at.0);
         jadpo_runtime::ai::script(ctx, &ai, prompt, given)
+    }
+
+    /// The `ai.embed` or `ai.embed_all` call at `at`, decoded.
+    pub fn embed_site(&self, at: SiteId) -> Option<&'p jadpo_std::embed::EmbedSite> {
+        match self.decoded(at)? {
+            Decoded::Embed(site) => Some(site),
+            _ => None,
+        }
     }
 
     /// The `ai.generate` call at `at`, decoded.
@@ -1262,6 +1310,7 @@ impl<'p> Machine<'p> {
                     | Target::Provider
                     | Target::Generate
                     | Target::Stream
+                    | Target::Embed
                     | Target::Schedule(_)
                     | Target::AdvanceClock => {
                         return Ok(Flow::Pause { target, args, at });
@@ -2308,6 +2357,20 @@ impl<'p> Machine<'p> {
                 };
                 let sent = jadpo_runtime::ai::requests(ctx, &ai, prompt);
                 self.values.push(sent);
+            }
+            // A model asked for embeddings: an outside call (area 21,
+            // chunk 5.5v4).
+            Callee::Embed { .. } => {
+                let Some(Some(arg)) = args.first() else {
+                    return Err(self.defect(ctx, "an embedding asked of no text", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Embed,
+                    count: 1,
+                    at: id,
+                    then: None,
+                });
+                self.tasks.push(Task::Expr(*arg));
             }
             // A model asked to answer a prompt: an outside call, before the
             // action's first write (area 21, chunk 5.5v3).

@@ -158,6 +158,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 Callee::Prompt(_)
                 | Callee::Generate { .. }
                 | Callee::Stream { .. }
+                | Callee::Embed { .. }
                 | Callee::AiFake { .. }
                 | Callee::AiRequests { .. } => {}
                 // A message is used by what calls it (area 10).

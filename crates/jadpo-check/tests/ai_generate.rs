@@ -465,8 +465,8 @@ fn only_an_action_asks_a_model_before_it_writes() {
 }
 
 /// A test scripts a model's answers by its prompt's name: a value of the
-/// type its calls ask for, `raw(...)` text, or one of the five failures;
-/// `recorded(...)` comes with chunk 5.5v4.
+/// type its calls ask for, `raw(...)` text, one of the five failures, or
+/// `recorded(...)`, naming one of the prompt's recordings (chunk 5.5v4).
 #[test]
 fn a_test_s_scripted_answers_are_checked() {
     let answer = action("", ALL_ARMS);
@@ -500,11 +500,11 @@ fn a_test_s_scripted_answers_are_checked() {
     );
     assert_eq!(
         of(
-            "toolchain.not_built_yet",
+            "semantic.fake_invalid",
             with("ai.answer_question: [recorded(\"sesame\")]")
         ),
         [format!(
-            "{test_path} toolchain.not_built_yet: `recorded(...)` isn't built yet"
+            "{test_path} semantic.fake_invalid: `answer_question` has no recording `sesame`"
         )]
     );
     assert_eq!(

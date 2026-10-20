@@ -451,6 +451,13 @@ fn placeholders(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<
 }
 
 /// `json`, a recorded value of codec `id`'s type, with each placeholder
+/// filled as [`filled`] fills an operation's: what a prompt's recording
+/// gives as its answer (area 21; chunk 5.5v4).
+pub fn filled_value(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<'_>) -> J {
+    fill(codecs, id, json, making)
+}
+
+/// `json`, a recorded value of codec `id`'s type, with each placeholder
 /// replaced by a generated value of its type.
 fn fill(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<'_>) -> J {
     let Some(codec) = codecs.codecs.get(id.0 as usize) else {

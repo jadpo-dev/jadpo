@@ -72,7 +72,8 @@ pub(super) fn does(node: &Node) -> Does<'_> {
             Callee::Provider { .. }
             | Callee::Files { .. }
             | Callee::Generate { .. }
-            | Callee::Stream { .. } => Does::Calls,
+            | Callee::Stream { .. }
+            | Callee::Embed { .. } => Does::Calls,
             Callee::Action(key)
             | Callee::Fixture(key)
             | Callee::PackageAction { action: key, .. } => Does::Joins(key),

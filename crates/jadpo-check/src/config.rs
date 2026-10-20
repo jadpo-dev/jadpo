@@ -1343,15 +1343,16 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 }
                 let path = current.file(db).path(db).clone();
                 for site in &checked.body.sites {
-                    // `ai.generate` and `ai.stream` read their model's
-                    // setting and their connection's address (area 21;
-                    // chunks 5.5v3 and 5.5v6).
+                    // `ai.generate`, `ai.stream` and `ai.embed` read their
+                    // model's setting and the connection's address (area 21;
+                    // chunks 5.5v3, 5.5v6 and 5.5v4).
                     let names: Vec<String> = match &site.node {
                         Node::Expr(Expr::Config { field }) => vec![field.name().to_string()],
                         Node::Expr(Expr::Call {
                             callee:
                                 jadpo_graph::body::Callee::Generate { model, .. }
-                                | jadpo_graph::body::Callee::Stream { model, .. },
+                                | jadpo_graph::body::Callee::Stream { model, .. }
+                                | jadpo_graph::body::Callee::Embed { model, .. },
                             ..
                         }) => {
                             let settings = crate::ai::settings(db, project);
