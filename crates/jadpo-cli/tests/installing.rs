@@ -208,6 +208,23 @@ fn add_installs_from_a_git_repository_at_a_tag() {
         missing.stderr
     );
     assert!(!other.join("jadpo.lock").exists());
+    assert!(
+        missing.stderr.starts_with(&format!(
+            "error: `{repository}` has no tag `v9.0.0`\n  reason: Its release tags are `v2.0.0`.\n"
+        )),
+        "{}",
+        missing.stderr
+    );
+    // A repository that can't be read says what git said.
+    let unread = jadpo(&other, &["package", "add", "../nowhere@v1.0.0"]);
+    assert_eq!(unread.code, 1, "{}", unread.stderr);
+    assert!(
+        unread
+            .stderr
+            .starts_with("error: `../nowhere` couldn't be read\n  reason: Git said: "),
+        "{}",
+        unread.stderr
+    );
 }
 
 #[test]

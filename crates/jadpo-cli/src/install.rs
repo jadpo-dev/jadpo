@@ -135,7 +135,6 @@ fn folder_name(package: &str) -> String {
 /// `to` as the lock writes it from `root`: relative, with `/`, or
 /// absolute when nothing is shared.
 fn relative(root: &Path, to: &Path) -> String {
-    let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let (root, to) = (real(root), real(to));
     let from: Vec<_> = root.components().collect();
     let target: Vec<_> = to.components().collect();
@@ -153,6 +152,43 @@ fn relative(root: &Path, to: &Path) -> String {
         ".".to_string()
     } else {
         parts.join("/")
+    }
+}
+
+/// `path` with `.` and `..` worked out and its longest existing start
+/// resolved as the file system does (`/var` is `/private/var` on macOS),
+/// so a folder that isn't there yet is written like one that is.
+fn real(path: &Path) -> PathBuf {
+    let mut plain = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                plain.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => plain.push(other.as_os_str()),
+        }
+    }
+    let mut rest: Vec<std::ffi::OsString> = Vec::new();
+    let mut base = plain.clone();
+    loop {
+        if let Ok(found) = std::fs::canonicalize(&base) {
+            let mut out = found;
+            for part in rest.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        match (
+            base.file_name().map(|name| name.to_os_string()),
+            base.parent(),
+        ) {
+            (Some(name), Some(parent)) => {
+                rest.push(name);
+                base = parent.to_path_buf();
+            }
+            _ => return plain,
+        }
     }
 }
 
@@ -434,8 +470,9 @@ struct Repository {
 /// on this machine from its path, which the lock writes from the root.
 fn repository(written: &str, cwd: &Path, root: &Path) -> Repository {
     let local = cwd.join(written);
-    if !written.contains("://") && !written.starts_with("git@") && local.is_dir() {
-        let real = std::fs::canonicalize(&local).unwrap_or(local);
+    let path_like = written.starts_with('.') || Path::new(written).is_absolute();
+    if !written.contains("://") && !written.starts_with("git@") && (path_like || local.is_dir()) {
+        let real = real(&local);
         return Repository {
             url: real.to_string_lossy().into_owned(),
             locked: if Path::new(written).is_absolute() {
@@ -471,6 +508,15 @@ fn fetch_failed(repository: &str, reason: String) -> Reply {
         .next(
             "Check the repository's address and your git access to it, then run the command again",
         ),
+    )
+}
+
+/// A repository that was read but holds no release to install.
+fn no_release(message: String, reason: String) -> Reply {
+    Reply::failed(
+        Diagnostic::new(&rule::PACKAGE_FETCH_FAILED, message)
+            .reason(reason)
+            .next("Give one of its release tags, or tag the release in the package's repository after `jadpo package check` passes"),
     )
 }
 
@@ -671,11 +717,11 @@ pub fn add(call: &Call) -> Reply {
                     .map(|tag| format!("`{}`", tag.trim()))
                     .collect();
                 let has = if tags.is_empty() {
-                    "it has no release tags".to_string()
+                    "It has no release tags yet.".to_string()
                 } else {
-                    format!("its release tags are {}", and_list(&tags))
+                    format!("Its release tags are {}.", and_list(&tags))
                 };
-                return fetch_failed(&repo.locked, format!("It has no tag `{tag}`: {has}."));
+                return no_release(format!("`{}` has no tag `{tag}`", repo.locked), has);
             };
             if let Err(reply) = checkout(&at, &commit, &repo.locked) {
                 return reply;
@@ -883,10 +929,11 @@ pub fn update(call: &Call) -> Reply {
                 .into_iter()
                 .next();
             let Some(newest) = newest else {
-                return fetch_failed(
-                    repository,
+                return no_release(
+                    format!("`{repository}` has no release of `{}`", line.package),
                     format!(
-                        "No `v<version>` tag there has a surface naming `{}`.",
+                        "No `v<version>` tag there has a {} naming `{}`.",
+                        jadpo_db::record::SURFACE_FILE,
                         line.package
                     ),
                 );
