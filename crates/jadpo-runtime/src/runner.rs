@@ -592,6 +592,10 @@ pub(crate) async fn attempt_delivery(
     // A provider call's key is derived from the delivery's id, which every
     // attempt shares (area 12, "Keys"; chunk 7.2c).
     ctx.set_call_key("delivery", jadpo_value::encoding::to_hex(&delivery.id));
+    // Its key survives a retry, so an action with several changing calls
+    // keeps a record of its steps, held by this attempt (area 12, "One
+    // runner per record"; chunk 7.5b).
+    ctx.set_resumable(Some(i64::from(attempt)));
     let ran = match &subscriber.target {
         // A capability's operation is handed the event whole (chunk 7.0c).
         Target::Capability {
@@ -608,6 +612,7 @@ pub(crate) async fn attempt_delivery(
                     .await;
                 if !matches!(marked, Ok(rows) if !rows.is_empty()) {
                     let state = retried("unavailable", Some("unavailable")).await;
+                    ctx.set_resumable(None);
                     return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                 }
             }
@@ -641,6 +646,7 @@ pub(crate) async fn attempt_delivery(
                         .await;
                     if !matches!(marked, Ok(rows) if !rows.is_empty()) {
                         let state = retried("unavailable", Some("unavailable")).await;
+                        ctx.set_resumable(None);
                         return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                     }
                     let call = Call::new(
@@ -686,16 +692,14 @@ pub(crate) async fn attempt_delivery(
                         args: vec![request],
                         system: System { tenant: None },
                     };
-                    run_job(
-                        executor, ctx, &delivery, subscriber, job, attempt, budget, within,
-                    )
-                    .await
+                    run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
                 }
             }
         }
         Target::Action { callable, args } => {
             let Some(args) = outbox::arguments(args, &delivery.value) else {
                 settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
+                ctx.set_resumable(None);
                 return Some((
                     Outcome::Fault(ctx.fault(
                         FaultKind::Defect(
@@ -713,12 +717,10 @@ pub(crate) async fn attempt_delivery(
                     tenant: outbox::tenant(subscriber, &delivery.value),
                 },
             };
-            run_job(
-                executor, ctx, &delivery, subscriber, job, attempt, budget, within,
-            )
-            .await
+            run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
         }
     };
+    ctx.set_resumable(None);
     // Whether a call the run made may have acted outside in a way sending
     // it again would repeat: then the delivery is never given back nor
     // retried, but parked for an operator (area 16).
@@ -787,7 +789,6 @@ async fn run_job(
     delivery: &crate::outbox::Delivery,
     subscriber: &jadpo_std::subscriber::SubscriberPlan,
     job: Job,
-    attempt: u32,
     budget: &Budget<'_>,
     within: Option<&mut crate::LocalFuture<'_, ()>>,
 ) -> Result<Outcome, Cut> {
@@ -803,10 +804,6 @@ async fn run_job(
         store,
         id: delivery.id,
     }));
-    // Its key survives a retry, so an action with several changing calls
-    // keeps a record of its steps, held by this attempt (area 12, "One
-    // runner per record"; chunk 7.5b).
-    ctx.set_resumable(Some(i64::from(attempt)));
     let ran = match within {
         // A route stopping its wait gives the delivery back, as the
         // host shutting down does.
@@ -815,7 +812,6 @@ async fn run_job(
             .map_err(|()| Cut::ShuttingDown),
         None => within_budget(executor, ctx, budget, job).await,
     };
-    ctx.set_resumable(None);
     let background = ctx.background_mut();
     background.set_handled(None);
     background.set_trace(trace);
