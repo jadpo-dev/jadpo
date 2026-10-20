@@ -1439,6 +1439,15 @@ impl Body<'_> {
                 true
             }
             Stmt::EmitStmt(emit) => {
+                // A package's action emits only about the outside world,
+                // run by its own subscribers (area 11; chunk 7.6).
+                if let Ownership::Package(home) = self.ownership
+                    && self.context == Context::Action
+                {
+                    let folder = home.folder.clone();
+                    self.package_emits(&folder, emit);
+                    return true;
+                }
                 if let Some(expr) = emit.expr() {
                     let before = self.out.len();
                     let ty = self.infer(&expr);

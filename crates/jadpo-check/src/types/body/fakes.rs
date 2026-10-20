@@ -113,9 +113,14 @@ impl Body<'_> {
                 continue;
             };
             let operations = crate::providers::operations(self.db, self.project);
+            // A package's actions call its operations whether public or
+            // not, so a test scripts those too (chunk 7.6).
+            let acts = crate::package_code::actions(self.db, self.project)
+                .iter()
+                .any(|action| action.folder == found.folder);
             let Some(operation) = operations
                 .find(&found.folder, resource, name)
-                .filter(|operation| operation.public)
+                .filter(|operation| operation.public || acts)
                 .cloned()
             else {
                 if crate::providers::has_problems(self.db, self.project, &found.folder) {

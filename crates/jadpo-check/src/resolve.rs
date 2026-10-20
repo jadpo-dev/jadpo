@@ -1382,6 +1382,14 @@ impl Names<'_> {
         if is_local {
             return;
         }
+        // A package's action calls its own operations by its resources'
+        // bare names (area 11, chunk 7.6); the body's check reads the
+        // operation.
+        if let Ownership::Package(home) = self.ownership
+            && self.table.is_resource(&home.folder, &qualifier)
+        {
+            return;
+        }
         let qualifier_span = self.span(first);
         // Only a connection's operations take three names (area 11), and
         // the checker says those aren't built yet.

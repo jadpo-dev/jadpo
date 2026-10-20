@@ -26,6 +26,7 @@ with their own code, its integrations in `shared/providers/`.
 6. **Calling a provider.** `app.jadpo` connects to the integration as `couriers`, naming the domains that may call it, the credential from a secret setting and which of its hosts each deployment calls; `courier_desk`'s action calls `couriers.pickups.create(...)` before any read or write, and maps the courier's `slot_taken` to the desk's own failure of the same kind. The courier spells the collection time `collectAt`, so its field says `wire_name: "collectAt"`. `POST /pickups` runs the action, which reaches no entity, so `policy.jadpo` says who may. See `app.jadpo`, `domains/courier_desk/actions/book_pickup.jadpo`, `domains/courier_desk/routes/pickups.jadpo`, `shared/providers/swift_couriers/v1/types/pickup.jadpo` and [area 11, Calling](../../docs/language/11-integrations.md#calling).
 7. **Fakes in tests.** A test never reaches the courier: each call answers through the package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers in order, each a `SwiftCouriers.Pickup` or one of the operation's failures by its code. The compiler checks every scripted answer against the package, and a script the calls run past, or leave answers in, fails the test. See `domains/courier_desk/actions/book_pickup.test.jadpo` and [area 13, Fakes for integrations](../../docs/language/13-testing.md#fakes-for-integrations).
 8. **Calls in development.** `jadpo dev` fakes the courier too, so the desk runs with no API key: `POST /pickups` answers with the generated default, the call shows under the request's line, and `jadpo calls` lists it with what was sent and what came back. `jadpo calls script couriers.pickups.create slot_taken` makes the next booking find its slot taken, and `development: { sandbox: [pickups.create] }` on the connection would let it through to the courier's sandbox, never its live API. See [area 11, Provider calls in development](../../docs/language/11-integrations.md#provider-calls-in-development).
+9. **A package's own action.** A provider package may hold `public` actions that call its own operations by their bare names, in any order, passing answers between them, but never the app's data, another connection or another action. `book_first_slot` knows which slot comes first in the courier's day; the desk calls it as `couriers.book_first_slot(...)` and maps `slot_taken` at the call as it would an operation's. Its changing calls count as steps of the desk's action. In a test it runs its real code, and only the operation it calls is faked. See `shared/providers/swift_couriers/v1/actions/book_first_slot.jadpo`, `domains/courier_desk/actions/book_first_pickup.jadpo` and [area 11, What package code may do](../../docs/language/11-integrations.md#what-package-code-may-do).
 
 ## Run it
 
@@ -39,8 +40,8 @@ target/release/jadpo test examples/26-delivery-desk
 target/release/jadpo fmt --check examples/26-delivery-desk
 ```
 
-- `check` ends with `checked: 25 files` and no errors.
-- `test` ends with `tested: 5 passed, 5 action tests`.
+- `check` ends with `checked: 28 files` and no errors.
+- `test` ends with `tested: 7 passed, 7 action tests`.
 
 To book a pickup by hand, run `jadpo dev` in the project, then in a
 second terminal:
