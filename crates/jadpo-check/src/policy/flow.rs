@@ -1431,6 +1431,7 @@ impl Walk<'_> {
             | Expr::Config { .. }
             | Expr::Constant { .. }
             | Expr::Now
+            | Expr::SentEmails
             | Expr::Unchecked
             | Expr::Propagate { .. } => Prov::default(),
             // A stored field an update by `id` reads is the record's.

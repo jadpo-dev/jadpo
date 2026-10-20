@@ -67,7 +67,7 @@ pub use stores::{
     store_problems, store_reaches, unkept_responses, used_stores, written_stores,
 };
 pub use table::{
-    Def, EMAIL_FIELDS, FieldDef, TypeTable, TypeView, VariantDef, WrittenCoding, standard_fields,
-    type_table,
+    Def, EMAIL_FIELDS, FieldDef, PARTIAL_FIELDS, TypeTable, TypeView, VariantDef, WrittenCoding,
+    standard_fields, type_table,
 };
 pub use ty::{BASES, Prim, TIME_FORMAT, Ty, TypeRef, container_arity, shown};

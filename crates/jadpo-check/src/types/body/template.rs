@@ -45,6 +45,15 @@ pub(crate) enum TemplateWrite {
     Direction,
 }
 
+/// A partial a template includes (chunk 7.3c): the callable its template
+/// of the including kind became, and for each of its fields after
+/// `locale`, in order, the argument that gives it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct IncludeFact {
+    pub(crate) key: Key,
+    pub(crate) args: Vec<Option<usize>>,
+}
+
 /// The translation key of Jadpo's wording of `TextDirection`.
 pub(crate) const DIRECTION_WORDING: &str = "jadpo.text_direction";
 
@@ -101,6 +110,32 @@ pub fn template_body<'db>(db: &'db dyn Db, project: Project, path: Name<'db>) ->
     }
 }
 
+/// The fields of `SentEmail`, what `email.sent` lists (chunk 7.3c), when
+/// `ty` is one.
+pub(crate) fn sent_email_fields(ty: &Ty) -> Option<Vec<(&'static str, Ty)>> {
+    let Ty::Opaque(name, args) = ty.strip_nullable() else {
+        return None;
+    };
+    if name != jadpo_std::email::SENT_EMAIL || !args.is_empty() {
+        return None;
+    }
+    let text = || Ty::Prim(Prim::Text);
+    Some(
+        jadpo_std::email::SENT_EMAIL_FIELDS
+            .iter()
+            .map(|field| {
+                let ty = match *field {
+                    "to" | "from" => Ty::Prim(Prim::Email),
+                    "html" | "text" => text().nullable(),
+                    "links" | "attachments" => Ty::List(Box::new(text())),
+                    _ => text(),
+                };
+                (*field, ty)
+            })
+            .collect(),
+    )
+}
+
 /// The names a template's body reads, among the ones it is given.
 pub fn template_reads(body: &typed::Body) -> BTreeSet<String> {
     body.sites
@@ -116,6 +151,25 @@ pub fn template_reads(body: &typed::Body) -> BTreeSet<String> {
 }
 
 impl Body<'_> {
+    /// `email.sent` (chunk 7.3c): every email a test has sent so far, read
+    /// only in a test.
+    pub(super) fn sent_emails(&mut self, span: Span, expr: &Expr) -> Ty {
+        if !self.test {
+            self.out.push(
+                Diagnostic::new(&rule::EMAIL_SENT_CONTEXT, "`email.sent` is read outside a test")
+                    .at(span, "not in a test")
+                    .reason("`email.sent` lists the emails a test sent, which `jadpo test` catches in place of sending them; outside a test an email goes out once its action commits, and nothing keeps it to read.")
+                    .next("Read `email.sent` in a test, after the action that sends the email"),
+            );
+            return Ty::Error;
+        }
+        self.facts.sent_emails.insert(node_key(expr.syntax()));
+        Ty::List(Box::new(Ty::Opaque(
+            jadpo_std::email::SENT_EMAIL.to_string(),
+            Vec::new(),
+        )))
+    }
+
     /// Checks a template against what it is written for.
     pub(super) fn template(&mut self, host: &TemplateHost, template: &ast::Template) {
         self.scopes.push(Vec::new());
@@ -203,19 +257,217 @@ impl Body<'_> {
                     self.loops -= 1;
                     self.pop_scope();
                 }
-                ast::TemplatePart::TemplateInclude(include) => {
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::EMAIL_TEMPLATE_NOT_ALLOWED,
-                            "A template can't include a partial yet",
-                        )
-                        .at(self.span(&include), "a partial")
-                        .reason("Partials, `{{ include button(...) }}`, wait for where a partial is declared to be decided (roadmap chunk 7.3c); until then a template writes its HTML out in full.")
-                        .next("Write the partial's HTML here in place of the `include`"),
-                    );
-                }
+                ast::TemplatePart::TemplateInclude(include) => self.include(&include, host),
             }
         }
+    }
+
+    /// `{{ include name(field: value, ...) }}` (chunk 7.3c): a partial
+    /// this template may reach, with its template of this one's kind, given
+    /// each of its fields once by name; its `locale` goes with it.
+    fn include(&mut self, include: &ast::TemplateInclude, host: &TemplateHost) {
+        const REASON: &str = "A partial is a `type Name = EmailPartial { ... }` in `shared/emails/` or the domain's own `emails/`, its `.html` and `.txt` beside it; a template includes it as `{{ include name(field: value, ...) }}`, giving each of its fields once by name, and its locale goes with it.";
+        let invalid = |message: String, span: Span, label: &str, next: String| {
+            Diagnostic::new(&rule::EMAIL_PARTIAL_INVALID, message)
+                .at(span, label.to_string())
+                .reason(REASON)
+                .next(next)
+        };
+        let Some(Expr::CallExpr(call)) = include.expr() else {
+            let span = self.span(include);
+            self.out.push(invalid(
+                "`{{ include }}` names no partial".to_string(),
+                span,
+                "not a partial's call",
+                "Write `{{ include button(label: ..., url: ...) }}`, naming a partial and giving its fields".to_string(),
+            ));
+            return;
+        };
+        let called = match call.expr() {
+            Some(Expr::NameRef(name)) => tree::name_ref_text(&name),
+            _ => None,
+        };
+        let Some(called) = called else {
+            let span = self.span(&call);
+            self.out.push(invalid(
+                "`{{ include }}` names no partial".to_string(),
+                span,
+                "not a partial's name",
+                "Name the partial as written in snake case, `{{ include button(...) }}`"
+                    .to_string(),
+            ));
+            self.args_only(&call);
+            return;
+        };
+        let callee_span = call
+            .expr()
+            .map_or_else(|| self.span(&call), |callee| self.span(&callee));
+        let analysis = crate::emails::analysis(self.db, self.project);
+        let Some(partial) = analysis.partial_called(&called).cloned() else {
+            let near = jadpo_diag::nearest(
+                &called,
+                analysis
+                    .partials
+                    .iter()
+                    .map(|partial| partial.called.as_str()),
+            );
+            let type_name = crate::case::to_camel(&called);
+            let next = match near {
+                Some(near) => format!(
+                    "Include `{near}`, or declare `type {type_name} = EmailPartial {{ ... }}` in `shared/emails/` or this domain's `emails/`"
+                ),
+                None => format!(
+                    "Declare `type {type_name} = EmailPartial {{ ... }}` in `shared/emails/` or this domain's `emails/`"
+                ),
+            };
+            self.out.push(invalid(
+                format!("`{called}` isn't a partial"),
+                callee_span,
+                "no such partial",
+                next,
+            ));
+            self.args_only(&call);
+            return;
+        };
+        // A domain's partial is its own emails'; a shared one everyone's.
+        if let jadpo_db::Ownership::Domain(owner) = &partial.ownership
+            && host.ownership.domain() != Some(owner.as_str())
+        {
+            self.out.push(invalid(
+                format!("`{called}` is domain `{owner}`'s partial"),
+                callee_span,
+                "another domain's",
+                format!(
+                    "Move `{}` to `shared/emails/` so every domain's emails can include it, or give this domain a partial of its own",
+                    partial.type_name
+                ),
+            ));
+            self.args_only(&call);
+            return;
+        }
+        let template = if host.html {
+            &partial.html
+        } else {
+            &partial.text
+        };
+        if template.is_none() {
+            let (kind, stem) = (
+                if host.html { "html" } else { "txt" },
+                partial.path.trim_end_matches(".jadpo").to_string(),
+            );
+            self.out.push(invalid(
+                format!("`{called}` has no `.{kind}` template"),
+                callee_span,
+                "nothing to include here",
+                format!("Create `{stem}.{kind}` beside `{}`", partial.path),
+            ));
+            self.args_only(&call);
+            return;
+        }
+        // Its own fields, after the `locale` that goes with it.
+        let fields: Vec<(String, Ty)> = partial
+            .fields
+            .iter()
+            .skip(crate::types::PARTIAL_FIELDS.len())
+            .map(|(name, ty, _)| (name.clone(), ty.clone()))
+            .collect();
+        let args = Self::arguments(&call);
+        let mut given: Vec<Option<usize>> = vec![None; fields.len()];
+        let mut ok = true;
+        for (index, arg) in args.iter().enumerate() {
+            let Some(value) = arg.expr() else { continue };
+            let Some(name) = Self::arg_name(arg) else {
+                ok = false;
+                let span = self.span(&value);
+                self.out.push(invalid(
+                    format!("`{called}` is given a value without its field's name"),
+                    span,
+                    "no field named",
+                    format!(
+                        "Give each field by name: `{called}({})`",
+                        fields
+                            .iter()
+                            .map(|(name, _)| format!("{name}: ..."))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+                self.infer(&value);
+                continue;
+            };
+            let name_span = arg
+                .name()
+                .map_or_else(|| self.span(&value), |n| self.span(&n));
+            if crate::types::PARTIAL_FIELDS
+                .iter()
+                .any(|(own, _)| *own == name)
+            {
+                ok = false;
+                self.out.push(invalid(
+                    format!("`{called}` is given `{name}:`, which goes with it"),
+                    name_span,
+                    "given already",
+                    format!("Remove `{name}:`; a partial is written in the locale of the template that includes it"),
+                ));
+                self.infer(&value);
+                continue;
+            }
+            let Some(slot) = fields.iter().position(|(field, _)| *field == name) else {
+                ok = false;
+                let next = match jadpo_diag::nearest(&name, fields.iter().map(|(f, _)| f.as_str()))
+                {
+                    Some(near) => format!("Give `{near}:` instead of `{name}:`"),
+                    None => format!("Remove `{name}:`"),
+                };
+                self.out.push(invalid(
+                    format!("`{called}` has no field `{name}`"),
+                    name_span,
+                    "not one of its fields",
+                    next,
+                ));
+                self.infer(&value);
+                continue;
+            };
+            if given[slot].is_some() {
+                ok = false;
+                self.out.push(invalid(
+                    format!("`{called}` is given `{name}:` twice"),
+                    name_span,
+                    "given already",
+                    format!("Remove the second `{name}:`"),
+                ));
+                self.infer(&value);
+                continue;
+            }
+            given[slot] = Some(index);
+            let ty = fields[slot].1.clone();
+            self.check(&value, &ty);
+        }
+        if ok {
+            let missing: Vec<&str> = fields
+                .iter()
+                .zip(&given)
+                .filter(|((_, ty), given)| given.is_none() && !self.table.is_nullable(ty))
+                .map(|((name, _), _)| name.as_str())
+                .collect();
+            if let Some(first) = missing.first() {
+                let span = self.span(&call);
+                let listed: Vec<String> = missing.iter().map(|name| format!("`{name}:`")).collect();
+                self.out.push(invalid(
+                    format!("`{called}` is given no `{first}:`"),
+                    span,
+                    "a field left out",
+                    format!("Give {}", crate::and_list(&listed)),
+                ));
+            }
+        }
+        self.facts.includes.insert(
+            node_key(call.syntax()),
+            IncludeFact {
+                key: partial.key(host.html),
+                args: given,
+            },
+        );
     }
 
     /// `{{ value }}`: what it is, and whether it can be written out.
@@ -414,6 +666,12 @@ impl Body<'_> {
                 },
                 TypedExpr::Call { callee, .. } => match callee {
                     Callee::Translation(_) | Callee::Escape => None,
+                    // `{{ include ... }}`: a partial's template (chunk 7.3c).
+                    Callee::Function(key)
+                        if key.name().starts_with(crate::emails::PARTIAL_LABEL) =>
+                    {
+                        None
+                    }
                     Callee::Std(jadpo_std::Op::TextFormat | jadpo_std::Op::LocaleDirection) => None,
                     Callee::Variant(_) => None,
                     _ => Some((

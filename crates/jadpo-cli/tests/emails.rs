@@ -152,9 +152,28 @@ type WelcomeEmail = EmailMessage {
 "#,
     ),
     (
+        "domains/members/emails/visit_line.jadpo",
+        r#"use members/types { MembershipPlan }
+
+/// The line naming a member's plan and how often they have visited.
+type VisitLine = EmailPartial {
+    plan: MembershipPlan
+    visits: Int
+}
+"#,
+    ),
+    (
+        "domains/members/emails/visit_line.html",
+        "<p>{{ plan }}, visit {{ visits }}</p>",
+    ),
+    (
+        "domains/members/emails/visit_line.txt",
+        "{{ plan }}, visit {{ visits }}",
+    ),
+    (
         "domains/members/emails/welcome_email.html",
         r#"<h1>{{ translations.members.welcome_heading(name: name) }}</h1>
-<p>{{ plan }}, visit {{ visits }}</p>
+{{ include visit_line(plan: plan, visits: visits) }}
 {{ if (visits > 1) }}<p>Back again</p>{{ else }}<p>First visit</p>{{ end }}
 <ul>{{ for perk in perks }}<li>{{ perk }}</li>{{ end }}</ul>
 "#,
@@ -162,6 +181,7 @@ type WelcomeEmail = EmailMessage {
     (
         "domains/members/emails/welcome_email.txt",
         r#"{{ translations.members.welcome_heading(name: name) }}
+{{ include visit_line(plan: plan, visits: visits) }}
 "#,
     ),
     (
@@ -250,6 +270,27 @@ action join(address: Email, name: MemberName, plan: MembershipPlan, language: Lo
         perks: ["Free coffee", "Tom & Jerry's <pass>"]
     }
     return member
+}
+"#,
+    ),
+    (
+        "domains/members/actions/join.test.jadpo",
+        r#"use members/entities { Member }
+use members/types { MembershipPlan }
+
+test "joining sends one welcome, its plan's line from a partial" {
+    var member: Member = join("ana@example.test", "Ana", MembershipPlan.premium, Locale.en_gb)
+    assert member.name == "Ana"
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+    assert list.any(sent, item -> item.to == "ana@example.test" and item.from == "hello@acme.test" and item.subject == "Welcome to the club, Ana")
+    assert list.any(sent, item -> item.text == "Acme\n\nHello, Ana\nPremium <gold>, visit 3\n")
+    assert list.all(sent, item -> list.count(item.links) == 0 and list.count(item.attachments) == 0)
+}
+
+test "an action that rolls back sends nothing a test can read" {
+    var before: List<SentEmail> = email.sent
+    assert list.count(before) == 0
 }
 "#,
     ),
@@ -484,13 +525,29 @@ fn an_email_is_rendered_whole_and_sent_over_smtp_after_its_action_commits() {
             panic!("a text and an HTML part: {:?}", parsed.parts);
         };
         assert!(text_head.starts_with("Content-Type: text/plain; charset=utf-8"));
-        assert_eq!(text, "Acme\n\nHello, Ana\n");
+        assert_eq!(text, "Acme\n\nHello, Ana\nPremium <gold>, visit 3\n");
         assert!(html_head.starts_with("Content-Type: text/html; charset=utf-8"));
         assert_eq!(
             html,
             "<html dir=\"ltr\"><head><title>Welcome to the club, Ana</title></head><body><header>Acme</header><h1>Hello, Ana</h1>\n<p>Premium &lt;gold&gt;, visit 3</p>\n<p>Back again</p>\n<ul><li>Free coffee</li><li>Tom &amp; Jerry&#39;s &lt;pass&gt;</li></ul>\n</body></html>\n"
         );
     });
+}
+
+/// A test reads the emails it sent with `email.sent` (chunk 7.3c), each
+/// rendered whole, its partials included, and a test that sends none
+/// reads none.
+#[test]
+fn a_test_reads_the_emails_it_sent() {
+    let root = project("sent-in-tests");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
 }
 
 /// An email in a language written right to left is laid out that way, and

@@ -316,13 +316,15 @@ impl Folder {
         Folder::Provides,
     ];
 
-    /// The folders `shared/` may hold.
-    pub const SHARED: [Folder; 5] = [
+    /// The folders `shared/` may hold: `emails/` for the layout and the
+    /// partials every domain's emails may include (area 16).
+    pub const SHARED: [Folder; 6] = [
         Folder::Types,
         Folder::Libraries,
         Folder::Failures,
         Folder::Translations,
         Folder::Prompts,
+        Folder::Emails,
     ];
 
     pub fn name(self) -> &'static str {
@@ -357,7 +359,7 @@ impl Folder {
             Folder::Entities => *kind == ItemKind::Entity,
             Folder::Types => matches!(
                 kind,
-                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message | Base::Prompt)
+                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::EmailPartial | Base::Message | Base::Prompt)
             ),
             Folder::Failures => *kind == ItemKind::Type(Base::Failure),
             Folder::Actions => *kind == ItemKind::Action,
@@ -367,7 +369,10 @@ impl Folder {
             Folder::Schedules => *kind == ItemKind::Schedule,
             Folder::Events => *kind == ItemKind::Type(Base::Event),
             Folder::Subscribers => *kind == ItemKind::Subscriber,
-            Folder::Emails => *kind == ItemKind::Type(Base::EmailMessage),
+            Folder::Emails => matches!(
+                kind,
+                ItemKind::Type(Base::EmailMessage | Base::EmailPartial)
+            ),
             // A message, or a language file's `translations { }`.
             Folder::Translations => {
                 matches!(kind, ItemKind::Type(Base::Message) | ItemKind::Singleton)

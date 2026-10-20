@@ -19,6 +19,9 @@ pub enum FieldsBase {
     Output,
     Event,
     EmailMessage,
+    /// `type X = EmailPartial { }` (area 16): a piece of an email's
+    /// templates, its fields what it is included with.
+    EmailPartial,
     /// `type X = Message { }` (area 10): text for people, its fields the
     /// wording's placeholders.
     Message,
@@ -37,6 +40,7 @@ impl FieldsBase {
             "Output" => FieldsBase::Output,
             "Event" => FieldsBase::Event,
             "EmailMessage" => FieldsBase::EmailMessage,
+            "EmailPartial" => FieldsBase::EmailPartial,
             "Message" => FieldsBase::Message,
             "Prompt" => FieldsBase::Prompt,
             "Failure" => FieldsBase::Failure,

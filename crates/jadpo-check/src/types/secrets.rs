@@ -144,9 +144,10 @@ pub(crate) fn sign_in_refused(base: FieldsBase, failure: bool, held: jadpo_std::
     failure
         || match base {
             FieldsBase::Output | FieldsBase::Event | FieldsBase::Failure => true,
-            FieldsBase::EmailMessage | FieldsBase::Message | FieldsBase::Prompt => {
-                held == jadpo_std::Builtin::SignInToken
-            }
+            FieldsBase::EmailMessage
+            | FieldsBase::EmailPartial
+            | FieldsBase::Message
+            | FieldsBase::Prompt => held == jadpo_std::Builtin::SignInToken,
             FieldsBase::Object | FieldsBase::Input | FieldsBase::Entity => false,
         }
 }
@@ -172,7 +173,7 @@ pub(crate) fn sign_in_code_field(
             "in an event",
             "An event is kept in the outbox and handed to every subscriber.",
         )
-    } else if base == FieldsBase::EmailMessage {
+    } else if matches!(base, FieldsBase::EmailMessage | FieldsBase::EmailPartial) {
         (
             "in an email",
             "An email is kept in the outbox until it is sent.",
@@ -212,6 +213,7 @@ pub(crate) fn refuses(base: FieldsBase, failure: bool) -> bool {
             FieldsBase::Output
                 | FieldsBase::Event
                 | FieldsBase::EmailMessage
+                | FieldsBase::EmailPartial
                 | FieldsBase::Message
                 | FieldsBase::Failure
         )
@@ -272,7 +274,7 @@ pub(crate) fn field(
                 "An event is kept in the outbox and handed to every subscriber, so a secret in one would be stored and passed on.",
                 format!("Remove `{name}`, and do what needs the secret in the action itself"),
             ),
-            FieldsBase::EmailMessage => (
+            FieldsBase::EmailMessage | FieldsBase::EmailPartial => (
                 "sent in an email",
                 "An email is sent in clear to a mailbox the application doesn't control, and kept there.",
                 format!(

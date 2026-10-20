@@ -165,6 +165,7 @@ pub(super) fn children(node: &Node) -> Vec<SiteId> {
             | Expr::Config { .. }
             | Expr::Constant { .. }
             | Expr::Now
+            | Expr::SentEmails
             | Expr::Unchecked => {}
         },
     }

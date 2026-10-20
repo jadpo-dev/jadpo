@@ -500,7 +500,11 @@ impl Body<'_> {
             }
             return self.type_member(&first, &rest, expr, clean);
         }
-        if StdNames::get().namespace(&head) == Some(Namespace::Generated) {
+        // `email` names a local first: `email.sent` is a test's, and an
+        // email or an address is often called `email` (chunk 7.3c).
+        if StdNames::get().namespace(&head) == Some(Namespace::Generated)
+            && !(head == jadpo_std::email::NAMESPACE && self.is_local(&head))
+        {
             return self.generated_value(&head, &rest, expr);
         }
         if let [member] = rest.as_slice()
@@ -558,6 +562,9 @@ impl Body<'_> {
                     self.clock_read(span, &written);
                     self.facts.effects.insert(node_key(expr.syntax()));
                     return Ty::Prim(Prim::Instant);
+                }
+                if head == jadpo_std::email::NAMESPACE {
+                    return self.sent_emails(span, expr);
                 }
                 Ty::Error
             }
@@ -928,6 +935,7 @@ impl Body<'_> {
         // A batch run, its progress, its summary and its problems (area 12).
         if let Some(object) = super::batches::batch_fields(&through)
             .or_else(|| super::identity::first_sign_in_fields(&self.identity(), &through))
+            .or_else(|| super::template::sent_email_fields(&through))
             && let Ty::Opaque(name, _) = &through
         {
             let Some((_, ty)) = object.iter().find(|(name, _)| *name == field) else {
@@ -2124,6 +2132,7 @@ pub(crate) fn members_of(
     }
     if let Some(object) = super::batches::batch_fields(receiver)
         .or_else(|| super::identity::first_sign_in_fields(identity, receiver))
+        .or_else(|| super::template::sent_email_fields(receiver))
     {
         return object
             .into_iter()

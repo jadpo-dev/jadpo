@@ -183,6 +183,9 @@ pub(crate) struct Facts {
     /// Each read of `clock.now`, an effect that can pause, lowered to
     /// [`jadpo_graph::body::Expr::Now`].
     pub effects: BTreeSet<NodeKey>,
+    /// Each read of `email.sent` in a test (area 16; chunk 7.3c), lowered
+    /// to [`jadpo_graph::body::Expr::SentEmails`].
+    pub sent_emails: BTreeSet<NodeKey>,
     /// Each entity write (area 6): keyed by the record for a `create`, the
     /// call for an `update` or `delete`.
     pub writes: BTreeMap<NodeKey, super::writes::WriteFact>,
@@ -216,4 +219,8 @@ pub(crate) struct Facts {
     pub fakes: BTreeMap<NodeKey, super::fakes::FakeFact>,
     /// Each value an email template writes out, and how (area 16).
     pub template_writes: BTreeMap<NodeKey, super::template::TemplateWrite>,
+    /// Each `{{ include ... }}` of a partial (area 16; chunk 7.3c), by its
+    /// call: the key of the partial's template it runs, and the argument
+    /// giving each of its fields after `locale`, in order.
+    pub includes: BTreeMap<NodeKey, super::template::IncludeFact>,
 }

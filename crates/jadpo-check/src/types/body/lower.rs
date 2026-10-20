@@ -466,7 +466,7 @@ impl Lower<'_> {
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
             typed::Node::Expr(typed::Expr::Write { .. } | typed::Expr::Request { .. }) => true,
-            typed::Node::Expr(typed::Expr::Now) => true,
+            typed::Node::Expr(typed::Expr::Now | typed::Expr::SentEmails) => true,
             _ => false,
         }
     }
@@ -561,11 +561,64 @@ impl Lower<'_> {
                         typed::Node::Stmt(TypedStmt::For { item, list, body }),
                     ));
                 }
-                // Refused by the check until partials are built.
-                ast::TemplatePart::TemplateInclude(_) => {}
+                ast::TemplatePart::TemplateInclude(include) => {
+                    let range = range(include.syntax());
+                    let Some(piece) = self.template_include(&include, writing) else {
+                        continue;
+                    };
+                    out.push(self.written(piece, range, writing));
+                }
             }
         }
         out
+    }
+
+    /// `{{ include name(...) }}` (chunk 7.3c): a call of the partial's
+    /// template, given the including template's locale and then each of
+    /// its fields, `none` for one left out; what it writes is written as
+    /// it is, its own values escaped already.
+    fn template_include(
+        &mut self,
+        include: &ast::TemplateInclude,
+        writing: &Writing,
+    ) -> Option<SiteId> {
+        let Some(Expr::CallExpr(call)) = include.expr() else {
+            return None;
+        };
+        let fact = self.facts.includes.get(&node_key(call.syntax()))?.clone();
+        let at = range(call.syntax());
+        let arguments: Vec<ast::Arg> = call
+            .arg_list()
+            .iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let mut args = Vec::with_capacity(fact.args.len() + 1);
+        args.push(writing.locale.map(|local| {
+            let ty = self.local_type(local);
+            self.made(at, ty, typed::Node::Expr(typed::Expr::Local(local)))
+        }));
+        for given in &fact.args {
+            let value = given
+                .and_then(|index| arguments.get(index))
+                .and_then(ast::Arg::expr);
+            args.push(Some(match value {
+                Some(value) => self.expr(&value),
+                None => self.made(
+                    at,
+                    TypeRef::Builtin(Prim::Unit),
+                    typed::Node::Expr(typed::Expr::Literal(Literal::None)),
+                ),
+            }));
+        }
+        Some(self.made(
+            at,
+            TypeRef::Builtin(Prim::Text),
+            typed::Node::Expr(typed::Expr::Call {
+                callee: Callee::Function(fact.key),
+                args,
+                fallible: typed::Fallible::Never,
+            }),
+        ))
     }
 
     /// `{{ if (...) }} ... {{ else if (...) }} ... {{ else }} ... {{ end }}`
@@ -1267,6 +1320,9 @@ impl Lower<'_> {
         self.scan(expr.syntax());
         if self.facts.effects.contains(&key) {
             return typed::Expr::Now;
+        }
+        if self.facts.sent_emails.contains(&key) {
+            return typed::Expr::SentEmails;
         }
         typed::Expr::Unchecked
     }

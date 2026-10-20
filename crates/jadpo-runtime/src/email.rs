@@ -389,6 +389,132 @@ async fn render(
     }
 }
 
+/// A message a test's email connection caught, as `email.sent` lists it
+/// (chunk 7.3c): a `SentEmail` of its address, sender, subject, HTML and
+/// text, every link in it, and its attachments' file names.
+pub fn sent_email(message: &Value) -> Value {
+    let field = |name: &str| match message {
+        Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let text_of = |value: &Value| match value {
+        Value::Text(text) => Some(text.to_string()),
+        _ => None,
+    };
+    let html = field("html");
+    let text = field("text");
+    let mut links: Vec<String> = Vec::new();
+    for found in text_of(&html)
+        .map(|html| html_links(&html))
+        .unwrap_or_default()
+        .into_iter()
+        .chain(
+            text_of(&text)
+                .map(|text| text_links(&text))
+                .unwrap_or_default(),
+        )
+    {
+        if !links.contains(&found) {
+            links.push(found);
+        }
+    }
+    let attachments: Vec<Value> = match field("attachments") {
+        Value::List(items) => items
+            .iter()
+            .filter_map(|item| match item {
+                Value::Record(record) => record.get("name").cloned(),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    Value::record(
+        jadpo_std::email::SENT_EMAIL,
+        jadpo_std::email::SENT_EMAIL_FIELDS
+            .iter()
+            .zip([
+                field("to"),
+                field("from"),
+                field("subject"),
+                html,
+                text,
+                Value::List(
+                    links
+                        .iter()
+                        .map(|link| Value::text(link))
+                        .collect::<Vec<_>>()
+                        .into(),
+                ),
+                Value::List(attachments.into()),
+            ])
+            .map(|(name, value)| (Rc::from(*name), value))
+            .collect(),
+    )
+}
+
+/// Every `href` in `html`, its character references read back, in order.
+pub fn html_links(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let lower = html.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(at) = lower[from..].find("href=") {
+        let start = from + at + "href=".len();
+        from = start;
+        let rest = &html[start..];
+        let (value, used) = match rest.chars().next() {
+            Some(quote @ ('"' | '\'')) => match rest[1..].find(quote) {
+                Some(end) => (&rest[1..=end], end + 2),
+                None => continue,
+            },
+            Some(_) => {
+                let end = rest
+                    .find(|c: char| c.is_whitespace() || c == '>')
+                    .unwrap_or(rest.len());
+                (&rest[..end], end)
+            }
+            None => continue,
+        };
+        from = start + used;
+        let link = unescape_html(value.trim());
+        if !link.is_empty() {
+            out.push(link);
+        }
+    }
+    out
+}
+
+/// Every `http://` or `https://` address written in `text`, in order.
+pub fn text_links(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(at) = ["https://", "http://"]
+        .iter()
+        .filter_map(|scheme| text[from..].find(scheme))
+        .min()
+    {
+        let start = from + at;
+        let end = text[start..]
+            .find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"'))
+            .map_or(text.len(), |end| start + end);
+        let link = text[start..end].trim_end_matches(['.', ',', ')', ';', ':', '!', '?']);
+        if link.len() > "https://".len() {
+            out.push(link.to_string());
+        }
+        from = end.max(start + 1);
+    }
+    out
+}
+
+/// `&amp;`, `&lt;`, `&gt;`, `&quot;` and `&#39;`, as [`escape_html`]
+/// writes them, read back.
+fn unescape_html(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
 fn defect(ctx: &mut Ctx<'_>, what: &str) -> Outcome {
     Outcome::Fault(ctx.fault(FaultKind::Defect(what.to_string()), Frame::ENTRY))
 }

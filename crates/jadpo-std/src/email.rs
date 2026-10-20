@@ -17,6 +17,26 @@ use crate::translation::TranslationEntry;
 /// The operation a connection that fills `email` is sent a message with.
 pub const SEND: &str = "send";
 
+/// The generated namespace a test reads the mail it sent through:
+/// `email.sent` (area 16, "Email"; chunk 7.3c).
+pub const NAMESPACE: &str = "email";
+
+/// The built-in type each email `email.sent` lists is.
+pub const SENT_EMAIL: &str = "SentEmail";
+
+/// What a `SentEmail` holds, in order: the address it went to, the one it
+/// is from, its subject, its HTML and its text (each `none` without that
+/// template), every link in it, and each attachment's file name.
+pub const SENT_EMAIL_FIELDS: [&str; 7] = [
+    "to",
+    "from",
+    "subject",
+    "html",
+    "text",
+    "links",
+    "attachments",
+];
+
 /// The fields of the message the runtime sends a driver, in order:
 /// `from`, `to`, `subject`, `html` (`none` without an `.html` template),
 /// `text` (`none` without a `.txt` template) and `attachments`, each a

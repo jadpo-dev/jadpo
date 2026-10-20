@@ -71,6 +71,8 @@ pub enum Base {
     Failure,
     Event,
     EmailMessage,
+    /// `type X = EmailPartial` (area 16).
+    EmailPartial,
     /// `type X = Message` (area 10).
     Message,
     /// `type X = Prompt` (area 21).
@@ -90,6 +92,7 @@ impl Base {
             Base::Failure => "Failure".to_string(),
             Base::Event => "Event".to_string(),
             Base::EmailMessage => "EmailMessage".to_string(),
+            Base::EmailPartial => "EmailPartial".to_string(),
             Base::Message => "Message".to_string(),
             Base::Prompt => "Prompt".to_string(),
             Base::Refines(parent) => parent.render(name),

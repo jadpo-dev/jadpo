@@ -29,6 +29,7 @@ mod declines;
 mod decode_problems;
 mod determinism;
 mod domain_names;
+mod email_partials;
 mod events;
 mod examples;
 mod exports;
