@@ -181,14 +181,21 @@ fn a_nonce_is_never_recorded_or_replayed() {
         clock: Clock::TEST,
     };
     let mut recording = Ctx::new(program.places(), &host, env);
-    recording.record_random();
+    recording.record_run();
     let args = || vec![text("same note"), text("same record")];
     let outcome = jadpo_runtime::block_on(program.run(&mut recording, id, args())).expect("ran");
     assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
-    assert_eq!(recording.recorded_random(), Some(&[][..]), "no nonce kept");
+    assert_eq!(
+        recording.recorded_run().map(|kept| kept.random.as_slice()),
+        Some(&[][..]),
+        "no nonce kept"
+    );
     let tape = vec![0x5a; 24];
     let mut replaying = Ctx::new(program.places(), &host, env);
-    replaying.replay_random(tape.clone());
+    replaying.replay_run(jadpo_runtime::capability::Recording {
+        random: tape.clone(),
+        calls: Vec::new(),
+    });
     let outcome = jadpo_runtime::block_on(program.run(&mut replaying, id, args())).expect("ran");
     let Outcome::Value(value) = outcome else {
         panic!("{outcome:?}");

@@ -207,6 +207,7 @@ const EFFECTS_ONLY: &[(&str, &str)] = &[
     ("ctx.emit(", "keeps an event in the outbox"),
     ("EmitRefused", "says why an `emit` wasn't kept"),
     ("subscribers_of", "finds an event's subscribers"),
+    (".capability(", "sends a call outside the process of its own"),
 ];
 
 /// A source file's code, without its comments and its tests: what it runs.

@@ -181,7 +181,7 @@ fn events_plan(
     by_key: &HashMap<Key, u32>,
 ) -> jadpo_std::subscriber::EventsPlan {
     use jadpo_check::events::Tenant;
-    use jadpo_std::subscriber::{SubscriberPlan, TenantFrom};
+    use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
     let written = jadpo_check::types::written_stores(db, project);
     let subscribers = jadpo_check::events::subscribers(db, project)
         .iter()
@@ -191,8 +191,10 @@ fn events_plan(
                 key: model.key.as_str().to_string(),
                 name: model.name.clone(),
                 event: model.event.as_str().to_string(),
-                callable,
-                args: model.args.clone(),
+                target: Target::Action {
+                    callable,
+                    args: model.args.clone(),
+                },
                 attempts: model.retry.attempts,
                 within_ms: model.retry.within_ms,
                 tenant: match &model.tenant {

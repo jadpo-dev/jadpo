@@ -1,0 +1,751 @@
+//! The capability seam (docs/compiler-runtime.md §2.6; chunk 7.0c, from
+//! the Phase 6 architecture review): what a call that leaves the process
+//! is, what a driver answers it, and what is kept of it.
+//!
+//! Every outside call goes through one entry point, [`crate::effects::call`],
+//! which both executors call: it refuses a call while the action's
+//! transaction is open (area 6, "Outside calls hold no transaction"),
+//! gives a replayed run its recorded answer, otherwise asks the driver
+//! the host gives for the call's connection ([`crate::Host::capability`]),
+//! and logs the call on its invocation ([`Logged`]) before it goes out and
+//! again when it is answered. The log is what `jadpo calls` lists (area
+//! 17; its screen is chunk 7.2's), what a recording keeps beside the
+//! answers ([`Recording`]), and how the runner knows a delivery's run may
+//! have acted outside, so one whose outcome is unknown is parked for an
+//! operator rather than sent again blindly (area 12, `outcome_unknown`;
+//! area 16, "Email").
+//!
+//! A driver is one trait, [`Capability`], named by the connection it
+//! serves (area 11): every capability's driver, a package's included,
+//! implements it, so the seam logs, records, replays and fakes them all
+//! the same way. A fake is a host wrapper ([`Faked`]) giving [`Fake`]s in
+//! some connections' place, so a test and `jadpo dev` (chunk 7.2) run the
+//! real host with only those calls answered from a script.
+
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
+
+use jadpo_value::Value;
+
+pub use jadpo_std::subscriber::Repeat;
+
+use crate::{Database, Host, LocalFuture, Passkeys};
+
+/// One call that leaves the process: an operation of the capability or
+/// provider a connection fills (area 11), given its input.
+#[derive(Clone, PartialEq)]
+pub struct Call {
+    /// The connection it goes through, which the host gives a driver for:
+    /// the one `email:` names, a `files` store's, `stripe`.
+    pub connection: String,
+    /// Its operation: `send`, `put`, `payment_intents.create`.
+    pub operation: String,
+    pub input: Value,
+    /// Whether it may be sent again.
+    pub repeat: Repeat,
+}
+
+impl Call {
+    /// A call of `operation` through `connection` with `input`.
+    pub fn new(
+        connection: impl Into<String>,
+        operation: impl Into<String>,
+        input: Value,
+        repeat: Repeat,
+    ) -> Call {
+        Call {
+            connection: connection.into(),
+            operation: operation.into(),
+            input,
+            repeat,
+        }
+    }
+
+    /// How a report names it: `mail.send`.
+    pub fn name(&self) -> String {
+        format!("{}.{}", self.connection, self.operation)
+    }
+}
+
+impl std::fmt::Debug for Call {
+    /// Never its input, which can hold secrets and personal data.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Call")
+            .field("connection", &self.connection)
+            .field("operation", &self.operation)
+            .field("repeat", &self.repeat)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What a driver answers a call, as each driver classifies its own (§2.6),
+/// so every capability and target agree on what happened.
+#[derive(Clone, PartialEq)]
+pub enum Answer {
+    /// What the operation gives.
+    Value(Value),
+    /// One of the operation's own failures, by its code: a condition the
+    /// call maps (area 11, "Calling"), which the provider refused.
+    Failed(String),
+    /// It surely did nothing: it never left, or the provider said so.
+    /// Safe to send again.
+    Unavailable,
+    /// It may have acted: it went out and no answer came back (area 4's
+    /// `outcome_unknown`).
+    Unknown,
+    /// The connection's credential or settings were refused.
+    Misconfigured,
+}
+
+impl std::fmt::Debug for Answer {
+    /// Never the value it gives.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Answer::Value(_) => f.write_str("Value(..)"),
+            Answer::Failed(code) => f.debug_tuple("Failed").field(code).finish(),
+            Answer::Unavailable => f.write_str("Unavailable"),
+            Answer::Unknown => f.write_str("Unknown"),
+            Answer::Misconfigured => f.write_str("Misconfigured"),
+        }
+    }
+}
+
+/// Where a call's answer came from (area 17, "Provider calls in
+/// development").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// The connection's own driver.
+    Live,
+    /// A fake in its place (area 13); chunk 7.2 tells a recording's, a
+    /// generated default and a scripted answer apart.
+    Fake,
+    /// A recorded run's answer, given back without the call going out
+    /// (area 17, "Replaying a production request").
+    Replayed,
+}
+
+/// The driver of a capability a connection fills: the one trait the seam
+/// calls, whatever the capability. A driver classifies what happened into
+/// an [`Answer`]; the seam does the rest.
+pub trait Capability {
+    /// Sends `call` and gives its answer.
+    fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer>;
+
+    /// Where its answers come from.
+    fn source(&self) -> Source {
+        Source::Live
+    }
+}
+
+/// How a logged call ended. Never with its values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// Sent, and not answered yet: what a call whose run was cut off while
+    /// it was out stays as.
+    InFlight,
+    Answered,
+    /// One of its operation's own failures, by its code.
+    Failed(String),
+    Unavailable,
+    Unknown,
+    Misconfigured,
+    /// Never sent: the runtime refused it (inside an open transaction, no
+    /// driver for its connection, a replay that no longer matches its
+    /// recording).
+    Refused,
+}
+
+impl Ended {
+    pub(crate) fn of(answer: &Answer) -> Ended {
+        match answer {
+            Answer::Value(_) => Ended::Answered,
+            Answer::Failed(code) => Ended::Failed(code.clone()),
+            Answer::Unavailable => Ended::Unavailable,
+            Answer::Unknown => Ended::Unknown,
+            Answer::Misconfigured => Ended::Misconfigured,
+        }
+    }
+}
+
+/// One outside call as its invocation's log keeps it: which connection and
+/// operation, whether it may be sent again, where its answer came from,
+/// when it went out, how long it took and how it ended. Never its input
+/// nor its answer, which can hold secrets and personal data.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Logged {
+    pub connection: String,
+    pub operation: String,
+    pub repeat: Repeat,
+    pub source: Source,
+    /// When it went out, on the invocation's clock, in milliseconds since
+    /// 1970-01-01T00:00:00Z.
+    pub at: i64,
+    /// How long it took to be answered, on the host's monotonic clock:
+    /// `None` while it is out, or on a host with no such clock.
+    pub took_ms: Option<u64>,
+    pub ended: Ended,
+}
+
+impl Logged {
+    /// Whether it may have acted outside in a way sending it again would
+    /// repeat: it changes something with no key, and was answered, or went
+    /// out and no answer came back (area 16: "a send whose outcome is
+    /// unknown is parked for an operator, never resent blindly").
+    pub fn may_have_acted(&self) -> bool {
+        self.repeat == Repeat::Unkeyed
+            && matches!(
+                self.ended,
+                Ended::InFlight | Ended::Answered | Ended::Unknown
+            )
+    }
+}
+
+/// One call's answer as a recording keeps it, given back in order when the
+/// run is replayed (area 17).
+#[derive(Clone, PartialEq)]
+pub struct Recorded {
+    pub connection: String,
+    pub operation: String,
+    pub answer: Answer,
+}
+
+impl std::fmt::Debug for Recorded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Recorded")
+            .field("connection", &self.connection)
+            .field("operation", &self.operation)
+            .field("answer", &self.answer)
+            .finish()
+    }
+}
+
+/// What a recorded run kept of its effects (area 17, "Replaying a
+/// production request"): the random bytes it was given and each outside
+/// call's answer, in order. Never the credentials a run made, which are
+/// fresh in a replay ([`crate::Ctx::secret_random_bytes`]).
+#[derive(Clone, Default, PartialEq)]
+pub struct Recording {
+    pub random: Vec<u8>,
+    pub calls: Vec<Recorded>,
+}
+
+impl std::fmt::Debug for Recording {
+    /// Never the bytes or the answers: they can hold tokens and personal
+    /// data.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Recording")
+            .field("random", &self.random.len())
+            .field("calls", &self.calls.len())
+            .finish()
+    }
+}
+
+/// A fake's answer to one call.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Scripted {
+    Answer(Answer),
+    /// Never answers: a call still out when its run is cut off.
+    Hang,
+}
+
+/// A capability that answers from a script (area 13's `fakes:`): each call
+/// of an operation with the next answer scripted for it, or else the
+/// fake's default; every call it was sent kept in order, for a test to
+/// read as area 13's `.requests`.
+pub struct Fake {
+    script: RefCell<VecDeque<(String, Scripted)>>,
+    default: Answer,
+    sent: RefCell<Vec<Call>>,
+}
+
+impl Default for Fake {
+    fn default() -> Fake {
+        Fake::new()
+    }
+}
+
+impl std::fmt::Debug for Fake {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Fake")
+            .field("scripted", &self.script.borrow().len())
+            .field("sent", &self.sent.borrow().len())
+            .finish()
+    }
+}
+
+impl Fake {
+    /// A fake answering every call with `Unit`.
+    pub fn new() -> Fake {
+        Fake::answering(Answer::Value(Value::Unit))
+    }
+
+    /// A fake answering every call not scripted with `default`.
+    pub fn answering(default: Answer) -> Fake {
+        Fake {
+            script: RefCell::new(VecDeque::new()),
+            default,
+            sent: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Answers the next call of `operation` with `answer`, after what is
+    /// scripted for it already.
+    pub fn script(&self, operation: &str, answer: Scripted) {
+        self.script
+            .borrow_mut()
+            .push_back((operation.to_string(), answer));
+    }
+
+    /// The calls it was sent, in order.
+    pub fn sent(&self) -> Vec<Call> {
+        self.sent.borrow().clone()
+    }
+
+    /// The next answer for a call of `operation`.
+    fn next(&self, operation: &str) -> Scripted {
+        let mut script = self.script.borrow_mut();
+        match script
+            .iter()
+            .position(|(scripted, _)| scripted == operation)
+        {
+            Some(at) => script
+                .remove(at)
+                .map_or(Scripted::Answer(self.default.clone()), |(_, answer)| answer),
+            None => Scripted::Answer(self.default.clone()),
+        }
+    }
+}
+
+impl Capability for Fake {
+    fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
+        self.sent.borrow_mut().push(call.clone());
+        match self.next(&call.operation) {
+            Scripted::Answer(answer) => Box::pin(async move { answer }),
+            Scripted::Hang => Box::pin(std::future::pending()),
+        }
+    }
+
+    fn source(&self) -> Source {
+        Source::Fake
+    }
+}
+
+/// `host` with fakes in some connections' place (area 13): a test runs on
+/// it, and `jadpo dev` will (chunk 7.2). Every other capability, and
+/// everything else a host gives, is `host`'s own.
+pub struct Faked<H> {
+    host: H,
+    fakes: Vec<(String, Rc<dyn Capability>)>,
+}
+
+impl<H> std::fmt::Debug for Faked<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = self.fakes.iter().map(|(name, _)| name.as_str()).collect();
+        f.debug_struct("Faked")
+            .field("fakes", &names)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<H: Host> Faked<H> {
+    pub fn new(host: H) -> Faked<H> {
+        Faked {
+            host,
+            fakes: Vec::new(),
+        }
+    }
+
+    /// Gives `fake` in place of connection `connection`'s driver.
+    pub fn with(mut self, connection: &str, fake: Rc<dyn Capability>) -> Faked<H> {
+        self.fakes.push((connection.to_string(), fake));
+        self
+    }
+
+    /// The host it wraps.
+    pub fn host(&self) -> &H {
+        &self.host
+    }
+}
+
+impl<H: Host> Host for Faked<H> {
+    fn capability(&self, connection: &str) -> Option<&dyn Capability> {
+        match self.fakes.iter().find(|(name, _)| name == connection) {
+            Some((_, fake)) => Some(fake.as_ref()),
+            None => self.host.capability(connection),
+        }
+    }
+
+    fn passkeys(&self) -> Option<&dyn Passkeys> {
+        self.host.passkeys()
+    }
+
+    fn database(&self, store: &str) -> Option<&dyn Database> {
+        self.host.database(store)
+    }
+
+    fn defer(&self, work: LocalFuture<'static, ()>) {
+        self.host.defer(work);
+    }
+
+    fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
+        self.host.budget_ms(invocation)
+    }
+
+    fn stopping(&self) -> LocalFuture<'_, ()> {
+        self.host.stopping()
+    }
+
+    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+        self.host.hand_on(work);
+    }
+
+    fn variable(&self, name: &str) -> Option<String> {
+        self.host.variable(name)
+    }
+
+    fn random(&self, bytes: &mut [u8]) -> bool {
+        self.host.random(bytes)
+    }
+
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        self.host.sleep(millis)
+    }
+
+    fn yield_now(&self) -> LocalFuture<'_, ()> {
+        self.host.yield_now()
+    }
+
+    fn monotonic_ms(&self) -> Option<u64> {
+        self.host.monotonic_ms()
+    }
+
+    fn now_ms(&self) -> Option<i64> {
+        self.host.now_ms()
+    }
+
+    fn rate_limit<'a>(
+        &'a self,
+        key: &'a str,
+        limit: jadpo_std::http::RateLimit,
+        now: i64,
+    ) -> LocalFuture<'a, crate::Allowed> {
+        self.host.rate_limit(key, limit, now)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::effects::{Unanswered, call};
+    use crate::{ActionBody, Clock, Ctx, Env, FaultKind, Isolation, MemoryHost, Outcome, Places};
+
+    /// A test capability: the `mail` connection's `send`, a fake answering
+    /// as scripted.
+    fn mail() -> (Rc<Fake>, Faked<MemoryHost>) {
+        let fake = Rc::new(Fake::answering(Answer::Value(Value::text("receipt-1"))));
+        let host =
+            Faked::new(MemoryHost::new()).with("mail", Rc::clone(&fake) as Rc<dyn Capability>);
+        (fake, host)
+    }
+
+    fn send(to: &str, repeat: Repeat) -> Call {
+        Call::new("mail", "send", Value::text(to), repeat)
+    }
+
+    fn env() -> Env {
+        Env {
+            seed: Some(1),
+            clock: Clock::TEST,
+        }
+    }
+
+    fn run(ctx: &mut Ctx<'_>, made: Call) -> Result<Value, Unanswered> {
+        crate::block_on(call(ctx, made)).expect("nothing waits")
+    }
+
+    fn code(result: &Result<Value, Unanswered>) -> String {
+        match result {
+            Ok(_) => "value".into(),
+            Err(Unanswered::Failed(code)) => format!("failed {code}"),
+            Err(Unanswered::Failure(failure)) => failure.code.clone(),
+            Err(Unanswered::Fault(kind)) => kind.classification().into(),
+        }
+    }
+
+    /// Each call is logged on its invocation as it goes out and as it is
+    /// answered: its connection, operation, how it may be repeated, where
+    /// its answer came from, when, and how it ended. Never its input or its
+    /// answer, which the fake was sent and gave.
+    #[test]
+    fn a_call_is_logged_on_its_invocation_without_its_values() {
+        let (fake, host) = mail();
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, env());
+        let sent = run(&mut ctx, send("ada@example.com", Repeat::Unkeyed));
+        assert_eq!(sent, Ok(Value::text("receipt-1")));
+        assert_eq!(
+            ctx.capabilities().calls(),
+            [Logged {
+                connection: "mail".into(),
+                operation: "send".into(),
+                repeat: Repeat::Unkeyed,
+                source: Source::Fake,
+                at: Clock::TEST.now(),
+                took_ms: None,
+                ended: Ended::Answered,
+            }]
+        );
+        assert_eq!(fake.sent(), [send("ada@example.com", Repeat::Unkeyed)]);
+        let shown = format!("{ctx:?} {:?}", fake.sent());
+        assert!(!shown.contains("ada@example.com"), "{shown}");
+        assert!(!shown.contains("receipt-1"), "{shown}");
+        assert_eq!(ctx.take_calls().len(), 1);
+        assert!(ctx.capabilities().calls().is_empty());
+    }
+
+    /// What a driver answers decides what the call gives: a value, its
+    /// operation's own failure for the call to map, or what the runtime
+    /// raises in its place. An answer that may have acted is
+    /// `outcome_unknown` only when sending it again could act twice.
+    #[test]
+    fn a_drivers_answer_decides_what_the_call_gives() {
+        let (fake, host) = mail();
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, env());
+        for answer in [
+            Answer::Failed("recipient_rejected".into()),
+            Answer::Unavailable,
+            Answer::Unknown,
+            Answer::Unknown,
+            Answer::Unknown,
+            Answer::Misconfigured,
+        ] {
+            fake.script("send", Scripted::Answer(answer));
+        }
+        let given: Vec<String> = [
+            Repeat::Unkeyed,
+            Repeat::Unkeyed,
+            Repeat::Unkeyed,
+            Repeat::Keyed,
+            Repeat::Safe,
+            Repeat::Unkeyed,
+        ]
+        .into_iter()
+        .map(|repeat| code(&run(&mut ctx, send("ada", repeat))))
+        .collect();
+        assert_eq!(
+            given,
+            [
+                "failed recipient_rejected",
+                "unavailable",
+                "outcome_unknown",
+                "unavailable",
+                "unavailable",
+                "misconfigured",
+            ]
+        );
+        let ended: Vec<Ended> = ctx
+            .capabilities()
+            .calls()
+            .iter()
+            .map(|logged| logged.ended.clone())
+            .collect();
+        assert_eq!(
+            ended,
+            [
+                Ended::Failed("recipient_rejected".into()),
+                Ended::Unavailable,
+                Ended::Unknown,
+                Ended::Unknown,
+                Ended::Unknown,
+                Ended::Misconfigured,
+            ]
+        );
+        // A connection no driver fills is misconfigured, and never sent.
+        let refused = run(
+            &mut ctx,
+            Call::new("sms", "send", Value::Unit, Repeat::Unkeyed),
+        );
+        assert_eq!(code(&refused), "misconfigured");
+        assert_eq!(
+            ctx.capabilities()
+                .calls()
+                .last()
+                .map(|logged| &logged.ended),
+            Some(&Ended::Refused)
+        );
+    }
+
+    /// Whether a call may have acted in a way sending it again repeats: an
+    /// unkeyed change that was answered, or went out with no answer.
+    #[test]
+    fn only_an_unkeyed_change_that_went_out_may_have_acted() {
+        let logged = |repeat, ended| Logged {
+            connection: "mail".into(),
+            operation: "send".into(),
+            repeat,
+            source: Source::Live,
+            at: 0,
+            took_ms: None,
+            ended,
+        };
+        for (repeat, ended, acted) in [
+            (Repeat::Unkeyed, Ended::Answered, true),
+            (Repeat::Unkeyed, Ended::InFlight, true),
+            (Repeat::Unkeyed, Ended::Unknown, true),
+            (Repeat::Unkeyed, Ended::Unavailable, false),
+            (Repeat::Unkeyed, Ended::Failed("x".into()), false),
+            (Repeat::Unkeyed, Ended::Refused, false),
+            (Repeat::Keyed, Ended::Unknown, false),
+            (Repeat::Safe, Ended::Answered, false),
+        ] {
+            assert_eq!(
+                logged(repeat, ended.clone()).may_have_acted(),
+                acted,
+                "{repeat:?} {ended:?}"
+            );
+        }
+    }
+
+    /// A recorded run keeps each call's answer beside its random bytes; a
+    /// replay gives them back in order without the call going out, and a
+    /// call the recording doesn't have next is refused before it goes out.
+    #[test]
+    fn a_recorded_run_replays_its_calls_without_sending_them() {
+        let (fake, host) = mail();
+        let places = Places::new();
+        let mut recorded = Ctx::new(&places, &host, env());
+        recorded.record_run();
+        assert_eq!(
+            run(&mut recorded, send("ada", Repeat::Unkeyed)),
+            Ok(Value::text("receipt-1"))
+        );
+        let recording = recorded.recorded_run().expect("recording").clone();
+        assert_eq!(recording.calls.len(), 1);
+        assert!(
+            !format!("{recording:?}").contains("receipt-1"),
+            "never the answer"
+        );
+
+        // On a host whose fake would answer otherwise: nothing is sent.
+        fake.script("send", Scripted::Answer(Answer::Unavailable));
+        let mut replayed = Ctx::new(&places, &host, env());
+        replayed.replay_run(recording.clone());
+        assert_eq!(
+            run(&mut replayed, send("ada", Repeat::Unkeyed)),
+            Ok(Value::text("receipt-1"))
+        );
+        assert_eq!(
+            fake.sent().len(),
+            1,
+            "only the recorded run's call went out"
+        );
+        assert_eq!(
+            replayed
+                .capabilities()
+                .calls()
+                .last()
+                .map(|logged| logged.source),
+            Some(Source::Replayed)
+        );
+        // Past the recording, or a call it doesn't have next: refused.
+        let past = run(&mut replayed, send("ada", Repeat::Unkeyed));
+        assert!(
+            matches!(&past, Err(Unanswered::Fault(FaultKind::Defect(what))) if what.contains("nothing")),
+            "{past:?}"
+        );
+        let mut other = Ctx::new(&places, &host, env());
+        other.replay_run(recording);
+        let diverged = run(
+            &mut other,
+            Call::new("mail", "suppress", Value::Unit, Repeat::Safe),
+        );
+        assert!(
+            matches!(&diverged, Err(Unanswered::Fault(FaultKind::Defect(what))) if what.contains("`mail.send`")),
+            "{diverged:?}"
+        );
+        assert_eq!(fake.sent().len(), 1);
+    }
+
+    /// An action that makes a call before its first read or write: then
+    /// one after it, by which time its transaction is open.
+    struct Calls {
+        before: Option<Result<Value, Unanswered>>,
+        after: Option<Result<Value, Unanswered>>,
+    }
+
+    impl<'p> ActionBody<'p> for Calls {
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                self.before = Some(call(ctx, send("ada", Repeat::Unkeyed)).await);
+                if ctx.transaction("main").await.is_err() {
+                    return Outcome::Value(Value::Unit);
+                }
+                self.after = Some(call(ctx, send("ada", Repeat::Unkeyed)).await);
+                Outcome::Value(Value::Unit)
+            })
+        }
+
+        fn isolation(&self) -> Isolation {
+            Isolation::ReadCommitted
+        }
+    }
+
+    /// No call goes out while the action's transaction is open (area 6,
+    /// "Outside calls hold no transaction"): one made after the action's
+    /// first read or write is refused with a fault naming it, and never
+    /// reaches the driver; one made before goes out.
+    #[test]
+    fn a_call_inside_an_open_transaction_is_refused_before_it_goes_out() {
+        let (fake, host) = mail();
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, env());
+        let mut body = Calls {
+            before: None,
+            after: None,
+        };
+        let outcome = crate::block_on(crate::action(&mut ctx, &mut body)).expect("nothing waits");
+        assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
+        assert_eq!(body.before, Some(Ok(Value::text("receipt-1"))));
+        assert_eq!(
+            body.after,
+            Some(Err(Unanswered::Fault(FaultKind::CallInTransaction(
+                "mail.send".into()
+            ))))
+        );
+        assert_eq!(fake.sent().len(), 1, "only the call before went out");
+        let ended: Vec<&Ended> = ctx
+            .capabilities()
+            .calls()
+            .iter()
+            .map(|logged| &logged.ended)
+            .collect();
+        assert_eq!(ended, [&Ended::Answered, &Ended::Refused]);
+        assert_eq!(
+            FaultKind::CallInTransaction("mail.send".into()).classification(),
+            "call_in_transaction"
+        );
+    }
+
+    /// A call whose run is dropped while it is out stays logged as in
+    /// flight: it may have acted.
+    #[test]
+    fn a_call_cut_off_while_it_is_out_stays_in_flight() {
+        let (fake, host) = mail();
+        fake.script("send", Scripted::Hang);
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, env());
+        let stalled = crate::block_on(call(&mut ctx, send("ada", Repeat::Unkeyed)));
+        assert!(stalled.is_err(), "it never answers");
+        assert_eq!(
+            ctx.capabilities()
+                .calls()
+                .last()
+                .map(|logged| &logged.ended),
+            Some(&Ended::InFlight)
+        );
+        assert!(ctx.capabilities().may_have_acted(0));
+        assert!(!ctx.capabilities().may_have_acted(1));
+    }
+}
