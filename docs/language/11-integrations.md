@@ -2232,18 +2232,18 @@ public type SlotText = Text {
 }
 ```
 
-```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/libraries/slots.jadpo hidden
+```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/libraries/timetable.jadpo hidden
 /// Reading collection slots.
-public library slots {
+public library timetable {
     /// A slot in the form Acme expects.
     function normal(slot: SlotText) -> SlotText {
-        return checks.same(slot)
+        return tidying.same(slot)
     }
 }
 ```
 
-```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/libraries/checks.jadpo hidden
-library checks {
+```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/libraries/tidying.jadpo hidden
+library tidying {
     function same(slot: SlotText) -> SlotText {
         return slot
     }
@@ -2254,17 +2254,17 @@ library checks {
 use shared/providers/acme_couriers
 
 action keep_slot(slot: AcmeCouriers.SlotText) -> AcmeCouriers.SlotText {
-    return AcmeCouriers.checks.same(slot)
+    return AcmeCouriers.tidying.same(slot)
 }
 ```
 
 ```text output
-error: `AcmeCouriers.checks` isn't public
+error: `AcmeCouriers.tidying` isn't public
  --> domains/shipping/actions/keep_slot.jadpo:4:12
   |
-4 |     return AcmeCouriers.checks.same(slot)
-  |            ^^^^^^^^^^^^^^^^^^^ not part of the package's API
-  reason: A package offers only what it marks `public`; `checks` is a library in `shared/providers/acme_couriers/v1/libraries/checks.jadpo` that only the package's own code uses, and may change in any version.
+4 |     return AcmeCouriers.tidying.same(slot)
+  |            ^^^^^^^^^^^^^^^^^^^^ not part of the package's API
+  reason: A package offers only what it marks `public`; `tidying` is a library in `shared/providers/acme_couriers/v1/libraries/tidying.jadpo` that only the package's own code uses, and may change in any version.
   next: Use what `AcmeCouriers` marks `public` instead (agent)
   rule: package.not_public
   help: docs/language/11-integrations.html#package-not-public
