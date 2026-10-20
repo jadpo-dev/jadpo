@@ -2657,9 +2657,8 @@ to retry; OpenAPI and the record show both answers, and a repeat with
 the same `Idempotency-Key` runs the query again ("Waiting for follow-on
 work", and `route.settle_invalid`).
 
-Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
-`serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
-with the importer in chunk 7.2, the served route with no chunk yet); a route's own `rate_limit:` and the Redis
+Not yet: `x-jadpo-events`, which waits for publishing events outward
+(area 12); a route's own `rate_limit:` and the Redis
 store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it

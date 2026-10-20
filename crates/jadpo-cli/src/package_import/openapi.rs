@@ -27,7 +27,8 @@
 //! - **Area 11's exact mappings** (its first layer): `date-time` is
 //!   `Instant`, `date` `CalendarDate`, `email` `Email`, `uri` `Url`, `uuid`
 //!   `Uuid`, `ipv4` and `ipv6` `IpAddress`, `byte` `Bytes`, `duration`
-//!   `Duration`, and an enumeration of ISO 4217 codes `Currency`. A shape
+//!   `Duration`, an enumeration of ISO 4217 codes `Currency` and one of
+//!   ISO 3166-1 codes `Country`. A shape
 //!   with no Jadpo form (`oneOf`, an object of any value) is left out and
 //!   listed. Shape and name detection comes with chunk 7.2e.
 //! - **A Jadpo application's document is read exactly**, from its `x-jadpo`
@@ -788,6 +789,17 @@ impl Reader<'_> {
                 })
             {
                 return Some(plain("Currency"));
+            }
+            let countries = jadpo_std::standard_type("Country").and_then(|entry| entry.codes());
+            if !texts.is_empty()
+                && texts.len() == values.len()
+                && countries.is_some_and(|codes| {
+                    texts
+                        .iter()
+                        .all(|code| codes.iter().any(|(_, known)| known == code))
+                })
+            {
+                return Some(plain("Country"));
             }
             let name = self.unique(synthesised.to_string());
             let doc = schema

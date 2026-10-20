@@ -808,7 +808,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   resources by file name with the check cached per digest, and two
   versions of one package side by side, names carrying the version. The
   public registry stays after the first build.
-- [ ] **7.2 Served OpenAPI and the importer** `opus · high` (split from
+- [x] **7.2 Served OpenAPI and the importer** `opus · high` (split from
   7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
   every API's OpenAPI document, and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
@@ -819,7 +819,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `imported:`, resources, types and failures), exact where it finds
   `x-jadpo` fields, with area 11's exact format mappings (its first
   layer), merging into an earlier import rather than overwriting it, and
-  its summary.
+  its summary. Built: `GET <prefix>/openapi.json` answered by the runtime
+  with the document `jadpo check` writes (the plan holds it; the
+  project's name, which titles it, is now an input of the project),
+  needing a caller by any method its API accepts unless the API accepts
+  none; `x-jadpo-changes`, `-idempotency`, `-failure` and `-constraints`
+  (a field's type as the record writes it) and a tag per route group,
+  with `x-jadpo-events` waiting for publishing events outward (area 7,
+  "OpenAPI"); and `jadpo package import openapi`, with its choices in
+  area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
+  field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
+  the importer lists each; recommendation `wire_name:`.
 - [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
   and 7.1c: a provider operation called through its connection over
   7.0c's seam by the package driver (JSON over HTTP), tested against a

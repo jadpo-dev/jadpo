@@ -216,6 +216,7 @@ const COURIERS: &str = r##"{
           "collectAt": { "type": "string", "format": "date-time" },
           "trackingUrl": { "type": "string", "format": "uri", "nullable": true },
           "currency": { "type": "string", "enum": ["GBP", "EUR"] },
+          "country": { "type": "string", "enum": ["GB", "FR"] },
           "parcel": { "type": "object", "properties": { "length": { "type": "integer" }, "fragile": { "type": "boolean" } } },
           "tags": { "type": "array", "items": { "type": "string", "maxLength": 20 } },
           "extra": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
@@ -394,6 +395,7 @@ fn another_providers_document_maps_its_formats_and_lists_what_to_check() {
         "/// A booked collection.
 public type Booking = Object {
     collect_at: Instant?
+    country: Country?
     currency: Currency?
     id: Uuid
     parcel: BookingParcel?
