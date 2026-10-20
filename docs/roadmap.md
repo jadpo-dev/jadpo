@@ -1755,7 +1755,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   decision: `ai.embed` and `ai.embed_all` counted once in the sum, their
   default `timeout:` 5s, so a search route embedding its query fits the
   10s default.
-- [x] **7.7f The docs renderer's loop** `opus · medium`:
+- [x] **7.7f The docs renderer's loop** `opus · high`:
   `tools/language_docs.py` rendering the pages looped forever on an
   indented item (area 1's sub-list of unique names, and one in area 19),
   which the gate's `--check` run never rendered. Built: the list parser
