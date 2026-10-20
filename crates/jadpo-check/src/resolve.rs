@@ -1228,9 +1228,7 @@ impl Names<'_> {
                 Some(near) => problem
                     .next(format!("Use `{package}.{near}` instead"))
                     .edit(span, near),
-                None => problem.next(format!(
-                    "Use something `{package}` offers; `jadpo package show {package}` lists it"
-                )),
+                None => problem.next(format!("Use something `{package}` marks `public`")),
             });
             return None;
         };
@@ -1927,7 +1925,7 @@ fn package_private(symbol: &Symbol, package: &str, span: Span) -> Diagnostic {
         symbol.path
     ))
     .next(format!(
-        "Use what `{package}` offers instead; `jadpo package show {package}` lists it"
+        "Use what `{package}` marks `public` instead"
     ))
 }
 

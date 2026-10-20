@@ -2225,41 +2225,51 @@ package AcmeCouriers.v1 {
 }
 ```
 
-```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/types/slot_code.jadpo hidden
-/// How Acme writes a collection slot.
-type SlotCode = Text {
+```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/types/slot_text.jadpo hidden
+/// A collection slot as Acme writes it.
+public type SlotText = Text {
     max_length: 12
+}
+```
+
+```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/libraries/slots.jadpo hidden
+/// Reading collection slots.
+public library slots {
+    /// A slot in the form Acme expects.
+    function normal(slot: SlotText) -> SlotText {
+        return checks.same(slot)
+    }
+}
+```
+
+```jadpo check project=p71-private file=shared/providers/acme_couriers/v1/libraries/checks.jadpo hidden
+library checks {
+    function same(slot: SlotText) -> SlotText {
+        return slot
+    }
 }
 ```
 
 ```jadpo check project=p71-private file=domains/shipping/actions/keep_slot.jadpo expect=package.not_public
 use shared/providers/acme_couriers
 
-action keep_slot(slot: AcmeCouriers.SlotCode) -> Unit {}
+action keep_slot(slot: AcmeCouriers.SlotText) -> AcmeCouriers.SlotText {
+    return AcmeCouriers.checks.same(slot)
+}
 ```
 
 ```text output
-error: `AcmeCouriers.SlotCode` isn't public
- --> domains/shipping/actions/keep_slot.jadpo:3:24
+error: `AcmeCouriers.checks` isn't public
+ --> domains/shipping/actions/keep_slot.jadpo:4:12
   |
-3 | action keep_slot(slot: AcmeCouriers.SlotCode) -> Unit {}
-  |                        ^^^^^^^^^^^^^^^^^^^^^ not part of the package's API
-  reason: A package offers only what it marks `public`; `SlotCode` is a type in `shared/providers/acme_couriers/v1/types/slot_code.jadpo` that only the package's own code uses, and may change in any version.
-  next: Use what `AcmeCouriers` offers instead; `jadpo package show AcmeCouriers` lists it (agent)
+4 |     return AcmeCouriers.checks.same(slot)
+  |            ^^^^^^^^^^^^^^^^^^^ not part of the package's API
+  reason: A package offers only what it marks `public`; `checks` is a library in `shared/providers/acme_couriers/v1/libraries/checks.jadpo` that only the package's own code uses, and may change in any version.
+  next: Use what `AcmeCouriers` marks `public` instead (agent)
   rule: package.not_public
   help: docs/language/11-integrations.html#package-not-public
 
-error: `SlotCode` isn't used
- --> shared/providers/acme_couriers/v1/types/slot_code.jadpo:2:6
-  |
-2 | type SlotCode = Text {
-  |      ^^^^^^^^ nothing uses this
-  reason: A shared type exists to be used by several files; one that nothing uses is dead code. Tests don't count as users.
-  next: Remove `SlotCode` (agent)
-  rule: layout.unused_declaration
-  help: docs/language/01-project-layout-and-modules.html#layout-unused-declaration
-
-check failed: 2 errors, 4 files
+check failed: 1 error, 6 files
 ```
 
 ### `package.not_locked`

@@ -763,17 +763,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   column and line numbers, and `store.read`'s whole-read cap; and from
   6.4, the warning for a `from:` ordered by a field that can be updated,
   and `estimated_total` from a query's count.
-- [ ] **7.1 Packages: format, kinds, names and the lock** `opus · high`
-  (split from 7.1 Packages and connections on 2026-10-20): the package
-  format (`package.jadpo`, `provider.jadpo` and its keys, folders laid out
-  as `shared/`, `emails/` refused), library and provider kinds,
-  `packages/<name>/<version>/` and the app's own integrations in
-  `shared/providers/`, package names scoped to their package and written
-  through it (`Postcodes.UkPostcode`, `Postcodes.uk.parse(...)`, `use
-  packages/postcodes`), `public` and the reachable-from-public rule in
-  packages and domains, reserved brand names and a package name the app
-  already uses, and `jadpo check` holding each installed package to its
-  line and digest in `jadpo.lock`.
+- [x] **7.1 Packages: format, kinds, names and the lock** `opus · high`
+  (split from 7.1 Packages and connections on 2026-10-20). Built:
+  `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
+  read as packages laid out as `shared/` is, `package.jadpo` and
+  `provider.jadpo` checked, names scoped to their package and written
+  through it (`use packages/postcodes`, `Postcodes.UkPostcode`,
+  `Postcodes.uk.tidy(...)`) in the checker, the graph and the
+  interpreter, each package's code seeing only its own names, `public`
+  and `visibility.public_reaches_private` in packages and domains,
+  reserved and taken names, and `jadpo check` holding each installed
+  package to its line and digest in `jadpo.lock`; the `package.*` errors
+  and example 26. Choices in area 11's "Chosen in chunk 7.1", with one
+  flagged for Richard (a package's code doesn't see the app's `shared/`).
 - [ ] **7.1b Package surface and commands** `opus · high`, after 7.1:
   `surface.jadpo_record` and `jadpo package show`, `jadpo package check`
   with `type.standard_exists` on packages' public types in the publishing
@@ -784,9 +786,10 @@ The design is area 11 as revised on 2026-10-16, with its research in
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
-  settings), the network report, and lazy loading of a package's
-  resources by file name with the check cached per digest. The public
-  registry stays after the first build.
+  settings), the network report, lazy loading of a package's
+  resources by file name with the check cached per digest, and two
+  versions of one package side by side, names carrying the version. The
+  public registry stays after the first build.
 - [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
   fields in every API's OpenAPI document and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
