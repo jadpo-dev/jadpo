@@ -2424,7 +2424,7 @@ changing calls in one action").
   outbox; an action that writes no store needs `events: { store: }`, or it
   is a compile error.
 - **Personal data.** Requests are kept only as fingerprints. Answers are
-  encrypted with a runtime key; nothing links them to a person, so the
+  encrypted with `application { steps: { encryption_key: } }` (area 12); nothing links them to a person, so the
   personal-data report lists "provider answers for unfinished actions, at
   most 30 days", as it does for logs. A metric and a no-setup alert watch
   the number of unfinished records and the age of the oldest.

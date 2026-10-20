@@ -1220,8 +1220,8 @@ The design is area 11 as revised on 2026-10-16, with its research in
   it, on no key or on a replayed `5xx`; the provider's `in_use` waited
   for and `reused` diverged; a delivery's lease generation checked by
   every record write; the record deleted in the commit, with the build id
-  and the step shape it started under. **Needs Richard** first for the key
-  the answers are encrypted with (the pages say "a runtime key").
+  and the step shape it started under; answers encrypted with `application {
+  steps: { encryption_key: } }` (area 12, decided 2026-10-20).
 - [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
   high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
   as an operator item (`jadpo deliveries show`, `retry --not-done`,
