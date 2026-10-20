@@ -376,3 +376,85 @@ pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
         .map(|(scope, _)| scope.clone())
         .collect()
 }
+
+/// What the publishing bar holds a library package's translations to
+/// (area 11, "What publishing requires"): every locale it words, words
+/// every public message, and an enum once any file words it, so an app
+/// is never shown half a language by the package. The locales it words,
+/// as `Locale`'s variants write them, and what is missing.
+pub fn publishing(db: &dyn Db, project: Project, folder: &str) -> (Vec<String>, Vec<Diagnostic>) {
+    let Some((scope, home)) = super::declared::package_scopes(db, project)
+        .iter()
+        .find(|(_, home)| home.folder == folder)
+        .cloned()
+    else {
+        return (Vec::new(), Vec::new());
+    };
+    let all = subjects(db, project, Name::new(db, scope.clone()));
+    let shown = visible(all);
+    let files: Vec<&LanguageFile> = language_files(db, project, &scope)
+        .into_iter()
+        .filter_map(|file| language_file(db, project, file).as_ref())
+        .collect();
+    let none = std::collections::BTreeSet::new();
+    let required = required(&shown, &files, &[], &scope, &none);
+    let mut locales: Vec<String> = Vec::new();
+    let mut out = Vec::new();
+    let prefix = format!("{}/", home.folder);
+    for file in &files {
+        let Some(locale) = file.locale else { continue };
+        locales.push(variant_name(locale).to_string());
+        // Named as the package's own repository has it.
+        let path = file.path.strip_prefix(&prefix).unwrap_or(&file.path);
+        for subject in &required {
+            if file.member(&subject.key).is_none() {
+                out.push(
+                    Diagnostic::new(
+                        &rule::TRANSLATION_WORDING_MISSING,
+                        format!("`{}` has no wording in `{path}`", subject.key),
+                    )
+                    .at(file.keyword.clone(), format!("no `{}`", subject.key))
+                    .also(
+                        subject.name_span.clone(),
+                        format!("`{}` declared here", super::declared::bare_name(&subject.symbol)),
+                    )
+                    .reason(format!(
+                        "A published package words every public {} in each language it ships, so an app that supports `Locale.{}` isn't shown part of it in another language.",
+                        subject.kind.word(),
+                        variant_name(locale)
+                    ))
+                    .next(format!(
+                        "Add `{}` to `{path}`{}, or remove the file until the language is finished",
+                        subject.key,
+                        placeholders(subject)
+                    )),
+                );
+            }
+        }
+    }
+    if files.iter().all(|file| file.locale.is_none()) {
+        for subject in required
+            .iter()
+            .filter(|subject| subject.kind == Kind::Message)
+        {
+            out.push(
+                Diagnostic::new(
+                    &rule::TRANSLATION_FILE_MISSING,
+                    format!(
+                        "Package `{}` words `{}` in no language",
+                        home.code, subject.key
+                    ),
+                )
+                .at(subject.name_span.clone(), "no language file words it")
+                .reason("A published package ships complete wording in its own default locale: one `<locale>.jadpo` in its `translations/` folder that words every public message, so an app in that language has text to show without wording it itself.")
+                .next(format!(
+                    "Add `translations/en_gb.jadpo`, or the file of the language the package is written in, wording `{}`",
+                    subject.key
+                )),
+            );
+        }
+    }
+    locales.sort();
+    locales.dedup();
+    (locales, out)
+}

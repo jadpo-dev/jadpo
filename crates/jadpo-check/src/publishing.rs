@@ -42,6 +42,7 @@ pub fn undescribed(db: &dyn Db, project: Project, folder: &str) -> Vec<Diagnosti
             };
             let what = match &item.kind {
                 ItemKind::Type(base) if *base == jadpo_db::Base::Failure => "Public failure",
+                ItemKind::Type(jadpo_db::Base::Message) => "Public message",
                 ItemKind::Type(_) => "Public type",
                 ItemKind::Library => "Public library",
                 _ => continue,
