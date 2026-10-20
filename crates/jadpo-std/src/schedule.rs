@@ -31,6 +31,11 @@ pub struct SchedulesPlan {
     /// "Receiving from outside"; chunk 7.7); `None` when nothing is
     /// received.
     pub received: Option<String>,
+    /// The store queue messages are parked in for an operator
+    /// (`jadpo_parked_messages`), whose dismissed ones the tick deletes,
+    /// beside the queues' events (chunk 7.7c); `None` when the app
+    /// receives no queue, and the tick receives each queue's messages.
+    pub parked: Option<String>,
 }
 
 impl SchedulesPlan {

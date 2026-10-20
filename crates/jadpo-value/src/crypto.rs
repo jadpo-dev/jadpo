@@ -354,6 +354,14 @@ pub fn signed_by(key: &[u8], parts: &[&[u8]], mac: &[u8]) -> bool {
     check.verify_slice(mac).is_ok()
 }
 
+/// The HMAC-SHA-256 of `parts`, one after another, under `key`: what AWS's
+/// Signature Version 4 derives its keys and signs with (chunk 7.7c). Any
+/// key length is taken.
+pub fn mac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+    // HMAC takes a key of any length, so this never gives the zeros.
+    hmac_sha256(key, parts).unwrap_or([0; 32])
+}
+
 /// Whether `mac` is the HMAC-SHA1 of `parts`, one after another, under
 /// `key`, compared in constant time: Twilio's webhook signature (area 11,
 /// "Receiving from outside"; chunk 7.7b), which still signs with SHA-1.

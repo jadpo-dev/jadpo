@@ -48,8 +48,8 @@ use std::cell::RefCell;
 
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
-    Address, CallSite, ConnectionPlan, CredentialScheme, OperationPlan, PathPart, ProviderPlan,
-    RETRY_BASE_MS, RetryPlan,
+    Address, CallSite, ConnectionPlan, CredentialScheme, OperationPlan, PathPart, Protocol,
+    ProviderPlan, RETRY_BASE_MS, RetryPlan,
 };
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::types::FailurePlan;
@@ -74,6 +74,31 @@ pub struct Reading {
     pub error_code: Option<String>,
     pub in_use: Option<String>,
     pub reused: Option<String>,
+    /// Whether the code is AWS's error type, `com.amazonaws.sqs#QueueDoesNotExist`,
+    /// read as the failure's code it names, `queue_does_not_exist` (chunk
+    /// 7.7c).
+    pub aws: bool,
+}
+
+/// An AWS error type as the failure code it names: what follows its
+/// namespace's `#`, in lower_snake_case.
+pub fn aws_code(written: &str) -> String {
+    let name = written.rsplit('#').next().unwrap_or(written);
+    let name = name.split(':').next().unwrap_or(name);
+    let mut out = String::new();
+    for (at, ch) in name.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if at > 0 && !out.ends_with('_') {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else if ch == '.' || ch == '-' {
+            out.push('_');
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// A provider operation's request, as the package driver sends it.
@@ -147,6 +172,7 @@ pub fn classify(request: &Request, response: &Response) -> Answer {
         let json = json.as_ref()?;
         let at = at_path(json, reading.error_code.as_deref()?)?;
         match at {
+            serde_json::Value::String(code) if reading.aws => Some(aws_code(code)),
             serde_json::Value::String(code) => Some(code.clone()),
             serde_json::Value::Number(code) => Some(code.to_string()),
             _ => None,
@@ -319,6 +345,8 @@ fn base32(bytes: &[u8]) -> String {
 #[derive(Clone, Default)]
 pub struct Credentials {
     held: Vec<Option<String>>,
+    /// Each AWS connection's access key id, beside its secret (chunk 7.7c).
+    key_ids: Vec<Option<String>>,
     webhooks: Vec<Option<(String, Option<String>)>>,
 }
 
@@ -350,6 +378,16 @@ impl Credentials {
                     values.text_at(at).map(str::to_string)
                 })
                 .collect(),
+            key_ids: plan
+                .connections
+                .iter()
+                .map(|connection| match connection.credential? {
+                    (CredentialScheme::AwsSigV4 { key_id }, _) => {
+                        values.text_at(key_id).map(str::to_string)
+                    }
+                    _ => None,
+                })
+                .collect(),
             webhooks: plan
                 .webhooks
                 .iter()
@@ -365,6 +403,11 @@ impl Credentials {
     /// The credential of the connection at `at` in the plan.
     pub fn get(&self, at: u32) -> Option<&str> {
         self.held.get(at as usize)?.as_deref()
+    }
+
+    /// The access key id of the AWS connection at `at` in the plan.
+    pub fn key_id(&self, at: u32) -> Option<&str> {
+        self.key_ids.get(at as usize)?.as_deref()
     }
 
     /// The secrets the webhook at `at` in the plan is checked with: its
@@ -383,8 +426,16 @@ impl Credentials {
     pub fn given(held: Vec<Option<String>>) -> Credentials {
         Credentials {
             held,
+            key_ids: Vec::new(),
             webhooks: Vec::new(),
         }
+    }
+
+    /// Access key ids given as they are, by the connection's place: for a
+    /// test.
+    pub fn with_key_ids(mut self, key_ids: Vec<Option<String>>) -> Credentials {
+        self.key_ids = key_ids;
+        self
     }
 
     /// Webhook secrets given as they are, by the webhook's place: for a
@@ -1001,31 +1052,89 @@ fn request(
             &mut Vec::new(),
         ))
     };
+    let aws_json = plan.protocol == Protocol::AwsJson;
     let mut headers = vec![
         ("Accept".to_string(), "application/json".to_string()),
         ("user-agent".to_string(), "jadpo".to_string()),
     ];
-    if body.is_some() {
+    if aws_json {
+        // AWS's JSON protocol names the operation in a header, its body
+        // always sent (chunk 7.7c).
+        let target = plan
+            .aws
+            .as_ref()
+            .and_then(|aws| aws.target.as_deref())
+            .unwrap_or_default();
+        let operation = op.name.rsplit('.').next().unwrap_or(&op.name);
+        headers.push((
+            "Content-Type".to_string(),
+            "application/x-amz-json-1.0".to_string(),
+        ));
+        headers.push((
+            "X-Amz-Target".to_string(),
+            format!("{target}.{}", pascal(operation)),
+        ));
+    } else if body.is_some() {
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
     }
+    let body = if aws_json && body.is_none() {
+        Some("{}".to_string())
+    } else {
+        body
+    };
     if let Some((scheme, _)) = plan.credential {
         let Some(secret) = providers.credentials.get(at) else {
             return Err(Unready::Misconfigured);
         };
-        let value = match scheme {
-            CredentialScheme::Bearer => format!("Bearer {secret}"),
-            CredentialScheme::Basic => format!(
-                "Basic {}",
-                jadpo_value::encoding::to_base64(secret.as_bytes())
-            ),
-        };
-        headers.push(("Authorization".to_string(), value));
+        match scheme {
+            CredentialScheme::Bearer => {
+                headers.push(("Authorization".to_string(), format!("Bearer {secret}")));
+            }
+            CredentialScheme::Basic => headers.push((
+                "Authorization".to_string(),
+                format!(
+                    "Basic {}",
+                    jadpo_value::encoding::to_base64(secret.as_bytes())
+                ),
+            )),
+            CredentialScheme::AwsSigV4 { .. } => {
+                let (Some(key_id), Some(aws)) = (providers.credentials.key_id(at), &plan.aws)
+                else {
+                    return Err(Unready::Misconfigured);
+                };
+                let region = crate::sigv4::region_of(&base);
+                let signer = crate::sigv4::Signer {
+                    key_id,
+                    secret,
+                    region: &region,
+                    service: &aws.service,
+                };
+                // Signed with every header but its client's name, which
+                // something on the way may change.
+                let signed: Vec<(String, String)> = headers
+                    .iter()
+                    .filter(|(name, _)| !name.eq_ignore_ascii_case("user-agent"))
+                    .cloned()
+                    .collect();
+                let unsigned = crate::sigv4::Unsigned {
+                    method: op.method.word(),
+                    url: &url,
+                    headers: &signed,
+                    body: body.as_deref().unwrap_or_default().as_bytes(),
+                };
+                let Some(added) = crate::sigv4::sign(&unsigned, &signer, ctx.now()) else {
+                    return Err(Unready::Misconfigured);
+                };
+                headers.extend(added);
+            }
+        }
     }
     let mut reading = Reading {
         failed_when: op.failed_when.clone(),
         error_code: plan.error_code.clone(),
         in_use: None,
         reused: None,
+        aws: aws_json,
     };
     let mut keying = None;
     if let Some(idempotency) = &plan.idempotency {
@@ -1058,6 +1167,18 @@ fn request(
         fields,
         keying,
     })
+}
+
+/// `receive_message` as AWS names an operation, `ReceiveMessage`.
+fn pascal(name: &str) -> String {
+    name.split('_')
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_ascii_uppercase().to_string() + chars.as_str()
+            })
+        })
+        .collect()
 }
 
 /// A request as made, before its key: what its fingerprint is made of and
@@ -1399,6 +1520,7 @@ mod tests {
             error_code: Some("error.code".into()),
             in_use: Some("key_in_use".into()),
             reused: Some("key_reused".into()),
+            aws: false,
         };
         let sent = request(reading);
         assert_eq!(
@@ -1485,5 +1607,34 @@ mod tests {
             Some(&serde_json::Value::String("a".into()))
         );
         assert_eq!(at_path(&json, "data.missing"), None);
+    }
+
+    /// AWS's error types are read as the codes of the failures they name.
+    #[test]
+    fn an_aws_error_type_is_read_as_its_failures_code() {
+        assert_eq!(
+            aws_code("com.amazonaws.sqs#QueueDoesNotExist"),
+            "queue_does_not_exist"
+        );
+        assert_eq!(
+            aws_code("ReceiptHandleIsInvalid"),
+            "receipt_handle_is_invalid"
+        );
+        assert_eq!(pascal("receive_message"), "ReceiveMessage");
+        let reading = Reading {
+            error_code: Some("__type".into()),
+            aws: true,
+            ..Reading::default()
+        };
+        assert_eq!(
+            classify(
+                &request(reading),
+                &answer(
+                    400,
+                    r#"{"__type": "com.amazonaws.sqs#QueueDoesNotExist", "message": "no"}"#
+                )
+            ),
+            Answer::Failed("queue_does_not_exist".into())
+        );
     }
 }

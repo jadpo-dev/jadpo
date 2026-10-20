@@ -1,0 +1,6 @@
+/// The handle isn't one of the queue's: the message was received too long
+/// ago, or by someone else.
+public type ReceiptHandleIsInvalid = Failure {
+    kind: FailureKind.rejected
+    message: "The message's handle isn't valid."
+}
