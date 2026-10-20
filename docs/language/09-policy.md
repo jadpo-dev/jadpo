@@ -625,6 +625,10 @@ GET /chores/{company_id: Uuid}
     output List<ChoreView>
     status 200
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 input AddChore
     company_id: Uuid
     project_id: Uuid
@@ -1241,6 +1245,10 @@ record api 1
 
 api main
     authentication browser_session
+
+GET /openapi.json
+    generated openapi
+    status 200
 
 POST /projects
     input StartProject (body)

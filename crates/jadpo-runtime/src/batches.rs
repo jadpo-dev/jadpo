@@ -29,13 +29,20 @@
 //!
 //! What a run reads is the plan's ([`BatchPlan`]): the same for the
 //! interpreter and compiled code, which give it through
-//! [`crate::Executor::batches`].
+//! [`crate::Executor::batches`]. A file helper's run (`csv.read` and the
+//! others; chunk 6.4b) walks a stored file's rows instead of a query's
+//! pages, each page read from the file before its transaction opens
+//! ([`file`]).
+
+pub(crate) mod file;
+
+pub use file::MAX_ROW_BYTES;
 
 use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use jadpo_std::BatchState;
-use jadpo_std::batch::{BatchArg, BatchPlan, BatchTenant};
+use jadpo_std::batch::{BatchArg, BatchFrom, BatchPlan, BatchTenant};
 use jadpo_std::types::FailurePlan;
 use jadpo_value::Value;
 
@@ -85,6 +92,11 @@ const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
 
 /// The most runs one sweep picks up.
 const SWEEP_LIMIT: i64 = 100;
+
+/// How many of a file's rows a file helper's run reads into one batch,
+/// unless its host says otherwise ([`crate::Host::rows_per_batch`]): as
+/// many as a query's largest page (`PageSize`'s 100).
+pub const ROWS_PER_BATCH: u32 = 100;
 
 /// Starts a run, or finds the one its call already started with its
 /// `key:` in its tenant (chunk 6.6c), keeping the encoding its saved
@@ -567,6 +579,8 @@ async fn run_inner(
     };
     let mut pages = 0;
     let mut attempts = 0;
+    // A file helper's file, opened at its first page in this invocation.
+    let mut opened: Option<file::Opened> = None;
     loop {
         if budget.spent() {
             return handed_on(database, budget, start, &lease, pages, left).await;
@@ -579,7 +593,15 @@ async fn run_inner(
         // The page in hand is cut short when the budget ends: dropped,
         // nothing it did kept.
         let stepped = budget
-            .run(step(executor, budget, batches, plan, start, saved, left))
+            .run(step(
+                executor,
+                budget,
+                batches,
+                plan,
+                start,
+                saved,
+                (&mut opened, left),
+            ))
             .await;
         match stepped {
             Ok(Step::Next) => {
@@ -651,7 +673,7 @@ async fn step(
     plan: &BatchPlan,
     start: &BatchStart,
     saved: Saved<'_>,
-    left: &mut Vec<Deferred>,
+    (opened, left): (&mut Option<file::Opened>, &mut Vec<Deferred>),
 ) -> Step {
     let host = budget.host();
     let Some(now) = now_on(host) else {
@@ -672,16 +694,34 @@ async fn step(
     // stops once the budget is spent (chunk 6.7).
     ctx.set_deadline(Some(budget.limit_ms()));
     let lease_until = crate::lease::until(budget, now);
-    let stepped = batch(
-        executor,
-        &mut ctx,
-        batches,
-        plan,
-        start,
-        saved,
-        (now, lease_until),
-    )
-    .await;
+    let stepped = match &plan.from {
+        BatchFrom::Query(_) => {
+            batch(
+                executor,
+                &mut ctx,
+                batches,
+                plan,
+                start,
+                saved,
+                (now, lease_until),
+            )
+            .await
+        }
+        BatchFrom::File(rows) => {
+            file::page(
+                executor,
+                &mut ctx,
+                batches,
+                plan,
+                rows,
+                start,
+                saved,
+                opened,
+                (now, lease_until),
+            )
+            .await
+        }
+    };
     left.extend(ctx.take_deferred());
     stepped
 }
@@ -770,8 +810,12 @@ async fn batch(
         return finished(executor, open, plan, &id, values, &held, now).await;
     }
     // The page after the position that committed, as the system.
+    let Some(query) = plan.from.query() else {
+        open.rollback().await;
+        return Step::Ended(Ran::Paused("a file's run read as a query's".into()));
+    };
     let mut args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
-    if let Some(page) = &plan.read.page
+    if let Some(page) = &query.page
         && let jadpo_std::read::Source::Arg { index, path } = &page.after
     {
         let cursor = held.position.as_deref().map_or(Value::None, Value::text);
@@ -781,7 +825,7 @@ async fn batch(
     }
     let read = crate::store(
         open.ctx(),
-        StoreOp::Read(&plan.read),
+        StoreOp::Read(query),
         batches.failures,
         batches.json,
         &args,

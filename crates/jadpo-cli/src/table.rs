@@ -687,7 +687,7 @@ pub static COMMANDS: &[Command] = &[
         name: "package",
         synonyms: &["packages"],
         group: "Build and check",
-        summary: "Show or check a package",
+        summary: "Show, check, import packages",
         description: "`show <name>` prints a package's description, licence, version, kind and public \
                       surface (area 11), installed in packages/ or the app's own in shared/providers/; \
                       `show <name> <declaration>` prints one operation, function, type or failure in \
@@ -695,33 +695,46 @@ pub static COMMANDS: &[Command] = &[
                       a package's own repository, checks it as the app's own integration, runs the \
                       publishing bar (no errors, a description on every public declaration, its tests, \
                       a version its changes since the last tag allow) and writes surface.jadpo_record. \
-                      `add`, `update`, `remove`, `link` and `unlink` come with installing packages.",
+                      `import openapi <file>` reads an OpenAPI 3 document, as JSON, once and offline, \
+                      into the app's own integration in shared/providers/<name>/<version>/: another \
+                      Jadpo application's exactly, from its x-jadpo fields, any other's by its formats, \
+                      with what it leaves out listed to check; importing again merges, keeping \
+                      corrections. `add`, `update`, `remove`, `link` and `unlink` come with installing \
+                      packages.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show or check",
+                description: "What to do: show, check or import",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check, its folder",
+                description: "The package, such as holidays; for check, its folder; for import, openapi",
                 required: false,
                 values: Values::Path,
             },
             Argument {
                 name: "declaration",
-                description: "One of its declarations, such as uk.dates",
+                description: "One of its declarations, such as uk.dates; for import, the file",
                 required: false,
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[Flag {
-            name: "--guide",
-            value: None,
-            description: "Print the package's GUIDE.md",
-            values: &[],
-        }],
+        flags: &[
+            Flag {
+                name: "--guide",
+                value: None,
+                description: "Print the package's GUIDE.md",
+                values: &[],
+            },
+            Flag {
+                name: "--as",
+                value: Some("name"),
+                description: "For import: its name, such as Tidepool.v1",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "See what the holidays package offers",
@@ -735,9 +748,15 @@ pub static COMMANDS: &[Command] = &[
                 description: "Run the publishing bar in a package's own repository",
                 command: "jadpo package check",
             },
+            Example {
+                description: "Import another Jadpo application's API",
+                command: "jadpo package import openapi ../orders/build/openapi/main.json",
+            },
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
         raises: &[
+            &rule::CLI_PACKAGE_NOT_OPENAPI,
+            &rule::CLI_PACKAGE_UNREADABLE,
             &rule::PUBLISH_BREAKING_CHANGE,
             &rule::PUBLISH_DESCRIPTION_MISSING,
             &rule::TEST_FAILED,

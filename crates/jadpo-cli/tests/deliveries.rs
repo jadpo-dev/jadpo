@@ -529,6 +529,31 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
         ]
     );
 
+    // What the operator settled is kept 30 days (chunk 6.13): 29 days on,
+    // the cancelled and dismissed deliveries are still there, and every
+    // log row is kept, though the two deliveries that succeeded have gone
+    // with their events after a day.
+    let day = 24 * 60;
+    tick_at(29 * day);
+    let settled =
+        "SELECT count(*) FROM \"jadpo_deliveries\" WHERE \"status\" IN ('dismissed', 'cancelled')";
+    assert_eq!(runtime.block_on(host.count(settled)), 2);
+    let log = "SELECT count(*) FROM \"jadpo_operator_actions\"";
+    assert_eq!(runtime.block_on(host.count(log)), 8);
+
+    // 30 days after the last action, the tick deletes those deliveries
+    // and their events; and each log row, its delivery or run gone, the
+    // runs' records having aged out after their own 30 days.
+    let month = tick_at(30 * day + 120);
+    assert!(month.problems.is_empty(), "{:?}", month.problems);
+    assert_eq!(month.deleted.deliveries, 2, "{:?}", month.deleted);
+    assert_eq!(month.deleted.actions, 8, "{:?}", month.deleted);
+    assert_eq!(runtime.block_on(host.count(log)), 0);
+    let deliveries = "SELECT count(*) FROM \"jadpo_deliveries\"";
+    assert_eq!(runtime.block_on(host.count(deliveries)), 0);
+    let outbox = "SELECT count(*) FROM \"jadpo_outbox\"";
+    assert_eq!(runtime.block_on(host.count(outbox)), 0);
+
     drop(host);
     databases.release(copy, false);
 }

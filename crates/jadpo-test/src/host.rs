@@ -43,6 +43,8 @@ pub struct Harness<D = jadpo_host_native::Postgres> {
     /// The monotonic clock and how far it moves on each time it is read.
     monotonic: Option<(Cell<u64>, u64)>,
     budget: Option<u64>,
+    /// How many of a file's rows a batch reads, when not the runtime's.
+    rows_per_batch: Option<u32>,
     timers: RefCell<Vec<(u64, Timer)>>,
     deferred: RefCell<Vec<LocalFuture<'static, ()>>>,
     handed: RefCell<Vec<LocalFuture<'static, ()>>>,
@@ -83,6 +85,7 @@ impl<D: Database> Harness<D> {
             seeds: Cell::new(0),
             monotonic: None,
             budget: None,
+            rows_per_batch: None,
             timers: RefCell::new(Vec::new()),
             deferred: RefCell::new(Vec::new()),
             handed: RefCell::new(Vec::new()),
@@ -114,6 +117,13 @@ impl<D: Database> Harness<D> {
     /// Gives each invocation of background work `ms` milliseconds.
     pub fn budget(mut self, ms: u64) -> Harness<D> {
         self.budget = Some(ms);
+        self
+    }
+
+    /// Has a file helper's run read `rows` of a file's rows into each
+    /// batch (chunk 6.4b).
+    pub fn rows_per_batch(mut self, rows: u32) -> Harness<D> {
+        self.rows_per_batch = Some(rows);
         self
     }
 
@@ -273,6 +283,11 @@ impl<D: Database> Host for Harness<D> {
     fn budget_ms(&self, invocation: Invocation) -> u64 {
         let _ = invocation;
         self.budget.unwrap_or(jadpo_runtime::budget::GENEROUS_MS)
+    }
+
+    fn rows_per_batch(&self) -> u32 {
+        self.rows_per_batch
+            .unwrap_or(jadpo_runtime::batches::ROWS_PER_BATCH)
     }
 
     fn defer(&self, work: LocalFuture<'static, ()>) {

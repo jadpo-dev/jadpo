@@ -260,7 +260,7 @@ Rust 1.88 or later).
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
 | `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL now; Redis, SMTP, S3 and the package driver (JSON over HTTP) with their areas | yes |
-| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies; local disk and inbox with their areas | |
+| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with (chunk 6.4b); the inbox with email | |
 | `jadpo-host-workers` | workers-rs: fetch, scheduled, `waitUntil`, sockets, bindings | only |
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code | |
@@ -2107,7 +2107,7 @@ goes out and when it is answered (`capability::Logged`: connection,
 operation, `Repeat`, `Source`, when, how long on the monotonic clock,
 `Ended`), never its input or answer; `Ctx::take_calls` takes it, and
 `serve_request` leaves a request's on `Response::calls` for `jadpo
-calls` (its screen and full values in development are chunk 7.2's). A
+calls` (its screen and full values in development are chunk 7.2d's). A
 driver's `Answer` decides what the call gives: its value, its
 operation's own failure for the site to map (`effects::Unanswered::
 Failed`), or the runtime's `unavailable`, `misconfigured` or, for an
@@ -2132,6 +2132,33 @@ and the work it is given kept), which replaced twenty hand-written hosts
 in nineteen of `crates/jadpo-cli/tests`' files; the live tests of
 `capability_deliveries.rs` prove the seam with a test capability, the
 `mail` connection's fake.
+
+**Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
+6.4b"; area 12, "How a file's run is kept"). The `files` capability's
+first part is on the seam: `jadpo_runtime::files` sends a store's `put`
+(a keyed call, its key `jadpo_std::files::key_for` made from the
+invocation's randomness) and a ranged `read` through
+`effects::call`, and gives the `File` (`files::file_value`, a record the
+plan's JSON table writes as `jadpo_std::files::FILE_FIELDS`, kept in a
+`jsonb` column as a `BatchRun` is) or `FileContents` (`read_whole`, at
+most `WHOLE_READ_LIMIT`); a put's `storage_full` comes back as the call's
+condition (`files::Done::Broke`), which the interpreter raises at its
+site as a construction's broken rule. The checker reads a `File` field's
+settings into `FieldModel::file`, and a store's call is `Callee::Files`.
+Drivers: `jadpo_host_native::files::DiskFiles`, which `jadpo dev` gives
+every connection under `.jadpo/files/`, and `files::MemoryFiles`, the
+fake `jadpo test`'s host and the Rust tests give. A file helper's read
+is `BatchOp::Read(RowFormat)`, planned as a `BatchPlan` whose `from` is
+`BatchFrom::File` (the row type's JSON-table number and each field's
+column) and whose store is `jadpo_check::types::file_run_stores`'s; the
+runner's page for it (`batches::file`) reads the run's place in a
+statement of its own (`PLACE`), reads the page's rows from the store
+through the seam, a window at a time, decodes them (`jadpo_runtime::rows`
+for CSV, TSV and JSON Lines; `Codecs::read_cells` and `read_value`), and
+only then opens the page's transaction, holds the run to the same place
+under its lock, and commits the items' writes, the problems and the next
+place (byte, row and line) together. `Host::rows_per_batch` says how many
+rows a batch holds: 100, two on `jadpo test`'s host.
 
 **What differs on Workers.**
 

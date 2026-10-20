@@ -100,7 +100,10 @@ fn a_settling_route_checks_and_describes_both_answers() {
     )
     .expect("JSON");
     let responses = &openapi["paths"]["/orders"]["post"]["responses"];
-    let view = serde_json::json!({ "$ref": "#/components/schemas/OrderView" });
+    let view = serde_json::json!({
+        "$ref": "#/components/schemas/OrderView",
+        "x-jadpo-constraints": "OrderView"
+    });
     for status in ["201", "202"] {
         assert_eq!(
             responses[status]["content"]["application/json"]["schema"], view,

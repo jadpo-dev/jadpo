@@ -743,10 +743,17 @@ chunks below, taken before Phase 7, in this order.
   truncates the routes file, then writes it 400 ms later, and the old
   version serves between; `config.rs` saves `.env.local` atomically.
 
-- [ ] **6.13 Keeping what an operator settled** `opus · high` (found in
-  chunk 6.12): deliveries an operator dismissed or cancelled, and their
-  events and log rows, deleted by the tick after a window (30 days, as
-  run records), so they stop piling up; recorded in area 12.
+- [x] **6.13 Keeping what an operator settled** `opus · high` (found in
+  chunk 6.12). Built: the tick deletes a delivery dismissed or cancelled
+  30 days after the operator's last action on it (the log's time, so the
+  deliveries' table is unchanged), with its handled records wherever
+  they are, before it deletes events, so its event goes on the same tick
+  once every delivery of it left succeeded; and an operator's log rows
+  30 days old once their delivery or run is gone. A delivery that could
+  run is never deleted. 1,000 rows at a time, ten times a tick, per
+  store; statements in `jadpo_runtime::statements`; live tests in
+  `tick_deletes.rs` and `deliveries.rs`. Choices in area 12, "The tick"
+  and "What an operator sees".
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in
@@ -779,15 +786,32 @@ The design is area 11 as revised on 2026-10-16, with its research in
   be retried after one), proved live with a test capability. A batch's
   items still run inside its transaction, so an item's call is refused
   until 7.4. Choices in area 16 and compiler-runtime.md §2.6.
-- [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
-  moved after 7.0c from Phase 6, since it needs a minimal `files`
-  capability on that seam: a store's `put` and `read` of a `File` with a
-  fake, then `csv.read`/`write`, `tsv`, `json_lines` and the batch forms
-  of `json.read`/`write` on 6.4's runs, as area 19's "Data formats" tables
-  them, with `ExportSummary`, `CsvFormat`, a file row's `RowProblem`
-  column and line numbers, and `store.read`'s whole-read cap; and from
-  6.4, the warning for a `from:` ordered by a field that can be updated,
-  and `estimated_total` from a query's count.
+- [x] **6.4b Files and reading rows into batches** `opus · xhigh`
+  (areas 12, 16 and 19; split from 6.4b Batch file helpers on
+  2026-10-20). Built: `Driver.disk` connections and `File` fields
+  (`store:`, `max_size:` in SI sizes, `types:`; kept as JSON;
+  `data.file_field_invalid`); `store.put` on 7.0c's seam, keyed, its
+  `storage_full` mapped to an `unavailable` failure, and `store.read`,
+  10 MB at most (`type.file_read_too_large`, and held to it as it runs);
+  the disk driver `jadpo dev` keeps every store's files with under
+  `.jadpo/files/`, and the in-memory store a test's are in; `csv.read`,
+  `tsv.read` and `json_lines.read` with `column:`, each batch's rows read
+  from the store before its transaction opens and committed with the
+  run's place (byte, row and line), a row's problems by its row as a
+  spreadsheet numbers it and its column, the faults that stop a file's
+  run, UTF-8 and marked UTF-16; `type.batch_row_invalid`. Live tests in
+  `file_imports.rs`; example 24 keeps and reads donation sheets. Choices
+  in area 12's "How a file's run is kept" and area 16's "Chosen in chunk
+  6.4b": a file's run is kept where its actions write, and a CSV column
+  no field reads stops the run.
+- [ ] **6.4b2 Exports and the rest of the file helpers** `opus · xhigh`,
+  after 6.4b: `json.read`'s file form (`items_at:`), the writers
+  (`csv.write`, `tsv.write`, `json_lines.write` and `json.write`'s file
+  form) with `ExportSummary` and `CsvFormat`, each export's put after its
+  page commits; gzip read with `max_unpacked_size:`; and from 6.4, the
+  warning for a `from:` ordered by a field that can be updated (a
+  declinable error, area 1) and `estimated_total` from a query's count or
+  a file's size.
 - [x] **7.1 Packages: format, kinds, names and the lock** `opus · high`
   (split from 7.1 Packages and connections on 2026-10-20). Built:
   `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -847,23 +871,54 @@ The design is area 11 as revised on 2026-10-16, with its research in
   resources by file name with the check cached per digest, and two
   versions of one package side by side, names carrying the version. The
   public registry stays after the first build.
-- [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
-  fields in every API's OpenAPI document and each API serving it at
+- [x] **7.2 Served OpenAPI and the importer** `opus · high` (split from
+  7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
+  every API's OpenAPI document, and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
-  false` to turn off, listed in its own OpenAPI and record); the OpenAPI
-  importer reading them, hand-written packages, `wire:`,
-  `decode:`, `wire_output:`, `output_at:` and `failed_when:`, recordings
-  and `jadpo package record`, generated fakes, provider calls faked by
-  default in `jadpo dev` with `development: { sandbox: }` and the call log
-  (`jadpo calls`), and derived provider idempotency keys (app,
-  environment, caller, step), which also close a collision between users; and mapping imported types
-  to standard types (area 11, "Mapping imported types to standard types",
-  Richard 2026-10-17): exact format mappings, shape and name detection
-  decoded at the edge, declinable findings with `(agent)` steps, one review
-  instruction scoped to the types the app's operations reach and tracked per
-  type in `jadpo check` and `jadpo approval`, and the import's summary.
+  false` to turn off, listed in its own OpenAPI and record and in `jadpo
+  routes`); `jadpo package import openapi <file>` reading a local
+  document into the app's own integration in
+  `shared/providers/<name>/<version>/` (index, `provider.jadpo` with
+  `imported:`, resources, types and failures), exact where it finds
+  `x-jadpo` fields, with area 11's exact format mappings (its first
+  layer), merging into an earlier import rather than overwriting it, and
+  its summary. Built: `GET <prefix>/openapi.json` answered by the runtime
+  with the document `jadpo check` writes (the plan holds it; the
+  project's name, which titles it, is now an input of the project),
+  needing a caller by any method its API accepts unless the API accepts
+  none; `x-jadpo-changes`, `-idempotency`, `-failure` and `-constraints`
+  (a field's type as the record writes it) and a tag per route group,
+  with `x-jadpo-events` waiting for publishing events outward (area 7,
+  "OpenAPI"); and `jadpo package import openapi`, with its choices in
+  area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
+  field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
+  the importer lists each; recommendation `wire_name:`.
+- [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
+  and 7.1c: a provider operation called through its connection over
+  7.0c's seam by the package driver (JSON over HTTP), tested against a
+  local HTTP server started in the test; hand-written packages' `wire:`,
+  `decode:` and `encode:`, `wire_output:`, `output_at:` and
+  `failed_when:`; and derived provider idempotency keys (app,
+  environment, caller, step), which also close a collision between
+  users.
+  Also `wire_name:` on a provider's fields and enum variants (area 11,
+  decided 2026-10-20), written by the importer where the spelling
+  differs.
+- [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
+  7.2c: a generated fake per package and `fakes:` for provider
+  operations in tests; recordings and `jadpo package record`, every
+  decoder run over every recording; provider calls faked by default in
+  `jadpo dev`, with `development: { sandbox: }`; and the call log screen,
+  `jadpo calls` and `jadpo calls script`, on 7.0c's data.
+- [ ] **7.2e Mapping imported types to standard types** `opus · high`,
+  after 7.2d and 7.1b (area 11, "Mapping imported types to standard
+  types", Richard 2026-10-17): shape and name detection decoded at the
+  edge, declinable findings with `(agent)` steps, one review instruction
+  scoped to the types the app's operations reach and tracked per type in
+  `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
+  it in the import's summary.
 - [ ] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
-  question 18), after 7.2: per connection, after a run of `unavailable`
+  question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
   than attempted, one probe delivery is tried after a pause, and success
   releases the rest; held deliveries keep their retry budget, are shown

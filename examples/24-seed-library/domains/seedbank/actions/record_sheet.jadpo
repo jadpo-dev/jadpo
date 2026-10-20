@@ -1,0 +1,15 @@
+use seedbank/entities { DonationSheet, DonationSheetNotFound }
+
+/// Keeps how shelving a sheet's packets went: the rows read, and those
+/// refused, which its problems say why.
+action record_sheet(
+    summary: ImportSummary,
+    sheet_id: DonationSheet.id
+) fails DonationSheetNotFound -> Unit {
+    attempt DonationSheet.update(sheet_id) {
+        set: {
+            rows_read: summary.items
+            rows_refused: summary.items_with_problems
+        }
+    }
+}

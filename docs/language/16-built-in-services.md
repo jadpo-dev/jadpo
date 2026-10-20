@@ -3,7 +3,9 @@ title: Built-in services
 area: 16
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
-rules: []
+rules:
+  - data.file_field_invalid
+  - type.file_read_too_large
 ---
 
 # Built-in services
@@ -12,7 +14,7 @@ Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
 flags, rate limits, files, audit trails, tracing, email and search.
 
-> Decided on 2026-10-13. Nothing on this page is built yet; the [status table](#status) says when each part comes. Examples apply the decisions from areas 1 to 16.
+> Decided on 2026-10-13. Only the capability seam (chunk 7.0c) and the `files` capability's first part (chunk 6.4b) are built; the [status table](#status) says when each part comes. Examples apply the decisions from areas 1 to 16.
 
 **The test for "native".** A feature is built in only when the compiler
 gains something by knowing about it: a mistake becomes a compile error, a
@@ -324,6 +326,83 @@ the bytes came from. The app's code joins them:
 - `json.read(text, as:)` (the `json.decode` of the packages design,
   renamed by area 19 on 2026-10-17) is only for single JSON documents in
   memory: request bodies and provider answers.
+
+> Built in chunk 6.4b: `Driver.disk` connections, `File` fields with
+> `store:`, `max_size:` and `types:`, `store.put` and `store.read`, the
+> disk driver `jadpo dev` keeps every store's files with, and the
+> in-memory store a test's are in; the choices are under "Chosen in
+> chunk 6.4b" below. Uploads, downloads, deleting and erasing come with
+> the rest of the files capability ("Remaining built-in services" on the
+> roadmap).
+
+A bakery keeps the price sheets its suppliers send. `sheets.put` keeps
+the bytes before the action reads or writes anything, since a call that
+leaves the process never waits inside a transaction (area 6), and gives
+the `File` the record keeps; a store with no room is `storage_full`,
+which only an `unavailable` failure maps:
+
+```jadpo check project=files-put file=app.jadpo
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=files-put file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=files-put file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=files-put file=domains/bakery/entities/price_sheet.jadpo
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=files-put file=domains/bakery/actions/keep_prices.jadpo migrate=initial
+use app { sheets }
+use bakery/entities { PriceSheet }
+use bakery/types { SheetText }
+use bakery/failures { SheetNotKept }
+
+/// Keeps a price sheet as it was sent.
+action keep_prices(sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    return PriceSheet.create {
+        set: {
+            sheet: sheet
+        }
+    }
+}
+```
 
 **Uploading.** Files go straight from the client to the store, not through
 the application, so the 1 MB body limit (area 7) is not in the way:
@@ -1262,13 +1341,120 @@ declared connection.
 | Quotas and plan limits | A plan's limits are application data, checked by an action; counting uses area 6's counters |
 | Background job dashboards | Already area 14's operator commands (question 13 there) |
 
+## Errors
+
+### `data.file_field_invalid`
+
+A `File` field says where its bytes are kept, `store:` naming a
+connection that provides `files`, and how many it holds, `max_size:`;
+`types:`, when given, lists `FileType`'s variants. A field whose
+`store:` names the database is refused:
+
+```jadpo check project=e-file-field-invalid file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-file-field-invalid file=domains/bakery/entities/price_sheet.jadpo expect=data.file_field_invalid
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: main
+        max_size: 5mb
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```text output
+error: `PriceSheet.sheet`'s `store:` isn't a store of files
+ --> domains/bakery/entities/price_sheet.jadpo:5:16
+  |
+5 |         store: main
+  |                ^^^^ not a `files` connection
+  reason: A `File` field's `store:` names a connection that provides `files`; `main` is a connection that keeps no files, and `app.jadpo` declares `sheets`.
+  next: Write `store: sheets` (agent)
+  rule: data.file_field_invalid
+  help: docs/language/16-built-in-services.html#data-file-field-invalid
+
+check failed: 1 error, 2 files
+```
+
+### `type.file_read_too_large`
+
+`store.read` reads a whole file into memory, so it reads a field only
+when its `max_size:` is 10 MB or less; a file's rows, of any size, are
+read a batch at a time by the format helpers:
+
+```jadpo check project=e-file-read-too-large file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-file-read-too-large file=domains/bakery/entities/price_sheet.jadpo hidden migrate=initial
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 50mb
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-file-read-too-large file=domains/bakery/actions/sheet_bytes.jadpo expect=type.file_read_too_large
+use app { sheets }
+use bakery/entities { PriceSheet }
+
+/// A price sheet's bytes, whole.
+action sheet_bytes(sheet: PriceSheet.sheet) -> FileContents {
+    return sheets.read(sheet)
+}
+```
+
+```text output
+error: `sheets.read` can't read `PriceSheet.sheet` whole
+ --> domains/bakery/actions/sheet_bytes.jadpo:6:24
+  |
+6 |     return sheets.read(sheet)
+  |                        ^^^^^ holds up to 50 MB
+  reason: `sheets.read` reads a whole file into memory, for passing its bytes on, so it reads at most 10 MB; `PriceSheet.sheet` holds up to 50 MB. A file's rows, of any size, are read a batch at a time by the format helpers (`csv.read`, `tsv.read`, `json_lines.read`).
+  next: Read `PriceSheet.sheet`'s rows with a format helper, such as `csv.read`, or keep its `max_size:` at 10 MB or less if `sheets.read` is what it needs (agent)
+  rule: type.file_read_too_large
+  help: docs/language/16-built-in-services.html#type-file-read-too-large
+
+check failed: 1 error, 3 files
+```
+
 ## Review
 
 ### Status
 
-Nothing on this page is built yet. Email comes with chunk 7.3, and default
-rate limits with routes (chunk 4.1); flags, files (with the disk driver,
-multipart slots, and image variants and scanning when an app needs them),
+Email comes with chunk 7.3, and default rate limits with routes (chunk
+4.1); flags, the rest of files (multipart slots, and image variants and
+scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
 monitoring thresholds come after the first build ("Remaining built-in
 services" on the roadmap). The errors this page describes are built with
@@ -1276,7 +1462,17 @@ the feature they belong to. Built in chunk 7.0c: the seam every
 capability's calls will go through, with a test capability standing in
 for the first real one, and a delivery that hands its event to a
 capability, parked as `outcome_unknown` when a send without a key may
-have acted ("Chosen in chunk 7.0c" below).
+have acted ("Chosen in chunk 7.0c" below). Built in chunk 6.4b: the
+`files` capability's first part on that seam, `Driver.disk`
+connections, `File` fields, `store.put`, `store.read` with its
+whole-read cap and its two errors, the disk driver `jadpo dev` keeps
+files with and the in-memory store a test's are in, which the file
+helpers' reads walk (area 19, "Data formats"; "Chosen in chunk 6.4b"
+below). Upload slots, downloads, deleting and erasing a file's bytes,
+the S3 driver, a deployable's disk driver at its `path:` and
+`free_space_floor:`, and checking a stored file against its field's
+`max_size:`, `types:` and `store:` as it is written come with the rest
+of the files capability.
 
 ### Chosen in chunk 7.0c
 
@@ -1299,7 +1495,7 @@ reading:
   where its answer came from (the driver, a fake, a replay), when it went
   out, how long it took, and how it ended. Never its input or its
   answer, which can hold secrets and personal data; `jadpo calls`'s full
-  values in development (area 17) are chunk 7.2's, with its screen. A
+  values in development (area 17) are chunk 7.2d's, with its screen. A
   response carries its request's log.
 - **Recorded and replayed with the other effects.** A recording keeps
   each call's answer, in order, beside the random bytes it keeps, and a
@@ -1339,8 +1535,56 @@ reading:
   refused the same way until then.
 - **Fakes wrap the host.** A fake is a host wrapper giving a scripted
   driver in some connections' place, everything else the host's own: a
-  test runs on it, and `jadpo dev` will (chunk 7.2). The runtime's Rust
+  test runs on it, and `jadpo dev` will (chunk 7.2d). The runtime's Rust
   tests share one test host, which fakes wrap the same way.
+
+### Chosen in chunk 6.4b
+
+What "Files" and "The disk driver" leave to the build of the `files`
+capability's first part, each the most conservative reading:
+
+- **What a `File` holds.** The connection its bytes are in, the key the
+  runtime made for them, its name (none for one `store.put` made), its
+  size and its `FileType`, kept as its JSON in a `jsonb` column. Only the
+  runtime builds one (`File { ... }` is `type.not_record`), no request
+  carries one and no output sends one (an output's signed link comes
+  with downloads), and a program reads none of its parts yet.
+- **A `File` field's settings.** `store:` must name a connection that
+  provides `files`, and `max_size:` is required, a whole number of `b`,
+  `kb`, `mb` or `gb`, each a thousand times the last (`5mb` is
+  5,000,000 bytes, as this page writes "100 MB" apart from "16 MiB");
+  `types:` is optional. A mistake in any is `data.file_field_invalid`,
+  and the three on a field that isn't a `File` are
+  `type.unknown_setting`.
+- **`store.put(bytes, type)`** is called only in an action, before its
+  first read or write, as every outside call is. Its key is made from
+  the invocation's randomness, so a replay keeps it; it goes out as a
+  keyed call, since writing the same key again writes the same immutable
+  object. A store with no room answers `storage_full`, the call's one
+  condition, which its `attempt` maps to an `unavailable` failure (not a
+  value's fault, so `invalid:` doesn't cover it); a store that can't be
+  reached is the runtime's `unavailable`.
+- **`store.read(file)`** reads at most 10 MB into memory: a field over
+  it is `type.file_read_too_large` where it is read, and a `File` whose
+  field isn't known (a parameter of type `File`) is held to it as it
+  runs, a fault. A file whose bytes are gone from its store is a fault
+  too. `FileContents` is the file's bytes; nothing takes it yet but what
+  passes bytes on (an email's attachment, chunk 7.3; a provider's upload,
+  chunk 7.2). Like `put`, it is called only in an action, before its
+  first read or write; a test reaches files through the application's
+  actions.
+- **The disk driver in `jadpo dev`.** Every store of files is kept under
+  `.jadpo/files/<connection>/`, whatever its driver, so nothing leaves
+  the machine: a file under its key, sharded into two directory levels
+  by its id, a key of any other shape refused, a symbolic link anywhere
+  on the way refused, written to a temporary file readable by the
+  application's user only, synced, renamed into place and its folder
+  synced; a full disk answers `storage_full`. Its I/O is blocking, a
+  window at most a megabyte, on the developer's own disk.
+- **In a test** one in-memory store serves every connection (area 13,
+  "Provider calls and capabilities in tests"), and a file helper's run
+  reads two rows a batch. `fixture_file`, and telling the store to fail
+  from a test's source, come with area 13's fakes.
 
 ### Consistency with the rest of the language
 

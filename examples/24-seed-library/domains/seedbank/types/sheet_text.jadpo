@@ -1,0 +1,6 @@
+/// A donations sheet as a volunteer sends it, comma-separated, a row for
+/// each packet under a header row.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}

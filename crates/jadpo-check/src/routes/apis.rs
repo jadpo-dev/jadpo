@@ -4,7 +4,9 @@
 //! OpenAPI document and record, and may require an `Idempotency-Key` on its
 //! writes (`idempotency: Idempotency.required`) and list the sign-in
 //! methods it accepts (`authentication: [AuthenticationMethod.browser_session]`,
-//! area 8); its rate limits come with area 16.
+//! area 8), and serves its OpenAPI document at `<prefix>/openapi.json`
+//! unless it says `serve_openapi: false`; its rate limits come with area
+//! 16.
 
 use std::collections::BTreeMap;
 
@@ -19,7 +21,13 @@ use crate::tree::{self, node_span};
 pub const MAIN: &str = "main";
 
 /// What an API's entry may hold.
-pub const API_SETTINGS: [&str; 4] = ["prefix", "authentication", "idempotency", "rate_limit"];
+pub const API_SETTINGS: [&str; 5] = [
+    "prefix",
+    "authentication",
+    "idempotency",
+    "serve_openapi",
+    "rate_limit",
+];
 
 /// One API.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -32,6 +40,9 @@ pub struct Api {
     /// The sign-in methods it accepts, in written order; empty when it
     /// names none, and accepts every declared method.
     pub methods: Vec<AuthenticationMethod>,
+    /// Whether it serves its OpenAPI document at `<prefix>/openapi.json`
+    /// (area 7, "OpenAPI"): unless `serve_openapi: false`.
+    pub serve_openapi: bool,
 }
 
 impl Api {
@@ -89,7 +100,12 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                         continue;
                     };
                     let span = node_span(path, name.syntax());
-                    if let Some((prefix, idempotency, methods)) = read_api(
+                    if let Some(Read {
+                        prefix,
+                        idempotency,
+                        methods,
+                        serve_openapi,
+                    }) = read_api(
                         db,
                         project,
                         path,
@@ -107,6 +123,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
                             prefix,
                             idempotency,
                             methods,
+                            serve_openapi,
                         };
                         if let Some(other) = overlap {
                             out.problems.push(
@@ -133,6 +150,7 @@ pub fn api_table(db: &dyn Db, project: Project) -> Apis {
             prefix: Vec::new(),
             idempotency: Idempotency::Optional,
             methods: Vec::new(),
+            serve_openapi: true,
         }]
     };
     out
@@ -143,6 +161,14 @@ pub fn api_problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
     &api_table(db, project).problems
 }
 
+/// What an API's entry gives.
+struct Read {
+    prefix: Vec<String>,
+    idempotency: Idempotency,
+    methods: Vec<AuthenticationMethod>,
+    serve_openapi: bool,
+}
+
 fn read_api(
     db: &dyn Db,
     project: Project,
@@ -151,10 +177,11 @@ fn read_api(
     span: Span,
     list: Option<ast::MemberList>,
     out: &mut Vec<Diagnostic>,
-) -> Option<(Vec<String>, Idempotency, Vec<AuthenticationMethod>)> {
+) -> Option<Read> {
     let mut prefix = None;
     let mut idempotency = Idempotency::Optional;
     let mut methods = Vec::new();
+    let mut serve_openapi = true;
     for (key, member) in tree::members(list) {
         let Some(setting) = tree::name_text(&key) else {
             continue;
@@ -207,6 +234,31 @@ fn read_api(
             "authentication" => {
                 methods = read_methods(db, project, path, api, &member, out);
             }
+            "serve_openapi" => {
+                let value = member.value();
+                let written = value
+                    .as_ref()
+                    .map(|value| tree::written(value.syntax()))
+                    .unwrap_or_default();
+                match written.as_str() {
+                    "true" => serve_openapi = true,
+                    "false" => serve_openapi = false,
+                    _ => {
+                        let span = value
+                            .map_or_else(|| key_span.clone(), |value| node_span(path, value.syntax()));
+                        out.push(
+                            Diagnostic::new(
+                                &rule::API_SERVE_OPENAPI_INVALID,
+                                format!("`{written}` isn't `true` or `false`"),
+                            )
+                            .at(span.clone(), "not a `Bool`")
+                            .reason("`serve_openapi:` says whether the API serves its OpenAPI document at `<prefix>/openapi.json`: `false` turns it off, and `true`, the default, can be left out.")
+                            .next("Write `serve_openapi: false`, or leave `serve_openapi:` out")
+                            .edit(span, "false"),
+                        );
+                    }
+                }
+            }
             "rate_limit" => out.push(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
@@ -224,7 +276,7 @@ fn read_api(
                 )
                 .at(key_span.clone(), "unknown setting")
                 .reason(format!(
-                    "An API in `apis:` holds its `prefix:`, `idempotency:` and `authentication:`, and later its `rate_limit:`.{}",
+                    "An API in `apis:` holds its `prefix:`, `idempotency:`, `authentication:` and `serve_openapi:`, and later its `rate_limit:`.{}",
                     near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
                 ));
                 problem = match near {
@@ -245,7 +297,12 @@ fn read_api(
                 .next(format!("Add `prefix: /{api}` to `{api}`")),
         );
     }
-    prefix.map(|prefix| (prefix, idempotency, methods))
+    prefix.map(|prefix| Read {
+        prefix,
+        idempotency,
+        methods,
+        serve_openapi,
+    })
 }
 
 /// An API's `authentication:`: a list of the sign-in methods

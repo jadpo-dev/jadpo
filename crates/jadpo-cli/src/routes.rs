@@ -10,7 +10,8 @@
 //! and service keys bring (area 8), is listed in each API that accepts
 //! service keys, running `generated exchange`, written `generated`; so are
 //! the routes passkeys bring (`generated passkey sign-in` and the rest), in
-//! the first API that accepts browser sessions.
+//! the first API that accepts browser sessions, and each API's own OpenAPI
+//! document (`generated openapi`, area 7).
 
 use std::path::PathBuf;
 
@@ -88,6 +89,27 @@ pub fn routes(call: &Call) -> Reply {
                     place: "generated".to_string(),
                 });
             }
+        }
+        lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    }
+    // Each API's own OpenAPI document (area 7, "OpenAPI").
+    let served = jadpo_check::routes::served::served(db, project);
+    if !served.is_empty() {
+        for served in served {
+            lines.push(Line {
+                api: served.api.clone(),
+                method: "GET".to_string(),
+                path: served.path(),
+                runs: "generated openapi".to_string(),
+                authentication: if served.authentication.needs_caller() {
+                    "required"
+                } else {
+                    "none"
+                },
+                file: String::new(),
+                line: 0,
+                place: "generated".to_string(),
+            });
         }
         lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
     }

@@ -272,6 +272,9 @@ std_enum! {
         Postgres: "postgres",
         /// Redis, the `cache` capability.
         Redis: "redis",
+        /// The server's own disk, the `files` capability on the native
+        /// target (area 16, "The disk driver"; chunk 6.4b).
+        Disk: "disk",
     }
 }
 

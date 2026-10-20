@@ -817,6 +817,79 @@ impl Codecs<'_> {
         }
     }
 
+    /// The fields of the object codec `id` is, an `Input`'s, in order,
+    /// each by its name with whether a value may leave it out: what a file
+    /// row's columns are held to (area 19, "Data formats"; chunk 6.4b).
+    /// With the type's name; `None` for a codec that isn't an object's.
+    pub fn input_fields(&self, id: CodecId) -> Option<(String, Vec<(String, bool)>)> {
+        let Some(Codec::Object { shape, .. }) = self.codec(id) else {
+            return None;
+        };
+        let shape = self.shapes.get(shape.0 as usize)?;
+        let fields = (0..shape.len())
+            .filter_map(|slot| shape.field(slot))
+            .map(|(name, absent)| (name.to_string(), absent))
+            .collect();
+        Some((shape.ty().to_string(), fields))
+    }
+
+    /// A file row's cells read as the `Input` codec `id` is (area 19, "Data
+    /// formats"; chunk 6.4b): each field's cell, in its fields' order, read
+    /// as a query string's value is ([`Codecs::read_text`]), a standard
+    /// type in its canonical text; `None` for a cell left empty or a column
+    /// the file hasn't, which a field that may be left out takes as a
+    /// request leaving it out does. The first problem found, by its field's
+    /// name and the rule, never the value.
+    pub fn read_cells(&self, id: CodecId, cells: &[Option<&str>]) -> Result<Value, Problem> {
+        let unread = |field: &str, rule: &str| Problem {
+            field: field.to_string(),
+            rule: rule.to_string(),
+        };
+        let Some(Codec::Object {
+            shape,
+            fields,
+            validator,
+        }) = self.codec(id)
+        else {
+            return Err(unread("", "type"));
+        };
+        let Some(shape) = self.shapes.get(shape.0 as usize) else {
+            return Err(unread("", "type"));
+        };
+        let mut problems = Vec::new();
+        let mut given = Vec::new();
+        for (slot, codec) in fields.iter().enumerate() {
+            let Some((name, absent)) = shape.field(slot) else {
+                continue;
+            };
+            let at = Path::field(name);
+            match cells.get(slot).copied().flatten() {
+                None if absent => {}
+                None => Self::problem(&mut problems, &at, "required"),
+                Some(text) => {
+                    if let Some(value) = self.read_text(*codec, text, &at, &mut problems) {
+                        given.push((Some(slot as u32), value));
+                    }
+                }
+            }
+            if let Some(problem) = problems.first() {
+                return Err(problem.clone());
+            }
+        }
+        let Some(value) = shape.build(given) else {
+            return Err(unread("", "type"));
+        };
+        let value = match validator {
+            Some(validator) => self.checked(*validator, value, &Path::default(), &mut problems),
+            None => Some(value),
+        };
+        match (value, problems.into_iter().next()) {
+            (Some(value), None) => Ok(value),
+            (_, Some(problem)) => Err(problem),
+            (None, None) => Err(unread("", "type")),
+        }
+    }
+
     /// `json.write` (area 19, "Data formats"): `value`, of codec `id`'s
     /// type, as compact JSON, as a response's body is written: fields in
     /// declared order, sets and map keys in the canonical order, no white
