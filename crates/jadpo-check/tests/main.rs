@@ -31,6 +31,7 @@ mod domain_names;
 mod events;
 mod examples;
 mod failures;
+mod files;
 mod fixes;
 mod formats;
 mod geo_interop;

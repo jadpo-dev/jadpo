@@ -58,6 +58,7 @@ mod builtin;
 pub mod config;
 pub mod constant;
 mod enums;
+pub mod files;
 pub mod fixed;
 mod format;
 pub mod geography;

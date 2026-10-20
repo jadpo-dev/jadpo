@@ -1037,6 +1037,7 @@ impl Part<'_> {
             optional: def.is_some_and(|def| def.optional),
             default: def.and_then(|def| field_default(self.lookup, def.default.as_ref()?)),
             header: def.and_then(|def| def.header.clone()),
+            column: def.and_then(|def| def.column.clone()),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
@@ -1091,6 +1092,7 @@ impl Part<'_> {
                 .as_ref()
                 .and_then(|value| field_default(self.lookup, value)),
             header: field.header.clone(),
+            column: field.column.clone(),
             section: None,
             copied_from: from.clone(),
             replaces: None,

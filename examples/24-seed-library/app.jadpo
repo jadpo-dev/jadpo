@@ -1,1 +1,12 @@
-application {}
+// A store of files is a connection that provides `files`: here the
+// server's own disk, which `jadpo dev` keeps under `.jadpo/files/` and a
+// test keeps in memory, so nothing leaves the machine.
+
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/seed-library/sheets"
+        }
+    }
+}

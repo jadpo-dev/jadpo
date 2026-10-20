@@ -34,6 +34,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
 use jadpo_diag::{Diagnostic, rule};
+use jadpo_host_native::files::DiskFiles;
 use jadpo_host_native::http::{AppHandler, Handler, MakeHandler, Server};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
@@ -47,6 +48,10 @@ use jadpo_term::{
 use jadpo_test::watch::{EditKind, Poller};
 
 use crate::run::{Call, Reply, Session};
+
+/// Where `jadpo dev` keeps every store of files, a folder each (area 16,
+/// "Files"; chunk 6.4b).
+pub(crate) const DEV_FILES: &str = ".jadpo/files";
 
 /// The port `jadpo dev` listens on unless `--port` says otherwise.
 pub const DEFAULT_PORT: u16 = 3000;
@@ -527,8 +532,14 @@ pub fn serve_to(
         log: Mutex::new(sender),
     });
     let make_shared = Arc::clone(&shared);
+    // Every store of files on this machine's disk, under `.jadpo/files/`
+    // (area 16, "Files"; chunk 6.4b), so nothing leaves it.
+    let files = root.join(DEV_FILES);
+    if !first.prepared.plan().file_stores().is_empty() {
+        let _ = crate::suggestions::local_folder(&root);
+    }
     let make: MakeHandler = Arc::new(move || {
-        let mut host = NativeHost::new();
+        let mut host = NativeHost::new().with_files(DiskFiles::under(&files));
         for (store, url) in &make_shared.urls {
             if let Ok(database) = postgres(url) {
                 host = host.with_store(store.clone(), database);

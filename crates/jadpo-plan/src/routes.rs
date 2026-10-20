@@ -692,7 +692,7 @@ impl<'t> Codecs<'t> {
             }
             Made::Batch(name) => {
                 let shape = self.types.batch_shape(name);
-                let fields = jadpo_std::batch::object_fields(name)
+                let fields = jadpo_std::batch::kept_fields(name)
                     .unwrap_or_default()
                     .iter()
                     .map(|(_, part)| self.codec(&crate::types::batch_part(*part)))
@@ -869,6 +869,7 @@ impl<'t> Codecs<'t> {
                     }
                     if let Some(batch) = jadpo_std::batch::OBJECTS
                         .into_iter()
+                        .chain([jadpo_std::files::FILE])
                         .find(|object| *object == name)
                     {
                         return Made::Batch(batch);
