@@ -292,6 +292,10 @@ std_enum! {
         /// An SMTP server, the `email` capability (area 16, "Email"; chunk
         /// 7.3).
         Smtp: "smtp",
+        /// A server that speaks OpenAI's Chat Completions API, the `ai`
+        /// capability's local driver: Ollama, llama.cpp's server, vLLM, LM
+        /// Studio (area 21, "How a provider fills it"; chunk 5.5v3).
+        OpenaiCompatible: "openai_compatible",
         /// A queue on Cloudflare Queues, the `receiving` capability on
         /// Workers, its batches pushed to the app's consumer (area 11,
         /// "Queues"; chunk 7.7c2).

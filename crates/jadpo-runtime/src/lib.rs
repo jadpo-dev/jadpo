@@ -69,6 +69,7 @@
     )
 )]
 
+pub mod ai;
 pub mod batches;
 mod boundary;
 pub mod breaker;

@@ -369,7 +369,7 @@ pub fn plan(db: &dyn Db, project: Project, id: &ConstantId) -> Result<Plan, Vec<
             )
             .at(at, "not read from one variable")
             .reason(format!(
-                "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate` and enums.{why}"
+                "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId` and enums.{why}"
             ))
             .next(format!(
                 "Keep `{name}` a constant, or split it into settings of those types by hand"

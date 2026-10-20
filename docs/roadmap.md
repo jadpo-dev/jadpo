@@ -1530,17 +1530,46 @@ The design is area 11 as revised on 2026-10-16, with its research in
   file (`wrangler_queues`, as JSON). Tested in-process against PostgreSQL
   (`cloudflare_queues.rs`); deploying it is Phase 8's. Choices in area
   11's "Chosen in chunk 7.7c2".
-- [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
-  xhigh` (area 21, "The `ai` capability" and "Typed output"), after
-  5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`
-  settings, `provides/ai.jadpo`, `ai.generate(prompt, as: T)` with the
-  schema from `T`, the provider's structured mode or the schema in the
-  instructions, `json.read`'s decoding, one repair with the decode
-  problem, the five failures, answers reused on a rerun, the fake in
-  `jadpo test` and `jadpo dev` (`fakes: { ai.<prompt>: }`, `raw(...)`,
-  `.requests`), and `Driver.openai_compatible`. Done when a test drives
-  every failure and a repaired answer through the fake, and a local
-  model answers through the driver in `jadpo dev`.
+- [x] **5.5v3 The `ai` capability: `generate`, its fake and the local
+  driver** `opus · xhigh` (area 21, "The `ai` capability" and "Typed
+  output"; split on 2026-10-20: a package filling `ai` is 5.5v3b).
+  Built: `ai:` in `application { }` naming a `Driver.openai_compatible`
+  connection (`url:`, plain HTTP only to this machine) and its models,
+  each a `ModelId` setting, read from its text (`ai.settings_invalid`,
+  `ai.connection_required`), and a `ModelId` written in code refused
+  (`semantic.ai_model_literal`); `ai.generate(prompt, as: T)` with
+  `model:`, `max_output:`, `timeout:` and `attempts:` written out, `as:`
+  refusing a reference, a file, bytes and display text
+  (`semantic.ai_output_type`) and secrets, each of its five failures
+  mapped to an `unavailable` failure and `malformed`'s carrying the last
+  `DecodeProblem`; at run time (`jadpo_runtime::ai`) the prompt
+  rendered and sent as OpenAI's Chat Completions request through the
+  package driver's HTTP, `T`'s OpenAPI schema in the strict structured
+  mode (a `T` that isn't an object wrapped as `value`; the schema in the
+  instructions built for 5.5v3b's packages), the answer decoded by
+  `json.read`'s decoding, one repair with the decode problem, the five
+  failures read from the answer, and answers reused on area 6's rerun by
+  step and request and kept as steps of a 7.5b record; the `ai` fake in
+  every test (`fakes: { ai.<prompt>: }` with values, `raw(...)` and the
+  five failures, one answered attempt each, `ai.<prompt>.requests`,
+  generated values, `test.fake_exhausted` and `test.fake_unused`);
+  `jadpo dev` asking a model on this machine, each attempt in `jadpo
+  calls`; and the network report's row. Tests in `ai_generate.rs` (every
+  failure and a repair through the fake in `jadpo test`; `jadpo dev`
+  against an OpenAI-compatible server started in the test) and the live
+  `ai_steps.rs` (a model's answer replayed from a record). Choices in
+  area 21's "Chosen in chunk 5.5v3".
+- [ ] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
+  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20): a
+  package's `provides/ai.jadpo` mapping `generate:` onto its own
+  operation as data (`request.*`, `response.*`, `refused_when:`,
+  `cut_off_when:`, `usage:`, `schema: { mode: at: }`, `models: { context:
+  prices: }`), `AiSchema.json_only` and `.none` sending the schema in the
+  instructions, `too_long` checked before sending from the package's
+  context table, `development: { sandbox: [<prompt>] }`, a package's
+  `ai` faked in `jadpo dev` with generated defaults, and `jadpo calls
+  script` for a prompt. Done when a package fills `ai` in a test against
+  a local server and `jadpo dev` fakes it.
 - [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
   5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
   and its check, the fake's seeded embeddings, `jadpo ai record` and
@@ -1549,7 +1578,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   21 runs end to end in a test: embed, nearest query, typed answer from a
   recording.
 - [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
-  21, "Safety and privacy"), after 5.5v3: the per-call, per-request,
+  21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
   per-day and per-caller limits counted in the main store, the cost
   estimate from the package's prices, `jadpo ai usage`, `personal_data: {
   allowed: }` with the flow check from placeholders back to marked
@@ -1558,13 +1587,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   a marked field reaching a prompt unlisted fails to compile.
 - [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, and the stream fake. Done
+  an `AiStream`, the final and error events, the stream fake, and the
+  check that a route's deadline leaves room for the `timeout:` of each
+  `ai` call it reaches (left from 5.5v3). Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
-  after 5.5v4 and 5.5v6: two provider packages filling `ai`, each with its
-  context and price tables, recordings and `jadpo package conform <package>
-  ai`. **Needs Richard** for the API keys the live conformance run uses.
+  after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
+  with its context and price tables, recordings and `jadpo package conform
+  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+- [ ] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
+  7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
+  (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
+  the `ai` schema); and the two tests that failed once and passed on
+  rerun made deterministic: `http::an_api_token_signs_its_app_in_until_it_is_ended`
+  (compares timestamps as text) and
+  `batch_calls::a_files_rows_that_call_are_each_a_batch_of_their_own`.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

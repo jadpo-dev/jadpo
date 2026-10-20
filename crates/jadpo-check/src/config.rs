@@ -313,7 +313,7 @@ impl Reader<'_> {
                     )
                     .at(type_span.clone(), "not read from one variable")
                     .reason(format!(
-                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate` and enums. {why}"
+                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId` and enums. {why}"
                     ))
                     .next(format!("Split `{name}` into settings of those types")),
                 );
@@ -772,6 +772,13 @@ impl Reader<'_> {
         match &structure {
             Ty::List(_) | Ty::Set(_) | Ty::Map(..) => {
                 Err("A list is one value in many variables or one variable holding a format; split it into settings.".to_string())
+            }
+            // A model, read from its text, `openai/gpt-4.1-mini`: what
+            // `ai: { models: }` names (area 21; chunk 5.5v3).
+            Ty::Opaque(name, args)
+                if args.is_empty() && name == jadpo_std::standard::records::MODEL_ID =>
+            {
+                Ok(Reads::Text)
             }
             Ty::Named(name) => match self.lookup.def(name) {
                 Some(Def::Enum { variants }) if variants.iter().all(|v| v.fields.is_none()) => {
@@ -1336,27 +1343,59 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 }
                 let path = current.file(db).path(db).clone();
                 for site in &checked.body.sites {
-                    let Node::Expr(Expr::Config { field }) = &site.node else {
-                        continue;
+                    // `ai.generate` reads its model's setting and its
+                    // connection's address (area 21; chunk 5.5v3).
+                    let names: Vec<String> = match &site.node {
+                        Node::Expr(Expr::Config { field }) => vec![field.name().to_string()],
+                        Node::Expr(Expr::Call {
+                            callee: jadpo_graph::body::Callee::Generate { model, .. },
+                            ..
+                        }) => {
+                            let settings = crate::ai::settings(db, project);
+                            let mut read: Vec<String> = settings
+                                .models
+                                .iter()
+                                .filter(|(name, _)| name == model)
+                                .map(|(_, setting)| setting.clone())
+                                .collect();
+                            read.extend(
+                                crate::ai::model_connections(db, project)
+                                    .list
+                                    .iter()
+                                    .filter(|found| {
+                                        settings.connection.as_ref() == Some(&found.name)
+                                    })
+                                    .filter_map(|found| match &found.url {
+                                        Some(crate::ai::ModelUrl::Setting(name)) => {
+                                            Some(name.clone())
+                                        }
+                                        _ => None,
+                                    }),
+                            );
+                            read
+                        }
+                        _ => continue,
                     };
-                    let name = field.name();
-                    if !wanting.contains(name)
-                        || given.contains(name)
-                        || !reported.insert((path.clone(), site.start))
-                    {
-                        continue;
+                    for name in &names {
+                        let name = name.as_str();
+                        if !wanting.contains(name)
+                            || given.contains(name)
+                            || !reported.insert((path.clone(), site.start))
+                        {
+                            continue;
+                        }
+                        out.push(
+                            Diagnostic::new(
+                                &rule::CONFIGURATION_TEST_VALUE_MISSING,
+                                format!("`config.{name}` has no value in tests"),
+                            )
+                            .at(Span::new(&path, site.start, site.end), "no `test:` or `default:`")
+                            .reason(format!(
+                                "The test \"{sentence}\" reaches this read. A test reads each setting's `test:` value, or its `default:`, and `{name}` has neither; only a secret is made up for a run, and `{name}` isn't one."
+                            ))
+                            .next(format!("Give `{name}` a `test:` value, or a `default:`, in `config.jadpo`")),
+                        );
                     }
-                    out.push(
-                        Diagnostic::new(
-                            &rule::CONFIGURATION_TEST_VALUE_MISSING,
-                            format!("`config.{name}` has no value in tests"),
-                        )
-                        .at(Span::new(&path, site.start, site.end), "no `test:` or `default:`")
-                        .reason(format!(
-                            "The test \"{sentence}\" reaches this read. A test reads each setting's `test:` value, or its `default:`, and `{name}` has neither; only a secret is made up for a run, and `{name}` isn't one."
-                        ))
-                        .next(format!("Give `{name}` a `test:` value, or a `default:`, in `config.jadpo`")),
-                    );
                 }
                 for fact in &body_facts(db, project, current).facts {
                     if let Fact::Action(key) | Fact::Fixture(key) | Fact::Function(key) = fact

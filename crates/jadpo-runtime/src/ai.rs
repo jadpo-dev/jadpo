@@ -1,0 +1,1487 @@
+//! The `ai` capability's `generate` (area 21, "The `ai` capability" and
+//! "Typed output"; chunk 5.5v3): what both executors run at an
+//! `ai.generate(prompt, as: T)` call's site.
+//!
+//! [`generate`] renders the prompt as `prompts.render` does, asks the
+//! model the call's `model:` names through the connection `ai:` names, on
+//! the capability seam ([`crate::effects::exchange`]), so a call is
+//! refused inside an open transaction, logged without its values and
+//! recorded and replayed with the other effects, and decodes the answer
+//! through `json.read`'s decoding of `T`, every rule included:
+//!
+//! 1. **The schema.** `T`'s JSON Schema, written at build time with each
+//!    field's description, is sent in the provider's structured-output
+//!    mode cut to what it enforces ([`strict`]), a `T` whose JSON isn't an
+//!    object as the member `value` of one; or, where the provider has no
+//!    such mode, added to the instructions under a fixed heading
+//!    ([`with_schema`]). A `T` built on `Text` asks for plain text.
+//! 2. **One repair.** An answer that doesn't decode is answered with the
+//!    answer and its `DecodeProblem` (its path and rule, never a value),
+//!    while the call's `attempts:` allow ([`correction`]).
+//! 3. **The five failures**, each a condition the call's `attempt` maps:
+//!    `refused` (the model declined), `malformed` (no attempt decoded,
+//!    with the last `DecodeProblem`), `timed_out` (no whole answer within
+//!    `timeout:`, the sends a provider asked for again included),
+//!    `over_budget` (cut off at `max_output:`) and `too_long` (the prompt
+//!    is longer than the model's context). A rejected key or an unknown
+//!    model is `misconfigured`, and a provider that can't be reached
+//!    within the call's `timeout:` is `unavailable`.
+//! 4. **Answers reused on a rerun.** An action run again after a
+//!    concurrent change (area 6) takes the same outside-call steps, so
+//!    each call's answer is kept by its step and the request it sent, and
+//!    a rerun asking the same is given it back without asking again; in an
+//!    action whose steps are recorded (area 12, chunk 7.5b) it is a step of
+//!    the record, sealed, so a redelivery reuses it too.
+//!
+//! The built-in driver, `Driver.openai_compatible`, speaks OpenAI's Chat
+//! Completions API (`POST <url>/chat/completions`) through the package
+//! driver's HTTP; a test's fake ([`AiFake`]) answers in the same form, so
+//! what a test scripts runs through the real reading, decoding and repair.
+//! Prompts and answers appear in no error's text; only `jadpo dev`'s call
+//! log keeps them, in full, as area 21 allows.
+
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
+
+use jadpo_std::ai::{AiPlan, AiUrl, GenerateSite, SchemaMode};
+use jadpo_std::prompt::PromptPlan;
+use jadpo_std::subscriber::Repeat;
+use jadpo_std::{HttpMethod, RuleKey};
+use jadpo_value::Value;
+use jadpo_value::json::{Problem, Unread};
+
+use crate::capability::{Answer, Call, Capability, Source};
+use crate::effects::Unanswered;
+use crate::fakes::Usage;
+use crate::places::Frame;
+use crate::provider::{Reading, Request};
+use crate::{Ctx, Failure, FaultKind, JsonCodecs, LocalFuture};
+
+/// What a program asks models with: its `ai:`, its prompts, and the
+/// codecs its prompts' fields and its answers' types are written and read
+/// with.
+#[derive(Clone, Copy)]
+pub struct Ai<'a> {
+    pub plan: &'a AiPlan,
+    pub prompts: &'a PromptPlan,
+    pub json: JsonCodecs<'a>,
+}
+
+impl std::fmt::Debug for Ai<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ai")
+            .field("connection", &self.plan.connection)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What an `ai.generate` call gives its site.
+#[derive(Debug)]
+pub enum Done {
+    /// The answer, decoded into the call's type.
+    Value(Value),
+    /// One of the call's five conditions, for its `attempt` to map; with
+    /// the last `DecodeProblem` for `malformed`.
+    Broke {
+        rule: RuleKey,
+        problem: Option<Value>,
+    },
+    /// What the runtime raises in its place: `unavailable`,
+    /// `misconfigured`.
+    Failed(Box<Failure>),
+    Fault(FaultKind),
+}
+
+/// The settings a call reads, by number, for its model and its address:
+/// the executor gives their values to [`generate`].
+pub fn settings_read(plan: &AiPlan, site: &GenerateSite) -> Vec<u32> {
+    let mut read: Vec<u32> = plan.model(&site.model).into_iter().collect();
+    if let AiUrl::Setting(at) = &plan.url {
+        read.push(*at);
+    }
+    read
+}
+
+/// What a call ended with, kept for a rerun: the answer as the model gave
+/// it, or a condition.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum Kept {
+    Answer(Rc<str>),
+    Condition(RuleKey),
+    /// `malformed`, with the last answer's problem, never its text.
+    Malformed(Problem),
+}
+
+impl Kept {
+    /// How a record keeps a condition: its word, and for `malformed` its
+    /// problem's path and rule after it, each after a space.
+    fn word(&self) -> Option<String> {
+        match self {
+            Kept::Answer(_) => None,
+            Kept::Condition(rule) => Some(rule.word().to_string()),
+            Kept::Malformed(problem) => Some(format!(
+                "{} {} {}",
+                RuleKey::Malformed.word(),
+                problem.field,
+                problem.rule
+            )),
+        }
+    }
+
+    /// A condition as [`Kept::word`] writes it.
+    fn from_word(word: &str) -> Option<Kept> {
+        let mut parts = word.splitn(3, ' ');
+        let rule = RuleKey::from_word(parts.next()?)?;
+        match (rule, parts.next(), parts.next()) {
+            (RuleKey::Malformed, field, rule) => Some(Kept::Malformed(Problem {
+                field: field.unwrap_or_default().to_string(),
+                rule: rule
+                    .filter(|rule| !rule.is_empty())
+                    .unwrap_or(RuleKey::Malformed.word())
+                    .to_string(),
+            })),
+            (rule, None, None) => Some(Kept::Condition(rule)),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Debug for Kept {
+    /// Never the answer.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Kept::Answer(_) => f.write_str("Answer(..)"),
+            Kept::Condition(rule) => f.debug_tuple("Condition").field(rule).finish(),
+            Kept::Malformed(problem) => f.debug_tuple("Malformed").field(problem).finish(),
+        }
+    }
+}
+
+/// One call's answer an invocation keeps for a rerun: the step it took
+/// and a digest of the request it sent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Reused {
+    pub step: u32,
+    pub digest: [u8; 32],
+    pub kept: Kept,
+}
+
+/// The operation a call is logged and recorded as: the prompt's name.
+fn operation(site: &GenerateSite) -> &str {
+    &site.prompt
+}
+
+/// Asks the model for an answer to `prompt`, a value of the prompt's type
+/// `site` renders, as `site`'s type; `settings` gives the values of the
+/// settings [`settings_read`] names.
+pub async fn generate(
+    ctx: &mut Ctx<'_>,
+    ai: &Ai<'_>,
+    site: &GenerateSite,
+    prompt: Value,
+    settings: &[(u32, Value)],
+) -> Done {
+    let defect = |what: &str| Done::Fault(FaultKind::Defect(what.to_string()));
+    let Some(entry) = ai.prompts.entries.get(site.entry as usize) else {
+        return defect("a prompt the plan doesn't have");
+    };
+    let codecs = ai.json.codecs;
+    let rendered = jadpo_value::prompt::render(entry, &prompt, &mut |place, value| {
+        let number = site.fields.get(place)?;
+        let codec = ai.json.codec_of(*number)?;
+        Some(codecs.write_value(codec, value))
+    });
+    let Some(messages) = rendered.as_ref().and_then(messages_of) else {
+        return defect("a prompt that doesn't render");
+    };
+    let setting = |number: u32| {
+        settings
+            .iter()
+            .find(|(at, _)| *at == number)
+            .map(|(_, value)| value)
+    };
+    // The model's text, `openai/gpt-4.1-mini`, as its setting holds it.
+    let model = ai
+        .plan
+        .model(&site.model)
+        .and_then(setting)
+        .and_then(|value| match jadpo_value::standard::from(value) {
+            Ok(Value::Text(text)) => Some(text.to_string()),
+            _ => None,
+        });
+    let base = match &ai.plan.url {
+        AiUrl::Written(text) => Some(text.clone()),
+        AiUrl::Setting(at) => match setting(*at) {
+            Some(Value::Text(text)) => Some(text.to_string()),
+            _ => None,
+        },
+    };
+    let made = Call::new(
+        &ai.plan.connection,
+        operation(site),
+        prompt.clone(),
+        Repeat::Safe,
+    );
+    let (Some(model), Some(base)) = (
+        model,
+        base.and_then(|base| crate::provider::sendable(&base)),
+    ) else {
+        // A model or an address the connection can't be reached with is
+        // the connection's settings: nothing is sent.
+        let now = ctx.now();
+        ctx.capabilities_mut().refused(&made, now);
+        return Done::Failed(Box::new(crate::misconfigured()));
+    };
+    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let mode = ai.plan.schema;
+    let asked = Asked {
+        model,
+        schema: site.schema.as_deref().map(|schema| {
+            serde_json::from_str::<serde_json::Value>(schema).unwrap_or(serde_json::Value::Null)
+        }),
+        wrapped: mode == SchemaMode::StrictSubset && !site.object,
+        mode,
+    };
+    let mut messages = match &asked.schema {
+        Some(schema) if mode != SchemaMode::StrictSubset => with_schema(messages, schema),
+        _ => messages,
+    };
+    let body = request_body(&asked, &messages, site);
+    let digest = jadpo_value::hash::sha256(body.as_bytes());
+    // Given back on a rerun: from the record of the action's steps, or
+    // from the first run's answers kept by the invocation.
+    let name = format!("{}.{}", ai.plan.connection, site.prompt);
+    let fields = vec![("request".to_string(), body.clone().into_bytes())];
+    let stepped = crate::steps::step(
+        ctx,
+        crate::steps::Proposed {
+            operation: &name,
+            fields,
+            repeat: Repeat::Safe,
+            changes: false,
+            window_ms: None,
+        },
+    )
+    .await;
+    let step_at = match stepped {
+        Ok(crate::steps::Stepped::Untracked) => None,
+        Ok(crate::steps::Stepped::Send(at)) => Some(at),
+        Ok(crate::steps::Stepped::Replay(answered)) => {
+            let kept = match answered {
+                crate::steps::Answered::Wire(text) => Kept::Answer(text),
+                crate::steps::Answered::Failed(word) => match Kept::from_word(&word) {
+                    Some(kept) => kept,
+                    None => return defect("a recorded answer of no condition"),
+                },
+                crate::steps::Answered::Done => return defect("a recorded answer with nothing"),
+            };
+            return replayed(ctx, ai, site, &asked, made, kept);
+        }
+        Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+        Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+        Err(Unanswered::Failed(_)) => return Done::Failed(Box::new(crate::unavailable())),
+    };
+    let step = if step_at.is_none() {
+        ctx.next_step()
+    } else {
+        None
+    };
+    if let Some(step) = step
+        && let Some(kept) = ctx.reused(step, &digest)
+    {
+        return replayed(ctx, ai, site, &asked, made, kept);
+    }
+    let host = ctx.host();
+    let began = host.monotonic_ms();
+    let mut last_problem: Option<Problem> = None;
+    let mut ended: Option<(Kept, Done)> = None;
+    for attempt in 1..=site.attempts.max(1) {
+        let body = request_body(&asked, &messages, site);
+        let mut call = made.clone();
+        call.attempt = attempt;
+        call.step = step_at;
+        let answer = match sent(ctx, call, &url, &body, began, site.timeout_ms).await {
+            Ok(answer) => answer,
+            Err(done) => return done,
+        };
+        // A fake's generated default: an answer of the call's type, made
+        // as the model would send it.
+        let answer = match answer {
+            Answer::Generated => Answer::Wire(generated_answer(ctx, ai, site, &asked)),
+            other => other,
+        };
+        let reply = match &answer {
+            Answer::Wire(text) => match reply_of(text) {
+                Some(reply) => reply,
+                None => {
+                    return Done::Fault(FaultKind::Provider(format!(
+                        "`{}`'s answer to `{}` isn't a chat completion",
+                        ai.plan.connection, site.prompt
+                    )));
+                }
+            },
+            Answer::TimedOut => {
+                ended = Some((Kept::Condition(RuleKey::TimedOut), broke(RuleKey::TimedOut)));
+                break;
+            }
+            Answer::Failed(code) if code == CONTEXT_LENGTH_EXCEEDED => {
+                ended = Some((Kept::Condition(RuleKey::TooLong), broke(RuleKey::TooLong)));
+                break;
+            }
+            Answer::Failed(_) | Answer::Misconfigured => {
+                return Done::Failed(Box::new(crate::misconfigured()));
+            }
+            Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
+                return Done::Failed(Box::new(crate::unavailable()));
+            }
+            Answer::Value(_) | Answer::Generated | Answer::Recorded => {
+                return defect("an answer to `ai.generate` that isn't a chat completion");
+            }
+        };
+        if reply.refused {
+            ended = Some((Kept::Condition(RuleKey::Refused), broke(RuleKey::Refused)));
+            break;
+        }
+        if reply.cut_off {
+            ended = Some((
+                Kept::Condition(RuleKey::OverBudget),
+                broke(RuleKey::OverBudget),
+            ));
+            break;
+        }
+        let content = reply.content.unwrap_or_default();
+        match decode(ai, site, &asked, &content) {
+            Ok(value) => {
+                ended = Some((Kept::Answer(Rc::from(content.as_str())), Done::Value(value)));
+                break;
+            }
+            Err(problem) => {
+                if attempt < site.attempts {
+                    messages.push(("assistant".to_string(), content));
+                    messages.push(("user".to_string(), correction(&problem, &asked)));
+                }
+                last_problem = Some(problem);
+            }
+        }
+    }
+    let (kept, done) = ended.unwrap_or_else(|| {
+        let problem = last_problem.unwrap_or_else(|| Problem {
+            field: String::new(),
+            rule: RuleKey::Malformed.word().to_string(),
+        });
+        (
+            Kept::Malformed(problem.clone()),
+            Done::Broke {
+                rule: RuleKey::Malformed,
+                problem: Some(crate::effects::decode_problem(&problem)),
+            },
+        )
+    });
+    if let Some(at) = step_at {
+        let answered = match &kept {
+            Kept::Answer(text) => crate::steps::Answered::Wire(text.clone()),
+            condition => crate::steps::Answered::Failed(condition.word().unwrap_or_default()),
+        };
+        match crate::steps::answered(ctx, at, answered).await {
+            Ok(()) => {}
+            Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+            Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+            Err(Unanswered::Failed(_)) => return Done::Failed(Box::new(crate::unavailable())),
+        }
+    }
+    if let Some(step) = step {
+        ctx.keep_reused(Reused { step, digest, kept });
+    }
+    done
+}
+
+/// A condition, for the call's `attempt` to map.
+fn broke(rule: RuleKey) -> Done {
+    Done::Broke {
+        rule,
+        problem: None,
+    }
+}
+
+/// What the call gives when its answer is given back without asking
+/// again: logged as replayed, then decoded as any answer is.
+fn replayed(
+    ctx: &mut Ctx<'_>,
+    ai: &Ai<'_>,
+    site: &GenerateSite,
+    asked: &Asked,
+    made: Call,
+    kept: Kept,
+) -> Done {
+    let now = ctx.now();
+    let answer = match &kept {
+        Kept::Answer(text) => Answer::Wire(text.clone()),
+        Kept::Condition(rule) => Answer::Failed(rule.word().to_string()),
+        Kept::Malformed(_) => Answer::Failed(RuleKey::Malformed.word().to_string()),
+    };
+    let capabilities = ctx.capabilities_mut();
+    let place = capabilities.sent(&made, Source::Replayed, now);
+    capabilities.ended(place, &answer, Some(0));
+    match kept {
+        Kept::Answer(text) => match decode(ai, site, asked, &text) {
+            Ok(value) => Done::Value(value),
+            // What decoded when it came decodes no more under this build.
+            Err(problem) => Done::Broke {
+                rule: RuleKey::Malformed,
+                problem: Some(crate::effects::decode_problem(&problem)),
+            },
+        },
+        Kept::Condition(rule) => broke(rule),
+        Kept::Malformed(problem) => Done::Broke {
+            rule: RuleKey::Malformed,
+            problem: Some(crate::effects::decode_problem(&problem)),
+        },
+    }
+}
+
+/// What a call asks for besides its messages.
+struct Asked {
+    /// The model's text, `openai/gpt-4.1-mini`.
+    model: String,
+    /// `T`'s schema, whole; `None` for plain text.
+    schema: Option<serde_json::Value>,
+    mode: SchemaMode,
+    /// Whether `T` is asked for as the member `value` of an object.
+    wrapped: bool,
+}
+
+/// The code an OpenAI-compatible server answers a prompt longer than the
+/// model's context with (a `400`).
+pub const CONTEXT_LENGTH_EXCEEDED: &str = "context_length_exceeded";
+
+/// Each message's role and text.
+fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
+    let Value::List(items) = rendered else {
+        return None;
+    };
+    items
+        .iter()
+        .map(|item| {
+            let Value::Record(record) = item else {
+                return None;
+            };
+            let role = match record.get("role")? {
+                Value::Variant(variant) => variant.name.to_string(),
+                _ => return None,
+            };
+            let content = match record.get("content")? {
+                Value::Text(text) => text.to_string(),
+                _ => return None,
+            };
+            Some((role, content))
+        })
+        .collect()
+}
+
+/// The messages with `schema` added to the instructions under a fixed
+/// heading, asking for JSON alone: what a provider with no structured mode,
+/// or one that promises only JSON, is sent (area 21, "Typed output", step
+/// 2).
+pub fn with_schema(
+    mut messages: Vec<(String, String)>,
+    schema: &serde_json::Value,
+) -> Vec<(String, String)> {
+    let added = format!(
+        "\n\n{}\n\nAnswer with one JSON document alone, matching this JSON Schema:\n\n{schema}",
+        jadpo_std::ai::SCHEMA_HEADING
+    );
+    match messages.iter_mut().find(|(role, _)| role == "system") {
+        Some((_, content)) => content.push_str(&added),
+        None => messages.insert(0, ("system".to_string(), added.trim_start().to_string())),
+    }
+    messages
+}
+
+/// The correction a repair is asked with: what didn't decode, by its path
+/// and rule, never a value (area 21, "Typed output", step 4).
+fn correction(problem: &Problem, asked: &Asked) -> String {
+    let what = if problem.rule == RuleKey::Malformed.word() {
+        if asked.schema.is_some() {
+            "Your answer wasn't one JSON document.".to_string()
+        } else {
+            "Your answer couldn't be read.".to_string()
+        }
+    } else if problem.field.is_empty() {
+        format!("Your answer breaks the rule `{}`.", problem.rule)
+    } else {
+        format!(
+            "In your answer, `{}` breaks the rule `{}`.",
+            problem.field, problem.rule
+        )
+    };
+    let again = if asked.schema.is_some() {
+        "Answer again with one JSON document alone that matches the schema."
+    } else {
+        "Answer again."
+    };
+    format!("{what} {again}")
+}
+
+/// The request's JSON body: OpenAI's Chat Completions request, the
+/// schema in its structured-output mode where the provider has one.
+fn request_body(asked: &Asked, messages: &[(String, String)], site: &GenerateSite) -> String {
+    let mut body = serde_json::Map::new();
+    body.insert("model".into(), asked.model.as_str().into());
+    body.insert(
+        "messages".into(),
+        serde_json::Value::Array(
+            messages
+                .iter()
+                .map(|(role, content)| {
+                    let mut message = serde_json::Map::new();
+                    message.insert("role".into(), role.as_str().into());
+                    message.insert("content".into(), content.as_str().into());
+                    serde_json::Value::Object(message)
+                })
+                .collect(),
+        ),
+    );
+    body.insert("max_tokens".into(), site.max_output.into());
+    match (&asked.schema, asked.mode) {
+        (Some(schema), SchemaMode::StrictSubset) => {
+            let cut = strict(schema);
+            let cut = if asked.wrapped { wrapped(cut) } else { cut };
+            let mut format = serde_json::Map::new();
+            format.insert("type".into(), "json_schema".into());
+            let mut named = serde_json::Map::new();
+            named.insert("name".into(), site.prompt.as_str().into());
+            named.insert("strict".into(), true.into());
+            named.insert("schema".into(), cut);
+            format.insert("json_schema".into(), serde_json::Value::Object(named));
+            body.insert("response_format".into(), serde_json::Value::Object(format));
+        }
+        (Some(_), SchemaMode::JsonOnly) => {
+            let mut format = serde_json::Map::new();
+            format.insert("type".into(), "json_object".into());
+            body.insert("response_format".into(), serde_json::Value::Object(format));
+        }
+        _ => {}
+    }
+    serde_json::Value::Object(body).to_string()
+}
+
+/// `schema` as the member `value` of an object: what a strict structured
+/// mode, which wants an object at its root, is asked for a `T` whose JSON
+/// isn't one. Its definitions stay at the root.
+fn wrapped(mut schema: serde_json::Value) -> serde_json::Value {
+    let defs = schema
+        .as_object_mut()
+        .and_then(|members| members.remove("$defs"));
+    let mut properties = serde_json::Map::new();
+    properties.insert(jadpo_std::ai::WRAPPED.into(), schema);
+    let mut out = serde_json::Map::new();
+    out.insert("type".into(), "object".into());
+    out.insert("properties".into(), serde_json::Value::Object(properties));
+    out.insert(
+        "required".into(),
+        serde_json::Value::Array(vec![jadpo_std::ai::WRAPPED.into()]),
+    );
+    out.insert("additionalProperties".into(), false.into());
+    if let Some(defs) = defs {
+        out.insert("$defs".into(), defs);
+    }
+    serde_json::Value::Object(out)
+}
+
+/// The keywords a strict structured mode enforces (area 21, "Typed
+/// output", step 2: types, required fields, enums, nesting): OpenAI's
+/// structured outputs' subset. Lengths, patterns, bounds and formats are
+/// left out and checked by decoding.
+const KEPT: [&str; 11] = [
+    "type",
+    "properties",
+    "required",
+    "items",
+    "enum",
+    "const",
+    "anyOf",
+    "$ref",
+    "$defs",
+    "description",
+    "additionalProperties",
+];
+
+/// `schema` cut to what a strict structured mode enforces: every object's
+/// properties all required and no others allowed, one that may be left
+/// out made one that may be `null`; a choice of shapes as `anyOf`.
+pub fn strict(schema: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value as J;
+    match schema {
+        J::Object(members) => {
+            let mut out = serde_json::Map::new();
+            for (key, value) in members {
+                let key = if key == "oneOf" {
+                    "anyOf"
+                } else {
+                    key.as_str()
+                };
+                if !KEPT.contains(&key) {
+                    continue;
+                }
+                let value = match key {
+                    // Names, not schemas.
+                    "required" | "enum" | "const" | "type" | "description" | "$ref" => {
+                        value.clone()
+                    }
+                    "properties" | "$defs" => match value {
+                        J::Object(entries) => J::Object(
+                            entries
+                                .iter()
+                                .map(|(name, schema)| (name.clone(), strict(schema)))
+                                .collect(),
+                        ),
+                        other => other.clone(),
+                    },
+                    "additionalProperties" => match value {
+                        J::Bool(flag) => J::Bool(*flag),
+                        schema => strict(schema),
+                    },
+                    _ => strict(value),
+                };
+                out.insert(key.to_string(), value);
+            }
+            // Every property required, as the mode wants: one that may be
+            // left out may be `null` instead.
+            if let Some(J::Object(properties)) = out.get_mut("properties") {
+                let required: Vec<String> = members
+                    .get("required")
+                    .and_then(J::as_array)
+                    .map(|names| {
+                        names
+                            .iter()
+                            .filter_map(|name| name.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut all = Vec::new();
+                for (name, property) in properties.iter_mut() {
+                    if !required.contains(name) {
+                        let schema = std::mem::take(property);
+                        let mut null = serde_json::Map::new();
+                        null.insert("type".into(), "null".into());
+                        let mut either = serde_json::Map::new();
+                        either.insert("anyOf".into(), J::Array(vec![schema, J::Object(null)]));
+                        *property = J::Object(either);
+                    }
+                    all.push(J::String(name.clone()));
+                }
+                out.insert("required".into(), J::Array(all));
+                out.insert("additionalProperties".into(), J::Bool(false));
+            }
+            J::Object(out)
+        }
+        J::Array(items) => J::Array(items.iter().map(strict).collect()),
+        other => other.clone(),
+    }
+}
+
+/// What a chat completion says.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Reply {
+    content: Option<String>,
+    /// The model declined: a refusal it gave, or its answer stopped by the
+    /// provider's filter.
+    refused: bool,
+    /// Its answer was cut off at the most tokens it was allowed.
+    cut_off: bool,
+}
+
+/// A chat completion's first choice, as OpenAI's API answers one; `None`
+/// for anything else.
+fn reply_of(text: &str) -> Option<Reply> {
+    let json: serde_json::Value = serde_json::from_str(text).ok()?;
+    let choice = json.get("choices")?.as_array()?.first()?;
+    let message = choice.get("message")?;
+    let finish = choice
+        .get("finish_reason")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let refusal = message
+        .get("refusal")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|refusal| !refusal.trim().is_empty());
+    Some(Reply {
+        content: message
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        refused: refusal || finish == "content_filter",
+        cut_off: finish == "length",
+    })
+}
+
+/// A chat completion answering with `content`, or declining, or cut off:
+/// how a fake answers, in the built-in driver's own form.
+pub fn completion(content: Option<&str>, refusal: Option<&str>, finish: &str) -> Rc<str> {
+    let mut message = serde_json::Map::new();
+    message.insert("role".into(), "assistant".into());
+    message.insert(
+        "content".into(),
+        content.map_or(serde_json::Value::Null, serde_json::Value::from),
+    );
+    if let Some(refusal) = refusal {
+        message.insert("refusal".into(), refusal.into());
+    }
+    let mut choice = serde_json::Map::new();
+    choice.insert("index".into(), 0.into());
+    choice.insert("message".into(), serde_json::Value::Object(message));
+    choice.insert("finish_reason".into(), finish.into());
+    let mut out = serde_json::Map::new();
+    out.insert("object".into(), "chat.completion".into());
+    out.insert(
+        "choices".into(),
+        serde_json::Value::Array(vec![serde_json::Value::Object(choice)]),
+    );
+    Rc::from(serde_json::Value::Object(out).to_string())
+}
+
+/// The answer `content` holds as the call's type, read as `json.read`
+/// reads a document, every rule included; the first problem otherwise. A
+/// `T` built on `Text` is the text as it is.
+fn decode(
+    ai: &Ai<'_>,
+    site: &GenerateSite,
+    asked: &Asked,
+    content: &str,
+) -> Result<Value, Problem> {
+    let Some(codec) = ai.json.codec_of(site.answer) else {
+        return Err(Problem {
+            field: String::new(),
+            rule: "type".to_string(),
+        });
+    };
+    let codecs = ai.json.codecs;
+    let malformed = || Problem {
+        field: String::new(),
+        rule: RuleKey::Malformed.word().to_string(),
+    };
+    let unread = |unread: Unread| match unread {
+        Unread::Malformed => malformed(),
+        Unread::Mismatch(problem) => problem,
+    };
+    if asked.schema.is_none() {
+        let text = serde_json::Value::String(content.to_string()).to_string();
+        return codecs
+            .read_value(codec, &Value::text(&text))
+            .map_err(unread);
+    }
+    let document = strip_fence(content);
+    if asked.wrapped {
+        return codecs
+            .read_member(codec, document, jadpo_std::ai::WRAPPED)
+            .map_err(unread);
+    }
+    codecs
+        .read_value(codec, &Value::text(document))
+        .map_err(unread)
+}
+
+/// A document a model wrapped in a Markdown code fence, without it: what
+/// a model asked for JSON alone in its instructions often sends.
+fn strip_fence(content: &str) -> &str {
+    let trimmed = content.trim();
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return content;
+    };
+    let rest = rest.strip_prefix("json").unwrap_or(rest);
+    match rest.trim_start_matches(['\r', '\n']).strip_suffix("```") {
+        Some(inner) => inner.trim(),
+        None => content,
+    }
+}
+
+/// A fake's generated default, as a chat completion: a value of the
+/// call's type that keeps its rules, made as a provider's generated
+/// default is (area 13; chunk 7.2d), and wrapped as the call asks.
+fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: &Asked) -> Rc<str> {
+    let Some(codec) = ai.json.codec_of(site.answer) else {
+        return completion(None, None, "stop");
+    };
+    let now = ctx.now();
+    let mut uuid = || crate::fakes::uuid_text(ctx.new_id().unwrap_or_default());
+    let mut making = crate::fakes::Making {
+        now,
+        uuid: &mut uuid,
+    };
+    let json = crate::fakes::generated(&ai.json.codecs, codec, &mut making);
+    let content = match (&asked.schema, json) {
+        (None, serde_json::Value::String(text)) => text,
+        (None, other) => other.to_string(),
+        (Some(_), json) if asked.wrapped => {
+            let mut members = serde_json::Map::new();
+            members.insert(jadpo_std::ai::WRAPPED.into(), json);
+            serde_json::Value::Object(members).to_string()
+        }
+        (Some(_), json) => json.to_string(),
+    };
+    completion(Some(&content), None, "stop")
+}
+
+/// Sends one attempt's request through the capability seam, and again
+/// while the provider couldn't be reached or asked for it later, as long
+/// as the call's `timeout:` lasts: its last answer, or what the call
+/// gives instead. On a host with no clock, as a test's, it is sent again
+/// at once, at most [`jadpo_std::ai::SENDS`] times.
+async fn sent(
+    ctx: &mut Ctx<'_>,
+    made: Call,
+    url: &str,
+    body: &str,
+    began: Option<u64>,
+    timeout_ms: u64,
+) -> Result<Answer, Done> {
+    let host = ctx.host();
+    let mut sends = 1;
+    loop {
+        let spent = match (began, host.monotonic_ms()) {
+            (Some(began), Some(now)) => now.saturating_sub(began),
+            _ => 0,
+        };
+        let left = timeout_ms.saturating_sub(spent);
+        if left == 0 {
+            return Ok(Answer::TimedOut);
+        }
+        let request = Request {
+            method: HttpMethod::Post,
+            url: url.to_string(),
+            headers: vec![
+                ("Accept".to_string(), "application/json".to_string()),
+                ("Content-Type".to_string(), "application/json".to_string()),
+                ("user-agent".to_string(), "jadpo".to_string()),
+            ],
+            body: Some(body.to_string()),
+            timeout_ms: left,
+            reading: Reading {
+                error_code: Some("error.code".to_string()),
+                ..Reading::default()
+            },
+        };
+        let shown = ctx.host().call_log().is_some();
+        let call = made.clone().with_request(request);
+        let answer = match crate::effects::exchange(ctx, call.clone()).await {
+            Ok(answer) => answer,
+            Err(Unanswered::Failure(failure)) => return Err(Done::Failed(failure)),
+            Err(Unanswered::Fault(kind)) => return Err(Done::Fault(kind)),
+            Err(Unanswered::Failed(_)) => {
+                return Err(Done::Failed(Box::new(crate::unavailable())));
+            }
+        };
+        if shown {
+            log(ctx, &call, url, body, &answer);
+        }
+        let asked = match &answer {
+            Answer::Unavailable | Answer::Unknown => None,
+            Answer::RetryAfter(millis) => Some(*millis),
+            _ => return Ok(answer),
+        };
+        if sends >= jadpo_std::ai::SENDS {
+            return Ok(answer);
+        }
+        sends += 1;
+        let Some(began) = began else {
+            continue;
+        };
+        let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
+        let left = timeout_ms.saturating_sub(spent);
+        let mut random = [0u8; 8];
+        let random = host.random(&mut random).then_some(random);
+        let Some(wait) = crate::provider::retry_wait(sends - 1, asked, left, random) else {
+            return Ok(answer);
+        };
+        if wait > 0 {
+            host.sleep(wait).await;
+        }
+    }
+}
+
+/// Keeps one attempt in `jadpo dev`'s call log, its request and answer in
+/// full (area 21, "Prompts and answers in logs": in development, in
+/// full).
+fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
+    let (Some(log), Some(logged)) = (ctx.host().call_log(), ctx.capabilities().calls().last())
+    else {
+        return;
+    };
+    let sent = match answer {
+        Answer::Wire(text) => Some(text.as_ref()),
+        _ => None,
+    };
+    log.seen(&crate::call_log::Seen {
+        connection: &call.connection,
+        operation: &call.operation,
+        request_id: ctx.request_id(),
+        at: logged.at,
+        source: logged.source,
+        took_ms: logged.took_ms,
+        method: HttpMethod::Post.word(),
+        url,
+        body: Some(body),
+        answer: sent,
+        ended: &logged.ended,
+    });
+}
+
+// --- the fake -------------------------------------------------------------------
+
+/// One answer a test's `fakes: { ai.<prompt>: }` scripts (area 21,
+/// "Tests").
+#[derive(Clone, Debug, PartialEq)]
+pub enum Script {
+    /// The model's text: a value of the call's type written as JSON, or
+    /// `raw(...)`'s text.
+    Content(String),
+    /// One of `ai.generate`'s five conditions.
+    Condition(RuleKey),
+}
+
+/// A value of `site`'s type, written as `json`, as the model sends it:
+/// a text answer as its text, one in a strict mode that isn't an object as
+/// the member `value` of one, and anything else as it is.
+pub fn as_sent(ai: &Ai<'_>, site: &GenerateSite, json: &str) -> String {
+    if site.schema.is_none() {
+        return match serde_json::from_str::<serde_json::Value>(json) {
+            Ok(serde_json::Value::String(text)) => text,
+            _ => json.to_string(),
+        };
+    }
+    if ai.plan.schema == SchemaMode::StrictSubset && !site.object {
+        return format!("{{\"{}\":{json}}}", jadpo_std::ai::WRAPPED);
+    }
+    json.to_string()
+}
+
+/// The answer a scripted one is, as a chat completion or as the driver
+/// classifies what an OpenAI-compatible server answers.
+pub fn scripted(script: Script) -> Answer {
+    match script {
+        Script::Content(text) => Answer::Wire(completion(Some(&text), None, "stop")),
+        Script::Condition(RuleKey::Refused) => Answer::Wire(completion(
+            None,
+            Some("The model declined to answer."),
+            "stop",
+        )),
+        // An answer with no text, which no type decodes from.
+        Script::Condition(RuleKey::Malformed) => Answer::Wire(completion(None, None, "stop")),
+        Script::Condition(RuleKey::OverBudget) => {
+            Answer::Wire(completion(Some(""), None, "length"))
+        }
+        Script::Condition(RuleKey::TooLong) => Answer::Failed(CONTEXT_LENGTH_EXCEEDED.to_string()),
+        Script::Condition(_) => Answer::TimedOut,
+    }
+}
+
+/// One prompt's script.
+#[derive(Debug)]
+struct Scripts {
+    prompt: String,
+    from: Frame,
+    answers: VecDeque<Answer>,
+    scripted: usize,
+    called: usize,
+}
+
+/// The `ai` fake (area 21, "Tests"): every `ai` call in `jadpo test`
+/// answers through it, whatever the connection. Each attempt of a call of
+/// a scripted prompt takes the prompt's next answer; any other is answered
+/// with a generated value of the call's type. It keeps the prompt values
+/// each call asked with, for `ai.<prompt>.requests`.
+#[derive(Debug, Default)]
+pub struct AiFake {
+    scripts: RefCell<Vec<Scripts>>,
+    /// Each call's prompt value, by its prompt, in order.
+    requests: RefCell<Vec<(String, Value)>>,
+}
+
+impl AiFake {
+    pub fn new() -> AiFake {
+        AiFake::default()
+    }
+
+    /// How each scripted prompt was used, in the order first scripted:
+    /// named `ai.<prompt>`, as the test's `fakes:` writes it.
+    pub fn usage(&self) -> Vec<Usage> {
+        self.scripts
+            .borrow()
+            .iter()
+            .map(|script| Usage {
+                operation: format!("{}.{}", jadpo_std::standard::ai::AI, script.prompt),
+                from: script.from,
+                scripted: script.scripted,
+                called: script.called,
+            })
+            .collect()
+    }
+}
+
+impl Capability for AiFake {
+    fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
+        if call.attempt <= 1 {
+            self.requests
+                .borrow_mut()
+                .push((call.operation.clone(), call.input.clone()));
+        }
+        let answer = {
+            let mut scripts = self.scripts.borrow_mut();
+            match scripts
+                .iter_mut()
+                .find(|script| script.prompt == call.operation)
+            {
+                Some(script) => {
+                    script.called += 1;
+                    // Past its script, a generated value: the test fails
+                    // as `test.fake_exhausted` once it ends.
+                    script.answers.pop_front().unwrap_or(Answer::Generated)
+                }
+                None => Answer::Generated,
+            }
+        };
+        Box::pin(async move { answer })
+    }
+
+    fn source(&self) -> Source {
+        Source::Generated
+    }
+
+    fn source_of(&self, call: &Call) -> Source {
+        let scripted = self
+            .scripts
+            .borrow()
+            .iter()
+            .any(|script| script.prompt == call.operation && !script.answers.is_empty());
+        if scripted {
+            Source::Scripted
+        } else {
+            Source::Generated
+        }
+    }
+
+    fn script(&self, _connection: &str, operation: &str, answer: Answer, from: Frame) -> bool {
+        let mut scripts = self.scripts.borrow_mut();
+        match scripts.iter_mut().find(|script| script.prompt == operation) {
+            Some(script) => {
+                script.answers.push_back(answer);
+                script.scripted += 1;
+            }
+            None => scripts.push(Scripts {
+                prompt: operation.to_string(),
+                from,
+                answers: VecDeque::from([answer]),
+                scripted: 1,
+                called: 0,
+            }),
+        }
+        true
+    }
+
+    fn requests(&self, _connection: &str, operation: &str) -> Vec<Value> {
+        self.requests
+            .borrow()
+            .iter()
+            .filter(|(prompt, _)| prompt == operation)
+            .map(|(_, value)| value.clone())
+            .collect()
+    }
+}
+
+/// Gives the `ai` fake the next answer to prompt `prompt` (area 21,
+/// "Tests"), scripted by the test at the current frame of `ctx`.
+pub fn script(
+    ctx: &mut Ctx<'_>,
+    ai: &Ai<'_>,
+    prompt: &str,
+    given: Script,
+) -> Result<(), &'static str> {
+    let Some(from) = ctx.frames().first().copied() else {
+        return Err("a scripted answer outside a test");
+    };
+    let answer = scripted(given);
+    let scripted = ctx
+        .host()
+        .capability(&ai.plan.connection)
+        .is_some_and(|fake| fake.script(&ai.plan.connection, prompt, answer, from));
+    if scripted {
+        Ok(())
+    } else {
+        Err("a test's `fakes:` on a host with no `ai` fake")
+    }
+}
+
+/// The prompt values the code asked prompt `prompt` with, as the `ai`
+/// fake kept them (`ai.<prompt>.requests`).
+pub fn requests(ctx: &Ctx<'_>, ai: &Ai<'_>, prompt: &str) -> Value {
+    let sent = ctx
+        .host()
+        .capability(&ai.plan.connection)
+        .map(|fake| fake.requests(&ai.plan.connection, prompt))
+        .unwrap_or_default();
+    Value::list(sent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    use jadpo_std::http::{Codec, CodecId};
+    use jadpo_std::prompt::{Piece, PromptEntry};
+    use jadpo_std::types::ValidatorId;
+
+    use crate::capability::Faked;
+    use crate::{
+        ActionBody, Clock, Database, Env, Host, Isolation, Outcome, Places, SqlValue, StoreError,
+        Transaction,
+    };
+
+    /// A store whose first `changes` commits find a concurrent change.
+    struct Changing(Rc<Cell<u32>>);
+
+    struct Tx(Rc<Cell<u32>>);
+
+    impl Transaction for Tx {
+        fn query<'a>(
+            &'a mut self,
+            _sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<Vec<SqlValue>>, StoreError>> {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+
+        fn execute<'a>(
+            &'a mut self,
+            _sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<u64, StoreError>> {
+            Box::pin(async { Ok(0) })
+        }
+
+        fn batch<'a>(&'a mut self, _sql: &'a str) -> LocalFuture<'a, Result<(), StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn commit(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
+            let changes = Rc::clone(&self.0);
+            Box::pin(async move {
+                if changes.get() > 0 {
+                    changes.set(changes.get() - 1);
+                    return Err(StoreError::ConcurrentChange);
+                }
+                Ok(())
+            })
+        }
+
+        fn rollback(self: Box<Self>) -> LocalFuture<'static, Result<(), StoreError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    impl Database for Changing {
+        fn begin_at(
+            &self,
+            _isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            let changes = Rc::clone(&self.0);
+            Box::pin(async move { Ok(Box::new(Tx(changes)) as Box<dyn Transaction>) })
+        }
+    }
+
+    impl Host for Changing {
+        fn database(&self, _store: &str) -> Option<&dyn Database> {
+            Some(self)
+        }
+
+        fn random(&self, bytes: &mut [u8]) -> bool {
+            bytes.fill(7);
+            true
+        }
+    }
+
+    /// An action that asks the model, then writes.
+    struct Asks<'a> {
+        ai: Ai<'a>,
+        site: &'a GenerateSite,
+        answers: Vec<Value>,
+    }
+
+    impl<'p> ActionBody<'p> for Asks<'_> {
+        fn isolation(&self) -> Isolation {
+            Isolation::ReadCommitted
+        }
+
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                let model =
+                    jadpo_value::standard::parse("local/llama3.2", "ModelId").expect("a model");
+                let prompt = Value::record("AnswerQuestion", Vec::new());
+                match generate(ctx, &self.ai, self.site, prompt, &[(0, model)]).await {
+                    Done::Value(value) => self.answers.push(value),
+                    other => panic!("{other:?}"),
+                }
+                if ctx.transaction("main").await.is_err() {
+                    return Outcome::Value(Value::Unit);
+                }
+                Outcome::Value(Value::Unit)
+            })
+        }
+    }
+
+    /// An action run again after a concurrent change (area 6) is given
+    /// the model's answer from its first run without asking again, so the
+    /// rerun neither spends twice nor answers differently.
+    #[test]
+    fn a_rerun_is_given_the_answer_its_first_run_had() {
+        let plan = AiPlan {
+            connection: "local_model".into(),
+            url: AiUrl::Written("http://localhost:11434/v1".into()),
+            models: vec![("default".into(), 0)],
+            schema: SchemaMode::StrictSubset,
+        };
+        let prompts = PromptPlan {
+            entries: vec![PromptEntry {
+                key: "answer_question".into(),
+                type_name: "AnswerQuestion".into(),
+                digest: "00000000".into(),
+                instructions: vec![Piece::Text("Answer.".into())],
+                request: vec![Piece::Text("Is it rye?".into())],
+                fields: Vec::new(),
+                conversation: None,
+            }],
+        };
+        let codecs = [Codec::Scalar {
+            builtin: jadpo_std::Builtin::Text,
+            validator: ValidatorId(0),
+            int_as_number: false,
+        }];
+        let types = [CodecId(0)];
+        let ai = Ai {
+            plan: &plan,
+            prompts: &prompts,
+            json: JsonCodecs {
+                codecs: jadpo_value::json::Codecs {
+                    codecs: &codecs,
+                    validators: &[],
+                    shapes: &[],
+                    coder: None,
+                },
+                types: &types,
+            },
+        };
+        let site = GenerateSite {
+            prompt: "answer_question".into(),
+            entry: 0,
+            fields: Vec::new(),
+            answer: 0,
+            schema: None,
+            object: false,
+            model: "default".into(),
+            max_output: 100,
+            timeout_ms: 1_000,
+            attempts: 2,
+        };
+        let fake = Rc::new(AiFake::new());
+        fake.script(
+            "local_model",
+            "answer_question",
+            scripted(Script::Content("Yes, rye.".into())),
+            Frame {
+                callable: 0,
+                site: Frame::ENTRY,
+            },
+        );
+        let host = Faked::new(Changing(Rc::new(Cell::new(1))))
+            .with("local_model", Rc::clone(&fake) as Rc<dyn Capability>);
+        let places = Places::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            },
+        );
+        let mut body = Asks {
+            ai,
+            site: &site,
+            answers: Vec::new(),
+        };
+        let outcome = crate::block_on(crate::action(&mut ctx, &mut body)).expect("nothing waits");
+        assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
+        assert_eq!(
+            body.answers,
+            [Value::text("Yes, rye."), Value::text("Yes, rye.")]
+        );
+        assert_eq!(fake.usage()[0].called, 1, "asked once, on the first run");
+        let sources: Vec<Source> = ctx
+            .capabilities()
+            .calls()
+            .iter()
+            .map(|logged| logged.source)
+            .collect();
+        assert_eq!(sources, [Source::Scripted, Source::Replayed]);
+        assert_eq!(
+            fake.requests("local_model", "answer_question").len(),
+            1,
+            "one request"
+        );
+    }
+
+    fn object_schema() -> serde_json::Value {
+        serde_json::json!({
+            "$ref": "#/$defs/SupportAnswer",
+            "$defs": {
+                "SupportAnswer": {
+                    "type": "object",
+                    "description": "What the assistant says back.",
+                    "properties": {
+                        "reply": {"type": "string", "maxLength": 2000, "description": "The reply."},
+                        "cited": {"type": "array", "items": {"type": "string", "pattern": "^a$"}, "maxItems": 5},
+                        "note": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+                    },
+                    "required": ["reply", "cited"],
+                    "additionalProperties": false
+                },
+                "Mood": {"oneOf": [{"type": "string", "const": "calm"}, {"type": "object", "properties": {"tag": {"const": "x"}}, "required": ["tag"], "additionalProperties": false}]}
+            }
+        })
+    }
+
+    /// A strict structured mode is sent the types, required fields, enums
+    /// and nesting, with every property required and none other allowed;
+    /// lengths, patterns and counts are left for decoding.
+    #[test]
+    fn a_strict_mode_is_sent_what_it_enforces() {
+        let cut = strict(&object_schema());
+        let answer = &cut["$defs"]["SupportAnswer"];
+        assert_eq!(
+            answer["required"],
+            serde_json::json!(["cited", "note", "reply"])
+        );
+        assert_eq!(answer["additionalProperties"], serde_json::json!(false));
+        assert_eq!(
+            answer["properties"]["reply"],
+            serde_json::json!({"type": "string", "description": "The reply."})
+        );
+        assert_eq!(
+            answer["properties"]["cited"],
+            serde_json::json!({"type": "array", "items": {"type": "string"}})
+        );
+        // One the type may leave out may be `null`.
+        assert_eq!(
+            answer["properties"]["note"],
+            serde_json::json!({"anyOf": [{"anyOf": [{"type": "string"}, {"type": "null"}]}, {"type": "null"}]})
+        );
+        assert!(cut["$defs"]["Mood"].get("oneOf").is_none());
+        assert!(cut["$defs"]["Mood"].get("anyOf").is_some());
+        assert_eq!(cut["$ref"], serde_json::json!("#/$defs/SupportAnswer"));
+    }
+
+    /// A type whose JSON isn't an object is asked for as the member
+    /// `value` of one, its definitions at the root.
+    #[test]
+    fn a_type_that_isnt_an_object_is_wrapped() {
+        let schema = serde_json::json!({"$ref": "#/$defs/Mood", "$defs": {"Mood": {"type": "string", "enum": ["calm", "cross"]}}});
+        let out = wrapped(strict(&schema));
+        assert_eq!(
+            out["properties"]["value"],
+            serde_json::json!({"$ref": "#/$defs/Mood"})
+        );
+        assert_eq!(out["required"], serde_json::json!(["value"]));
+        assert_eq!(
+            out["$defs"]["Mood"]["enum"],
+            serde_json::json!(["calm", "cross"])
+        );
+    }
+
+    /// Where the provider has no structured mode the schema goes in the
+    /// instructions under a fixed heading, asking for JSON alone.
+    #[test]
+    fn without_a_structured_mode_the_schema_is_in_the_instructions() {
+        let messages = vec![
+            ("system".to_string(), "Answer the question.".to_string()),
+            (
+                "user".to_string(),
+                "<question>\nhi\n</question>".to_string(),
+            ),
+        ];
+        let out = with_schema(messages, &serde_json::json!({"type": "string"}));
+        assert_eq!(
+            out[0].1,
+            "Answer the question.\n\n# Answer format\n\nAnswer with one JSON document alone, matching this JSON Schema:\n\n{\"type\":\"string\"}"
+        );
+        assert_eq!(out[1].1, "<question>\nhi\n</question>");
+    }
+
+    /// A condition a record keeps reads back as it was, `malformed` with
+    /// its problem's path and rule.
+    #[test]
+    fn a_kept_condition_reads_back_as_it_was_written() {
+        for kept in [
+            Kept::Condition(RuleKey::Refused),
+            Kept::Condition(RuleKey::TooLong),
+            Kept::Malformed(Problem {
+                field: "cited.2".into(),
+                rule: "max_length".into(),
+            }),
+            Kept::Malformed(Problem {
+                field: String::new(),
+                rule: "malformed".into(),
+            }),
+        ] {
+            let word = kept.word().expect("a condition");
+            assert_eq!(Kept::from_word(&word), Some(kept), "{word}");
+        }
+        assert_eq!(Kept::from_word("refused extra"), None);
+        assert_eq!(Kept::Answer(Rc::from("{}")).word(), None);
+    }
+
+    /// A repair names the problem's path and rule, never a value.
+    #[test]
+    fn a_correction_names_the_path_and_the_rule() {
+        let asked = Asked {
+            model: "local/llama".into(),
+            schema: Some(serde_json::json!({})),
+            mode: SchemaMode::StrictSubset,
+            wrapped: false,
+        };
+        let problem = Problem {
+            field: "cited.2".into(),
+            rule: "max_length".into(),
+        };
+        assert_eq!(
+            correction(&problem, &asked),
+            "In your answer, `cited.2` breaks the rule `max_length`. Answer again with one JSON document alone that matches the schema."
+        );
+        let malformed = Problem {
+            field: String::new(),
+            rule: "malformed".into(),
+        };
+        assert_eq!(
+            correction(&malformed, &asked),
+            "Your answer wasn't one JSON document. Answer again with one JSON document alone that matches the schema."
+        );
+    }
+
+    /// A chat completion is read for its text, a refusal and a cut-off;
+    /// a fake answers in the same form.
+    #[test]
+    fn a_chat_completion_is_read_as_the_driver_reads_one() {
+        let said = reply_of(&completion(Some("{}"), None, "stop")).expect("a completion");
+        assert_eq!(said.content.as_deref(), Some("{}"));
+        assert!(!said.refused && !said.cut_off);
+        let declined = reply_of(&completion(None, Some("No."), "stop")).expect("a completion");
+        assert!(declined.refused);
+        let cut = reply_of(&completion(Some("{\"re"), None, "length")).expect("a completion");
+        assert!(cut.cut_off);
+        let filtered =
+            reply_of(&completion(Some(""), None, "content_filter")).expect("a completion");
+        assert!(filtered.refused);
+        assert_eq!(reply_of("{\"error\": {}}"), None);
+        assert_eq!(strip_fence("```json\n{\"a\": 1}\n```"), "{\"a\": 1}");
+        assert_eq!(strip_fence("{\"a\": 1}"), "{\"a\": 1}");
+    }
+}
