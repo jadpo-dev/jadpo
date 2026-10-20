@@ -1184,6 +1184,84 @@ pub static COMMANDS: &[Command] = &[
         run: commands::calls,
     },
     Command {
+        name: "email",
+        synonyms: &["mail"],
+        group: "Look things up",
+        summary: "Read the dev inbox and check mail",
+        description: "Reads the inbox `jadpo dev` catches every mail in (area 16), so nothing \
+                      leaves the machine: `list` shows each mail's id, email, address, subject and \
+                      health, oldest first; `show` prints one with its text (`--html` for its \
+                      HTML), its links numbered, its attachments and what Jadpo's health checks \
+                      found, each with its fix; `links` lists its links; `open` opens one, by its \
+                      number or written out, in the browser (`$BROWSER`, else the system's); \
+                      `clear` empties the inbox. A health score is an early indication only: it \
+                      can't predict whether any provider puts a mail in the inbox. `check-domain` \
+                      reads the sending domain's SPF, DKIM (with `--selector`) and DMARC records, \
+                      the domain given or `email: { from: }`'s. The inbox keeps the last 200 mails \
+                      in build/dev/, which is never committed.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list, show, links, open, clear or check-domain",
+                required: false,
+                values: Values::Fixed(crate::email::ACTIONS),
+            },
+            Argument {
+                name: "mail",
+                description: "The mail's id for show, links and open; the domain for check-domain",
+                required: false,
+                values: Values::Id,
+            },
+            Argument {
+                name: "link",
+                description: "The link to open, by its number or written out",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--to",
+                value: Some("address"),
+                description: "List only the mail sent to this address",
+                values: &[],
+            },
+            Flag {
+                name: "--html",
+                value: None,
+                description: "Show the mail's HTML instead of its text",
+                values: &[],
+            },
+            Flag {
+                name: "--selector",
+                value: Some("name"),
+                description: "The DKIM selector check-domain reads",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See the mail the app sent",
+                command: "jadpo email",
+            },
+            Example {
+                description: "Read a sign-in email and its links",
+                command: "jadpo email show mail_3",
+            },
+            Example {
+                description: "Follow its first link in the browser",
+                command: "jadpo email open mail_3 1",
+            },
+            Example {
+                description: "Check the sending domain's records",
+                command: "jadpo email check-domain --selector resend",
+            },
+        ],
+        arguments_rule: &rule::CLI_EMAIL_ARGUMENTS,
+        raises: &[&rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::email,
+    },
+    Command {
         name: "why",
         synonyms: &[],
         group: "Look things up",

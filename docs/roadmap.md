@@ -1211,12 +1211,30 @@ The design is area 11 as revised on 2026-10-16, with its research in
   as a `List<SentEmail>` (`email.sent_context` elsewhere), the mail caught
   whole whichever connection `email:` names. Choices in area 16's "Chosen
   in chunk 7.3c".
-- [ ] **7.3c2 Email: the dev inbox and the health score** `opus · high`,
-  after 7.3c (split from 7.3c on 2026-10-20): the dev inbox in `jadpo dev`
-  and `jadpo email list`, `show`, `links`, `open` and `clear`, and its
-  page; the health score, `jadpo check`'s warnings about templates that
-  would fail it, and `jadpo email check-domain` (its DNS lookups behind a
-  seam, tested with a fake resolver).
+- [x] **7.3c2 Email: the dev inbox and the health score** `opus · high`,
+  after 7.3c (split from 7.3c on 2026-10-20; SpamAssassin's rules split to
+  7.3c3 the same day): the dev inbox in `jadpo dev` and `jadpo email
+  list`, `show`, `links`, `open` and `clear`, and its page; the health
+  score, `jadpo check`'s warnings about templates that would fail it, and
+  `jadpo email check-domain` (its DNS lookups behind a seam, tested with a
+  fake resolver). Built: `jadpo dev` giving `email:`'s connection the
+  test's catching driver, each mail kept whole in `build/dev/inbox/`
+  (`dev_inbox`), the last 200, its line naming only its id, email and
+  address, an SMTP connection's unset settings given stand-ins; the
+  inbox's read-only page on `127.0.0.1` at the app's port plus one
+  (`inbox_page`), answering `localhost` only, the mail's HTML sandboxed,
+  its text, numbered links, attachments and health, new mail looked for
+  every two seconds; `jadpo email` (`cli.email_arguments`); the score's
+  seven checks with their fixes and the inbox-placement caveat
+  (`jadpo_std::email_health`); `email.health_problem`, declinable, on
+  templates where their own text answers a check (`mail_health`); and
+  `check-domain`'s SPF, DKIM (`--selector`) and DMARC rules over
+  `jadpo_host_native::dns`. Choices in area 16's "Chosen in chunk 7.3c2".
+- [ ] **7.3c3 Email: SpamAssassin's rules in the health score** `opus ·
+  high`, after 7.3c2 (split from it on 2026-10-20): when SpamAssassin is
+  installed, the dev inbox's score and `jadpo email show` add its open
+  rules (area 16, "A mail health score"), the mail run through it as the
+  SMTP driver writes it, its run behind a seam its tests fake.
 - [x] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16; split on 2026-10-20, the rest in 7.3b2): `sign_in:` with
   `magic_link:`, the generated endpoints, link and six-digit code, the

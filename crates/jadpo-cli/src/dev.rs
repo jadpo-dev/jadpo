@@ -142,6 +142,13 @@ enum Event {
         alert: jadpo_runtime::schedules::watch::Alert,
         now: i64,
     },
+    /// A mail the inbox caught (chunk 7.3c2): its id, its email and its
+    /// address, never its subject or words, which may hold a sign-in code.
+    Mail {
+        id: String,
+        email: String,
+        to: String,
+    },
 }
 
 /// What every worker reads: the version being served and where its
@@ -301,6 +308,7 @@ impl Out<'_> {
         match event {
             Event::Request(line) => self.line(line),
             Event::Schedule { name, due } => self.schedule(name, due),
+            Event::Mail { id, email, to } => self.mail(id, email, to),
             Event::Alert { alert, now } => {
                 let (text, data) = crate::schedules::dev_alert(alert, *now);
                 if self.json {
@@ -353,6 +361,37 @@ impl Out<'_> {
             ),
         };
         let text = format!("{id}  {label:<34} {state} {detail}{time}\n");
+        let _ = self.out.write_all(text.as_bytes());
+        let _ = self.out.flush();
+    }
+
+    /// A caught mail: its id where a request has its request id, its
+    /// email where a request has its method and path, then where it went.
+    fn mail(&mut self, id: &str, email: &str, to: &str) {
+        if self.json {
+            let data = Json::object([
+                ("event", "mail".into()),
+                ("id", Json::from(id)),
+                ("email", Json::from(email)),
+                ("to", Json::from(to)),
+            ]);
+            self.json(data, &[], &BTreeMap::new());
+            return;
+        }
+        let state = if self.style.mode == jadpo_term::Mode::Rich {
+            self.paint(
+                Token::Success,
+                &format!(
+                    "{} caught",
+                    jadpo_term::Symbol::Success.text(self.style.symbols)
+                ),
+            )
+        } else {
+            self.paint(Token::Success, "caught")
+        };
+        let label = format!("email {email}");
+        let to = self.paint(Token::Muted, &format!("to {to}"));
+        let text = format!("{id:<8}  {label:<34} {state}   {to}\n");
         let _ = self.out.write_all(text.as_bytes());
         let _ = self.out.flush();
     }
@@ -577,7 +616,7 @@ pub fn serve_to(
         }
     };
     if args.no_run {
-        report_ready(&mut out, None, &first, Databases::Disposable, None);
+        report_ready(&mut out, None, &first, Databases::Disposable, None, None);
         return watch_only(&mut out, &root, &args.cwd, env, &mut poller, stop);
     }
     // Every request is answered under the system clock, so without one
@@ -662,6 +701,7 @@ pub fn serve_to(
     let make_setup = Arc::clone(&setup);
     let make_log = Arc::clone(&call_log);
     let make_root = root.clone();
+    let make_inbox_lock = Arc::new(Mutex::new(()));
     let make: MakeHandler = Arc::new(move || {
         // Only the connections the program running now keeps files in.
         let stores = Arc::clone(&make_shared);
@@ -679,25 +719,49 @@ pub fn serve_to(
         // Every provider connection the program running now has: faked,
         // or let through to the sandbox, each call logged (chunk 7.2d).
         let providers = Arc::clone(&make_shared);
+        let fakes: Rc<dyn jadpo_runtime::capability::Capability> = Rc::new(
+            crate::dev_calls::DevProviders::new(&make_root, Arc::clone(&make_setup)),
+        );
+        // Every mail, through the connection `email:` names, caught in the
+        // inbox in place of being sent (chunk 7.3c2).
+        let mail = Arc::clone(&make_shared);
+        let told = Arc::clone(&make_shared);
+        host = host.with_mail(
+            Rc::new(crate::dev_inbox::Catcher {
+                root: make_root.clone(),
+                lock: Arc::clone(&make_inbox_lock),
+                caught: Arc::new(move |caught: &crate::dev_inbox::Mail| {
+                    if let Ok(log) = told.log.lock() {
+                        let _ = log.send(Event::Mail {
+                            id: caught.id.clone(),
+                            email: caught.email.clone(),
+                            to: caught.to.clone(),
+                        });
+                    }
+                }),
+                other: Some(Rc::clone(&fakes)),
+            }),
+            move |connection| {
+                let current = match mail.current.lock() {
+                    Ok(current) => Arc::clone(&current.0),
+                    Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
+                };
+                current.plan().events().emails.connection.as_deref() == Some(connection)
+            },
+        );
         host = host
-            .with_providers(
-                Rc::new(crate::dev_calls::DevProviders::new(
-                    &make_root,
-                    Arc::clone(&make_setup),
-                )),
-                move |connection| {
-                    let current = match providers.current.lock() {
-                        Ok(current) => Arc::clone(&current.0),
-                        Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
-                    };
-                    current
-                        .plan()
-                        .providers()
-                        .connections
-                        .iter()
-                        .any(|known| known.name == connection)
-                },
-            )
+            .with_providers(fakes, move |connection| {
+                let current = match providers.current.lock() {
+                    Ok(current) => Arc::clone(&current.0),
+                    Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
+                };
+                current
+                    .plan()
+                    .providers()
+                    .connections
+                    .iter()
+                    .any(|known| known.name == connection)
+            })
             .with_call_log(Rc::new(crate::dev_calls::DevLog(Arc::clone(&make_log))));
         // The model `ai:` names, through the built-in driver, a server on
         // this machine with no key at all (area 21; chunk 5.5v3).
@@ -746,6 +810,9 @@ pub fn serve_to(
         }
     };
     let url = format!("http://localhost:{port}");
+    // The inbox's page, on its own port on this machine (chunk 7.3c2):
+    // the next one up, or one the system chooses when that is taken.
+    let inbox = serve_inbox(&root, port);
     let databases = match (
         args.url.is_some(),
         disposable.is_some(),
@@ -766,7 +833,17 @@ pub fn serve_to(
             .collect();
         remember_stores(&root, &started);
     }
-    report_ready(&mut out, Some(&url), &first, databases, Some(&lock(&setup)));
+    let inbox_url = inbox
+        .as_ref()
+        .map(|server| format!("http://localhost:{}", server.address().port()));
+    report_ready(
+        &mut out,
+        Some(&url),
+        &first,
+        databases,
+        Some(&lock(&setup)),
+        inbox_url.as_deref(),
+    );
     let mut current = first;
     // Request lines are written as they come, between looks for saves.
     loop {
@@ -787,6 +864,9 @@ pub fn serve_to(
         drain(&mut out);
         let Some(edits) = edits else {
             server.stop();
+            if let Some(inbox) = inbox {
+                inbox.stop();
+            }
             forget_stores(&root);
             return 0;
         };
@@ -1089,6 +1169,26 @@ fn start_config(
                 .push(field.variable.clone());
         }
     }
+    // An SMTP connection's settings that nothing gives: the inbox catches
+    // every mail, so its server is never reached (chunk 7.3c2).
+    for smtp in &prepared.plan().events().emails.smtp {
+        let host = match smtp.host {
+            jadpo_std::email::SmtpHost::Setting(at) => Some(at),
+            jadpo_std::email::SmtpHost::Written(_) => None,
+        };
+        for at in [host, smtp.username, smtp.password].into_iter().flatten() {
+            let Some(field) = plan.fields.get(at as usize) else {
+                continue;
+            };
+            if field.default.is_some() || layered.variable(&field.variable).is_some() {
+                continue;
+            }
+            placeholders.insert(
+                field.variable.clone(),
+                crate::dev_calls::stand_in(&types(&field.name)),
+            );
+        }
+    }
     let stand_in = |name: &str| {
         layered
             .variable(name)
@@ -1282,6 +1382,7 @@ fn report_ready(
     ready: &Ready,
     databases: Databases,
     providers: Option<&crate::dev_calls::Setup>,
+    inbox: Option<&str>,
 ) {
     if out.json {
         let data = Json::object([
@@ -1298,6 +1399,7 @@ fn report_ready(
             ),
             ("settings", Json::from(ready.config.len())),
             ("providers", providers.map_or(Json::Null, providers_json)),
+            ("inbox", inbox.map_or(Json::Null, Json::from)),
         ]);
         out.json(data, &[], &BTreeMap::new());
         return;
@@ -1320,6 +1422,15 @@ fn report_ready(
     let providers = providers.filter(|setup| !setup.connections.is_empty());
     if let Some(setup) = providers {
         rows.push(("providers".to_string(), providers_row(setup)));
+    }
+    // The inbox, once the app sends mail.
+    if let Some(inbox) = inbox
+        && ready.prepared.plan().events().emails.connection.is_some()
+    {
+        rows.push((
+            "inbox".to_string(),
+            format!("{inbox} · mail caught, never sent"),
+        ));
     }
     let text = match url {
         Some(url) => format!("listening on {url}"),
@@ -1344,6 +1455,34 @@ fn report_ready(
     });
     let _ = out.err.write_all(keys.render(&out.err_style).as_bytes());
     let _ = out.err.flush();
+}
+
+/// Serves the inbox's page on this machine, on the port after `port`, or
+/// one the system chooses when that is taken; `None` when neither can be
+/// listened on, and the inbox is still read with `jadpo email`.
+fn serve_inbox(root: &Path, port: u16) -> Option<Server> {
+    let listener = port
+        .checked_add(1)
+        .filter(|_| port != 0)
+        .and_then(|next| TcpListener::bind(("127.0.0.1", next)).ok())
+        .or_else(|| TcpListener::bind(("127.0.0.1", 0)).ok())?;
+    let root = root.to_path_buf();
+    let make: MakeHandler =
+        Arc::new(move || Box::new(InboxHandler(root.clone())) as Box<dyn Handler>);
+    jadpo_host_native::http::serve(listener, 1, make).ok()
+}
+
+/// Answers the inbox's page.
+struct InboxHandler(PathBuf);
+
+impl Handler for InboxHandler {
+    fn handle(
+        &self,
+        request: jadpo_runtime::http::Request,
+    ) -> jadpo_runtime::LocalFuture<'_, jadpo_runtime::http::Response> {
+        let response = crate::inbox_page::answer(&self.0, &request);
+        Box::pin(async move { response })
+    }
 }
 
 fn lock<T>(held: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

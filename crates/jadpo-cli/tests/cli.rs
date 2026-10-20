@@ -71,6 +71,7 @@ Look things up
   routes        List every route
   ai            Show what a prompt sends      show
   calls         Show provider calls in dev    list, show, script
+  email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
 
 Change safely
@@ -144,6 +145,7 @@ Look things up
   routes        List every route
   ai            Show what a prompt sends      show
   calls         Show provider calls in dev    list · show · script
+  email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
 
 Change safely
@@ -317,6 +319,7 @@ fn help_json_is_the_whole_command_reference() {
             "routes",
             "ai",
             "calls",
+            "email",
             "why",
             "api",
             "records",
@@ -719,6 +722,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "routes\tList every route",
             "ai\tShow what a prompt sends",
             "calls\tShow provider calls in dev",
+            "email\tRead the dev inbox and check mail",
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",
             "records\tList and update the records",
