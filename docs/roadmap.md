@@ -1677,6 +1677,13 @@ The design is area 11 as revised on 2026-10-16, with its research in
   type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
   the token test compares instants as instants, and the open-transaction
   count of the call tests leaves out the server's autovacuum workers.
+- [ ] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
+  7.5e): `ai.stream`'s `timeout:` counted once in the route-deadline sum
+  (`Calls::time` in `jadpo-check`'s `steps.rs`), now that 5.5v6 has
+  landed; and in a package's own action, a `match` on its own
+  operation's outcome reporting both `failure.outcome_missing_arm` for
+  `AcmePay.CardDeclined` and `failure.outcome_unknown_arm` for the bare
+  `CardDeclined` — one name for a package's failure inside its own code.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.
