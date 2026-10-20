@@ -719,10 +719,10 @@ fn sources(suite: &Suite<'_>) -> Vec<(String, String)> {
     ];
     let mut actions = vec!["answer_typed", "write_essay"];
     if suite.streams {
-        actions.push("stream_answer");
+        actions.push("streamed_conformance");
     }
     if suite.embeds {
-        actions.push("meaning_of");
+        actions.push("embedded_conformance");
     }
     out.push((
         "policy.jadpo".to_string(),
@@ -770,7 +770,7 @@ fn sources(suite: &Suite<'_>) -> Vec<(String, String)> {
         ),
         domain(
             "prompts/conformance_long_answer.prompt",
-            "# Instructions\n\nYou write long, detailed essays.\n\n# Request\n\n{question}\n",
+            "# Instructions\n\nYou write long, detailed answers.\n\n# Request\n\n{question}\n",
         ),
     ]);
     let generate = |name: &str, prompt: &str, ty: &str, max: u32, timeout: &str| {
@@ -800,8 +800,8 @@ fn sources(suite: &Suite<'_>) -> Vec<(String, String)> {
     ));
     if suite.streams {
         out.push(domain(
-            "actions/stream_answer.jadpo",
-            "use conformance/failures { ConformanceUnavailable }\nuse conformance/prompts { ConformanceQuestion }\nuse conformance/types { ConformanceAsked }\n\n/// Streams the model's answer, as the suite's case does.\naction stream_answer(asked: ConformanceAsked) fails ConformanceUnavailable -> AiStream {\n    return attempt ai.stream(\n        ConformanceQuestion {\n            question: asked.question\n        },\n        max_output: 4000,\n        timeout: 25s\n    ) {\n        refused: ConformanceUnavailable\n        timed_out: ConformanceUnavailable\n        over_budget: ConformanceUnavailable\n        too_long: ConformanceUnavailable\n    }\n}\n",
+            "actions/streamed_conformance.jadpo",
+            "use conformance/failures { ConformanceUnavailable }\nuse conformance/prompts { ConformanceQuestion }\nuse conformance/types { ConformanceAsked }\n\n/// Streams the model's answer, as the suite's case does.\naction streamed_conformance(asked: ConformanceAsked) fails ConformanceUnavailable -> AiStream {\n    return attempt ai.stream(\n        ConformanceQuestion {\n            question: asked.question\n        },\n        max_output: 4000,\n        timeout: 25s\n    ) {\n        refused: ConformanceUnavailable\n        timed_out: ConformanceUnavailable\n        over_budget: ConformanceUnavailable\n        too_long: ConformanceUnavailable\n    }\n}\n",
         ));
     }
     if suite.embeds {
@@ -817,8 +817,8 @@ fn sources(suite: &Suite<'_>) -> Vec<(String, String)> {
                 "use conformance/types { ConformanceMeaning }\n\n/// A text's meaning, given back.\ntype ConformanceMeant = Output {\n    meaning: ConformanceMeaning\n}\n",
             ),
             domain(
-                "actions/meaning_of.jadpo",
-                "use conformance/failures { ConformanceUnavailable }\nuse conformance/types { ConformanceAsked, ConformanceMeaning, ConformanceMeant }\n\n/// Embeds a text, as the suite's case does.\naction meaning_of(asked: ConformanceAsked) fails ConformanceUnavailable -> ConformanceMeant {\n    var meaning: ConformanceMeaning = attempt ai.embed(asked.question, as: ConformanceMeaning) {\n        timed_out: ConformanceUnavailable\n        over_budget: ConformanceUnavailable\n        too_long: ConformanceUnavailable\n    }\n    return ConformanceMeant {\n        meaning: meaning\n    }\n}\n",
+                "actions/embedded_conformance.jadpo",
+                "use conformance/failures { ConformanceUnavailable }\nuse conformance/types { ConformanceAsked, ConformanceMeaning, ConformanceMeant }\n\n/// Embeds a text, as the suite's case does.\naction embedded_conformance(asked: ConformanceAsked) fails ConformanceUnavailable -> ConformanceMeant {\n    var meaning: ConformanceMeaning = attempt ai.embed(asked.question, as: ConformanceMeaning) {\n        timed_out: ConformanceUnavailable\n        over_budget: ConformanceUnavailable\n        too_long: ConformanceUnavailable\n    }\n    return ConformanceMeant {\n        meaning: meaning\n    }\n}\n",
             ),
         ]);
     }
@@ -942,23 +942,14 @@ impl Run<'_> {
         )
     }
 
+    /// A value of prompt `prompt`'s type, asking `question`.
     fn question(&self, prompt: &str, question: &str) -> Value {
         let ty = self
             .program
             .ai()
-            .and_then(|ai| {
-                let entry = match prompt {
-                    QUESTION | ESSAY => self
-                        .program
-                        .generate_site_of(prompt)
-                        .map(|site| site.entry)?,
-                    _ => return None,
-                };
-                ai.prompts
-                    .entries
-                    .get(entry as usize)
-                    .map(|entry| entry.type_name.clone())
-            })
+            .zip(self.program.generate_site_of(prompt))
+            .and_then(|(ai, site)| ai.prompts.entries.get(site.entry as usize))
+            .map(|entry| entry.type_name.clone())
             .unwrap_or_default();
         Value::record(
             &ty,

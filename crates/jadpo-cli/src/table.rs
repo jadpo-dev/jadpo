@@ -808,7 +808,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--live",
                 value: None,
-                description: "For conform: run it against the provider's API with the app's key",
+                description: "For conform: run it against the real API",
                 values: &[],
             },
             Flag {
