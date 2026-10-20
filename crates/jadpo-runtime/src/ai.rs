@@ -44,7 +44,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use jadpo_std::ai::{AiPlan, AiUrl, GenerateSite, SchemaMode};
+use jadpo_std::ai::{AiDriver, AiInput, AiPlan, AiUrl, GenerateSite, PackageAi, SchemaMode};
 use jadpo_std::prompt::PromptPlan;
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::{HttpMethod, RuleKey};
@@ -55,7 +55,7 @@ use crate::capability::{Answer, Call, Capability, Source};
 use crate::effects::Unanswered;
 use crate::fakes::Usage;
 use crate::places::Frame;
-use crate::provider::{Reading, Request};
+use crate::provider::{Providers, Reading, Request};
 use crate::{Ctx, Failure, FaultKind, JsonCodecs, LocalFuture};
 
 /// What a program asks models with: its `ai:`, its prompts, and the
@@ -66,6 +66,9 @@ pub struct Ai<'a> {
     pub plan: &'a AiPlan,
     pub prompts: &'a PromptPlan,
     pub json: JsonCodecs<'a>,
+    /// How a package's operations are called, for a package filling `ai`
+    /// (chunk 5.5v3b).
+    pub providers: Option<Providers<'a>>,
 }
 
 impl std::fmt::Debug for Ai<'_> {
@@ -93,13 +96,40 @@ pub enum Done {
     Fault(FaultKind),
 }
 
-/// The settings a call reads, by number, for its model and its address:
+/// The settings a call reads, by number, for its model and its address,
+/// and for a package filling `ai` every other its operation's call reads:
 /// the executor gives their values to [`generate`].
-pub fn settings_read(plan: &AiPlan, site: &GenerateSite) -> Vec<u32> {
-    let mut read: Vec<u32> = plan.model(&site.model).into_iter().collect();
-    if let AiUrl::Setting(at) = &plan.url {
-        read.push(*at);
+pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
+    let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
+    match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
+        AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
+        AiDriver::Package(package) => {
+            if let Some((plan, _)) = ai.providers.as_ref().and_then(|providers| {
+                providers
+                    .plan
+                    .operation(&ai.plan.connection, &package.operation)
+            }) {
+                read.extend(crate::provider::settings_read(plan));
+            }
+            fn settings(input: &AiInput, read: &mut Vec<u32>) {
+                match input {
+                    AiInput::Setting(at) => read.push(*at),
+                    AiInput::Messages(parts) => {
+                        for (_, part) in parts {
+                            settings(part, read);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for (_, input) in &package.input {
+                settings(input, &mut read);
+            }
+        }
     }
+    read.sort_unstable();
+    read.dedup();
     read
 }
 
@@ -172,6 +202,17 @@ fn operation(site: &GenerateSite) -> &str {
     &site.prompt
 }
 
+/// How a call's requests are sent: to the built-in driver's address, or
+/// as a package's operation.
+enum Via<'p> {
+    /// `<url>/chat/completions`.
+    Driver(String),
+    Package {
+        package: &'p PackageAi,
+        providers: Providers<'p>,
+    },
+}
+
 /// Asks the model for an answer to `prompt`, a value of the prompt's type
 /// `site` renders, as `site`'s type; `settings` gives the values of the
 /// settings [`settings_read`] names.
@@ -210,30 +251,22 @@ pub async fn generate(
             Ok(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         });
-    let base = match &ai.plan.url {
-        AiUrl::Written(text) => Some(text.clone()),
-        AiUrl::Setting(at) => match setting(*at) {
-            Some(Value::Text(text)) => Some(text.to_string()),
-            _ => None,
-        },
-    };
     let made = Call::new(
         &ai.plan.connection,
         operation(site),
         prompt.clone(),
         Repeat::Safe,
     );
-    let (Some(model), Some(base)) = (
-        model,
-        base.and_then(|base| crate::provider::sendable(&base)),
-    ) else {
+    let misconfigured = |ctx: &mut Ctx<'_>| {
         // A model or an address the connection can't be reached with is
         // the connection's settings: nothing is sent.
         let now = ctx.now();
         ctx.capabilities_mut().refused(&made, now);
-        return Done::Failed(Box::new(crate::misconfigured()));
+        Done::Failed(Box::new(crate::misconfigured()))
     };
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
+    let Some(model) = model else {
+        return misconfigured(ctx);
+    };
     let mode = ai.plan.schema;
     let asked = Asked {
         model,
@@ -247,12 +280,49 @@ pub async fn generate(
         Some(schema) if mode != SchemaMode::StrictSubset => with_schema(messages, schema),
         _ => messages,
     };
-    let body = request_body(&asked, &messages, site);
+    let via = match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(url) => {
+            let base = match url {
+                AiUrl::Written(text) => Some(text.clone()),
+                AiUrl::Setting(at) => match setting(*at) {
+                    Some(Value::Text(text)) => Some(text.to_string()),
+                    _ => None,
+                },
+            };
+            let Some(base) = base.and_then(|base| crate::provider::sendable(&base)) else {
+                return misconfigured(ctx);
+            };
+            Via::Driver(format!("{}/chat/completions", base.trim_end_matches('/')))
+        }
+        AiDriver::Package(package) => {
+            let Some(providers) = ai.providers else {
+                return defect("a package filling `ai` with no providers to call");
+            };
+            // Checked before sending, from the package's table, so a prompt
+            // longer than the model's context costs nothing (area 21).
+            if let Some(context) = package.context(model_name(&asked.model)) {
+                let estimate: u64 = messages
+                    .iter()
+                    .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
+                    .sum();
+                if estimate > context {
+                    return broke(RuleKey::TooLong);
+                }
+            }
+            Via::Package { package, providers }
+        }
+    };
+    let first = match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
+        Ok(request) => request,
+        Err(crate::provider::Unready::Misconfigured) => return misconfigured(ctx),
+        Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+    };
+    let body = first.body.clone().unwrap_or_default();
     let digest = jadpo_value::hash::sha256(body.as_bytes());
     // Given back on a rerun: from the record of the action's steps, or
     // from the first run's answers kept by the invocation.
     let name = format!("{}.{}", ai.plan.connection, site.prompt);
-    let fields = vec![("request".to_string(), body.clone().into_bytes())];
+    let fields = vec![("request".to_string(), body.into_bytes())];
     let stepped = crate::steps::step(
         ctx,
         crate::steps::Proposed {
@@ -296,23 +366,35 @@ pub async fn generate(
     let began = host.monotonic_ms();
     let mut last_problem: Option<Problem> = None;
     let mut ended: Option<(Kept, Done)> = None;
+    let mut first = Some(first);
     for attempt in 1..=site.attempts.max(1) {
-        let body = request_body(&asked, &messages, site);
+        let request = match first.take() {
+            Some(request) => request,
+            None => match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
+                Ok(request) => request,
+                Err(crate::provider::Unready::Misconfigured) => return misconfigured(ctx),
+                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+            },
+        };
         let mut call = made.clone();
         call.attempt = attempt;
         call.step = step_at;
-        let answer = match sent(ctx, call, &url, &body, began, site.timeout_ms).await {
-            Ok(answer) => answer,
+        let (answer, source) = match sent(ctx, call, request, began, site.timeout_ms).await {
+            Ok(sent) => sent,
             Err(done) => return done,
         };
-        // A fake's generated default: an answer of the call's type, made
-        // as the model would send it.
-        let answer = match answer {
-            Answer::Generated => Answer::Wire(generated_answer(ctx, ai, site, &asked)),
-            other => other,
+        // A fake answers in the built-in driver's own form, whatever the
+        // connection (area 21, "Tests"), and so does its generated
+        // default: an answer of the call's type, made as the model would
+        // send it.
+        let faked = !matches!(source, Source::Live | Source::Sandbox);
+        let (answer, faked) = match answer {
+            Answer::Generated => (Answer::Wire(generated_answer(ctx, ai, site, &asked)), true),
+            other => (other, faked),
         };
+        let built_in = faked || matches!(via, Via::Driver(_));
         let reply = match &answer {
-            Answer::Wire(text) => match reply_of(text) {
+            Answer::Wire(text) if built_in => match reply_of(text) {
                 Some(reply) => reply,
                 None => {
                     return Done::Fault(FaultKind::Provider(format!(
@@ -321,11 +403,20 @@ pub async fn generate(
                     )));
                 }
             },
+            Answer::Wire(text) => match &via {
+                Via::Package { package, providers } => {
+                    match package_reply(ctx, providers, &ai.plan.connection, package, text) {
+                        Ok(reply) => reply,
+                        Err(done) => return done,
+                    }
+                }
+                Via::Driver(_) => return defect("a driver's answer read as a package's"),
+            },
             Answer::TimedOut => {
                 ended = Some((Kept::Condition(RuleKey::TimedOut), broke(RuleKey::TimedOut)));
                 break;
             }
-            Answer::Failed(code) if code == CONTEXT_LENGTH_EXCEEDED => {
+            Answer::Failed(code) if built_in && code == CONTEXT_LENGTH_EXCEEDED => {
                 ended = Some((Kept::Condition(RuleKey::TooLong), broke(RuleKey::TooLong)));
                 break;
             }
@@ -394,6 +485,255 @@ pub async fn generate(
         ctx.keep_reused(Reused { step, digest, kept });
     }
     done
+}
+
+/// The model's name as a package is asked for it: what its `ModelId`
+/// writes after its provider, `gpt-4.1-mini` for `openai/gpt-4.1-mini`,
+/// since the connection is the provider.
+pub fn model_name(model: &str) -> &str {
+    model.split_once('/').map_or(model, |(_, name)| name)
+}
+
+/// The request one attempt sends, with `messages`.
+fn prepared(
+    ctx: &mut Ctx<'_>,
+    ai: &Ai<'_>,
+    via: &Via<'_>,
+    asked: &Asked,
+    messages: &[(String, String)],
+    site: &GenerateSite,
+    settings: &[(u32, Value)],
+) -> Result<Request, crate::provider::Unready> {
+    use crate::provider::Unready;
+    let (package, providers) = match via {
+        Via::Driver(url) => {
+            return Ok(Request {
+                method: HttpMethod::Post,
+                url: url.clone(),
+                headers: vec![
+                    ("Accept".to_string(), "application/json".to_string()),
+                    ("Content-Type".to_string(), "application/json".to_string()),
+                    ("user-agent".to_string(), "jadpo".to_string()),
+                ],
+                body: Some(request_body(asked, messages, site)),
+                timeout_ms: site.timeout_ms,
+                reading: Reading {
+                    error_code: Some("error.code".to_string()),
+                    ..Reading::default()
+                },
+            });
+        }
+        Via::Package { package, providers } => (package, providers),
+    };
+    let connection = ai.plan.connection.as_str();
+    let Some((_, op)) = providers.plan.operation(connection, &package.operation) else {
+        return Err(Unready::Fault(FaultKind::Defect(format!(
+            "`{connection}.{}`, which the plan doesn't have",
+            package.operation
+        ))));
+    };
+    let json =
+        package_input(package, asked, messages, site, settings).ok_or(Unready::Misconfigured)?;
+    let input = match op.input {
+        Some(number) => {
+            let text = json.to_string();
+            let Some((json, numbers)) = jadpo_value::json::parse(text.as_bytes()) else {
+                return Err(Unready::Fault(FaultKind::Defect(
+                    "a mapped input that isn't JSON".into(),
+                )));
+            };
+            match crate::webhooks::read(providers.json, number, &json, &numbers) {
+                Ok(value) => Some(value),
+                // Problems by field and rule, never a value.
+                Err(problems) => {
+                    let described: Vec<String> = problems
+                        .iter()
+                        .map(|problem| format!("{} {}", problem.field, problem.rule))
+                        .collect();
+                    return Err(Unready::Fault(FaultKind::Provider(format!(
+                        "`{connection}.{}`'s input mapped from `{}` doesn't read: {}",
+                        package.operation,
+                        site.prompt,
+                        described.join(", ")
+                    ))));
+                }
+            }
+        }
+        None => None,
+    };
+    let added = package.schema_at.as_deref().zip(envelope(asked, site));
+    let call = jadpo_std::provider::CallSite::default();
+    crate::provider::request_adding(
+        ctx,
+        providers,
+        (connection, &package.operation),
+        input.as_ref(),
+        settings,
+        crate::provider::Site {
+            call: &call,
+            functions: &NoFunctions,
+            at: 0,
+        },
+        added,
+    )
+}
+
+/// A package's own functions, which nothing at an `ai` call's site runs:
+/// its operation's fields are read and written by their types alone.
+struct NoFunctions;
+
+impl crate::provider::Functions for NoFunctions {
+    fn function(
+        &self,
+        _ctx: &mut Ctx<'_>,
+        function: &str,
+        _args: Vec<Value>,
+        _at: u32,
+    ) -> Result<Value, String> {
+        Err(format!("`{function}`, a package function, at an `ai` call"))
+    }
+}
+
+/// The operation's input as JSON, its members by their spellings on the
+/// wire, made from what the package's `generate:` maps; `None` when a
+/// setting it reads has no value.
+fn package_input(
+    package: &PackageAi,
+    asked: &Asked,
+    messages: &[(String, String)],
+    site: &GenerateSite,
+    settings: &[(u32, Value)],
+) -> Option<serde_json::Value> {
+    // With `request.instructions` mapped, the instructions go there and
+    // the messages are the rest; otherwise they open the messages.
+    let (instructions, messages): (Vec<&str>, Vec<&(String, String)>) =
+        if package.instructions_apart {
+            (
+                messages
+                    .iter()
+                    .filter(|(role, _)| role == "system")
+                    .map(|(_, content)| content.as_str())
+                    .collect(),
+                messages
+                    .iter()
+                    .filter(|(role, _)| role != "system")
+                    .collect(),
+            )
+        } else {
+            (Vec::new(), messages.iter().collect())
+        };
+    let instructions = instructions.join("\n\n");
+    let one = |input: &AiInput, message: Option<&(String, String)>| -> Option<serde_json::Value> {
+        Some(match input {
+            AiInput::Model => model_name(&asked.model).into(),
+            AiInput::MaxOutput => site.max_output.into(),
+            AiInput::Instructions => instructions.as_str().into(),
+            AiInput::Role => message?.0.as_str().into(),
+            AiInput::Content => message?.1.as_str().into(),
+            AiInput::Text(text) => text.as_str().into(),
+            AiInput::Int(n) => (*n).into(),
+            AiInput::Bool(flag) => (*flag).into(),
+            AiInput::Setting(at) => match settings.iter().find(|(number, _)| number == at)?.1 {
+                Value::Text(ref text) => serde_json::Value::from(&**text),
+                Value::Int(n) => n.into(),
+                Value::Bool(flag) => flag.into(),
+                _ => return None,
+            },
+            AiInput::Messages(_) => return None,
+        })
+    };
+    let mut members = serde_json::Map::new();
+    for (member, input) in &package.input {
+        let value = match input {
+            AiInput::Messages(parts) => serde_json::Value::Array(
+                messages
+                    .iter()
+                    .map(|message| {
+                        parts
+                            .iter()
+                            .map(|(part, input)| Some((part.clone(), one(input, Some(message))?)))
+                            .collect::<Option<serde_json::Map<_, _>>>()
+                            .map(serde_json::Value::Object)
+                    })
+                    .collect::<Option<_>>()?,
+            ),
+            other => one(other, None)?,
+        };
+        members.insert(member.clone(), value);
+    }
+    Some(serde_json::Value::Object(members))
+}
+
+/// What a package's answer says, read as its mapping says from the
+/// operation's output, decoded by its types: the answer's text, a
+/// refusal, a cut-off.
+fn package_reply(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    connection: &str,
+    package: &PackageAi,
+    text: &str,
+) -> Result<Reply, Done> {
+    let Some((_, op)) = providers.plan.operation(connection, &package.operation) else {
+        return Err(Done::Fault(FaultKind::Defect(format!(
+            "`{connection}.{}`, which the plan doesn't have",
+            package.operation
+        ))));
+    };
+    // On the answer as sent.
+    let cut_off = package.cut_off_when.as_ref().is_some_and(|(path, equals)| {
+        let sent = serde_json::from_str::<serde_json::Value>(text).ok();
+        let marker = serde_json::from_str::<serde_json::Value>(equals).ok();
+        sent.as_ref()
+            .and_then(|sent| crate::provider::at_path(sent, path))
+            .is_some_and(|found| Some(found) == marker.as_ref())
+    });
+    let call = jadpo_std::provider::CallSite::default();
+    let name = format!("{connection}.{}", package.operation);
+    let output = match crate::provider::decode(
+        ctx,
+        providers,
+        op,
+        &name,
+        text,
+        crate::provider::Site {
+            call: &call,
+            functions: &NoFunctions,
+            at: 0,
+        },
+    ) {
+        crate::provider::Done::Value(value) => value,
+        crate::provider::Done::Failed(failure) => return Err(Done::Failed(failure)),
+        crate::provider::Done::Fault(kind) => return Err(Done::Fault(kind)),
+    };
+    let content = match value_at(&output, &package.answer) {
+        Some(Value::Text(text)) => Some(text.to_string()),
+        _ => None,
+    };
+    let refused = package
+        .refused_when
+        .as_ref()
+        .and_then(|path| value_at(&output, path))
+        .is_some_and(|found| match found {
+            Value::None => false,
+            Value::Text(text) => !text.trim().is_empty(),
+            Value::Bool(flag) => *flag,
+            _ => true,
+        });
+    Ok(Reply {
+        content,
+        refused,
+        cut_off,
+    })
+}
+
+/// The value at `path`, by field names, `0` for a list's first item.
+fn value_at<'v>(value: &'v Value, path: &[String]) -> Option<&'v Value> {
+    path.iter().try_fold(value, |at, step| match at {
+        Value::Record(record) => record.get(step),
+        Value::List(items) => items.get(step.parse::<usize>().ok()?),
+        _ => None,
+    })
 }
 
 /// A condition, for the call's `attempt` to map.
@@ -543,6 +883,20 @@ fn request_body(asked: &Asked, messages: &[(String, String)], site: &GenerateSit
         ),
     );
     body.insert("max_tokens".into(), site.max_output.into());
+    if let Some(format) = envelope(asked, site) {
+        body.insert("response_format".into(), format);
+    }
+    serde_json::Value::Object(body).to_string()
+}
+
+/// What the structured-output mode is asked with, OpenAI's form: for a
+/// strict mode, `{"type": "json_schema", "json_schema": {"name": <prompt>,
+/// "strict": true, "schema": ...}}` with the schema cut to what it
+/// enforces; for one that promises only JSON, `{"type": "json_object"}`;
+/// nothing with no mode, or for a `T` built on `Text`. The built-in driver
+/// sends it as `response_format`, and a package where its `schema: { at: }`
+/// says.
+fn envelope(asked: &Asked, site: &GenerateSite) -> Option<serde_json::Value> {
     match (&asked.schema, asked.mode) {
         (Some(schema), SchemaMode::StrictSubset) => {
             let cut = strict(schema);
@@ -554,16 +908,15 @@ fn request_body(asked: &Asked, messages: &[(String, String)], site: &GenerateSit
             named.insert("strict".into(), true.into());
             named.insert("schema".into(), cut);
             format.insert("json_schema".into(), serde_json::Value::Object(named));
-            body.insert("response_format".into(), serde_json::Value::Object(format));
+            Some(serde_json::Value::Object(format))
         }
         (Some(_), SchemaMode::JsonOnly) => {
             let mut format = serde_json::Map::new();
             format.insert("type".into(), "json_object".into());
-            body.insert("response_format".into(), serde_json::Value::Object(format));
+            Some(serde_json::Value::Object(format))
         }
-        _ => {}
+        _ => None,
     }
-    serde_json::Value::Object(body).to_string()
 }
 
 /// `schema` as the member `value` of an object: what a strict structured
@@ -825,17 +1178,16 @@ fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: 
 
 /// Sends one attempt's request through the capability seam, and again
 /// while the provider couldn't be reached or asked for it later, as long
-/// as the call's `timeout:` lasts: its last answer, or what the call
-/// gives instead. On a host with no clock, as a test's, it is sent again
-/// at once, at most [`jadpo_std::ai::SENDS`] times.
+/// as the call's `timeout:` lasts: its last answer and where it came from,
+/// or what the call gives instead. On a host with no clock, as a test's,
+/// it is sent again at once, at most [`jadpo_std::ai::SENDS`] times.
 async fn sent(
     ctx: &mut Ctx<'_>,
     made: Call,
-    url: &str,
-    body: &str,
+    request: Request,
     began: Option<u64>,
     timeout_ms: u64,
-) -> Result<Answer, Done> {
+) -> Result<(Answer, Source), Done> {
     let host = ctx.host();
     let mut sends = 1;
     loop {
@@ -845,23 +1197,12 @@ async fn sent(
         };
         let left = timeout_ms.saturating_sub(spent);
         if left == 0 {
-            return Ok(Answer::TimedOut);
+            return Ok((Answer::TimedOut, Source::Live));
         }
-        let request = Request {
-            method: HttpMethod::Post,
-            url: url.to_string(),
-            headers: vec![
-                ("Accept".to_string(), "application/json".to_string()),
-                ("Content-Type".to_string(), "application/json".to_string()),
-                ("user-agent".to_string(), "jadpo".to_string()),
-            ],
-            body: Some(body.to_string()),
-            timeout_ms: left,
-            reading: Reading {
-                error_code: Some("error.code".to_string()),
-                ..Reading::default()
-            },
-        };
+        let mut request = request.clone();
+        request.timeout_ms = left;
+        let url = request.url.clone();
+        let body = request.body.clone().unwrap_or_default();
         let shown = ctx.host().call_log().is_some();
         let call = made.clone().with_request(request);
         let answer = match crate::effects::exchange(ctx, call.clone()).await {
@@ -872,16 +1213,21 @@ async fn sent(
                 return Err(Done::Failed(Box::new(crate::unavailable())));
             }
         };
+        let source = ctx
+            .capabilities()
+            .calls()
+            .last()
+            .map_or(Source::Live, |logged| logged.source);
         if shown {
-            log(ctx, &call, url, body, &answer);
+            log(ctx, &call, &url, &body, &answer);
         }
         let asked = match &answer {
             Answer::Unavailable | Answer::Unknown => None,
             Answer::RetryAfter(millis) => Some(*millis),
-            _ => return Ok(answer),
+            _ => return Ok((answer, source)),
         };
         if sends >= jadpo_std::ai::SENDS {
-            return Ok(answer);
+            return Ok((answer, source));
         }
         sends += 1;
         let Some(began) = began else {
@@ -892,7 +1238,7 @@ async fn sent(
         let mut random = [0u8; 8];
         let random = host.random(&mut random).then_some(random);
         let Some(wait) = crate::provider::retry_wait(sends - 1, asked, left, random) else {
-            return Ok(answer);
+            return Ok((answer, source));
         };
         if wait > 0 {
             host.sleep(wait).await;
@@ -1237,7 +1583,7 @@ mod tests {
     fn a_rerun_is_given_the_answer_its_first_run_had() {
         let plan = AiPlan {
             connection: "local_model".into(),
-            url: AiUrl::Written("http://localhost:11434/v1".into()),
+            driver: AiDriver::OpenAiCompatible(AiUrl::Written("http://localhost:11434/v1".into())),
             models: vec![("default".into(), 0)],
             schema: SchemaMode::StrictSubset,
         };
@@ -1270,6 +1616,7 @@ mod tests {
                 },
                 types: &types,
             },
+            providers: None,
         };
         let site = GenerateSite {
             prompt: "answer_question".into(),

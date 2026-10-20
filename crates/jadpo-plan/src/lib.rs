@@ -1017,25 +1017,42 @@ impl Plan {
                     .copied()
             };
             settings.connection.as_ref().and_then(|name| {
-                let connection = connections.list.iter().find(|found| found.name == *name)?;
-                let url = match connection.url.as_ref()? {
-                    jadpo_check::ai::ModelUrl::Setting(setting) => {
-                        jadpo_std::ai::AiUrl::Setting(number(setting)?)
-                    }
-                    jadpo_check::ai::ModelUrl::Written(text) => {
-                        jadpo_std::ai::AiUrl::Written(text.clone())
-                    }
-                };
                 let models = settings
                     .models
                     .iter()
                     .filter_map(|(model, setting)| Some((model.clone(), number(setting)?)))
                     .collect();
+                if let Some(connection) = connections.list.iter().find(|found| found.name == *name)
+                {
+                    let url = match connection.url.as_ref()? {
+                        jadpo_check::ai::ModelUrl::Setting(setting) => {
+                            jadpo_std::ai::AiUrl::Setting(number(setting)?)
+                        }
+                        jadpo_check::ai::ModelUrl::Written(text) => {
+                            jadpo_std::ai::AiUrl::Written(text.clone())
+                        }
+                    };
+                    return Some(jadpo_std::ai::AiPlan {
+                        connection: name.clone(),
+                        driver: jadpo_std::ai::AiDriver::OpenAiCompatible(url),
+                        models,
+                        schema: jadpo_std::ai::SchemaMode::StrictSubset,
+                    });
+                }
+                // A package filling `ai` (chunk 5.5v3b).
+                let connection = jadpo_check::connections::package_connections(db, project)
+                    .connections
+                    .iter()
+                    .find(|found| found.name == *name)?;
+                let mapping = jadpo_check::ai_mapping::mappings(db, project)
+                    .of
+                    .get(&connection.folder)?;
+                let package = ai_package(mapping, connection, &number)?;
                 Some(jadpo_std::ai::AiPlan {
                     connection: name.clone(),
-                    url,
+                    driver: jadpo_std::ai::AiDriver::Package(Box::new(package)),
                     models,
-                    schema: jadpo_std::ai::SchemaMode::StrictSubset,
+                    schema: mapping.schema,
                 })
             })
         };
@@ -1297,4 +1314,70 @@ fn row_columns(db: &dyn Db, project: Project, ty: &TypeRef) -> Vec<String> {
             .collect(),
         _ => Vec::new(),
     }
+}
+
+/// A package's `provide ai` as the runtime runs it through `connection`
+/// (chunk 5.5v3b): each setting of the package it reads given by the
+/// connection, from a setting of the app's or written out.
+fn ai_package(
+    mapping: &jadpo_check::ai_mapping::AiMapping,
+    connection: &jadpo_check::connections::PackageConnection,
+    number: &dyn Fn(&str) -> Option<u32>,
+) -> Option<jadpo_std::ai::PackageAi> {
+    use jadpo_check::ai_mapping::MappedInput;
+    use jadpo_check::connections::Given;
+    use jadpo_std::ai::AiInput;
+    fn input(
+        mapped: &MappedInput,
+        connection: &jadpo_check::connections::PackageConnection,
+        number: &dyn Fn(&str) -> Option<u32>,
+    ) -> Option<AiInput> {
+        Some(match mapped {
+            MappedInput::Model => AiInput::Model,
+            MappedInput::MaxOutput => AiInput::MaxOutput,
+            MappedInput::Instructions => AiInput::Instructions,
+            MappedInput::Role => AiInput::Role,
+            MappedInput::Content => AiInput::Content,
+            MappedInput::Text(text) => AiInput::Text(text.clone()),
+            MappedInput::Int(n) => AiInput::Int(*n),
+            MappedInput::Bool(flag) => AiInput::Bool(*flag),
+            MappedInput::Messages(parts) => AiInput::Messages(
+                parts
+                    .iter()
+                    .map(|(member, part)| Some((member.clone(), input(part, connection, number)?)))
+                    .collect::<Option<_>>()?,
+            ),
+            MappedInput::Setting(setting) => match connection
+                .settings
+                .iter()
+                .find(|(name, _)| name == setting)
+                .map(|(_, given)| given)?
+            {
+                Given::Setting(name) => AiInput::Setting(number(name)?),
+                Given::Text(text) => AiInput::Text(text.clone()),
+                Given::Int(n) => AiInput::Int(*n),
+                Given::Bool(flag) => AiInput::Bool(*flag),
+                Given::Other => return None,
+            },
+        })
+    }
+    Some(jadpo_std::ai::PackageAi {
+        operation: mapping.operation.clone(),
+        input: mapping
+            .input
+            .iter()
+            .map(|(member, mapped)| Some((member.clone(), input(mapped, connection, number)?)))
+            .collect::<Option<_>>()?,
+        instructions_apart: mapping.instructions_apart,
+        answer: mapping.answer.clone(),
+        refused_when: mapping.refused_when.clone(),
+        cut_off_when: mapping.cut_off_when.clone(),
+        usage: Some(jadpo_std::ai::AiUsage {
+            input: mapping.usage.input.clone(),
+            output: mapping.usage.output.clone(),
+            cached: mapping.usage.cached.clone(),
+        }),
+        schema_at: mapping.schema_at.clone(),
+        contexts: mapping.contexts.clone(),
+    })
 }

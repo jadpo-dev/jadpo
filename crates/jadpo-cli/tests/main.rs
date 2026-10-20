@@ -9,6 +9,7 @@ mod across;
 mod aggregates;
 mod ai;
 mod ai_generate;
+mod ai_providers;
 mod ai_steps;
 mod backfills;
 mod background_budget;

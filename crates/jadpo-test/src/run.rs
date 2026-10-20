@@ -276,15 +276,15 @@ fn faked<H: Host>(
     models: Option<&str>,
     ai: &Rc<AiFake>,
 ) -> Faked<H> {
-    let faked = connections
-        .iter()
-        .fold(Faked::new(host), |faked, connection| {
-            faked.with(connection, Rc::clone(fake) as Rc<dyn Capability>)
-        });
-    match models {
-        Some(models) => faked.with(models, Rc::clone(ai) as Rc<dyn Capability>),
-        None => faked,
-    }
+    // The `ai` fake first, so it answers a package's connection that
+    // fills `ai` too (chunk 5.5v3b).
+    let faked = match models {
+        Some(models) => Faked::new(host).with(models, Rc::clone(ai) as Rc<dyn Capability>),
+        None => Faked::new(host),
+    };
+    connections.iter().fold(faked, |faked, connection| {
+        faked.with(connection, Rc::clone(fake) as Rc<dyn Capability>)
+    })
 }
 
 /// How each scripted operation and prompt was used.

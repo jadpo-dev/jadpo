@@ -312,7 +312,11 @@ pub fn connection_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 pub fn sandboxed(db: &dyn Db, project: Project, connection: &PackageConnection) -> Vec<String> {
     let operations = crate::providers::operations(db, project);
     let mut out: Vec<String> = Vec::new();
+    let prompts = asked_prompts(db, project, connection);
     for (name, _) in &connection.sandbox {
+        if prompts.contains(name) && !out.contains(name) {
+            out.push(name.clone());
+        }
         for operation in operations.of(&connection.folder) {
             let full = operation.full_name();
             if operation.public
@@ -326,8 +330,25 @@ pub fn sandboxed(db: &dyn Db, project: Project, connection: &PackageConnection) 
     out
 }
 
+/// The prompts a connection's `sandbox:` may name, by their names: the
+/// application's own, when the connection is the one `ai:` names (area 21,
+/// "Tests"; chunk 5.5v3b), each let through to the provider's sandbox in
+/// `jadpo dev` with the developer's key.
+fn asked_prompts(db: &dyn Db, project: Project, connection: &PackageConnection) -> Vec<String> {
+    if crate::ai::settings(db, project).named.as_deref() != Some(connection.name.as_str()) {
+        return Vec::new();
+    }
+    crate::prompts::analysis(db, project)
+        .prompts
+        .iter()
+        .filter(|prompt| prompt.ownership.package().is_none())
+        .map(|prompt| prompt.key.clone())
+        .collect()
+}
+
 /// Each name a connection's `sandbox:` lists that is no public operation
-/// or resource of its package.
+/// or resource of its package, nor a prompt of the application's when it
+/// fills `ai`.
 fn sandbox_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let operations = crate::providers::operations(db, project);
     let mut out = Vec::new();
@@ -348,6 +369,11 @@ fn sandbox_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         for operation in &public {
             if !known.contains(&operation.resource) {
                 known.push(operation.resource.clone());
+            }
+        }
+        for prompt in asked_prompts(db, project, connection) {
+            if !known.contains(&prompt) {
+                known.push(prompt);
             }
         }
         for (name, (path, start, end)) in &connection.sandbox {

@@ -622,6 +622,7 @@ pub async fn call(
         input.as_ref(),
         settings,
         site,
+        None,
     ) {
         Ok(made) => made,
         Err(Unready::Misconfigured) => {
@@ -931,10 +932,65 @@ async fn retried(ctx: &mut Ctx<'_>, made: &Call, retry: RetryPlan) -> Result<Ans
 }
 
 /// Why a request couldn't be made.
-enum Unready {
+pub(crate) enum Unready {
     /// The connection's address or credential isn't usable.
     Misconfigured,
     Fault(FaultKind),
+}
+
+/// `value` written at `place`, dotted, in `members`, each object on the
+/// way made where it isn't there.
+fn add_at(
+    members: &mut serde_json::Map<String, serde_json::Value>,
+    place: &str,
+    value: serde_json::Value,
+) {
+    let mut steps: Vec<&str> = place.split('.').collect();
+    let Some(last) = steps.pop() else {
+        return;
+    };
+    let mut at = members;
+    for step in steps {
+        let next = at
+            .entry(step.to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if !next.is_object() {
+            *next = serde_json::Value::Object(serde_json::Map::new());
+        }
+        let serde_json::Value::Object(inner) = next else {
+            return;
+        };
+        at = inner;
+    }
+    at.insert(last.to_string(), value);
+}
+
+/// The request operation `operation` of connection `connection` sends
+/// with `input`, `added`'s value written at its place beside it (area 21,
+/// "How a provider fills it"; chunk 5.5v3b): what a package filling `ai`
+/// is sent, through the capability seam by the `ai` call's own site.
+pub(crate) fn request_adding(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    (connection, operation): (&str, &str),
+    input: Option<&Value>,
+    settings: &[(u32, Value)],
+    site: Site<'_>,
+    added: Option<(&str, serde_json::Value)>,
+) -> Result<Request, Unready> {
+    let Some((plan, op)) = providers.plan.operation(connection, operation) else {
+        return Err(Unready::Fault(FaultKind::Defect(format!(
+            "`{connection}.{operation}`, which the plan doesn't have"
+        ))));
+    };
+    let at = providers
+        .plan
+        .connections
+        .iter()
+        .position(|known| known.name == plan.name)
+        .and_then(|at| u32::try_from(at).ok())
+        .unwrap_or(u32::MAX);
+    request(ctx, providers, (plan, op, at), input, settings, site, added).map(|made| made.request)
 }
 
 /// The request `op` sends with `input`, its fields written as the
@@ -946,6 +1002,7 @@ fn request(
     input: Option<&Value>,
     settings: &[(u32, Value)],
     site: Site<'_>,
+    added: Option<(&str, serde_json::Value)>,
 ) -> Result<Made, Unready> {
     let setting = |number: u32| {
         settings
@@ -1018,6 +1075,11 @@ fn request(
         }
         _ => serde_json::Map::new(),
     };
+    // What the call's site writes beside its input, at its place: a
+    // model's structured-output setting (area 21; chunk 5.5v3b).
+    if let Some((place, value)) = added {
+        add_at(&mut members, place, value);
+    }
     // Each top-level field as written, for the fingerprint a step of an
     // action with several changing calls keeps (chunk 7.5b).
     let fields: Vec<(String, Vec<u8>)> = members
@@ -1356,7 +1418,7 @@ pub fn sendable(address: &str) -> Option<String> {
 /// The value `text`, an answer as sent, holds as `op`'s output, read at
 /// `site`: only the fields it reads, or, for an operation with
 /// `wire_output:`, the whole answer as sent, given to its `decode:`.
-fn decode(
+pub(crate) fn decode(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     op: &OperationPlan,

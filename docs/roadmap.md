@@ -1559,17 +1559,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   against an OpenAI-compatible server started in the test) and the live
   `ai_steps.rs` (a model's answer replayed from a record). Choices in
   area 21's "Chosen in chunk 5.5v3".
-- [ ] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
-  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20): a
-  package's `provides/ai.jadpo` mapping `generate:` onto its own
-  operation as data (`request.*`, `response.*`, `refused_when:`,
-  `cut_off_when:`, `usage:`, `schema: { mode: at: }`, `models: { context:
-  prices: }`), `AiSchema.json_only` and `.none` sending the schema in the
-  instructions, `too_long` checked before sending from the package's
-  context table, `development: { sandbox: [<prompt>] }`, a package's
-  `ai` faked in `jadpo dev` with generated defaults, and `jadpo calls
-  script` for a prompt. Done when a package fills `ai` in a test against
-  a local server and `jadpo dev` fakes it.
+- [x] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
+  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20).
+  Built: a provider package's `provides/ai.jadpo`, `provide ai {
+  generate: models: }` (`jadpo_check::ai_mapping`), read as data and
+  checked against the package's operation, settings and libraries
+  (`package.provider_invalid`; `stream:` and `embed:`
+  `toolchain.not_built_yet`): `call:` an operation that changes nothing,
+  `input:` from `request.model` (the name after the provider),
+  `request.max_output`, `request.instructions`, `{ each: request.messages
+  as: { } }`, `settings.*` and values, `answer:` and `refused_when:` read
+  from the decoded output, `cut_off_when:` from the answer as sent,
+  `usage:`, `schema: { mode: at: }` with OpenAI's envelope written at
+  `at:`, `models: { context: }` a library constant; `ai: { connection: }`
+  naming a package's connection (`ai.settings_invalid` when it has no
+  mapping); at run time the request made through the package driver,
+  `AiSchema.json_only` and `.none` sending the schema in the
+  instructions, `too_long` from a four-bytes-a-token estimate against the
+  context table before sending; the `ai` fake ahead of the package's in
+  tests; `jadpo dev` faking it with generated values,
+  `development: { sandbox: [<prompt>] }` letting prompts through to the
+  sandbox, and `jadpo calls script ai.<prompt> <condition>`. Tests in
+  `crates/jadpo-check/tests/ai_providers.rs` and
+  `crates/jadpo-cli/tests/ai_providers.rs` (`jadpo test` through the
+  fake; `jadpo dev` faked, scripted, and through a sandbox started in the
+  test). Choices in area 21's "Chosen in chunk 5.5v3b".
 - [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
   5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
   and its check, the fake's seeded embeddings, `jadpo ai record` and

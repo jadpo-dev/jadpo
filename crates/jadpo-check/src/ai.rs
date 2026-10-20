@@ -9,8 +9,9 @@
 //!   connection every `ai` call goes through and each model it names, a
 //!   `ModelId` setting, `default` among them. The keys later chunks build
 //!   (`embedding_dimensions:`, `limits:`, `personal_data:`,
-//!   `keep_content:`) are `toolchain.not_built_yet`, and so is a package's
-//!   connection, which fills `ai` with chunk 5.5v3b.
+//!   `keep_content:`) are `toolchain.not_built_yet`. A package's
+//!   connection fills `ai` through its `provides/ai.jadpo` (chunk 5.5v3b,
+//!   [`crate::ai_mapping`]).
 //! - [`schema`]: the JSON Schema a model is asked to answer a type in,
 //!   the one OpenAPI writes for it with each field's `///` description,
 //!   whole: the runtime cuts it to what a provider enforces.
@@ -62,8 +63,11 @@ pub struct AiSettings {
     /// Whether `ai:` is written at all.
     pub written: bool,
     /// The connection every `ai` call goes through, once it names a model
-    /// connection.
+    /// connection or a package's that fills `ai`.
     pub connection: Option<String>,
+    /// The connection `connection:` names, as written, whether or not it
+    /// fills `ai`.
+    pub named: Option<String>,
     /// Each model `models:` names, with the `ModelId` setting it reads, in
     /// the order written.
     pub models: Vec<(String, String)>,
@@ -331,19 +335,35 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                         .value()
                         .map(|value| tree::written(value.syntax()))
                         .unwrap_or_default();
+                    out.named = Some(written.clone());
                     match connections.kind(&written) {
                         Some(ConnectionKind::Model) => out.connection = Some(written),
-                        Some(ConnectionKind::Package) => out.problems.push(
-                            Diagnostic::new(
-                                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                                "A package filling `ai` isn't built yet",
-                            )
-                            .at(span, "a package's connection")
-                            .reason(format!(
-                                "`{written}` is a connection to a package, and a package fills `ai` through its `provides/ai.jadpo`, which roadmap chunk 5.5v3b builds. This compiler's `ai` goes through a server that speaks OpenAI's API, `driver: Driver.openai_compatible`."
-                            ))
-                            .next("Name a connection with `driver: Driver.openai_compatible`, such as a model on this machine, for now"),
-                        ),
+                        Some(ConnectionKind::Package) => {
+                            // A package fills `ai` through its
+                            // `provides/ai.jadpo` (chunk 5.5v3b).
+                            let package = crate::connections::package_connections(db, project)
+                                .connections
+                                .iter()
+                                .find(|known| known.name == written)
+                                .map(|known| (known.folder.clone(), known.package.clone()));
+                            let mappings = crate::ai_mapping::mappings(db, project);
+                            match package {
+                                Some((folder, _)) if mappings.of.contains_key(&folder) => {
+                                    out.connection = Some(written);
+                                }
+                                // Its mapping, or the connection, is
+                                // reported where it is written.
+                                None => {}
+                                Some((folder, _)) if mappings.broken.contains(&folder) => {}
+                                Some((_, package)) => out.problems.push(
+                                    invalid(format!("`{package}` doesn't fill `ai`"), span, "no `provides/ai.jadpo`")
+                                        .reason(format!(
+                                            "`ai: {{ connection: }}` names the connection every `ai` call goes through: one with `driver: Driver.openai_compatible`, or one to a package that fills `ai` with `provides/ai.jadpo`, and `{package}` has none."
+                                        ))
+                                        .next("Name a connection to a package that provides `ai`, or one with `driver: Driver.openai_compatible`"),
+                                ),
+                            }
+                        }
                         found => {
                             let models: Vec<String> = connections
                                 .declared
@@ -352,7 +372,9 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                                 .map(|(name, _)| format!("`{name}`"))
                                 .collect();
                             let what = match found {
-                                Some(_) => format!("`{written}` is a connection that answers no model"),
+                                Some(_) => {
+                                    format!("`{written}` is a connection that answers no model")
+                                }
                                 None => format!("`{written}` is no connection"),
                             };
                             let reason = if models.is_empty() {
