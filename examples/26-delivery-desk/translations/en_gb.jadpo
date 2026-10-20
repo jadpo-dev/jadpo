@@ -1,0 +1,10 @@
+// The root translations folder words text the app didn't write, grouped
+// by whose it is. With two versions held, a package's group carries the
+// version, as its names do. The desk asks for the postcode as it is on
+// the parcel, not a letter.
+
+translations {
+    postcodes_v2: {
+        postcode_hint: "Write it as it is on the parcel, such as N1 9GU."
+    }
+}

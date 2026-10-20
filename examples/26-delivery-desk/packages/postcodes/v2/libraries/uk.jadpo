@@ -1,0 +1,16 @@
+/// Reading UK postcodes.
+public library uk {
+    /// Reads a postcode in upper case, as the post office writes it, with
+    /// any spaces around it left out.
+    ///
+    /// ```jadpo
+    /// var postcode: UkPostcode = attempt uk.tidy(" n1 9gu ")
+    /// assert postcode == "N1 9GU"
+    /// assert uk.tidy("x") fails InvalidPostcode
+    /// ```
+    function tidy(entered: EnteredPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(text.trim(entered))) {
+            invalid: InvalidPostcode
+        }
+    }
+}

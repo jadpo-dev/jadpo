@@ -1,0 +1,3 @@
+test "the desk's own wording of the package's hint is shown" {
+    assert postcode_hint_text(Locale.en_gb) == "Write it as it is on the parcel, such as N1 9GU."
+}
