@@ -180,6 +180,8 @@ pub struct NativeHost {
     limits: RateLimits,
     deferred: Deferred,
     background: Rc<Background>,
+    /// What the runtime fetches on its own account (chunk 7.7b).
+    outbound: fetch::Outward,
 }
 
 /// Which connections are stores of files: what a host gives the disk
@@ -390,6 +392,11 @@ impl Host for NativeHost {
 
     fn database(&self, store: &str) -> Option<&dyn Database> {
         self.stores.get(store).map(|store| store as &dyn Database)
+    }
+
+    /// HTTPS to public addresses only ([`fetch::Outward`]).
+    fn outbound(&self) -> Option<&dyn jadpo_runtime::Outbound> {
+        Some(&self.outbound)
     }
 
     /// Kept for the HTTP worker, which runs it once the response is handed

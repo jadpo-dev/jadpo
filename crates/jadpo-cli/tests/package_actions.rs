@@ -28,11 +28,11 @@ fn files(sandbox: &str) -> Vec<(String, String)> {
     vec![
         (
             "app.jadpo".to_string(),
-            "application {\n    connections: {\n        pay: {\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }\n    }\n}\n".to_string(),
+            "application {\n    connections: {\n        pay: {\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }\n    }\n    steps: {\n        encryption_key: config.step_encryption_key\n    }\n}\n".to_string(),
         ),
         (
             "config.jadpo".to_string(),
-            "config {\n    pay_api_key: Text {\n        secret: true\n    }\n    pay_environment: ProviderEnvironment\n}\n".to_string(),
+            "config {\n    pay_api_key: Text {\n        secret: true\n    }\n    pay_environment: ProviderEnvironment\n    step_encryption_key: SigningKey\n}\n".to_string(),
         ),
         package(
             "package.jadpo",
@@ -107,6 +107,9 @@ fn program(root: &Path, sandbox: &str) -> Program {
         match name {
             "PAY_API_KEY" => Some("pk_test_123".into()),
             "PAY_ENVIRONMENT" => Some("sandbox".into()),
+            "STEP_ENCRYPTION_KEY" => {
+                Some("a-signing-key-for-the-record-of-steps-long-enough".into())
+            }
             _ => None,
         }
     };

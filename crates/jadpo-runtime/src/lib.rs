@@ -109,6 +109,7 @@ pub mod schedules;
 pub mod serve;
 pub mod sigv4;
 pub mod statements;
+pub mod steps;
 mod store;
 pub mod test_steps;
 pub mod webhooks;
@@ -117,13 +118,15 @@ mod write;
 pub use boundary::{
     ActionBody, RERUN_ATTEMPTS, action, commit_held, misconfigured, outcome_unknown, unavailable,
 };
-pub use ctx::{CallKey, Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, System};
+pub use ctx::{
+    Binding, CallKey, Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, System,
+};
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};
 pub use failure::Failure;
 pub use fault::{Fault, FaultKind};
 pub use host::{
-    Database, Event, Host, LocalFuture, MemoryHost, NoStore, PasskeyAnswer, PasskeyError,
+    Database, Event, Host, LocalFuture, MemoryHost, NoStore, Outbound, PasskeyAnswer, PasskeyError,
     PasskeyParts, Passkeys, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType,
     SqlValue, StoreError, Transaction,
 };

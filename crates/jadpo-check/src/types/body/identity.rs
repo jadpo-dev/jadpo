@@ -23,24 +23,67 @@ pub(super) fn caller_kind(ty: &Ty) -> Option<PrincipalKind> {
     }
 }
 
-/// The fields of the built-in `FirstSignIn` (area 8, "A person the app
-/// has not seen"), which the runtime gives `on_first_sign_in:`'s action:
-/// the way in, the address and whether it was proved, the provider's or
-/// token's subject and the name a provider's profile gives.
-pub(crate) fn first_sign_in_fields(ty: &Ty) -> Option<Vec<(&'static str, Ty)>> {
+/// The fields of the built-in objects sign-in gives code (area 8, area
+/// 16): `FirstSignIn`, which the runtime gives `on_first_sign_in:`'s
+/// action (the way in, the address and whether it was proved, the
+/// provider's or token's subject and the name a provider's profile gives);
+/// `MagicLinkRequest`, which `magic_link: { send: }`'s action is given; and
+/// `MagicLinkEmail`, which the application's own sign-in email picks from.
+pub(crate) fn first_sign_in_fields(
+    identity: &crate::identity::Identity,
+    ty: &Ty,
+) -> Option<Vec<(&'static str, Ty)>> {
     match ty.strip_nullable() {
-        Ty::Opaque(name, args) if name == jadpo_std::http::FIRST_SIGN_IN && args.is_empty() => {
-            Some(vec![
-                (
-                    "method",
-                    Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
-                ),
-                ("address", Ty::Prim(Prim::Email).nullable()),
-                ("address_verified", Ty::Prim(Prim::Bool)),
-                ("subject", Ty::Prim(Prim::Text).nullable()),
-                ("name", Ty::Prim(Prim::Text).nullable()),
-            ])
-        }
+        Ty::Opaque(name, args) if args.is_empty() => sign_in_object_fields(identity, name),
+        _ => None,
+    }
+}
+
+/// The fields of the built-in sign-in object called `name`: with
+/// `MagicLinkRedeemed`, which `magic_links.redeem` gives, the user's `id`
+/// typed as the user entity's.
+pub(crate) fn sign_in_object_fields(
+    identity: &crate::identity::Identity,
+    name: &str,
+) -> Option<Vec<(&'static str, Ty)>> {
+    use jadpo_std::email::{
+        MAGIC_LINK_EMAIL_TYPE, MAGIC_LINK_EMAIL_TYPE_FIELDS, MAGIC_LINK_REQUEST,
+    };
+    match name {
+        jadpo_std::http::FIRST_SIGN_IN => Some(vec![
+            (
+                "method",
+                Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
+            ),
+            ("address", Ty::Prim(Prim::Email).nullable()),
+            ("address_verified", Ty::Prim(Prim::Bool)),
+            ("subject", Ty::Prim(Prim::Text).nullable()),
+            ("name", Ty::Prim(Prim::Text).nullable()),
+        ]),
+        MAGIC_LINK_EMAIL_TYPE => Some(
+            MAGIC_LINK_EMAIL_TYPE_FIELDS
+                .iter()
+                .map(|(field, builtin)| (*field, Ty::Prim(*builtin)))
+                .collect(),
+        ),
+        MAGIC_LINK_REQUEST => Some(vec![
+            ("address", Ty::Prim(Prim::Email)),
+            ("sign_in_link", Ty::Prim(Prim::Url)),
+            ("code", Ty::Prim(Prim::SignInCode)),
+            ("expires_at", Ty::Prim(Prim::Instant)),
+            ("locale", Ty::Named(jadpo_std::LOCALE.to_string())),
+        ]),
+        jadpo_std::http::MAGIC_LINK_REDEEMED => Some(vec![
+            (
+                "user_id",
+                identity
+                    .variant(PrincipalKind::User)
+                    .map_or(Ty::Prim(Prim::Uuid), |variant| {
+                        Ty::Field(variant.entity.clone(), vec!["id".to_string()])
+                    }),
+            ),
+            ("return_to", Ty::Prim(Prim::Text)),
+        ]),
         _ => None,
     }
 }
@@ -197,6 +240,9 @@ impl Body<'_> {
         callee: &ast::Expr,
         written: &str,
     ) -> (Ty, CallKind, Reach) {
+        if op.magic_link() {
+            return self.magic_link_call(op, call, callee, written);
+        }
         let span = self.span(callee);
         let args: Vec<ast::Arg> = call
             .arg_list()
@@ -319,6 +365,11 @@ impl Body<'_> {
                 vec![("key_id", "the key's", Ty::Prim(Prim::Uuid))],
                 Ty::Prim(Prim::Unit),
             ),
+            SessionOp::MagicLinkRequest
+            | SessionOp::MagicLinkRedeem
+            | SessionOp::MagicLinkRedeemCode => {
+                return self.magic_link_call(op, call, callee, written);
+            }
         };
         if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
             let at = call
@@ -362,6 +413,171 @@ impl Body<'_> {
                     let inferred = (!super::is_literal(&value)).then(|| self.infer(&value));
                     self.built_on_argument(&value, inferred, &[*prim], written, name);
                 }
+                _ => self.check(&value, ty),
+            }
+        }
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Session(op),
+        )
+    }
+
+    /// `magic_links.request(address, locale, return_to)`,
+    /// `magic_links.redeem(token)` and `magic_links.redeem_code(address,
+    /// code)`: magic links' generated operations, which the application's
+    /// own routes call once `generate_routes: false` switches the generated
+    /// ones off (area 8, "Writing the routes yourself"; chunk 7.3b3). Only
+    /// an action calls them, as it calls `sessions.start`; each keeps every
+    /// protection of the generated routes, in the runtime.
+    pub(super) fn magic_link_call(
+        &mut self,
+        op: SessionOp,
+        call: &ast::CallExpr,
+        callee: &ast::Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let span = self.span(callee);
+        let args: Vec<ast::Arg> = call
+            .arg_list()
+            .iter()
+            .flat_map(|list| list.args())
+            .collect();
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        if self.context != Context::Action {
+            let who = super::capital(self.context.with_a());
+            let does = if op == SessionOp::MagicLinkRequest {
+                "asks for a link and a code, keeping the request in the transaction of the action that calls it"
+            } else {
+                "uses a link or a code once, starting no session itself"
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_AUTH_SESSIONS_CONTEXT,
+                    format!("{who} can't call `{written}`"),
+                )
+                .at(span, "outside an action")
+                .reason(format!("`{written}` {does}, so only an action calls it."))
+                .next(format!(
+                    "Call `{written}` in the action a sign-in route runs"
+                )),
+            );
+            return failed(self);
+        }
+        let identity = self.identity();
+        let Some(magic) = identity.magic_links() else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{written}` needs magic links"),
+                )
+                .at(span, "no `magic_link:` declared")
+                .reason("The `magic_links` operations ask for and use the links and codes `sign_in: { magic_link: }` sends, with a browser session's origin beside it, and `authentication { }` declares none.")
+                .next("Declare `magic_link:` in `sign_in:`, with `generate_routes: false`"),
+            );
+            return failed(self);
+        };
+        if magic.generate_routes {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`{written}` needs `generate_routes: false`"),
+                )
+                .at(span, "the routes are generated")
+                .reason("With its routes generated, the runtime asks for and uses magic links itself; `generate_routes: false` switches them off and leaves the application to write its own over these operations, so each link is asked for and used one way.")
+                .next("Add `generate_routes: false` to `magic_link:`"),
+            );
+            return failed(self);
+        }
+        // Each parameter's name, how a message describes it, and its type.
+        type Param<'a> = (&'a str, &'a str, Ty);
+        let redeemed = Ty::Opaque(jadpo_std::http::MAGIC_LINK_REDEEMED.to_string(), Vec::new());
+        let (params, result): (Vec<Param>, Ty) = match op {
+            SessionOp::MagicLinkRequest => (
+                vec![
+                    ("address", "the address, an", Ty::Prim(Prim::Email)),
+                    (
+                        "locale",
+                        "the email's",
+                        Ty::Named(jadpo_std::LOCALE.to_string()),
+                    ),
+                    (
+                        "return_to",
+                        "the path to go back to, a",
+                        Ty::Prim(Prim::Text).nullable(),
+                    ),
+                ],
+                Ty::Prim(Prim::Unit),
+            ),
+            SessionOp::MagicLinkRedeem => (
+                vec![("token", "the link's", Ty::Prim(Prim::SignInToken))],
+                redeemed,
+            ),
+            _ => (
+                vec![
+                    ("address", "the address, an", Ty::Prim(Prim::Email)),
+                    ("code", "the", Ty::Prim(Prim::SignInCode)),
+                ],
+                redeemed,
+            ),
+        };
+        if args.len() != params.len() || args.iter().any(|arg| arg.name().is_some()) {
+            let at = call
+                .arg_list()
+                .map_or_else(|| self.span(call), |list| self.span(&list));
+            let takes: Vec<String> = params
+                .iter()
+                .map(|(_, whose, ty)| format!("{whose} `{ty}`"))
+                .collect();
+            let takes = crate::and_list(&takes);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes {takes}"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(if op == SessionOp::MagicLinkRequest {
+                    format!("`{written}` takes {takes}, in that order; pass `none` for the path when the person goes to `/`.")
+                } else {
+                    format!("`{written}` takes {takes}, in that order.")
+                })
+                .next(format!("Pass {takes}")),
+            );
+            return failed(self);
+        }
+        for (arg, (name, _, ty)) in args.iter().zip(&params) {
+            let Some(value) = arg.expr() else { continue };
+            match ty {
+                // The path to go back to: text, or `none` for `/`.
+                Ty::Nullable(_) => {
+                    let found = self.infer(&value);
+                    if found.has_error() || found == Ty::None {
+                        continue;
+                    }
+                    if self.table.representation(&found) != Some(Prim::Text) {
+                        let at = self.span(&value);
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::TYPE_MISMATCH,
+                                format!("`{found}` can't be used where a value built on `Text` is required"),
+                            )
+                            .at(at, format!("this is `{found}`"))
+                            .reason(format!(
+                                "`{written}`'s `{name}` is the path on the application's own site the person goes back to once signed in: text, or `none` for `/`."
+                            ))
+                            .next("Pass the path, a value built on `Text`, or `none`"),
+                        );
+                    }
+                }
+                // An `Email`, a `SignInToken` or a `SignInCode`, or a type
+                // built on one, such as the user's address field.
                 _ => self.check(&value, ty),
             }
         }

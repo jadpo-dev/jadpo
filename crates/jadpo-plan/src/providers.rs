@@ -12,6 +12,7 @@ use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, AwsPlan, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan,
     OperationPlan, PathPart, Protocol, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan,
+    WebhookReply,
 };
 use jadpo_std::receiving::{AcknowledgePlan, Mapped, QueueEvent, QueuePlan, ReceivePlan};
 use jadpo_std::subscriber::Repeat;
@@ -84,6 +85,9 @@ pub(crate) fn plan(
             max_length: given.max_length,
             in_use: given.in_use.clone(),
             reused: given.reused.clone(),
+            window_ms: given.window_ms,
+            new_key_on: given.new_key_on.clone(),
+            replays_failures: given.replays_failures,
         });
         let keyed = idempotency
             .as_ref()
@@ -159,6 +163,7 @@ pub(crate) fn plan(
             connection: route.connection.clone(),
             segments: route.segments.clone(),
             scheme,
+            handshake: route.handshake(),
             secret,
             event_id: route.event_id.clone(),
             event_type: route.event_type.clone(),
@@ -171,6 +176,14 @@ pub(crate) fn plan(
                     wire_name: event.wire_name.clone(),
                     key: event.key.as_str().to_string(),
                     number: number(TypeRef::Node(event.key.clone())),
+                    // Answered by the app's action, its reply encoded with
+                    // the package's type (chunk 7.7b).
+                    reply: event.reply.as_ref().and_then(|(reply, _, _)| {
+                        Some(WebhookReply {
+                            action: route.answering(&event.key)?.as_str().to_string(),
+                            number: number(TypeRef::Node(reply.clone())),
+                        })
+                    }),
                 })
                 .collect(),
         });
@@ -285,6 +298,7 @@ fn operation_plan(
             .as_ref()
             .map(|when| (when.path.clone(), when.equals.clone())),
         repeat,
+        changes: operation.changes,
         // Each failure's plan is numbered, so the runtime raises it as
         // the call's failure.
         failures: operation

@@ -957,6 +957,24 @@ impl Decls<'_> {
                         ));
                         continue;
                     }
+                    // A sign-in code is sent only in its email or by the
+                    // application's own sending, and a link's token comes
+                    // only from a request (area 8).
+                    if let Some(held) =
+                        super::secrets::held_sign_in(self.table, &declared, &mut Vec::new())
+                        && super::secrets::sign_in_refused(base, self.failure, held)
+                    {
+                        let span = self.span(value.syntax());
+                        self.out.push(super::secrets::sign_in_code_field(
+                            base,
+                            self.failure,
+                            host,
+                            name,
+                            held,
+                            span,
+                        ));
+                        continue;
+                    }
                     let field = FieldCtx {
                         input: base == FieldsBase::Input,
                         output: base == FieldsBase::Output,
@@ -1049,16 +1067,73 @@ impl Decls<'_> {
                 _ => {}
             }
         }
-        if !area_two && base != FieldsBase::Object {
+        // An email's `pick:` copies from the built-in `MagicLinkEmail` too
+        // (area 16, "Built-in emails", level 4), so what it names is
+        // checked as an object's is; nothing else copies from it, since
+        // its link and code go only into the sign-in email.
+        let email = base == FieldsBase::EmailMessage;
+        if !email {
+            for (index, line) in lines.iter().enumerate() {
+                let names: Vec<String> = match line {
+                    Line::Pick(paths) => paths
+                        .iter()
+                        .filter_map(|path| path.first().cloned())
+                        .collect(),
+                    Line::Include(types) => types
+                        .iter()
+                        .filter_map(|ty| match ty {
+                            TypeRef::Path(names, _) => names.first().cloned(),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => continue,
+                };
+                if !names
+                    .iter()
+                    .any(|name| super::table::builtin_fields(name).is_some())
+                {
+                    continue;
+                }
+                let Some(member) = member(index) else {
+                    continue;
+                };
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_NOT_RECORD,
+                        format!(
+                            "`{host}` can't copy from `{}`",
+                            jadpo_std::email::MAGIC_LINK_EMAIL_TYPE
+                        ),
+                    )
+                    .at(self.span(member.syntax()), "the sign-in email's fields")
+                    .reason("`MagicLinkEmail`'s fields, a sign-in link and its code, go only into the application's own sign-in email, `type <Name> = EmailMessage { pick: [...] }` named by `magic_link: { email: }`, which Jadpo fills as it sends it.")
+                    .next("Remove the copy, or make this the sign-in email"),
+                );
+            }
+        }
+        if !area_two && base != FieldsBase::Object && !email {
             return;
         }
         let table = self.table;
         let (_, problems) = derive(base, lines, &mut |name| match table.fields(name) {
             Some(fields) => Found::Fields(fields.iter().map(|f| f.name.clone()).collect()),
+            None if let Some(fields) = super::table::builtin_fields(name) => {
+                Found::Fields(fields.iter().map(|f| f.name.clone()).collect())
+            }
             None if table.contains(name) || StdNames::get().is_type(name) => Found::NotFields,
             None => Found::Unknown,
         });
         for problem in problems {
+            if email
+                && !matches!(
+                    problem.kind,
+                    LineKind::UnknownField { .. }
+                        | LineKind::NotFields(_)
+                        | LineKind::NotAFieldPath
+                )
+            {
+                continue;
+            }
             if let Some(this) = member(problem.line) {
                 let first = match &problem.kind {
                     LineKind::Duplicate(name) => lines

@@ -45,6 +45,9 @@ fn files(sandbox: &str) -> Vec<(&'static str, String)> {
             host: config.ledger_address
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
 }
 "#
             .to_string(),
@@ -60,6 +63,7 @@ fn files(sandbox: &str) -> Vec<(&'static str, String)> {
     ledger_token: Text {
         secret: true
     }
+    step_encryption_key: SigningKey
 }
 "#
             .to_string(),
@@ -425,6 +429,9 @@ fn program(root: &Path, sandbox: &str, ledger: &str) -> Program {
             "COURIERS_ENVIRONMENT" => Some("sandbox".into()),
             "LEDGER_ADDRESS" => Some(ledger.to_string()),
             "LEDGER_TOKEN" => Some("shop:s3cret".into()),
+            "STEP_ENCRYPTION_KEY" => {
+                Some("a-signing-key-for-the-record-of-steps-long-enough".into())
+            }
             _ => None,
         }
     };

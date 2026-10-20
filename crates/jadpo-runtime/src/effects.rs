@@ -265,6 +265,14 @@ pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswere
         ctx.capabilities_mut().refused(&call, now);
         return Err(Unanswered::Failure(Box::new(crate::misconfigured())));
     };
+    // A step of an action with several changing calls is recorded before
+    // it is sent (area 12, "The record"; chunk 7.5b).
+    if let Some(at) = call.step
+        && let Err(unsent) = crate::steps::sending(ctx, at).await
+    {
+        ctx.capabilities_mut().refused(&call, now);
+        return Err(unsent);
+    }
     let began = host.monotonic_ms();
     let place = ctx
         .capabilities_mut()

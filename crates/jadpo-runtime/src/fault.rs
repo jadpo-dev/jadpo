@@ -42,6 +42,12 @@ pub enum FaultKind {
     /// transaction was open, which the runtime refuses before it goes out
     /// (area 6, "Outside calls hold no transaction"; chunk 7.0c).
     CallInTransaction(String),
+    /// A rerun of an action with several changing calls that no longer
+    /// matches its record, named by the step, its operation and the fields
+    /// that differ, never a value (area 12, "A rerun replays"; chunk
+    /// 7.5b): stopped before anything more is sent, and held for an
+    /// operator rather than failed.
+    Diverged(String),
 }
 
 impl FaultKind {
@@ -58,6 +64,7 @@ impl FaultKind {
             FaultKind::DeadlineExceeded => "deadline_exceeded",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
             FaultKind::CallInTransaction(_) => "call_in_transaction",
+            FaultKind::Diverged(_) => "diverged",
             FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => "internal_fault",
         }
     }

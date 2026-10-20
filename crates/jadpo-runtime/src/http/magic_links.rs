@@ -40,8 +40,8 @@ use std::rc::Rc;
 
 use jadpo_std::email::{MAGIC_LINK_EMAIL, MagicLinkEmailPlan};
 use jadpo_std::http::{
-    API_TOKEN_PREFIX, FIRST_SIGN_IN, IdentityPlan, MagicLinkPlan, MagicLinkStep, RETURN_TO_MAX,
-    SESSION_LIFETIME_MS,
+    API_TOKEN_PREFIX, FIRST_SIGN_IN, IdentityPlan, MAGIC_LINK_REDEEMED, MagicLinkPlan,
+    MagicLinkStep, RETURN_TO_MAX, SESSION_LIFETIME_MS,
 };
 use jadpo_std::read::SqlType;
 use jadpo_value::Value;
@@ -53,10 +53,11 @@ use super::identity::{
 use super::{
     App, INTERNAL_FAULT, Problem, RATE_LIMITED, Request, Response, invalid_input, runtime_failure,
 };
-use crate::ctx::{SessionEffect, System};
+use crate::ctx::{Binding, SessionEffect, System};
 use crate::outbox::{Delivery, Sealed};
 use crate::runner::Deferred;
-use crate::{Ctx, Executor, Outcome, SqlValue};
+use crate::store::Stored;
+use crate::{Ctx, Executor, FaultKind, Outcome, SqlValue};
 
 pub(crate) const LINK_EXPIRED: (u16, &str, &str) = (
     401,
@@ -76,6 +77,13 @@ pub(crate) const CODES_DISABLED: (u16, &str, &str) = (
     "Too many wrong sign-in codes today.",
 );
 pub(crate) const REFUSED: (u16, &str, &str) = (403, "sign_in_refused", "The sign-in was refused.");
+/// `magic_links.request`'s refusal of a path to go back to that isn't on
+/// the application's own site (chunk 7.3b3).
+pub(crate) const RETURN_INVALID: (u16, &str, &str) = (
+    422,
+    "sign_in_return_invalid",
+    "The path to go back to isn't on this site.",
+);
 
 /// Forgets the rows nothing counts any more.
 pub(crate) const SWEEP: &str = "DELETE FROM \"jadpo_sign_in_requests\" WHERE \"kept_until\" <= $1";
@@ -91,7 +99,7 @@ pub(crate) const ASKED: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"request\
 
 /// The link and the code of request `$1`, as its email is sent, while it
 /// is still the latest and hasn't expired.
-pub(crate) const MINT: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"token\" = $2, \"code\" = $3, \"sealed\" = $4 WHERE \"request\" = $1 AND \"expires_at\" > $5 RETURNING \"id\"";
+pub(crate) const MINT: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"token\" = $2, \"code\" = $3, \"sealed\" = $4 WHERE \"request\" = $1 AND \"expires_at\" > $5 RETURNING \"expires_at\"";
 
 /// The row a link's token names, held.
 pub(crate) const BY_TOKEN: &str = "SELECT \"id\", \"sealed\", \"return_to\", \"binding\", \"expires_at\" FROM \"jadpo_sign_in_requests\" WHERE \"token\" = $1 FOR UPDATE";
@@ -117,10 +125,27 @@ fn stop(failure: (u16, &str, &str), request_id: &str) -> Stop {
 
 /// The cookie binding a `same_browser:` link to its browser:
 /// `<cookie>_sign_in`.
-fn binding_cookie(plan: &IdentityPlan) -> Option<String> {
+pub(crate) fn binding_cookie(plan: &IdentityPlan) -> Option<String> {
     plan.cookie
         .as_ref()
         .map(|cookie| format!("{cookie}_sign_in"))
+}
+
+/// The `Set-Cookie` header setting or clearing the binding cookie, on the
+/// response of a generated route or of the application's own route whose
+/// action asked for or used a link (chunk 7.3b3).
+pub(crate) fn binding_header(plan: &IdentityPlan, binding: &Binding) -> Vec<(String, String)> {
+    let Some(cookie) = binding_cookie(plan) else {
+        return Vec::new();
+    };
+    let (token, age) = match binding {
+        Binding::Set { token, max_age } => (token.as_str(), *max_age),
+        Binding::Clear => ("", 0),
+    };
+    vec![(
+        "set-cookie".to_string(),
+        format!("{cookie}={token}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Lax"),
+    )]
 }
 
 /// Answers `step`.
@@ -166,14 +191,13 @@ async fn run(
     let site = Site {
         plan,
         magic,
-        origin,
         executor,
         request_id,
     };
     match step {
         MagicLinkStep::Request => site.request(ctx, request).await,
-        MagicLinkStep::Confirm => site.confirm(ctx, request, false).await,
-        MagicLinkStep::Redeem => site.confirm(ctx, request, true).await,
+        MagicLinkStep::Confirm => site.confirm(ctx, request, origin, false).await,
+        MagicLinkStep::Redeem => site.confirm(ctx, request, origin, true).await,
     }
 }
 
@@ -192,8 +216,9 @@ fn problem(request_id: &str, field: &str, rule: &str) -> Response {
 struct Site<'s> {
     plan: &'s IdentityPlan,
     magic: &'s MagicLinkPlan,
-    origin: &'s str,
     executor: &'s dyn Executor,
+    /// The request's id, for a generated route's response; empty for an
+    /// operation, which answers nothing itself.
     request_id: &'s str,
 }
 
@@ -204,19 +229,187 @@ struct Confirmed {
     return_to: Option<String>,
 }
 
+/// Why a step was refused, which a generated route answers and an
+/// operation raises alike (chunk 7.3b3).
+enum Refused {
+    /// A runtime failure (its status, code and message), with the seconds
+    /// to wait before trying again when it says.
+    Failure((u16, &'static str, &'static str), Option<i64>),
+    /// The running action's transaction couldn't go on.
+    Store(crate::StoreError),
+    /// `on_first_sign_in:`'s action faulted.
+    Fault(Box<crate::Fault>),
+}
+
+fn refused(failure: (u16, &'static str, &'static str)) -> Refused {
+    Refused::Failure(failure, None)
+}
+
+/// Whole seconds, at least one, for a wait of `millis`.
+fn seconds(millis: i64) -> i64 {
+    ((millis + 999) / 1000).max(1)
+}
+
+/// What one request for a link and a code keeps (area 8, "What is kept
+/// (chosen in chunk 7.3b)").
+struct Asking<'a> {
+    now: i64,
+    /// The address's row, made if it has none.
+    row: [u8; 16],
+    /// The request's own id, which its email's delivery names.
+    request: [u8; 16],
+    address: &'a str,
+    return_to: Option<&'a str>,
+    /// A `same_browser:` link's binding token.
+    binding: Option<&'a str>,
+}
+
+/// What asking did.
+enum Asked {
+    /// Over `resend_after:` or `codes_per_hour:`: wait this many
+    /// milliseconds, whether or not an account has the address.
+    Limited(i64),
+    /// Kept as the address's only valid request, with an email to send
+    /// when an account has the address or a first sign-in may make one.
+    Kept { sends_email: bool },
+}
+
+/// Asks for a link and a code in `transaction`, the generated route's own
+/// or the running action's: the address's row made and held, the send
+/// limits counted alike for every address, and the earlier link and code
+/// made invalid.
+async fn ask(
+    transaction: &mut dyn crate::Transaction,
+    magic: &MagicLinkPlan,
+    asking: &Asking<'_>,
+) -> Result<Asked, crate::StoreError> {
+    let now = asking.now;
+    let digest = address_digest(asking.address);
+    let expires = now.saturating_add(magic.expires_after_ms);
+    transaction
+        .execute(
+            ENSURE,
+            &[
+                SqlValue::Uuid(asking.row),
+                SqlValue::Text(digest.clone()),
+                micros(now.saturating_add(HOUR_MS)),
+            ],
+        )
+        .await?;
+    let rows = transaction.query(LOCK, &[SqlValue::Text(digest)]).await?;
+    let Some(
+        [
+            SqlValue::Uuid(id),
+            requested_at,
+            sends_since,
+            SqlValue::Int4(sends),
+        ],
+    ) = rows.first().map(Vec::as_slice)
+    else {
+        return Err(crate::StoreError::Unavailable);
+    };
+    // One send per `resend_after:`, and `codes_per_hour:` an hour,
+    // whether or not an account has the address.
+    if let Some(at) = millis(requested_at) {
+        let next = at.saturating_add(magic.resend_after_ms);
+        if next > now {
+            return Ok(Asked::Limited(next - now));
+        }
+    }
+    let (since, sends) = match millis(sends_since) {
+        Some(since) if since.saturating_add(HOUR_MS) > now => {
+            if u32::try_from(*sends).unwrap_or(u32::MAX) >= magic.codes_per_hour {
+                return Ok(Asked::Limited(since.saturating_add(HOUR_MS) - now));
+            }
+            (since, sends.saturating_add(1))
+        }
+        _ => (now, 1),
+    };
+    // Whether an email goes: to an account, or to an address a first
+    // sign-in may make one for.
+    let found = transaction
+        .query(
+            &magic.lookup,
+            &[SqlValue::Text(asking.address.to_string()), micros(now)],
+        )
+        .await?;
+    let sends_email = !found.is_empty() || magic.first_sign_in.is_some();
+    transaction
+        .execute(
+            ASKED,
+            &[
+                SqlValue::Uuid(*id),
+                SqlValue::Uuid(asking.request),
+                SqlValue::Text(exact_digest(asking.address)),
+                asking
+                    .return_to
+                    .map_or(SqlValue::Null(SqlType::Text), |path| {
+                        SqlValue::Text(path.to_string())
+                    }),
+                asking
+                    .binding
+                    .map_or(SqlValue::Null(SqlType::Text), |token| {
+                        SqlValue::Text(verifier(token.as_bytes()))
+                    }),
+                micros(now),
+                micros(expires),
+                micros(since),
+                SqlValue::Int4(sends),
+                micros(expires.max(since.saturating_add(HOUR_MS))),
+            ],
+        )
+        .await?;
+    Ok(Asked::Kept { sends_email })
+}
+
 impl Site<'_> {
+    /// A generated route's response to `refused`.
+    fn stop(&self, refused: Refused) -> Stop {
+        match refused {
+            Refused::Failure(failure, wait) => {
+                let mut response = runtime_failure(failure, self.request_id, None);
+                if let Some(wait) = wait {
+                    response
+                        .headers
+                        .push(("retry-after".to_string(), wait.to_string()));
+                }
+                Box::new(response)
+            }
+            Refused::Store(_) => stop(AUTHENTICATION_UNAVAILABLE, self.request_id),
+            Refused::Fault(fault) => {
+                let mut response = runtime_failure(INTERNAL_FAULT, self.request_id, None);
+                response.fault = Some(fault);
+                Box::new(response)
+            }
+        }
+    }
+
     fn fail(&self, failure: (u16, &str, &str)) -> Stop {
         stop(failure, self.request_id)
     }
 
-    fn unavailable(&self) -> Stop {
-        self.fail(AUTHENTICATION_UNAVAILABLE)
-    }
-
-    fn database<'c>(&self, ctx: &Ctx<'c>) -> Result<&'c dyn crate::Database, Stop> {
+    fn database<'c>(&self, ctx: &Ctx<'c>) -> Result<&'c dyn crate::Database, Refused> {
         ctx.host()
             .database(&self.plan.store)
-            .ok_or_else(|| self.fail(AUTHENTICATION_MISCONFIGURED))
+            .ok_or(refused(AUTHENTICATION_MISCONFIGURED))
+    }
+
+    /// The email's language: `asked` when the application supports it,
+    /// else the best match for `accept` (a request's `Accept-Language`),
+    /// else its default. `None` when no sign-in email is planned.
+    fn locale(&self, asked: Option<u32>, accept: Option<&str>) -> Option<u32> {
+        let email = self
+            .executor
+            .events()
+            .and_then(|events| events.plan.emails.email(MAGIC_LINK_EMAIL).cloned())?;
+        let jadpo_std::email::BuiltinEmail::MagicLink(mail) = email.builtin.as_ref()?;
+        Some(
+            asked
+                .filter(|ordinal| mail.locales.supports(*ordinal))
+                .unwrap_or_else(|| {
+                    jadpo_value::locale::from_accept_language(accept, &mail.locales)
+                }),
+        )
     }
 
     /// The body: a JSON object of text members, each one of `allowed`,
@@ -279,6 +472,8 @@ impl Site<'_> {
 
     // --- asking ------------------------------------------------------------------
 
+    /// `POST <path>`: asks in a transaction of its own, keeping Jadpo's
+    /// email in the outbox beside the request.
     async fn request(&self, ctx: &mut Ctx<'_>, request: &Request) -> Result<Response, Stop> {
         let body = self.body(request, &["address", "return_to", "locale"])?;
         let address = self.address(&body)?;
@@ -290,25 +485,10 @@ impl Site<'_> {
         }
         // The email's language: the one asked for, when the application
         // supports it, else the best match for `Accept-Language`.
-        let email = self
-            .executor
-            .events()
-            .and_then(|events| events.plan.emails.email(MAGIC_LINK_EMAIL).cloned());
-        let locales = email
-            .as_ref()
-            .and_then(|email| email.builtin.as_ref())
-            .map(|jadpo_std::email::BuiltinEmail::MagicLink(mail)| mail.locales.clone());
-        let locale = locales.as_ref().map(|locales| {
-            text(&body, "locale")
-                .and_then(|asked| locale_named(&asked))
-                .filter(|ordinal| locales.supports(*ordinal))
-                .unwrap_or_else(|| {
-                    jadpo_value::locale::from_accept_language(
-                        request.header("accept-language"),
-                        locales,
-                    )
-                })
-        });
+        let locale = self.locale(
+            text(&body, "locale").and_then(|asked| locale_named(&asked)),
+            request.header("accept-language"),
+        );
         let now = ctx.now();
         let (Some(row), Some(asked)) = (ctx.new_id(), ctx.new_id()) else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
@@ -322,93 +502,31 @@ impl Site<'_> {
         } else {
             None
         };
-        let database = self.database(ctx)?;
-        let mut transaction = database.begin().await.map_err(|_| self.unavailable())?;
-        let digest = address_digest(&address);
-        let expires = now.saturating_add(self.magic.expires_after_ms);
+        let database = self.database(ctx).map_err(|why| self.stop(why))?;
+        let mut transaction = database
+            .begin()
+            .await
+            .map_err(|_| self.fail(AUTHENTICATION_UNAVAILABLE))?;
+        let asking = Asking {
+            now,
+            row,
+            request: asked,
+            address: &address,
+            return_to: return_to.as_deref(),
+            binding: binding.as_deref(),
+        };
         let steps: Result<Option<Response>, crate::StoreError> = async {
             transaction.execute(SWEEP, &[micros(now)]).await?;
-            transaction
-                .execute(
-                    ENSURE,
-                    &[
-                        SqlValue::Uuid(row),
-                        SqlValue::Text(digest.clone()),
-                        micros(now.saturating_add(HOUR_MS)),
-                    ],
-                )
-                .await?;
-            let rows = transaction
-                .query(LOCK, &[SqlValue::Text(digest.clone())])
-                .await?;
-            let Some(
-                [
-                    SqlValue::Uuid(id),
-                    requested_at,
-                    sends_since,
-                    SqlValue::Int4(sends),
-                ],
-            ) = rows.first().map(Vec::as_slice)
-            else {
-                return Err(crate::StoreError::Unavailable);
-            };
-            // One send per `resend_after:`, and `codes_per_hour:` an hour,
-            // whether or not an account has the address.
-            if let Some(at) = millis(requested_at) {
-                let next = at.saturating_add(self.magic.resend_after_ms);
-                if next > now {
-                    return Ok(Some(limited(self.request_id, next - now)));
+            let sends_email = match ask(transaction.as_mut(), self.magic, &asking).await? {
+                Asked::Limited(wait) => {
+                    return Ok(Some(limited(self.request_id, wait)));
                 }
-            }
-            let (since, sends) = match millis(sends_since) {
-                Some(since) if since.saturating_add(HOUR_MS) > now => {
-                    if u32::try_from(*sends).unwrap_or(u32::MAX) >= self.magic.codes_per_hour {
-                        return Ok(Some(limited(
-                            self.request_id,
-                            since.saturating_add(HOUR_MS) - now,
-                        )));
-                    }
-                    (since, sends.saturating_add(1))
-                }
-                _ => (now, 1),
+                Asked::Kept { sends_email } => sends_email,
             };
-            // Whether an email goes: to an account, or to an address a
-            // first sign-in may make one for.
-            let found = transaction
-                .query(
-                    &self.magic.lookup,
-                    &[SqlValue::Text(address.clone()), micros(now)],
-                )
-                .await?;
-            let sends_email = !found.is_empty() || self.magic.first_sign_in.is_some();
-            transaction
-                .execute(
-                    ASKED,
-                    &[
-                        SqlValue::Uuid(*id),
-                        SqlValue::Uuid(asked),
-                        SqlValue::Text(exact_digest(&address)),
-                        return_to
-                            .clone()
-                            .map_or(SqlValue::Null(SqlType::Text), SqlValue::Text),
-                        binding
-                            .as_deref()
-                            .map_or(SqlValue::Null(SqlType::Text), |token| {
-                                SqlValue::Text(verifier(token.as_bytes()))
-                            }),
-                        micros(now),
-                        micros(expires),
-                        micros(since),
-                        SqlValue::Int4(sends),
-                        micros(expires.max(since.saturating_add(HOUR_MS))),
-                    ],
-                )
-                .await?;
             if sends_email {
-                let (Some(email), Some(locale)) = (&email, locale) else {
+                let Some(locale) = locale else {
                     return Err(crate::StoreError::Unavailable);
                 };
-                let _ = email;
                 let (Some(outbox), Some(delivery)) = (ctx.new_id(), ctx.new_id()) else {
                     return Err(crate::StoreError::Unavailable);
                 };
@@ -447,25 +565,100 @@ impl Site<'_> {
                 let _ = transaction.rollback().await;
                 // What was left for after the response goes with it.
                 let _ = ctx.take_deferred();
-                return Err(self.unavailable());
+                return Err(self.fail(AUTHENTICATION_UNAVAILABLE));
             }
         }
         if transaction.commit().await.is_err() {
             let _ = ctx.take_deferred();
-            return Err(self.unavailable());
+            return Err(self.fail(AUTHENTICATION_UNAVAILABLE));
         }
         let mut response = Response {
             status: 202,
             ..Response::default()
         };
-        if let (Some(token), Some(cookie)) = (binding, binding_cookie(self.plan)) {
-            let age = self.magic.expires_after_ms / 1000;
-            response.headers.push((
-                "set-cookie".to_string(),
-                format!("{cookie}={token}; Path=/; Max-Age={age}; HttpOnly; Secure; SameSite=Lax"),
+        if let Some(token) = binding {
+            response.headers.extend(binding_header(
+                self.plan,
+                &Binding::Set {
+                    token,
+                    max_age: self.magic.expires_after_ms / 1000,
+                },
             ));
         }
         Ok(response)
+    }
+
+    /// `magic_links.request`: asks in the running action's transaction,
+    /// leaving Jadpo's email as the action's own event, so it is sent once
+    /// the action commits and never if it fails.
+    async fn request_in_action(
+        &self,
+        ctx: &mut Ctx<'_>,
+        address: &str,
+        locale: u32,
+        return_to: Option<&str>,
+    ) -> Result<(), Refused> {
+        if let Some(path) = return_to
+            && !site_path(path)
+        {
+            return Err(refused(RETURN_INVALID));
+        }
+        let locale = self.locale(Some(locale), None);
+        let now = ctx.now();
+        let (Some(row), Some(asked)) = (ctx.new_id(), ctx.new_id()) else {
+            return Err(refused(AUTHENTICATION_MISCONFIGURED));
+        };
+        let binding = if self.magic.same_browser {
+            Some(new_token(ctx).ok_or(refused(AUTHENTICATION_MISCONFIGURED))?)
+        } else {
+            None
+        };
+        // Rows nothing counts any more are forgotten on their own, outside
+        // the action's transaction, as the generated route forgets them.
+        let database = self.database(ctx)?;
+        let _ = database.query_once(SWEEP, &[micros(now)]).await;
+        let asking = Asking {
+            now,
+            row,
+            request: asked,
+            address,
+            return_to,
+            binding: binding.as_deref(),
+        };
+        let asked_now = match ctx.transaction(&self.plan.store).await {
+            Ok(transaction) => ask(transaction, self.magic, &asking).await,
+            Err(error) => Err(error),
+        };
+        match asked_now.map_err(Refused::Store)? {
+            Asked::Limited(wait) => {
+                return Err(Refused::Failure(RATE_LIMITED, Some(seconds(wait))));
+            }
+            Asked::Kept { sends_email: false } => {}
+            Asked::Kept { sends_email: true } => {
+                let Some(locale) = locale else {
+                    return Err(refused(AUTHENTICATION_UNAVAILABLE));
+                };
+                let event = crate::Event {
+                    key: MAGIC_LINK_EMAIL.to_string(),
+                    value: email_value(address, locale, asked),
+                    payload: payload(address, locale, asked),
+                    subscribers: vec![subscriber_key()],
+                };
+                if ctx.emit(event).is_err() {
+                    return Err(refused(INTERNAL_FAULT));
+                }
+            }
+        }
+        // Using a link or a code in this action would wait on the row its
+        // transaction now holds.
+        ctx.ask_sign_in();
+        if let Some(token) = binding {
+            ctx.binding(Binding::Set {
+                token,
+                max_age: self.magic.expires_after_ms / 1000,
+            });
+        }
+        Ok(())
     }
 
     // --- confirming -------------------------------------------------------------
@@ -476,6 +669,7 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
+        origin: &str,
         redeem: bool,
     ) -> Result<Response, Stop> {
         let mut clear_binding = false;
@@ -485,11 +679,13 @@ impl Site<'_> {
             let Some(code) = text(&body, "code") else {
                 return Err(Box::new(problem(self.request_id, "code", "required")));
             };
-            self.by_code(ctx, &address, &code).await?
+            self.by_code(ctx, &address, &code)
+                .await
+                .map_err(|why| self.stop(why))?
         } else {
             // A browser session starts only from the application's own site.
             let from = request.header("origin").and_then(super::signed::origin_of);
-            if from.as_deref() != Some(self.origin) {
+            if from.as_deref() != Some(origin) {
                 return Err(self.fail(CSRF_REJECTED));
             }
             let body = self.body(request, &["token", "address", "code"])?;
@@ -500,11 +696,17 @@ impl Site<'_> {
             ) {
                 (Some(token), None, None) => {
                     clear_binding = self.magic.same_browser;
-                    self.by_token(ctx, request, &token).await?
+                    let given =
+                        binding_cookie(self.plan).and_then(|cookie| cookie_value(request, &cookie));
+                    self.by_token(ctx, given, &token)
+                        .await
+                        .map_err(|why| self.stop(why))?
                 }
                 (None, Some(_), Some(code)) => {
                     let address = self.address(&body)?;
-                    self.by_code(ctx, &address, &code).await?
+                    self.by_code(ctx, &address, &code)
+                        .await
+                        .map_err(|why| self.stop(why))?
                 }
                 (None, None, None) => {
                     return Err(Box::new(problem(self.request_id, "token", "required")));
@@ -520,12 +722,15 @@ impl Site<'_> {
                 }
             }
         };
-        let user = self.person(ctx, &confirmed.address).await?;
+        let user = self
+            .person(ctx, &confirmed.address)
+            .await
+            .map_err(|why| self.stop(why))?;
         let now = ctx.now();
         let (Some(token), Some(id)) = (new_token(ctx), ctx.new_id()) else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
         };
-        let database = self.database(ctx)?;
+        let database = self.database(ctx).map_err(|why| self.stop(why))?;
         if redeem {
             let token = format!("{API_TOKEN_PREFIX}{token}");
             let params = [
@@ -539,7 +744,7 @@ impl Site<'_> {
             database
                 .query_once(START, &params)
                 .await
-                .map_err(|_| self.unavailable())?;
+                .map_err(|_| self.fail(AUTHENTICATION_UNAVAILABLE))?;
             let mut body = String::from("{\"token\":");
             jadpo_value::json::write_string(&token, &mut body);
             body.push('}');
@@ -559,7 +764,7 @@ impl Site<'_> {
         database
             .query_once(START, &params)
             .await
-            .map_err(|_| self.unavailable())?;
+            .map_err(|_| self.fail(AUTHENTICATION_UNAVAILABLE))?;
         let mut body = String::from("{\"return_to\":");
         jadpo_value::json::write_string(confirmed.return_to.as_deref().unwrap_or("/"), &mut body);
         body.push('}');
@@ -568,28 +773,51 @@ impl Site<'_> {
             self.plan,
             &SessionEffect::Start { token, csrf },
         ));
-        if clear_binding && let Some(cookie) = binding_cookie(self.plan) {
-            response.headers.push((
-                "set-cookie".to_string(),
-                format!("{cookie}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"),
-            ));
+        if clear_binding {
+            response
+                .headers
+                .extend(binding_header(self.plan, &Binding::Clear));
         }
         Ok(response)
     }
 
-    /// Uses a link's token, once.
+    /// `magic_links.redeem` or `.redeem_code`: the link or the code used,
+    /// then the person, found or made, as the generated routes find them;
+    /// the application's action then starts their session itself.
+    async fn redeemed(&self, ctx: &mut Ctx<'_>, confirmed: Confirmed) -> Result<Value, Refused> {
+        let user = self.person(ctx, &confirmed.address).await?;
+        let SqlValue::Uuid(id) = user else {
+            return Err(refused(REFUSED));
+        };
+        Ok(Value::record(
+            MAGIC_LINK_REDEEMED,
+            vec![
+                (Rc::from("user_id"), Value::Uuid(Rc::from(format_uuid(&id)))),
+                (
+                    Rc::from("return_to"),
+                    Value::text(confirmed.return_to.as_deref().unwrap_or("/")),
+                ),
+            ],
+        ))
+    }
+
+    /// Uses a link's token, once, in a transaction of its own; `given` is
+    /// the binding cookie the request sent.
     async fn by_token(
         &self,
         ctx: &mut Ctx<'_>,
-        request: &Request,
+        given: Option<&str>,
         token: &str,
-    ) -> Result<Confirmed, Stop> {
+    ) -> Result<Confirmed, Refused> {
         let Some(bytes) = token_bytes(token) else {
-            return Err(self.fail(LINK_EXPIRED));
+            return Err(refused(LINK_EXPIRED));
         };
         let now = ctx.now();
         let database = self.database(ctx)?;
-        let mut transaction = database.begin().await.map_err(|_| self.unavailable())?;
+        let mut transaction = database
+            .begin()
+            .await
+            .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
         let rows = match transaction
             .query(BY_TOKEN, &[SqlValue::Text(verifier(token.as_bytes()))])
             .await
@@ -597,29 +825,28 @@ impl Site<'_> {
             Ok(rows) => rows,
             Err(_) => {
                 let _ = transaction.rollback().await;
-                return Err(self.unavailable());
+                return Err(refused(AUTHENTICATION_UNAVAILABLE));
             }
         };
         let Some([SqlValue::Uuid(id), sealed, return_to, binding, expires]) =
             rows.first().map(Vec::as_slice)
         else {
             let _ = transaction.rollback().await;
-            return Err(self.fail(LINK_EXPIRED));
+            return Err(refused(LINK_EXPIRED));
         };
         let unexpired = millis(expires).is_some_and(|at| at > now);
         let SqlValue::Bytes(sealed) = sealed else {
             let _ = transaction.rollback().await;
-            return Err(self.fail(LINK_EXPIRED));
+            return Err(refused(LINK_EXPIRED));
         };
         if !unexpired {
             let _ = transaction.rollback().await;
-            return Err(self.fail(LINK_EXPIRED));
+            return Err(refused(LINK_EXPIRED));
         }
         // A `same_browser:` link works only in the browser that asked; it
         // is left as it was, so that browser or the code still works.
         if self.magic.same_browser {
-            let given = binding_cookie(self.plan)
-                .and_then(|cookie| cookie_value(request, &cookie))
+            let given = given
                 .filter(|value| token_bytes(value).is_some())
                 .map(|value| verifier(value.as_bytes()));
             let here = match (binding, given) {
@@ -630,12 +857,12 @@ impl Site<'_> {
             };
             if !here {
                 let _ = transaction.rollback().await;
-                return Err(self.fail(LINK_OTHER_BROWSER));
+                return Err(refused(LINK_OTHER_BROWSER));
             }
         }
         let Some(address) = unseal(&bytes, sealed) else {
             let _ = transaction.rollback().await;
-            return Err(self.fail(LINK_EXPIRED));
+            return Err(refused(LINK_EXPIRED));
         };
         let return_to = match return_to {
             SqlValue::Text(path) => Some(path.clone()),
@@ -643,22 +870,26 @@ impl Site<'_> {
         };
         let used = transaction.execute(USED, &[SqlValue::Uuid(*id)]).await;
         if used.is_err() || transaction.commit().await.is_err() {
-            return Err(self.unavailable());
+            return Err(refused(AUTHENTICATION_UNAVAILABLE));
         }
         Ok(Confirmed { address, return_to })
     }
 
-    /// Uses an address's code, once; a wrong one is counted.
+    /// Uses an address's code, once, in a transaction of its own; a wrong
+    /// one is counted, and stays counted whatever happens after.
     async fn by_code(
         &self,
         ctx: &mut Ctx<'_>,
         address: &str,
         code: &str,
-    ) -> Result<Confirmed, Stop> {
+    ) -> Result<Confirmed, Refused> {
         let now = ctx.now();
         let today = now - now.rem_euclid(DAY_MS);
         let database = self.database(ctx)?;
-        let mut transaction = database.begin().await.map_err(|_| self.unavailable())?;
+        let mut transaction = database
+            .begin()
+            .await
+            .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
         let rows = match transaction
             .query(BY_ADDRESS, &[SqlValue::Text(address_digest(address))])
             .await
@@ -666,7 +897,7 @@ impl Site<'_> {
             Ok(rows) => rows,
             Err(_) => {
                 let _ = transaction.rollback().await;
-                return Err(self.unavailable());
+                return Err(refused(AUTHENTICATION_UNAVAILABLE));
             }
         };
         let Some(
@@ -684,7 +915,7 @@ impl Site<'_> {
         ) = rows.first().map(Vec::as_slice)
         else {
             let _ = transaction.rollback().await;
-            return Err(self.fail(CODE_INVALID));
+            return Err(refused(CODE_INVALID));
         };
         // Past the day's wrong codes, codes stop until the next day (UTC);
         // links still work.
@@ -695,12 +926,10 @@ impl Site<'_> {
         };
         if u32::try_from(failed).unwrap_or(u32::MAX) >= self.magic.failed_codes_per_day {
             let _ = transaction.rollback().await;
-            let mut response = runtime_failure(CODES_DISABLED, self.request_id, None);
-            let wait = (today + DAY_MS - now + 999) / 1000;
-            response
-                .headers
-                .push(("retry-after".to_string(), wait.max(1).to_string()));
-            return Err(Box::new(response));
+            return Err(Refused::Failure(
+                CODES_DISABLED,
+                Some(seconds(today + DAY_MS - now)),
+            ));
         }
         let right = match (exact, asked, kept) {
             (SqlValue::Text(exact), SqlValue::Uuid(asked), SqlValue::Text(kept)) => {
@@ -730,9 +959,9 @@ impl Site<'_> {
                 )
                 .await;
             if counted.is_err() || transaction.commit().await.is_err() {
-                return Err(self.unavailable());
+                return Err(refused(AUTHENTICATION_UNAVAILABLE));
             }
-            return Err(self.fail(CODE_INVALID));
+            return Err(refused(CODE_INVALID));
         }
         let return_to = match return_to {
             SqlValue::Text(path) => Some(path.clone()),
@@ -740,7 +969,7 @@ impl Site<'_> {
         };
         let used = transaction.execute(USED, &[SqlValue::Uuid(*id)]).await;
         if used.is_err() || transaction.commit().await.is_err() {
-            return Err(self.unavailable());
+            return Err(refused(AUTHENTICATION_UNAVAILABLE));
         }
         Ok(Confirmed {
             address: address.to_string(),
@@ -750,7 +979,7 @@ impl Site<'_> {
 
     /// The user the address belongs to, made by `on_first_sign_in:`'s
     /// action when none has it: its `id`, once its `active:` holds.
-    async fn person(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<SqlValue, Stop> {
+    async fn person(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<SqlValue, Refused> {
         let now = ctx.now();
         let database = self.database(ctx)?;
         let found = database
@@ -759,7 +988,7 @@ impl Site<'_> {
                 &[SqlValue::Text(address.to_string()), micros(now)],
             )
             .await
-            .map_err(|_| self.unavailable())?;
+            .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
         let found = match found.first().map(Vec::as_slice) {
             Some([id @ SqlValue::Uuid(_), SqlValue::Bool(active)]) => Some((id.clone(), *active)),
             _ => None,
@@ -772,25 +1001,26 @@ impl Site<'_> {
                 let rows = database
                     .query_once(&self.magic.lookup_id, &[id, micros(now)])
                     .await
-                    .map_err(|_| self.unavailable())?;
+                    .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
                 match rows.first().map(Vec::as_slice) {
                     Some([id @ SqlValue::Uuid(_), SqlValue::Bool(active)]) => (id.clone(), *active),
-                    _ => return Err(self.fail(REFUSED)),
+                    _ => return Err(refused(REFUSED)),
                 }
             }
         };
         if !active {
-            return Err(self.fail(USER_DISABLED));
+            return Err(refused(USER_DISABLED));
         }
         Ok(user)
     }
 
     /// Runs `on_first_sign_in:`'s action for an address no user has, as
-    /// the system, in its own transaction: the `id` it gives. Any failure
-    /// it declares, or none declared, is `sign_in_refused`.
-    async fn first_sign_in(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<SqlValue, Stop> {
+    /// the system, in its own transaction, whether or not an action of
+    /// the application's is running: the `id` it gives. Any failure it
+    /// declares, or none declared, is `sign_in_refused`.
+    async fn first_sign_in(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<SqlValue, Refused> {
         let Some(callable) = self.magic.first_sign_in else {
-            return Err(self.fail(REFUSED));
+            return Err(refused(REFUSED));
         };
         let method = jadpo_std::SignInMethod::MagicLink;
         let ordinal = jadpo_std::variant_ordinal(jadpo_std::SignInMethod::NAME, method.name())
@@ -813,22 +1043,202 @@ impl Site<'_> {
                 (Rc::from("name"), Value::None),
             ],
         );
+        // The application's own action, when one is running, waits with
+        // its transaction while this one runs in its own.
+        let waiting = ctx.take_boundary();
+        let runner = ctx.runner();
         ctx.become_system(System { tenant: None });
         let outcome = self.executor.run(ctx, callable, vec![first]).await;
-        ctx.set_caller(None);
+        ctx.restore_runner(runner);
+        ctx.give_boundary(waiting);
         match outcome {
-            Outcome::Value(id) => crate::to_sql(&id, SqlType::Uuid).map_err(|_| self.fail(REFUSED)),
+            Outcome::Value(id) => crate::to_sql(&id, SqlType::Uuid).map_err(|_| refused(REFUSED)),
             Outcome::Failed(failure) if failure.kind.as_deref() == Some("unavailable") => {
-                Err(self.unavailable())
+                Err(refused(AUTHENTICATION_UNAVAILABLE))
             }
-            Outcome::Failed(_) => Err(self.fail(REFUSED)),
-            Outcome::Fault(fault) => {
-                let mut response = runtime_failure(INTERNAL_FAULT, self.request_id, None);
-                response.fault = Some(fault);
-                Err(Box::new(response))
-            }
-            Outcome::Assertion(_) => Err(self.fail(INTERNAL_FAULT)),
+            Outcome::Failed(_) => Err(refused(REFUSED)),
+            Outcome::Fault(fault) => Err(Refused::Fault(fault)),
+            Outcome::Assertion(_) => Err(refused(INTERNAL_FAULT)),
         }
+    }
+}
+
+// --- the application's own routes (chunk 7.3b3) -------------------------------
+
+/// The plan of `plan`'s magic links, or the fault an operation called
+/// without them is.
+fn site_of<'s>(executor: &'s dyn Executor, plan: Option<&'s IdentityPlan>) -> Option<Site<'s>> {
+    let plan = plan?;
+    Some(Site {
+        plan,
+        magic: plan.magic_links.as_ref()?,
+        executor,
+        request_id: "",
+    })
+}
+
+fn defect(ctx: &mut Ctx<'_>, what: &str, site: u32) -> Stored {
+    Stored::Fault(ctx.fault(FaultKind::Defect(what.to_string()), site))
+}
+
+/// What an operation's refusal raises at site `site`: the same failure,
+/// code and status the generated routes answer with, never naming the
+/// token, the code or the address.
+fn raised(ctx: &mut Ctx<'_>, refused: Refused, site: u32) -> Stored {
+    match refused {
+        Refused::Failure((status, code, message), wait) => {
+            let name: String = code
+                .split('_')
+                .map(|word| {
+                    let mut chars = word.chars();
+                    chars.next().map_or_else(String::new, |first| {
+                        first.to_ascii_uppercase().to_string() + chars.as_str()
+                    })
+                })
+                .collect();
+            let mut failure = crate::Failure::new(format!("runtime {code}"), name, code);
+            failure.kind = match status {
+                401 => Some("unauthenticated"),
+                403 => Some("not_permitted"),
+                422 => Some("invalid_value"),
+                429 => Some("rate_limited"),
+                503 => Some("unavailable"),
+                _ => None,
+            }
+            .map(str::to_string);
+            failure.status = Some(status);
+            failure.message = Some(message.to_string());
+            failure.retry_after = wait;
+            Stored::Failed(ctx.fail(failure, site))
+        }
+        Refused::Store(error) => match crate::read::refused(ctx, error, site) {
+            crate::read::Interrupt::Failed(failure) => Stored::Failed(failure),
+            crate::read::Interrupt::Fault(fault) => Stored::Fault(fault),
+        },
+        Refused::Fault(fault) => Stored::Fault(fault),
+    }
+}
+
+/// `magic_links.request(address, locale, return_to)` at site `site` (area
+/// 8, "Writing the routes yourself"): asks for a link and a code in the
+/// running action's transaction, as `POST <path>` asks in its own, the
+/// email sent once the action commits; `rate_limited` over the send
+/// limits, alike for every address, and `sign_in_return_invalid` for a
+/// path off the application's site. Under `same_browser:` the route's
+/// response sets the binding cookie.
+pub async fn request(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    plan: Option<&IdentityPlan>,
+    args: &[Value],
+    site: u32,
+) -> Stored {
+    let Some(at) = site_of(executor, plan) else {
+        return defect(ctx, "a magic link asked for with no `magic_link:`", site);
+    };
+    let [Value::Text(address), Value::Variant(locale), return_to] = args else {
+        return defect(
+            ctx,
+            "`magic_links.request` called with the wrong arguments",
+            site,
+        );
+    };
+    let return_to = match return_to {
+        Value::Text(path) => Some(path.to_string()),
+        _ => None,
+    };
+    match at
+        .request_in_action(ctx, address, locale.ordinal, return_to.as_deref())
+        .await
+    {
+        Ok(()) => Stored::Value(Value::Unit),
+        Err(why) => raised(ctx, why, site),
+    }
+}
+
+/// `magic_links.redeem(token)` at site `site`: uses a link's token once,
+/// as `POST <path>/confirm` does, in a transaction of its own, so a used
+/// link stays used whatever the action does next; then the person, made
+/// by `on_first_sign_in:`'s action when new. Gives a `MagicLinkRedeemed`.
+pub async fn redeem(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    plan: Option<&IdentityPlan>,
+    args: &[Value],
+    site: u32,
+) -> Stored {
+    let Some(at) = site_of(executor, plan) else {
+        return defect(ctx, "a magic link redeemed with no `magic_link:`", site);
+    };
+    let [Value::Text(token)] = args else {
+        return defect(
+            ctx,
+            "`magic_links.redeem` called with the wrong arguments",
+            site,
+        );
+    };
+    if ctx.asked_sign_in() {
+        return defect(
+            ctx,
+            "`magic_links.redeem` in the action that called `magic_links.request`",
+            site,
+        );
+    }
+    let given = ctx.sign_in_cookie().map(str::to_string);
+    let confirmed = match at.by_token(ctx, given.as_deref(), token).await {
+        Ok(confirmed) => confirmed,
+        Err(why) => return raised(ctx, why, site),
+    };
+    match at.redeemed(ctx, confirmed).await {
+        Ok(value) => {
+            // Signed in with the link: its binding cookie is cleared.
+            if at.magic.same_browser {
+                ctx.binding(Binding::Clear);
+            }
+            Stored::Value(value)
+        }
+        Err(why) => raised(ctx, why, site),
+    }
+}
+
+/// `magic_links.redeem_code(address, code)` at site `site`: the same for
+/// a code, counting a wrong one against it and the address's day even
+/// though the action then fails.
+pub async fn redeem_code(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    plan: Option<&IdentityPlan>,
+    args: &[Value],
+    site: u32,
+) -> Stored {
+    let Some(at) = site_of(executor, plan) else {
+        return defect(
+            ctx,
+            "a magic link's code redeemed with no `magic_link:`",
+            site,
+        );
+    };
+    let [Value::Text(address), Value::Text(code)] = args else {
+        return defect(
+            ctx,
+            "`magic_links.redeem_code` called with the wrong arguments",
+            site,
+        );
+    };
+    if ctx.asked_sign_in() {
+        return defect(
+            ctx,
+            "`magic_links.redeem_code` in the action that called `magic_links.request`",
+            site,
+        );
+    }
+    let confirmed = match at.by_code(ctx, address, code).await {
+        Ok(confirmed) => confirmed,
+        Err(why) => return raised(ctx, why, site),
+    };
+    match at.redeemed(ctx, confirmed).await {
+        Ok(value) => Stored::Value(value),
+        Err(why) => raised(ctx, why, site),
     }
 }
 
@@ -977,7 +1387,7 @@ fn unseal(token: &[u8; 32], sealed: &[u8]) -> Option<String> {
 }
 
 /// The value of cookie `name`, when the request sends it exactly once.
-fn cookie_value<'r>(request: &'r Request, name: &str) -> Option<&'r str> {
+pub(crate) fn cookie_value<'r>(request: &'r Request, name: &str) -> Option<&'r str> {
     let mut found = request
         .headers
         .iter()
@@ -1077,12 +1487,14 @@ pub(crate) fn read_payload(payload: &str) -> Result<Value, String> {
 }
 
 /// What the email carries, made as it is sent: the link, the code, and
-/// how long they work. `None` when its request was used, replaced or has
-/// expired, and nothing is sent.
+/// when they stop working. `None` when its request was used, replaced or
+/// has expired, and nothing is sent.
 pub(crate) struct Minted {
     pub address: String,
     pub link: String,
     pub code: String,
+    /// When the link and the code stop working, in milliseconds.
+    pub expires_at: i64,
 }
 
 /// Makes the link and the code of the request `value` names, keeping only
@@ -1139,14 +1551,48 @@ pub(crate) async fn mint(
         )
         .await
         .map_err(|_| "unavailable")?;
-    if rows.is_empty() {
+    let Some(expires_at) = rows.first().and_then(|row| row.first()).and_then(millis) else {
         return Ok(None);
-    }
+    };
     Ok(Some(Minted {
         address: address.to_string(),
         link: format!("{origin}{}?token={token}", plan.link),
         code,
+        expires_at,
     }))
+}
+
+/// The `MagicLinkRequest` the action `magic_link: { send: }` names is
+/// given (area 16, "Built-in emails", level 5), made as its delivery runs:
+/// the link and the code made now, when they stop working, and the
+/// locale the request chose. `Ok(None)` when the request was used,
+/// replaced or has expired since, and nothing is sent.
+pub(crate) async fn request_value(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    plan: &MagicLinkEmailPlan,
+    value: &Value,
+) -> Result<Option<Value>, &'static str> {
+    let locale = match value {
+        Value::Record(record) => record.get("locale").cloned(),
+        _ => None,
+    };
+    let Some(locale @ Value::Variant(_)) = locale else {
+        return Err("a magic-link email with no locale");
+    };
+    let Some(minted) = mint(executor, ctx, plan, value).await? else {
+        return Ok(None);
+    };
+    Ok(Some(Value::record(
+        jadpo_std::email::MAGIC_LINK_REQUEST,
+        vec![
+            (Rc::from("address"), Value::text(&minted.address)),
+            (Rc::from("sign_in_link"), Value::text(&minted.link)),
+            (Rc::from("code"), Value::text(&minted.code)),
+            (Rc::from("expires_at"), Value::Instant(minted.expires_at)),
+            (Rc::from("locale"), locale),
+        ],
+    )))
 }
 
 #[cfg(test)]

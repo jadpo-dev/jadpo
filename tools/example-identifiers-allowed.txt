@@ -342,6 +342,10 @@ security
 browser_session
 fresh
 user_disabled
+# what `magic_links.redeem` gives, `MagicLinkRedeemed` and its `user_id`
+# (area 8, chunk 7.3b3)
+redeemed
+user_id
 # the toolchain's own error code, `toolchain.project_not_found` (area 14),
 # which a project's failure code for an entity called Project matches
 project_not_found
@@ -510,3 +514,8 @@ unlinked
 occurred_at
 replies
 received
+# The members AWS SNS names its messages with, which the runtime reads to
+# check and confirm them (area 11, chunk 7.7b): `SubscribeURL`, and the
+# `SubscriptionConfirmation` type
+subscribe
+subscription

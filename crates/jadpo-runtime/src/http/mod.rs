@@ -45,7 +45,7 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
-pub(crate) mod magic_links;
+pub mod magic_links;
 pub(crate) mod passkeys;
 pub mod signed;
 
@@ -334,6 +334,17 @@ async fn answer_request(
     // A request is never the system, whatever context it is answered in.
     ctx.background_mut().set_system(None);
     ctx.set_client(app.client.of(request));
+    // The cookie binding a `same_browser:` magic link to this browser, for
+    // `magic_links.redeem` in the application's own route (chunk 7.3b3).
+    ctx.set_sign_in_cookie(
+        app.table
+            .identity
+            .as_ref()
+            .filter(|plan| plan.magic_links.as_ref().is_some_and(|m| m.same_browser))
+            .and_then(magic_links::binding_cookie)
+            .and_then(|cookie| magic_links::cookie_value(request, &cookie))
+            .map(str::to_string),
+    );
     // Its trace continues the caller's `traceparent`, or starts one, so
     // what it emits carries it to each subscriber (area 12, question 17).
     let trace = match request
@@ -385,7 +396,8 @@ async fn respond(
         if !headers_readable(request) {
             return runtime_failure(HEADER_UNREADABLE, request_id, None);
         }
-        return crate::webhooks::answer(executor, webhooks, found, ctx, request, request_id).await;
+        return crate::webhooks::answer(app, executor, webhooks, found, ctx, request, request_id)
+            .await;
     }
     // A request with a credential counts against its caller once signed
     // in, or against its address if it isn't; every other request against
@@ -551,7 +563,7 @@ fn split_path(path: &str) -> Option<Vec<String>> {
 /// `text` with its `%XX` escapes decoded, and `+` read as a space in a
 /// query string; `None` when an escape is malformed or the bytes aren't
 /// UTF-8.
-fn percent_decode(text: &str, plus: bool) -> Option<String> {
+pub(crate) fn percent_decode(text: &str, plus: bool) -> Option<String> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0;
@@ -577,7 +589,7 @@ fn percent_decode(text: &str, plus: bool) -> Option<String> {
 
 /// A query string's values, by key, in the order they came; `None` when
 /// it can't be read.
-fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
+pub(crate) fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
@@ -990,7 +1002,19 @@ async fn run_with_caller(
                 Run::Action(callable) => {
                     // Its commit waits until the deadline can't interrupt it.
                     ctx.hold();
-                    executor.run(ctx, *callable, args.clone()).await
+                    // Under a key it claimed, its key survives a retry: an
+                    // action with several changing calls keeps a record of
+                    // its steps, held by this claim (area 12, "One runner
+                    // per record"; chunk 7.5b).
+                    ctx.set_resumable(
+                        guard
+                            .as_ref()
+                            .filter(|_| claimed.get())
+                            .map(|guard| guard.at),
+                    );
+                    let ran = executor.run(ctx, *callable, args.clone()).await;
+                    ctx.set_resumable(None);
+                    ran
                 }
                 Run::Listing { keys } => {
                     let holder = args.first().cloned().unwrap_or(Value::None);
@@ -1070,10 +1094,14 @@ async fn run_with_caller(
         // Nor is one that carries an API token or a service key, which is
         // shown once and kept only as its verifier.
         let issued = held.as_ref().is_some_and(|held| held.issued);
+        // Nor one that sets or clears a magic link's binding cookie, which
+        // a repeat without the cookie would leave unbound (chunk 7.3b3).
+        let binding = held.as_ref().and_then(|held| held.binding.clone());
         // Successes and the failures the action returns are kept for a
         // repeat; `unavailable` and faults are not, so a retry runs again.
         let storable = session.is_none()
             && !issued
+            && binding.is_none()
             && match &outcome {
                 Outcome::Value(_) => true,
                 Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
@@ -1158,6 +1186,11 @@ async fn run_with_caller(
         }
         if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
             response.headers.extend(identity::set_cookies(plan, effect));
+        }
+        if let (Some(binding), Some(plan)) = (&binding, &app.table.identity) {
+            response
+                .headers
+                .extend(magic_links::binding_header(plan, binding));
         }
         // A credential signing in reissued goes back with the response,
         // unless what ran started or ended the session it came with.
@@ -1423,7 +1456,7 @@ pub(crate) fn invalid_input(request_id: &str, problems: &[Problem]) -> Response 
 
 /// A failure the program raised, in the envelope with its client fields
 /// and the status its kind sets.
-fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Response {
+pub(crate) fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Response {
     let status = failure.status.unwrap_or(500);
     let message = failure
         .message
@@ -1450,11 +1483,19 @@ fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Respo
         out.push('}');
         Some(out)
     });
-    json_response(
+    let mut response = json_response(
         status,
         &failure.code,
         envelope(&failure.code, &message, request_id, details.as_deref()),
-    )
+    );
+    // A built-in failure that says when to try again: `rate_limited` or
+    // `sign_in_codes_disabled` from magic links' operations (chunk 7.3b3).
+    if let Some(seconds) = failure.retry_after {
+        response
+            .headers
+            .push(("retry-after".to_string(), seconds.max(1).to_string()));
+    }
+    response
 }
 
 // --- route tests ---------------------------------------------------------------

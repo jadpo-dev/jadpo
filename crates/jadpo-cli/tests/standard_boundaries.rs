@@ -690,6 +690,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "crates/jadpo-runtime/src/effects.rs",
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),
+    (
+        "crates/jadpo-runtime/src/http/magic_links.rs",
+        "makes the `MagicLinkRequest` the application's own sending is given, a value in memory, never sent by the runtime",
+    ),
     ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
     (
         "crates/jadpo-runtime/src/test_steps.rs",

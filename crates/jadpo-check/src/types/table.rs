@@ -573,6 +573,15 @@ impl Deriver<'_> {
                 Found::Fields(names)
             }
             Some(_) => Found::NotFields,
+            // The built-in object the application's own sign-in email
+            // picks from (area 16, "Built-in emails", level 4).
+            None if builtin_fields(name).is_some() => Found::Fields(
+                builtin_fields(name)
+                    .into_iter()
+                    .flatten()
+                    .map(|f| f.name.clone())
+                    .collect(),
+            ),
             None if StdNames::get().is_type(name) => Found::NotFields,
             None => Found::Unknown,
         }
@@ -949,7 +958,10 @@ pub trait TypeView {
             // A standard object type's field (area 19), from its data
             // entry: `LocalTime.hour`, a whole number from 0 to 23.
             return match path {
-                [name] => standard_fields(host)?.iter().find(|f| f.name == *name),
+                [name] => standard_fields(host)
+                    .or_else(|| builtin_fields(host))?
+                    .iter()
+                    .find(|f| f.name == *name),
                 _ => None,
             };
         };
@@ -1495,6 +1507,36 @@ pub fn standard_fields(name: &str) -> Option<&'static [FieldDef]> {
         })
         .get(name)
         .map(Vec::as_slice)
+}
+
+/// The fields of a built-in object an application's type may copy with
+/// `pick:`: `MagicLinkEmail`, which the application's own sign-in email
+/// takes its fields from (area 16, "Built-in emails", level 4).
+pub fn builtin_fields(name: &str) -> Option<&'static [FieldDef]> {
+    static FIELDS: std::sync::OnceLock<Vec<FieldDef>> = std::sync::OnceLock::new();
+    (name == jadpo_std::email::MAGIC_LINK_EMAIL_TYPE).then(|| {
+        FIELDS
+            .get_or_init(|| {
+                jadpo_std::email::MAGIC_LINK_EMAIL_TYPE_FIELDS
+                    .iter()
+                    .map(|(field, builtin)| FieldDef {
+                        name: (*field).to_string(),
+                        declared: Ty::Prim(*builtin),
+                        rules: Rules::default(),
+                        optional: false,
+                        default: None,
+                        header: None,
+                        column: None,
+                        wire_name: None,
+                        coding: None,
+                        copied: false,
+                        replaces: None,
+                        generated: false,
+                    })
+                    .collect()
+            })
+            .as_slice()
+    })
 }
 
 fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {

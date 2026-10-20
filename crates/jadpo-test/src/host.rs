@@ -48,6 +48,9 @@ pub struct Harness<D = jadpo_host_native::Postgres> {
     timers: RefCell<Vec<(u64, Timer)>>,
     deferred: RefCell<Vec<LocalFuture<'static, ()>>>,
     handed: RefCell<Vec<LocalFuture<'static, ()>>>,
+    /// What the runtime fetches on its own account, when the test gives
+    /// it (chunk 7.7b).
+    outbound: Option<std::rc::Rc<dyn jadpo_runtime::Outbound>>,
 }
 
 impl<D> std::fmt::Debug for Harness<D> {
@@ -89,7 +92,15 @@ impl<D: Database> Harness<D> {
             timers: RefCell::new(Vec::new()),
             deferred: RefCell::new(Vec::new()),
             handed: RefCell::new(Vec::new()),
+            outbound: None,
         }
+    }
+
+    /// Gives it `outbound` for what the runtime fetches on its own
+    /// account: a test's server standing in for AWS's (chunk 7.7b).
+    pub fn outbound(mut self, outbound: std::rc::Rc<dyn jadpo_runtime::Outbound>) -> Harness<D> {
+        self.outbound = Some(outbound);
+        self
     }
 
     /// Gives it a wall clock reading `now`, milliseconds since the epoch,
@@ -235,6 +246,10 @@ impl std::future::Future for Later {
 impl<D: Database> Host for Harness<D> {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(&self.database)
+    }
+
+    fn outbound(&self) -> Option<&dyn jadpo_runtime::Outbound> {
+        self.outbound.as_deref()
     }
 
     fn random(&self, bytes: &mut [u8]) -> bool {

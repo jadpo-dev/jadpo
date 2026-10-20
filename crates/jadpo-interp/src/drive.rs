@@ -260,8 +260,8 @@ async fn request(
 }
 
 /// `sessions.start(user_id)`, `sessions.end()`, an API token's or a
-/// service key's operation at site `at` (area 8): the runtime keeps,
-/// lists or deletes it in the running action's transaction.
+/// service key's operation, or magic links', at site `at` (area 8): the
+/// runtime keeps, lists or deletes it in the running action's transaction.
 async fn session(
     program: &Program,
     ctx: &mut Ctx<'_>,
@@ -269,10 +269,20 @@ async fn session(
     args: &[Value],
     at: u32,
 ) -> Result<Value, Stop> {
-    use jadpo_runtime::http::identity;
+    use jadpo_runtime::http::{identity, magic_links};
     use jadpo_std::http::SessionOp;
     let plan = program.plan().routes().identity.as_ref();
     let stored = match (op, args) {
+        // Magic links' operations, for the application's own routes (area
+        // 8, "Writing the routes yourself"; chunk 7.3b3), through the code
+        // the generated routes use.
+        (SessionOp::MagicLinkRequest, _) => {
+            magic_links::request(program, ctx, plan, args, at).await
+        }
+        (SessionOp::MagicLinkRedeem, _) => magic_links::redeem(program, ctx, plan, args, at).await,
+        (SessionOp::MagicLinkRedeemCode, _) => {
+            magic_links::redeem_code(program, ctx, plan, args, at).await
+        }
         (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
         (SessionOp::End, []) => identity::end(ctx, plan, at).await,
         (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,
@@ -531,6 +541,20 @@ impl<'p> ActionBody<'p> for Action<'_> {
             .plan()
             .callable(self.callee)
             .and_then(|callable| callable.outbox.as_deref())
+    }
+
+    /// What its plan keeps of its steps when it makes several changing
+    /// calls, and the key their answers are sealed with (chunk 7.5b).
+    fn record(&self) -> Option<jadpo_runtime::steps::Spec<'_>> {
+        let plan = self.program.plan();
+        let callable = plan.callable(self.callee)?;
+        Some(jadpo_runtime::steps::Spec {
+            plan: callable.record.as_ref()?,
+            action: callable.key.as_str(),
+            build: plan.build_id(),
+            keys: self.program.effect_keys(),
+            setting: plan.steps_key(),
+        })
     }
 
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {

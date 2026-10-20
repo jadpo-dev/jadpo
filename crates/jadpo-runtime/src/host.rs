@@ -265,6 +265,25 @@ pub trait Passkeys {
     ) -> Result<PasskeyParts, PasskeyError>;
 }
 
+/// What the runtime fetches from outside on its own account (area 11,
+/// "Receiving from outside"; chunk 7.7b): AWS SNS's signing certificate
+/// and its subscription confirmation. The runtime decides which addresses
+/// it asks for; the host keeps every request from reaching a private
+/// address.
+pub trait Outbound {
+    /// `GET`s `url`, an HTTPS address the runtime has checked, and gives
+    /// its status and body: no redirect followed, no connection made to a
+    /// loopback, private, link-local or otherwise non-public address, at
+    /// most `limit` bytes read and `timeout_ms` waited. Why not, for the
+    /// host's log, when it can't.
+    fn get<'a>(
+        &'a self,
+        url: &'a str,
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>>;
+}
+
 /// The platform: the capabilities one invocation runs against.
 pub trait Host {
     /// The driver of the outside capability connection `connection` fills
@@ -295,6 +314,13 @@ pub trait Host {
     /// The store named `store` (a connection in `app.jadpo`, area 11), or
     /// `None` when the host has none by that name.
     fn database(&self, store: &str) -> Option<&dyn Database>;
+
+    /// What the runtime fetches from outside on its own account (chunk
+    /// 7.7b): `None` on a host that reaches nothing, where an SNS webhook
+    /// is answered `503` until its certificate can be fetched.
+    fn outbound(&self) -> Option<&dyn Outbound> {
+        None
+    }
 
     /// Runs `work` once the response being answered has been handed back,
     /// without holding that response up: what the runner gives it to run
@@ -442,6 +468,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn database(&self, store: &str) -> Option<&dyn Database> {
         (**self).database(store)
+    }
+
+    fn outbound(&self) -> Option<&dyn Outbound> {
+        (**self).outbound()
     }
 
     fn defer(&self, work: LocalFuture<'static, ()>) {

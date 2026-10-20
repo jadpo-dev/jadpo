@@ -1767,6 +1767,34 @@ its way, and an action called counts the changing calls of the longest
 way through it. The record and replay come with roadmap 7.5b, and the
 operator's items, the tests' crash points and the warning with 7.5c.
 
+Built in chunk 7.5b, the record: an action whose longest way makes
+several changing calls, run by a subscriber's delivery or by a route
+whose API requires `Idempotency-Key` under the key it claimed, keeps its
+steps in `jadpo_step_records` and `jadpo_steps` (area 5, "System
+tables") in the store it writes, or `events: { store: }`'s. Each step
+(each changing call, and a provider's read after the first) is written
+before it goes out, with its operation, an HMAC of each top-level field
+of its request and when it was sent, and its answer after it, sealed; a
+rerun (a delivery's retry, a client's retry under its key, area 6's
+rerun) replays an answered step without sending it once its operation and
+fields match, with `clock.now` fixed at the first run's start; a step in
+doubt goes again under its key within the provider's `window:` less the
+margin, and parks as `outcome_unknown` after it, with no key, or on a
+`5xx` from a provider that `replays_failures: true`; the provider's
+`in_use:` is retried later, its `reused:` is `diverged`; a request that
+differs, a run that makes another operation at a step, and one that ends
+before replaying every recorded step stop as `diverged` before sending
+anything, the delivery held in that state with the step, the operation
+and the fields, never a value; a record written by a newer runner (a
+delivery's later attempt, a route's later claim) takes no write from an
+older one; a `put` in such an action keeps its object under a key
+derived from its step; and the record is deleted in the action's commit.
+Answers are sealed with `application { steps: { encryption_key: } }`
+([`step.encryption_key_required`](#step-encryption-key-required),
+[`step.settings_invalid`](#step-settings-invalid)). Live tests in
+`crates/jadpo-cli/tests/step_records.rs`. Choices in the decisions table,
+"The record, chosen in chunk 7.5b".
+
 A bakery pays an approved invoice and keeps a copy of it, two changing
 calls each under its own key, then records the payment, in a subscriber:
 
@@ -1788,6 +1816,9 @@ application {
             path: "/var/lib/bakery/sheets"
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
 }
 ```
 
@@ -1798,6 +1829,7 @@ config {
         secret: true
     }
     pay_environment: ProviderEnvironment
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -2061,7 +2093,8 @@ outbox and delivered to subscribers like any event, with the same retries.
   delivery may be out of order, which the app handles by ignoring an event
   older than what it stored (a recipe shows it). A webhook that needs a
   reply runs the connection's named action inside the request instead
-  (area 11).
+  (area 11; built in chunk 7.7b, the event never kept in the outbox and
+  its reply kept with its id for a repeat).
   Built in chunk 7.7 (area 11, "Chosen in chunk 7.7"): the event's id
   recorded in `jadpo_received_events` and its outbox row and deliveries
   written in one transaction in `events: { store: }` or the only store
@@ -2873,6 +2906,15 @@ application {
             path: "/var/lib/bakery/sheets"
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```jadpo check project=e-step-context file=config.jadpo hidden
+config {
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -2983,13 +3025,120 @@ error: `POST /price-sheets` runs `file_prices`, which makes 2 changing calls, bu
   rule: step.context
   help: docs/language/12-jobs-and-events.html#step-context
 
-check failed: 1 error, 7 files
+check failed: 1 error, 8 files
 ```
 
 A schedule's retry is its next run, under a key of its own, and a run
 keeps each item to one changing call, so a schedule and a `batches.each`
 whose action makes several are refused the same way, at the schedule and
 at the run's call.
+
+### `step.encryption_key_required`
+
+The answers of an action with several changing calls are kept, encrypted,
+until it commits, so `app.jadpo` names the `SigningKey` setting they are
+encrypted with (decided 2026-10-20). The error is reported once, at the
+first such action:
+
+```jadpo check project=e-step-encryption-key-required file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+    events: {
+        store: main
+    }
+}
+```
+
+```jadpo check project=e-step-encryption-key-required file=config.jadpo hidden
+config {
+    main_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-step-encryption-key-required file=domains/bakery/types/price_list.jadpo hidden
+/// A supplier's prices, one line for each loaf.
+type PriceList = Text {
+    min_length: 1
+    max_length: 2000
+}
+```
+
+```jadpo check project=e-step-encryption-key-required file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-step-encryption-key-required file=domains/bakery/events/prices_changed.jadpo hidden
+use bakery/types { PriceList }
+
+/// A supplier sent new prices.
+type PricesChanged = Event {
+    price_list: PriceList
+}
+```
+
+```jadpo check project=e-step-encryption-key-required file=domains/bakery/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain bakery; update it with `jadpo records update`, never by hand.
+record events 1
+
+event PricesChanged
+    price_list: Text { min_length: 1, max_length: 2000 }
+```
+
+```jadpo check project=e-step-encryption-key-required file=domains/bakery/subscribers/file_new_prices.jadpo hidden
+use bakery/actions { file_prices }
+use bakery/events { PricesChanged }
+
+/// Files each supplier's new prices.
+subscriber file_new_prices {
+    on: PricesChanged
+    run: file_prices(event)
+}
+```
+
+```jadpo check project=e-step-encryption-key-required file=domains/bakery/actions/file_prices.jadpo expect=step.encryption_key_required
+use app { sheets }
+use bakery/failures { SheetNotKept }
+use bakery/events { PricesChanged }
+
+/// Keeps a supplier's new prices as a sheet, then a copy for the
+/// accountant.
+action file_prices(event: PricesChanged) fails SheetNotKept -> Unit {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    var invoice_copy: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    assert sheet != invoice_copy
+}
+```
+
+```text output
+error: `file_prices` makes 2 changing calls, but `app.jadpo` names no key to encrypt their answers with
+ --> domains/bakery/actions/file_prices.jadpo:8:31
+  |
+8 |     var sheet: File = attempt sheets.put(encoding.to_utf8(event.price_list), FileType.csv) {
+  |                               ^^^^^^^^^^ its answers are kept
+  reason: Each answer of an action with several changing calls is kept, encrypted, until the action commits, so a retry can replay it; `application { steps: { encryption_key: } }` names the `SigningKey` setting it is encrypted with, and `file_prices` is the first action that needs it.
+  next: Add `steps: { encryption_key: config.step_encryption_key }` to `application { }` in `app.jadpo`, and declare `step_encryption_key: SigningKey` in `config.jadpo` (human)
+  rule: step.encryption_key_required
+  help: docs/language/12-jobs-and-events.html#step-encryption-key-required
+
+check failed: 1 error, 7 files
+```
 
 ### `step.large_output`
 
@@ -3006,6 +3155,9 @@ application {
             environment: config.pay_environment
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
 }
 ```
 
@@ -3015,6 +3167,7 @@ config {
         secret: true
     }
     pay_environment: ProviderEnvironment
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -3128,6 +3281,41 @@ error: `pay.bank_statements.export` gives a large answer, and `pay_supplier` mak
 check failed: 1 error, 10 files
 ```
 
+### `step.settings_invalid`
+
+`steps:` holds one setting, `encryption_key:`, which reads a `SigningKey`
+setting:
+
+```jadpo check project=e-step-settings-invalid file=config.jadpo hidden
+config {
+    step_encryption_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e-step-settings-invalid file=app.jadpo expect=step.settings_invalid
+application {
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```text output
+error: `encryption_key:` reads `step_encryption_key`, which isn't a `SigningKey`
+ --> app.jadpo:3:25
+  |
+3 |         encryption_key: config.step_encryption_key
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^ `step_encryption_key` is `Text`
+  reason: A record's answers are encrypted with a `SigningKey` setting: secret, at least 32 characters, and replaced by moving the old value to the variable with `_PREVIOUS` after its name (area 10), as grants' `encryption_key:` is.
+  next: Declare `step_encryption_key: SigningKey` in `config.jadpo` (agent)
+  rule: step.settings_invalid
+  help: docs/language/12-jobs-and-events.html#step-settings-invalid
+
+check failed: 1 error, 2 files
+```
+
 ### `step.store_required`
 
 Each changing call is recorded beside the outbox of the store its action
@@ -3141,6 +3329,15 @@ application {
             path: "/var/lib/bakery/sheets"
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```jadpo check project=e-step-store-required file=config.jadpo hidden
+config {
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -3217,7 +3414,7 @@ error: `file_prices` makes 2 changing calls but writes no store to keep their re
   rule: step.store_required
   help: docs/language/12-jobs-and-events.html#step-store-required
 
-check failed: 1 error, 6 files
+check failed: 1 error, 7 files
 ```
 
 ### `step.too_many`
@@ -3233,6 +3430,15 @@ application {
             path: "/var/lib/bakery/sheets"
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```jadpo check project=e-step-too-many file=config.jadpo hidden
+config {
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -3301,7 +3507,7 @@ error: `share_prices` makes 9 changing calls in a row, more than 8
   rule: step.too_many
   help: docs/language/12-jobs-and-events.html#step-too-many
 
-check failed: 1 error, 4 files
+check failed: 1 error, 5 files
 ```
 
 ### `step.unkeyed`
@@ -3320,6 +3526,9 @@ application {
             environment: config.pay_environment
         }
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
 }
 ```
 
@@ -3329,6 +3538,7 @@ config {
         secret: true
     }
     pay_environment: ProviderEnvironment
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -4680,6 +4890,7 @@ Not yet:
 | Topic | Decision | Date |
 |---|---|---|
 | Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise (decided for Richard, following grants) | 2026-10-20 |
+| The record, chosen in chunk 7.5b | Each the conservative reading, where the pages left it open. A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for roadmap 7.5c's `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` comes with 7.5c's new key generation (decided for Richard) | 2026-10-20 |
 | Triggers | Carried from area 1: routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
 | Keyword and folders | Carried from area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` | 2026-10-12 |
 | Cross-domain changes | Carried from area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing | 2026-10-12 |

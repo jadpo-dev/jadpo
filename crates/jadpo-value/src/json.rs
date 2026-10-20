@@ -114,6 +114,8 @@ pub fn parts_members(
     wire::parts_write(standard, contract, parts)
 }
 
+pub use wire::instant_from_wire;
+
 /// Where in the input a value is: field names, list positions and
 /// [`MAP_ENTRY`] for a map's entry, as a problem shows it; with where it
 /// stands in the document itself and the document's numbers as written,

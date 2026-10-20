@@ -59,6 +59,32 @@ pub enum SessionEffect {
     End,
 }
 
+/// What an action did to the cookie binding a `same_browser:` magic link
+/// to the browser that asked for it (area 8, "Writing the routes
+/// yourself"; chunk 7.3b3): the response of the route whose action calls
+/// `magic_links.request` sets it, and one that signs in with the link
+/// clears it, as the generated routes do.
+#[derive(Clone, PartialEq, Eq)]
+pub enum Binding {
+    /// Set: its token, and how long it lasts in seconds.
+    Set { token: String, max_age: i64 },
+    /// Cleared.
+    Clear,
+}
+
+impl fmt::Debug for Binding {
+    /// Never the token.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Binding::Set { max_age, .. } => f
+                .debug_struct("Set")
+                .field("max_age", max_age)
+                .finish_non_exhaustive(),
+            Binding::Clear => f.write_str("Clear"),
+        }
+    }
+}
+
 /// The signed-in caller of the request being answered (area 8).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Caller {
@@ -104,6 +130,8 @@ pub struct Held {
     pub session: Option<SessionEffect>,
     /// Whether the body issued an API token or a service key.
     pub issued: bool,
+    /// What the body did to a `same_browser:` magic link's cookie.
+    pub binding: Option<Binding>,
 }
 
 impl fmt::Debug for Held {
@@ -113,6 +141,7 @@ impl fmt::Debug for Held {
             .field("deliveries", &self.deliveries)
             .field("session", &self.session)
             .field("issued", &self.issued)
+            .field("binding", &self.binding)
             .finish()
     }
 }
@@ -148,6 +177,9 @@ pub struct Ctx<'p> {
     /// The address the request being answered counts as (area 10, "Client
     /// addresses"); `None` when none is known.
     client: Option<String>,
+    /// The cookie binding a `same_browser:` magic link to this browser,
+    /// as the request being answered sent it (area 8; chunk 7.3b3).
+    sign_in_cookie: Option<String>,
     /// Whether the statements it runs leave their policy out: only for a
     /// call a test, fixture or seed makes without a caller (area 9).
     unpoliced: bool,
@@ -176,6 +208,14 @@ pub struct Ctx<'p> {
     /// Whether its keyed provider calls count their steps outside an
     /// action: only `jadpo package record`'s one call (chunk 7.2d2).
     standalone_calls: bool,
+    /// The generation of the runner that runs it where its key survives a
+    /// retry: a delivery's attempt, a route's claim (area 12, "One runner
+    /// per record"; chunk 7.5b). `None` for anything else, which keeps no
+    /// record of its steps.
+    resumable: Option<i64>,
+    /// The record of the steps of the action its outermost boundary runs,
+    /// while that is open (chunk 7.5b).
+    record: Option<crate::steps::Record>,
     /// The connections the package actions it is running were called
     /// through, innermost last (area 11, "What package code may do";
     /// chunk 7.6): a package action's own operations go through it.
@@ -229,6 +269,7 @@ impl<'p> Ctx<'p> {
             held: None,
             caller: None,
             client: None,
+            sign_in_cookie: None,
             unpoliced: false,
             deadline: None,
             settings: Vec::new(),
@@ -238,8 +279,54 @@ impl<'p> Ctx<'p> {
             steps: 0,
             request_id: None,
             standalone_calls: false,
+            resumable: None,
+            record: None,
             through: Vec::new(),
         }
+    }
+
+    /// Runs what follows where its key survives a retry, for the runner
+    /// whose generation is `generation` (a delivery's attempt, a route's
+    /// claim), or with `None` where it doesn't: an action with several
+    /// changing calls keeps a record of its steps only there (area 12;
+    /// chunk 7.5b).
+    pub fn set_resumable(&mut self, generation: Option<i64>) {
+        self.resumable = generation;
+    }
+
+    /// The generation of the runner that runs it where its key survives a
+    /// retry.
+    pub fn resumable(&self) -> Option<i64> {
+        self.resumable
+    }
+
+    /// The record of the running action's steps, while one is kept.
+    pub(crate) fn steps_record(&self) -> Option<&crate::steps::Record> {
+        self.record.as_ref()
+    }
+
+    pub(crate) fn steps_record_mut(&mut self) -> Option<&mut crate::steps::Record> {
+        self.record.as_mut()
+    }
+
+    pub(crate) fn set_steps_record(&mut self, record: Option<crate::steps::Record>) {
+        self.record = record;
+    }
+
+    pub(crate) fn take_steps_record(&mut self) -> Option<crate::steps::Record> {
+        self.record.take()
+    }
+
+    /// Where the running action's record has got to: the step it reached
+    /// last, with that step's key generation (chunk 7.5b).
+    pub(crate) fn steps_at(&self) -> Option<crate::steps::StepAt> {
+        self.record.as_ref().and_then(crate::steps::Record::reached)
+    }
+
+    /// Stops the invocation's clock at `clock`: a record's first run's
+    /// start, which `clock.now` reads for every rerun (chunk 7.5b).
+    pub(crate) fn set_clock(&mut self, clock: crate::Clock) {
+        self.env.clock = clock;
     }
 
     /// A package action called through `connection` starts (chunk 7.6).
@@ -402,6 +489,56 @@ impl<'p> Ctx<'p> {
     /// Sets the address the request being answered counts as.
     pub fn set_client(&mut self, client: Option<String>) {
         self.client = client;
+    }
+
+    /// The cookie binding a `same_browser:` magic link to the browser the
+    /// request being answered came from, when it sent one.
+    pub fn sign_in_cookie(&self) -> Option<&str> {
+        self.sign_in_cookie.as_deref()
+    }
+
+    /// Sets the cookie binding a magic link to the request's browser.
+    pub fn set_sign_in_cookie(&mut self, cookie: Option<String>) {
+        self.sign_in_cookie = cookie;
+    }
+
+    /// Records what the running action did to a magic link's binding
+    /// cookie; `false` outside an action.
+    pub fn binding(&mut self, binding: Binding) -> bool {
+        match &mut self.boundary {
+            Some(boundary) => {
+                boundary.set_binding(binding);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Whether the running action has asked for a magic link, whose row
+    /// its transaction holds until it ends.
+    pub fn asked_sign_in(&self) -> bool {
+        self.boundary
+            .as_ref()
+            .is_some_and(|boundary| boundary.asked_sign_in())
+    }
+
+    /// Records that the running action asked for a magic link.
+    pub fn ask_sign_in(&mut self) {
+        if let Some(boundary) = &mut self.boundary {
+            boundary.ask_sign_in();
+        }
+    }
+
+    /// Takes the running action's boundary away, for work that must run
+    /// in a transaction of its own while it waits, such as
+    /// `on_first_sign_in:`'s action (area 8); [`Ctx::give_boundary`] puts
+    /// it back.
+    pub(crate) fn take_boundary(&mut self) -> Option<Boundary> {
+        self.boundary.take()
+    }
+
+    pub(crate) fn give_boundary(&mut self, boundary: Option<Boundary>) {
+        self.boundary = boundary;
     }
 
     /// Sets the request's signed-in caller, for what a route runs; the

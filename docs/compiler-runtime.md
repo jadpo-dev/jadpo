@@ -1639,6 +1639,34 @@ subscriber. The HTTP component answers the routes in
 the link and the code (`magic_links::mint`) and `email::message` writes
 it from Jadpo's messages, wrapped in the app's layout.
 
+Built in chunk 7.3b2: the app's own sign-in email and sending (area 16,
+levels 4 and 5). `MagicLink::email` and `send` are read as written and
+checked by `sign_in_email` and `sign_in_send_action`; `MagicLinkEmail`'s
+fields come from `jadpo_std::email` (`types::builtin_fields`, which
+`pick:` copies from), and `SignInCode` is a `Builtin`. The plan sets
+`MagicLinkEmailPlan::own` (the app email's key) and `send` (the action's
+callable); with `send` the email's subscriber targets the action, with or
+without an email connection. `email::message` fills the app's email from
+the minted link and code and renders it as any email; the runner gives a
+`send` action the `MagicLinkRequest` `magic_links::request_value` makes
+for each attempt (`runner::run_job` runs it as a subscriber's action).
+
+Built in chunk 7.3b3: the app's own magic-link routes. `MagicLink::
+generate_routes` is read, and `Identity::magic_link_routes` is what the
+generated routes, the API record, OpenAPI and `jadpo routes` list.
+`magic_links.request`, `.redeem` and `.redeem_code` are `SessionOp`s
+(`magic_link_op`), checked by `magic_link_call`; `SignInToken` is a
+`Builtin` and `MagicLinkRedeemed` a built-in object. The interpreter's
+`session` hands them to `http::magic_links::{request, redeem,
+redeem_code}`, which run the generated routes' own `Site` steps: `ask`
+in the action's transaction with the email as the action's event, and
+`by_token`, `by_code` and `person` in transactions of their own, with
+`on_first_sign_in:`'s action run outside the waiting boundary
+(`Ctx::take_boundary`). A `Refused` becomes the route's response or the
+operation's failure (`Failure::retry_after` gives `Retry-After`); the
+binding cookie travels as `Ctx::sign_in_cookie` in and `Binding` out
+(`Held::binding`).
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving
@@ -2217,6 +2245,36 @@ require `Idempotency-Key`, or a run's `each:` or `finished:`; and
 the key (`resumable_runs`), runs with no store for its record. The
 record itself is roadmap 7.5b's.
 
+**The record of several changing calls** (chunk 7.5b; area 12, "Several
+changing calls in one action"). `jadpo_check::types::record_plans` plans
+a `jadpo_std::steps::RecordPlan` (its store and a digest of its step
+shape) for each action `resumable_runs` names whose longest way makes
+several changing calls, on its `CallablePlan::record`, with the plan's
+`steps_key` (the `SigningKey` setting `application { steps: {
+encryption_key: } }` names, read by `steps_settings`) and `build_id`;
+the schema puts `jadpo_std::system::STEP_TABLES` in that store.
+`ActionBody::record` gives the runtime a `steps::Spec`, and an outermost
+boundary opens the record (`steps::open`) only when its runner set
+`Ctx::set_resumable` with its generation: the runner's delivery attempt,
+or a route's claim under a required `Idempotency-Key`. Opening takes the
+record over for that generation, loads its steps (answers opened with a
+ring `KeyRing::derived` from the steps key) and fixes the invocation's
+clock at the record's first start; each rerun of the body rewinds it
+(`steps::rewind`). A provider call and a store's `put` ask
+`steps::step` with their operation and each top-level field of the
+request: untracked, a recorded answer to replay (logged as
+`Source::Replayed`), or a place to send at, whose row
+`effects::exchange` writes (`steps::sending`) before the driver is
+asked; the answer is kept sealed after (`steps::answered`), the
+provider's `reused:` code and a request that differs are
+`FaultKind::Diverged`, and a step in doubt goes again under its key only
+within the provider's `window:` less its margin. A body that ends before
+replaying every recorded step diverges (`steps::finished`), and
+`boundary::seal` deletes the record in the commit transaction. Every
+record write is one statement that takes the record over only from an
+equal or older generation (`steps::SEND`, `ANSWER`, `DIVERGE`,
+`DELETE`). The runner holds a diverged delivery as `outbox::DIVERGED`.
+
 **A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
 kept"). The plan marks a `BatchCall` whose action makes outside calls
 (`calls`, from `outside_calls`), and the runner runs each of its items
@@ -2347,6 +2405,27 @@ and one read-committed transaction records the provider's id (`RECEIVE`,
 `outbox::write`, the deliveries deferred as an action's are. The tick
 deletes ids received 30 days before (`OLD_RECEIVED`, the plan's
 `SchedulesPlan::received`). Live tests in `crates/jadpo-cli/tests/webhooks.rs`.
+
+**Webhook replies and handshakes** (chunk 7.7b; area 11, "Chosen in chunk
+7.7b"). `SignatureScheme` gains `twilio`, `slack` and `sns`, and
+`WebhookPlan` a `WebhookHandshake`; each `WebhookEvent` whose package
+event names a `reply:` carries a `WebhookReply`, the answering action's
+key (from `webhooks::WebhookModel::replies`, checked against the action's
+signature) and the reply type's number in the JSON table. The checker
+reads `reply:` as a setting of an `Event`, never a field
+(`types::shape::REPLY`). In the runtime, `webhooks::check` stays pure for
+every scheme but SNS's, whose `webhooks::sns::check` fetches the signing
+certificate through the host's `Outbound` (`Host::outbound`; natively
+`jadpo_host_native::fetch::Outward`: HTTPS only, public addresses only,
+no redirect) and keeps it per thread for a day, verified with
+`jadpo_value::certificate::rsa_signed`. `webhooks::handshake` answers
+Graph's validation before the signature, Slack's challenge and SNS's
+confirmation after it, and `webhooks::replies::answer` claims the id in
+`jadpo_received_events` (its `reply` column), runs the action as the
+system and keeps its reply. A test reaches a server on its own machine in
+AWS's place through `Outward::reaching`, built only with
+`jadpo-host-native`'s `test-outbound` feature, given to the harness with
+`Harness::outbound`.
 
 **Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
 6.4b"; area 12, "How a file's run is kept"). The `files` capability's

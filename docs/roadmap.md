@@ -1218,20 +1218,49 @@ The design is area 11 as revised on 2026-10-16, with its research in
   "Magic links (chosen in chunk 7.3b)" rows and area 16's "Chosen in
   chunk 7.3b"; area 8's question 15 (`routes` is a reserved word)
   decided as `generate_routes: false`.
-- [ ] **7.3b2 Magic links: the app's own email, its own routes, and the
-  sign-in events** `opus · high`, after 7.3b (split from 7.3b on
-  2026-10-20):
-  `magic_link: { email: }` (level 4, `MagicLinkEmail` with `pick:`,
-  `SignInCode`) and `send:` (level 5, an action taking
-  `MagicLinkRequest`, retried as a subscriber), `email.connection_required`
-  waived with `send:`; `generate_routes: false`
-  and `magic_links.request`, `.redeem` and `.redeem_code` for the app's
-  own routes, keeping every protection; the events `SignedIn`,
-  `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, the
-  refusal's reason logged; `FirstSignIn` made in tests to call
-  `on_first_sign_in:`'s action directly.
+- [x] **7.3b2 Magic links: the app's own email and sending** `opus · high`,
+  after 7.3b (split from 7.3b on 2026-10-20, and again on 2026-10-20 into
+  7.3b2, 7.3b3 and 7.3b4): `magic_link: { email: }` (level 4,
+  `MagicLinkEmail` with `pick:`, `SignInCode`) and `send:` (level 5, an
+  action taking `MagicLinkRequest`, retried as a subscriber),
+  `email.connection_required` waived with `send:`. Built: `email:`
+  checked as an `EmailMessage` of the app's whose every field besides
+  `to:` and `locale:` is picked from the built-in `MagicLinkEmail`
+  (`address`, `sign_in_link`, `code`, `expires_in`), never emitted;
+  `send:` checked as an action taking one `MagicLinkRequest` and
+  returning `Unit`, needing no email connection; `SignInCode`, six digits
+  of text, never kept, answered, put in a failure or an event, or written
+  as JSON, and `MagicLinkEmail` copied only into an email; the one
+  `jadpo.MagicLinkEmail` delivery filling and rendering the app's email
+  from the link and the code it makes, or running the app's action as a
+  subscriber's, each attempt with a new link and code. Live tests in
+  `crates/jadpo-cli/tests/magic_links.rs`, the provider faked. Choices in
+  area 8's "The app's own sign-in email and sending (chosen in chunk
+  7.3b2)" and area 16's "Chosen in chunk 7.3b2".
+- [x] **7.3b3 Magic links: the app's own routes** `opus · high`, after
+  7.3b2 (split from 7.3b2 on 2026-10-20): `generate_routes: false` and
+  `magic_links.request`, `.redeem` and `.redeem_code` for the app's own
+  routes, keeping every protection (`SignInToken`, `MagicLinkRedeemed`,
+  `same_browser:`'s cookie on the response of the route whose action asks).
+  Built: `generate_routes:` read (never beside `path:`), switching the
+  generated routes off everywhere they are listed; the three operations
+  checked in actions only, needing `generate_routes: false`, and run by
+  the generated routes' own code, asking in the action's transaction with
+  the email sent once it commits, and using a link or a code in a
+  transaction of its own so wrong codes stay counted; `SignInToken` never
+  kept, answered, put in a failure, an event or an email, or written as
+  JSON; `MagicLinkRedeemed` made only by the runtime; the binding cookie
+  set and cleared on the app's route's response; `Retry-After` on the
+  operations' limits; `sign_in_return_invalid`. Live tests in
+  `crates/jadpo-cli/tests/magic_links.rs`. Choices in area 8's "The app's
+  own routes (chosen in chunk 7.3b3)".
+- [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
+  on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
+  `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;
+  `FirstSignIn` made in tests to call `on_first_sign_in:`'s action
+  directly.
 - [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
-  from 5.5z), after 7.3b2 and the events of area 12: `passkey:` needs
+  from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
   `address:` rather than the principal's subject; `test_passkeys.register`
@@ -1307,7 +1336,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   12. Choices in area 3's "Outside calls in loops, checked" and area 12's
   "Several changing calls, checked"; area 11's 256 KB answer cap corrected
   to area 12's 1 MB.
-- [ ] **7.5b Multi-step calls: the record** `opus · xhigh`, after 7.5
+- [x] **7.5b Multi-step calls: the record** `opus · xhigh`, after 7.5
   (split from 7.5 on 2026-10-20): each step recorded before it is sent
   and its answer after, in the runtime's own short transactions in the
   store 7.5 names, extending `effects::exchange` and the provider call
@@ -1319,11 +1348,30 @@ The design is area 11 as revised on 2026-10-16, with its research in
   for and `reused` diverged; a delivery's lease generation checked by
   every record write; the record deleted in the commit, with the build id
   and the step shape it started under; answers encrypted with `application {
-  steps: { encryption_key: } }` (area 12, decided 2026-10-20).
+  steps: { encryption_key: } }` (area 12, decided 2026-10-20). Built:
+  `jadpo_step_records` and `jadpo_steps` in the store such an action
+  writes; the plan's `RecordPlan` (store, step-shape digest), steps key
+  and build digest; `steps_settings` with `step.encryption_key_required`
+  and `step.settings_invalid`; the provider plan reads `window:`,
+  `replays_failures:`, `new_key_on:` and `changes:`. The runtime's
+  `steps` module opens the record at an outermost boundary whose runner
+  set its generation (a delivery's attempt, a route's claim under a
+  required `Idempotency-Key`), fixes the clock, and checks each step
+  (operation, an HMAC of each request field) before replaying its sealed
+  answer or sending it, `exchange` writing the step first; a `put`'s
+  object keyed from its step; `FaultKind::Diverged` and the delivery
+  state `diverged`; the record deleted in `seal`. Live tests in
+  `step_records.rs`: replay with the first run's time, a changed request
+  diverging and finishing once put back, the window, a replayed `5xx`,
+  `in_use` and `reused`, an older generation writing nothing, an answer
+  past 1 MB, area 6's rerun, a route's client retry, and a recorded step
+  never reached. Choices in area 12's "The record, chosen in chunk 7.5b".
 - [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
   high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
-  as an operator item (`jadpo deliveries show`, `retry --not-done`,
-  `abandon`, a route's key lapsing), kept 30 days; `jadpo runs unfinished
+  as an operator item (`jadpo deliveries show`, `retry --not-done` under
+  the next key generation, `abandon`, a route's key lapsing), kept 30
+  days, with 7.5b's `diverged` deliveries listed and retried, and the
+  provider's `new_key_on:` sending under the next key generation; `jadpo runs unfinished
   --build`; fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
   crash at each step boundary; each step's state in `jadpo dev` and
   `jadpo watch`; the late-failure warning (a declinable error) and the
@@ -1378,13 +1426,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   transaction, a repeat answered and dropped, and the ids deleted by the
   tick after 30 days. Live tests in `webhooks.rs`. Choices in area 11's
   "Chosen in chunk 7.7".
-- [ ] **7.7b Webhook replies and handshakes** `opus · high`, after 7.7:
-  `reply:` on a package's event and the connection's `webhooks: {
-  replies: }`, the answering action run inside the request after the
-  signature check, a repeat given the stored reply; `handshake:`
-  (`WebhookHandshake.sns`, `.slack`, `.microsoft_graph`); and Twilio's
-  HMAC-SHA1 over a form body and SNS's certificates, which fetch the
-  signing certificate from AWS through an outbound guard.
+- [x] **7.7b Webhook replies and handshakes** `opus · high`, after 7.7.
+  Built: `reply:` on a package's event (an object of its own `types/`)
+  and the connection's `webhooks: { replies: }`, the answering action run
+  as the system inside the request after the signature check, its reply
+  kept with the event's id in `jadpo_received_events` so a repeat gets it,
+  and the event never kept for subscribers; `handshake:`
+  (`WebhookHandshake.sns`, `.slack`, `.microsoft_graph`); Twilio's
+  HMAC-SHA1 over a form body, Slack's scheme (`SignatureScheme.slack`),
+  and SNS's certificates, fetched only from AWS's SNS hosts through the
+  host's outbound guard (HTTPS, no redirect, no private address) and kept
+  a day, the connection's secret the topic's ARN. Live tests in
+  `webhook_replies.rs`, SNS's against a local certificate and server.
+  Choices in area 11's "Chosen in chunk 7.7b".
 - [x] **7.7c Queues through `receiving`** `opus · high` (split on
   2026-10-20: the Cloudflare Queues driver is 7.7c2). Built: `receiving:`
   in `application { }` (`type_at:`, `id_at:`, `events:` named as code

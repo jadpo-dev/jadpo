@@ -130,6 +130,8 @@ pub struct WebhookReach {
     pub event_id: Option<String>,
     pub event_type: Option<String>,
     pub occurred_at: Option<String>,
+    /// `handshake:`'s rule after `WebhookHandshake.`, `sns` (chunk 7.7b).
+    pub handshake: Option<String>,
 }
 
 /// A provider's `idempotency:` (area 11, "How the API is reached"): what
@@ -145,6 +147,12 @@ pub struct Idempotency {
     pub in_use: Option<String>,
     /// The provider's error code for a key sent with a different request.
     pub reused: Option<String>,
+    /// How long the provider keeps a key, in milliseconds (`window:`).
+    pub window_ms: Option<u64>,
+    /// The provider's error code for a key that can't be used again.
+    pub new_key_on: Option<String>,
+    /// Whether the provider replays a failed answer under the same key.
+    pub replays_failures: bool,
 }
 
 /// One connection to a provider package, as `app.jadpo` gives it.
@@ -177,7 +185,10 @@ pub struct PackageConnection {
     /// `webhooks: { secret: config.<name> }`: the secret setting its
     /// provider's webhooks are checked with, when it receives them (area
     /// 11, "Receiving from outside"; chunk 7.7), and where it is written.
-    pub webhook_secret: Option<(String, (String, u32, u32))>,
+    pub webhook_secret: Option<WrittenSecret>,
+    /// `webhooks: { replies: { } }` as written (chunk 7.7b): each event's
+    /// lower_snake name and the action that answers it.
+    pub webhook_replies: Vec<WrittenReply>,
     /// The setting an AWS credential's access key id is read from, beside
     /// its secret, `credential: { key_id: secret: }` (chunk 7.7c).
     pub key_id: Option<String>,
@@ -185,6 +196,35 @@ pub struct PackageConnection {
     /// 7.7c).
     pub settings: Vec<(String, Given)>,
     pub reach: Reach,
+}
+
+/// A secret setting's name and where it is written: a path and its span.
+pub type WrittenSecret = (String, (String, u32, u32));
+
+/// One entry of a connection's `webhooks: { replies: }` (area 11,
+/// "Webhooks that need a reply"; chunk 7.7b): `incoming_call:
+/// support.answer_call`, read as written; [`crate::webhooks`] finds the
+/// event and the action.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WrittenReply {
+    /// The event's name in lower_snake_case, `incoming_call`.
+    pub event: String,
+    /// Where its key and its value are written: a path and its span.
+    pub key_at: (String, u32, u32),
+    /// The action's name as written, `support.answer_call`, or `None`
+    /// when it isn't a name.
+    pub action: Option<Vec<String>>,
+    pub value_at: (String, u32, u32),
+}
+
+impl WrittenReply {
+    pub fn key_span(&self) -> Span {
+        Span::new(self.key_at.0.clone(), self.key_at.1, self.key_at.2)
+    }
+
+    pub fn value_span(&self) -> Span {
+        Span::new(self.value_at.0.clone(), self.value_at.1, self.value_at.2)
+    }
 }
 
 /// The connections to packages, and the problems with them.
@@ -476,6 +516,15 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                         Some("event_id") => webhooks.event_id = text_of(&inner),
                         Some("event_type") => webhooks.event_type = text_of(&inner),
                         Some("occurred_at") => webhooks.occurred_at = text_of(&inner),
+                        Some("handshake") => {
+                            webhooks.handshake = inner.value().map(|value| {
+                                let written = tree::written(value.syntax());
+                                written
+                                    .strip_prefix("WebhookHandshake.")
+                                    .unwrap_or(&written)
+                                    .to_string()
+                            });
+                        }
                         _ => {}
                     }
                 }
@@ -500,6 +549,20 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                         }
                         Some("in_use") => idempotency.in_use = text_of(&inner),
                         Some("reused") => idempotency.reused = text_of(&inner),
+                        Some("new_key_on") => idempotency.new_key_on = text_of(&inner),
+                        Some("window") => {
+                            idempotency.window_ms =
+                                match inner.value().as_ref().map(Const::from_expr) {
+                                    Some(Const::Duration(text)) => jadpo_std::Dur::parse(&text)
+                                        .and_then(|dur| u64::try_from(dur.millis).ok()),
+                                    _ => None,
+                                };
+                        }
+                        Some("replays_failures") => {
+                            idempotency.replays_failures = inner
+                                .value()
+                                .is_some_and(|value| tree::written(value.syntax()) == "true");
+                        }
                         _ => {}
                     }
                 }
@@ -689,6 +752,7 @@ impl Reader<'_> {
             sandbox: Vec::new(),
             retry: None,
             webhook_secret: None,
+            webhook_replies: Vec::new(),
             key_id: None,
             settings: Vec::new(),
             reach: reach.clone(),
@@ -707,7 +771,9 @@ impl Reader<'_> {
                 "development" => read.sandbox = self.development(member, out),
                 "retry" => read.retry = self.retry(member, out),
                 "webhooks" => match &reach.webhooks {
-                    Some(_) => read.webhook_secret = self.webhooks(member, out),
+                    Some(_) => {
+                        (read.webhook_secret, read.webhook_replies) = self.webhooks(member, out);
+                    }
                     None => out.push(
                         self.not_taken(key_span, "webhooks", &package)
                             .reason(format!(
@@ -1269,14 +1335,15 @@ impl Reader<'_> {
         Some(field)
     }
 
-    /// `webhooks: { secret: config.<name> }` (chunk 7.7): the secret
-    /// setting the provider's webhooks are checked with, and where it is
-    /// written. `replies:` waits for chunk 7.7b.
+    /// `webhooks: { secret: config.<name>  replies: { } }` (chunk 7.7):
+    /// the secret setting the provider's webhooks are checked with, and
+    /// where it is written; and the actions that answer the webhooks that
+    /// need a reply, as written (chunk 7.7b).
     fn webhooks(
         &self,
         member: &ast::Member,
         out: &mut Vec<Diagnostic>,
-    ) -> Option<(String, (String, u32, u32))> {
+    ) -> (Option<WrittenSecret>, Vec<WrittenReply>) {
         let Some(block) = member.block() else {
             out.push(
                 self.invalid(
@@ -1287,9 +1354,10 @@ impl Reader<'_> {
                 .reason("`webhooks:` gives the secret the provider signs its webhooks with, from a secret setting, which turns on the route that receives them.")
                 .next("Write `webhooks: { secret: config.<name> }`"),
             );
-            return None;
+            return (None, Vec::new());
         };
         let mut secret = None;
+        let mut replies = Vec::new();
         let mut given = false;
         for (key, entry) in tree::members(Some(block)) {
             let Some(written) = name_text(&key) else {
@@ -1303,15 +1371,7 @@ impl Reader<'_> {
                         .secret(&entry, "webhook secret", out)
                         .map(|field| (field, (key_span.path, key_span.start, key_span.end)));
                 }
-                "replies" => out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        "Webhook replies aren't built yet",
-                    )
-                    .at(key_span, "declared, not built")
-                    .reason("The language lets an app's action answer a webhook in its own response, but this compiler can't run one yet.")
-                    .next("Do without `replies:` for now"),
-                ),
+                "replies" => replies = self.replies(&entry, out),
                 other => out.push(
                     Diagnostic::new(
                         &rule::CONNECTION_KEY_INVALID,
@@ -1337,7 +1397,48 @@ impl Reader<'_> {
                 .next("Declare `<name>: Text { secret: true }` in `config.jadpo`, and add `secret: config.<name>`"),
             );
         }
-        secret
+        (secret, replies)
+    }
+
+    /// `replies: { <event>: <domain>.<action> }` as written (chunk 7.7b).
+    fn replies(&self, member: &ast::Member, out: &mut Vec<Diagnostic>) -> Vec<WrittenReply> {
+        let Some(block) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `replies:` isn't a block", self.connection),
+                    self.value_span(member),
+                    "not a block",
+                )
+                .reason("`replies:` names, for each webhook event that needs a reply, the app's action that answers it, keyed by the event's name in lower_snake_case.")
+                .next("Write `replies: { <event>: <domain>.<action> }`"),
+            );
+            return Vec::new();
+        };
+        tree::members(Some(block))
+            .into_iter()
+            .filter_map(|(key, entry)| {
+                let event = name_text(&key)?;
+                let action =
+                    entry
+                        .value()
+                        .as_ref()
+                        .and_then(tree::dotted)
+                        .and_then(|(first, rest)| {
+                            std::iter::once(&first)
+                                .chain(&rest)
+                                .map(tree::name_ref_text)
+                                .collect::<Option<Vec<String>>>()
+                        });
+                let key_span = node_span(self.path, key.syntax());
+                let value_span = self.value_span(&entry);
+                Some(WrittenReply {
+                    event,
+                    key_at: (key_span.path, key_span.start, key_span.end),
+                    action,
+                    value_at: (value_span.path, value_span.start, value_span.end),
+                })
+            })
+            .collect()
     }
 
     /// A key read from a secret setting, `config.<name>`: `what` names it

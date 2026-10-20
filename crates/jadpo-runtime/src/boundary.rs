@@ -23,7 +23,7 @@ use jadpo_std::policy::Gate;
 use jadpo_std::read::RowVersions;
 use jadpo_std::write::RowCheck;
 
-use crate::ctx::{Capabilities, EmitRefused, Held, SessionEffect};
+use crate::ctx::{Binding, Capabilities, EmitRefused, Held, SessionEffect};
 use crate::{
     Ctx, Event, Failure, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError, Stored,
     Transaction,
@@ -66,6 +66,12 @@ pub(crate) struct Boundary {
     /// Whether the body issued an API token or a service key, whose
     /// response is never kept for an idempotent repeat (area 8).
     issued: bool,
+    /// What the body did to a `same_browser:` magic link's cookie, whose
+    /// response is never kept for a repeat either (chunk 7.3b3).
+    binding: Option<Binding>,
+    /// Whether the body asked for a magic link, whose row its transaction
+    /// holds: using one in the same action would wait on itself.
+    asked: bool,
     /// Whether its open transaction has run anything but reads. One that
     /// has only read is a snapshot, which an outside call closes before
     /// it goes out (area 6, "Outside calls hold no transaction"; chunk
@@ -263,6 +269,18 @@ impl Boundary {
         self.issued = true;
     }
 
+    pub(crate) fn set_binding(&mut self, binding: Binding) {
+        self.binding = Some(binding);
+    }
+
+    pub(crate) fn ask_sign_in(&mut self) {
+        self.asked = true;
+    }
+
+    pub(crate) fn asked_sign_in(&self) -> bool {
+        self.asked
+    }
+
     /// Another transaction changed what this one read.
     pub(crate) fn mark_changed(&mut self) {
         self.concurrent_change = true;
@@ -324,6 +342,15 @@ pub trait ActionBody<'p> {
     /// one it writes, or the one `events: { store: }` names, as its plan
     /// says (area 12, chunk 6.1b).
     fn outbox(&self) -> Option<&str> {
+        None
+    }
+
+    /// For an action whose longest way makes several changing calls, run
+    /// where its key survives a retry: where the record of its steps is
+    /// kept, its step shape, and the key its answers are sealed with, as
+    /// its plan says (area 12; chunk 7.5b). Only a boundary of its own
+    /// keeps one, and only for a runner that set [`Ctx::set_resumable`].
+    fn record(&self) -> Option<crate::steps::Spec<'_>> {
         None
     }
 }
@@ -402,6 +429,35 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             gated(ctx, body).await
         };
     }
+    // The record of its steps, kept where its key survives a retry
+    // (chunk 7.5b): opened before its first run, closed after its last.
+    match crate::steps::open(ctx, body.record()).await {
+        Ok(_) => {}
+        Err(unanswered) => {
+            return match unanswered {
+                crate::effects::Unanswered::Fault(kind) => {
+                    Outcome::Fault(ctx.fault(kind, crate::Frame::ENTRY))
+                }
+                crate::effects::Unanswered::Failure(failure) => {
+                    Outcome::Failed(Box::new(Failure {
+                        frames: ctx.frames(),
+                        ..*failure
+                    }))
+                }
+                crate::effects::Unanswered::Failed(_) => Outcome::Failed(Box::new(Failure {
+                    frames: ctx.frames(),
+                    ..unavailable()
+                })),
+            };
+        }
+    }
+    let outcome = own(ctx, body).await;
+    crate::steps::close(ctx);
+    outcome
+}
+
+/// [`action`] in a boundary of its own.
+async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     let hold = ctx.own_boundary();
     let isolation = body.isolation();
     let mut attempt = 1;
@@ -410,8 +466,16 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     let steps = ctx.steps();
     loop {
         ctx.set_steps(steps);
+        crate::steps::rewind(ctx);
         ctx.open_boundary(isolation);
         let mut outcome = gated(ctx, body).await;
+        // A run that ends before replaying every recorded step no longer
+        // runs as the record's did (chunk 7.5b).
+        if matches!(outcome, Outcome::Value(_))
+            && let Err(kind) = crate::steps::finished(ctx).await
+        {
+            outcome = Outcome::Fault(ctx.fault(kind, crate::Frame::ENTRY));
+        }
         if matches!(outcome, Outcome::Value(_)) {
             outcome = sealed(ctx, body.outbox(), outcome).await;
         }
@@ -424,6 +488,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
                 kept: boundary.kept,
                 session: boundary.session,
                 issued: boundary.issued,
+                binding: boundary.binding,
             });
             return outcome;
         }
@@ -574,7 +639,8 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             )
             .await?;
     }
-    Ok(())
+    // The record of its steps goes in the same commit (chunk 7.5b).
+    crate::steps::seal(ctx).await
 }
 
 /// Commits what a held boundary left open, first running `then`, one
@@ -662,6 +728,7 @@ pub(crate) struct Undo {
     emitted: usize,
     session: Option<SessionEffect>,
     issued: bool,
+    binding: Option<Binding>,
 }
 
 impl Undo {
@@ -675,6 +742,7 @@ impl Undo {
                 emitted: boundary.outbox.len(),
                 session: boundary.session.clone(),
                 issued: boundary.issued,
+                binding: boundary.binding.clone(),
             },
             None => Undo {
                 open: false,
@@ -682,6 +750,7 @@ impl Undo {
                 emitted: 0,
                 session: None,
                 issued: false,
+                binding: None,
             },
         };
         if undo.open
@@ -721,6 +790,7 @@ impl Undo {
             boundary.outbox.truncate(self.emitted);
             boundary.session = self.session;
             boundary.issued = self.issued;
+            boundary.binding = self.binding;
         }
         outcome
     }

@@ -723,7 +723,7 @@ fn pay_provider(webhooks: &str) -> String {
 
 /// A provider's `webhooks:` names a built-in scheme, `header:` only for
 /// the one that reads one, and the places of each event's id and type;
-/// Twilio's and SNS's schemes and handshakes wait for chunk 7.7b.
+/// a handshake is signed as its provider signs (chunk 7.7b).
 #[test]
 fn a_providers_webhooks_are_checked() {
     let cases: &[(&str, &str, &[&str])] = &[
@@ -740,7 +740,7 @@ fn a_providers_webhooks_are_checked() {
         (
             "twilio",
             "        check: SignatureScheme.twilio\n        event_id: \"id\"\n        event_type: \"type\"",
-            &["toolchain.not_built_yet: `SignatureScheme.twilio` isn't built yet"],
+            &[],
         ),
         (
             "header-unread",
@@ -764,7 +764,7 @@ fn a_providers_webhooks_are_checked() {
         (
             "handshake",
             "        check: SignatureScheme.stripe\n        event_id: \"id\"\n        event_type: \"type\"\n        handshake: WebhookHandshake.sns",
-            &["toolchain.not_built_yet: Webhook handshakes aren't built yet"],
+            &["package.provider_invalid: `WebhookHandshake.sns` needs `SignatureScheme.sns`"],
         ),
         (
             "unknown-key",
@@ -780,8 +780,9 @@ fn a_providers_webhooks_are_checked() {
 }
 
 /// A connection gives `webhooks: { secret: }` only to a package whose
-/// provider sends them, from a secret setting; `replies:` waits for chunk
-/// 7.7b; and its events need a store to be kept in.
+/// provider sends them, from a secret setting; `replies:` names only
+/// events that need a reply (chunk 7.7b); and its events need a store to
+/// be kept in.
 #[test]
 fn a_connections_webhooks_are_checked() {
     let app = |payments_webhooks: &str| {
@@ -807,9 +808,12 @@ fn a_connections_webhooks_are_checked() {
         ),
         (
             "replies",
-            app("            webhooks: {\n                secret: config.payments_webhook_secret\n                replies: {}\n            }\n"),
+            format!(
+                "use billing\n\n{}",
+                app("            webhooks: {\n                secret: config.payments_webhook_secret\n                replies: {\n                    payment_succeeded: billing.record_payment\n                }\n            }\n")
+            ),
             vec![],
-            vec!["toolchain.not_built_yet: Webhook replies aren't built yet"],
+            vec!["connection.key_invalid: `payments`'s `replies:` has no event `payment_succeeded`"],
         ),
         (
             "unsent",

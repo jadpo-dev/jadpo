@@ -1558,14 +1558,24 @@ pub(super) fn at_named_equals(p: &Parser<'_>) -> bool {
 pub(super) fn named_equals(p: &mut Parser<'_>) {
     let (start, end) = p.nth_range(1);
     let key_end = p.range().1;
+    let clean = colon_reads_the_same_after(p);
     report(
         p,
         &h::NAMED_EQUALS,
         ("=", ":"),
         (start, end),
         vec![TextEdit::replace(key_end, end, ":")],
-        true,
+        clean,
     );
+}
+
+/// Whether the `=` at `p.nth(1)` can become `:` without changing how the
+/// rest of the line reads. The lexer reads a `/` after `:` as a route path
+/// (`/_length` one segment) but after `=` as a division, so with a `/`
+/// next the edit is still offered but not as one that makes the file
+/// right.
+fn colon_reads_the_same_after(p: &Parser<'_>) -> bool {
+    p.nth(2) != SLASH
 }
 
 // --- members --------------------------------------------------------------------
@@ -1581,7 +1591,7 @@ pub(super) fn member_equals(p: &mut Parser<'_>, context: Members) {
         (&format!("{key} ="), &format!("{key}:")),
         (eq_start, eq_end),
         vec![TextEdit::replace(key_end, eq_end, ":")],
-        true,
+        colon_reads_the_same_after(p),
     );
     let _ = key_start;
     let m = p.start();

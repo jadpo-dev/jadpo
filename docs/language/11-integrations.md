@@ -2447,6 +2447,9 @@ application {
     events: {
         store: main
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
 }
 ```
 
@@ -2456,6 +2459,7 @@ config {
         secret: true
     }
     pay_environment: ProviderEnvironment
+    step_encryption_key: SigningKey
 }
 ```
 
@@ -2858,6 +2862,14 @@ replay and key windows come with roadmap 7.5b, and the operator's items,
 the fakes' `lost` and `in_use`, the tests' crash points and the warning
 with 7.5c.
 
+Built in chunk 7.5b, the record, replay and key windows, as area 12's
+"Several changing calls in one action" says: a provider's `idempotency:`
+`window:`, `replays_failures:` and `new_key_on:` are read into the plan,
+an operation's `changes:` marks a step, and the provider call records,
+replays and keys each step through the capability seam
+(`effects::exchange` writes a step before it is sent). Choices in area
+12's decisions table, "The record, chosen in chunk 7.5b".
+
 ## Receiving from outside
 
 Decided 2026-10-16 (Richard), extending question 11.
@@ -2894,9 +2906,10 @@ an event older than what it stored, and a recipe shows how.
 > **Built (chunk 7.7)**, with its choices under "Chosen in chunk 7.7"
 > below: `webhooks:` in `provider.jadpo` (`SignatureScheme.stripe`,
 > `.standard_webhooks`, `.hmac_sha256` with `header:`, and `.basic`;
-> `.twilio`, `.sns` and `handshake:` say `toolchain.not_built_yet` until
-> chunk 7.7b), a package's `events/` with each event's `wire_name:` and
-> `occurred_at: Instant`, a connection's `webhooks: { secret: }`, and the
+> `.twilio`, `.slack`, `.sns` and `handshake:` since chunk 7.7b, under
+> "Chosen in chunk 7.7b"), a package's `events/` with each event's
+> `wire_name:` and `occurred_at: Instant`, a connection's `webhooks: {
+> secret: }`, and the
 > generated route the runtime answers, its events kept in the outbox for
 > the app's subscribers. A package that receives webhooks, its events and
 > how its provider signs them:
@@ -2996,6 +3009,135 @@ phone: {
 }
 ```
 
+> **Built (chunk 7.7b)**, with its choices under "Chosen in chunk 7.7b"
+> below: an event's `reply:`, an object of the package's own `types/`,
+> and a connection's `webhooks: { replies: }`, each event needing a reply
+> answered by an app's action that takes the event and returns the reply,
+> run as the system once the signature is checked; the reply is sent as
+> the package's JSON and kept with the event's id, so a repeat is answered
+> with it. The event isn't kept in the outbox, so subscribing to it is
+> `subscriber.event_invalid`. Acme Voice signs as Twilio does, over a form
+> body, and waits for what a caller hears:
+
+```jadpo check project=e77b-replies file=app.jadpo
+use support
+
+application {
+    connections: {
+        phone: {
+            package: AcmeVoice.v1
+            domains: [support]
+            credential: config.phone_key
+            host: config.phone_address
+            webhooks: {
+                secret: config.phone_auth_token
+                replies: {
+                    incoming_call: support.answer_call
+                }
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=config.jadpo hidden
+config {
+    phone_address: Url
+    phone_auth_token: Text {
+        secret: true
+    }
+    phone_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/package.jadpo hidden
+/// Acme Voice's calls API.
+package AcmeVoice.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/provider.jadpo
+/// Acme Voice's API, which signs its webhooks as Twilio does.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.twilio
+        event_id: "CallSid"
+        event_type: "CallStatus"
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/types/call_reply.jadpo
+/// What a caller hears.
+public type CallReply = Object {
+    spoken: Text
+    hang_up: Bool {
+        wire_name: "hangUp"
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/events/incoming_call.jadpo
+/// A call is ringing, and waits to be told what to do.
+public type IncomingCall = Event {
+    wire_name: "ringing"
+    reply: CallReply
+    occurred_at: Instant
+    call_sid: Text {
+        wire_name: "CallSid"
+    }
+    from: Text {
+        wire_name: "From"
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=domains/support/entities/phone_log.jadpo hidden
+/// A call the desk answered.
+entity PhoneLog {
+    id: Uuid
+    call_sid: Text
+    caller: Text
+    rang_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=domains/support/actions/answer_call.jadpo migrate=initial
+use support/entities { PhoneLog }
+use shared/providers/acme_voice
+
+/// Answers a call Acme Voice rings through, noting who rang.
+action answer_call(event: AcmeVoice.IncomingCall) -> AcmeVoice.CallReply {
+    var noted_call: PhoneLog = PhoneLog.create {
+        set: {
+            call_sid: event.call_sid
+            caller: event.from
+            rang_at: event.occurred_at
+        }
+    }
+    return AcmeVoice.CallReply {
+        spoken: "Thanks for calling."
+        hang_up: noted_call.caller != ""
+    }
+}
+```
+
+A ringing call is answered `200` with `{"spoken":"Thanks for calling.","hangUp":true}`,
+and Twilio asking again gets the same reply without the action running
+again, as `crates/jadpo-cli/tests/webhook_replies.rs` shows against live
+PostgreSQL.
+
 ### Handshakes
 
 Some providers check an address before sending to it (AWS SNS, Slack,
@@ -3003,6 +3145,102 @@ Microsoft Graph). These are built-in rules the package names in
 `webhooks:` (`handshake: WebhookHandshake.sns`, `.slack`,
 `.microsoft_graph`), answered by the runtime and extended by Jadpo
 releases.
+
+> **Built (chunk 7.7b)**, with its choices under "Chosen in chunk 7.7b"
+> below: SNS's subscription confirmation, signed as its messages are and
+> from the connection's topic, confirmed by visiting its address on AWS's
+> SNS host; Slack's challenge, answered once its signature is checked
+> (`SignatureScheme.slack`); and Microsoft Graph's validation, which Graph
+> doesn't sign, its token answered as plain text. SNS's own messages are
+> checked against the certificate the runtime fetches from AWS's SNS host
+> over HTTPS, never from a private address, and keeps. A handshake signed
+> otherwise than its provider signs is `package.provider_invalid`. A
+> package receiving an SNS topic's messages:
+
+```jadpo check project=e77b-sns file=app.jadpo hidden
+application {
+    connections: {
+        orders: {
+            package: AcmeTopics.v1
+            domains: [dispatch]
+            credential: config.orders_key
+            host: config.orders_address
+            webhooks: {
+                secret: config.orders_topic
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=config.jadpo hidden
+config {
+    orders_address: Url
+    orders_key: Text {
+        secret: true
+    }
+    orders_topic: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=domains/dispatch/entities/parcel.jadpo hidden
+/// A parcel sent out.
+entity Parcel {
+    id: Uuid
+    reference: Text
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/package.jadpo hidden
+/// Acme's order topic, on AWS SNS.
+package AcmeTopics.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/provider.jadpo
+/// AWS SNS, which signs each message with a certificate of AWS's own.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.sns
+        event_id: "MessageId"
+        event_type: "Message.type"
+        handshake: WebhookHandshake.sns
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/types/shipment.jadpo hidden
+/// An order that went out.
+public type Shipment = Object {
+    order_id: Text
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/events/order_shipped.jadpo migrate=initial
+/// An order was shipped.
+public type OrderShipped = Event {
+    wire_name: "order.shipped"
+    occurred_at: Instant
+    shipment: Shipment {
+        wire_name: "Message"
+    }
+}
+```
+
+The connection's secret is the topic's ARN, and SNS's `Message`, which
+holds JSON, is read as the JSON it holds, so `event_type:` and the
+event's fields reach inside it.
 
 ### Queues
 
@@ -6687,7 +6925,7 @@ side (below); the rest is still to build.
 | No transaction open during a call | 7.4 |
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
 | Package subscribers on their own webhooks and the events they emit, polls, `max_concurrent:`, recipes compiled against `sample/` at publish | 7.6b |
-| Package's services; several changing calls in one action; receiving (replies and handshakes, chunk 7.7b; the Cloudflare Queues driver, 7.7c2; webhooks as events built in 7.7, queues through a package in 7.7c); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package's services; several changing calls in one action; receiving (the Cloudflare Queues driver, chunk 7.7c2; webhooks as events built in 7.7, replies and handshakes in 7.7b, queues through a package in 7.7c); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -7803,8 +8041,8 @@ replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
   store's migration only when some connection receives webhooks.
 - **The connection.** `webhooks:` takes `secret:`, a secret setting
   (`connection.value_invalid` otherwise, `connection.key_missing` when it
-  is left out), and `replies:`, which is `toolchain.not_built_yet` until
-  7.7b; given to a package whose provider declares no `webhooks:` it is
+  is left out), and `replies:` (chunk 7.7b); given to a package whose
+  provider declares no `webhooks:` it is
   `connection.key_invalid`. A package with `webhooks:` and no connection
   giving a secret receives nothing.
 - **What answers.** Every request is answered once it is kept or dropped:
@@ -7906,6 +8144,92 @@ most conservative reading:
   send again, since repeating it only hides other messages for a while.
   Its tests run against a local fake of SQS's JSON API that checks each
   signature (`crates/jadpo-cli/tests/receiving.rs`).
+
+### Chosen in chunk 7.7b
+
+Webhook replies, handshakes, and Twilio's, Slack's and SNS's schemes,
+each the most conservative reading where the pages left it open:
+
+- **Twilio.** `SignatureScheme.twilio`: `X-Twilio-Signature`, the Base64
+  of the HMAC-SHA1 under the auth token (the connection's secret) of the
+  URL Twilio requested followed by each form member's name and value,
+  sorted by name and, for a name sent twice, by value. The URL is
+  `https://`, the request's `Host` and its path and query, tried with
+  `:443` written and without, as Twilio's own libraries do; Twilio sends
+  only to HTTPS and a proxy in front of the host ends the TLS. It signs no
+  time, so no age is checked; a repeat is dropped by its id. The body is
+  a form (`400 invalid_request` otherwise), read as JSON of its members'
+  text, a name sent twice a list, so the places and fields name form
+  members (`event_id: "CallSid"`).
+- **Slack.** Its events can't be checked by any scheme the page named, so
+  `SignatureScheme.slack` joins them, as "extended by Jadpo releases"
+  allows: `X-Slack-Signature: v0=<hex>`, the HMAC-SHA-256 of
+  `v0:<X-Slack-Request-Timestamp>:<body>` under the signing secret, with
+  the five-minute tolerance.
+- **SNS.** `SignatureScheme.sns`: the message's own `Signature`, RSA
+  PKCS #1 v1.5 over the members SNS lists for its `Type`, with SHA-1
+  (`SignatureVersion` 1) or SHA-256 (2), by the RSA key (2,048 bits or
+  more) of the certificate at its `SigningCertURL`, valid at the host's
+  time; the chain isn't checked, since the certificate comes over HTTPS
+  from AWS's own host. Any AWS account can have SNS sign a message from
+  its own topic, so the connection's `secret:` is the topic's ARN, and a
+  message from any other topic is refused before anything is fetched.
+  The certificate is fetched only from `https://sns.<region>.amazonaws.com`
+  (or `.amazonaws.com.cn`), a `.pem` path with no port, credentials or
+  query, by the host's guard for the runtime's own requests: HTTPS only,
+  no redirect followed, connected only to the public address it checked
+  (never loopback, private, link-local, shared, reserved or multicast),
+  at most 16 KB within five seconds; each certificate is kept for a day.
+  SNS signs the time it published and its retries keep it, so the
+  five-minute tolerance holds only ahead of the host's clock: a message
+  signed 30 days ago or more, as long as a received id is kept, is
+  refused, so any replay within that is a repeat by its `MessageId`. A
+  certificate that can't be fetched is `503 unavailable`, so SNS sends it
+  again; a host that reaches nothing (Workers, until Phase 8) answers so.
+  The `Message`, when it holds JSON, is read as that JSON, so places reach
+  inside it (`"Message.type"`). Anything but a `Notification` carries no
+  event: answered `204`.
+- **Handshakes.** `handshake:` names `WebhookHandshake.sns`, `.slack` or
+  `.microsoft_graph` (`package.provider_invalid` otherwise); SNS's and
+  Slack's need `SignatureScheme.sns` and `.slack`, which sign them
+  (`package.provider_invalid` otherwise). SNS's `SubscriptionConfirmation`,
+  signed and from the topic, is confirmed by a `GET` of its `SubscribeURL`
+  on an SNS host through the same guard (`204` when SNS took it, `503`
+  otherwise). Slack's `url_verification`, once signed, is answered
+  `200` with `{"challenge": ...}`. Microsoft Graph's validation is the
+  only request answered before a signature is looked for, since Graph
+  signs none: a `POST` whose query gives one `validationToken` of at most
+  1,024 characters, none a control character, answered `200` with the
+  token as `text/plain; charset=utf-8` and `X-Content-Type-Options:
+  nosniff` (`400 invalid_request` for one that isn't). Graph's own
+  notification check, its `clientState` in the body, isn't a scheme yet.
+- **Replies.** `reply:` in a webhook event a package declares names an
+  `Object` of the package's own (`package.wire_invalid` otherwise); on
+  any other event `reply` is reserved (`type.reserved_field_name`), so it
+  is never a field. The connection's `replies:` keys each event needing a
+  reply by its name in lower_snake_case, `incoming_call:`, naming an
+  action `<domain>.<action>` (any domain; the app's `use` line for it, as
+  `on_first_sign_in:`'s) that takes the one event and returns the reply
+  type: a key no such event has is `connection.key_invalid`, a value that
+  isn't such an action `connection.value_invalid`, and an event needing a
+  reply with none `connection.key_missing`. Subscribing to such an event
+  is `subscriber.event_invalid`: it isn't kept in the outbox.
+- **Answering.** After the signature and the body are read, the event's
+  id is claimed in `jadpo_received_events` (its new `reply` column empty)
+  in a statement of its own; the action runs as the system, in its own
+  transaction, as `on_first_sign_in:`'s does; its reply is encoded with
+  the reply type's codec on the provider's wire and sent `200` as
+  `application/json`, and kept over the claim once the action has
+  committed. A repeat that finds the reply is answered with it, one that
+  finds a claim younger than a minute `409 conflict` ("The webhook is
+  still being answered."), and a claim older than that, left by a process
+  that stopped, is taken over. A failure gives the claim back, so the
+  provider's retry runs the action again: a declared failure answered as
+  a route answers it, `unavailable` `503`, a fault `500`. Keeping the
+  reply follows the action's commit rather than joining it, since the
+  action may write another store: if that statement fails, a retry after
+  the claim lapses runs the action again. Twilio's TwiML waits for an XML
+  byte format, as the page says.
 
 ### Chosen in chunk 7.6
 
@@ -8530,6 +8854,7 @@ packages and extension points, as each note says; 26 was decided then.
 | `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
 | A standard type read from its object's members (chunk 7.2e) | A provider package's field gives `wire_parts:`, the member of the object holding it that each part of its standard type is read from and written to, so Stripe's `amount` and `currency` are one `Money` and `lat` and `lng` one `Point`; for the standard types made of named parts and `Point`; fields may share a part's member, and two values that differ there stop the call; the field has no member of its own on the wire and is the contract's everywhere else. Decided by the building session where the page names the decoding but no mechanism could do it; follows `wire_name:`'s shape (decided for Richard) | 2026-10-20 |
 | What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |
+| Webhook replies and handshakes (chunk 7.7b) | `SignatureScheme.slack` joins the built-in schemes, since no named one checks Slack; an SNS connection's `secret:` is its topic's ARN, a message from any other topic refused before its certificate is fetched; SNS's certificate fetched only from AWS's SNS hosts over HTTPS through the host's guard (no redirect, no private address) and kept a day; an SNS message refused once signed 30 days ago, as long as a received id is kept; Microsoft Graph's validation the one request answered unsigned; a reply kept after its action commits, not in its transaction (decided by the building session; details under "Chosen in chunk 7.7b") | 2026-10-20 |
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
