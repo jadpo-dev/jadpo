@@ -258,6 +258,9 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
              [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
+        # The docs renderer finishes every page, and its list parser's
+        # cases, each under a time limit (tools/language_docs_test.py).
+        Step('docs renderer', 'lint', [python, 'tools/language_docs_test.py']),
         # The maths on `Decimal`'s reference values are what their
         # generator writes (area 19, chunk 5.5e).
         Step('Decimal maths reference values in step with their generator', 'lint',
