@@ -1,6 +1,6 @@
-// Until the `ai` capability makes embeddings itself, a vector arrives as
-// JSON from the service that made it; reading it checks its length
-// against the type's `dimensions:`.
+// Here a vector arrives as JSON from the service that made it, where the
+// `ai` capability would make it itself (see 28-lost-property); reading
+// it checks its length against the type's `dimensions:`.
 
 use helpline/entities { CareGuide }
 use helpline/types { EmbeddingReply, GuideMeaning }

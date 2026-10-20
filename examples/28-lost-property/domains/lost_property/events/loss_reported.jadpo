@@ -1,0 +1,6 @@
+use lost_property/entities { LossReport }
+
+/// A passenger reported a loss.
+type LossReported = Event {
+    report_id: LossReport.id
+}

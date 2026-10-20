@@ -92,10 +92,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "data migration decision FieldChange.dropped",
         "not built: a drop needs a person's acceptance (area 18)",
     ),
-    (
-        "syntax PROVIDE_DECL",
-        "a package's capability mapping (`provide receiving` since chunk 7.7c), which a package holds and no example app writes (area 11)",
-    ),
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
     // Bases later areas define.
@@ -142,10 +138,6 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "package folder events",
         "not built: a package's events (area 11, chunk 7.6)",
-    ),
-    (
-        "package folder provides",
-        "not built: a package's capability mappings (area 11, chunk 7.3)",
     ),
     (
         "package folder translations",
@@ -546,6 +538,12 @@ const BODY: &[&str] = &[
     "run a schedule in a test",
     "call translation",
     "render a prompt",
+    // Area 21's `ai` calls and their fake (chunk 7.8c).
+    "ask a model",
+    "stream a model's answer",
+    "ask a model for embeddings",
+    "script a model's answers",
+    "read what a model was asked",
     "write create",
     "write update",
     "write update by id",

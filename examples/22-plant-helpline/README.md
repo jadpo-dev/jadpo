@@ -12,9 +12,10 @@ can't be compared. A query orders by `nearest` through an HNSW index in
 pgvector, and gives each record with its distance, the same distance
 `ai.distance` works out in code. A prompt is a type whose fields are its
 placeholders, with its words in a `.prompt` file beside it; free text is
-only ever sent as data. Making embeddings and calling a model are the
-`ai` capability's, which a later chunk builds, so here the embedding
-service's reply arrives as JSON and prompts are rendered, not sent.
+only ever sent as data. Here the embedding service's reply arrives as
+JSON and prompts are rendered, not sent; making embeddings and asking a
+model, through the `ai` capability, are
+[28-lost-property](../28-lost-property/README.md)'s.
 
 ## What it teaches
 

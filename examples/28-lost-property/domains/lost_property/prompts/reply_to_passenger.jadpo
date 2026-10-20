@@ -1,0 +1,14 @@
+// A prompt's fields are its placeholders. The model is given only what
+// they hold: the passenger's name, never their address.
+
+use lost_property/types { ItemDescription, PassengerName, PossibleMatch, ServiceDay }
+
+/// Writes the reply to a passenger who reported a loss, from the items on
+/// the shelves that may be theirs.
+type ReplyToPassenger = Prompt {
+    passenger_name: PassengerName
+    what_was_lost: ItemDescription
+    lost_on: ServiceDay
+    possible_matches: List<PossibleMatch>
+    reader_locale: Locale
+}

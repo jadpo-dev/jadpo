@@ -1,0 +1,20 @@
+use lost_property/types { ReportedLoss }
+
+test "a report is kept at once, and its reply drafted after" {
+    fakes: {
+        ai.reply_to_passenger: [recorded("nothing_found")]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/losses"
+        input: ReportedLoss {
+            passenger_name: "Owen Price"
+            passenger_email: "owen@example.cymru"
+            what_was_lost: "Red wool scarf"
+            lost_on: "2026-11-05"
+            reader_locale: Locale.cy_gb
+        }
+    }
+    assert response.status == 202
+    assert list.count(ai.reply_to_passenger.requests) == 1
+}

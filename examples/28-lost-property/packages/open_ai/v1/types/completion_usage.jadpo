@@ -1,0 +1,7 @@
+/// The tokens a chat completion took.
+public type CompletionUsage = Object {
+    prompt_tokens: TokenCount
+    completion_tokens: TokenCount
+    total_tokens: TokenCount
+    prompt_tokens_details: PromptTokensDetails?
+}

@@ -1,0 +1,6 @@
+/// A model's context window, in tokens: for an embedding model, the most
+/// one text may be.
+type ModelContext = Object {
+    model: Text
+    tokens: TokenCount
+}

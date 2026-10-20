@@ -1,0 +1,23 @@
+// A route whose action returns an `AiStream` sends the model's answer as
+// server-sent events as it is written. A stream may take as long as its
+// call's `timeout:`, 25 seconds unless written, so the route gives itself
+// a longer `deadline:` than the 10-second default; a route may give
+// itself up to 60.
+
+use lost_property/types { OfficeQuestion }
+use lost_property/actions { ask_the_office }
+
+/// Questions for the office, asked on its website.
+routes Enquiries {
+    prefix: /enquiries
+
+    /// Anyone asks the office a question, and reads the answer as it is
+    /// written.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: OfficeQuestion
+        output: AiStream
+        deadline: 30s
+        run: ask_the_office(input)
+    }
+}

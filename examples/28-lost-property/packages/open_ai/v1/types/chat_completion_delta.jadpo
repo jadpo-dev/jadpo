@@ -1,0 +1,7 @@
+/// What a chunk adds to the model's message: its next text, or its
+/// refusal.
+public type ChatCompletionDelta = Object {
+    role: Text?
+    content: Text?
+    refusal: Text?
+}

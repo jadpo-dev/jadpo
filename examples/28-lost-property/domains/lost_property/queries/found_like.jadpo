@@ -1,0 +1,19 @@
+// `ai.distance` in a condition keeps only the items whose meaning is
+// close to the one given; an item not placed yet never matches. The
+// office wants every likely item found since the loss, newest first, not
+// the nearest few, so this is an ordinary query with no `nearest`, and
+// needs no vector index.
+
+use lost_property/entities { FoundItem }
+use lost_property/types { ItemMeaning, PossibleMatch, ServiceDay }
+
+/// Unclaimed items found since a loss whose description means much what
+/// the loss's does.
+query found_like(lost_meaning: ItemMeaning, lost_since: ServiceDay) -> List<PossibleMatch> {
+    from: FoundItem
+    where: FoundItem.returned_to_owner == false
+    where: FoundItem.handed_in_on >= lost_since
+    where: ai.distance(FoundItem.description_meaning, lost_meaning) <= 0.3
+    order: [FoundItem.handed_in_on desc]
+    limit: 5
+}

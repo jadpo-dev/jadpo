@@ -1,0 +1,6 @@
+use lost_property/types { QuestionText }
+
+/// Answers a question about the lost property office from its rules.
+type AnswerOfficeQuestion = Prompt {
+    asked_question: QuestionText
+}

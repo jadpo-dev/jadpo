@@ -1,0 +1,5 @@
+/// The model can't answer a question now.
+type AnswerUnavailable = Failure {
+    kind: FailureKind.unavailable
+    message: "We can't answer just now. Please ring the office."
+}

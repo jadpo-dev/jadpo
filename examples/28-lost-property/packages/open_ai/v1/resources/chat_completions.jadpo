@@ -1,0 +1,20 @@
+public resource chat_completions {
+    create: {
+        method: HttpMethod.post
+        path: "/chat/completions"
+        input: ChatCompletionRequest
+        output: ChatCompletion
+        changes: false
+        source: PackageSource.written
+        docs: "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create"
+    }
+    stream: {
+        method: HttpMethod.post
+        path: "/chat/completions"
+        input: StreamedChatCompletionRequest
+        output: ChatCompletionChunk
+        changes: false
+        source: PackageSource.written
+        docs: "https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events"
+    }
+}

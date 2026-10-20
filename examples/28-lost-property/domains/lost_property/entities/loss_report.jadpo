@@ -1,0 +1,33 @@
+// `personal:` says what kind of personal data a field holds. Whatever
+// reaches a model is followed back to the fields it was read from, and
+// each field's kind must be listed in `ai: { personal_data: }`.
+// `to_models: false` keeps the address out of every prompt, whatever is
+// listed: the office writes to the passenger, the model never needs to.
+//
+// Anyone on the website may report a loss, but only the office reads
+// one: the system, which drafts its reply in a subscriber.
+
+use lost_property/types { DraftedReply, ItemDescription, PassengerName, ServiceDay }
+
+/// A loss a passenger reported, and the reply drafted for it.
+entity LossReport {
+    id: Uuid
+    passenger_name: PassengerName {
+        personal: PersonalData.identifying
+    }
+    passenger_email: Email {
+        personal: PersonalData.contact
+        to_models: false
+    }
+    what_was_lost: ItemDescription
+    lost_on: ServiceDay
+    reader_locale: Locale
+    likely_found: Bool?
+    drafted_reply: DraftedReply?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}

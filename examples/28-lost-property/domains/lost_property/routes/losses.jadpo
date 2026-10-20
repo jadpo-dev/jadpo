@@ -1,0 +1,20 @@
+// Reporting a loss answers 202 at once: the reply is drafted after the
+// response, in a subscriber, so the passenger's request never waits on a
+// model.
+
+use lost_property/types { LossReceipt, ReportedLoss }
+use lost_property/actions { report_loss }
+
+/// Losses, reported on the office's website.
+routes Losses {
+    prefix: /losses
+
+    /// A passenger reports a loss.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: ReportedLoss
+        output: LossReceipt
+        status: SuccessStatus.accepted
+        run: report_loss(input)
+    }
+}

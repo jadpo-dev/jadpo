@@ -1,0 +1,8 @@
+use lost_property/types { ItemDescription, ServiceDay, WhereFound }
+
+/// An item a member of staff hands in to the office.
+type HandedIn = Input {
+    what_was_found: ItemDescription
+    where_found: WhereFound
+    handed_in_on: ServiceDay
+}

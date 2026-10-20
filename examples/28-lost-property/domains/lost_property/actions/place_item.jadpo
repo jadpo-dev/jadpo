@@ -1,0 +1,23 @@
+// `ai.embed` asks the model `ai: { models: }` calls `embedding` for a
+// text's vector, read as the type `as:` names. Like every outside call it
+// is made only in an action, and each way it can fail is mapped to one of
+// the office's own failures.
+
+use lost_property/entities { FoundItem, FoundItemNotFound }
+use lost_property/types { ItemMeaning }
+use lost_property/failures { ItemNotPlaced }
+
+/// Places an item on the shelves by what its description means.
+action place_item(item_id: FoundItem.id) fails FoundItemNotFound, ItemNotPlaced -> FoundItem {
+    var item: FoundItem = attempt FoundItem.get(item_id)
+    var item_meaning: ItemMeaning = attempt ai.embed(item.what_was_found, as: ItemMeaning) {
+        timed_out: ItemNotPlaced
+        over_budget: ItemNotPlaced
+        too_long: ItemNotPlaced
+    }
+    return FoundItem.update(item) {
+        set: {
+            description_meaning: item_meaning
+        }
+    }
+}

@@ -1,0 +1,23 @@
+{
+  "choices": [
+    {
+      "finish_reason": "{Text}",
+      "index": "{Int}",
+      "message": {
+        "content": "{Text}",
+        "refusal": null,
+        "role": "{Text}"
+      }
+    }
+  ],
+  "id": "{Text}",
+  "model": "{Text}",
+  "usage": {
+    "completion_tokens": "{Int}",
+    "prompt_tokens": "{Int}",
+    "prompt_tokens_details": {
+      "cached_tokens": "{Int}"
+    },
+    "total_tokens": "{Int}"
+  }
+}

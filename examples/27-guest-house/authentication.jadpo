@@ -1,5 +1,9 @@
 // Guests sign in with a link, or the code beside it, emailed to the
-// address they booked with: there are no passwords to keep.
+// address they booked with: there are no passwords to keep. A guest who
+// returns often adds a passkey, and signs in with their phone's
+// fingerprint or face instead; one who loses every passkey signs in by
+// email again and adds another, so `passkey:` needs `magic_link:` beside
+// it. Jadpo writes the passkey routes, under `/auth/passkey`.
 // `generate_routes: false` means the guest house writes its own sign-in
 // routes (see `domains/lodging/routes/sign_in.jadpo`), and `email:` names
 // its own sign-in email in place of Jadpo's.
@@ -17,6 +21,7 @@ authentication {
             generate_routes: false
             email: lodging.SignInEmail
         }
+        passkey: {}
     }
     on_first_sign_in: lodging.welcome_guest
 }

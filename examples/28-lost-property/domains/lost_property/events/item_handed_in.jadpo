@@ -1,0 +1,6 @@
+use lost_property/entities { FoundItem }
+
+/// An item was handed in to the office.
+type ItemHandedIn = Event {
+    item_id: FoundItem.id
+}

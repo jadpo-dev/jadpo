@@ -1,0 +1,8 @@
+/// OpenAI's API, each request carrying the project's API key as a bearer
+/// credential. The connection gives its address,
+/// `https://api.openai.com/v1`, in `host:`.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    error_code: "error.code"
+}

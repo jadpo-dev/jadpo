@@ -1881,12 +1881,21 @@ The design is area 11 as revised on 2026-10-16, with its research in
   coverage test's exemptions for the package folders `subscribers`,
   `events`, `provides` and `translations` and for `syntax PROVIDE_DECL`
   removed once an example uses them, or their reasons corrected.
-- [ ] **7.8c Teaching examples for Phase 7: AI and passkeys** `opus ·
-  high`, after 7.8b and 5.5v7b: `ai.generate`, embeddings, recordings,
-  streaming to a route, budgets and personal data sent to models, through
-  a model package and its fake (22-plant-helpline, whose tests need
-  pgvector 0.8.0, or a new example), and passkey recovery through a
-  magic link in 27-guest-house.
+- [x] **7.8c Teaching examples for Phase 7: AI and passkeys** `opus ·
+  high`. Built: a new example, 28-lost-property (in place of
+  22-plant-helpline, whose tests run only where pgvector is 0.8.0), with
+  the first-party OpenAI package installed by `jadpo package add`:
+  `ai.embed` in a subscriber, `ai.embed_all`, `ai.distance` in a query's
+  condition, `ai.generate` with each failure mapped, `limits:` and
+  `personal_data: { allowed: }` with `to_models: false`, `ai.stream` sent
+  to a route with its `deadline:`, the fake's scripted, `raw(...)`,
+  `partial(...)` and `recorded(...)` answers and `.requests`, and a
+  recording; 27-guest-house with `passkey: {}`, its Welsh wording and a
+  route test that recovers a lost phone's passkey through the emailed
+  link. The coverage test now requires the `ai` calls and their fake and
+  drops the exemptions for `provides/` and `PROVIDE_DECL`, which 28's
+  installed package uses; the example-name ban skips verbatim copies of
+  first-party packages an example installs.
 
 ## Phase 8 — Compiled deployables
 
