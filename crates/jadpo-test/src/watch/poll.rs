@@ -14,7 +14,7 @@
 //! on a loaded machine the two can be far apart. An empty source file
 //! checks cleanly with nothing in it, so a file that had text and is
 //! empty now is taken as a save under way, not yet saved: the burst waits
-//! for its text, however long the gap, up to [`EMPTIED_GRACE`], and a
+//! for its text, however long the gap, up to [`TRUNCATED_GRACE`], and a
 //! file still empty then is handed over as saved (chunk 5.13b).
 
 use std::collections::BTreeMap;
@@ -34,7 +34,7 @@ const LONGEST_BURST: Duration = Duration::from_millis(1000);
 const BURST_STEP: Duration = Duration::from_millis(10);
 /// How long a burst waits for the text of a file it emptied, before the
 /// empty file is taken as saved.
-pub const EMPTIED_GRACE: Duration = Duration::from_secs(2);
+pub const TRUNCATED_GRACE: Duration = Duration::from_secs(2);
 
 /// What a look saw of one file: when it was last modified and its size,
 /// or nothing when its metadata couldn't be read.
@@ -145,7 +145,7 @@ impl Poller {
     /// Whether `burst` holds a file that had text `before` it and is empty
     /// at the last look: a save in place between its truncate and its
     /// write.
-    fn emptied(&self, before: &BTreeMap<String, Stamp>, burst: &[Edit]) -> bool {
+    fn truncated(&self, before: &BTreeMap<String, Stamp>, burst: &[Edit]) -> bool {
         let size = |stamps: &BTreeMap<String, Stamp>, path: &str| {
             stamps.get(path).copied().flatten().map(|(_, size)| size)
         };
@@ -180,7 +180,7 @@ impl Poller {
                     }
                 }
                 // A file emptied by a save in place waits for its text.
-                if !self.emptied(&before, &burst) || began.elapsed() >= EMPTIED_GRACE {
+                if !self.truncated(&before, &burst) || began.elapsed() >= TRUNCATED_GRACE {
                     break;
                 }
                 if stop() {
@@ -278,7 +278,7 @@ mod tests {
         let edits = poller.wait(&|| false).expect("a burst");
         assert_eq!(edits, vec![edit("routes.jadpo", EditKind::Saved)]);
         assert!(
-            started.elapsed() >= EMPTIED_GRACE,
+            started.elapsed() >= TRUNCATED_GRACE,
             "{:?}",
             started.elapsed()
         );
