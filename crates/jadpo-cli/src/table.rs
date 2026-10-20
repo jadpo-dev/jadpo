@@ -684,6 +684,70 @@ pub static COMMANDS: &[Command] = &[
         run: commands::api,
     },
     Command {
+        name: "package",
+        synonyms: &["packages"],
+        group: "Build and check",
+        summary: "Show or check a package",
+        description: "`show <name>` prints a package's description, licence, version, kind and public \
+                      surface (area 11), installed in packages/ or the app's own in shared/providers/; \
+                      `show <name> <declaration>` prints one operation, function, type or failure in \
+                      full with its file, and `--guide` prints the package's GUIDE.md. `check`, run in \
+                      a package's own repository, checks it as the app's own integration, runs the \
+                      publishing bar (no errors, a description on every public declaration, its tests, \
+                      a version its changes since the last tag allow) and writes surface.jadpo_record. \
+                      `add`, `update`, `remove`, `link` and `unlink` come with installing packages.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: show or check",
+                required: true,
+                values: Values::Fixed(crate::package::ACTIONS),
+            },
+            Argument {
+                name: "name",
+                description: "The package, such as holidays; for check, its folder",
+                required: false,
+                values: Values::Path,
+            },
+            Argument {
+                name: "declaration",
+                description: "One of its declarations, such as uk.dates",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[Flag {
+            name: "--guide",
+            value: None,
+            description: "Print the package's GUIDE.md",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "See what the holidays package offers",
+                command: "jadpo package show holidays",
+            },
+            Example {
+                description: "See one of its functions in full",
+                command: "jadpo package show holidays uk.dates",
+            },
+            Example {
+                description: "Run the publishing bar in a package's own repository",
+                command: "jadpo package check",
+            },
+        ],
+        arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
+        raises: &[
+            &rule::PUBLISH_BREAKING_CHANGE,
+            &rule::PUBLISH_DESCRIPTION_MISSING,
+            &rule::TEST_FAILED,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::package,
+    },
+    Command {
         name: "records",
         synonyms: &[],
         group: "Change safely",

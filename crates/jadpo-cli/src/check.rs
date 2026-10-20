@@ -86,7 +86,15 @@ pub fn check(call: &Call) -> Reply {
         let openapi = derived::openapi(db, loaded.project, &title(&loaded.root));
         let permissions = jadpo_check::policy::policy_clean(db, loaded.project)
             .then(|| jadpo_check::policy::report::report(db, loaded.project));
-        match derived::write(&loaded.root, graph, errors, &openapi, permissions.as_ref()) {
+        let surfaces = derived::surfaces(db, loaded.project);
+        match derived::write(
+            &loaded.root,
+            graph,
+            errors,
+            &openapi,
+            permissions.as_ref(),
+            &surfaces,
+        ) {
             Ok(paths) => written = paths,
             Err(problem) => diagnostics.push(*problem),
         }

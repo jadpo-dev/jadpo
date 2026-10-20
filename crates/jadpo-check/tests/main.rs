@@ -86,6 +86,7 @@ mod standard_rules;
 mod standard_types;
 mod stores;
 mod suggest;
+mod surfaces;
 mod tenant_proofs;
 mod text;
 mod text_formats;
