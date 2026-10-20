@@ -26,7 +26,7 @@
 //! `link` points the lock at a live checkout, which every check then
 //! compiles in the installed folder's place (`jadpo_db::load`); the line it
 //! replaces is kept in `.jadpo/links` for `unlink` to restore. CI refuses
-//! a link (`package.link_refused`), so one never ships.
+//! a link (`install.link_refused`), so one never ships.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -240,7 +240,7 @@ fn verify(folder: &Path, tag: Option<&str>, shown: &str, command: &str) -> Resul
     let mismatch = |reason: String| {
         Reply::failed(
             Diagnostic::new(
-                &rule::PACKAGE_SURFACE_MISMATCH,
+                &rule::INSTALL_SURFACE_MISMATCH,
                 format!(
                     "`{package}`'s {} doesn't match its code",
                     jadpo_db::record::SURFACE_FILE
@@ -501,7 +501,7 @@ fn repository_url(locked: &str, root: &Path) -> String {
 fn fetch_failed(repository: &str, reason: String) -> Reply {
     Reply::failed(
         Diagnostic::new(
-            &rule::PACKAGE_FETCH_FAILED,
+            &rule::INSTALL_FETCH_FAILED,
             format!("`{repository}` couldn't be read"),
         )
         .reason(reason)
@@ -514,7 +514,7 @@ fn fetch_failed(repository: &str, reason: String) -> Reply {
 /// A repository that was read but holds no release to install.
 fn no_release(message: String, reason: String) -> Reply {
     Reply::failed(
-        Diagnostic::new(&rule::PACKAGE_FETCH_FAILED, message)
+        Diagnostic::new(&rule::INSTALL_FETCH_FAILED, message)
             .reason(reason)
             .next("Give one of its release tags, or tag the release in the package's repository after `jadpo package check` passes"),
     )
@@ -659,7 +659,7 @@ pub fn add(call: &Call) -> Reply {
                 return Reply::failed(arguments(
                     format!("`{written}` isn't a package's folder or a git repository"),
                     format!(
-                        "A package is added from a folder holding `{}`, or from a git repository at a release tag, such as `github.com/acme/postcodes@v2.1.0`.",
+                        "A package is added from a folder holding `{}`, or from a git repository at a release tag, such as `github.com/acme/holidays@v2.1.0`.",
                         jadpo_db::PACKAGE_INDEX
                     ),
                     "Give the package's folder, or its repository and tag: `<repository>@v<version>`".to_string(),
@@ -1188,7 +1188,7 @@ pub fn remove(call: &Call) -> Reply {
         let quoted: Vec<String> = users.iter().map(|path| format!("`{path}`")).collect();
         return Reply::failed(
             Diagnostic::new(
-                &rule::PACKAGE_IN_USE,
+                &rule::INSTALL_IN_USE,
                 format!("The app still uses `{}`", line.package),
             )
             .reason(format!(

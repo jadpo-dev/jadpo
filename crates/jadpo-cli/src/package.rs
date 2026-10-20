@@ -1434,7 +1434,7 @@ fn changelog_missing(text: &str, line: u32, version: &str) -> Diagnostic {
         jadpo_diag::Span::new(publishing::CHANGELOG, start, end),
         "no why beneath the list",
     )
-    .reason("`jadpo package check` writes what changed from the surface; the author writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.")
+    .reason("`jadpo package check` writes what changed from the surface; whoever releases it writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.")
     .next(format!(
         "Write why {version} is released under `## {version}` in {}, after the list",
         publishing::CHANGELOG
@@ -1606,7 +1606,7 @@ fn examples_and_tests(
         let span = name_span(declaration, sources);
         if !found
             .iter()
-            .any(|(_, example)| example.owner == declaration.name)
+            .any(|(_, example)| example.declaration == declaration.name)
         {
             without += 1;
             problems.push(
@@ -1693,7 +1693,7 @@ fn examples_and_tests(
             problems.push(
                 Diagnostic::new(
                     &rule::PUBLISH_EXAMPLE_FAILED,
-                    format!("Example of `{}` doesn't compile", at.example.owner),
+                    format!("Example of `{}` doesn't compile", at.example.declaration),
                 )
                 .at(statement_span(at, line, sources), "doesn't compile")
                 .reason(format!(
@@ -1748,7 +1748,7 @@ fn examples_and_tests(
                         problems.push(
                             Diagnostic::new(
                                 &rule::PUBLISH_EXAMPLE_FAILED,
-                                format!("Example of `{}` failed", at.example.owner),
+                                format!("Example of `{}` failed", at.example.declaration),
                             )
                             .at(statement_span(at, failure.location.line, sources), label)
                             .reason(format!(

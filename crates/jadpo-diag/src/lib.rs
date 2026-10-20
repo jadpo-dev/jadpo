@@ -440,6 +440,14 @@ rules! {
         "01-project-layout-and-modules.html#import-unneeded", "Import of a name the file sees without one";
     IMPORT_UNUSED: "import.unused", area 1, Error, Agent,
         "01-project-layout-and-modules.html#import-unused", "Imported name the file does not use";
+    INSTALL_FETCH_FAILED: "install.fetch_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Package's git repository or tag couldn't be read";
+    INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package to remove is still used by the app";
+    INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Linked package in a CI or production build";
+    INSTALL_SURFACE_MISMATCH: "install.surface_mismatch", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Package's committed surface doesn't match its code";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "01-project-layout-and-modules.html#layout-call-direction", "Shared code depends on a domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
@@ -492,16 +500,10 @@ rules! {
         "11-integrations.html#package-digest-mismatch", "Installed package's files differ from its digest in the lock";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
         "11-integrations.html#package-emails-folder", "Package holds email templates";
-    PACKAGE_FETCH_FAILED: "package.fetch_failed", area 11, Error, Human,
-        "11-integrations.html#package-fetch-failed", "Package's git repository or tag couldn't be read";
-    PACKAGE_IN_USE: "package.in_use", area 11, Error, Agent,
-        "11-integrations.html#package-in-use", "Package to remove is still used by the app";
     PACKAGE_INDEX_INVALID: "package.index_invalid", area 11, Error, Agent,
         "11-integrations.html#package-index-invalid", "Package's index is missing, or holds what an index can't";
     PACKAGE_LICENCE_NOT_ALLOWED: "package.licence_not_allowed", area 11, Error, Human,
         "11-integrations.html#package-licence-not-allowed", "Proprietary package isn't installed from git";
-    PACKAGE_LINK_REFUSED: "package.link_refused", area 11, Error, Agent,
-        "11-integrations.html#package-link-refused", "Linked package in a CI or production build";
     PACKAGE_NAME_MISMATCH: "package.name_mismatch", area 11, Error, Agent,
         "11-integrations.html#package-name-mismatch", "Package's index names another package than its folder";
     PACKAGE_NAME_TAKEN: "package.name_taken", area 11, Error, Human,
@@ -520,8 +522,6 @@ rules! {
         "11-integrations.html#package-provider-translations", "Provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
-    PACKAGE_SURFACE_MISMATCH: "package.surface_mismatch", area 11, Error, Human,
-        "11-integrations.html#package-surface-mismatch", "Package's committed surface doesn't match its code";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,

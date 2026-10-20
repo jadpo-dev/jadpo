@@ -752,10 +752,10 @@ pub static COMMANDS: &[Command] = &[
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
         raises: &[
-            &rule::PACKAGE_FETCH_FAILED,
-            &rule::PACKAGE_IN_USE,
+            &rule::INSTALL_FETCH_FAILED,
+            &rule::INSTALL_IN_USE,
             &rule::PACKAGE_NAME_TAKEN,
-            &rule::PACKAGE_SURFACE_MISMATCH,
+            &rule::INSTALL_SURFACE_MISMATCH,
             &rule::PUBLISH_BREAKING_CHANGE,
             &rule::PUBLISH_CHANGELOG_MISSING,
             &rule::PUBLISH_DESCRIPTION_MISSING,

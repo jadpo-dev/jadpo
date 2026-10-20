@@ -392,7 +392,7 @@ fn check_runs_the_publishing_bar_and_writes_the_surface() {
   |
 3 | ## 2.0.0
   | ^^^^^^^^ no why beneath the list
-  reason: `jadpo package check` writes what changed from the surface; the author writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
+  reason: `jadpo package check` writes what changed from the surface; whoever releases it writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
   next: Write why 2.0.0 is released under `## 2.0.0` in CHANGELOG.md, after the list (agent)
   rule: publish.changelog_missing
   help: docs/language/14-tooling.html#command-errors

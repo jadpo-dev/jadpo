@@ -281,7 +281,7 @@ fn significant(entry: &Entry) -> Vec<String> {
 pub struct Example {
     /// The declaration as the app writes it after the package's name:
     /// `uk.parse`, `UkPostcode`.
-    pub owner: String,
+    pub declaration: String,
     /// 1 for the first example in its description.
     pub number: usize,
     /// Each statement's line, from 1, in the declaration's file, and its
@@ -294,17 +294,17 @@ impl Example {
     /// uk.parse`.
     pub fn name(&self) -> String {
         if self.number == 1 {
-            format!("example of {}", self.owner)
+            format!("example of {}", self.declaration)
         } else {
-            format!("example {} of {}", self.number, self.owner)
+            format!("example {} of {}", self.number, self.declaration)
         }
     }
 }
 
 /// The examples in the description above line `line` (from 1) of `text`,
-/// the declaration `owner`: its `///` lines, read upwards past any
+/// the declaration `declaration`: its `///` lines, read upwards past any
 /// `decline` lines between them and the declaration.
-pub fn examples(text: &str, owner: &str, line: u32) -> Vec<Example> {
+pub fn examples(text: &str, declaration: &str, line: u32) -> Vec<Example> {
     let lines: Vec<&str> = text.lines().collect();
     let mut doc: Vec<(u32, &str)> = Vec::new();
     let mut at = line as usize;
@@ -335,7 +335,7 @@ pub fn examples(text: &str, owner: &str, line: u32) -> Vec<Example> {
                 let body = open.take().unwrap_or_default();
                 if !body.is_empty() {
                     out.push(Example {
-                        owner: owner.to_string(),
+                        declaration: declaration.to_string(),
                         number: out.len() + 1,
                         lines: body,
                     });
@@ -428,17 +428,17 @@ pub fn changelog(
     let replace = sections.first().is_some_and(|(heading, _)| {
         heading == version || !released.iter().any(|released| released == heading)
     });
-    let author: Vec<String> = if replace {
+    let why: Vec<String> = if replace {
         let (_, body) = sections.remove(0);
-        author_text(&body)
+        why_text(&body)
     } else {
         Vec::new()
     };
     let mut body: Vec<String> = vec![String::new()];
     body.extend(changes.iter().map(|change| format!("- {change}")));
-    if !author.is_empty() {
+    if !why.is_empty() {
         body.push(String::new());
-        body.extend(author.iter().cloned());
+        body.extend(why.iter().cloned());
     }
     sections.insert(0, (version.to_string(), body));
     let mut out: Vec<String> = preamble;
@@ -457,7 +457,7 @@ pub fn changelog(
     }
     Changelog {
         text: format!("{}\n", out.join("\n")),
-        why: author.iter().any(|line| !line.trim().is_empty()),
+        why: why.iter().any(|line| !line.trim().is_empty()),
         line: line as u32,
     }
 }
@@ -479,14 +479,12 @@ pub fn says_why(text: &str, version: &str) -> bool {
             body.push(line.to_string());
         }
     }
-    author_text(&body)
-        .iter()
-        .any(|line| !line.trim().is_empty())
+    why_text(&body).iter().any(|line| !line.trim().is_empty())
 }
 
 /// A section's text beneath the list Jadpo writes, the first list under
 /// its heading.
-fn author_text(body: &[String]) -> Vec<String> {
+fn why_text(body: &[String]) -> Vec<String> {
     let mut rest = body
         .iter()
         .skip_while(|line| line.trim().is_empty())
@@ -494,14 +492,14 @@ fn author_text(body: &[String]) -> Vec<String> {
     while rest.peek().is_some_and(|line| line.starts_with("- ")) {
         rest.next();
     }
-    let mut author: Vec<String> = rest
+    let mut why: Vec<String> = rest
         .skip_while(|line| line.trim().is_empty())
         .cloned()
         .collect();
-    while author.last().is_some_and(|line| line.trim().is_empty()) {
-        author.pop();
+    while why.last().is_some_and(|line| line.trim().is_empty()) {
+        why.pop();
     }
-    author
+    why
 }
 
 #[cfg(test)]

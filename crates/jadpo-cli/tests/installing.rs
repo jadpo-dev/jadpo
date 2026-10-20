@@ -136,7 +136,7 @@ public type OutwardCode = Text {
         refused.stderr
     );
     assert!(
-        refused.stderr.contains("rule: package.surface_mismatch\n"),
+        refused.stderr.contains("rule: install.surface_mismatch\n"),
         "{}",
         refused.stderr
     );
@@ -203,7 +203,7 @@ fn add_installs_from_a_git_repository_at_a_tag() {
     let missing = jadpo(&other, &["package", "add", &format!("{repository}@v9.0.0")]);
     assert_eq!(missing.code, 1, "{}", missing.stderr);
     assert!(
-        missing.stderr.contains("rule: package.fetch_failed\n"),
+        missing.stderr.contains("rule: install.fetch_failed\n"),
         "{}",
         missing.stderr
     );
@@ -312,7 +312,7 @@ fn remove_refuses_a_package_the_app_uses() {
         refused.stderr
     );
     assert!(
-        refused.stderr.contains("rule: package.in_use\n"),
+        refused.stderr.contains("rule: install.in_use\n"),
         "{}",
         refused.stderr
     );
@@ -393,14 +393,14 @@ action outward(code: Postcodes.OutwardCode) -> Postcodes.OutwardCode {
         ci.stdout
     );
     assert!(
-        ci.stdout.contains("rule: package.link_refused\n"),
+        ci.stdout.contains("rule: install.link_refused\n"),
         "{}",
         ci.stdout
     );
     let ci_test = with_ci(&app, &["test"]);
     assert_eq!(ci_test.code, 1, "{}{}", ci_test.stdout, ci_test.stderr);
     assert!(
-        format!("{}{}", ci_test.stdout, ci_test.stderr).contains("rule: package.link_refused"),
+        format!("{}{}", ci_test.stdout, ci_test.stderr).contains("rule: install.link_refused"),
         "{}{}",
         ci_test.stdout,
         ci_test.stderr

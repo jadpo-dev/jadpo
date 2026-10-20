@@ -201,7 +201,7 @@ pub fn links_refused(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         let name = name.rsplit('/').nth(1).unwrap_or(&line.package).to_string();
         out.push(
             Diagnostic::new(
-                &rule::PACKAGE_LINK_REFUSED,
+                &rule::INSTALL_LINK_REFUSED,
                 format!("`{}` is linked to `{path}`", line.package),
             )
             .at(span, "a live checkout")

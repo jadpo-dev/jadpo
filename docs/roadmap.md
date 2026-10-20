@@ -843,13 +843,13 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `jadpo package add` from a folder or a git repository's release tag,
   compiled as the app's own integration and its surface checked against
   its committed `surface.jadpo_record` before it is copied and locked
-  (`package.surface_mismatch`, `package.fetch_failed`); `update` to a
+  (`install.surface_mismatch`, `install.fetch_failed`); `update` to a
   folder's or a repository's newest release with area 18's review of what
   changed; `remove`, refused while the app uses the package
-  (`package.in_use`); `link`, every check reading the checkout in the
+  (`install.in_use`); `link`, every check reading the checkout in the
   installed folder's place, and `unlink`, restoring the line kept in
   `.jadpo/links`; with `CI` set, `jadpo check` and `jadpo test` refuse a
-  link (`package.link_refused`). The bar's examples, ```` ```jadpo ````
+  link (`install.link_refused`). The bar's examples, ```` ```jadpo ````
   blocks in descriptions run as tests (`publish.example_missing`,
   `publish.example_failed`), and changelog, a `CHANGELOG.md` section per
   version written from the surface with the author's why

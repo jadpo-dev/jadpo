@@ -607,11 +607,11 @@ the sandbox for each one (see "Tests and fakes").
 > or from a git repository at a release tag
 > (`github.com/acme/postcodes@v2.1.0`): the package is compiled as the
 > app's own integration would be, the surface its code gives has to be its
-> committed `surface.jadpo_record` byte for byte (`package.surface_mismatch`),
+> committed `surface.jadpo_record` byte for byte (`install.surface_mismatch`),
 > and only then is it copied into `packages/<name>/<version>/` and locked
 > with its version, digest and source. `update` moves one to its newest
 > release with area 18's review of what changed, `remove` takes out one the
-> app no longer uses (`package.in_use`), and `link` and `unlink` are under
+> app no longer uses (`install.in_use`), and `link` and `unlink` are under
 > "Developing and publishing a package". The registry, another Jadpo app's
 > OpenAPI and publisher trust come later; the choices are in "Chosen in
 > chunk 7.1b2" below.
@@ -789,7 +789,7 @@ the capabilities it provides.
 > `dev` reads the checkout's files in place of `packages/postcodes/v2/`,
 > which stays as installed, and shows its problems at the checkout's paths.
 > With `CI` set, `jadpo check` and `jadpo test` refuse the link
-> (`package.link_refused`), and `jadpo build` will always. `jadpo package
+> (`install.link_refused`), and `jadpo build` will always. `jadpo package
 > unlink postcodes` puts the installed line back:
 >
 > ```text
@@ -1995,7 +1995,7 @@ example and real output under "Errors".
 > `hosts:` with `runs:`, a reserved name and a name the app uses, and the
 > reachable-from-public rule (area 1's `visibility.public_reaches_private`).
 > Chunk 7.1b2 built a surface that differs at install and a link in CI,
-> under "Package errors" too. Still to come: a resource and an action with one
+> under "Installing errors". Still to come: a resource and an action with one
 > name, a public action that emits and subscribing to a non-public event
 > (chunk 7.6); a connection's `host:` for a package with fixed `hosts:`
 > (chunk 7.1c).
@@ -2608,10 +2608,14 @@ error: Package `Postcodes.v2` is proprietary but wasn't installed from git
 check failed: 1 error, 2 files
 ```
 
-### `package.surface_mismatch`
+## Installing errors
 
-> Built in chunk 7.1b2. `jadpo package add` and `update` report it, and
-> change nothing.
+> Built in chunk 7.1b2. The installing commands report these, and change
+> nothing when they do; `jadpo check` and `jadpo test` report a link in
+> CI. Like the publishing errors below they come from running a command,
+> so area 14 lists them with its command errors.
+
+### `install.surface_mismatch`
 
 A package is installed only when its committed surface is what its code
 offers. Here a type was added after the surface was written:
@@ -2621,14 +2625,11 @@ $ jadpo package add ../postcodes
 error: `Postcodes.v2`'s surface.jadpo_record doesn't match its code
   reason: Its code has `type InwardCode`, which its committed surface doesn't. A package is installed only when its surface, what reviewers read, is what its code offers.
   next: Run `jadpo package check` in the package's repository, commit its surface.jadpo_record, and release it again (human)
-  rule: package.surface_mismatch
-  help: docs/language/11-integrations.html#package-surface-mismatch
+  rule: install.surface_mismatch
+  help: docs/language/14-tooling.html#command-errors
 ```
 
-### `package.fetch_failed`
-
-> Built in chunk 7.1b2. `jadpo package add` and `update` report it, and
-> change nothing.
+### `install.fetch_failed`
 
 A git repository that can't be read, or holds no release to install:
 
@@ -2637,14 +2638,11 @@ $ jadpo package add github.com/acme/postcodes@v9.0.0
 error: `github.com/acme/postcodes` has no tag `v9.0.0`
   reason: Its release tags are `v2.0.0` and `v2.1.0`.
   next: Give one of its release tags, or tag the release in the package's repository after `jadpo package check` passes (human)
-  rule: package.fetch_failed
-  help: docs/language/11-integrations.html#package-fetch-failed
+  rule: install.fetch_failed
+  help: docs/language/14-tooling.html#command-errors
 ```
 
-### `package.in_use`
-
-> Built in chunk 7.1b2. `jadpo package remove` reports it, and changes
-> nothing.
+### `install.in_use`
 
 A package the app's code still brings in stays installed:
 
@@ -2653,14 +2651,11 @@ $ jadpo package remove postcodes
 error: The app still uses `Postcodes.v2`
   reason: `domains/intake/actions/read_postcode.jadpo` brings it in with `use packages/postcodes`, so removing it would leave that file unable to compile.
   next: Take `use packages/postcodes` and what it brings in out of the app's code, then run `jadpo package remove postcodes` again (agent)
-  rule: package.in_use
-  help: docs/language/11-integrations.html#package-in-use
+  rule: install.in_use
+  help: docs/language/14-tooling.html#command-errors
 ```
 
-### `package.link_refused`
-
-> Built in chunk 7.1b2. `jadpo check` and `jadpo test` report it when the
-> `CI` variable is set, and `jadpo build` will always.
+### `install.link_refused`
 
 A link compiles the app against a checkout on one machine, so it never
 ships:
@@ -2674,8 +2669,8 @@ error: `Postcodes.v2` is linked to `../postcodes`
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a live checkout
   reason: A link compiles the app against a checkout on one machine, so CI (the `CI` variable is set) and production builds refuse it, and a link never ships.
   next: Run `jadpo package unlink postcodes`, then commit `jadpo.lock` (agent)
-  rule: package.link_refused
-  help: docs/language/11-integrations.html#package-link-refused
+  rule: install.link_refused
+  help: docs/language/14-tooling.html#command-errors
 
 check failed: 1 error, 7 files
 ```
@@ -2796,7 +2791,7 @@ error: CHANGELOG.md doesn't say why 2.1.0 is released
   |
 3 | ## 2.1.0
   | ^^^^^^^^ no why beneath the list
-  reason: `jadpo package check` writes what changed from the surface; the author writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
+  reason: `jadpo package check` writes what changed from the surface; whoever releases it writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
   next: Write why 2.1.0 is released under `## 2.1.0` in CHANGELOG.md, after the list (agent)
   rule: publish.changelog_missing
   help: docs/language/14-tooling.html#command-errors
@@ -3741,9 +3736,9 @@ changelog (below); the rest is still to build.
 > `update`, with area 18's review of what changed; `remove`; `link` and
 > `unlink`, every check compiling the app against a linked checkout and CI
 > refusing it; and the bar's examples (question 27) and changelog
-> (question 28). The errors are `package.surface_mismatch`,
-> `package.fetch_failed`, `package.in_use` and `package.link_refused`
-> under "Package errors", and `publish.example_missing`,
+> (question 28). The errors are `install.surface_mismatch`,
+> `install.fetch_failed`, `install.in_use` and `install.link_refused`
+> under "Installing errors", and `publish.example_missing`,
 > `publish.example_failed` and `publish.changelog_missing` under
 > "Publishing errors"; the choices are in "Chosen in chunk 7.1b2" below.
 
@@ -3915,12 +3910,12 @@ What the pages leave to the build, each the most conservative reading:
   the tag's commit is checked out, and the package is at the repository's
   root. The lock records the repository as written, the tag and its
   commit. A tag the repository lacks names the tags it has
-  (`package.fetch_failed`).
+  (`install.fetch_failed`).
 - **Verification at install.** The package is compiled as the app's own
   integration in a scratch app (the golden rule), and must have no errors;
   the surface its code gives at the version its committed
   `surface.jadpo_record` names has to be that file byte for byte, and for
-  git that version has to be the tag's (`package.surface_mismatch`). Only
+  git that version has to be the tag's (`install.surface_mismatch`). Only
   then are its files copied, leaving out hidden ones (`.git`) and a
   `build/` at its root, through a hidden folder beside the target so a
   failed copy leaves the old one, and its digest is 7.1's.
@@ -3939,7 +3934,7 @@ What the pages leave to the build, each the most conservative reading:
   removed one the app uses. The acceptance itself waits for `jadpo
   approval`. A linked package is unlinked first.
 - **`remove <name>`.** Refused while a file of the app's has `use
-  packages/<name>` (`package.in_use`), naming each; otherwise the folder
+  packages/<name>` (`install.in_use`), naming each; otherwise the folder
   and its lock line go, and the lock stays, possibly empty. A linked
   package is unlinked first.
 - **`link <folder>`.** The lock's line becomes `link <path>`, the path
@@ -3955,7 +3950,7 @@ What the pages leave to the build, each the most conservative reading:
 - **Where a link is refused.** CI is the `CI` variable set to anything but
   empty, as CI services set it and as `jadpo suggest share` and the
   terminal's animation already read it; there `jadpo check` and `jadpo
-  test` refuse each link (`package.link_refused`). Area 14 names no
+  test` refuse each link (`install.link_refused`). Area 14 names no
   release or production profile, and every production build goes through
   `jadpo build` (Phase 8), which will refuse a link whatever the
   environment.
