@@ -257,6 +257,7 @@ impl Report {
             FaultKind::NotBuiltYet(_) => "not built yet".to_string(),
             FaultKind::Defect(_) => "here".to_string(),
             FaultKind::Store(_) => "the store refused".to_string(),
+            FaultKind::CallInTransaction(_) => "not sent".to_string(),
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
         let written = text.as_ref().map_or("", |text| text.written.as_str());
@@ -325,6 +326,13 @@ impl Report {
                 ),
                 "Check the database it runs against, then run it again".to_string(),
                 "human",
+            ),
+            FaultKind::CallInTransaction(call) => (
+                format!(
+                    "`{call}` would have left the process while this action's transaction was open, after its first read or write; no transaction is held while an outside call is out, so it wasn't sent."
+                ),
+                "Make the call before the action's first read or write".to_string(),
+                "agent",
             ),
         };
         Report {

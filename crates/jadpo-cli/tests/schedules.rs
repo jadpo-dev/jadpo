@@ -15,17 +15,17 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::schedules::{Ran, Skipped, tick};
-use jadpo_runtime::{Caller, Clock, Ctx, Database, Env, Executor, Host, Outcome, Row, SqlValue};
+use jadpo_runtime::{Caller, Executor, Outcome, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -450,135 +450,71 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// A store, a clock the test moves, and random bytes from a counter.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    clock: Cell<i64>,
-    drawn: Cell<u64>,
+/// Each run record's outcome, the reason a tick skipped it, its due
+/// time as minutes after `T0` and its events, oldest first.
+async fn runs(host: &Harness) -> Vec<(String, Option<String>, i64, Option<i32>)> {
+    host.rows("SELECT \"outcome\", \"reason\", ((extract(epoch FROM \"due_slot\") * 1000 - 1792400400000) / 60000)::int8, \"events\" FROM \"jadpo_schedule_runs\" ORDER BY \"started_at\", \"due_slot\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(outcome), reason, SqlValue::Int8(due), events] => (
+                outcome.clone(),
+                match reason {
+                    SqlValue::Text(reason) => Some(reason.clone()),
+                    _ => None,
+                },
+                *due,
+                match events {
+                    SqlValue::Int4(events) => Some(*events),
+                    _ => None,
+                },
+            ),
+            other => panic!("not a run: {other:?}"),
+        })
+        .collect()
 }
 
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(self.clock.get())
-    }
+/// When the census is next due, as minutes after `T0`.
+async fn next_due(host: &Harness) -> i64 {
+    host.count("SELECT ((extract(epoch FROM \"next_run_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"jadpo_schedules\"")
+        .await
 }
 
-impl Store {
-    fn new(url: &str, offset: u64) -> Store {
-        Store {
-            db: postgres(url).expect("store"),
-            seeds: Cell::new(0),
-            clock: Cell::new(T0),
-            drawn: Cell::new(offset),
-        }
-    }
+/// Each census's count of chores, and when it was taken as minutes
+/// after `T0`, oldest first.
+async fn censuses(host: &Harness) -> Vec<(i32, i64)> {
+    host.rows("SELECT \"seen\"::int4, ((extract(epoch FROM \"taken_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"census\" ORDER BY \"taken_at\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Int4(seen), SqlValue::Int8(at)] => (*seen, *at),
+            other => panic!("not a census: {other:?}"),
+        })
+        .collect()
+}
 
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::fixed(self.clock.get()),
-        };
-        Ctx::new(program.places(), self, env)
-    }
-
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    async fn count(&self, sql: &str) -> i64 {
-        match self.rows(sql).await.first().and_then(|row| row.first()) {
-            Some(SqlValue::Int8(n)) => *n,
-            other => panic!("not a count: {other:?}"),
-        }
-    }
-
-    /// Each run record's outcome, the reason a tick skipped it, its due
-    /// time as minutes after `T0` and its events, oldest first.
-    async fn runs(&self) -> Vec<(String, Option<String>, i64, Option<i32>)> {
-        self.rows("SELECT \"outcome\", \"reason\", ((extract(epoch FROM \"due_slot\") * 1000 - 1792400400000) / 60000)::int8, \"events\" FROM \"jadpo_schedule_runs\" ORDER BY \"started_at\", \"due_slot\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(outcome), reason, SqlValue::Int8(due), events] => (
-                    outcome.clone(),
-                    match reason {
-                        SqlValue::Text(reason) => Some(reason.clone()),
-                        _ => None,
-                    },
-                    *due,
-                    match events {
-                        SqlValue::Int4(events) => Some(*events),
-                        _ => None,
-                    },
-                ),
-                other => panic!("not a run: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// When the census is next due, as minutes after `T0`.
-    async fn next_due(&self) -> i64 {
-        self.count("SELECT ((extract(epoch FROM \"next_run_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"jadpo_schedules\"")
-            .await
-    }
-
-    /// Each census's count of chores, and when it was taken as minutes
-    /// after `T0`, oldest first.
-    async fn censuses(&self) -> Vec<(i32, i64)> {
-        self.rows("SELECT \"seen\"::int4, ((extract(epoch FROM \"taken_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"census\" ORDER BY \"taken_at\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Int4(seen), SqlValue::Int8(at)] => (*seen, *at),
-                other => panic!("not a census: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// Each delivery's state and attempts, oldest event first.
-    async fn deliveries(&self) -> Vec<(String, i32)> {
-        self.rows("SELECT \"d\".\"status\", \"d\".\"attempts\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" ORDER BY \"o\".\"emitted_at\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(status), SqlValue::Int4(attempts)] => (status.clone(), *attempts),
-                other => panic!("not a delivery: {other:?}"),
-            })
-            .collect()
-    }
+/// Each delivery's state and attempts, oldest event first.
+async fn deliveries(host: &Harness) -> Vec<(String, i32)> {
+    host.rows("SELECT \"d\".\"status\", \"d\".\"attempts\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" ORDER BY \"o\".\"emitted_at\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(status), SqlValue::Int4(attempts)] => (status.clone(), *attempts),
+            other => panic!("not a delivery: {other:?}"),
+        })
+        .collect()
 }
 
 /// Runs `action` with `args` as `caller`, signed in, or as no one.
 async fn call(
     program: &Program,
-    host: &Store,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
 ) -> Outcome {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program);
+    let mut ctx = host.ctx(program.places());
     ctx.set_caller(caller.map(|person| Caller {
         value: person.clone(),
         key: "user".to_string(),
@@ -637,12 +573,12 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
     // Two instances of the application, each with its own connection.
-    let host = Store::new(&url, 0);
-    let other = Store::new(&url, 1 << 40);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
+    let other = Harness::postgres(&url).at(T0).random_from(1 << 40);
     let at = |minutes: i64| {
         let now = T0 + minutes * MINUTE;
-        host.clock.set(now);
-        other.clock.set(now);
+        host.set_now(now);
+        other.set_now(now);
         now
     };
     let runtime = Runtime::new().expect("runtime");
@@ -680,7 +616,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         let first = tick(&program, &host, at(0)).await;
         assert!(first.due.is_empty(), "{:?}", first.due);
         assert!(first.problems.is_empty(), "{:?}", first.problems);
-        assert_eq!(host.next_due().await, 15);
+        assert_eq!(next_due(&host).await, 15);
 
         // Two instances tick at once when it is due: one takes the lease and
         // runs it, the other finds it taken and does nothing.
@@ -692,16 +628,16 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         assert_eq!(ran[0].due_slot, now);
         // As the system with no tenant, the run sees both households'
         // chores, and `clock.now` is the tick's time.
-        assert_eq!(host.censuses().await, [(2, 15)]);
-        assert_eq!(host.runs().await, [("succeeded".to_string(), None, 15, Some(1))]);
+        assert_eq!(censuses(&host).await, [(2, 15)]);
+        assert_eq!(runs(&host).await, [("succeeded".to_string(), None, 15, Some(1))]);
         let traced = host
             .count("SELECT count(*) FROM \"jadpo_schedule_runs\" WHERE \"traceparent\" LIKE '00-%'")
             .await;
         assert_eq!(traced, 1, "a run starts a trace");
-        assert_eq!(host.next_due().await, 30);
+        assert_eq!(next_due(&host).await, 30);
         // What it emitted was delivered after it: no bell is hung, and with
         // one attempt the delivery fails for good.
-        assert_eq!(host.deliveries().await, [("failed".to_string(), 1)]);
+        assert_eq!(deliveries(&host).await, [("failed".to_string(), 1)]);
 
         // A run still holding the lease when the next one is due: the tick
         // is skipped, recorded, and the due time moves on, not queued.
@@ -712,7 +648,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         let leased = tick(&program, &host, at(30)).await;
         assert_eq!(leased.due.len(), 1);
         assert_eq!(leased.due[0].ran, Ran::Skipped(Skipped::LeaseHeld));
-        assert_eq!(host.next_due().await, 45);
+        assert_eq!(next_due(&host).await, 45);
         // Once its lease lapses the worker holding it is taken as lost: its
         // record says so, and the next due tick runs the schedule.
         value(call(&program, &host, "hang_bell", vec![], Some(&ann_in)).await);
@@ -723,7 +659,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
             .await;
         assert_eq!(lost, [vec![SqlValue::Text("lease_expired".into())]]);
         assert_eq!(
-            host.deliveries().await,
+            deliveries(&host).await,
             [("failed".to_string(), 1), ("succeeded".to_string(), 1)]
         );
 
@@ -732,17 +668,17 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         let caught = tick(&program, &host, at(185)).await;
         assert_eq!(caught.due.len(), 1, "{:?}", caught.due);
         assert_eq!(caught.due[0].due_slot, T0 + 60 * MINUTE);
-        assert_eq!(host.next_due().await, 195);
-        assert_eq!(host.censuses().await, [(2, 15), (2, 45), (2, 185)]);
+        assert_eq!(next_due(&host).await, 195);
+        assert_eq!(censuses(&host).await, [(2, 15), (2, 45), (2, 185)]);
 
         // Paused, a due tick is skipped and recorded.
         host.rows("UPDATE \"jadpo_schedules\" SET \"paused\" = TRUE RETURNING 1").await;
         let paused = tick(&program, &host, at(195)).await;
         assert_eq!(paused.due[0].ran, Ran::Skipped(Skipped::Paused));
-        assert_eq!(host.next_due().await, 210);
+        assert_eq!(next_due(&host).await, 210);
         host.rows("UPDATE \"jadpo_schedules\" SET \"paused\" = FALSE RETURNING 1").await;
         assert_eq!(
-            host.runs().await,
+            runs(&host).await,
             [
                 ("succeeded".to_string(), None, 15, Some(1)),
                 ("failed".to_string(), None, 30, None),
@@ -764,7 +700,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         assert!(swept.due.is_empty());
         assert_eq!(swept.deliveries.len(), 1, "{swept:?}");
         assert_eq!(
-            host.deliveries().await,
+            deliveries(&host).await,
             [
                 ("failed".to_string(), 1),
                 ("succeeded".to_string(), 1),
@@ -789,7 +725,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         let keys = host.rows("SELECT \"key\" FROM \"jadpo_idempotency_keys\"").await;
         assert_eq!(keys, [vec![SqlValue::Text("fresh".into())]]);
         assert_eq!(
-            host.deliveries().await,
+            deliveries(&host).await,
             [
                 ("failed".to_string(), 1),
                 ("failed".to_string(), 1),
@@ -919,11 +855,11 @@ fn schedules_are_listed_explained_paused_resumed_run_and_paged() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store::new(&url, 0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
     let runtime = Runtime::new().expect("runtime");
     let tick_at = |minutes: i64| {
-        host.clock.set(at(minutes, 0));
+        host.set_now(at(minutes, 0));
         runtime.block_on(tick(&program, &host, at(minutes, 0)))
     };
 
@@ -1186,7 +1122,7 @@ until it ends
 "
     );
     // Past its lease's end, its worker was lost.
-    host.clock.set(at(205, 30));
+    host.set_now(at(205, 30));
     runtime.block_on(tick(&program, &host, at(205, 30)));
     let why = watching(&root, &url, at(206, 0), &["why", "chore_census"]);
     assert!(
@@ -1359,14 +1295,14 @@ fn two_instances_ticking_raise_an_alert_once() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store::new(&url, 0);
-    let other = Store::new(&url, 1 << 40);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
+    let other = Harness::postgres(&url).at(T0).random_from(1 << 40);
     let runtime = Runtime::new().expect("runtime");
     // Both instances' ticks together: the alerts each raised.
     let both = |minutes: i64| {
         let now = T0 + minutes * MINUTE;
-        host.clock.set(now);
-        other.clock.set(now);
+        host.set_now(now);
+        other.set_now(now);
         runtime.block_on(async {
             let (one, two) =
                 futures_join(tick(&program, &host, now), tick(&program, &other, now)).await;
@@ -1435,7 +1371,10 @@ fn two_instances_ticking_raise_an_alert_once() {
     let now = T0 + 300 * MINUTE + 20_000;
     let why = runtime
         .block_on(jadpo_runtime::schedules::why::why(
-            &host.db, &declared, 60_000, now,
+            host.store(),
+            &declared,
+            60_000,
+            now,
         ))
         .expect("read");
     match &why.answer {
@@ -1638,7 +1577,7 @@ fn deployed_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
 }
 
 /// Waits, up to a minute, until `sql`'s count is `want`.
-fn until_count(runtime: &Runtime, host: &Store, sql: &str, want: i64) {
+fn until_count(runtime: &Runtime, host: &Harness, sql: &str, want: i64) {
     let started = std::time::Instant::now();
     while runtime.block_on(host.count(sql)) != want {
         assert!(
@@ -1666,10 +1605,10 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store::new(&url, 0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
     let runtime = Runtime::new().expect("runtime");
-    host.clock.set(at(0, 0));
+    host.set_now(at(0, 0));
     runtime.block_on(tick(&program, &host, at(0, 0)));
     let requested = "SELECT count(*) FROM \"jadpo_schedules\" WHERE \"run_requested\" IS NOT NULL";
 
@@ -1683,8 +1622,8 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
     };
     until_count(&runtime, &host, requested, 1);
     runtime.block_on(async {
-        assert_eq!(host.censuses().await, [], "no census is taken until a tick");
-        assert_eq!(host.runs().await, []);
+        assert_eq!(censuses(&host).await, [], "no census is taken until a tick");
+        assert_eq!(runs(&host).await, []);
     });
     // A second request before the tick joins the first: one run answers
     // both.
@@ -1701,7 +1640,7 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
     });
     let again = runtime
         .block_on(jadpo_runtime::schedules::watch::request_run(
-            &host.db,
+            host.store(),
             &host,
             &declared,
             at(1, 5),
@@ -1736,7 +1675,7 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
 
     // The application's own tick runs it, by hand, under the lease, and
     // leaves its grid as it was.
-    host.clock.set(at(2, 0));
+    host.set_now(at(2, 0));
     let ticked = runtime.block_on(tick(&program, &host, at(2, 0)));
     assert_eq!(ticked.due.len(), 1, "{:?}", ticked.due);
     assert_eq!(ticked.due[0].ran, Ran::Succeeded { events: 1 });
@@ -1748,9 +1687,9 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
         "✓ The app's tick ran `chore_census` in 0 ms, emitting 1 event\n"
     );
     runtime.block_on(async {
-        assert_eq!(host.censuses().await, [(0, 2)]);
+        assert_eq!(censuses(&host).await, [(0, 2)]);
         assert_eq!(
-            host.runs().await,
+            runs(&host).await,
             [("succeeded".to_string(), Some("by_hand".to_string()), 2, Some(1))]
         );
         assert_eq!(host.count(requested).await, 0);
@@ -1814,7 +1753,7 @@ fn a_requested_run_no_tick_picks_up_is_withdrawn() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store::new(&url, 0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
 
     // No application is running, so no tick comes: after twice the period

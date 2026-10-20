@@ -118,6 +118,10 @@ pub struct Response {
     /// emitted once it committed (chunk 6.1a). The host hands it to the
     /// runner ([`crate::runner::after_response`]); never sent.
     pub deferred: Vec<crate::runner::Deferred>,
+    /// The calls what it ran made outside the process, as the capability
+    /// seam logged them, without their values (chunk 7.0c): what `jadpo
+    /// calls` lists by request (chunk 7.2); never sent.
+    pub calls: Vec<crate::capability::Logged>,
 }
 
 impl Response {
@@ -301,6 +305,7 @@ pub async fn serve_request(
     let mut response =
         answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await;
     response.deferred = ctx.take_deferred();
+    response.calls = ctx.take_calls();
     response
 }
 
@@ -1323,6 +1328,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         counted: false,
         client: None,
         deferred: Vec::new(),
+        calls: Vec::new(),
     }
 }
 

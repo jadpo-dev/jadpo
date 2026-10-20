@@ -41,11 +41,8 @@ pub struct SubscriberPlan {
     pub name: String,
     /// The identity key of the event type it listens for.
     pub event: String,
-    /// The action it runs, by callable number.
-    pub callable: u32,
-    /// Each argument, a path read from the event: empty for the event
-    /// itself.
-    pub args: Vec<Vec<String>>,
+    /// What a delivery hands the event to.
+    pub target: Target,
     /// How many times a delivery is tried (area 12, `retry:`).
     pub attempts: u32,
     /// How long after its event was emitted a delivery is given up.
@@ -55,11 +52,48 @@ pub struct SubscriberPlan {
     /// The store its action writes, where its handled record commits with
     /// its writes (area 12, "Outbox placement, settled"), or, writing
     /// none, the one its events are kept in, where its handled record
-    /// commits with them (chunk 6.6a); `None` when it does neither.
+    /// commits with them (chunk 6.6a); `None` when it does neither, as a
+    /// capability's delivery, whose record alone says it was sent.
     pub store: Option<String>,
     /// Where it is written, for logs.
     pub file: String,
     pub line: u32,
+}
+
+/// What a delivery hands its event to (area 12; chunk 7.0c): a
+/// subscriber's action, or a capability's operation, as sending an email
+/// is emitting it (area 16, "Email").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Target {
+    /// The action it runs, by callable number, each argument a path read
+    /// from the event: empty for the event itself.
+    Action {
+        callable: u32,
+        args: Vec<Vec<String>>,
+    },
+    /// An operation of the capability its connection fills, given the
+    /// event whole: `email`'s `send` of an `EmailMessage` (chunk 7.3).
+    Capability {
+        /// The connection the host gives a driver for (area 11).
+        connection: String,
+        operation: String,
+        repeat: Repeat,
+    },
+}
+
+/// Whether an outside call may be sent again (area 11, "Idempotency";
+/// area 12, "Delivery: at least once, safe to repeat"; chunk 7.0c).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Repeat {
+    /// It changes nothing, or its package marks it safe to repeat.
+    Safe,
+    /// It changes something under an idempotency key its provider keeps:
+    /// sent again under the same key, it acts once.
+    Keyed,
+    /// It changes something with no key (Postmark's, SES's sends): sent
+    /// twice, it may act twice, so one whose outcome is unknown is parked
+    /// for an operator, never sent again blindly (area 16).
+    Unkeyed,
 }
 
 /// Where a delivery's tenant comes from (area 9, "Background work").

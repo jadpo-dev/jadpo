@@ -102,6 +102,11 @@ impl Boundary {
         }
     }
 
+    /// Whether it has begun its transaction.
+    pub(crate) fn has_transaction(&self) -> bool {
+        self.transaction.is_some()
+    }
+
     /// Its transaction, when it has begun one.
     pub(crate) fn open_transaction(&mut self) -> Option<&mut dyn Transaction> {
         match &mut self.transaction {
@@ -223,6 +228,31 @@ pub fn unavailable() -> Failure {
     let mut failure = Failure::new("runtime unavailable", "Unavailable", "unavailable");
     failure.kind = Some("unavailable".to_string());
     failure.status = Some(503);
+    failure
+}
+
+/// What the runtime raises when an outside call may have acted and
+/// sending it again could act twice (area 4: `outcome_unknown`, 500, "the
+/// change may or may not have happened, so retrying blindly is unsafe";
+/// raised by the runtime; chunk 7.0c).
+pub fn outcome_unknown() -> Failure {
+    let mut failure = Failure::new(
+        "runtime outcome_unknown",
+        "OutcomeUnknown",
+        "outcome_unknown",
+    );
+    failure.kind = Some("outcome_unknown".to_string());
+    failure.status = Some(500);
+    failure
+}
+
+/// What the runtime raises when a connection can't be used as deployed:
+/// no driver fills it, or its credential was refused (area 4:
+/// `misconfigured`, 500; area 11; chunk 7.0c).
+pub fn misconfigured() -> Failure {
+    let mut failure = Failure::new("runtime misconfigured", "Misconfigured", "misconfigured");
+    failure.kind = Some("misconfigured".to_string());
+    failure.status = Some(500);
     failure
 }
 

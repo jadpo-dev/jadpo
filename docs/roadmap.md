@@ -752,12 +752,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   each a struct of its own, the boundary's state in `boundary.rs`, and
   every field private, reached through methods. Choices in
   compiler-runtime.md §2.5.
-- [ ] **7.0c The capability seam** `opus · xhigh`, after 7.0b: a seam that
-  logs each outside call on its invocation, feeding recordings, `jadpo
-  calls` and an `outcome_unknown` result; fakes as `Host` wrappers and one
-  shared test host; a delivery that targets an action or a capability;
-  no capability call inside an open transaction. 6.4b, 7.1, 7.3 and
-  5.5v3 build on it.
+- [x] **7.0c The capability seam** `opus · xhigh`. Built:
+  `jadpo_runtime::effects::call`, the one way a call leaves the process,
+  through one driver trait, `capability::Capability`, which
+  `Host::capability(connection)` gives: refused while the action's
+  transaction is open (`call_in_transaction`), logged on its invocation
+  without its values (`capability::Logged`, on `Response::calls` for
+  7.2's `jadpo calls`), and recorded and replayed beside the random bytes
+  (`Ctx::record_run`); fakes as host wrappers (`capability::Faked`,
+  `Fake`) and one shared test host, `jadpo_test::host::Harness`, now under
+  nineteen of `crates/jadpo-cli/tests`' files; a subscriber's `Target`, an
+  action or a capability's operation, and a delivery whose unkeyed call
+  may have acted parked as `outcome_unknown` (its driver said so, it was
+  cut off or its worker lost while the call was out, or its action would
+  be retried after one), proved live with a test capability. A batch's
+  items still run inside its transaction, so an item's call is refused
+  until 7.4. Choices in area 16 and compiler-runtime.md §2.6.
 - [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
   moved after 7.0c from Phase 6, since it needs a minimal `files`
   capability on that seam: a store's `put` and `read` of a `File` with a

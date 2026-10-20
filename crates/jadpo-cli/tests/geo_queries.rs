@@ -27,10 +27,11 @@ use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlValue};
+use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
 use jadpo_std::read::Source;
 use jadpo_std::standard::geo::{BOUNDING_BOX, CIRCLE};
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::{Decimal, Quantity, Value, geo};
 
 use crate::support;
@@ -295,25 +296,12 @@ fn each_geo_condition_derives_the_gist_index_it_searches() {
     }
 }
 
-/// A host whose one store is a PostgreSQL database.
-struct Store(jadpo_host_native::Postgres);
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.0)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 /// A migrated database for the project, its program, and a runtime to
 /// call it with.
 struct Live {
     url: String,
     program: Program,
-    host: Store,
+    host: Harness,
     runtime: jadpo_host_native::Runtime,
 }
 
@@ -325,7 +313,7 @@ impl Live {
         assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
         let loaded = jadpo_db::load(root);
         let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-        let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+        let host = Harness::postgres(&url);
         Live {
             url,
             program,

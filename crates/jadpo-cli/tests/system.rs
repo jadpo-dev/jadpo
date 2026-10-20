@@ -13,19 +13,17 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::runner::{Job, as_system as run_as_system};
-use jadpo_runtime::{
-    Caller, Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, System,
-};
+use jadpo_runtime::{Caller, Executor, Outcome, SqlType, SqlValue, System};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -369,39 +367,16 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-struct Store(Postgres, Cell<u64>);
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.0)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.1.set(self.1.get() + 1);
-        let env = Env {
-            seed: Some(self.1.get()),
-            clock: Clock::TEST,
-        };
-        Ctx::new(program.places(), self, env)
-    }
-}
-
 /// Runs `action` with `args` as `caller`, signed in, or as no one.
 async fn call(
     program: &Program,
-    host: &Store,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
 ) -> Outcome {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program);
+    let mut ctx = host.ctx(program.places());
     ctx.set_caller(caller.map(|person| Caller {
         value: person.clone(),
         key: "user".to_string(),
@@ -414,7 +389,7 @@ async fn call(
 /// runner runs a subscriber's delivery or a schedule's run.
 async fn as_system(
     program: &Program,
-    host: &Store,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     tenant: Option<&Value>,
@@ -426,7 +401,7 @@ async fn as_system(
             other => panic!("not an identity: {other:?}"),
         }
     });
-    let mut ctx = host.ctx(program);
+    let mut ctx = host.ctx(program.places());
     let job = Job {
         callable,
         args,
@@ -502,7 +477,7 @@ fn the_system_is_let_in_exactly_where_access_system_grants_and_no_caller_is() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store(postgres(&url).expect("store"), Cell::new(0));
+    let host = Harness::postgres(&url);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let ann = value(call(&program, &host, "join", vec![Value::text("ann")], None).await);

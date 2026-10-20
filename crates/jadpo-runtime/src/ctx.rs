@@ -11,9 +11,10 @@
 //! handled, the chain and trace, the work left for after the response and
 //! the events kept), which the runner sets; and its capabilities
 //! ([`Capabilities`]: the host's stores, passkeys and random bytes, with
-//! the identities made from them and what a recording keeps), which the
-//! capability seam builds on (chunk 7.0c). Reads and writes run through
-//! [`crate::store`] against it, and operations with effects through
+//! the identities made from them, what a recording keeps, and the log of
+//! the calls that left the process through the capability seam, chunk
+//! 7.0c). Reads and writes run through [`crate::store`] against it, and
+//! operations with effects, outside calls among them, through
 //! [`crate::effects`].
 
 use std::fmt;
@@ -207,9 +208,20 @@ impl<'p> Ctx<'p> {
     }
 
     /// What it reaches outside itself, through its host: its stores, its
-    /// passkey ceremonies and its random bytes.
+    /// passkey ceremonies, its random bytes and the calls it made.
     pub fn capabilities(&self) -> &Capabilities<'p> {
         &self.capabilities
+    }
+
+    pub(crate) fn capabilities_mut(&mut self) -> &mut Capabilities<'p> {
+        &mut self.capabilities
+    }
+
+    /// Takes the log of the calls it made through the capability seam
+    /// (chunk 7.0c), leaving it empty: what a request's response carries
+    /// for `jadpo calls`.
+    pub fn take_calls(&mut self) -> Vec<crate::capability::Logged> {
+        self.capabilities.take_calls()
     }
 
     /// The trace context of the work under way, when it has one.
@@ -401,24 +413,27 @@ impl<'p> Ctx<'p> {
         self.capabilities.secret_random_bytes(out)
     }
 
-    /// Keeps the random bytes the invocation is given from now on, for
-    /// [`Ctx::recorded_random`]: what a recorded run replays (area 17).
-    pub fn record_random(&mut self) {
-        self.capabilities.record_random();
+    /// Keeps the random bytes the invocation is given and its outside
+    /// calls' answers from now on, for [`Ctx::recorded_run`]: what a recorded
+    /// run replays (area 17).
+    pub fn record_run(&mut self) {
+        self.capabilities.record();
     }
 
-    /// The random bytes kept since [`Ctx::record_random`]; `None` when not
-    /// recording. They can hold tokens, so they never leave the process
+    /// What was kept since [`Ctx::record_run`]; `None` when not recording. It
+    /// can hold tokens and personal data, so it never leaves the process
     /// except as area 17's recording does.
-    pub fn recorded_random(&self) -> Option<&[u8]> {
-        self.capabilities.recorded_random()
+    pub fn recorded_run(&self) -> Option<&crate::capability::Recording> {
+        self.capabilities.recorded()
     }
 
-    /// Gives `bytes`, a recorded run's, as the invocation's random bytes,
-    /// in order, so it makes the same tokens, codes and shuffles; once
-    /// they run out it has no randomness to give (area 17).
-    pub fn replay_random(&mut self, bytes: Vec<u8>) {
-        self.capabilities.replay_random(bytes);
+    /// Gives `recording`, a recorded run's, as the invocation's random
+    /// bytes and its outside calls' answers, in order, so it makes the
+    /// same tokens, codes and shuffles and no call leaves the process;
+    /// once the bytes run out it has no randomness to give, and a call the
+    /// recording doesn't have next is refused (area 17).
+    pub fn replay_run(&mut self, recording: crate::capability::Recording) {
+        self.capabilities.replay(recording);
     }
 
     /// Records what the running action did to the request's session;
@@ -623,6 +638,15 @@ impl<'p> Ctx<'p> {
     /// Whether an action is running: its boundary is open.
     pub fn in_action(&self) -> bool {
         self.boundary.is_some()
+    }
+
+    /// Whether the running action's transaction is open: it has read or
+    /// written since its boundary opened. No outside call goes out then
+    /// (area 6, "Outside calls hold no transaction"; chunk 7.0c).
+    pub fn transaction_open(&self) -> bool {
+        self.boundary
+            .as_ref()
+            .is_some_and(Boundary::has_transaction)
     }
 
     /// The level the running action's transaction begins, or began, at;
@@ -912,14 +936,17 @@ mod tests {
         };
         let host = Random(0x5a);
         let mut recorded = Ctx::new(&places, &host, live);
-        recorded.record_random();
+        recorded.record_run();
         let given = (draw(&mut recorded), draw(&mut recorded));
-        let tape = recorded.recorded_random().expect("recording").to_vec();
+        let tape = recorded.recorded_run().expect("recording").random.clone();
         assert_eq!(tape.len(), 24);
         // ...replays on a host with no generator and no seed, and once
         // the recording runs out there is no randomness, never a weaker one.
         let mut replayed = Ctx::new(&places, &none, live);
-        replayed.replay_random(tape);
+        replayed.replay_run(crate::capability::Recording {
+            random: tape,
+            calls: Vec::new(),
+        });
         assert_eq!((draw(&mut replayed), draw(&mut replayed)), given);
         assert!(!replayed.random_bytes(&mut [0u8; 1]));
         assert!(!Ctx::new(&places, &none, live).random_bytes(&mut [0u8; 1]));
@@ -939,7 +966,7 @@ mod tests {
         };
         let host = Random(0x5a);
         let mut recorded = Ctx::new(&places, &host, live);
-        recorded.record_random();
+        recorded.record_run();
         let mut code = [0u8; 4];
         assert!(recorded.random_bytes(&mut code));
         let mut token = [0u8; 32];
@@ -947,13 +974,16 @@ mod tests {
         let mut after = [0u8; 4];
         assert!(recorded.random_bytes(&mut after));
         // Only the draws a program makes are kept, in order.
-        let tape = recorded.recorded_random().expect("recording").to_vec();
+        let tape = recorded.recorded_run().expect("recording").random.clone();
         assert_eq!(tape, [code, after].concat());
         // A replay gives them back in order, and the token's draw takes
         // fresh bytes of its own, never the recording's.
         let other = Random(0x11);
         let mut replayed = Ctx::new(&places, &other, live);
-        replayed.replay_random(tape);
+        replayed.replay_run(crate::capability::Recording {
+            random: tape,
+            calls: Vec::new(),
+        });
         let mut again = [0u8; 4];
         assert!(replayed.random_bytes(&mut again));
         assert_eq!(again, code);
