@@ -704,13 +704,17 @@ chunks below, taken before Phase 7, in this order.
   nothing builds. Areas 7 (2,852 to 2,830 lines), 9 (4,250 to 4,278),
   12 (3,515 to 3,258) and 13 (1,980 to 1,970), `compiler-runtime.md`
   (2,382 to 2,388) and this roadmap (1,088 to 987).
-- [ ] **6.10 The tick's remaining deletes** `opus · high` (areas 8 and
-  12, "The tick"): ended browser sessions, API tokens and expired keys
-  deleted on the tick, as a lookup already ignores them; and a
-  subscriber's handled records deleted once their delivery can no longer
-  repeat, which the chunk works out from the delivery's own record (with
-  its event gone, nothing redelivers it), the store each is in, and
-  1,000 rows at a time, ten times a tick, as the tick's other deletes.
+- [x] **6.10 The tick's remaining deletes** `opus · high`. Built: the
+  tick deletes ended browser sessions and API tokens, and expired service
+  keys, in the store each is kept in (`SchedulesPlan`'s `sessions` and
+  `keys`); and a subscriber's handled records once their delivery's
+  record is gone: the statement deleting a settled event deletes those
+  kept in its store, and the tick then deletes the rest in each other
+  store by the deliveries' ids, so a store it can't reach keeps a few
+  records rather than losing one early. 1,000 rows (events, for the
+  outbox) at a time, ten times a tick; statements in
+  `jadpo_runtime::statements`; live tests in `tick_deletes.rs`. Choices
+  in area 12, "The tick".
 - [ ] **6.11 Events in tests** `opus · high` (area 13, "Caches and
   events"; area 12, question 15): what each step of a test emits
   delivered after it commits and before the next statement, at the

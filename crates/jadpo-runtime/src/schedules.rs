@@ -41,8 +41,11 @@
 //!
 //! On each tick the runtime also sweeps its own tables in every store
 //! that holds them: deliveries left behind ([`runner::sweep`]), expired
-//! idempotency keys (area 7), and events every subscriber has had,
-//! [`SETTLED_KEPT_MS`] after they were emitted; then each of
+//! idempotency keys (area 7), events every subscriber has had,
+//! [`SETTLED_KEPT_MS`] after they were emitted, with their delivery
+//! records and then the handled records of those deliveries, wherever
+//! each is ([`settle`]), and ended browser sessions, API tokens and
+//! service keys in the store each is in (area 8; chunk 6.10); then each of
 //! [`HOOKS`], where batch runs resume (chunk 6.4) and ended ones are
 //! deleted after 30 days (chunk 6.6a). The whole tick runs within the
 //! budget its host gives a tick (chunk 6.7): once that is spent it starts
@@ -184,9 +187,28 @@ pub const ENDED: &str = "UPDATE \"jadpo_schedule_runs\" SET \"ended_at\" = $2, \
 pub const EXPIRED_KEYS: &str = "DELETE FROM \"jadpo_idempotency_keys\" WHERE (\"scope\", \"key\") IN (SELECT \"scope\", \"key\" FROM \"jadpo_idempotency_keys\" WHERE \"kept_until\" <= $1 LIMIT $2) RETURNING 1";
 
 /// Events every subscriber has had, emitted at or before `$1`, at most
-/// `$2`: their delivery records go with them. An event with a delivery
-/// still to make, or that failed, stays for the sweep or an operator.
-pub const SETTLED: &str = "DELETE FROM \"jadpo_outbox\" WHERE \"id\" IN (SELECT \"o\".\"id\" FROM \"jadpo_outbox\" AS \"o\" WHERE \"o\".\"emitted_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"outbox_id\" = \"o\".\"id\" AND \"d\".\"status\" <> 'succeeded') ORDER BY \"o\".\"emitted_at\" LIMIT $2) RETURNING 1";
+/// `$2`: their delivery records go with them, and so do the handled
+/// records of those deliveries kept in this store, in the same statement,
+/// since with its delivery record gone nothing can repeat a delivery
+/// (chunk 6.10). An event with a delivery still to make, or that failed,
+/// stays for the sweep or an operator. A row for each event and each of
+/// its deliveries: the event's id, the delivery's (`NULL` for an event
+/// nothing subscribes to), and whether its handled record was here.
+pub const SETTLED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_outbox\" WHERE \"id\" IN (SELECT \"o\".\"id\" FROM \"jadpo_outbox\" AS \"o\" WHERE \"o\".\"emitted_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"outbox_id\" = \"o\".\"id\" AND \"d\".\"status\" <> 'succeeded') ORDER BY \"o\".\"emitted_at\" LIMIT $2) RETURNING \"id\"), \"delivered\" AS (SELECT \"d\".\"id\", \"d\".\"outbox_id\" FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"outbox_id\" IN (SELECT \"id\" FROM \"gone\")), \"handled\" AS (DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" IN (SELECT \"id\" FROM \"delivered\") RETURNING \"id\") SELECT \"g\".\"id\", \"v\".\"id\", \"h\".\"id\" IS NOT NULL FROM \"gone\" AS \"g\" LEFT JOIN \"delivered\" AS \"v\" ON \"v\".\"outbox_id\" = \"g\".\"id\" LEFT JOIN \"handled\" AS \"h\" ON \"h\".\"id\" = \"v\".\"id\"";
+
+/// The handled records, among deliveries `$1`, that a subscriber writing
+/// another store kept here, once [`SETTLED`] has deleted those deliveries
+/// with their event in the event's store (chunk 6.10).
+pub const HANDLED: &str =
+    "DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" = ANY($1::uuid[]) RETURNING 1";
+
+/// Browser sessions and API tokens that ended at or before `$1`, at most
+/// `$2` (area 8; chunk 6.10): a lookup already ignores them.
+pub const ENDED_SESSIONS: &str = "DELETE FROM \"jadpo_sessions\" WHERE \"id\" IN (SELECT \"id\" FROM \"jadpo_sessions\" WHERE \"ends_at\" <= $1 LIMIT $2) RETURNING 1";
+
+/// Service keys that expired at or before `$1`, at most `$2` (area 8;
+/// chunk 6.10).
+pub const ENDED_SERVICE_KEYS: &str = "DELETE FROM \"jadpo_service_keys\" WHERE \"id\" IN (SELECT \"id\" FROM \"jadpo_service_keys\" WHERE \"ends_at\" <= $1 LIMIT $2) RETURNING 1";
 
 /// Run records of runs started at or before `$1`, at most `$2`.
 pub const OLD_RUNS: &str = "DELETE FROM \"jadpo_schedule_runs\" WHERE \"id\" IN (SELECT \"id\" FROM \"jadpo_schedule_runs\" WHERE \"started_at\" <= $1 AND \"outcome\" <> 'running' LIMIT $2) RETURNING 1";
@@ -283,9 +305,16 @@ pub struct Ticked {
 /// How many rows a tick deleted.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Deleted {
+    /// Expired idempotency keys.
     pub keys: u64,
     pub events: u64,
     pub runs: u64,
+    /// Subscribers' handled records, in every store (chunk 6.10).
+    pub handled: u64,
+    /// Ended browser sessions and API tokens.
+    pub sessions: u64,
+    /// Expired service keys.
+    pub service_keys: u64,
 }
 
 /// Runs one tick at `now` on `host`, within the budget its host gives a
@@ -344,9 +373,21 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             Ok(count) => ticked.deleted.keys += count,
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
-        match delete(host, store, SETTLED, now.saturating_sub(SETTLED_KEPT_MS)).await {
-            Ok(count) => ticked.deleted.events += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
+        let before = now.saturating_sub(SETTLED_KEPT_MS);
+        if let Err(problem) = settle(host, &plan.stores, store, before, &mut ticked.deleted).await {
+            ticked.problems.push(problem);
+        }
+        if plan.sessions.as_ref() == Some(store) {
+            match delete(host, store, ENDED_SESSIONS, now).await {
+                Ok(count) => ticked.deleted.sessions += count,
+                Err(error) => ticked.problems.push((store.clone(), error)),
+            }
+        }
+        if plan.keys.as_ref() == Some(store) {
+            match delete(host, store, ENDED_SERVICE_KEYS, now).await {
+                Ok(count) => ticked.deleted.service_keys += count,
+                Err(error) => ticked.problems.push((store.clone(), error)),
+            }
         }
     }
     for hook in HOOKS {
@@ -968,6 +1009,66 @@ async fn delete(host: &dyn Host, store: &str, sql: &str, before: i64) -> Result<
     Ok(deleted)
 }
 
+/// Deletes in `store` the events every subscriber had, emitted at or
+/// before `before`, with their delivery records and the handled records
+/// this store kept of them ([`SETTLED`]), then the handled records of
+/// those deliveries in each other store of `stores` ([`HANDLED`]): a
+/// subscriber's handled record goes only once its delivery's record has,
+/// since nothing repeats a delivery then (chunk 6.10). [`DELETE_BATCH`]
+/// events at a time, at most [`DELETE_BATCHES`] times. A store that fails
+/// stops it, named with why; the next tick carries on.
+async fn settle(
+    host: &dyn Host,
+    stores: &[String],
+    store: &str,
+    before: i64,
+    deleted: &mut Deleted,
+) -> Result<(), (String, StoreError)> {
+    let open = |name: &str| {
+        host.database(name).ok_or_else(|| {
+            (
+                name.to_string(),
+                StoreError::Fault(format!("no store called `{name}`")),
+            )
+        })
+    };
+    let database = open(store)?;
+    for _ in 0..DELETE_BATCHES {
+        let rows = database
+            .query_once(SETTLED, &[micros(before), SqlValue::Int8(DELETE_BATCH)])
+            .await
+            .map_err(|error| (store.to_string(), error))?;
+        let mut events = std::collections::BTreeSet::new();
+        let mut elsewhere = Vec::new();
+        for row in &rows {
+            let [SqlValue::Uuid(event), delivery, SqlValue::Bool(here)] = row.as_slice() else {
+                continue;
+            };
+            events.insert(*event);
+            match delivery {
+                SqlValue::Uuid(_) if *here => deleted.handled += 1,
+                SqlValue::Uuid(id) => elsewhere.push(SqlValue::Uuid(*id)),
+                _ => {}
+            }
+        }
+        deleted.events += events.len() as u64;
+        for other in stores.iter().filter(|other| other.as_str() != store) {
+            let database = open(other)?;
+            for ids in elsewhere.chunks(DELETE_BATCH as usize) {
+                let gone = database
+                    .query_once(HANDLED, &[SqlValue::Array(SqlType::Uuid, ids.to_vec())])
+                    .await
+                    .map_err(|error| (other.clone(), error))?;
+                deleted.handled += gone.len() as u64;
+            }
+        }
+        if (events.len() as i64) < DELETE_BATCH {
+            break;
+        }
+    }
+    Ok(())
+}
+
 /// Runs `futures` together on this thread until every one has finished,
 /// giving their outputs in order: each due schedule's run goes on beside
 /// the others, so a long one holds none of them up.
@@ -1025,6 +1126,7 @@ mod tests {
                 .collect(),
             store: Some("main".into()),
             stores: vec!["main".into()],
+            ..SchedulesPlan::default()
         };
         assert_eq!(tick_every_ms(None), 60_000);
         assert_eq!(tick_every_ms(Some(&plan(&[]))), 60_000);

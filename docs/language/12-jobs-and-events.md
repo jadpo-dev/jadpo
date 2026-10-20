@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in Phase 6, chunks 6.1a to 6.9; what is built and what isn't is under "Review", "Status".
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in Phase 6, chunks 6.1a to 6.10; what is built and what isn't is under "Review", "Status".
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -128,15 +128,27 @@ only while the tick's budget lasts, the tick:
 - deletes expired idempotency keys (area 7); an event with its delivery
   records once every delivery succeeded, 24 hours after it was emitted
   (one nothing subscribes to too), so a failed delivery's event stays for
-  an operator; schedule run records and ended batch runs 30 days old
-  ("How a run is kept");
+  an operator; the handled records of those deliveries; browser
+  sessions and API tokens that have ended and service keys that have
+  expired (area 8), which a lookup already ignores, in the store each is
+  kept in, beside its principal's users or services; schedule run
+  records and ended batch runs 30 days old ("How a run is kept");
 - picks up batch runs whose lease lapsed.
 
-Each delete takes 1,000 rows at a time, at most ten times a tick. The
-tick hands nothing on: what it doesn't reach, the next tick carries on.
-Not built yet: deleting a subscriber's handled records once its delivery
-can no longer repeat, and ended sessions, tokens and expired keys (area
-8), both roadmap 6.10.
+A handled record goes only once its delivery can no longer repeat, which
+is once the delivery's own record is gone: with its event deleted,
+nothing redelivers it, whatever an operator does later. In the event's
+store, the statement that deletes the event deletes the handled records
+kept there of its deliveries, so a single-store application never holds
+one past its event. A subscriber that writes another store keeps its
+record there, and the tick deletes it by the delivery's `id` once the
+event's statement has committed; a store it can't reach then keeps those
+records, which only cost space, and never loses one early (decided in
+chunk 6.10).
+
+Each delete takes 1,000 rows at a time, at most ten times a tick: for
+events, 1,000 events, with their delivery and handled records. The tick
+hands nothing on: what it doesn't reach, the next tick carries on.
 
 ### The purge schedule
 
@@ -2925,7 +2937,7 @@ check failed: 1 error, 2 files
 
 ### Status
 
-Built in Phase 6 (chunks 6.1a to 6.9): the runner and the system caller
+Built in Phase 6 (chunks 6.1a to 6.10): the runner and the system caller
 (area 9); `emit`, the outbox, subscribers, delivery after the response,
 handled records, retries, trace context and `events: { store: }`, with the
 errors that name `event.` and `subscriber.`; each domain's event record
@@ -2941,16 +2953,15 @@ tenants, grants, what a run stores under policy and no request carrying
 a batch type; background work within its host's budget and a native
 server draining as it stops; records a later release still reads; and
 alerts raised by the tick, once across instances, with `jadpo why`'s
-answer decided by the runtime.
+answer decided by the runtime; and the tick deleting handled records once
+their delivery's record is gone, and area 8's ended sessions, tokens and
+expired keys.
 
 Not yet:
 
 - The file helpers (`csv`, `tsv`, `json_lines`, `json`), `store.read`'s
   whole-read cap, `estimated_total` and the warning for a `from:` ordered
   by a field that can be updated: roadmap 6.4b.
-- Deleting handled records once a delivery can no longer repeat, and
-  area 8's ended sessions, tokens and expired keys, on the tick: roadmap
-  6.10.
 - Delivering events in tests after each commit, in a shuffled order
   (area 13): roadmap 6.11, and a fake failing a subscriber with 7.0c's
   fakes.

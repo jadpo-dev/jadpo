@@ -17,6 +17,15 @@ pub struct SchedulesPlan {
     /// Every store holding the runtime's own tables (the outbox, delivery
     /// records and idempotency keys), which the tick sweeps, by name.
     pub stores: Vec<String>,
+    /// The store browser sessions and API tokens are kept in
+    /// (`jadpo_sessions`), beside the principal's users, whose ended ones
+    /// the tick deletes (area 8; chunk 6.10); `None` when nothing signs one
+    /// in.
+    pub sessions: Option<String>,
+    /// The store service keys are kept in (`jadpo_service_keys`), beside
+    /// the principal's services, whose expired ones the tick deletes;
+    /// `None` when no service key is declared.
+    pub keys: Option<String>,
 }
 
 impl SchedulesPlan {
