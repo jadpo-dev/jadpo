@@ -413,17 +413,30 @@ fn another_providers_document_maps_its_formats_and_lists_what_to_check() {
         read(&root, &format!("{folder}/types/booking.jadpo")),
         "/// A booked collection.
 public type Booking = Object {
-    collect_at: Instant?
+    collect_at: Instant? {
+        wire_name: \"collectAt\"
+    }
     country: Country?
     currency: Currency?
     id: Uuid
     parcel: BookingParcel?
     status: BookingStatus
     tags: List<BookingTagsElement>?
-    tracking_url: Url?
-    type_value: Text?
+    tracking_url: Url? {
+        wire_name: \"trackingUrl\"
+    }
+    type_value: Text? {
+        wire_name: \"type\"
+    }
 }
 "
+    );
+    // A variant the provider spells otherwise says so too (area 11,
+    // decided 2026-10-20).
+    let slot = read(&root, &format!("{folder}/types/create_booking_slot.jadpo"));
+    assert!(
+        slot.contains("    after_noon: {\n        wire_name: \"after-noon\"\n    }\n"),
+        "{slot}"
     );
     assert_eq!(
         read(&root, &format!("{folder}/types/booking_tags_element.jadpo")),
@@ -431,7 +444,7 @@ public type Booking = Object {
     );
     assert_eq!(
         read(&root, &format!("{folder}/types/create_booking.jadpo")),
-        "public type CreateBooking = Object {\n    contact_email: Email?\n    postcode: Text {\n        max_length: 8\n    }\n    slot: CreateBookingSlot\n}\n"
+        "public type CreateBooking = Object {\n    contact_email: Email? {\n        wire_name: \"contactEmail\"\n    }\n    postcode: Text {\n        max_length: 8\n    }\n    slot: CreateBookingSlot\n}\n"
     );
     let provider = read(&root, &format!("{folder}/provider.jadpo"));
     assert!(
@@ -461,11 +474,15 @@ public type Booking = Object {
             )
         })
         .collect();
+    // A spelling on the wire is written, no longer left to check.
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| finding.contains("The provider names it") || finding.contains("The provider sends `")),
+        "{findings:#?}"
+    );
     for expected in [
-        "Booking.collect_at: The provider names it `collectAt`",
         "Booking.extra: Left out: it is `oneOf` of 2 shapes",
-        "Booking.type_value: The provider names it `type`",
-        "CreateBookingSlot.after_noon: The provider sends `after-noon`",
         "bookings.list: Left out its header parameter `X-Request-Tag`",
         "bookings.print_label: Left out its body, sent as `application/pdf`",
         "bookings.create: Check against the provider's documentation that it changes something",
