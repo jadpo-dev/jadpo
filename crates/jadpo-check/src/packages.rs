@@ -639,6 +639,9 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             }
             "runs" => nested_keys(&path, &key, &member, &RUNS_KEYS, out),
             "settings" => crate::connections::provider_settings(&path, &member, out),
+            "imported" => {
+                crate::review::imported_problems(db, project, &home.folder, &path, &member, out);
+            }
             _ => {}
         }
     }
