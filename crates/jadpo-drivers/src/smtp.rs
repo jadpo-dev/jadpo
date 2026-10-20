@@ -28,9 +28,7 @@ use jadpo_runtime::capability::{Answer, Call, Capability};
 use jadpo_std::email::{MESSAGE_FIELDS, RECIPIENT_REJECTED};
 use jadpo_value::Value;
 
-/// The failure a server's permanent refusal of the message itself is
-/// answered with.
-pub const MESSAGE_REJECTED: &str = "message_rejected";
+pub use jadpo_std::email::MESSAGE_REJECTED;
 
 /// The server a connection with `driver: Driver.smtp` reaches, and how it
 /// signs in.

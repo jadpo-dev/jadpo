@@ -1,0 +1,5 @@
+/// Resend refused one of the email's attachments.
+public type InvalidAttachment = Failure {
+    kind: FailureKind.invalid_value
+    message: "Resend refused one of the email's attachments."
+}

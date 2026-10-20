@@ -1,0 +1,8 @@
+/// Resend's API, each request carrying the account's API key as a bearer
+/// credential. The connection gives its address, `https://api.resend.com`,
+/// in `host:`.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    error_code: "name"
+}

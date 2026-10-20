@@ -247,6 +247,21 @@ pub trait Capability {
         self.source()
     }
 
+    /// The messages it caught in place of sending them, in the order they
+    /// were sent: what `email.sent` reads of the email connection's fake
+    /// in a test (area 16; chunk 7.3c). A driver that sends catches none.
+    fn caught(&self) -> Vec<Value> {
+        Vec::new()
+    }
+
+    /// Whether it catches mail in place of sending it, so the message the
+    /// runtime rendered is handed to it whole, whatever connection it
+    /// stands in for, a mail package's included (area 13, "One fake per
+    /// capability"; chunk 7.3c).
+    fn catches_mail(&self) -> bool {
+        false
+    }
+
     /// Scripts the next answer to a call of `operation` through
     /// `connection` (area 13, `fakes:`; chunk 7.2d), scripted by the test
     /// at `from`: whether it takes scripts, as only a package's fake does.
@@ -462,6 +477,20 @@ impl Capability for Fake {
 
     fn source(&self) -> Source {
         Source::Fake
+    }
+
+    fn catches_mail(&self) -> bool {
+        true
+    }
+
+    /// Each message a `send` gave it.
+    fn caught(&self) -> Vec<Value> {
+        self.sent
+            .borrow()
+            .iter()
+            .filter(|call| call.operation == jadpo_std::email::SEND)
+            .map(|call| call.input.clone())
+            .collect()
     }
 }
 

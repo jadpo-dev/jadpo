@@ -41,6 +41,7 @@ impl ItemKind {
             ItemKind::Type(Base::Failure) => "failure",
             ItemKind::Type(Base::Event) => "event",
             ItemKind::Type(Base::EmailMessage) => "email",
+            ItemKind::Type(Base::EmailPartial) => "email partial",
             ItemKind::Type(Base::Message) => "message",
             ItemKind::Type(Base::Prompt) => "prompt",
             ItemKind::Type(_) => "type",
@@ -96,6 +97,10 @@ pub enum Base {
     Failure,
     Event,
     EmailMessage,
+    /// `type X = EmailPartial { ... }` (area 16, "Email"): a piece of
+    /// an email's templates, its `.html` and `.txt` beside it, included
+    /// with its fields by name.
+    EmailPartial,
     /// `type X = Message { ... }` (area 10, "Translations as messages"):
     /// text for people, its fields the wording's placeholders.
     Message,
@@ -117,6 +122,7 @@ impl Base {
             "Failure" => Base::Failure,
             "Event" => Base::Event,
             "EmailMessage" => Base::EmailMessage,
+            "EmailPartial" => Base::EmailPartial,
             "Message" => Base::Message,
             "Prompt" => Base::Prompt,
             other => Base::Named(other.to_string()),
@@ -132,6 +138,7 @@ impl Base {
                 | Base::Output
                 | Base::Event
                 | Base::EmailMessage
+                | Base::EmailPartial
                 | Base::Message
                 | Base::Prompt
         )

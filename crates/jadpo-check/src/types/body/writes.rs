@@ -264,6 +264,7 @@ impl Body<'_> {
                 FieldsBase::Output => "output",
                 FieldsBase::Event => "event",
                 FieldsBase::EmailMessage => "email",
+                FieldsBase::EmailPartial => "email partial",
                 FieldsBase::Message => "message",
                 FieldsBase::Prompt => "prompt",
                 FieldsBase::Failure => "failure",

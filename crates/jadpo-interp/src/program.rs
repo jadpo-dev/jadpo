@@ -487,11 +487,9 @@ impl Program {
         // a test (chunk 7.2d): nothing leaves the process.
         let fake: std::rc::Rc<dyn jadpo_runtime::capability::Capability> =
             std::rc::Rc::new(jadpo_runtime::fakes::ProviderFake::new());
-        let host = self.plan().providers().connections.iter().fold(
-            jadpo_runtime::capability::Faked::new(MemoryHost::new()),
-            |host, connection| host.with(&connection.name, std::rc::Rc::clone(&fake)),
-        );
-        // And every model asked answered by the `ai` fake (area 21).
+        // And every model asked answered by the `ai` fake (area 21), first,
+        // so it answers a package's connection that fills `ai` too.
+        let host = jadpo_runtime::capability::Faked::new(MemoryHost::new());
         let host = match self.plan().ai() {
             Some(ai) => host.with(
                 &ai.connection,
@@ -499,6 +497,14 @@ impl Program {
             ),
             None => host,
         };
+        let host = self
+            .plan()
+            .providers()
+            .connections
+            .iter()
+            .fold(host, |host, connection| {
+                host.with(&connection.name, std::rc::Rc::clone(&fake))
+            });
         let mut ctx = Ctx::new(self.places(), &host, Env::default());
         let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));
         Ok(ran.unwrap_or_else(|_| {
@@ -589,6 +595,7 @@ impl Program {
             plan: self.plan().ai()?,
             prompts: self.plan().prompts(),
             json: self.stored_json(),
+            providers: Some(self.providers()),
         })
     }
 
@@ -788,6 +795,10 @@ impl Executor for Program {
             credentials: &self.credentials,
             json: self.stored_json(),
         })
+    }
+
+    fn package_calls(&self) -> Option<jadpo_runtime::provider::Providers<'_>> {
+        Some(self.providers())
     }
 
     fn receiving(&self) -> Option<jadpo_runtime::receiving::Receiving<'_>> {

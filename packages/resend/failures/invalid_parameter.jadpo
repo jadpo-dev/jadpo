@@ -1,0 +1,5 @@
+/// One of the email's values isn't one Resend takes.
+public type InvalidParameter = Failure {
+    kind: FailureKind.invalid_value
+    message: "One of the email's values isn't one Resend takes."
+}

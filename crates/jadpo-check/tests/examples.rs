@@ -874,6 +874,12 @@ fn body_features(
                         constructed.push((ty.clone(), value));
                     }
                     let name = match callee {
+                        // A template's `{{ include }}` (chunk 7.3c).
+                        Callee::Function(key)
+                            if key.name().starts_with(jadpo_check::emails::PARTIAL_LABEL) =>
+                        {
+                            "include an email partial"
+                        }
                         Callee::Function(_) => "call function",
                         Callee::Action(_) => "call action",
                         Callee::Query(_) => "call query",
@@ -1081,6 +1087,9 @@ fn body_features(
                 }
                 Expr::Constant { .. } => {
                     out.insert("expr constant");
+                }
+                Expr::SentEmails => {
+                    out.insert("read the emails a test sent");
                 }
                 Expr::Now | Expr::Unchecked => {}
             },
