@@ -126,6 +126,9 @@ pub enum Decoded {
     /// type its answer is decoded into and that type's schema, and its
     /// options.
     Generate(Box<jadpo_std::ai::GenerateSite>),
+    /// `ai.stream` (area 21, chunk 5.5v6): the prompt it renders and its
+    /// options.
+    Stream(Box<jadpo_std::ai::StreamSite>),
     /// Something a later area builds, as written up to its arguments or
     /// block: `query open_todos`, `Todo.update`.
     Written(String),
@@ -819,6 +822,28 @@ impl Decoder<'_> {
                             attempts: *attempts,
                         }))
                     }
+                    None => Decoded::Nothing,
+                },
+                Callee::Stream {
+                    prompt,
+                    model,
+                    max_output,
+                    timeout_ms,
+                } => match (self.prompt)(prompt) {
+                    Some((entry, fields)) => Decoded::Stream(Box::new(jadpo_std::ai::StreamSite {
+                        prompt: prompt.clone(),
+                        entry,
+                        fields: fields
+                            .into_iter()
+                            .map(|ty| match self.json_type(ty) {
+                                Decoded::Json(number) => number,
+                                _ => 0,
+                            })
+                            .collect(),
+                        model: model.clone(),
+                        max_output: *max_output,
+                        timeout_ms: *timeout_ms,
+                    })),
                     None => Decoded::Nothing,
                 },
                 // A model's scripted answer, a value of its call's type,

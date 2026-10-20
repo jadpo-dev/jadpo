@@ -10,6 +10,7 @@ mod aggregates;
 mod ai;
 mod ai_generate;
 mod ai_steps;
+mod ai_stream;
 mod backfills;
 mod background_budget;
 mod batch_calls;

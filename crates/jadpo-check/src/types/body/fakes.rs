@@ -17,7 +17,7 @@ use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::ty::{Prim, Ty};
 use super::Body;
-use super::facts::node_key;
+use super::facts::{NodeKey, node_key};
 
 /// What one scripted answer is, for the typed body.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -346,12 +346,13 @@ impl Body<'_> {
                 let own = match &answer {
                     Expr::CallExpr(call) => matches!(
                         call.expr(),
-                        Some(Expr::NameRef(name)) if matches!(super::text(&name).as_str(), "raw" | "recorded")
+                        Some(Expr::NameRef(name)) if matches!(super::text(&name).as_str(), "raw" | "recorded" | "partial")
                     ),
                     _ => false,
                 };
                 if let (true, Expr::CallExpr(call)) = (own, &answer) {
-                    for arg in Self::arguments(call) {
+                    // `partial(...)`'s second is a condition's word.
+                    for arg in Self::arguments(call).into_iter().take(1) {
                         if let Some(value) = arg.expr() {
                             self.walk(|walk| walk.expr(&value));
                         }
@@ -412,14 +413,33 @@ impl Body<'_> {
             );
             return;
         }
-        let words: Vec<&str> = super::generate::CONDITIONS
-            .iter()
-            .map(|condition| condition.word())
-            .collect();
-        let types = crate::ai::answer_types(self.db, self.project)
+        let mut types = crate::ai::answer_types(self.db, self.project)
             .get(prompt)
             .cloned()
             .unwrap_or_default();
+        // A streamed prompt's answer is text, and its conditions a
+        // stream's (chunk 5.5v6).
+        let streamed = crate::ai::streamed_prompts(self.db, self.project).contains(prompt);
+        let mut words: Vec<&str> = Vec::new();
+        if !streamed || !types.is_empty() {
+            words.extend(super::generate::CONDITIONS.iter().map(|c| c.word()));
+        }
+        if streamed {
+            for condition in super::stream::CONDITIONS {
+                if !words.contains(&condition.word()) {
+                    words.push(condition.word());
+                }
+            }
+            let text = Ty::Prim(Prim::Text);
+            if !types.contains(&text) {
+                types.push(text);
+            }
+        }
+        let calls = match (streamed, types.len() > 1 || !streamed) {
+            (true, false) => "`ai.stream`",
+            (true, true) => "`ai.generate` and `ai.stream`",
+            _ => "`ai.generate`",
+        };
         for answer in items {
             let key = node_key(answer.syntax());
             if let Expr::NameRef(named) = &answer {
@@ -437,7 +457,7 @@ impl Body<'_> {
                     "not a failure",
                 )
                 .reason(format!(
-                    "A model's scripted answer is a value of the type its call asks for, `raw(\"...\")` with text it answers, or one of `ai.generate`'s failures: {}.",
+                    "A model's scripted answer is a value of the type its call asks for, `raw(\"...\")` with text it answers, or one of {calls}'s failures: {}.",
                     crate::and_list(&words.iter().map(|word| format!("`{word}`")).collect::<Vec<_>>())
                 ));
                 problem = match near {
@@ -464,6 +484,10 @@ impl Body<'_> {
                         .reason("A recorded answer, kept in the prompt's `recordings/` by `jadpo ai record`, comes with roadmap chunk 5.5v4.")
                         .next("Script the answer as a value, or with `raw(\"...\")`, for now"),
                     );
+                    continue;
+                }
+                if called == "partial" {
+                    self.partial_answer(call, prompt, written, streamed, key);
                     continue;
                 }
                 if called == "raw" {
@@ -528,6 +552,98 @@ impl Body<'_> {
                         .next("Script the answer as `raw(\"...\")`, which each call decodes as its own type"),
                     );
                 }
+            }
+        }
+    }
+
+    /// `partial("...", <condition>)` (area 21, "Tests"; chunk 5.5v6): a
+    /// stream that sends the text's pieces and then stops with the
+    /// condition, which reaches the client as an `error` event: only for a
+    /// prompt an action streams, and only a condition a stream can stop
+    /// with once it has started.
+    fn partial_answer(
+        &mut self,
+        call: &ast::CallExpr,
+        prompt: &str,
+        written: &str,
+        streamed: bool,
+        key: NodeKey,
+    ) {
+        let at = self.span(call);
+        if !streamed {
+            for arg in Self::arguments(call).into_iter().take(1) {
+                if let Some(value) = arg.expr() {
+                    self.infer(&value);
+                }
+            }
+            self.out.push(
+                invalid(format!("`{prompt}` isn't streamed, so `{written}` can't stop part-way"), at, "a partial stream")
+                    .reason("`partial(\"...\", <condition>)` scripts a stream that sends its text and then stops with the condition, and only an `ai.stream` call of the prompt streams; an `ai.generate` call's answer comes whole or not at all.")
+                    .next("Script one of `ai.generate`'s failures, or stream the prompt with `ai.stream`"),
+            );
+            return;
+        }
+        let words: Vec<&str> = super::stream::AFTER_FIRST
+            .iter()
+            .map(|c| c.word())
+            .collect();
+        let listed = crate::and_list(
+            &words
+                .iter()
+                .map(|word| format!("`{word}`"))
+                .collect::<Vec<_>>(),
+        );
+        let args = Self::arguments(call);
+        let text = args
+            .first()
+            .filter(|arg| arg.name().is_none())
+            .and_then(ast::Arg::expr);
+        let condition = args
+            .get(1)
+            .filter(|arg| arg.name().is_none())
+            .and_then(ast::Arg::expr);
+        if let Some(text) = &text {
+            self.check(text, &Ty::Prim(Prim::Text));
+        }
+        let word = match &condition {
+            Some(Expr::NameRef(named)) => Some(super::text(named)),
+            _ => None,
+        };
+        match (text, word, args.len()) {
+            (Some(_), Some(word), 2) if words.contains(&word.as_str()) => {
+                self.facts
+                    .ai_fakes
+                    .insert(key, (prompt.to_string(), AiFakeAnswer::Partial(word)));
+            }
+            (Some(_), Some(word), 2) => {
+                let span = condition
+                    .as_ref()
+                    .map_or_else(|| at.clone(), |c| self.span(c));
+                let mut problem = invalid(
+                    format!("`{word}` isn't how a stream stops part-way"),
+                    span.clone(),
+                    "not a condition",
+                )
+                .reason(format!(
+                    "Once its first piece has come, a stream stops part-way only when the model declines to go on, its time runs out or its answer reaches `max_output:`: {listed}; `too_long` is found before anything is sent."
+                ));
+                problem = match nearest(&word, words.iter().copied()) {
+                    Some(near) => problem
+                        .next(format!("Use `{near}` instead of `{word}`"))
+                        .edit(span, near),
+                    None => problem.next(format!("Write one of {listed}")),
+                };
+                self.out.push(problem);
+            }
+            _ => {
+                let at = self.arg_list_span(call);
+                self.out.push(
+                    invalid("`partial` takes the text sent and how the stream stops".to_string(), at, "not a text and a condition")
+                        .reason(format!(
+                            "`partial(\"...\", <condition>)` scripts a stream that sends the text's pieces, then stops with the condition, one of {listed}."
+                        ))
+                        .next("Write `partial(\"Our sourdough is\", timed_out)`"),
+                );
             }
         }
     }

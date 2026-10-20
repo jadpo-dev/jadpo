@@ -1592,13 +1592,34 @@ The design is area 11 as revised on 2026-10-16, with its research in
   fields, `to_models: false`, and the prompts in the personal-data report.
   Done when a test exhausts each limit and is refused `over_budget`, and
   a marked field reaching a prompt unlisted fails to compile.
-- [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
+- [x] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, the stream fake, and the
-  check that a route's deadline leaves room for the `timeout:` of each
-  `ai` call it reaches (left from 5.5v3). Done
+  an `AiStream`, the final and error events, the stream fake. The check
+  that a route's deadline leaves room for the `timeout:` of each `ai` call
+  it reaches (left from 5.5v3) moved to chunk 7.5e, which builds one
+  deadline sum over every outside call a route reaches; an `ai.stream`
+  call counts its `timeout:` once. Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
+  Built: `ai.stream(prompt)` with `model:`, `max_output:` and `timeout:`,
+  only in an action, giving an `AiStream`, its four conditions before the
+  first piece mapped as `generate`'s; OpenAI's streamed chat completion
+  read piece by piece (`jadpo_runtime::stream`), the open answer kept on
+  the invocation and given back on a rerun; a route with `output:
+  AiStream` answering `text/event-stream` once its action commits:
+  `piece` events, then `done`, or `error` (`unavailable`) for anything
+  after the first piece, ended by the call's `timeout:` or the route's
+  deadline; no `id:` or `retry:`; only `.ok` and no `settle:`
+  (`route.stream_invalid`); never kept for a repeat; OpenAPI's
+  `text/event-stream` with `x-jadpo-stream` and the record's `output
+  AiStream (server-sent events)`; a route test's `response.pieces`; the
+  fake's text cut into pieces of three words and `partial("...",
+  <condition>)`; natively, each event sent as it is read and the
+  provider's connection closed when the client goes away. Tests in
+  `ai_stream.rs` (the checker's, and the CLI's: the route tests, and
+  `jadpo dev` streaming from a server started in the test). Choices in
+  area 7's "Streaming a model's answer" and area 21's "Chosen in chunk
+  5.5v6".
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
   after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform

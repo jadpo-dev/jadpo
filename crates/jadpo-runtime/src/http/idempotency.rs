@@ -120,7 +120,7 @@ pub enum Claim {
     /// The key is this request's now: run the action.
     Claimed,
     /// The key was kept with this request's response: answer with it.
-    Replay(Response),
+    Replay(Box<Response>),
     /// The key was kept by a route that waits for its follow-on work
     /// (area 7, `settle:`; chunk 6.3), with the arguments of the query it
     /// answers with, as JSON, and the status it answered: run the query
@@ -194,7 +194,9 @@ pub async fn claim(ctx: &mut Ctx<'_>, guard: &Guard, deadline_ms: u32) -> Claim 
             } else if let Some(answer) = answer(status, response) {
                 answer
             } else {
-                replay(status, response).map_or(Claim::InFlight, Claim::Replay)
+                replay(status, response).map_or(Claim::InFlight, |response| {
+                    Claim::Replay(Box::new(response))
+                })
             }
         }
         // Claimed by a request the statement's snapshot doesn't see yet:
@@ -402,6 +404,7 @@ mod tests {
             deadline_ms: 10_000,
             run: Run::Action(0),
             settle: None,
+            stream: false,
             keys: Some("main".into()),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,

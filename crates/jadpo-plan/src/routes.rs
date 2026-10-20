@@ -167,9 +167,16 @@ pub(crate) fn table(
                 headers,
             })
         });
+        // A model's answer sent as it comes has no codec: its pieces are
+        // text (area 7, "Streaming a model's answer"; chunk 5.5v6).
+        let stream = route
+            .output
+            .as_ref()
+            .is_some_and(jadpo_check::routes::streams);
         let output = route
             .output
             .as_ref()
+            .filter(|_| !stream)
             .map(|ty| codecs.codec(&jadpo_check::graph::type_ref(&lookup, ty)));
         let (run, keys) = if let Some(op) = route.run.generated {
             (
@@ -297,6 +304,7 @@ pub(crate) fn table(
             deadline_ms: route.deadline_ms,
             run,
             settle,
+            stream,
             keys,
             args,
             authentication: route.authentication,
@@ -329,6 +337,7 @@ pub(crate) fn table(
             deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
             run: Run::Exchange,
             settle: None,
+            stream: false,
             keys: None,
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Required,
@@ -373,6 +382,7 @@ pub(crate) fn table(
                 deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
                 run: Run::Passkey(step),
                 settle: None,
+                stream: false,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
@@ -405,6 +415,7 @@ pub(crate) fn table(
                 deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
                 run: Run::MagicLink(step),
                 settle: None,
+                stream: false,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),
@@ -443,6 +454,7 @@ pub(crate) fn table(
                 deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
                 run: Run::OpenApi(document.to_document()),
                 settle: None,
+                stream: false,
                 keys: None,
                 args: Vec::new(),
                 authentication: served.authentication,

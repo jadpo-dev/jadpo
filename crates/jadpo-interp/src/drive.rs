@@ -102,6 +102,10 @@ async fn body(
                         let site = machine.generate_site(at).cloned();
                         generate(program, ctx, site.as_ref(), args, at.0).await
                     }
+                    Target::Stream => {
+                        let site = machine.stream_site(at).cloned();
+                        stream(program, ctx, site.as_ref(), args, at.0).await
+                    }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
                         schedule(program, ctx, action, at.0, caught).await
@@ -207,6 +211,7 @@ fn store<'a, 'p: 'a>(
             | Target::Files(..)
             | Target::Provider
             | Target::Generate
+            | Target::Stream
             | Target::Schedule(_)
             | Target::AdvanceClock => None,
         };
@@ -222,6 +227,7 @@ fn store<'a, 'p: 'a>(
                 | Target::Files(..)
                 | Target::Provider
                 | Target::Generate
+                | Target::Stream
                 | Target::Schedule(_)
                 | Target::AdvanceClock => "a call run as a read",
             };
@@ -495,6 +501,48 @@ async fn generate(
         .collect();
     let prompt = args.into_iter().next().unwrap_or(Value::Unit);
     match ai::generate(ctx, &ai, site, prompt, &settings).await {
+        Done::Value(value) => Ok(value),
+        Done::Broke { rule, problem } => Err(Stop::Invalid {
+            rule,
+            written: rule.word().to_string(),
+            problem,
+            name: None,
+        }),
+        Done::Failed(failure) => Err(Stop::Failed(failure)),
+        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
+    }
+}
+
+/// `ai.stream(prompt)` at site `at` (area 21, chunk 5.5v6): the runtime
+/// renders the prompt and asks the model through the connection `ai:`
+/// names, reading until the answer's first piece comes; a condition it
+/// ends in before then is the call's, for its `attempt` to map.
+async fn stream(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    site: Option<&jadpo_std::ai::StreamSite>,
+    args: Vec<Value>,
+    at: u32,
+) -> Result<Value, Stop> {
+    use jadpo_runtime::ai::Done;
+    let (Some(site), Some(ai)) = (site, program.ai()) else {
+        return Err(Stop::Fault(ctx.fault(
+            FaultKind::Defect("a model asked in a program that names none".into()),
+            at,
+        )));
+    };
+    let settings: Vec<(u32, Value)> = jadpo_runtime::stream::settings_read(ai.plan, site)
+        .into_iter()
+        .filter_map(|number| {
+            let value = ctx
+                .setting(number)
+                .cloned()
+                .or_else(|| program.setting(number))?;
+            Some((number, value))
+        })
+        .collect();
+    let prompt = args.into_iter().next().unwrap_or(Value::Unit);
+    match jadpo_runtime::stream::stream(ctx, &ai, site, prompt, &settings).await {
         Done::Value(value) => Ok(value),
         Done::Broke { rule, problem } => Err(Stop::Invalid {
             rule,

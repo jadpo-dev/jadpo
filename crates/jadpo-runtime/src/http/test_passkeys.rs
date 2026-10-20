@@ -155,7 +155,7 @@ pub async fn sign_in(
     }
     let body = format!("{{\"credential\":{answer}}}");
     match send(app, executor, ctx, &finish, headers, Some(body)).await {
-        Ok(response) => Stored::Value(response_value(app, finish.index, &response)),
+        Ok(response) => Stored::Value(response_value(app, finish.index, &response, &[])),
         Err(stored) => stored,
     }
 }
