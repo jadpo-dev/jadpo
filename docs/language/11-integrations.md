@@ -644,8 +644,11 @@ operation and grow.
 ### Mapping imported types to standard types
 
 > Decided 2026-10-17 (Richard). The exact format mappings (its first
-> layer) are built with the importer (chunk 7.2); the rest comes with
-> chunk 7.2e.
+> layer) are built with the importer (chunk 7.2); shape and name
+> detection, decoded at the edge with a field's `wire_parts:` (under
+> "Decoding"), and the findings, `package.standard_candidate`, with chunk
+> 7.2e ("Chosen in chunk 7.2e"); the scoped review and unconfirmed
+> operations come with chunk 7.2e2.
 
 An imported description says little about what a field *is*: OpenAPI's
 `integer` may be pence, Unix seconds or a count. Area 19 decides that a
@@ -2217,6 +2220,141 @@ type WindowUnknown = Failure {
     message: "The courier named a collection window this package doesn't know."
 }
 ```
+
+Built in chunk 7.2e and checked by this checkout's `jadpo`: a standard
+type whose parts the provider sends as members of the object that holds
+it, as Stripe sends `"amount": 1050, "currency": "gbp"` beside a charge's
+other members, is one field whose `wire_parts:` spells the member each part
+is read from and written to. The field has no member of its own on the
+provider's wire, and fields may share one part's member, as a charge's
+amounts share its currency:
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/charge.jadpo
+/// A charge to a card.
+public type Charge = Object {
+    id: ChargeId
+    amount: Amount {
+        wire_parts: {
+            amount: "amount"
+            currency: "currency"
+        }
+    }
+    amount_refunded: Amount {
+        wire_parts: {
+            amount: "amount_refunded"
+            currency: "currency"
+        }
+    }
+    merchant: Point? {
+        wire_parts: {
+            latitude: "lat"
+            longitude: "lng"
+        }
+    }
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/resources/charges.jadpo
+public resource charges {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/charges/{id}"
+        input: ChargeLookup
+        output: Charge
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72e-parts file=domains/billing/actions/refunded_so_far.jadpo
+use app { payments }
+use shared/providers/tidepay
+
+/// How much of a charge has been refunded.
+action refunded_so_far(charge: Tidepay.ChargeId) -> Tidepay.Amount {
+    var paid_charge: Tidepay.Charge = payments.charges.get(
+        Tidepay.ChargeLookup {
+            id: charge
+        }
+    )
+    return paid_charge.amount_refunded
+}
+```
+
+```jadpo check project=p72e-parts file=app.jadpo hidden
+application {
+    connections: {
+        payments: {
+            package: Tidepay.v1
+            domains: [billing]
+            credential: config.payments_api_key
+            environment: config.payments_environment
+        }
+    }
+}
+```
+
+```jadpo check project=p72e-parts file=config.jadpo hidden
+config {
+    payments_api_key: Text {
+        secret: true
+    }
+    payments_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/package.jadpo hidden
+/// Tidepay's card payments.
+package Tidepay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/provider.jadpo hidden
+/// How Tidepay is reached and called.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.tidepay.example"
+        sandbox: "https://sandbox.tidepay.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/charge_lookup.jadpo hidden
+/// Which charge.
+public type ChargeLookup = Object {
+    id: ChargeId
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/charge_id.jadpo hidden
+/// Tidepay's reference for a charge.
+public type ChargeId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/amount.jadpo hidden
+/// An amount charged.
+public type Amount = Money {}
+```
+
+So `{"id": "ch_1", "amount": 1050, "amount_refunded": 250, "currency":
+"gbp", "lat": 51.5, "lng": -0.125}` is read as a `Charge` of £10.50 with
+£2.50 refunded at a merchant at 51.5° N, 0.125° W, and a `Charge` is sent back
+as those six members, the currency once; two amounts in different
+currencies can't be sent, since they share one member, and the call stops
+as one that doesn't encode. A `Point` is read from its `latitude` and
+`longitude`, which GeoJSON would send as a pair; any other standard type
+made of named parts from those parts (`Money`'s `amount`, in minor units,
+and `currency`; `InstantRange`'s `start` and `end`). A field none of whose
+members is sent is `none` where it may be, and one with only some is a
+fault naming the missing member. Everywhere else, the field is written as
+the contract writes its type.
 
 - **Where they apply.** On the provider's wire: an operation's input,
   its answer and, with chunk 7.6, its webhooks. Everywhere else, a
@@ -4042,7 +4180,9 @@ check failed: 1 error, 6 files
 > outside a provider package, both on one field, an encoding that doesn't
 > hold the field's type or `Wire.minor_units` without the field's one
 > currency, and a function that isn't the package's or doesn't take and
-> give the right types.
+> give the right types. Chunk 7.2e adds `wire_parts:`, refused on a type
+> not made of parts, beside another way of sending the field, with a part
+> left out, unknown or given twice, or a spelling that isn't text.
 
 An encoding holds the types its provider sends that way:
 
@@ -4136,6 +4276,106 @@ error: `wire_name` is for a provider package's fields
   help: docs/language/11-integrations.html#package-wire-name-invalid
 
 check failed: 1 error, 3 files
+```
+
+### `package.standard_candidate`
+
+> Built in chunk 7.2e (area 11, "Mapping imported types to standard
+> types"): in a provider package's public object, a field the provider
+> sends in its own shape that looks like a standard type the package
+> doesn't use. A whole number named like a time (`created`, `expires`,
+> `paid_at`) may be an `Instant` sent as seconds; one named like an amount
+> (`amount`, `amount_refunded`, `total_amount`) beside a currency, `Money`
+> in minor units; a latitude beside a longitude, a `Point`. A field that
+> says how it is sent (`wire:`, `wire_parts:`, `decode:`) is never one, and
+> an object that is a standard type whole is `type.standard_exists`
+> instead. It is declinable: a field that means something else keeps its
+> type with a reason on the field.
+
+An imported description often says only `integer`, so the importer leaves
+the field as the provider types it and the error asks for the
+documentation to be checked:
+
+```jadpo check project=e72e-candidate file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72e-candidate file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72e-candidate file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72e-candidate file=shared/providers/acme_couriers/v1/types/delivery.jadpo expect=package.standard_candidate
+/// A parcel delivered.
+public type Delivery = Object {
+    id: Text
+    delivered_at: Int
+}
+```
+
+```text output
+error: `Delivery.delivered_at` may be an `Instant` sent as seconds
+ --> shared/providers/acme_couriers/v1/types/delivery.jadpo:4:5
+  |
+4 |     delivered_at: Int
+  |     ^^^^^^^^^^^^ a whole number named like a time
+  reason: `delivered_at` is a whole number named like a time, which providers usually send as seconds since 1970. A package's public types use the standard types, so an app reads an `Instant` rather than a number to convert, and the package decodes it at the edge.
+  next: Check the provider's documentation, then make it `delivered_at: Instant { wire: Wire.unix_seconds }`, or `Wire.unix_milliseconds` for milliseconds, or write `decline package.standard_candidate: "<why>"` above it if this is deliberate (agent)
+  rule: package.standard_candidate
+  help: docs/language/11-integrations.html#package-standard-candidate
+
+check failed: 1 error, 4 files
+```
+
+Swapping it reads the provider's number as the `Instant` it is; a field
+that really is a number keeps its type with a reason, which `jadpo
+declines list` shows:
+
+```jadpo check project=e72e-candidate-declined file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72e-candidate-declined file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72e-candidate-declined file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72e-candidate-declined file=shared/providers/acme_couriers/v1/types/delivery.jadpo
+/// A parcel delivered.
+public type Delivery = Object {
+    id: Text
+    delivered_at: Instant {
+        wire: Wire.unix_seconds
+    }
+    decline package.standard_candidate: "The courier numbers its collection slots 1 to 6; this is that number"
+    slot_time: Int
+}
 ```
 
 ## Installing errors
@@ -6017,7 +6257,8 @@ side (below); the rest is still to build.
 | Hand-written packages' `wire:`, `decode:` and `encode:`, `wire_output:`, lazy decoding, `retry:` | 7.2c2 |
 | Generated fakes, `fakes:` in tests, provider calls faked in `jadpo dev` with `development: { sandbox: }`, `jadpo calls` | 7.2d |
 | Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
-| Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
+| Mapping imported types to standard types beyond the exact format mappings: shape and name detection, `wire_parts:`, `package.standard_candidate` | 7.2e |
+| The scoped review of an import's types, tracked per type, and unconfirmed operations | 7.2e2 |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
 | Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
@@ -6618,7 +6859,7 @@ conservative reading:
   `<Parent><Field>Element`. A schema named as a built-in type is
   `<Name>Type`, and listed. `oneOf` and `anyOf` of several shapes, and an
   object of any fields, are left out and listed. Shape and name
-  detection come with chunk 7.2e.
+  detection came with chunk 7.2e.
 - **A Jadpo application's document** (one whose operations carry
   `x-jadpo-changes`) is read exactly: each field's type from
   `x-jadpo-constraints`, `changes:` from `x-jadpo-changes`, `idempotent:
@@ -6910,6 +7151,106 @@ Fakes and the development call log, each the most conservative reading:
   calls (files) are not, and a delivery's or a schedule's call has no
   request. Each request's line in `jadpo dev` lists its calls, and its
   `--json` event gives them.
+
+### Chosen in chunk 7.2e
+
+Shape and name detection, decoded at the edge, and the declinable
+findings (layers 2, 3 and 6 for fields); the scoped review and
+unconfirmed operations (layers 4 and 5) are chunk 7.2e2. Each choice the
+most conservative reading:
+
+- **How a provider's shape is decoded at the edge: `wire_parts:`.** The
+  page decides that Stripe's `amount: 1050, currency: "gbp"` decodes to
+  `Money`, but no decoding it names could do it: `wire:` and `decode:`
+  read one member, and `Wire.minor_units` needs one fixed currency. A
+  field's `wire_parts:` names, for each part of its standard type, the
+  member of the object holding the field it is read from and written to;
+  the field has no member of its own on the provider's wire, and is
+  written as the contract writes it everywhere else. It is for the
+  standard types made of named parts (`Money`'s `amount` and `currency`,
+  `InstantRange`'s `start` and `end`, and the others sent as an object of
+  members) and a `Point`, by `latitude` and `longitude`, which GeoJSON
+  sends as a pair. Every part is spelled, as text, once
+  (`package.wire_invalid`), never beside `wire:`, `decode:` or `encode:`.
+  Fields may share a part's member, as a charge's amounts share its
+  currency, but a field of its own can't take one
+  (`package.wire_name_invalid`); written, two values that share a member
+  and differ stop the call as one that doesn't encode, naming the member.
+  None of a field's members sent is `none` where the field may be; some
+  missing is a fault naming each. Recorded in "Decisions" below.
+- **What the importer maps by shape.** Only what the shapes
+  `type.standard_exists` matches name, and only where nothing is guessed
+  but the units: a whole number named as `Money`'s amount (`amount`,
+  `value`, `cents`, `pence`, `minor`, `amount_minor`) beside a currency
+  (`currency`, `currency_code`) of the same optionality is `Money` read
+  from both, the currency's field and its own enumeration gone; a
+  latitude beside a longitude (`lat`, `lng`, `lon`) of the same
+  optionality is a `Point` named `location` (`position` or `point` where
+  that is taken). An object that is only an amount in whole numbers and a
+  currency, or only a `start` and an `end` that are instants, each
+  required and spelled as the contract spells it, is `Money` or
+  `InstantRange` wherever it is used, and isn't declared, since nothing
+  needs decoding. Any other object of a standard shape is left to
+  `type.standard_exists`, whose swap needs a decoding an agent writes.
+- **What it leaves to check: `package.standard_candidate`.** A whole
+  number named like a time (`created`, `updated`, `deleted`, `expires`,
+  `timestamp`, `time`, or ending `_at`, `_time` or `_timestamp`) may be an
+  `Instant` sent as seconds or milliseconds; one named like an amount
+  (`amount_` or `_amount` besides the shape's names) beside a currency
+  may be `Money`; neither is swapped, since only the documentation says
+  which. Each is a declinable error on the field, in a provider package's
+  public objects, until it says how it is sent or is declined with a
+  reason; so is a latitude beside a longitude that isn't mapped. A number
+  named like a time that is text (`"2026-10-20"`) isn't flagged: the page
+  names whole numbers, and a format says when text is a time.
+- **Fakes.** A generated default answer writes a field's parts as their
+  members, and a `Money` as the contract sends one, a whole number of
+  minor units in the currency its type fixes or `GBP`; until now a fake's
+  `Money` was written in a form no reader takes.
+- **The summary.** The status grid counts the fields mapped `by format`
+  and `by shape`; "Mapped by shape" lists each shape mapping and how it is
+  read, since each is a judgement, where a format's is only counted; each
+  guess is under "To check" with its `(agent)` step. `--json` gives every
+  mapping as `mapped`, with `at`, `standard`, `by` and the members it is
+  read `from`.
+
+The import's own output, for a payment provider's document:
+
+```text
+$ jadpo package import openapi tidepay.json
+✓ Imported tidepay.json into shared/providers/tidepay/v2024_06_20
+    package     Tidepay.v2024_06_20
+    read        from its schemas
+    resources   charges
+    operations  1
+    types       3
+    standard    4 by shape
+
+Mapped by shape
+  Charge.amount  Money, read from `amount` and `currency`
+  Charge.fee     Money, sent as the standard type
+  Charge.window  InstantRange, sent as the standard type
+  Shop.location  Point, read from `lat` and `lng`
+
+To check
+  May be `Money` in minor units, its currency in `currency`: check the
+  provider's documentation, then make it `Money` read from both with
+  `wire_parts:`, or decline `package.standard_candidate` with the reason
+  (agent)
+    Charge.amount_refunded
+
+  May be an `Instant` sent as whole seconds: check the provider's
+  documentation, then make it `Instant { wire: Wire.unix_seconds }`, or
+  decline `package.standard_candidate` with the reason (agent)
+    Charge.created
+
+✓ imported  1 operation · 3 types · 4 to check
+
+→ jadpo check  checks the package with the app
+```
+
+(The provider's two findings, its sandbox host and its failures, are left
+out above.)
 
 ### Chosen in chunk 7.2d2
 
@@ -7520,3 +7861,5 @@ packages and extension points, as each note says; 26 was decided then.
 | A provider field's spelling on the wire (after chunk 7.2) | A field or enum variant in a provider package may say its spelling on the wire with `wire_name:`, written only where it differs from the Jadpo name (`collectAt`, `after-noon`); the importer writes it, and the runtime reads and writes that spelling (Richard, as recommended under the 2026-10-19 standing instruction; built in 7.2c) | 2026-10-20 |
 | Wording two versions of a package (after chunk 7.1c2) | While the app holds two versions of a library package that carries translations, the app words each under a key that carries the version (`postcodes_v3: { }`), as its names do; with one version held, the key stays the folder name (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
 | `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
+| A standard type read from its object's members (chunk 7.2e) | A provider package's field gives `wire_parts:`, the member of the object holding it that each part of its standard type is read from and written to, so Stripe's `amount` and `currency` are one `Money` and `lat` and `lng` one `Point`; for the standard types made of named parts and `Point`; fields may share a part's member, and two values that differ there stop the call; the field has no member of its own on the wire and is the contract's everywhere else. Decided by the building session where the page names the decoding but no mechanism could do it; follows `wire_name:`'s shape (decided for Richard) | 2026-10-20 |
+| What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |

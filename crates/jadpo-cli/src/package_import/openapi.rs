@@ -41,8 +41,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 use super::model::{
-    FailureDecl, Field, Finding, Idempotency, Operation, Package, Provider, Resource, Ty, TypeDecl,
-    Variant, camel, snake,
+    FailureDecl, Field, Finding, Idempotency, Mapped, Operation, Package, Provider, Resource, Ty,
+    TypeDecl, Variant, camel, snake,
 };
 use super::notation::{self, Written};
 
@@ -97,6 +97,7 @@ pub fn read(
         findings: Vec::new(),
         queue: Vec::new(),
         done: BTreeSet::new(),
+        mapped: Vec::new(),
     };
     let mut resources: BTreeMap<String, Resource> = BTreeMap::new();
     let mut read: Vec<(String, Read)> = Vec::new();
@@ -153,6 +154,10 @@ pub fn read(
         }
     }
     let provider = reader.provider(&title, file, digest);
+    // Shapes among an object's members (area 11's second layer; chunk
+    // 7.2e), once every type is read.
+    reader.siblings();
+    reader.mapped.sort_by(|a, b| a.at.cmp(&b.at));
     let description = document
         .pointer("/info/description")
         .and_then(Value::as_str)
@@ -171,6 +176,7 @@ pub fn read(
         failures: reader.failures,
         findings: reader.findings,
         exact,
+        mapped: reader.mapped,
     })
 }
 
@@ -400,6 +406,8 @@ struct Reader<'d> {
     /// Schemas named but not yet read.
     queue: Vec<String>,
     done: BTreeSet<String>,
+    /// Each field mapped to a standard type.
+    mapped: Vec<Mapped>,
 }
 
 impl Reader<'_> {
@@ -594,7 +602,12 @@ impl Reader<'_> {
                 continue;
             }
             let wire = (name != *wire).then(|| wire.clone());
-            fields.push(Field { name, ty, wire });
+            fields.push(Field {
+                name,
+                ty,
+                wire,
+                parts: Vec::new(),
+            });
         }
         fields
     }
@@ -616,6 +629,9 @@ impl Reader<'_> {
                 );
                 return None;
             };
+            if let Some(standard) = self.whole(schema, at) {
+                return Some(standard);
+            }
             let name = self.type_name(schema_name);
             return Some(Ty {
                 text: name,
@@ -693,6 +709,10 @@ impl Reader<'_> {
                 }
             }
             Some("object") | None if schema.get("properties").is_some() => {
+                if let Some(mut standard) = self.whole(schema, at) {
+                    standard.optional |= optional;
+                    return Some(standard);
+                }
                 return self.inline(schema, at, synthesised, optional);
             }
             Some("object") => match schema.get("additionalProperties") {
@@ -724,6 +744,211 @@ impl Reader<'_> {
         };
         ty.optional |= optional;
         Some(ty)
+    }
+
+    fn mapped(&mut self, at: &str, standard: &str, by: &'static str, from: Vec<String>) {
+        if !self.exact {
+            self.mapped.push(Mapped {
+                at: at.to_string(),
+                standard: standard.to_string(),
+                by,
+                from,
+            });
+        }
+    }
+
+    /// An object schema that is a standard type whole, sent as the
+    /// standard type is (chunk 7.2e): only an amount in whole minor units
+    /// and a currency, `Money`, or a start and an end, each an instant,
+    /// `InstantRange`, each member required and spelled as the contract
+    /// spells it, so nothing needs decoding.
+    fn whole(&mut self, schema: &Value, at: &str) -> Option<Ty> {
+        if self.exact {
+            return None;
+        }
+        let schema = self.resolve(schema).clone();
+        let properties = schema.get("properties").and_then(Value::as_object)?;
+        let required: BTreeSet<&str> = schema
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|all| all.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let member = |name: &str| -> Option<Value> {
+            required
+                .contains(name)
+                .then(|| {
+                    properties
+                        .get(name)
+                        .map(|value| self.resolve(value).clone())
+                })
+                .flatten()
+        };
+        let kind = |value: &Value, kind: &str| types_of(value) == [kind];
+        let keys: Vec<&str> = properties.keys().map(String::as_str).collect();
+        let standard = match keys.as_slice() {
+            ["amount", "currency"] => {
+                let (amount, currency) = (member("amount")?, member("currency")?);
+                (kind(&amount, "integer") && kind(&currency, "string")).then_some("Money")
+            }
+            ["end", "start"] => {
+                let (end, start) = (member("end")?, member("start")?);
+                let instant = |value: &Value| {
+                    kind(value, "string")
+                        && value.get("format").and_then(Value::as_str) == Some("date-time")
+                };
+                (instant(&start) && instant(&end)).then_some("InstantRange")
+            }
+            _ => None,
+        }?;
+        self.mapped(at, standard, "shape", Vec::new());
+        Some(Ty {
+            text: standard.to_string(),
+            ..Ty::default()
+        })
+    }
+
+    /// Standard types among each object's members (area 11's second
+    /// layer; chunk 7.2e), decoded at the edge with `wire_parts:`: a whole
+    /// number named as `Money`'s amount beside a currency is `Money` read
+    /// from both, and a latitude beside a longitude a `Point`, named
+    /// `location`. What looks like one but isn't sure is left to check: a
+    /// whole number named like a time, a candidate `Instant` sent as
+    /// seconds, and another named like an amount beside the currency.
+    fn siblings(&mut self) {
+        use jadpo_std::provider::{
+            amount_like, amount_named, currency_named, latitude_named, longitude_named, time_named,
+        };
+        if self.exact {
+            return;
+        }
+        let enums: BTreeSet<String> = self
+            .types
+            .iter()
+            .filter(|(_, decl)| matches!(decl, TypeDecl::Enum { .. }))
+            .map(|(name, _)| name.clone())
+            .collect();
+        let names: Vec<String> = self.types.keys().cloned().collect();
+        let mut unused: Vec<String> = Vec::new();
+        for host in names {
+            let Some(TypeDecl::Object { fields, .. }) = self.types.get(&host).cloned() else {
+                continue;
+            };
+            let mut fields = fields;
+            let spelled = |field: &Field| field.wire.clone().unwrap_or_else(|| field.name.clone());
+            let plain = |field: &Field, kinds: &[&str]| {
+                field.parts.is_empty() && kinds.contains(&field.ty.text.as_str())
+            };
+            // An amount beside its currency.
+            let currency = fields.iter().position(|field| {
+                currency_named(&field.name)
+                    && field.parts.is_empty()
+                    && (["Text", "Currency"].contains(&field.ty.text.as_str())
+                        || enums.contains(&field.ty.text))
+            });
+            let mut currency_member: Option<String> = currency.map(|at| spelled(&fields[at]));
+            if let Some(at) = currency {
+                let amount = fields.iter().position(|field| {
+                    amount_named(&field.name)
+                        && plain(field, &["Int"])
+                        && field.ty.optional == fields[at].ty.optional
+                });
+                if let Some(amount) = amount {
+                    let currency_field = fields[at].clone();
+                    let member = spelled(&currency_field);
+                    let field = &mut fields[amount];
+                    let from = vec![spelled(field), member.clone()];
+                    field.parts = vec![
+                        ("amount".to_string(), from[0].clone()),
+                        ("currency".to_string(), from[1].clone()),
+                    ];
+                    field.ty = Ty {
+                        text: "Money".to_string(),
+                        optional: field.ty.optional,
+                        rules: Vec::new(),
+                    };
+                    field.wire = None;
+                    let at_text = format!("{host}.{}", field.name);
+                    self.mapped(&at_text, "Money", "shape", from);
+                    if enums.contains(&currency_field.ty.text) {
+                        unused.push(currency_field.ty.text.clone());
+                    }
+                    fields.remove(at);
+                    currency_member = Some(member);
+                }
+            }
+            // A latitude beside a longitude.
+            let latitude = fields
+                .iter()
+                .position(|field| latitude_named(&field.name) && plain(field, &["Int", "Decimal"]));
+            let longitude = fields.iter().position(|field| {
+                longitude_named(&field.name) && plain(field, &["Int", "Decimal"])
+            });
+            if let (Some(lat), Some(lng)) = (latitude, longitude)
+                && fields[lat].ty.optional == fields[lng].ty.optional
+            {
+                let from = vec![spelled(&fields[lat]), spelled(&fields[lng])];
+                let optional = fields[lat].ty.optional;
+                let name = ["location", "position", "point"]
+                    .into_iter()
+                    .find(|name| fields.iter().all(|field| field.name != *name))
+                    .unwrap_or("location")
+                    .to_string();
+                let gone = [fields[lat].name.clone(), fields[lng].name.clone()];
+                fields.retain(|field| !gone.contains(&field.name));
+                let place = fields
+                    .iter()
+                    .position(|field| field.name > name)
+                    .unwrap_or(fields.len());
+                fields.insert(
+                    place,
+                    Field {
+                        name: name.clone(),
+                        ty: Ty {
+                            text: "Point".to_string(),
+                            optional,
+                            rules: Vec::new(),
+                        },
+                        wire: None,
+                        parts: vec![
+                            ("latitude".to_string(), from[0].clone()),
+                            ("longitude".to_string(), from[1].clone()),
+                        ],
+                    },
+                );
+                self.mapped(&format!("{host}.{name}"), "Point", "shape", from);
+            }
+            // What may be a standard type, left to check.
+            for field in &fields {
+                if !plain(field, &["Int"]) {
+                    continue;
+                }
+                let at = format!("{host}.{}", field.name);
+                if time_named(&field.name) {
+                    self.find(at, "May be an `Instant` sent as whole seconds: check the provider's documentation, then make it `Instant { wire: Wire.unix_seconds }`, or decline `package.standard_candidate` with the reason");
+                } else if amount_like(&field.name)
+                    && let Some(member) = &currency_member
+                {
+                    self.find(at, format!("May be `Money` in minor units, its currency in `{member}`: check the provider's documentation, then make it `Money` read from both with `wire_parts:`, or decline `package.standard_candidate` with the reason"));
+                }
+            }
+            if let Some(TypeDecl::Object { fields: held, .. }) = self.types.get_mut(&host) {
+                *held = fields;
+            }
+        }
+        // A currency's own enumeration, now read into `Money`, goes when
+        // nothing else uses it.
+        for name in unused {
+            let used = self.types.values().any(|decl| match decl {
+                TypeDecl::Object { fields, .. } => {
+                    fields.iter().any(|field| mentions(&field.ty.text, &name))
+                }
+                TypeDecl::Refined { base, .. } => mentions(base, &name),
+                TypeDecl::Enum { .. } => false,
+            });
+            if !used {
+                self.types.remove(&name);
+            }
+        }
     }
 
     /// A list's or map's item: a plain type's name, or a type of its own
@@ -800,6 +1025,7 @@ impl Reader<'_> {
                         && jadpo_std::money::ordinal_of_code(code).is_some()
                 })
             {
+                self.mapped(at, "Currency", "format", Vec::new());
                 return Some(plain("Currency"));
             }
             let countries = jadpo_std::standard_type("Country").and_then(|entry| entry.codes());
@@ -811,6 +1037,7 @@ impl Reader<'_> {
                         .all(|code| codes.iter().any(|(_, known)| known == code))
                 })
             {
+                self.mapped(at, "Country", "format", Vec::new());
                 return Some(plain("Country"));
             }
             let name = self.unique(synthesised.to_string());
@@ -843,6 +1070,7 @@ impl Reader<'_> {
             _ => None,
         };
         if let Some(mapped) = mapped {
+            self.mapped(at, mapped, "format", Vec::new());
             return Some(plain(mapped));
         }
         let mut rules = Vec::new();
@@ -994,7 +1222,12 @@ impl Reader<'_> {
                 ty.optional = true;
             }
             let wire = (name != *wire).then(|| wire.clone());
-            fields.push(Field { name, ty, wire });
+            fields.push(Field {
+                name,
+                ty,
+                wire,
+                parts: Vec::new(),
+            });
         }
         // Its body.
         let body = operation
@@ -1285,6 +1518,14 @@ impl Reader<'_> {
         }
         provider
     }
+}
+
+/// Whether a written type mentions type `name`: `List<Tag>` mentions
+/// `Tag`.
+fn mentions(written: &str, name: &str) -> bool {
+    written
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|word| word == name)
 }
 
 /// A content map's JSON schema: `application/json`, or a `+json` type.

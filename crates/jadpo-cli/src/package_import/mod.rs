@@ -248,6 +248,19 @@ fn report(
         },
     ));
     rows.push(("types".to_string(), package.types.len().to_string()));
+    // Fields mapped to standard types, by the description's own format
+    // and by their shape (area 11; chunk 7.2e).
+    let by = |how: &str| package.mapped.iter().filter(|m| m.by == how).count();
+    let by_format = by("format");
+    let by_shape: Vec<&model::Mapped> = package.mapped.iter().filter(|m| m.by == "shape").collect();
+    let standard: Vec<String> = [(by_format, "by format"), (by_shape.len(), "by shape")]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, how)| format!("{n} {how}"))
+        .collect();
+    if !standard.is_empty() {
+        rows.push(("standard".to_string(), standard.join(", ")));
+    }
     if !package.failures.is_empty() {
         rows.push(("failures".to_string(), package.failures.len().to_string()));
     }
@@ -282,6 +295,35 @@ fn report(
         screen.push(Block::Changes {
             note: Some("compared with the files already there; corrections were kept".to_string()),
             groups,
+        });
+    }
+    // What was mapped by its shape, and how it is read: a judgement, so
+    // each is listed, where a format's mapping is only counted.
+    if !by_shape.is_empty() {
+        let width = by_shape
+            .iter()
+            .map(|mapped| mapped.at.chars().count())
+            .max()
+            .unwrap_or(0);
+        let lines = by_shape
+            .iter()
+            .map(|mapped| {
+                let how = if mapped.from.is_empty() {
+                    "sent as the standard type".to_string()
+                } else {
+                    let from: Vec<String> = mapped
+                        .from
+                        .iter()
+                        .map(|member| format!("`{member}`"))
+                        .collect();
+                    format!("read from {}", from.join(" and "))
+                };
+                format!("{:width$}  {}, {how}", mapped.at, mapped.standard)
+            })
+            .collect();
+        screen.push(Block::Section {
+            heading: "Mapped by shape".to_string(),
+            lines,
         });
     }
     // What is left to check, grouped by what to do.
@@ -353,6 +395,20 @@ fn report(
             })),
         ),
         ("operations", Json::from(operations)),
+        (
+            "mapped",
+            Json::array(package.mapped.iter().map(|mapped| {
+                Json::object([
+                    ("at", Json::from(mapped.at.as_str())),
+                    ("standard", Json::from(mapped.standard.as_str())),
+                    ("by", Json::from(mapped.by)),
+                    (
+                        "from",
+                        Json::array(mapped.from.iter().map(|member| Json::from(member.as_str()))),
+                    ),
+                ])
+            })),
+        ),
         ("types", Json::from(package.types.len())),
         ("failures", Json::from(package.failures.len())),
         (

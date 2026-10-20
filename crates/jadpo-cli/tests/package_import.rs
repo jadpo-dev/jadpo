@@ -631,3 +631,234 @@ fn what_the_importer_cant_read_is_refused() {
     }
     assert!(!root.join("shared").exists());
 }
+
+/// A payment provider's document, as Stripe's reads: an amount beside its
+/// currency, more amounts sharing it, times as whole seconds, a shop's
+/// latitude and longitude, and objects that are a standard type whole.
+const PAYMENTS: &str = r##"{
+  "openapi": "3.1.0",
+  "info": { "title": "Tidepay", "version": "2024-06-20" },
+  "servers": [{ "url": "https://api.tidepay.example" }],
+  "paths": {
+    "/v1/charges/{id}": {
+      "get": {
+        "tags": ["charges"],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/charge" } } } } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "charge": {
+        "type": "object",
+        "description": "A charge to a card.",
+        "required": ["id", "amount", "amount_refunded", "currency", "created", "shop", "fee", "window"],
+        "properties": {
+          "id": { "type": "string" },
+          "amount": { "type": "integer" },
+          "amount_refunded": { "type": "integer" },
+          "currency": { "type": "string" },
+          "created": { "type": "integer" },
+          "shop": { "$ref": "#/components/schemas/shop" },
+          "fee": { "$ref": "#/components/schemas/fee" },
+          "window": { "$ref": "#/components/schemas/window" }
+        }
+      },
+      "shop": {
+        "type": "object",
+        "required": ["name", "lat", "lng"],
+        "properties": {
+          "name": { "type": "string" },
+          "lat": { "type": "number" },
+          "lng": { "type": "number" }
+        }
+      },
+      "fee": {
+        "type": "object",
+        "required": ["amount", "currency"],
+        "properties": {
+          "amount": { "type": "integer" },
+          "currency": { "type": "string" }
+        }
+      },
+      "window": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": { "type": "string", "format": "date-time" },
+          "end": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
+"##;
+
+/// Shape and name detection (area 11, "Mapping imported types to
+/// standard types"; chunk 7.2e): an amount beside its currency becomes
+/// `Money` read from both, a latitude beside a longitude a `Point`, an
+/// object that is a standard type whole that type; what the importer
+/// isn't sure of is a declinable error on the field, until it is swapped
+/// or declined; and the summary lists both.
+#[test]
+fn shapes_become_standard_types_and_guesses_are_left_to_check() {
+    let dir = tempdir::Dir::new("import-shapes");
+    let root = caller(&dir);
+    write(&root, "tidepay.json", PAYMENTS);
+    let imported = jadpo(&root, &["package", "import", "openapi", "tidepay.json"]);
+    assert_eq!(imported.code, 0, "{}{}", imported.stdout, imported.stderr);
+    assert_eq!(
+        imported.stdout,
+        "Imported tidepay.json into shared/providers/tidepay/v2024_06_20
+    package     Tidepay.v2024_06_20
+    read        from its schemas
+    resources   charges
+    operations  1
+    types       3
+    standard    4 by shape
+
+Mapped by shape
+  Charge.amount  Money, read from `amount` and `currency`
+  Charge.fee     Money, sent as the standard type
+  Charge.window  InstantRange, sent as the standard type
+  Shop.location  Point, read from `lat` and `lng`
+
+To check
+  Add `hosts: { sandbox: }` from the provider's documentation, or the live
+  host again when the sandbox is a test credential (agent)
+    provider
+
+  Add the provider's failures and `error_code:`, where its error code is in a
+  failed response, and `idempotency:` if it takes a key (agent)
+    provider
+
+  May be `Money` in minor units, its currency in `currency`: check the
+  provider's documentation, then make it `Money` read from both with
+  `wire_parts:`, or decline `package.standard_candidate` with the reason
+  (agent)
+    Charge.amount_refunded
+
+  May be an `Instant` sent as whole seconds: check the provider's
+  documentation, then make it `Instant { wire: Wire.unix_seconds }`, or
+  decline `package.standard_candidate` with the reason (agent)
+    Charge.created
+
+imported: 1 operation, 3 types, 4 to check
+
+next: jadpo check  checks the package with the app
+"
+    );
+    let folder = "shared/providers/tidepay/v2024_06_20";
+    assert_eq!(
+        read(&root, &format!("{folder}/types/charge.jadpo")),
+        "/// A charge to a card.
+public type Charge = Object {
+    amount: Money {
+        wire_parts: {
+            amount: \"amount\"
+            currency: \"currency\"
+        }
+    }
+    amount_refunded: Int
+    created: Int
+    fee: Money
+    id: Text
+    shop: Shop
+    window: InstantRange
+}
+"
+    );
+    assert_eq!(
+        read(&root, &format!("{folder}/types/shop.jadpo")),
+        "public type Shop = Object {
+    location: Point {
+        wire_parts: {
+            latitude: \"lat\"
+            longitude: \"lng\"
+        }
+    }
+    name: Text
+}
+"
+    );
+    // A type that is a standard one whole isn't declared.
+    assert!(!root.join(format!("{folder}/types/fee.jadpo")).exists());
+    assert!(!root.join(format!("{folder}/types/window.jadpo")).exists());
+    // What the importer wasn't sure of stops `check` until it is swapped
+    // or declined.
+    let checked = jadpo(&root, &["check", "--json"]);
+    assert_ne!(checked.code, 0, "{}", checked.stdout);
+    let rules: Vec<String> = json(&checked)["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .map(|d| d["rule"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(
+        rules,
+        ["package.standard_candidate", "package.standard_candidate"],
+        "{}",
+        checked.stdout
+    );
+    // The agent checks the documentation: `created` is seconds, and the
+    // refund is money in the charge's currency.
+    let charge = format!("{folder}/types/charge.jadpo");
+    let swapped = read(&root, &charge)
+        .replace(
+            "    amount_refunded: Int\n",
+            "    amount_refunded: Money {\n        wire_parts: {\n            amount: \"amount_refunded\"\n            currency: \"currency\"\n        }\n    }\n",
+        )
+        .replace(
+            "    created: Int\n",
+            "    created: Instant {\n        wire: Wire.unix_seconds\n    }\n",
+        );
+    write(&root, &charge, &swapped);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    // Importing again keeps the swaps, and has nothing more to flag.
+    let again = jadpo(
+        &root,
+        &["package", "import", "openapi", "tidepay.json", "--json"],
+    );
+    assert_eq!(again.code, 0, "{}", again.stdout);
+    assert_eq!(read(&root, &charge), swapped);
+    let report = json(&again);
+    assert_eq!(report["data"]["mapped"][0]["at"], "Charge.amount");
+    assert_eq!(report["data"]["mapped"][0]["standard"], "Money");
+    assert_eq!(report["data"]["mapped"][0]["by"], "shape");
+    assert_eq!(
+        report["data"]["mapped"][0]["from"],
+        serde_json::json!(["amount", "currency"])
+    );
+}
+
+/// A guess declined with a reason stays declined: `jadpo check` passes,
+/// and the decline is listed for review.
+#[test]
+fn a_guess_declined_with_a_reason_passes() {
+    let dir = tempdir::Dir::new("import-declined");
+    let root = caller(&dir);
+    write(&root, "tidepay.json", PAYMENTS);
+    let imported = jadpo(&root, &["package", "import", "openapi", "tidepay.json"]);
+    assert_eq!(imported.code, 0, "{}", imported.stdout);
+    let charge = "shared/providers/tidepay/v2024_06_20/types/charge.jadpo";
+    let declined = read(&root, charge)
+        .replace(
+            "    amount_refunded: Int\n",
+            "    decline package.standard_candidate: \"A count of refunds, not money\"\n    amount_refunded: Int\n",
+        )
+        .replace(
+            "    created: Int\n",
+            "    decline package.standard_candidate: \"A sequence number, not a time\"\n    created: Int\n",
+        );
+    write(&root, charge, &declined);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let listed = jadpo(&root, &["declines", "list"]);
+    assert!(
+        listed.stdout.contains("A count of refunds, not money"),
+        "{}",
+        listed.stdout
+    );
+}

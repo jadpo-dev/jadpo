@@ -556,6 +556,8 @@ rules! {
         "11-integrations.html#package-provider-translations", "Provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
+    PACKAGE_STANDARD_CANDIDATE: "package.standard_candidate", area 11, Declinable, Agent,
+        "11-integrations.html#package-standard-candidate", "Provider field looks like a standard type the package doesn't use";
     PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
         "11-integrations.html#package-version-needed", "Name written through a package held in two versions doesn't say which";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
@@ -1539,6 +1541,7 @@ mod tests {
                 "constant.similar_exists",
                 "email.field_unused",
                 "library.similar_exists",
+                "package.standard_candidate",
                 "query.nearest_exact",
                 "translation.field_unused",
                 "type.batch_order_updatable",
