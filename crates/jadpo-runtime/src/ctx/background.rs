@@ -41,6 +41,9 @@ pub(crate) struct Background {
     /// committed, which a schedule's run record counts (area 12,
     /// "Watching schedules").
     emitted: u32,
+    /// How a test delivers what its steps emit (area 13, "Caches and
+    /// events"; chunk 6.11): set by `jadpo test`, `None` anywhere else.
+    between_steps: Option<crate::test_steps::BetweenSteps>,
 }
 
 impl Background {
@@ -101,6 +104,18 @@ impl Background {
     pub(crate) fn take_deferred_from(&mut self, from: usize) -> Vec<Deferred> {
         let from = from.min(self.deferred.len());
         self.deferred.split_off(from)
+    }
+
+    pub(crate) fn between_steps(&self) -> Option<&crate::test_steps::BetweenSteps> {
+        self.between_steps.as_ref()
+    }
+
+    pub(crate) fn between_steps_mut(&mut self) -> Option<&mut crate::test_steps::BetweenSteps> {
+        self.between_steps.as_mut()
+    }
+
+    pub(crate) fn set_between_steps(&mut self, between: crate::test_steps::BetweenSteps) {
+        self.between_steps = Some(between);
     }
 
     pub(crate) fn emitted(&self) -> u32 {

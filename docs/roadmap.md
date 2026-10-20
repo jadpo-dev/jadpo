@@ -715,12 +715,16 @@ chunks below, taken before Phase 7, in this order.
   outbox) at a time, ten times a tick; statements in
   `jadpo_runtime::statements`; live tests in `tick_deletes.rs`. Choices
   in area 12, "The tick".
-- [ ] **6.11 Events in tests** `opus · high` (area 13, "Caches and
-  events"; area 12, question 15): what each step of a test emits
-  delivered after it commits and before the next statement, at the
-  test's clock, until none are left, in an order shuffled by the
-  printed seed, a subscriber that fails failing the test; a fake failing
-  a subscriber, to test retries, follows with 7.0c's fakes.
+- [x] **6.11 Events in tests** `opus · high`. Built: what each step of
+  a test emits (a call, a request, a schedule's run, `clock.advance`)
+  delivered before the next statement, at the test's clock, until none
+  is due, each drawn in an order the printed seed and the test's key
+  decide; a retry waiting its full backoff for `clock.advance`; a
+  delivery that fails for good ending the test as
+  `test.subscriber_failed`, a fake failing a subscriber's call (7.0c's
+  `Faked`) retried and given up the same way, a test's `fakes:` coming
+  with 7.2's generated fakes; examples 23 and 25 reading what their
+  subscribers did.
 - [x] **6.12 `jadpo deliveries`** `opus · high`. Built: `jadpo
   deliveries` listing what failed or is in doubt (`--state` for the
   rest), and `retry`, `dismiss`, `cancel` and `resolve --done|--not-done`

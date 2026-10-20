@@ -1,0 +1,9 @@
+use cafe/entities { Repair, ThankYouNote }
+
+/// The notes pinned up for a repair.
+query pinned_notes(repair_id: Repair.id) -> List<ThankYouNote> {
+    from: ThankYouNote
+    where: ThankYouNote.repair_id == repair_id
+    order: [ThankYouNote.id asc]
+    limit: 20
+}

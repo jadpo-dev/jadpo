@@ -1,10 +1,12 @@
 // A route test sends its request through the real boundary, `settle:`
 // included: the follow-on work runs while the test waits, so each test
-// sees the ticket as the kiosk would.
+// sees the ticket as the kiosk would. What a request leaves for after
+// its response is delivered before the test's next line.
 
-use cafe/entities { Bench, Repair }
+use cafe/entities { Bench, Repair, ThankYouNote }
 use cafe/types { RepairKind, RepairRequest, ThanksRequest }
 use cafe/actions { book_repair }
+use cafe/queries { pinned_notes }
 use cafe/fixtures { saturday_benches }
 
 test "a bike is sent to Priya's bench and its ticket printed" {
@@ -83,4 +85,6 @@ test "a thank-you note is accepted and pinned up after" {
         }
     }
     assert thanked.status == 202
+    var pinned: List<ThankYouNote> = pinned_notes(lamp.id)
+    assert list.count(pinned) == 1
 }
