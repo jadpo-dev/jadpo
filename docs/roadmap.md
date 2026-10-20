@@ -768,15 +768,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   be retried after one), proved live with a test capability. A batch's
   items still run inside its transaction, so an item's call is refused
   until 7.4. Choices in area 16 and compiler-runtime.md §2.6.
-- [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
-  moved after 7.0c from Phase 6, since it needs a minimal `files`
-  capability on that seam: a store's `put` and `read` of a `File` with a
-  fake, then `csv.read`/`write`, `tsv`, `json_lines` and the batch forms
-  of `json.read`/`write` on 6.4's runs, as area 19's "Data formats" tables
-  them, with `ExportSummary`, `CsvFormat`, a file row's `RowProblem`
-  column and line numbers, and `store.read`'s whole-read cap; and from
-  6.4, the warning for a `from:` ordered by a field that can be updated,
-  and `estimated_total` from a query's count.
+- [ ] **6.4b Files and reading rows into batches** `opus · xhigh`
+  (areas 12, 16 and 19; split from 6.4b Batch file helpers on
+  2026-10-20): a minimal `files` capability on 7.0c's seam
+  (`Driver.disk` connections, a store's `put` and ranged `read` of a
+  `File`, the local-disk driver for `jadpo dev` and an in-memory fake for
+  tests), `File` fields with `store:`, `max_size:` and `types:`,
+  `store.read`'s whole-read cap, and `csv.read`, `tsv.read` and
+  `json_lines.read` on 6.4's runs, each page's rows read from the file
+  before its transaction opens, with a file row's `RowProblem` column and
+  row number and the file-level faults that stop a run.
+- [ ] **6.4b2 Exports and the rest of the file helpers** `opus · xhigh`,
+  after 6.4b: `json.read`'s file form (`items_at:`), the writers
+  (`csv.write`, `tsv.write`, `json_lines.write` and `json.write`'s file
+  form) with `ExportSummary` and `CsvFormat`, each export's put after its
+  page commits; gzip read with `max_unpacked_size:`; and from 6.4, the
+  warning for a `from:` ordered by a field that can be updated (a
+  declinable error, area 1) and `estimated_total` from a query's count or
+  a file's size.
 - [ ] **7.1 Packages and connections** `opus · high`: the package format
   (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
   surface rule), library and provider kinds, `packages/` installed and
