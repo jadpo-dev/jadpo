@@ -11,6 +11,7 @@
 
 mod identities;
 mod items;
+pub mod lazy;
 mod load;
 mod lock;
 mod places;
@@ -24,7 +25,7 @@ pub use identities::{
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
-    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_into,
+    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_into, load_whole,
     package_files, show_in_checkouts, shown_root, watched_files,
 };
 pub use lock::{LOCK, Locked, Source, package_digest, package_folder, parse_lock, write_lock};
@@ -36,7 +37,7 @@ pub use places::{
 pub use table::{Contested, Symbol, Symbols, contested, domain_scope, identity_name, symbols};
 pub use texts::source_texts;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use jadpo_syntax::Parse;
@@ -139,6 +140,20 @@ pub struct Project {
     #[default]
     #[returns(ref)]
     pub name: String,
+    /// Installed packages' resource files that nothing the app writes
+    /// reaches yet (area 11, "The package format"; chunk 7.1c2): read for
+    /// the package's digest, but compiled only once the app calls into
+    /// them, when [`load::Loaded`] moves them to `files`.
+    #[default]
+    #[returns(ref)]
+    pub lazy: Vec<File>,
+    /// The installed packages' source files already checked with no
+    /// problem by this compiler at the package's digest, by path: the
+    /// package cache (docs/compiler-runtime.md §2.3), whose files
+    /// [`check`](../jadpo_check/fn.check.html) doesn't check again.
+    #[default]
+    #[returns(ref)]
+    pub checked: BTreeSet<String>,
 }
 
 /// The database every compiler query runs against.
@@ -200,8 +215,41 @@ pub fn parse(db: &dyn Db, file: File) -> Parse {
     jadpo_syntax::parse_file(file.text(db))
 }
 
-/// Where a file sits in the project's layout.
+/// Where a file sits in the project's layout. A package held in two
+/// versions side by side is written through its name and version
+/// (`Postcodes.v3`, area 11, "Where packages live"), which the path alone
+/// can't tell.
 #[salsa::tracked(returns(ref))]
 pub fn location(db: &dyn Db, project: Project, file: File) -> Location {
-    locate(file.path(db), project.layout(db))
+    let mut location = locate(file.path(db), project.layout(db));
+    if let Ownership::Package(home) = &mut location.ownership
+        && side_by_side(db, project).contains(&(home.name.clone(), home.installed))
+    {
+        home.through = home.versioned();
+    }
+    location
+}
+
+/// The packages the project holds in more than one version, each as its
+/// folder's name and whether it is installed (area 11, "Where packages
+/// live"): two versions of one package sit side by side while callers
+/// move across, and their names carry the version. An installed package
+/// and the app's own integration of one name are a clash instead
+/// (`package.name_taken`), never versions of one package.
+#[salsa::tracked(returns(ref))]
+pub fn side_by_side(db: &dyn Db, project: Project) -> BTreeSet<(String, bool)> {
+    let mut versions: BTreeMap<(String, bool), BTreeSet<String>> = BTreeMap::new();
+    for file in project.files(db).iter().chain(project.lazy(db)) {
+        if let Some((home, _)) = package_at(file.path(db)) {
+            versions
+                .entry((home.name, home.installed))
+                .or_default()
+                .insert(home.version);
+        }
+    }
+    versions
+        .into_iter()
+        .filter(|(_, held)| held.len() > 1)
+        .map(|(package, _)| package)
+        .collect()
 }

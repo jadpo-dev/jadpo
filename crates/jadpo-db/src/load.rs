@@ -84,6 +84,19 @@ pub fn load(target: &Path) -> Loaded {
 /// [`load`] into a database of the caller's, such as one that records what
 /// it executes.
 pub fn load_into(target: &Path, db: Database) -> Loaded {
+    read_into(target, db, true)
+}
+
+/// [`load`] with every installed package's resources compiled, whether or
+/// not the app calls into them: for the commands that show or compare a
+/// package whole (`jadpo package show`, `update`).
+pub fn load_whole(target: &Path) -> Loaded {
+    read_into(target, Database::default(), false)
+}
+
+/// Reads `target` into `db`; `lazily`, an installed package's resources
+/// wait until the app calls into them ([`crate::lazy`]).
+fn read_into(target: &Path, db: Database, lazily: bool) -> Loaded {
     let folder = if target.is_dir() {
         target.to_path_buf()
     } else {
@@ -109,6 +122,7 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
         }
     };
     let mut files = Vec::new();
+    let mut lazy = Vec::new();
     let mut other_files = Vec::new();
     let mut records = Vec::new();
     for (path, shown) in sources {
@@ -133,12 +147,16 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
         match std::fs::read_to_string(&path) {
             Ok(text) => {
                 let durability = durability(&shown, layout);
-                files.push(
-                    File::builder(shown, text)
-                        .path_durability(durability)
-                        .text_durability(durability)
-                        .new(&db),
-                );
+                let waits = lazily && layout == Layout::Project && crate::lazy::is_lazy(&shown);
+                let file = File::builder(shown, text)
+                    .path_durability(durability)
+                    .text_durability(durability)
+                    .new(&db);
+                if waits {
+                    lazy.push(file);
+                } else {
+                    files.push(file);
+                }
             }
             Err(error) => unreadable.push(Unreadable {
                 path: shown,
@@ -161,14 +179,17 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
         .unwrap_or_default();
     let project = Project::builder(files, other_files, layout, identities, records)
         .name(name)
+        .lazy(lazy)
         .new(&db);
-    Loaded {
+    let mut loaded = Loaded {
         db,
         project,
         root,
         unreadable,
         links,
-    }
+    };
+    loaded.settle();
+    loaded
 }
 
 /// Each path with how the project names it, relative to `root`.
@@ -425,14 +446,42 @@ impl Loaded {
         Some(display(Path::new(""), relative))
     }
 
+    /// The installed package files the package cache holds as checked
+    /// with no problem, which a check skips (chunk 7.1c2).
+    pub fn set_checked(&mut self, checked: BTreeSet<String>) {
+        if &checked != self.project.checked(&self.db) {
+            self.project.set_checked(&mut self.db).to(checked);
+        }
+    }
+
+    /// Compiles each lazily loaded resource the app now calls into
+    /// ([`crate::lazy`]).
+    fn settle(&mut self) {
+        if let Some((files, waiting)) = crate::lazy::settle(&self.db, self.project) {
+            self.project.set_files(&mut self.db).to(files);
+            self.project.set_lazy(&mut self.db).to(waiting);
+        }
+    }
+
     /// Sets the text of the source file at `path`, adding it when it is
     /// new. Only `.jadpo` files outside `build/` are source; anything else
     /// is ignored. The database keeps every other result it can.
     pub fn set_text(&mut self, path: &str, text: String) {
+        self.write_text(path, text);
+        self.settle();
+    }
+
+    fn write_text(&mut self, path: &str, text: String) {
         if !is_source(path) {
             return;
         }
-        if let Some(file) = self.file(path) {
+        let waiting = self
+            .project
+            .lazy(&self.db)
+            .iter()
+            .copied()
+            .find(|file| file.path(&self.db) == path);
+        if let Some(file) = self.file(path).or(waiting) {
             if file.text(&self.db) != &text {
                 file.set_text(&mut self.db).to(text);
             }
@@ -444,6 +493,13 @@ impl Loaded {
             .path_durability(durability)
             .text_durability(durability)
             .new(&self.db);
+        if layout == Layout::Project && crate::lazy::is_lazy(path) {
+            let mut lazy = self.project.lazy(&self.db).clone();
+            lazy.push(file);
+            lazy.sort_by(|a, b| a.path(&self.db).cmp(b.path(&self.db)));
+            self.project.set_lazy(&mut self.db).to(lazy);
+            return;
+        }
         let mut files = self.project.files(&self.db).clone();
         files.push(file);
         files.sort_by(|a, b| a.path(&self.db).cmp(b.path(&self.db)));
@@ -460,6 +516,15 @@ impl Loaded {
             .collect();
         if kept.len() != files.len() {
             self.project.set_files(&mut self.db).to(kept);
+        }
+        let lazy = self.project.lazy(&self.db).clone();
+        let waiting: Vec<File> = lazy
+            .iter()
+            .copied()
+            .filter(|file| file.path(&self.db) != path)
+            .collect();
+        if waiting.len() != lazy.len() {
+            self.project.set_lazy(&mut self.db).to(waiting);
         }
     }
 

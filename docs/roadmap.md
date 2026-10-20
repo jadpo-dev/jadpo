@@ -946,11 +946,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   hosts giving the disk driver only for the plan's stores of files, so a
   package's connection has no driver until 7.2c. Choices in area 11's
   "Chosen in chunk 7.1c" (area 10 notes the settings).
-- [ ] **7.1c2 Lazy loading and two versions side by side** `opus · high`,
+- [x] **7.1c2 Lazy loading and two versions side by side** `opus · high`,
   after 7.1c and 7.1d (both touch how names through a package resolve):
   lazy loading of a package's resources by file name with the check
   cached per digest, and two versions of one package side by side, names
-  carrying the version (`Postcodes.v3.UkPostcode`).
+  carrying the version (`Postcodes.v3.UkPostcode`). Built: an installed
+  provider's `resources/<resource>.jadpo` compiled only once the app
+  writes `<connection>.<resource>`, still counted in the digest; `jadpo
+  check` keeping each installed package's clean files in
+  `~/.cache/jadpo/packages/<digest>/<compiler>` and skipping them after;
+  two versions of one package side by side in the checker, the graph and
+  the interpreter, each locked, connected by version and named by version
+  in the `jadpo package` commands, with `package.version_needed` and
+  `package.version_unneeded`; and a connection named like a domain or
+  library refused (question 17). Choices in area 11's "Chosen in chunk
+  7.1c2", one flagged for Richard: two versions of a package with
+  translations wait, recommendation the version joins the wording's key.
 - [x] **7.2 Served OpenAPI and the importer** `opus · high` (split from
   7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
   every API's OpenAPI document, and each API serving it at
@@ -973,6 +984,11 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
   field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
   the importer lists each; recommendation `wire_name:`.
+- [ ] **7.1c3 Wording two versions of a package** `opus · high` (area 11,
+  decided 2026-10-20): two versions of a library package with
+  `translations/` held side by side, the app wording each under
+  `<package>_v<n>: { }`, in the root file, the record, the translation
+  commands and the publishing bar.
 - [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
   and 7.1c: a provider operation called through its connection over
   7.0c's seam by the package driver (JSON over HTTP), tested against a

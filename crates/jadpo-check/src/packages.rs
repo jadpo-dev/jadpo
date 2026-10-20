@@ -103,7 +103,9 @@ struct Package {
 /// The packages the project holds, by folder.
 fn packages(db: &dyn Db, project: Project) -> BTreeMap<String, Package> {
     let mut out: BTreeMap<String, Package> = BTreeMap::new();
-    for &file in project.files(db) {
+    // A resource the app doesn't call into yet is still the package's
+    // (chunk 7.1c2), though it isn't compiled.
+    for &file in project.files(db).iter().chain(project.lazy(db)) {
         if let Ownership::Package(home) = &location(db, project, file).ownership {
             out.entry(home.folder.clone())
                 .or_insert_with(|| Package {
@@ -755,37 +757,45 @@ fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnos
             }
         }
     }
+    // A library package's messages are worded under its folder's name
+    // (`postcodes: { }`, area 10), which two versions would share; how an
+    // app words each version apart isn't decided (chunk 7.1c2).
+    if home.through != home.code
+        && let Some(file) = package
+            .files
+            .iter()
+            .find(|file| location(db, project, **file).place == Place::Folder(Folder::Translations))
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!(
+                    "Two versions of package `{}` with translations side by side aren't built yet",
+                    home.code
+                ),
+            )
+            .at(file_span(file.path(db)), "")
+            .reason(format!(
+                "The app words a package's messages under its folder's name, `{}: {{ }}`, which `{}` shares with the other version held beside it, so the two versions' messages can't be told apart yet.",
+                home.name,
+                home.versioned()
+            ))
+            .next("Move every caller to one version and remove the other, then add the new one"),
+        );
+    }
+    // Two versions of one package, both installed or both the app's own,
+    // sit side by side with names carrying the version (chunk 7.1c2); an
+    // installed package and the app's own of one name are a clash.
     if let Some(homes) = table.homes.get(&home.code)
         && let Some(other) = homes
             .iter()
-            .find(|other| other.folder != home.folder && other.folder < home.folder)
+            .find(|other| other.folder < home.folder && other.installed != home.installed)
     {
-        if other.installed == home.installed {
-            // Two versions side by side, names carrying the version
-            // (`Postcodes.v3.UkPostcode`), come with a later chunk.
-            out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!(
-                        "Two versions of package `{}` side by side aren't built yet",
-                        home.code
-                    ),
-                )
-                .at(span.clone(), "")
-                .reason(format!(
-                    "The language lets `{}` and `{}` sit side by side while callers move across, each written with its version, but this compiler can hold one version of a package at a time.",
-                    other.versioned(),
-                    home.versioned()
-                ))
-                .next(format!("Keep one of `{}/` and `{}/` for now", other.folder, home.folder)),
-            );
-        } else {
-            taken.push(format!(
-                "package `{}` in `{}`",
-                other.versioned(),
-                other.folder
-            ));
-        }
+        taken.push(format!(
+            "package `{}` in `{}`",
+            other.versioned(),
+            other.folder
+        ));
     }
     if taken.is_empty() {
         return;
@@ -911,7 +921,7 @@ fn locked(
 pub fn digest_of(db: &dyn Db, project: Project, home: &PackageHome) -> Result<String, String> {
     let prefix = format!("{}/", home.folder);
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    for &file in project.files(db) {
+    for &file in project.files(db).iter().chain(project.lazy(db)) {
         if let Some(relative) = file.path(db).strip_prefix(&prefix) {
             files.push((relative.to_string(), file.text(db).clone().into_bytes()));
         }

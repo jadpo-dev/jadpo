@@ -431,6 +431,130 @@ jadpo.lock
   against it, or two library versions while callers move across. While two
   are in use, names carry the version (`Postcodes.v3.UkPostcode`).
 
+Built in chunk 7.1c2 and checked by this checkout's `jadpo`: two versions
+of one package, both installed or both the app's own, sit side by side,
+each its own package in its own folder, and every name written through
+either carries its version. One `use` line brings in both, since it names
+the package's folder. Here the app's own `Postcodes` is held at `v2` and
+`v3` while callers move across:
+
+```jadpo check project=p71c2-side file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v2/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v2/types/uk_postcode.jadpo hidden
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v2/types/written_postcode.jadpo hidden
+/// A postcode as someone typed it.
+public type WrittenPostcode = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v2/failures/invalid_postcode.jadpo hidden
+/// The text isn't a UK postcode.
+public type InvalidPostcode = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v2/libraries/uk.jadpo hidden
+/// Reading UK postcodes.
+public library uk {
+    /// Reads a UK postcode as it is written.
+    function standard_form(postcode_text: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(postcode_text)) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v3/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v3 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v3/types/uk_postcode.jadpo hidden
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v3/types/written_postcode.jadpo hidden
+/// A postcode as someone typed it.
+public type WrittenPostcode = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v3/failures/invalid_postcode.jadpo hidden
+/// The text isn't a UK postcode.
+public type InvalidPostcode = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=p71c2-side file=shared/providers/postcodes/v3/libraries/uk.jadpo
+/// Reading UK postcodes.
+public library uk {
+    /// Reads a UK postcode as it is written, spaces around it left out.
+    function standard_form(postcode_text: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(text.trim(postcode_text))) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+```
+
+```jadpo check project=p71c2-side file=domains/addresses/actions/read_postcode.jadpo
+use shared/providers/postcodes
+
+/// Reads a customer's postcode, as callers did before the upgrade.
+action read_postcode(
+    written: Postcodes.v2.WrittenPostcode
+) fails Postcodes.v2.InvalidPostcode -> Postcodes.v2.UkPostcode {
+    return attempt Postcodes.v2.uk.standard_form(written)
+}
+```
+
+```jadpo check project=p71c2-side file=domains/addresses/actions/read_typed_postcode.jadpo
+use shared/providers/postcodes
+
+/// Reads a customer's postcode with the next version.
+action read_typed_postcode(
+    written: Postcodes.v3.WrittenPostcode
+) fails Postcodes.v3.InvalidPostcode -> Postcodes.v3.UkPostcode {
+    return attempt Postcodes.v3.uk.standard_form(written)
+}
+```
+
+A name without its version while two are held is
+`package.version_needed`; once the old version goes, a name that still
+carries the version is `package.version_unneeded`, whose edit drops it
+(both under "Package errors"). Two versions of a package with
+translations side by side wait for a later chunk ("Chosen in chunk
+7.1c2").
+
 ### Names
 
 - **Provider brand names are reserved.** Jadpo ships the list of curated
@@ -1162,6 +1286,58 @@ A package declares its own settings in `provider.jadpo`'s `settings:`, each
 a plain value (`Text`, `Int`, `Decimal`, `Bool` or `Duration`), and every
 connection to it gives each one by name, written out or read from a
 setting of that type (`account: config.ledger_account`).
+
+A connection's name shares one namespace with the app's domains and
+libraries (question 17), so `billing.<name>` means one thing. Built in
+chunk 7.1c2: a connection named like a domain or a library is reported at
+the connection, the name `app.jadpo` can change without moving code:
+
+```jadpo check project=p71c2-clash file=config.jadpo hidden
+config {
+    database_url: PostgresUrl
+}
+```
+
+```jadpo check project=p71c2-clash file=domains/billing/types/invoice_code.jadpo hidden
+/// The code an invoice is filed under.
+type InvoiceCode = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=p71c2-clash file=domains/billing/actions/file_invoice.jadpo hidden
+use billing/types { InvoiceCode }
+
+/// Files an invoice under its code.
+action file_invoice(code: InvoiceCode) -> InvoiceCode {
+    return code
+}
+```
+
+```jadpo check project=p71c2-clash file=app.jadpo expect=semantic.duplicate_declaration
+application {
+    connections: {
+        billing: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+}
+```
+
+```text output
+error: Connection `billing` is named like domain `billing`
+ --> app.jadpo:3:9
+  |
+3 |         billing: {
+  |         ^^^^^^^ already a domain
+  reason: Connections share one namespace with domains and libraries, so `billing.<name>` means one thing; it is already the domain `billing`.
+  next: Rename the connection, such as `billing_api`, and the calls through it (agent)
+  rule: semantic.duplicate_declaration
+  help: docs/language/01-project-layout-and-modules.html#semantic-duplicate-declaration
+
+check failed: 1 error, 4 files
+```
 
 ### The network report
 
@@ -2817,6 +2993,118 @@ error: Package `Postcodes.v2` is proprietary but wasn't installed from git
 check failed: 1 error, 2 files
 ```
 
+### `package.version_needed`
+
+While two versions of a package sit side by side, a name written through
+it says which one it means:
+
+```jadpo check project=p71c2-needed file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=p71c2-needed file=shared/providers/postcodes/v2/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c2-needed file=shared/providers/postcodes/v2/types/uk_postcode.jadpo hidden
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}
+```
+
+```jadpo check project=p71c2-needed file=shared/providers/postcodes/v3/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v3 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c2-needed file=shared/providers/postcodes/v3/types/uk_postcode.jadpo hidden
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}
+```
+
+```jadpo check project=p71c2-needed file=domains/addresses/actions/keep_postcode.jadpo expect=package.version_needed
+use shared/providers/postcodes
+
+/// Keeps a customer's postcode as it is.
+action keep_postcode(postcode: Postcodes.UkPostcode) -> Postcodes.v3.UkPostcode {
+    return postcode
+}
+```
+
+```text output
+error: `Postcodes` is held in two versions, so a name through it says which
+ --> domains/addresses/actions/keep_postcode.jadpo:4:32
+  |
+4 | action keep_postcode(postcode: Postcodes.UkPostcode) -> Postcodes.v3.UkPostcode {
+  |                                ^^^^^^^^^ which version?
+  reason: The project holds `Postcodes.v2` and `Postcodes.v3` side by side while callers move across, so a name written through the package carries its version, and each use says which one it means.
+  next: Write `Postcodes.v2.UkPostcode` or `Postcodes.v3.UkPostcode` (agent)
+  rule: package.version_needed
+  help: docs/language/11-integrations.html#package-version-needed
+
+check failed: 1 error, 6 files
+```
+
+### `package.version_unneeded`
+
+With one version held, a name never carries it, so code reads the same
+before an upgrade and after it; the edit drops the version:
+
+```jadpo check project=p71c2-unneeded file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=p71c2-unneeded file=shared/providers/postcodes/v3/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v3 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c2-unneeded file=shared/providers/postcodes/v3/types/uk_postcode.jadpo hidden
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}
+```
+
+```jadpo check project=p71c2-unneeded file=domains/addresses/actions/keep_postcode.jadpo expect=package.version_unneeded
+use shared/providers/postcodes
+
+/// Keeps a customer's postcode as it is.
+action keep_postcode(postcode: Postcodes.v3.UkPostcode) -> Postcodes.UkPostcode {
+    return postcode
+}
+```
+
+```text output
+error: `Postcodes` is held in one version, so its names don't carry it
+ --> domains/addresses/actions/keep_postcode.jadpo:4:41
+  |
+4 | action keep_postcode(postcode: Postcodes.v3.UkPostcode) -> Postcodes.UkPostcode {
+  |                                         ^^^ not needed
+  reason: A name carries its package's version only while two versions sit side by side, to say which one it means; with one version of `Postcodes` held, `Postcodes.UkPostcode` is the one way to write it.
+  next: Write `Postcodes.UkPostcode` (agent)
+  rule: package.version_unneeded
+  help: docs/language/11-integrations.html#package-version-unneeded
+
+check failed: 1 error, 4 files
+```
+
 ## Installing errors
 
 > Built in chunk 7.1b2. The installing commands report these, and change
@@ -4203,8 +4491,9 @@ Chunk 7.1 built the package format, names and the lock, chunk 7.1b
 the surface, `jadpo package show` and `jadpo package check` with the
 publishing bar, chunk 7.1b2 installing (`add` from a folder or git,
 `update`, `remove`, `link` and `unlink`) with the bar's examples and
-changelog, and chunk 7.1c connections to packages and the network report
-(below); the rest is still to build.
+changelog, chunk 7.1c connections to packages and the network report,
+and chunk 7.1c2 lazy loading, the package cache and two versions side by
+side (below); the rest is still to build.
 
 | Part | Chunk |
 |---|---|
@@ -4274,6 +4563,18 @@ changelog, and chunk 7.1c connections to packages and the network report
 > watching a linked checkout as they run. The choices are in "Chosen in
 > chunk 7.1d" below.
 
+> **Built (chunk 7.1c2).** An installed provider's resources compiled
+> only once the app calls into them, found by file name, and an installed
+> package's check kept on disk by its digest; two versions of one package
+> side by side, names carrying the version (`Postcodes.v3.UkPostcode`), in
+> the checker, the graph and the interpreter, locked, connected and moved
+> across with the `jadpo package` commands (under "Where packages live");
+> and a connection named like a domain or library (question 17, under
+> "Connecting in `app.jadpo`"). The errors are `package.version_needed` and
+> `package.version_unneeded` under "Package errors"; the choices are in
+> "Chosen in chunk 7.1c2" below, with one flagged for Richard
+> (translations side by side).
+
 > **Built (chunk 7.2).** `jadpo package import openapi <file>`: a local
 > OpenAPI 3 document read into the app's own integration in
 > `shared/providers/<name>/<version>/`, exact from another Jadpo
@@ -4315,8 +4616,8 @@ What the pages leave to the build, each the most conservative reading:
   `toolchain.not_built_yet` where they are declared (a library
   package's translations were too, until chunk 7.1b3); a resource's
   operations are read with provider calls (chunk 7.2c). Two versions of one
-  package side by side, names carrying the version, are
-  `toolchain.not_built_yet` too.
+  package side by side, names carrying the version, came with chunk
+  7.1c2.
 - **Its failures.** A package's failure is known through its package in
   every `fails` list and outcome, and its code is the package's, not the
   app's: it isn't checked against the app's failure codes.
@@ -4587,8 +4888,7 @@ What the pages leave to the build, each the most conservative reading:
   (chunk 7.2c); a test fakes it meanwhile (area 13).
 - **Not yet.** Only the listed domains calling a connection is checked
   with provider calls (chunk 7.2c); a connection's name clashing with a
-  domain's or a library's (question 17) is left to the name resolution
-  that chunk 7.1d reworks.
+  domain's or a library's (question 17) came with chunk 7.1c2.
 
 ### Chosen in chunk 7.1d
 
@@ -4624,6 +4924,74 @@ What the pages leave to the build, each the most conservative reading:
   `test --watch` and `jadpo dev`, as `jadpo check` shows them, since
   that is where they are fixed; the rule line still names the save at
   the package's path, as the project reads it.
+
+### Chosen in chunk 7.1c2
+
+What the pages leave to the build, each the most conservative reading:
+
+- **When names carry the version.** Exactly while the project holds two
+  versions of one package of the same kind, both installed in
+  `packages/<name>/` or both the app's own in `shared/providers/<name>/`:
+  then every name written through either carries its version
+  (`Postcodes.v3.UkPostcode`, `Postcodes.v3.uk.parse(...)`), and one
+  without it is `package.version_needed`, naming both. With one version
+  held, a name never carries it, so there is one way to write each name;
+  one that does is `package.version_unneeded`, with the edit that drops
+  it. An installed package and the app's own of one name stay a clash
+  (`package.name_taken`), never two versions. Two versions are two
+  packages throughout: their declarations never clash, their failures are
+  told apart, and the graph and the interpreter know each version's
+  declarations by its own name (`Postcodes.v2.uk.parse` beside
+  `Postcodes.v3.uk.parse`). A package's own code still writes its names
+  bare. A name the package declares that looks like a version (a library
+  called `v2`) is the declaration, not a version.
+- **The `use` line.** `use packages/postcodes` names the folder, so it
+  brings in every version held there; there is no `use` line per version.
+- **The lock and connections.** Each version has its own line, as
+  `Postcodes.v2` and `Postcodes.v3` (area 18 sorts them by name, then
+  major version); a connection names one version in `package:`, so two
+  versions of a provider are two connections.
+- **The commands.** A package's folder or code name (`postcodes`,
+  `Postcodes`) names both versions, so `jadpo package show`, `update`,
+  `remove` and `unlink` refuse it and ask for the version
+  (`cli.package_arguments`). `add` installs a second major version beside
+  the first. `remove` refuses a version while the app's code writes a
+  name through it (`install.in_use`), not while the `use` line stays for
+  the other version. `update`'s review marks an entry `used by the app`
+  when the code writes it through that version.
+- **Translations side by side.** The app words a library package's
+  messages under its folder's name (`postcodes: { }`, area 10), which two
+  versions would share, so two versions of a package carrying
+  `translations/` are `toolchain.not_built_yet`. *Flagged for Richard:*
+  the pages don't say how an app rewords each version's messages apart.
+  Recommendation: the version joins the key while two are held
+  (`postcodes_v3: { }`), as it joins the names.
+- **Lazy loading.** A package's index and `provider.jadpo` are always
+  read; an installed package's `resources/<resource>.jadpo` is compiled
+  only once code outside every package writes `<connection>.<resource>`
+  for a connection to it (docs/compiler-runtime.md §2.3). Its bytes still
+  count towards the digest, so a changed resource the app doesn't call is
+  still `package.digest_mismatch`. The app's own integrations are its
+  code, compiled whole, and so are an installed package's types,
+  failures and libraries, which the app's names reach directly. Once
+  reached, a resource stays compiled for the life of `jadpo dev`, `test
+  --watch` or the language server. `jadpo package show` reads a package
+  whole.
+- **The package cache.** `jadpo check` keeps an installed package's check
+  in `~/.cache/jadpo/packages/<digest>/<compiler>` (under
+  `$XDG_CACHE_HOME` when it is set): the paths of the package's source
+  files it checked with no problem. A later check skips those files' own
+  checks; their declarations are still read for the app's. The compiler
+  is its version and the size and modification time of the running
+  `jadpo`, so a rebuilt compiler never trusts an older one's check. Only a
+  package whose files match its lock line's digest is cached, never a
+  link; with no home folder, or a cache that can't be read or written,
+  every file is checked. The other commands check every file.
+- **Connection names (question 17).** A connection, to a package or a
+  driver, named like one of the app's domains or libraries is
+  `semantic.duplicate_declaration` at the connection in `app.jadpo`,
+  under "Connecting in `app.jadpo`". A package's library isn't one of the
+  app's, so it never clashes.
 
 ### Chosen in chunk 7.2
 
@@ -5244,3 +5612,4 @@ packages and extension points, as each note says; 26 was decided then.
 | An example in a description (question 27) | A fenced code block in a public declaration's description, written as a test body and run as a test of the package by `jadpo package check` (Richard, as recommended, 2026-10-19 standing instruction; built with 7.1b2) | 2026-10-20 |
 | A package's changelog (question 28) | `jadpo package check` writes a section per version holding the list of changes it works out from the surface, and the author adds why beneath it (Richard, as recommended, 2026-10-19 standing instruction; built with 7.1b2) | 2026-10-20 |
 | A provider field's spelling on the wire (after chunk 7.2) | A field or enum variant in a provider package may say its spelling on the wire with `wire_name:`, written only where it differs from the Jadpo name (`collectAt`, `after-noon`); the importer writes it, and the runtime reads and writes that spelling (Richard, as recommended under the 2026-10-19 standing instruction; built in 7.2c) | 2026-10-20 |
+| Wording two versions of a package (after chunk 7.1c2) | While the app holds two versions of a library package that carries translations, the app words each under a key that carries the version (`postcodes_v3: { }`), as its names do; with one version held, the key stays the folder name (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
