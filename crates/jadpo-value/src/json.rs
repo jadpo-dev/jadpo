@@ -666,6 +666,9 @@ impl Codecs<'_> {
             let at = path.with(member);
             match entries.get(member) {
                 None if absent => {}
+                None if shape.open() && matches!(self.codec(*codec), Some(Codec::Nullable(_))) => {
+                    given.push((Some(slot as u32), Value::None));
+                }
                 None => Self::problem(problems, &at, "required"),
                 Some(json) => {
                     if let Some(value) = self.read(*codec, json, &at, problems) {
@@ -709,6 +712,12 @@ impl Codecs<'_> {
             let at = path.with(name);
             match entries.get(name) {
                 None if absent => {}
+                // A provider leaving out a member its type may hold `none`
+                // in sends `none` (chunk 7.7c): SQS leaves `Messages` out
+                // when its queue is empty.
+                None if shape.open() && matches!(self.codec(*codec), Some(Codec::Nullable(_))) => {
+                    given.push((Some(slot as u32), Value::None));
+                }
                 None => Self::problem(problems, &at, "required"),
                 Some(serde_json::Value::Null) if shape.omittable(slot) => {
                     given.push((Some(slot as u32), Value::None));

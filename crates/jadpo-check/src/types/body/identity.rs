@@ -51,10 +51,7 @@ pub(crate) fn sign_in_object_fields(
     };
     match name {
         jadpo_std::http::FIRST_SIGN_IN => Some(vec![
-            (
-                "method",
-                Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
-            ),
+            ("method", method()),
             ("address", Ty::Prim(Prim::Email).nullable()),
             ("address_verified", Ty::Prim(Prim::Bool)),
             ("subject", Ty::Prim(Prim::Text).nullable()),
@@ -74,18 +71,43 @@ pub(crate) fn sign_in_object_fields(
             ("locale", Ty::Named(jadpo_std::LOCALE.to_string())),
         ]),
         jadpo_std::http::MAGIC_LINK_REDEEMED => Some(vec![
-            (
-                "user_id",
-                identity
-                    .variant(PrincipalKind::User)
-                    .map_or(Ty::Prim(Prim::Uuid), |variant| {
-                        Ty::Field(variant.entity.clone(), vec!["id".to_string()])
-                    }),
-            ),
+            ("user_id", user_id(identity)),
             ("return_to", Ty::Prim(Prim::Text)),
+        ]),
+        // The events every sign-in publishes (area 8, "Events"; chunk
+        // 7.3b4), in the order `test_built_fields` lists them.
+        jadpo_std::http::SIGNED_IN => Some(vec![
+            ("user_id", user_id(identity)),
+            ("method", method()),
+            ("first_time", Ty::Prim(Prim::Bool)),
+        ]),
+        jadpo_std::http::SIGN_IN_REFUSED => Some(vec![
+            ("method", method()),
+            (
+                "reason",
+                Ty::Named(jadpo_std::SignInRefusal::NAME.to_string()),
+            ),
+            ("user_id", user_id(identity).nullable()),
+        ]),
+        jadpo_std::http::SIGN_IN_CODES_DISABLED => Some(vec![
+            ("user_id", user_id(identity).nullable()),
+            ("until", Ty::Prim(Prim::Instant)),
         ]),
         _ => None,
     }
+}
+
+/// The user entity's `id`, as a sign-in object names its user.
+fn user_id(identity: &crate::identity::Identity) -> Ty {
+    identity
+        .variant(PrincipalKind::User)
+        .map_or(Ty::Prim(Prim::Uuid), |variant| {
+            Ty::Field(variant.entity.clone(), vec!["id".to_string()])
+        })
+}
+
+fn method() -> Ty {
+    Ty::Named(jadpo_std::SignInMethod::NAME.to_string())
 }
 
 impl Body<'_> {

@@ -14,8 +14,8 @@
 //! [`webhooks`] reads every such connection into a [`WebhookModel`] for
 //! the plan, with the problems found on the way: a package event without
 //! its `wire_name:` or its `occurred_at`, and no store to keep the events
-//! in. An app's own event names no `wire_name:` until queues are received
-//! (chunk 7.7c).
+//! in. An app's own event's `wire_name:` names it on a queue it receives
+//! ([`crate::receiving`]; chunk 7.7c).
 //!
 //! Since chunk 7.7b, an event may name the reply its provider waits for,
 //! `reply:`, an object of the package's own, and each connection's
@@ -171,7 +171,6 @@ pub fn webhooks(db: &dyn Db, project: Project) -> Webhooks {
     let mut out = Webhooks::default();
     let events = package_events(db, project);
     out.problems.extend(events.problems.iter().cloned());
-    out.problems.extend(app_wire_names(db, project));
     out.problems.extend(stray_replies(db, project));
     let store = store(db, project);
     let prefix = prefix(db, project);
@@ -449,44 +448,6 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
                     canonical: host.clone(),
                     reply,
                 });
-        }
-    }
-    out
-}
-
-/// An app's own event giving `wire_name:`, which names it on a queue
-/// (area 12, "Events from outside"): not built until chunk 7.7c.
-fn app_wire_names(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
-    for &file in project.files(db) {
-        let location = jadpo_db::location(db, project, file);
-        if !matches!(location.ownership, Ownership::Domain(_))
-            || location.place != Place::Folder(Folder::Events)
-        {
-            continue;
-        }
-        let Some(source) = tree::source(db, file) else {
-            continue;
-        };
-        let path = file.path(db);
-        for decl in source.decls() {
-            let Decl::TypeDecl(decl) = decl else {
-                continue;
-            };
-            for (key, _) in tree::members(decl.member_list()) {
-                if name_text(&key).as_deref() != Some(crate::types::WIRE_NAME) {
-                    continue;
-                }
-                out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        "An app's event names its `wire_name:` for a queue, which isn't built yet",
-                    )
-                    .at(node_span(path, key.syntax()), "declared, not built")
-                    .reason("The language names an app's own event on a queue it receives with `wire_name:`, but this compiler doesn't receive queues yet.")
-                    .next("Do without `wire_name:` for now"),
-                );
-            }
         }
     }
     out

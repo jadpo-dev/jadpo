@@ -220,6 +220,39 @@ pub const RECEIVED_EVENTS: SystemTable = SystemTable {
     }],
 };
 
+/// Queue messages parked for an operator (area 12, "Events from outside";
+/// chunk 7.7c): one whose type the queue doesn't list, or that can't be
+/// read as its event, kept whole so nothing is dropped, in the store its
+/// queue's events are kept in, once per queue and body. `status` is
+/// `failed` until an operator retries it (`pending`, for the app's tick)
+/// or dismisses it (`dismissed`, deleted by the tick 30 days on).
+pub const PARKED_MESSAGES: SystemTable = SystemTable {
+    table: "jadpo_parked_messages",
+    columns: &[
+        column("id", "uuid", false),
+        column("queue", "text", false),
+        column("digest", "text", false),
+        column("body", "text", false),
+        column("status", "text", false),
+        column("reason", "text", false),
+        column("event", "text", true),
+        column("message_id", "text", true),
+        column("problems", "jsonb", true),
+        column("parked_at", "timestamptz(3)", false),
+        column("retried_at", "timestamptz(3)", true),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["queue", "digest"],
+        rule: "system parked messages",
+    }],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["status", "parked_at"],
+        reason: "system parked messages",
+    }],
+};
+
 /// Idempotency keys (area 7): one stored response per key and caller.
 pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
     table: "jadpo_idempotency_keys",
@@ -701,7 +734,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 19] = [
+pub const ALL: [&SystemTable; 20] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -721,6 +754,7 @@ pub const ALL: [&SystemTable; 19] = [
     &STEP_RECORDS,
     &STEPS,
     &RECEIVED_EVENTS,
+    &PARKED_MESSAGES,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

@@ -19,6 +19,10 @@
 //!   it as not done, asks the application's tick to run the schedule
 //!   ([`super::schedules::watch::request_run`]), and a run asked for that
 //!   way is `pending` until a tick takes it, which cancelling withdraws.
+//! - **Parked queue messages** (chunk 7.7c) are their rows in
+//!   `jadpo_parked_messages`, in the store a queue's events are kept in:
+//!   `failed` until an operator retries one (`pending`, read again by the
+//!   app's next tick) or dismisses it (`dismissed`).
 //! - **The log** (`jadpo_operator_actions`) is in the store the item is
 //!   in: when, what, the item and its state then, the name the operator's
 //!   machine gives, and the database role PostgreSQL authenticated, which
@@ -169,11 +173,47 @@ pub const CANCEL_REQUEST: &str = "WITH \"s\" AS (UPDATE \"jadpo_schedules\" SET 
 /// tick has been asked for the run. The role it was logged as.
 pub const LOG_RUN: &str = "INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") VALUES ($1, $2, $3, 'schedule_run', $4, $5, NULL, $6, $7, session_user) RETURNING \"role\"";
 
+/// A parked queue message's columns (chunk 7.7c): its queue as its
+/// target, the event it was read as when it got that far, its state, when
+/// it was parked, and why as its code.
+const MESSAGE_COLUMNS: &str = "\"m\".\"id\", 'message', \"m\".\"queue\", \"m\".\"event\", \"m\".\"status\", NULL::int4, \"m\".\"parked_at\", NULL::timestamptz, \"m\".\"reason\", NULL::text, \"a\".\"acted_at\", \"a\".\"action\", \"a\".\"operator\", \"a\".\"role\", COALESCE(\"m\".\"retried_at\", \"m\".\"parked_at\")";
+
+fn message_from() -> &'static str {
+    "FROM \"jadpo_parked_messages\" AS \"m\" LEFT JOIN LATERAL (SELECT \"acted_at\", \"action\", \"operator\", \"role\" FROM \"jadpo_operator_actions\" WHERE \"item\" = \"m\".\"id\" ORDER BY \"acted_at\" DESC, \"id\" DESC LIMIT 1) AS \"a\" ON TRUE"
+}
+
+/// The parked messages in states `$1`, most recent first, at most `$2`.
+pub fn messages_sql() -> String {
+    format!(
+        "SELECT {MESSAGE_COLUMNS} {} WHERE \"m\".\"status\" = ANY($1::text[]) ORDER BY 15 DESC, \"m\".\"id\" DESC LIMIT $2",
+        message_from()
+    )
+}
+
+/// The parked messages whose id, as 32 hex digits, ends with `$1`.
+pub fn find_message_sql() -> String {
+    format!(
+        "SELECT {MESSAGE_COLUMNS} {} WHERE right(replace(\"m\".\"id\"::text, '-', ''), length($1::text)) = $1::text",
+        message_from()
+    )
+}
+
+/// How many parked messages are in each state.
+pub const MESSAGE_COUNTS: &str =
+    "SELECT \"status\", count(*) FROM \"jadpo_parked_messages\" GROUP BY \"status\"";
+
+/// Moves parked message `$1` from state `$5` to `$6` at `$2`, and logs it
+/// as action `$7` with id `$3` by `$4`: a retry, `pending` for the app's
+/// next tick, or a dismissal. The role it was logged as.
+pub const ACT_MESSAGE: &str = "WITH \"m\" AS (UPDATE \"jadpo_parked_messages\" SET \"status\" = $6, \"retried_at\" = CASE WHEN $6 = 'pending' THEN $2 ELSE \"retried_at\" END WHERE \"id\" = $1 AND \"status\" = $5 RETURNING \"id\", \"queue\", \"event\") INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") SELECT $3, $2, $7, 'message', \"m\".\"id\", \"m\".\"queue\", \"m\".\"event\", $5, $4, session_user FROM \"m\" RETURNING \"role\"";
+
 /// What an item is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Kind {
     Delivery,
     ScheduleRun,
+    /// A queue message parked for an operator (chunk 7.7c).
+    Message,
 }
 
 impl Kind {
@@ -181,6 +221,7 @@ impl Kind {
         match self {
             Kind::Delivery => "delivery",
             Kind::ScheduleRun => "schedule_run",
+            Kind::Message => "message",
         }
     }
 }
@@ -244,6 +285,9 @@ pub fn listable(state: &str) -> bool {
 pub struct Holds {
     pub deliveries: bool,
     pub runs: bool,
+    /// Parked queue messages, when it is the store queues' events are
+    /// kept in (chunk 7.7c).
+    pub messages: bool,
 }
 
 /// The items in `states` in one store, most recent first, at most
@@ -275,6 +319,25 @@ pub async fn items(
             .query_once(&deliveries_sql(), &[wanted.clone(), SqlValue::Int8(limit)])
             .await?;
         out.extend(rows.iter().filter_map(|row| read_item(row)));
+    }
+    if holds.messages {
+        let parked: Vec<SqlValue> = states
+            .iter()
+            .filter(|s| [FAILED, PENDING, DISMISSED].contains(s))
+            .map(|s| SqlValue::Text(s.to_string()))
+            .collect();
+        if !parked.is_empty() {
+            let rows = database
+                .query_once(
+                    &messages_sql(),
+                    &[
+                        SqlValue::Array(SqlType::Text, parked),
+                        SqlValue::Int8(limit),
+                    ],
+                )
+                .await?;
+            out.extend(rows.iter().filter_map(|row| read_item(row)));
+        }
     }
     if holds.runs {
         let by_outcome: Vec<SqlValue> = states
@@ -339,12 +402,22 @@ pub async fn counts(
             }
         }
     }
+    if holds.messages {
+        for row in database.query_once(MESSAGE_COUNTS, &[]).await? {
+            if let (Some(SqlValue::Text(state)), Some(SqlValue::Int8(n))) =
+                (row.first(), row.get(1))
+            {
+                *out.entry(state.clone()).or_default() += u64::try_from(*n).unwrap_or(0);
+            }
+        }
+    }
     if holds.runs {
         for item in items(
             database,
             Holds {
                 deliveries: false,
                 runs: true,
+                messages: false,
             },
             &[FAILED, OUTCOME_UNKNOWN, RUNNING, PENDING],
             10_000,
@@ -369,6 +442,12 @@ pub async fn find(
     if holds.deliveries {
         let rows = database
             .query_once(&find_delivery_sql(), std::slice::from_ref(&suffix))
+            .await?;
+        out.extend(rows.iter().filter_map(|row| read_item(row)));
+    }
+    if holds.messages {
+        let rows = database
+            .query_once(&find_message_sql(), std::slice::from_ref(&suffix))
             .await?;
         out.extend(rows.iter().filter_map(|row| read_item(row)));
     }
@@ -424,9 +503,12 @@ impl Action {
     }
 
     /// Whether it may act on `item` as it was read: in its state, and,
-    /// for a schedule's run, its latest.
+    /// for a schedule's run, its latest. A parked message is only retried
+    /// or dismissed.
     pub fn fits(self, item: &Item) -> bool {
-        item.state == self.from_state() && item.latest
+        item.state == self.from_state()
+            && item.latest
+            && (item.kind != Kind::Message || matches!(self, Action::Retry | Action::Dismiss))
     }
 
     /// Whether it asks the application's tick for a schedule's run.
@@ -474,6 +556,37 @@ pub async fn act_on_delivery(
                 SqlValue::Text(action.word().to_string()),
                 due.map_or(SqlValue::Null(SqlType::Timestamp), micros),
                 SqlValue::Bool(fresh),
+            ],
+        )
+        .await?;
+    Ok(logged(&rows))
+}
+
+/// Retries or dismisses parked message `item` at `now` as `operator`,
+/// logging it, in the state it was read in (chunk 7.7c).
+pub async fn act_on_message(
+    database: &dyn Database,
+    host: &dyn Host,
+    item: &Item,
+    action: Action,
+    operator: &str,
+    now: i64,
+) -> Result<Done, StoreError> {
+    let to = match action {
+        Action::Retry => PENDING,
+        _ => DISMISSED,
+    };
+    let rows = database
+        .query_once(
+            ACT_MESSAGE,
+            &[
+                SqlValue::Uuid(item.id),
+                micros(now),
+                SqlValue::Uuid(log_id(host, now)?),
+                SqlValue::Text(operator.to_string()),
+                SqlValue::Text(action.from_state().to_string()),
+                SqlValue::Text(to.to_string()),
+                SqlValue::Text(action.word().to_string()),
             ],
         )
         .await?;
@@ -583,6 +696,7 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
     };
     let kind = match text(1)?.as_str() {
         "delivery" => Kind::Delivery,
+        "message" => Kind::Message,
         _ => Kind::ScheduleRun,
     };
     let acted = match (millis(10), text(11), text(12), text(13)) {

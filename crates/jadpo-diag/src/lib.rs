@@ -694,6 +694,8 @@ rules! {
         "06-reads-and-writes.html#query-unknown-section", "Query has a section Jadpo does not know";
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-value-unsupported", "Query value is computed rather than a parameter, literal or enum value";
+    RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#receiving-invalid", "A queue in `receiving:` doesn't say how its messages are read";
     RECORD_EDITED: "record.edited", area 18, Error, Agent,
         "18-records-and-manifest.html#record-edited", "Generated record was edited by hand";
     RECORD_FORMAT_NEWER: "record.format_newer", area 18, Error, Human,

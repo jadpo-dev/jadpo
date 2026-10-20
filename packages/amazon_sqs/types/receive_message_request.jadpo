@@ -1,0 +1,11 @@
+/// Which queue to read, and how many of its messages at most.
+public type ReceiveMessageRequest = Object {
+    queue_url: Text {
+        wire_name: "QueueUrl"
+    }
+    max_number_of_messages: Int {
+        wire_name: "MaxNumberOfMessages"
+        min: 1
+        max: 10
+    }
+}

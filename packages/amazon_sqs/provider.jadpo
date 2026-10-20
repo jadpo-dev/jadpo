@@ -1,0 +1,16 @@
+/// Amazon SQS through its JSON protocol, each request signed with AWS
+/// Signature Version 4. The connection gives its endpoint, such as
+/// `https://sqs.eu-west-2.amazonaws.com`, whose region requests are signed
+/// for, and the queue's address.
+provider {
+    protocol: Protocol.aws_json
+    credential: CredentialScheme.aws_sigv4
+    aws: {
+        service: "sqs"
+        target: "AmazonSQS"
+    }
+    error_code: "__type"
+    settings: {
+        queue_url: Text
+    }
+}

@@ -51,7 +51,7 @@ pub const PROPRIETARY: &str = "proprietary";
 
 /// The keys `provider.jadpo`'s `provider { }` may hold (area 11, "How the
 /// API is reached").
-pub const PROVIDER_KEYS: [&str; 14] = [
+pub const PROVIDER_KEYS: [&str; 15] = [
     "protocol",
     "hosts",
     "runs",
@@ -66,6 +66,7 @@ pub const PROVIDER_KEYS: [&str; 14] = [
     "settings",
     "imported",
     "description",
+    "aws",
 ];
 
 /// How a provider's bodies are sent: `Protocol.<name>`.
@@ -97,6 +98,11 @@ pub const IDEMPOTENCY_KEYS: [&str; 7] = [
     "new_key_on",
     "replays_failures",
 ];
+
+/// The keys of `aws:` (chunk 7.7c): the service an AWS API's requests are
+/// signed for, and the prefix its operations are named under in
+/// `X-Amz-Target`.
+pub const AWS_KEYS: [&str; 2] = ["service", "target"];
 
 /// The keys of `runs:`.
 pub const RUNS_KEYS: [&str; 3] = ["image", "port", "asks"];
@@ -651,6 +657,7 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
                 }
             }
             "runs" => nested_keys(&path, &key, &member, &RUNS_KEYS, out),
+            "aws" => nested_keys(&path, &key, &member, &AWS_KEYS, out),
             "webhooks" => webhooks(&path, &member, out),
             "settings" => crate::connections::provider_settings(&path, &member, out),
             _ => {}
@@ -667,6 +674,7 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             .next("Add `protocol: Protocol.json_http`, or the protocol the API uses"),
         );
     }
+    aws_needs(&path, &decl, out);
     if let (Some(hosts), Some(_)) = (seen.get("hosts"), seen.get("runs")) {
         out.push(
             Diagnostic::new(
@@ -677,6 +685,67 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             .reason("Where an API is comes from exactly one place: `hosts:` when it is on the internet, `runs:` when Jadpo runs it in a container, or neither when the app gives `host:` on the connection.")
             .next("Keep `hosts:` or `runs:`, and remove the other"),
         );
+    }
+}
+
+/// What an AWS API needs of `aws:` (chunk 7.7c): `target:` for
+/// `Protocol.aws_json`, which names each operation under it, and
+/// `service:` for `CredentialScheme.aws_sigv4`, which signs for it.
+fn aws_needs(path: &str, decl: &ast::SingletonDecl, out: &mut Vec<Diagnostic>) {
+    let members = tree::members(decl.member_list());
+    let written = |key: &str| {
+        members
+            .iter()
+            .find(|(name, _)| tree::name_text(name).as_deref() == Some(key))
+            .and_then(|(_, member)| member.value())
+            .map(|value| tree::written(value.syntax()))
+    };
+    let aws: Vec<(String, Option<String>)> = members
+        .iter()
+        .find(|(name, _)| tree::name_text(name).as_deref() == Some("aws"))
+        .map(|(_, member)| {
+            tree::members(member.block())
+                .iter()
+                .filter_map(|(key, inner)| {
+                    let text = match inner.value().as_ref().map(crate::types::Const::from_expr) {
+                        Some(crate::types::Const::Str(text)) if !text.is_empty() => Some(text),
+                        _ => None,
+                    };
+                    Some((tree::name_text(key)?, text))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let has = |key: &str| aws.iter().any(|(name, text)| name == key && text.is_some());
+    let needs = [
+        (
+            written("protocol").as_deref() == Some("Protocol.aws_json"),
+            "target",
+            "`Protocol.aws_json` names each operation in `X-Amz-Target` under the API's prefix, `aws: { target: }`, such as `\"AmazonSQS\"`.",
+        ),
+        (
+            written("credential").as_deref() == Some("CredentialScheme.aws_sigv4"),
+            "service",
+            "`CredentialScheme.aws_sigv4` signs each request for the API's service, `aws: { service: }`, such as `\"sqs\"`.",
+        ),
+    ];
+    for (needed, key, reason) in needs {
+        if needed && !has(key) {
+            out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    format!("`provider` doesn't give `aws: {{ {key}: }}`"),
+                )
+                .at(
+                    node_span(path, decl.syntax()),
+                    format!("no `aws: {{ {key}: }}`"),
+                )
+                .reason(reason)
+                .next(format!(
+                    "Add `aws: {{ {key}: \"...\" }}` with the API's own name"
+                )),
+            );
+        }
     }
 }
 
@@ -1175,6 +1244,8 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let what = match location.place {
+        // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]).
+        Place::Folder(Folder::Provides) if location.stem == "receiving" => return Vec::new(),
         Place::Folder(Folder::Provides) => "A package's capability mappings",
         _ => return Vec::new(),
     };

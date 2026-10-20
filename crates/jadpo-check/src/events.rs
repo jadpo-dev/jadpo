@@ -153,6 +153,7 @@ pub fn subscribers_in(db: &dyn Db, project: Project, file: File) -> Vec<Subscrib
             domain: ownership.domain().map(str::to_string),
             package: ownership.package().cloned(),
             args: Vec::new(),
+            builtin: false,
             out: Vec::new(),
         };
         let model = reader.subscriber(&decl, &item.name, ownership);
@@ -497,6 +498,8 @@ struct Reader<'a> {
     package: Option<jadpo_db::PackageHome>,
     /// Where each argument of `run:` is.
     args: Vec<Span>,
+    /// Whether `on:` names a built-in sign-in event (chunk 7.3b4).
+    builtin: bool,
     out: Vec<Diagnostic>,
 }
 
@@ -616,6 +619,32 @@ impl Reader<'_> {
         let ty = self.lookup.resolve(&TypeRef::from_expr(&value));
         if ty.has_error() {
             return None;
+        }
+        // An event every sign-in publishes (area 8, "Events"; chunk
+        // 7.3b4), which only the runtime emits, by magic links' sign-in.
+        if let Ty::Opaque(name, args) = &ty
+            && args.is_empty()
+            && let Some(key) = jadpo_std::http::sign_in_event_key(name)
+        {
+            if crate::identity::identity(self.db, self.project)
+                .magic_link
+                .is_none()
+            {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SUBSCRIBER_EVENT_INVALID,
+                        format!("Nothing publishes `{name}`"),
+                    )
+                    .at(self.span(&value), "no magic link")
+                    .reason(format!(
+                        "`{name}` is published as a person signs in with a magic link, so an application whose `authentication {{ sign_in: }}` declares no `magic_link:` never publishes it."
+                    ))
+                    .next("Declare `sign_in: { magic_link: { ... } }`, or remove this subscriber"),
+                );
+                return None;
+            }
+            self.builtin = true;
+            return Some((name.clone(), Key::from_text(key)));
         }
         let event = match &ty {
             Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Event) => name.clone(),
@@ -916,6 +945,9 @@ impl Reader<'_> {
                 .push(argument_invalid(self.span(&first), &format!("`{root}`")));
             return None;
         }
+        if self.builtin {
+            return self.builtin_argument(event, &rest);
+        }
         let mut ty = Ty::Named(event.to_string());
         let mut path = Vec::new();
         for name in &rest {
@@ -971,6 +1003,55 @@ impl Reader<'_> {
             path.push(field);
         }
         Some((path, ty))
+    }
+
+    /// `event`, or one of its fields, of the built-in sign-in event
+    /// `event`, whose fields are the runtime's, `user_id` typed as the
+    /// user entity's `id`.
+    fn builtin_argument(
+        &mut self,
+        event: &str,
+        rest: &[ast::NameRef],
+    ) -> Option<(Vec<String>, Ty)> {
+        let Some((first, more)) = rest.split_first() else {
+            return Some((Vec::new(), Ty::Opaque(event.to_string(), Vec::new())));
+        };
+        let identity = crate::identity::identity(self.db, self.project);
+        let fields = crate::types::sign_in_object_fields(identity, event).unwrap_or_default();
+        let field = tree::name_ref_text(first)?;
+        let Some((_, ty)) = fields.iter().find(|(name, _)| *name == field) else {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_UNKNOWN_FIELD,
+                    format!("`{event}` has no field `{field}`"),
+                )
+                .at(self.span(first), "not one of its fields")
+                .reason(format!(
+                    "`{event}`'s fields are {}.",
+                    crate::and_list(
+                        &fields
+                            .iter()
+                            .map(|(name, _)| format!("`{name}`"))
+                            .collect::<Vec<_>>()
+                    )
+                ))
+                .next(format!("Name a field of `{event}`")),
+            );
+            return None;
+        };
+        if let Some(next) = more.first() {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_FIELD_ON_NON_RECORD,
+                    format!("`{ty}` has no fields"),
+                )
+                .at(self.span(next), "no fields")
+                .reason("Only objects have fields to read.")
+                .next("Pass the value itself"),
+            );
+            return None;
+        }
+        Some((vec![field], ty.clone()))
     }
 
     /// The event's field holding the tenant's id, which a subscriber is

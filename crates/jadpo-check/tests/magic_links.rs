@@ -802,7 +802,7 @@ policy {
 const OWN_ROUTES: (&str, &str) = (
     "domains/accounts/routes/sign_in.jadpo",
     r#"use accounts/actions { ask_for_link, confirm_code, confirm_link }
-use accounts/types { CodeGiven, LinkAsked, LinkGiven, SignedIn }
+use accounts/types { CodeGiven, LinkAsked, LinkGiven, SignedInView }
 
 routes SignIn {
     prefix: /sign-in
@@ -817,14 +817,14 @@ routes SignIn {
     POST /link {
         authentication: RouteAuthentication.none
         input: LinkGiven
-        output: SignedIn
+        output: SignedInView
         run: confirm_link(input)
     }
 
     POST /code {
         authentication: RouteAuthentication.none
         input: CodeGiven
-        output: SignedIn
+        output: SignedInView
         run: confirm_code(input)
     }
 }
@@ -849,8 +849,8 @@ const OWN_TYPES: [(&str, &str); 5] = [
         "type CodeGiven = Input {\n    address: Email\n    code: SignInCode\n}\n",
     ),
     (
-        "domains/accounts/types/signed_in.jadpo",
-        "type SignedIn = Output {\n    return_to: Text\n}\n",
+        "domains/accounts/types/signed_in_view.jadpo",
+        "type SignedInView = Output {\n    return_to: Text\n}\n",
     ),
 ];
 
@@ -867,13 +867,13 @@ action ask_for_link(input: LinkAsked) -> Unit {
     ),
     (
         "domains/accounts/actions/confirm_link.jadpo",
-        r#"use accounts/types { LinkGiven, SignedIn }
+        r#"use accounts/types { LinkGiven, SignedInView }
 
 /// Signs this browser in with a link's token.
-action confirm_link(input: LinkGiven) -> SignedIn {
+action confirm_link(input: LinkGiven) -> SignedInView {
     var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
     sessions.start(redeemed.user_id)
-    return SignedIn {
+    return SignedInView {
         return_to: redeemed.return_to
     }
 }
@@ -881,13 +881,13 @@ action confirm_link(input: LinkGiven) -> SignedIn {
     ),
     (
         "domains/accounts/actions/confirm_code.jadpo",
-        r#"use accounts/types { CodeGiven, SignedIn }
+        r#"use accounts/types { CodeGiven, SignedInView }
 
 /// Signs this browser in with a code.
-action confirm_code(input: CodeGiven) -> SignedIn {
+action confirm_code(input: CodeGiven) -> SignedInView {
     var redeemed: MagicLinkRedeemed = magic_links.redeem_code(input.address, input.code)
     sessions.start(redeemed.user_id)
-    return SignedIn {
+    return SignedInView {
         return_to: redeemed.return_to
     }
 }
@@ -1159,6 +1159,260 @@ action pretend(input: LinkGiven, member: Member) -> Unit {
         has(
             &found,
             "type.not_record: `MagicLinkRedeemed` isn't built with `{ ... }`"
+        ),
+        "{found:?}"
+    );
+}
+
+// --- the events every sign-in publishes (chunk 7.3b4) -------------------------
+
+/// A subscriber of each sign-in event, passing the event or its fields.
+const LISTENING: &str = r#"entity SignInNote {
+    id: Uuid
+    member_id: Member.id {
+        on_delete: OnDelete.cascade
+    }
+}
+
+entity WayIn {
+    id: Uuid
+    by_link: Bool
+}
+
+/// Notes who signed in.
+action note_sign_in(member_id: Member.id) fails MemberNotFound -> SignInNote {
+    return attempt SignInNote.create {
+        set: {
+            member_id: member_id
+        }
+    }
+}
+
+/// Notes how a person signed in.
+action note_method(event: SignedIn) -> WayIn {
+    return WayIn.create {
+        set: {
+            by_link: event.method == SignInMethod.magic_link and event.first_time
+        }
+    }
+}
+
+/// Notes a refusal.
+action note_refusal(event: SignInRefused) -> WayIn {
+    return WayIn.create {
+        set: {
+            by_link: event.reason == SignInRefusal.link_expired and event.user_id == none
+        }
+    }
+}
+
+/// Notes an address whose codes stopped.
+action note_codes_disabled(event: SignInCodesDisabled) -> WayIn {
+    return WayIn.create {
+        set: {
+            by_link: event.until > clock.now
+        }
+    }
+}
+
+subscriber note_sign_ins {
+    on: SignedIn
+    run: note_sign_in(event.user_id)
+}
+
+subscriber note_methods {
+    on: SignedIn
+    run: note_method(event)
+}
+
+subscriber note_refusals {
+    on: SignInRefused
+    run: note_refusal(event)
+}
+
+subscriber note_disabled_codes {
+    on: SignInCodesDisabled
+    run: note_codes_disabled(event)
+}
+"#;
+
+#[test]
+fn subscribers_listen_for_the_sign_in_events() {
+    assert_eq!(with(SENDS, LINK, "", LISTENING), Vec::<String>::new());
+}
+
+#[test]
+fn a_sign_in_events_fields_are_its_own() {
+    let code = LISTENING.replace(
+        "run: note_sign_in(event.user_id)",
+        "run: note_sign_in(event.address)",
+    );
+    let found = with(SENDS, LINK, "", &code);
+    assert!(
+        has(
+            &found,
+            "type.unknown_field: `SignedIn` has no field `address`"
+        ),
+        "{found:?}"
+    );
+    // `user_id` is the user entity's `id`, so it goes where one goes.
+    let code = LISTENING
+        .replace(
+            "run: note_disabled_codes(event)",
+            "run: note_sign_in(event.user_id)",
+        )
+        .replace(
+            "run: note_codes_disabled(event)",
+            "run: note_sign_in(event.user_id)",
+        );
+    let found = with(SENDS, LINK, "", &code);
+    assert!(has(&found, "type.mismatch"), "{found:?}");
+}
+
+#[test]
+fn nothing_publishes_a_sign_in_event_without_a_magic_link() {
+    let text = format!(
+        r#"config {{
+    browser_origin: Url
+}}
+
+application {{
+    display_name: "Notes"
+}}
+
+principal {{
+    user: {{
+        subject: Member.email
+    }}
+}}
+
+authentication {{
+    browser_session: {{
+        cookie: "session"
+        origin: config.browser_origin
+    }}
+}}
+
+type Nickname = Text {{
+    max_length: 40
+}}
+
+entity Member {{
+    id: Uuid
+    email: Email {{
+        unique: true
+    }}
+    nickname: Nickname
+    backup: Email
+}}
+
+{LISTENING}"#
+    );
+    let found = support::problems(Layout::Loose, &[("app.jadpo", text.as_str())]);
+    assert!(
+        has(
+            &found,
+            "subscriber.event_invalid: Nothing publishes `SignedIn`"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn only_the_runtime_emits_a_sign_in_event() {
+    let code = r#"test "a sign-in is announced" {
+    emit SignInCodesDisabled {
+        user_id: none
+        until: clock.now
+    }
+}
+"#;
+    let found = with(SENDS, LINK, "", code);
+    assert!(
+        has(
+            &found,
+            "event.emit_invalid: `SignInCodesDisabled` is published only by signing in"
+        ),
+        "{found:?}"
+    );
+    let code = r#"action announce() -> Unit {
+    var refused: SignInRefused = SignInRefused {
+        method: SignInMethod.magic_link
+        reason: SignInRefusal.code_invalid
+        user_id: none
+    }
+}
+"#;
+    let found = with(SENDS, LINK, "", code);
+    assert!(
+        has(
+            &found,
+            "type.not_record: `SignInRefused` isn't built with `{ ... }`"
+        ),
+        "{found:?}"
+    );
+}
+
+/// `on_first_sign_in:`'s action, and a test calling it directly.
+const FIRST_TESTED: &str = r#"type SignUpClosed = Failure {
+    kind: FailureKind.conflict
+}
+
+/// Signs a new member up, unless the address wasn't proved.
+action create_member(first: FirstSignIn) fails SignUpClosed -> Member.id {
+    if (not first.address_verified) {
+        reject SignUpClosed {}
+    }
+    match first.address {
+        none -> {
+            reject SignUpClosed {}
+        }
+        some(address) -> {
+            var member: Member = attempt Member.create {
+                set: {
+                    email: address
+                    nickname: "new"
+                    backup: address
+                }
+                conflict: {
+                    Member.email: SignUpClosed
+                }
+            }
+            return member.id
+        }
+    }
+}
+
+test "an unproved address is refused" {
+    assert create_member(FirstSignIn {
+        method: SignInMethod.magic_link
+        address: "ada@example.com"
+        address_verified: false
+        subject: none
+        name: none
+    }) fails SignUpClosed
+}
+"#;
+
+#[test]
+fn a_test_builds_a_first_sign_in_to_call_the_action() {
+    assert_eq!(with(SENDS, LINK, FIRST, FIRST_TESTED), Vec::<String>::new());
+    // Every field is given.
+    let code = FIRST_TESTED.replace("        name: none\n", "");
+    let found = with(SENDS, LINK, FIRST, &code);
+    assert!(has(&found, "`name`"), "{found:?}");
+}
+
+#[test]
+fn only_a_test_builds_a_first_sign_in() {
+    let code = format!(
+        "{FIRST_TESTED}\naction sign_up_ada() fails SignUpClosed -> Member.id {{\n    return attempt create_member(FirstSignIn {{\n        method: SignInMethod.magic_link\n        address: \"ada@example.com\"\n        address_verified: true\n        subject: none\n        name: none\n    }})\n}}\n"
+    );
+    let found = with(SENDS, LINK, FIRST, &code);
+    assert!(
+        has(
+            &found,
+            "type.not_record: `FirstSignIn` isn't built with `{ ... }`"
         ),
         "{found:?}"
     );

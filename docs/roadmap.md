@@ -1254,11 +1254,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   operations' limits; `sign_in_return_invalid`. Live tests in
   `crates/jadpo-cli/tests/magic_links.rs`. Choices in area 8's "The app's
   own routes (chosen in chunk 7.3b3)".
-- [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
+- [x] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
   on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
   `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;
   `FirstSignIn` made in tests to call `on_first_sign_in:`'s action
-  directly.
+  directly. Built: the three events as built-in types a subscriber names
+  in `on:` (needing `magic_link:`), only the runtime emitting them, kept
+  under `jadpo.<Name>` in the sessions' store's outbox only when a
+  subscriber listens; `SignedIn` committed with the session or token, or
+  as the app's own action's event from its own routes; refusals and
+  codes stopping kept in a transaction of their own, with the user's `id`
+  where the address has one, for links, codes and first sign-ins through
+  the generated and the app's own routes; the reason, and the failure
+  the app's action refused with, on `jadpo dev`'s request line, never in
+  the answer; `FirstSignIn` and the events built in tests, fixtures and
+  seeds. Live tests in `crates/jadpo-cli/tests/magic_links.rs`. Choices
+  in area 8's "Sign-in events (chosen in chunk 7.3b4)".
 - [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
   from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
@@ -1452,15 +1463,30 @@ The design is area 11 as revised on 2026-10-16, with its research in
   a day, the connection's secret the topic's ARN. Live tests in
   `webhook_replies.rs`, SNS's against a local certificate and server.
   Choices in area 11's "Chosen in chunk 7.7b".
-- [ ] **7.7c Queues through `receiving`** `opus · high`, after 7.7: the
-  `receiving` capability (`type_at:`, `id_at:`, `events:`, an app event's
-  `wire_name:`), each message its event for the app's subscribers,
-  acknowledged after the subscriber's transaction commits, repeats dropped
-  by id in `jadpo_received_events`, an unlisted type or a message that
-  keeps failing parked for an operator in `jadpo deliveries`; the SQS
-  package, tested against a local fake of SQS's JSON API; and on Workers
-  the Cloudflare Queues driver, its seam and consumer configuration built
-  and unit-tested here, deploying it Phase 8's.
+- [x] **7.7c Queues through `receiving`** `opus · high` (split on
+  2026-10-20: the Cloudflare Queues driver is 7.7c2). Built: `receiving:`
+  in `application { }` (`type_at:`, `id_at:`, `events:` named as code
+  names them, each with a text `wire_name:` when the queue has types;
+  `receiving.invalid`), a package's `provides/receiving.jadpo` mapping
+  `receive:` and `acknowledge:` onto its own operations as data, and the
+  tick fetching each queue through its connection, at least every 10
+  seconds: each message kept once as its event, its id in
+  `jadpo_received_events` with its outbox row, and only then deleted from
+  the queue; an unlisted type, an unreadable message or one over 64 KB
+  parked whole in `jadpo_parked_messages` and listed, retried through the
+  next tick and dismissed by `jadpo deliveries`; `Protocol.aws_json`,
+  `aws: { service: target: }` and `CredentialScheme.aws_sigv4` with a
+  `key_id:` and `secret:` credential, checked against AWS's published
+  test suite; a `T?` member a provider leaves out read as `none`; and the
+  SQS package in `packages/amazon_sqs`, tested against a local fake of
+  SQS's JSON API that checks every signature (`receiving.rs`). Choices in
+  area 11's "Chosen in chunk 7.7c".
+- [ ] **7.7c2 Cloudflare Queues on Workers** `opus · high`, after 7.7c:
+  the built-in Cloudflare Queues driver, a queue's consumer handed a
+  batch, each message kept as 7.7c keeps one and acknowledged or retried
+  by the batch's answer, a parked one acknowledged; its seam and its
+  consumer configuration for the Wrangler file built and unit-tested
+  here, deploying it Phase 8's.
 - [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
   xhigh` (area 21, "The `ai` capability" and "Typed output"), after
   5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`

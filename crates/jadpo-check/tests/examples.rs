@@ -98,7 +98,7 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     (
         "syntax PROVIDE_DECL",
-        "not built: provider packages (area 11)",
+        "a package's capability mapping (`provide receiving` since chunk 7.7c), which a package holds and no example app writes (area 11)",
     ),
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
