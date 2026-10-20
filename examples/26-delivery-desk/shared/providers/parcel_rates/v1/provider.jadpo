@@ -17,7 +17,7 @@ provider {
     error_code: "code"
     imported: {
         file: "specs/parcel_rates.json"
-        digest: "sha256:f791b8040c50b0897cfb5761aec6cb7a1257955e36045c14f523c114c816a155"
+        digest: "sha256:18cf5991cd078fd80d150cae2192ba7ca473dfe8f0989b209f90efbfcc167072"
         reviewed: [QuotedPrice, Quote, QuoteRequest]
     }
 }

@@ -1,25 +1,25 @@
 // The desk's API requires an `Idempotency-Key` on every write, which is
-// what lets `book_round_trip` make two changing calls: the key survives
+// what lets `book_with_return` make two changing calls: the key survives
 // the terminal's retry, so the steps can be replayed under it.
 //
 // Each call to Swift may take its 3-second timeout three times, so two
 // take up to 18 seconds; `deadline:` gives the route 20, past the 10 a
 // route has by default.
 
-use courier_desk/types { BookedRoundTrip, RoundTripForm }
-use courier_desk/actions { book_round_trip }
+use courier_desk/types { BookedWithReturn, ReturnBookingForm }
+use courier_desk/actions { book_with_return }
 
 /// Booking a parcel's pickup and its return together.
-routes RoundTrips {
-    prefix: /round_trips
+routes ReturnBookings {
+    prefix: /return_bookings
 
-    /// Anyone at the desk books a round trip.
+    /// Anyone at the desk books a round parcel_booking.
     POST / {
         authentication: RouteAuthentication.none
-        input: RoundTripForm
-        output: BookedRoundTrip
+        input: ReturnBookingForm
+        output: BookedWithReturn
         status: SuccessStatus.created
         deadline: 20s
-        run: book_round_trip(input)
+        run: book_with_return(input)
     }
 }

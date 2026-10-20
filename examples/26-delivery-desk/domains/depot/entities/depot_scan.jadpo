@@ -1,10 +1,10 @@
 use depot/types { ParcelLabel }
 
-/// A parcel the depot scanned, and which bay it went to.
+/// A parcel the depot scanned, and which sorting_bay it went to.
 entity DepotScan {
     id: Uuid
     label: ParcelLabel
-    bay: Int {
+    sorting_bay: Int {
         min: 1
         max: 40
     }

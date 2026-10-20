@@ -45,6 +45,6 @@ config {
     sqs_endpoint: Url {
         default: "https://sqs.eu-west-2.amazonaws.com"
     }
-    /// Seals the courier's answers kept while a round trip's steps run.
+    /// Seals the courier's answers kept while a return booking's steps run.
     steps_key: SigningKey
 }

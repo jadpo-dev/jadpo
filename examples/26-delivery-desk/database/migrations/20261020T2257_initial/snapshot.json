@@ -4,53 +4,6 @@
     "main": {
       "driver": "postgres",
       "tables": {
-        "collection": {
-          "columns": {
-            "collected_at": {
-              "allows": {},
-              "field": "collected_at",
-              "position": 4,
-              "type": "timestamptz(3)"
-            },
-            "driver_name": {
-              "allows": {
-                "max_length": 40
-              },
-              "field": "driver_name",
-              "position": 2,
-              "type": "text"
-            },
-            "id": {
-              "allows": {},
-              "field": "id",
-              "position": 0,
-              "type": "uuid"
-            },
-            "parcel_count": {
-              "allows": {
-                "min": "1"
-              },
-              "field": "parcel_count",
-              "position": 3,
-              "type": "bigint"
-            },
-            "pickup_id": {
-              "allows": {
-                "max_length": 64
-              },
-              "field": "pickup_id",
-              "position": 1,
-              "type": "text"
-            }
-          },
-          "entity": "Collection",
-          "primary_key": {
-            "columns": [
-              "id"
-            ],
-            "name": "collection_pkey"
-          }
-        },
         "courier_tariff": {
           "columns": {
             "afternoon_pence": {
@@ -86,15 +39,6 @@
         },
         "depot_scan": {
           "columns": {
-            "bay": {
-              "allows": {
-                "max": "40",
-                "min": "1"
-              },
-              "field": "bay",
-              "position": 2,
-              "type": "bigint"
-            },
             "id": {
               "allows": {},
               "field": "id",
@@ -109,6 +53,15 @@
               "field": "label",
               "position": 1,
               "type": "text"
+            },
+            "sorting_bay": {
+              "allows": {
+                "max": "40",
+                "min": "1"
+              },
+              "field": "sorting_bay",
+              "position": 2,
+              "type": "bigint"
             }
           },
           "entity": "DepotScan",
@@ -715,6 +668,53 @@
             "name": "jadpo_steps_pkey"
           },
           "system": "steps"
+        },
+        "pickup_collection": {
+          "columns": {
+            "collected_at": {
+              "allows": {},
+              "field": "collected_at",
+              "position": 4,
+              "type": "timestamptz(3)"
+            },
+            "driver_name": {
+              "allows": {
+                "max_length": 40
+              },
+              "field": "driver_name",
+              "position": 2,
+              "type": "text"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "parcel_count": {
+              "allows": {
+                "min": "1"
+              },
+              "field": "parcel_count",
+              "position": 3,
+              "type": "bigint"
+            },
+            "pickup_id": {
+              "allows": {
+                "max_length": 64
+              },
+              "field": "pickup_id",
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "entity": "PickupCollection",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "pickup_collection_pkey"
+          }
         }
       }
     }

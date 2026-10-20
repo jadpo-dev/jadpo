@@ -6,6 +6,6 @@ use courier_desk
 policy {
     actions: {
         courier_desk.book_pickup: [Access.public]
-        courier_desk.book_round_trip: [Access.public]
+        courier_desk.book_with_return: [Access.public]
     }
 }

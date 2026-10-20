@@ -1,13 +1,13 @@
 // The package hands the app what happened as an event; the app's own
 // action writes it, since a package never touches the app's data.
 
-use courier_desk/entities { Collection }
+use courier_desk/entities { PickupCollection }
 use courier_desk/emails { CollectionReceipt }
 use shared/providers/swift_couriers
 
 /// Keeps what the courier collected.
-action keep_collection(event: SwiftCouriers.ParcelsCollected) -> Collection {
-    var kept: Collection = Collection.create {
+action keep_collection(event: SwiftCouriers.ParcelsCollected) -> PickupCollection {
+    var kept_row: PickupCollection = PickupCollection.create {
         set: {
             pickup_id: event.pickup_id
             driver_name: event.driver_name
@@ -22,5 +22,5 @@ action keep_collection(event: SwiftCouriers.ParcelsCollected) -> Collection {
         parcel_count: event.parcel_count
         pickup_id: event.pickup_id
     }
-    return kept
+    return kept_row
 }

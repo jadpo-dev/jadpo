@@ -25,12 +25,12 @@
       },
       "Quote": {
         "type": "object",
-        "required": ["id", "amount", "currency", "expires_at"],
+        "required": ["id", "amount", "currency", "valid_until"],
         "properties": {
           "id": { "type": "string", "maxLength": 32 },
           "amount": { "type": "integer", "description": "The price in pence." },
           "currency": { "type": "string", "enum": ["GBP"] },
-          "expires_at": { "type": "string", "format": "date-time" }
+          "valid_until": { "type": "string", "format": "date-time" }
         }
       },
       "Error": {
@@ -48,7 +48,7 @@
     "/v1/quotes": {
       "post": {
         "operationId": "createQuote",
-        "tags": ["quotes"],
+        "tags": ["parcel_quotes"],
         "summary": "Prices a parcel from one postcode to another.",
         "requestBody": {
           "required": true,

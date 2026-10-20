@@ -2,11 +2,11 @@ use courier_desk/entities { CourierTariff }
 use shared/providers/swift_couriers
 
 test "a new price list is kept" {
-    var kept: CourierTariff = keep_tariff(
+    var kept_row: CourierTariff = keep_tariff(
         SwiftCouriers.TariffPublished {
             morning_pence: 650
             afternoon_pence: 550
         }
     )
-    assert kept.morning_pence == 650
+    assert kept_row.morning_pence == 650
 }

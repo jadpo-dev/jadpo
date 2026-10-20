@@ -1,14 +1,14 @@
 // A route test sends a fresh `Idempotency-Key` with every write, as the
-// desk's terminal does. Since the round trip's calls are steps, `jadpo
+// desk's terminal does. Since the booking's calls are steps, `jadpo
 // test` also runs each test again crashing at every step's boundary, and
 // the request sent again under its key must end the same way: the fake
 // keeps each key's first answer, as Swift does.
 
 use app { couriers }
-use courier_desk/types { RoundTripForm }
+use courier_desk/types { ReturnBookingForm }
 use shared/providers/swift_couriers
 
-test "a round trip books both pickups" {
+test "a pickup and its return are both booked" {
     fakes: {
         couriers.pickups.create: [
             SwiftCouriers.Pickup {
@@ -23,8 +23,8 @@ test "a round trip books both pickups" {
     }
     var response: Response = request {
         method: HttpMethod.post
-        path: "/round_trips"
-        input: RoundTripForm {
+        path: "/return_bookings"
+        input: ReturnBookingForm {
             postcode: "N1 9GU"
             slot: "am"
             return_postcode: "E8 3PB"
@@ -33,7 +33,7 @@ test "a round trip books both pickups" {
     }
     assert response.status == 201
     var both: Bool = match response.output {
-        some(trip) -> trip.outbound_id == "swift-5001" and trip.return_id == "swift-5002"
+        some(booked) -> booked.outbound_id == "swift-5001" and booked.return_id == "swift-5002"
         none -> false
     }
     assert both
@@ -51,8 +51,8 @@ test "a taken return slot leaves the outbound pickup booked" {
     }
     var response: Response = request {
         method: HttpMethod.post
-        path: "/round_trips"
-        input: RoundTripForm {
+        path: "/return_bookings"
+        input: ReturnBookingForm {
             postcode: "N1 9GU"
             slot: "am"
             return_postcode: "E8 3PB"
@@ -61,7 +61,7 @@ test "a taken return slot leaves the outbound pickup booked" {
     }
     assert response.status == 201
     var outbound_only: Bool = match response.output {
-        some(trip) -> trip.outbound_id == "swift-5003" and trip.return_id == none
+        some(booked) -> booked.outbound_id == "swift-5003" and booked.return_id == none
         none -> false
     }
     assert outbound_only

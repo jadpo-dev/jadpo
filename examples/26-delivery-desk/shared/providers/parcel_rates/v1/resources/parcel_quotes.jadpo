@@ -1,4 +1,4 @@
-public resource quotes {
+public resource parcel_quotes {
     /// Prices a parcel from one postcode to another.
     create: {
         method: HttpMethod.post

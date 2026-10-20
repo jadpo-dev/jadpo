@@ -40,8 +40,21 @@ SOURCES = [ROOT / 'docs/language', ROOT / 'examples']
 
 
 def source_files(root: Path, pattern: str) -> list[Path]:
-    """Committed sources only: an example's `build/` output is generated and ignored."""
-    return [p for p in sorted(root.rglob(pattern)) if 'build' not in p.relative_to(root).parts]
+    """Committed sources only: an example's `build/` output is generated and
+    ignored, and so is an example's installed copy of one of this
+    repository's own packages (`packages/<name>/`, such as Resend), whose
+    names are that package's, which the root `packages/` keeps and the
+    compiler may name, not the example's."""
+    return [p for p in sorted(root.rglob(pattern))
+            if 'build' not in p.relative_to(root).parts and not first_party_copy(root, p)]
+
+
+def first_party_copy(root: Path, path: Path) -> bool:
+    """Whether `path` is in an example's `packages/<name>/` for a package
+    this repository holds in its own `packages/<name>/`."""
+    parts = path.relative_to(root).parts
+    return (root == ROOT / 'examples' and len(parts) > 3 and parts[1] == 'packages'
+            and (ROOT / 'packages' / parts[2] / 'package.jadpo').is_file())
 FENCE = re.compile(r'^```(\S*)(.*)$')
 IDENT = r'[A-Za-z_][A-Za-z0-9_]*'
 

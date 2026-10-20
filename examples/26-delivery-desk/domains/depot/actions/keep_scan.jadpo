@@ -6,7 +6,7 @@ action keep_scan(event: ParcelScanned) -> DepotScan {
     return DepotScan.create {
         set: {
             label: event.label
-            bay: event.bay
+            sorting_bay: event.sorting_bay
         }
     }
 }

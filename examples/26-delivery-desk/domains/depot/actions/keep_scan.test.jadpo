@@ -1,12 +1,12 @@
 use depot/entities { DepotScan }
 use depot/events { ParcelScanned }
 
-test "a scan from the queue is kept with its bay" {
-    var kept: DepotScan = keep_scan(
+test "a scan from the queue is kept with its sorting_bay" {
+    var kept_row: DepotScan = keep_scan(
         ParcelScanned {
             label: "SWC-000193"
-            bay: 12
+            sorting_bay: 12
         }
     )
-    assert kept.bay == 12
+    assert kept_row.sorting_bay == 12
 }

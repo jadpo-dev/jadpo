@@ -2,11 +2,11 @@
 // whichever connection `email:` names, so `email.sent` reads it here as
 // it would through SMTP.
 
-use courier_desk/entities { Collection }
+use courier_desk/entities { PickupCollection }
 use shared/providers/swift_couriers
 
 test "a collection the courier announces is kept, and the desk told" {
-    var kept: Collection = keep_collection(
+    var kept_row: PickupCollection = keep_collection(
         SwiftCouriers.ParcelsCollected {
             pickup_id: "swift-4471"
             driver_name: "Ade"
@@ -14,7 +14,7 @@ test "a collection the courier announces is kept, and the desk told" {
             collected_at: "2026-10-21T09:12:00Z"
         }
     )
-    assert kept.parcel_count == 3
+    assert kept_row.parcel_count == 3
     var sent: List<SentEmail> = email.sent
     assert list.count(sent) == 1
 }

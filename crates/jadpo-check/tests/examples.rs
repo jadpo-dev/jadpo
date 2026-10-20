@@ -92,10 +92,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "data migration decision FieldChange.dropped",
         "not built: a drop needs a person's acceptance (area 18)",
     ),
-    (
-        "syntax PROVIDE_DECL",
-        "a package's capability mapping (`provide receiving` since chunk 7.7c), which a package holds and no example app writes (area 11)",
-    ),
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
     // Bases later areas define.
@@ -135,22 +131,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
     ("place acceptances", "not built: acceptances (area 18)"),
-    (
-        "package folder subscribers",
-        "not built: a package's subscribers (area 11, chunk 7.6b)",
-    ),
-    (
-        "package folder events",
-        "not built: a package's events (area 11, chunk 7.6)",
-    ),
-    (
-        "package folder provides",
-        "not built: a package's capability mappings (area 11, chunk 7.3)",
-    ),
-    (
-        "package folder translations",
-        "not built: a library package's translations (area 11, chunk 7.1b)",
-    ),
 ];
 
 fn root() -> PathBuf {

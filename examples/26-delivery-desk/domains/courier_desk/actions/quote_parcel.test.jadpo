@@ -5,11 +5,11 @@ use shared/providers/parcel_rates
 
 test "a parcel is priced in pounds" {
     fakes: {
-        rates.quotes.create: [
+        rates.parcel_quotes.create: [
             ParcelRates.Quote {
                 id: "q-81"
                 amount: ParcelRates.QuotedPrice(money.from_minor(650, Currency.gbp))
-                expires_at: "2026-10-21T12:00:00Z"
+                valid_until: "2026-10-21T12:00:00Z"
             }
         ]
     }
@@ -25,7 +25,7 @@ test "a parcel is priced in pounds" {
 
 test "a route no courier covers is the desk's own failure" {
     fakes: {
-        rates.quotes.create: [no_route]
+        rates.parcel_quotes.create: [no_route]
     }
     assert quote_parcel(
         QuoteForm {

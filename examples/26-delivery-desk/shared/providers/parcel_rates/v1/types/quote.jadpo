@@ -12,8 +12,8 @@ public type Quote = Object {
             currency: "currency"
         }
     }
-    expires_at: Instant
     id: Text {
         max_length: 32
     }
+    valid_until: Instant
 }

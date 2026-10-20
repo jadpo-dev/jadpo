@@ -1,7 +1,7 @@
 use shared/providers/swift_couriers
 
 /// Parcels the courier collected from the desk.
-entity Collection {
+entity PickupCollection {
     id: Uuid
     pickup_id: SwiftCouriers.PickupId
     driver_name: SwiftCouriers.DriverName

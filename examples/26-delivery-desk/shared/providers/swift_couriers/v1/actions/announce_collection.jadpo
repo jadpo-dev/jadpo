@@ -4,15 +4,15 @@
 
 /// Looks up a collected pickup and announces what was collected.
 action announce_collection(event: PickupCollected) -> Unit {
-    var collected: CollectedPickup = collections.retrieve(
+    var collection_details: CollectedPickup = pickup_collections.retrieve(
         PickupLookup {
             id: event.pickup_id
         }
     )
     emit ParcelsCollected {
-        pickup_id: collected.id
-        driver_name: collected.driver_name
-        parcel_count: collected.parcel_count
+        pickup_id: collection_details.id
+        driver_name: collection_details.driver_name
+        parcel_count: collection_details.parcel_count
         collected_at: event.occurred_at
     }
 }

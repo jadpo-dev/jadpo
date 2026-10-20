@@ -1,14 +1,6 @@
--- 20261020T2245_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T2257_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
-CREATE TABLE "collection" (
-    "id" uuid NOT NULL,
-    "pickup_id" text NOT NULL,
-    "driver_name" text NOT NULL,
-    "parcel_count" bigint NOT NULL,
-    "collected_at" timestamptz(3) NOT NULL,
-    CONSTRAINT "collection_pkey" PRIMARY KEY ("id")
-);
 CREATE TABLE "courier_tariff" (
     "id" uuid NOT NULL,
     "morning_pence" bigint NOT NULL,
@@ -18,7 +10,7 @@ CREATE TABLE "courier_tariff" (
 CREATE TABLE "depot_scan" (
     "id" uuid NOT NULL,
     "label" text NOT NULL,
-    "bay" bigint NOT NULL,
+    "sorting_bay" bigint NOT NULL,
     CONSTRAINT "depot_scan_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "jadpo_circuit_breakers" (
@@ -140,6 +132,14 @@ CREATE TABLE "jadpo_steps" (
     "answer" bytea,
     "answered_at" timestamptz(3),
     CONSTRAINT "jadpo_steps_pkey" PRIMARY KEY ("record_id", "position")
+);
+CREATE TABLE "pickup_collection" (
+    "id" uuid NOT NULL,
+    "pickup_id" text NOT NULL,
+    "driver_name" text NOT NULL,
+    "parcel_count" bigint NOT NULL,
+    "collected_at" timestamptz(3) NOT NULL,
+    CONSTRAINT "pickup_collection_pkey" PRIMARY KEY ("id")
 );
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_subscriber_key" UNIQUE ("outbox_id", "subscriber");
 ALTER TABLE "jadpo_parked_messages" ADD CONSTRAINT "jadpo_parked_messages_queue_digest_key" UNIQUE ("queue", "digest");
