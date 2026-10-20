@@ -7,7 +7,9 @@
 //!   subject and its health.
 //! - `jadpo email show <id>` prints one: who it is from and to, its text
 //!   (`--html` for its HTML), its links numbered, its attachments, and
-//!   what Jadpo's health checks found, each with how to fix it.
+//!   what Jadpo's health checks found, each with how to fix it, then
+//!   SpamAssassin's rules when it was run on the mail (chunk 7.3c3), or
+//!   why it wasn't.
 //! - `jadpo email links <id>` lists its links, numbered; `jadpo email open
 //!   <id> <link>` opens one, by its number or written out, in the browser
 //!   (`$BROWSER`, else the system's).
@@ -27,6 +29,7 @@ use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table};
 
 use crate::dev_inbox::{self, Mail};
 use crate::run::{Call, Reply};
+use crate::spam::Spam;
 
 pub(crate) const ACTIONS: &[crate::table::Value] = &[
     crate::table::Value {
@@ -218,7 +221,7 @@ fn list(root: &Path, to: Option<&str>) -> Reply {
     let mut table = Table::new(["mail", "email", "to", "subject", "health"]).cut(3);
     let mut with_problems = 0;
     for mail in &shown {
-        let found = mail.health().len();
+        let found = mail.problems();
         if found > 0 {
             with_problems += 1;
         }
@@ -227,7 +230,7 @@ fn list(root: &Path, to: Option<&str>) -> Reply {
             Cell::muted(mail.email_short()),
             Cell::text(mail.to.clone()),
             Cell::text(mail.subject.clone()),
-            health_cell(found),
+            health_cell(found, matches!(mail.spam, Spam::Ran(_))),
         ]);
     }
     screen.push(Block::Table(table));
@@ -252,9 +255,12 @@ fn list(root: &Path, to: Option<&str>) -> Reply {
     Reply::screen(screen, data)
 }
 
-fn health_cell(found: usize) -> Cell {
+/// A mail's health in the list: "clean" only when SpamAssassin's rules
+/// were in its score too.
+fn health_cell(found: usize, scored: bool) -> Cell {
     match found {
-        0 => Cell::state(Symbol::Success, "clean"),
+        0 if scored => Cell::state(Symbol::Success, "clean"),
+        0 => Cell::state(Symbol::Success, "no problems found"),
         n => Cell::state(Symbol::Warning, count(n, "problem")),
     }
 }
@@ -280,7 +286,7 @@ fn summary_json(mail: &Mail) -> Json {
         ("from", Json::from(mail.from.as_str())),
         ("to", Json::from(mail.to.as_str())),
         ("subject", Json::from(mail.subject.as_str())),
-        ("problems", int(mail.health().len())),
+        ("problems", int(mail.problems())),
     ])
 }
 
@@ -342,7 +348,7 @@ fn show(mail: &Mail, html: bool) -> Reply {
                 .map(|(at, link)| format!("{:>2}  {link}", at + 1)),
         ));
     }
-    health_blocks(&mut screen, &findings);
+    health_blocks(&mut screen, &findings, &mail.spam);
     if !links.is_empty() {
         screen.push(Block::hint(
             format!("jadpo email open {} 1", mail.id),
@@ -351,14 +357,15 @@ fn show(mail: &Mail, html: bool) -> Reply {
     }
     let mut data = full_json(mail, &links);
     if let Json::Object(members) = &mut data {
-        members.push(("health".to_string(), health_json(&findings)));
+        members.push(("health".to_string(), health_json(&findings, &mail.spam)));
     }
     Reply::screen(screen, data)
 }
 
 /// What the health checks found: an alert for each problem, with what was
-/// found and the fix, then the note every score carries.
-fn health_blocks(screen: &mut Screen, findings: &[email_health::Finding]) {
+/// found and the fix, then SpamAssassin's rules or why there are none,
+/// then the note every score carries.
+fn health_blocks(screen: &mut Screen, findings: &[email_health::Finding], spam: &Spam) {
     let total = Check::ALL.len();
     if findings.is_empty() {
         screen.push(Block::Status {
@@ -375,21 +382,79 @@ fn health_blocks(screen: &mut Screen, findings: &[email_health::Finding]) {
             ]));
         }
     }
+    spam_blocks(screen, spam);
     let passing = total - findings.len();
+    let problems = findings.len() + usize::from(spam.is_spam());
     screen.push(Block::fields(vec![(
         "health",
         format!(
-            "{} · {passing} of {total} checks pass. {DISCLAIMER}",
-            if findings.is_empty() {
+            "{} · {passing} of {total} checks pass · {}. {DISCLAIMER}",
+            if problems == 0 && matches!(spam, Spam::Ran(_)) {
                 "clean".to_string()
+            } else if problems == 0 {
+                "no problems found".to_string()
             } else {
-                count(findings.len(), "problem")
-            }
+                count(problems, "problem")
+            },
+            spam.summary()
         ),
     )]));
 }
 
-fn health_json(findings: &[email_health::Finding]) -> Json {
+/// SpamAssassin's part of a score: its verdict and the rules it matched,
+/// the most points first, or why it has none, never that the mail is
+/// clean.
+fn spam_blocks(screen: &mut Screen, spam: &Spam) {
+    match spam {
+        Spam::Ran(report) => {
+            if report.is_spam() {
+                screen.push(Block::Alerts(vec![spam.summary()]));
+            } else {
+                screen.push(Block::Status {
+                    outcome: Outcome::Success,
+                    text: spam.summary(),
+                    rows: Vec::new(),
+                });
+            }
+            if !report.rules.is_empty() {
+                let mut table = Table::new(["points", "rule", "description"])
+                    .right(0)
+                    .cut(2);
+                for rule in &report.rules {
+                    table = table.row(vec![
+                        if rule.counts() {
+                            Cell::state(Symbol::Warning, rule.points.clone())
+                        } else {
+                            Cell::muted(rule.points.clone())
+                        },
+                        Cell::text(rule.name.clone()),
+                        Cell::text(rule.description.clone()),
+                    ]);
+                }
+                screen.push(Block::Table(table));
+            }
+            if report.is_spam() {
+                screen.push(Block::fields(vec![(
+                    "next",
+                    "Fix the rules with the most points first: each says what it matched",
+                )]));
+            }
+        }
+        Spam::Failed(_) => {
+            if let Some((why, next)) = spam.absent() {
+                screen.push(Block::Alerts(vec![spam.summary()]));
+                screen.push(Block::fields(vec![("found", why), ("next", next)]));
+            }
+        }
+        Spam::NotRun | Spam::NotInstalled => {
+            if let Some((why, next)) = spam.absent() {
+                screen.push(Block::fields(vec![("spam", why), ("next", next)]));
+            }
+        }
+    }
+}
+
+fn health_json(findings: &[email_health::Finding], spam: &Spam) -> Json {
     Json::object([
         ("checks", int(Check::ALL.len())),
         (
@@ -403,6 +468,7 @@ fn health_json(findings: &[email_health::Finding]) -> Json {
                 ])
             })),
         ),
+        ("spamassassin", spam.to_output()),
         ("note", Json::from(DISCLAIMER)),
     ])
 }
@@ -1215,5 +1281,96 @@ mod tests {
         );
         assert!(plain.contains("alert: DMARC only monitors"), "{plain}");
         assert!(plain.contains("can't predict whether Gmail"), "{plain}");
+    }
+
+    fn mail(spam: Spam) -> Mail {
+        Mail {
+            id: "mail_1".into(),
+            number: 1,
+            at: "2026-10-20T14:02:31Z".into(),
+            email: "members.WelcomeEmail".into(),
+            trace: None,
+            from: "hello@notes.example".into(),
+            to: "ada@notes.example".into(),
+            subject: "Welcome, Ada".into(),
+            html: None,
+            text: Some("Hello, Ada.\n".into()),
+            attachments: Vec::new(),
+            spam,
+        }
+    }
+
+    fn shown(mail: &Mail) -> (String, String) {
+        let Reply::Done {
+            text: crate::run::Text::Screen(screen),
+            data,
+            ..
+        } = show(mail, false)
+        else {
+            panic!("a screen");
+        };
+        (
+            screen.render(&jadpo_term::Style::new(jadpo_term::Mode::Plain)),
+            data.to_line(),
+        )
+    }
+
+    #[test]
+    fn show_says_when_spamassassin_wasn_t_run_never_that_the_mail_is_clean() {
+        let (plain, data) = shown(&mail(Spam::NotInstalled));
+        assert!(
+            plain.contains("SpamAssassin isn't installed, so its rules aren't in this score. That doesn't make the mail clean."),
+            "{plain}"
+        );
+        assert!(
+            plain.contains("no problems found · 7 of 7 checks pass · SpamAssassin wasn't run: it isn't installed."),
+            "{plain}"
+        );
+        assert!(
+            data.contains(
+                "\"spamassassin\":{\"ran\":false,\"why\":\"not_installed\",\"detail\":null}"
+            ),
+            "{data}"
+        );
+        let (plain, data) = shown(&mail(Spam::Failed("it exited with status 2".into())));
+        assert!(
+            plain.contains("alert: SpamAssassin couldn't score it"),
+            "{plain}"
+        );
+        assert!(plain.contains("spamassassin --lint"), "{plain}");
+        assert!(data.contains("\"why\":\"failed\""), "{data}");
+    }
+
+    #[test]
+    fn show_lists_spamassassin_s_rules_the_most_points_first() {
+        let report = crate::spam::Report {
+            score: "6.2".into(),
+            required: "5.0".into(),
+            rules: vec![
+                crate::spam::Rule {
+                    name: "MISSING_DATE".into(),
+                    points: "1.4".into(),
+                    description: "Missing Date: header".into(),
+                },
+                crate::spam::Rule {
+                    name: "NO_RELAYS".into(),
+                    points: "-0.0".into(),
+                    description: "Informational: message was not relayed via SMTP".into(),
+                },
+            ],
+        };
+        let (plain, data) = shown(&mail(Spam::Ran(report)));
+        assert!(
+            plain.contains("alert: SpamAssassin calls it spam: 6.2 points, spam from 5.0"),
+            "{plain}"
+        );
+        assert!(plain.contains("MISSING_DATE"), "{plain}");
+        assert!(plain.contains("Missing Date: header"), "{plain}");
+        assert!(plain.contains("1 problem · 7 of 7 checks pass"), "{plain}");
+        assert!(
+            data.contains("\"rules\":[{\"rule\":\"MISSING_DATE\",\"points\":\"1.4\",\"description\":\"Missing Date: header\"}"),
+            "{data}"
+        );
+        assert!(data.contains("\"spam\":true"), "{data}");
     }
 }

@@ -5,7 +5,8 @@
 //! Two panes, the CLI design language's tokens carried into the browser:
 //! the mail newest first, and the one chosen, its HTML as a reader's
 //! client shows it (in a sandboxed frame, its links opening in a new
-//! tab), its text, its links and what the health checks found. The page
+//! tab), its text, its links and what the health checks found, with
+//! SpamAssassin's rules when it was run on the mail (chunk 7.3c3). The page
 //! is read-only, as the developer console is (area 17): `jadpo email
 //! clear` empties the inbox. It looks for new mail every two seconds.
 //!
@@ -19,6 +20,7 @@ use jadpo_std::email::escape_html as esc;
 use jadpo_std::email_health::{Check, DISCLAIMER};
 
 use crate::dev_inbox::{self, Mail};
+use crate::spam::Spam;
 
 /// What the page answers `request` with, reading the inbox at `root`.
 pub(crate) fn answer(root: &Path, request: &Request) -> Response {
@@ -188,7 +190,7 @@ fn page(all: &[Mail], chosen: Option<&Mail>, view: &str, index: bool) -> Respons
     let mut list = String::new();
     for mail in all.iter().rev() {
         let current = chosen.is_some_and(|chosen| chosen.id == mail.id);
-        let problems = mail.health().len();
+        let problems = mail.problems();
         let health = if problems == 0 {
             "<span class=\"health ok\"><span aria-hidden=\"true\">✓</span><span class=\"hidden\">every health check passes</span></span>".to_string()
         } else {
@@ -266,6 +268,7 @@ fn time(at: &str, short: bool) -> String {
 fn detail(mail: &Mail, asked: &str) -> String {
     let links = mail.links();
     let findings = mail.health();
+    let problems = mail.problems();
     let view = match asked {
         "html" if mail.html.is_some() => View::Html,
         "text" => View::Text,
@@ -314,17 +317,21 @@ fn detail(mail: &Mail, asked: &str) -> String {
         .map(|(label, value)| format!("<dt>{label}</dt><dd>{value}</dd>"))
         .collect();
     let total = Check::ALL.len();
-    let strip = if findings.is_empty() {
+    let spam_note = format!(
+        "<span class=\"spam-note\">· {}</span>",
+        esc(&mail.spam.short())
+    );
+    let strip = if problems == 0 {
         format!(
-            "<p class=\"strip\"><span class=\"sym ok\" aria-hidden=\"true\">✓</span> Health: all {total} checks pass <a href=\"/mail/{id}?view=health\">What was checked</a></p>"
+            "<p class=\"strip\"><span class=\"sym ok\" aria-hidden=\"true\">✓</span> Health: all {total} checks pass {spam_note}<a href=\"/mail/{id}?view=health\">What was checked</a></p>"
         )
     } else {
         format!(
-            "<p class=\"strip\"><span class=\"sym warn\" aria-hidden=\"true\">▲</span> Health: <strong>{n}</strong> · {pass} of {total} checks pass <a href=\"/mail/{id}?view=health\">See what to fix</a></p>",
-            n = if findings.len() == 1 {
+            "<p class=\"strip\"><span class=\"sym warn\" aria-hidden=\"true\">▲</span> Health: <strong>{n}</strong> · {pass} of {total} checks pass {spam_note}<a href=\"/mail/{id}?view=health\">See what to fix</a></p>",
+            n = if problems == 1 {
                 "1 problem".to_string()
             } else {
-                format!("{} problems", findings.len())
+                format!("{problems} problems")
             },
             pass = total - findings.len(),
         )
@@ -351,13 +358,10 @@ fn detail(mail: &Mail, asked: &str) -> String {
     ));
     tabs.push_str(&tab(
         View::Health,
-        if findings.is_empty() {
+        if problems == 0 {
             "Health checks".to_string()
         } else {
-            format!(
-                "Health checks <span class=\"count warn\">{}</span>",
-                findings.len()
-            )
+            format!("Health checks <span class=\"count warn\">{problems}</span>")
         },
     ));
     let shown = match view {
@@ -417,7 +421,8 @@ fn detail(mail: &Mail, asked: &str) -> String {
                 })
                 .collect();
             format!(
-                "<ul class=\"checks\">{out}{passed}</ul><p class=\"disclaimer\">{}</p>",
+                "<ul class=\"checks\">{out}{passed}</ul>{}<p class=\"disclaimer\">{}</p>",
+                spam_section(&mail.spam),
                 esc(DISCLAIMER)
             )
         }
@@ -454,6 +459,61 @@ fn sign_in_code(mail: &Mail) -> Option<String> {
         [code] => Some((*code).to_string()),
         _ => None,
     }
+}
+
+/// SpamAssassin's part of the health view: its verdict and the rules it
+/// matched, the most points first, or why it has none, never that the
+/// mail is clean.
+fn spam_section(spam: &Spam) -> String {
+    let body = match spam {
+        Spam::Ran(report) => {
+            let (class, symbol) = if report.is_spam() {
+                ("warn", "▲")
+            } else {
+                ("ok", "✓")
+            };
+            let rows: String = report
+                .rules
+                .iter()
+                .map(|rule| {
+                    format!(
+                        "<tr class=\"{class}\"><td class=\"pts\">{points}</td><td><code>{name}</code></td><td>{description}</td></tr>",
+                        class = if rule.counts() { "counts" } else { "info" },
+                        points = esc(&rule.points),
+                        name = esc(&rule.name),
+                        description = esc(&rule.description),
+                    )
+                })
+                .collect();
+            let table = if rows.is_empty() {
+                "<p class=\"muted\">No rule matched.</p>".to_string()
+            } else {
+                format!(
+                    "<table class=\"rules\"><thead><tr><th class=\"pts\" scope=\"col\">Points</th><th scope=\"col\">Rule</th><th scope=\"col\">What it matched</th></tr></thead><tbody>{rows}</tbody></table>"
+                )
+            };
+            format!(
+                "<p class=\"verdict\"><span class=\"sym {class}\" aria-hidden=\"true\">{symbol}</span> {summary}</p>{table}{next}<p class=\"note\">Run on this machine with its network tests off, on the mail as the SMTP driver writes it.</p>",
+                summary = esc(&spam.summary()),
+                next = if report.is_spam() {
+                    "<p>Fix the rules with the most points first: each says what it matched.</p>"
+                } else {
+                    ""
+                },
+            )
+        }
+        _ => {
+            let (why, next) = spam.absent().unwrap_or_default();
+            format!(
+                "<div class=\"absent\"><p>{why}</p><p class=\"muted\">{next}.</p></div>",
+                why = code_spans(&why),
+                next = code_spans(&next),
+            )
+        }
+    };
+    format!(
+        "<section class=\"spam\" aria-labelledby=\"spam-heading\"><h2 id=\"spam-heading\">SpamAssassin's rules</h2>{body}</section>"
+    )
 }
 
 /// What a passing check says.
@@ -579,6 +639,17 @@ button:hover{border-color:var(--muted)}
 .checks code{overflow-wrap:anywhere}
 .checks p{margin:4px 0 0;color:var(--text)}
 .checks .found{color:var(--muted)}
+.spam{margin:28px 0 0;max-width:72ch}
+.spam h2{font-size:14px;font-weight:650;margin:0 0 10px}
+.spam-note{color:var(--muted)}
+.verdict{margin:0 0 12px}
+.rules{border-collapse:collapse;width:100%;margin:0 0 10px}
+.rules th{text-align:left;font-weight:400;color:var(--muted);font-size:12.5px;padding:0 12px 6px 0;border-bottom:1px solid var(--line)}
+.rules td{padding:8px 12px 8px 0;border-bottom:1px solid var(--line);vertical-align:baseline}
+.rules code{background:none;padding:0;overflow-wrap:anywhere}
+.rules .pts{text-align:right;font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;width:5ch}
+.rules .counts .pts{color:var(--warning);font-weight:600}
+.rules .info .pts,.rules .info td:last-child{color:var(--muted)}
 .disclaimer{margin:16px 0 0;color:var(--muted);max-width:72ch}
 .missing{max-width:60ch}
 @media (max-width:820px){
@@ -656,6 +727,7 @@ mod tests {
             html: None,
             text: Some(text.to_string()),
             attachments: Vec::new(),
+            spam: Spam::NotRun,
         };
         assert_eq!(
             sign_in_code(&mail("Or enter this code: 482913.\n")),
@@ -714,7 +786,7 @@ mod tests {
                 .map(|(name, value)| (std::rc::Rc::from(*name), value))
                 .collect(),
         );
-        dev_inbox::keep(&root, &message, None, 0).expect("kept");
+        dev_inbox::keep(&root, &message, None, 0, Spam::NotInstalled).expect("kept");
         let page = body(&get(&root, "/", None));
         assert!(page.contains("Sign in &lt;now&gt;"), "{page}");
         assert!(
@@ -722,6 +794,13 @@ mod tests {
             "{page}"
         );
         assert!(page.contains("can&#39;t predict"), "{page}");
+        // SpamAssassin isn't installed: said, never that the mail is clean.
+        assert!(page.contains("· SpamAssassin not run"), "{page}");
+        let health = body(&get(&root, "/mail/mail_1", Some("view=health")));
+        assert!(
+            health.contains("That doesn&#39;t make the mail clean."),
+            "{health}"
+        );
         let links = body(&get(&root, "/mail/mail_1", Some("view=links")));
         assert!(links.contains("jadpo email open mail_1 1"));
         let text = body(&get(&root, "/mail/mail_1", Some("view=text")));
@@ -739,5 +818,37 @@ mod tests {
         assert_eq!(get(&root, "/nope", None).status, 404);
         let json = body(&get(&root, "/inbox.json", None));
         assert_eq!(json, "{\"count\":1,\"newest\":\"mail_1\"}\n");
+        // A mail SpamAssassin calls spam: one more problem, its rules shown.
+        let report = crate::spam::Report {
+            score: "6.2".to_string(),
+            required: "5.0".to_string(),
+            rules: vec![
+                crate::spam::Rule {
+                    name: "HTML_IMAGE_ONLY_08".to_string(),
+                    points: "1.5".to_string(),
+                    description: "BODY: HTML: images with 400-800 bytes of words".to_string(),
+                },
+                crate::spam::Rule {
+                    name: "HTML_MESSAGE".to_string(),
+                    points: "0.0".to_string(),
+                    description: "BODY: HTML included in message".to_string(),
+                },
+            ],
+        };
+        dev_inbox::keep(&root, &message, None, 1, Spam::Ran(report)).expect("kept");
+        let page = body(&get(&root, "/mail/mail_2", Some("view=health")));
+        assert!(
+            page.contains("Health: <strong>2 problems</strong> · 6 of 7 checks pass"),
+            "{page}"
+        );
+        assert!(
+            page.contains("SpamAssassin calls it spam: 6.2 points, spam from 5.0"),
+            "{page}"
+        );
+        assert!(
+            page.contains("<tr class=\"counts\"><td class=\"pts\">1.5</td><td><code>HTML_IMAGE_ONLY_08</code></td>"),
+            "{page}"
+        );
+        assert!(page.contains("<tr class=\"info\">"), "{page}");
     }
 }
