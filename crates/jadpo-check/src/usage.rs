@@ -127,8 +127,12 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::AdvanceClock
                 | Callee::Escape
                 | Callee::Unknown => {}
-                // A prompt is used by the value built of its type.
-                Callee::Prompt(_) => {}
+                // A prompt is used by the value built of its type, and so
+                // is the type a model's answer is read as (area 21).
+                Callee::Prompt(_)
+                | Callee::Generate { .. }
+                | Callee::AiFake { .. }
+                | Callee::AiRequests { .. } => {}
                 // A message is used by what calls it (area 10).
                 Callee::Translation(key) => {
                     if let Some(name) = crate::translations::type_of_key(db, project, key) {

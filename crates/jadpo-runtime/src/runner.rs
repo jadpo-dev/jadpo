@@ -743,7 +743,17 @@ pub(crate) async fn attempt_delivery(
                     tenant: outbox::tenant(subscriber, &delivery.value),
                 },
             };
-            run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
+            // A package's own subscriber runs its package's action with
+            // the API reached through the connection its webhook came in
+            // on (chunk 7.6b).
+            if let Some(connection) = &subscriber.through {
+                ctx.enter_package(connection);
+            }
+            let ran = run_job(executor, ctx, &delivery, subscriber, job, budget, within).await;
+            if subscriber.through.is_some() {
+                ctx.leave_package();
+            }
+            ran
         }
     };
     ctx.set_resumable(None);

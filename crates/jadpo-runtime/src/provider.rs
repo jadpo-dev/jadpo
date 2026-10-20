@@ -672,12 +672,51 @@ pub async fn call(
     });
     let mut made = made.with_request(request);
     made.step = step;
-    let answer = match retried(ctx, &made, plan.retry).await {
+    let mut step = step;
+    let mut answer = match retried(ctx, &made, plan.retry).await {
         Ok(answer) => answer,
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
     };
+    // The provider's "use a new key" (its package's `new_key_on:`): the
+    // key can't be used again, so the call goes again, once, under the
+    // next key generation, which a step's record keeps first so a rerun
+    // sends under it too (area 11, "Keys and windows"; chunk 7.5c).
+    let new_key_on = plan
+        .idempotency
+        .as_ref()
+        .and_then(|idempotency| idempotency.new_key_on.as_deref());
+    if let (Answer::Failed(code), Some(keying), Some(marker)) = (&answer, &keying, new_key_on)
+        && code == marker
+    {
+        let next = match step {
+            Some(at) => match crate::steps::new_key(ctx, at).await {
+                Ok(next) => Some(next),
+                Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
+                Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+                Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+            },
+            None => None,
+        };
+        let generation = next.map_or(1, |at| at.key_generation);
+        if let Some((header, key)) = keying.header(providers, plan, generation)
+            && let Some(request) = made.request.as_mut()
+        {
+            request
+                .headers
+                .retain(|(name, _)| !name.eq_ignore_ascii_case(&header));
+            request.headers.push((header, key));
+        }
+        step = next;
+        made.step = next;
+        answer = match retried(ctx, &made, plan.retry).await {
+            Ok(answer) => answer,
+            Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
+            Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+            Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+        };
+    }
     // A fake's generated default or recording, made as the provider
     // would send it, is an answer as sent from here: a step keeps it as it
     // keeps any other.
@@ -1311,32 +1350,7 @@ fn write_json(
 /// a host and an optional port and path, with no credentials, query or
 /// fragment of its own.
 pub fn sendable(address: &str) -> Option<String> {
-    let address = address.trim();
-    let (secure, rest) = if let Some(rest) = address.strip_prefix("https://") {
-        (true, rest)
-    } else {
-        (false, address.strip_prefix("http://")?)
-    };
-    let authority = rest.split('/').next().unwrap_or_default();
-    if authority.is_empty() || authority.contains('@') || rest.contains(['?', '#']) {
-        return None;
-    }
-    let host = if let Some(inner) = authority.strip_prefix('[') {
-        format!("[{}]", inner.split(']').next().unwrap_or_default())
-    } else {
-        authority
-            .rsplit_once(':')
-            .map_or(authority, |(host, _)| host)
-            .to_string()
-    };
-    if host.is_empty() {
-        return None;
-    }
-    let host = host.to_ascii_lowercase();
-    let loopback = host == "localhost"
-        || host == "[::1]"
-        || host.starts_with("127.") && host.split('.').count() == 4;
-    (secure || loopback).then(|| address.to_string())
+    jadpo_std::provider::sendable(address)
 }
 
 /// The value `text`, an answer as sent, holds as `op`'s output, read at

@@ -14,6 +14,10 @@ use super::{
 use crate::Builtin;
 use crate::read::SqlType;
 
+/// The standard namespace of the `ai` capability's operations and
+/// `ai.distance` (area 21).
+pub const AI: &str = "ai";
+
 /// `TokenCount`.
 pub const TOKEN_COUNT: &str = "TokenCount";
 /// `TokenUsage`.

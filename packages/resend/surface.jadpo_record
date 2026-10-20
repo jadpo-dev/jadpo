@@ -22,8 +22,9 @@ operation emails.send
     output SendEmailResponse
     changes
     fails InvalidAttachment
-    fails InvalidFromAddress
+    fails InvalidParameter
     fails MissingRequiredField
+    fails MissingRequiredParameter
     fails ValidationError
     source written https://resend.com/docs/api-reference/emails/send-email
 
@@ -56,12 +57,12 @@ failure InvalidAttachment
     code invalid_attachment
     message "Resend refused one of the email's attachments."
 
-failure InvalidFromAddress
-    /// The address the email is from isn't one the account may send from.
-    file failures/invalid_from_address.jadpo
-    kind rejected
-    code invalid_from_address
-    message "The address the email is from isn't one the account may send from."
+failure InvalidParameter
+    /// One of the email's values isn't one Resend takes.
+    file failures/invalid_parameter.jadpo
+    kind invalid_value
+    code invalid_parameter
+    message "One of the email's values isn't one Resend takes."
 
 failure MissingRequiredField
     /// The email left out something Resend needs.
@@ -69,6 +70,13 @@ failure MissingRequiredField
     kind invalid_value
     code missing_required_field
     message "The email left out something Resend needs."
+
+failure MissingRequiredParameter
+    /// The email left out a value Resend needs.
+    file failures/missing_required_parameter.jadpo
+    kind invalid_value
+    code missing_required_parameter
+    message "The email left out a value Resend needs."
 
 failure ValidationError
     /// Resend refused the email as written.

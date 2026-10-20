@@ -701,6 +701,10 @@ fn a_send_whose_outcome_is_unknown_is_parked_and_a_refused_one_fails() {
         .await;
         run_deferred(&loaded.program, &down, work).await;
         assert_eq!(
+            deliveries(&harness, "later@example.test").await,
+            vec![("pending".to_string(), Some("unavailable".to_string()))]
+        );
+        assert_eq!(
             deliveries(&harness, "lost@example.test").await,
             vec![(
                 "outcome_unknown".to_string(),
@@ -957,7 +961,8 @@ fn an_attachment_goes_through_a_mail_package_in_base64() {
     assert_eq!(requests.len(), 1);
     let body = requests[0].json();
     assert_eq!(body["subject"], "Your card, Ana");
-    assert_eq!(body["html"], serde_json::Value::Null);
+    // A part the email doesn't have is left out, never sent as `null`.
+    assert!(body.get("html").is_none(), "{body}");
     assert_eq!(body["text"], "Acme\n\nAna, your card is attached.\n");
     let attachment = &body["attachments"][0];
     assert_eq!(attachment["content"], "JVBERi0xLjcgdGhlIGNhcmQ=");
@@ -971,8 +976,9 @@ fn an_attachment_goes_through_a_mail_package_in_base64() {
 }
 
 /// The package's failures the mapping names are an email's: a message
-/// Resend refuses fails for good as `message_rejected`; a server's error
-/// may come after it took the message, so the send is parked.
+/// Resend refuses fails for good as `message_rejected`; a quota or rate
+/// limit (`429`) did nothing, so the send is retried; a server's error may
+/// come after it took the message, so the send is parked.
 #[test]
 fn a_mail_packages_failures_are_an_emails() {
     let resend = FakeProvider::start();
@@ -983,6 +989,15 @@ fn a_mail_packages_failures_are_an_emails() {
         422,
         r#"{"statusCode":422,"name":"validation_error","message":"Invalid `to` field."}"#,
     );
+    // A send that surely did nothing is tried again within the call, as
+    // its connection's `retry:` allows (three times), then left to the
+    // delivery's own retries.
+    for _ in 0..3 {
+        resend.answer(
+            429,
+            r#"{"statusCode":429,"name":"daily_quota_exceeded","message":"You have reached your daily email sending quota."}"#,
+        );
+    }
     resend.answer(
         500,
         r#"{"statusCode":500,"name":"application_error","message":"Something went wrong."}"#,
@@ -991,7 +1006,11 @@ fn a_mail_packages_failures_are_an_emails() {
     let cards = Rc::new(MemoryFiles::new());
     let host = through_resend(&harness, &cards);
     Runtime::new().expect("runtime").block_on(async {
-        for address in ["refused@example.test", "lost@example.test"] {
+        for address in [
+            "refused@example.test",
+            "later@example.test",
+            "lost@example.test",
+        ] {
             let (_, work) = act(
                 &harness,
                 &host,
@@ -1019,7 +1038,7 @@ fn a_mail_packages_failures_are_an_emails() {
             )]
         );
     });
-    assert_eq!(resend.requests().len(), 2);
+    assert_eq!(resend.requests().len(), 5);
 }
 
 /// A test catches mail sent through a mail package as it does any other:

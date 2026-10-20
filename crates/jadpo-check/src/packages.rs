@@ -660,6 +660,9 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             "aws" => nested_keys(&path, &key, &member, &AWS_KEYS, out),
             "webhooks" => webhooks(&path, &member, out),
             "settings" => crate::connections::provider_settings(&path, &member, out),
+            "imported" => {
+                crate::review::imported_problems(db, project, &home.folder, &path, &member, out);
+            }
             _ => {}
         }
     }
@@ -1234,9 +1237,10 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's subscribers (chunk 7.6) and its capability
-/// mappings but `receiving`'s (chunk 7.7c) and `email`'s (chunk 7.3c). Its events are read since chunk 7.7, each a
-/// webhook's event the app subscribes to, and its actions since chunk 7.6.
+/// doesn't run: a package's capability mappings but `receiving`'s (chunk
+/// 7.7c) and `email`'s (chunk 7.3c). Its events are read since chunk 7.7,
+/// each a webhook's event the app subscribes to, its actions since chunk
+/// 7.6, and its subscribers since chunk 7.6b.
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -1244,7 +1248,6 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let what = match location.place {
-        Place::Folder(Folder::Subscribers) => "A package's subscribers",
         // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]).
         Place::Folder(Folder::Provides) if location.stem == "receiving" => return Vec::new(),
         // `email`'s since chunk 7.3c ([`crate::mail`]).

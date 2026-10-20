@@ -1839,6 +1839,37 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             },
         });
     }
+    // The model `ai:` names (area 21; chunk 5.5v3), by the domains whose
+    // actions ask it.
+    let asking = crate::ai::asking_domains(db, project);
+    let named = crate::ai::settings(db, project).connection.clone();
+    for model in &crate::ai::model_connections(db, project).list {
+        let (host, address, setting) = match &model.url {
+            Some(crate::ai::ModelUrl::Written(url)) => {
+                (format!("`{url}`"), Some(url.clone()), None)
+            }
+            Some(crate::ai::ModelUrl::Setting(name)) => (
+                format!("the address in `config.{name}`"),
+                None,
+                Some(name.clone()),
+            ),
+            None => continue,
+        };
+        rows.push(Row {
+            connection: model.name.clone(),
+            host,
+            address,
+            setting,
+            image: None,
+            when: None,
+            reached_for: "ai".to_string(),
+            domains: if named.as_deref() == Some(model.name.as_str()) {
+                asking.clone()
+            } else {
+                Vec::new()
+            },
+        });
+    }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));
     let mut markdown = String::from(
         "# Network\n\n\

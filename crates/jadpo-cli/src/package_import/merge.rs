@@ -107,6 +107,52 @@ pub fn merge(existing: &str, imported: &str) -> Option<Merged> {
     Some(out)
 }
 
+/// The types `provider.jadpo`'s `imported:` lists as `reviewed:`, in the
+/// order written (chunk 7.2e2); none when the file doesn't read.
+pub fn reviewed_in(text: &str) -> Vec<String> {
+    let parse = jadpo_syntax::parse_file(text);
+    let Some(file) = ast::SourceFile::cast(parse.syntax()) else {
+        return Vec::new();
+    };
+    let named = |list: Option<ast::MemberList>, wanted: &str| {
+        list?.member_items().find_map(|item| match item {
+            MemberItem::Member(member)
+                if member
+                    .member_key()
+                    .is_some_and(|key| key.syntax().text().to_string().trim() == wanted) =>
+            {
+                Some(member)
+            }
+            _ => None,
+        })
+    };
+    let mut out = Vec::new();
+    for decl in file.decls() {
+        let Decl::SingletonDecl(decl) = decl else {
+            continue;
+        };
+        if !decl
+            .keyword()
+            .is_some_and(|keyword| keyword.text() == "provider")
+        {
+            continue;
+        }
+        let Some(imported) = named(decl.member_list(), "imported") else {
+            continue;
+        };
+        let Some(reviewed) = named(imported.block(), "reviewed") else {
+            continue;
+        };
+        if let Some(ast::Expr::ListExpr(list)) = reviewed.value() {
+            out.extend(
+                list.exprs()
+                    .map(|entry| entry.syntax().text().to_string().trim().to_string()),
+            );
+        }
+    }
+    out
+}
+
 /// A member's own text, without what comes before it.
 fn imported_text(text: &str, member: &Member) -> String {
     text[member.range.0..member.range.1].to_string()
@@ -242,5 +288,12 @@ mod tests {
         );
         assert!(merged.text.contains("sha256:2"), "{}", merged.text);
         assert!(merged.added.is_empty());
+    }
+
+    #[test]
+    fn the_reviewed_types_are_read_from_imported() {
+        let text = "provider {\n    protocol: Protocol.json_http\n    imported: {\n        file: \"a.json\"\n        digest: \"sha256:1\"\n        reviewed: [Charge, Shop]\n    }\n}\n";
+        assert_eq!(reviewed_in(text), ["Charge", "Shop"]);
+        assert!(reviewed_in("provider {\n    protocol: Protocol.json_http\n}\n").is_empty());
     }
 }

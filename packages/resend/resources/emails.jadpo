@@ -5,7 +5,7 @@ public resource emails {
         input: SendEmailRequest
         output: SendEmailResponse
         changes: true
-        failures: [ValidationError, MissingRequiredField, InvalidAttachment, InvalidFromAddress]
+        failures: [ValidationError, MissingRequiredField, MissingRequiredParameter, InvalidAttachment, InvalidParameter]
         source: PackageSource.written
         docs: "https://resend.com/docs/api-reference/emails/send-email"
     }

@@ -94,6 +94,10 @@ macro_rules! rules {
 }
 
 rules! {
+    AI_CONNECTION_REQUIRED: "ai.connection_required", area 21, Error, Agent,
+        "21-ai.html#ai-connection-required", "Action asks a model but the application names no `ai:` connection";
+    AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
+        "21-ai.html#ai-settings-invalid", "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
         "07-http.html#api-authentication-invalid", "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
@@ -154,6 +158,8 @@ rules! {
         "14-tooling.html#command-errors", "Records command has invalid arguments";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Routes command has invalid arguments";
+    CLI_RUNS_ARGUMENTS: "cli.runs_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Runs command has invalid arguments";
     CLI_SCHEDULES_ARGUMENTS: "cli.schedules_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Schedules command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
@@ -636,6 +642,8 @@ rules! {
         "14-tooling.html#command-errors", "Example in a package's description doesn't compile or doesn't hold";
     PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package's function has no example, or a failure it raises is shown by none";
+    PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's recipes have no sample app with one domain to compile in";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
@@ -764,6 +772,8 @@ rules! {
         "07-http.html#route-settle-invalid", "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
+    RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Unfinished runs' database couldn't be read";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#schedule-every-invalid", "Schedule's `every:` isn't a whole number of seconds, minutes, hours or days";
     SCHEDULE_ITEM_INVALID: "schedule.item_invalid", area 12, Error, Agent,
@@ -782,6 +792,10 @@ rules! {
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedules' database couldn't be read";
+    SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
+    SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-output-type", "Type a model is asked to answer as is one no model's answer can be";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
         "08-identity.html#semantic-auth-method-duplicate", "Sign-in method is declared twice";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,

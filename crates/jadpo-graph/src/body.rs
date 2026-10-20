@@ -554,6 +554,33 @@ pub enum Callee {
     /// `prompts.render(prompt)` (area 21): the prompt's name, whose text
     /// the runtime fills from the value given.
     Prompt(String),
+    /// `ai.generate(prompt, as: T)` in an action (area 21, "The `ai`
+    /// capability"; chunk 5.5v3): an outside call through the connection
+    /// `ai:` names, asking the model `model:` names to answer the prompt
+    /// given as a `T`, the call's type. Its options are written out, so
+    /// they are part of the call.
+    Generate {
+        /// The prompt's name, `answer_question`.
+        prompt: String,
+        /// The model's name in `ai: { models: }`.
+        model: String,
+        max_output: u32,
+        timeout_ms: u64,
+        attempts: u32,
+    },
+    /// One answer a test's `fakes: { ai.<prompt>: [...] }` scripts (area
+    /// 21, "Tests"; chunk 5.5v3), given to the `ai` fake before the test's
+    /// first statement.
+    AiFake {
+        /// The prompt's name.
+        prompt: String,
+        answer: AiFakeAnswer,
+    },
+    /// `ai.<prompt>.requests` in a test (area 21, "Tests"): the prompt
+    /// values the code asked the model with, in order.
+    AiRequests {
+        prompt: String,
+    },
     /// What an email's HTML template writes out, escaped (area 16,
     /// "Email"): never written in source, but made for each `{{ value }}`
     /// that isn't `Html`.
@@ -592,6 +619,9 @@ impl Callee {
             | Callee::AdvanceClock
             | Callee::Translation(_)
             | Callee::Prompt(_)
+            | Callee::Generate { .. }
+            | Callee::AiFake { .. }
+            | Callee::AiRequests { .. }
             | Callee::Escape
             | Callee::Unknown => None,
         }
@@ -623,6 +653,21 @@ pub enum FakeAnswer {
     Failed(String),
     /// What the runtime raises in the provider's place.
     Condition(FakeCondition),
+}
+
+/// What a test's `fakes: { ai.<prompt>: [...] }` scripts one attempt of an
+/// `ai.generate` call to answer (area 21, "Tests"; chunk 5.5v3).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AiFakeAnswer {
+    /// A value of the call's `as:` type: the call's one argument.
+    Value,
+    /// `raw("...")`: text the model answers with, run through the real
+    /// decoding and repair: the call's one argument.
+    Raw,
+    /// One of `ai.generate`'s five failures, by its word: `malformed` is an
+    /// answer that doesn't decode, which the call repairs while its
+    /// `attempts:` allow.
+    Failed(String),
 }
 
 /// The conditions a fake can answer with besides the operation's own

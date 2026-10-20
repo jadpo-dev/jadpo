@@ -370,7 +370,7 @@ fn emit(
     };
     let subscribers = effects
         .events
-        .subscribers_of(event)
+        .hearing(event, None)
         .map(|subscriber| subscriber.key.clone())
         .collect();
     let event = Event {
@@ -534,7 +534,7 @@ fn claims(
 
 /// `json.read`'s first problem as a `DecodeProblem` (area 19, "Data
 /// formats"): its field's path and its rule, never the value.
-fn decode_problem(problem: &Problem) -> Value {
+pub(crate) fn decode_problem(problem: &Problem) -> Value {
     let [(field, _), (rule, _)] = jadpo_std::http::DECODE_PROBLEM_FIELDS;
     Value::record(
         jadpo_std::http::DECODE_PROBLEM,

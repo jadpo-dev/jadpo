@@ -470,6 +470,11 @@ impl Body<'_> {
             {
                 return self.magic_link_call(op, call, callee, &written);
             }
+            if head == jadpo_std::http::TEST_PASSKEYS
+                && let Some(op) = jadpo_std::http::SessionOp::test_passkey_op(member)
+            {
+                return self.test_passkey_call(op, call, callee, &written);
+            }
             if head == "batches"
                 && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)
             {
@@ -501,6 +506,10 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if names.namespace(&head) == Some(Namespace::Standard) {
+            // A model asked to answer a prompt (area 21, chunk 5.5v3).
+            if head == jadpo_std::standard::ai::AI && member == "generate" {
+                return self.generate_call(call, callee, &written);
+            }
             // `json.write`'s file form (area 19, "Data formats"; chunk
             // 6.4b2): given a store and named arguments, it starts a run
             // writing a JSON list, where given a value it gives its text.

@@ -350,7 +350,6 @@ pub(crate) fn field_line(
     refs: &mut BTreeSet<Key>,
 ) -> Option<String> {
     let Detail::Field {
-        ty,
         optional,
         default,
         header,
@@ -360,7 +359,10 @@ pub(crate) fn field_line(
         return None;
     };
     let name = field.name.rsplit('.').next().unwrap_or(&field.name);
-    let mut line = format!("{name}: {}", wire.render(ty, refs));
+    let mut line = format!(
+        "{name}: {}",
+        wire.render(&super::wire::field_type(field), refs)
+    );
     if let Some(header) = header {
         line.push_str(&format!(" header {}", format::quote(header)));
     }
@@ -554,11 +556,11 @@ pub(crate) fn type_entries(
                 for (variant, fields) in variants {
                     entry.push(format!("variant {variant}"));
                     for field in sorted_fields(wire, fields) {
-                        if let Detail::Field { ty, .. } = &field.detail {
+                        if let Detail::Field { .. } = &field.detail {
                             let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
                             entry.push_nested(format!(
                                 "{field_name}: {}",
-                                wire.render(ty, &mut refs)
+                                wire.render(&super::wire::field_type(field), &mut refs)
                             ));
                         }
                     }

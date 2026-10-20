@@ -334,9 +334,49 @@ impl Body<'_> {
         if matches!(value, Const::Quantity(_)) && self.quantity_literal(expr, &value).is_error() {
             return;
         }
+        // A model is a setting, never written in code (area 21,
+        // "Connecting a provider"; chunk 5.5v3).
+        if self.model_literal(expr, expected, &value) {
+            return;
+        }
         if let Err(problem) = literal::check(self.table, expected, &value) {
             self.literal_problem(expr, expected, problem, constructor);
         }
+    }
+
+    /// Whether `value`, a literal where `expected` goes, writes a
+    /// `ModelId` out, which is reported: `semantic.ai_model_literal`.
+    fn model_literal(&mut self, expr: &Expr, expected: &Ty, value: &Const) -> bool {
+        let is_model = |ty: &Ty| {
+            matches!(
+                self.table.structure(ty),
+                Ty::Opaque(name, args)
+                    if args.is_empty() && name == jadpo_std::standard::records::MODEL_ID
+            )
+        };
+        let writes = match value {
+            Const::Str(_) => is_model(expected),
+            Const::List(items) => {
+                matches!(self.table.structure(expected), Ty::List(item) | Ty::Set(item) if is_model(&item))
+                    && items.iter().any(|item| matches!(item, Const::Str(_)))
+            }
+            _ => false,
+        };
+        if !writes {
+            return false;
+        }
+        let written = tree::written(expr.syntax());
+        let span = self.span(expr);
+        self.out.push(
+            Diagnostic::new(
+                &rule::SEMANTIC_AI_MODEL_LITERAL,
+                format!("`{written}` writes a model in code"),
+            )
+            .at(span, "a `ModelId` written out")
+            .reason("A model is a setting, so moving to a newer one is a configuration change reviewed like any other: a `ModelId` setting gives it a `default:`, `ai: { models: }` names it, and a call asks it with `model:`.")
+            .next("Declare a `ModelId` setting with this `default:` in `config.jadpo`, name it in `ai: { models: }`, and ask it with `model:`"),
+        );
+        true
     }
 
     pub(super) fn literal_problem(
@@ -506,6 +546,13 @@ impl Body<'_> {
             && !(head == jadpo_std::email::NAMESPACE && self.is_local(&head))
         {
             return self.generated_value(&head, &rest, expr);
+        }
+        // What a test's code asked a model with (area 21; chunk 5.5v3).
+        if head == jadpo_std::standard::ai::AI
+            && let [prompt, member] = rest.as_slice()
+            && text(member) == "requests"
+        {
+            return self.ai_requests(expr, &text(prompt));
         }
         if let [member] = rest.as_slice()
             && !self.is_local(&head)

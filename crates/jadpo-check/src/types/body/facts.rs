@@ -105,6 +105,16 @@ pub(crate) enum Reach {
     },
     /// `prompts.render(prompt)` (area 21): the prompt's name.
     Prompt(String),
+    /// `ai.generate(prompt, as: T)` (area 21, "The `ai` capability"; chunk
+    /// 5.5v3): the prompt's name, the model's in `ai: { models: }` and the
+    /// call's options, written out. `T` is the call's type.
+    Generate {
+        prompt: String,
+        model: String,
+        max_output: u32,
+        timeout_ms: u64,
+        attempts: u32,
+    },
     Unknown,
 }
 
@@ -217,6 +227,11 @@ pub(crate) struct Facts {
     /// Each answer a test's `fakes:` scripts, by its expression (area 13;
     /// chunk 7.2d).
     pub fakes: BTreeMap<NodeKey, super::fakes::FakeFact>,
+    /// Each answer a test's `fakes: { ai.<prompt>: }` scripts, by its
+    /// expression (area 21; chunk 5.5v3): the prompt's name and the answer.
+    pub ai_fakes: BTreeMap<NodeKey, (String, jadpo_graph::body::AiFakeAnswer)>,
+    /// Each `ai.<prompt>.requests` a test reads, with the prompt's name.
+    pub ai_requests: BTreeMap<NodeKey, String>,
     /// Each value an email template writes out, and how (area 16).
     pub template_writes: BTreeMap<NodeKey, super::template::TemplateWrite>,
     /// Each `{{ include ... }}` of a partial (area 16; chunk 7.3c), by its

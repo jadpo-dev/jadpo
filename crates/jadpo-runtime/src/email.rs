@@ -460,6 +460,10 @@ pub async fn send_package(
             );
         }
     };
+    // A part the message doesn't have, its HTML or text or an attachment's
+    // media type, is left out of the provider's input rather than sent as
+    // `null`, which a provider needn't take.
+    let input = left_out_when_none(input);
     let settings: Vec<(u32, Value)> = crate::provider::settings_read(connection_plan)
         .into_iter()
         .filter_map(|at| Some((at, executor.setting(at)?)))
@@ -495,6 +499,39 @@ pub async fn send_package(
             }
         }
         crate::provider::Done::Fault(kind) => Outcome::Fault(ctx.fault(kind, Frame::ENTRY)),
+    }
+}
+
+/// `value` with every field that is `none`, in it or in the records it
+/// holds, marked left out, so the provider's input never writes it.
+fn left_out_when_none(value: Value) -> Value {
+    match value {
+        Value::Record(record) => {
+            let mut record = (*record).clone();
+            let mut omitted: Vec<u32> = record.omitted.as_deref().unwrap_or(&[]).to_vec();
+            for (at, (_, field)) in record.fields.iter_mut().enumerate() {
+                if *field == Value::None {
+                    if let Ok(at) = u32::try_from(at)
+                        && !omitted.contains(&at)
+                    {
+                        omitted.push(at);
+                    }
+                } else {
+                    *field = left_out_when_none(std::mem::replace(field, Value::Unit));
+                }
+            }
+            record.omitted = (!omitted.is_empty()).then(|| Rc::from(omitted));
+            Value::Record(Rc::new(record))
+        }
+        Value::List(items) => Value::List(
+            items
+                .iter()
+                .cloned()
+                .map(left_out_when_none)
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        other => other,
     }
 }
 

@@ -462,6 +462,7 @@ impl Lower<'_> {
                     | Callee::Files { .. }
                     | Callee::Provider { .. }
                     | Callee::PackageAction { .. }
+                    | Callee::Generate { .. }
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -853,6 +854,12 @@ impl Lower<'_> {
                 continue;
             };
             for answer in list.exprs() {
+                if let Some((prompt, scripted)) =
+                    self.facts.ai_fakes.get(&node_key(answer.syntax())).cloned()
+                {
+                    out.push(self.ai_fake(&answer, prompt, scripted));
+                    continue;
+                }
                 let Some(fact) = self.facts.fakes.get(&node_key(answer.syntax())).cloned() else {
                     continue;
                 };
@@ -889,6 +896,49 @@ impl Lower<'_> {
             }
         }
         out
+    }
+
+    /// One answer a test's `fakes: { ai.<prompt>: }` scripts (area 21;
+    /// chunk 5.5v3): a statement giving it to the `ai` fake, with its
+    /// value, or `raw(...)`'s text, as the call's one argument.
+    fn ai_fake(&mut self, answer: &Expr, prompt: String, scripted: typed::AiFakeAnswer) -> SiteId {
+        let stmt = self.alloc();
+        let call = self.alloc();
+        let args = match (&scripted, answer) {
+            (typed::AiFakeAnswer::Value, _) => vec![Some(self.expr(answer))],
+            (typed::AiFakeAnswer::Raw, Expr::CallExpr(raw)) => {
+                let text = raw
+                    .arg_list()
+                    .iter()
+                    .flat_map(ast::ArgList::args)
+                    .next()
+                    .and_then(|arg| arg.expr());
+                vec![text.map(|text| self.expr(&text))]
+            }
+            _ => Vec::new(),
+        };
+        self.fill(
+            call,
+            answer.syntax(),
+            TypeRef::Builtin(Prim::Unit),
+            typed::Node::Expr(typed::Expr::Call {
+                callee: Callee::AiFake {
+                    prompt,
+                    answer: scripted,
+                },
+                args,
+                fallible: typed::Fallible::Never,
+            }),
+        );
+        self.fill(
+            stmt,
+            answer.syntax(),
+            TypeRef::Builtin(Prim::Unit),
+            typed::Node::Stmt(TypedStmt::Expr {
+                value: Some(SiteId(call as u32)),
+            }),
+        );
+        SiteId(stmt as u32)
     }
 
     fn stmt(&mut self, stmt: &Stmt) -> SiteId {
@@ -1324,6 +1374,16 @@ impl Lower<'_> {
         if self.facts.sent_emails.contains(&key) {
             return typed::Expr::SentEmails;
         }
+        // What a test's code asked a model with (area 21; chunk 5.5v3).
+        if let Some(prompt) = self.facts.ai_requests.get(&key) {
+            return typed::Expr::Call {
+                callee: Callee::AiRequests {
+                    prompt: prompt.clone(),
+                },
+                args: Vec::new(),
+                fallible: typed::Fallible::Never,
+            };
+        }
         typed::Expr::Unchecked
     }
 
@@ -1403,6 +1463,19 @@ impl Lower<'_> {
             Reach::Schedule { action: None, .. } => Callee::Unknown,
             Reach::Translation { key, .. } => Callee::Translation(key.clone()),
             Reach::Prompt(key) => Callee::Prompt(key.clone()),
+            Reach::Generate {
+                prompt,
+                model,
+                max_output,
+                timeout_ms,
+                attempts,
+            } => Callee::Generate {
+                prompt: prompt.clone(),
+                model: model.clone(),
+                max_output: *max_output,
+                timeout_ms: *timeout_ms,
+                attempts: *attempts,
+            },
             Reach::Unknown => Callee::Unknown,
         };
         if let Some(head) = call.expr() {
@@ -1473,6 +1546,23 @@ impl Lower<'_> {
                     }
                 }
                 args
+            }
+            // `ai.generate`'s prompt, its one value; its options and `as:`
+            // are written out, so they are part of the call (chunk 5.5v3).
+            (Reach::Generate { .. }, _) => {
+                let prompt = arguments
+                    .iter()
+                    .find(|arg| arg.name().is_none())
+                    .and_then(ast::Arg::expr)
+                    .map(|value| self.expr(&value));
+                for arg in &arguments {
+                    if arg.name().is_some()
+                        && let Some(value) = arg.expr()
+                    {
+                        self.scan(value.syntax());
+                    }
+                }
+                vec![prompt]
             }
             (Reach::Std(op), Some(slots)) => {
                 let params = op.operation().params;
@@ -1648,7 +1738,8 @@ impl Lower<'_> {
             | Reach::Provider { .. }
             | Reach::AdvanceClock
             | Reach::Translation { .. }
-            | Reach::Prompt(_) => {}
+            | Reach::Prompt(_)
+            | Reach::Generate { .. } => {}
             // The schedule's name names it; `run` is its run.
             Reach::Schedule { schedule, .. } => {
                 self.node(first.syntax(), Some(schedule.clone()), false);

@@ -49,6 +49,7 @@ pub mod magic_links;
 pub(crate) mod passkeys;
 pub(crate) mod sign_in_events;
 pub mod signed;
+pub mod test_passkeys;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -678,6 +679,7 @@ async fn run_route(
         (None, Run::Passkey(step)) => {
             let answered = passkeys::answer(
                 app,
+                executor,
                 ctx,
                 request,
                 request_id,

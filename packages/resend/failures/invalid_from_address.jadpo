@@ -1,5 +1,0 @@
-/// The address the email is from isn't one the account may send from.
-public type InvalidFromAddress = Failure {
-    kind: FailureKind.rejected
-    message: "The address the email is from isn't one the account may send from."
-}

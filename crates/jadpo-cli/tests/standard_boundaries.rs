@@ -627,6 +627,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "proves a call's literal arguments",
     ),
     (
+        "crates/jadpo-check/src/types/body/generate.rs",
+        "checks `ai.generate`'s `timeout:`, a duration read by the contract's own reader",
+    ),
+    (
         "crates/jadpo-check/src/types/body/standard_rules.rs",
         "proves a standard type's rules on its literals",
     ),
@@ -726,6 +730,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-cli/src/schedules.rs",
         "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
+    ),
+    (
+        "crates/jadpo-cli/src/runs.rs",
+        "shows an unfinished run's own start time to an operator, never an app's value (chunk 7.5c)",
     ),
     (
         "crates/jadpo-runtime/src/policy.rs",

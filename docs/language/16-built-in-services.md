@@ -2439,10 +2439,26 @@ What "Email" leaves to the build of mail packages, partials and
   may list no `domains:`. The delivery calls the operation as any
   provider call is made, with no key, so a server's error after the
   message went out parks it as `outcome_unknown`.
+- **A part the message doesn't have is left out.** An email without an
+  `.html` or `.txt`, or an attachment without a media type, sends the
+  provider's input without that field rather than `null`, which a
+  provider needn't take.
 - **Resend is the second connection** (`packages/resend`), over Postmark,
-  whose credential header no `CredentialScheme` sends yet. Resend takes
-  40 MB an email after base64, so its limit is 30 MB of files; its
-  connection gives `host:`, `https://api.resend.com`.
+  whose credential header no `CredentialScheme` sends yet. Checked
+  against Resend's documentation (resend.com/docs, "Send Email" and
+  "Errors", 2026-10-20): `POST /emails` with `Authorization: Bearer`,
+  `from`, `to`, `subject`, `html` and `text` (both optional, the text
+  made from the HTML when left out) and `attachments` of `{ filename,
+  content (base64), content_type? }`; 40 MB an email once the
+  attachments are in base64, so its limit is 30 MB of files. Its
+  refusals of the message (`validation_error`, `missing_required_field`,
+  `missing_required_parameter`, `invalid_attachment`,
+  `invalid_parameter`) are `message_rejected`; its rate and quota limits
+  (`rate_limit_exceeded`, `daily_quota_exceeded`,
+  `monthly_quota_exceeded`, all `429`) did nothing, so they are
+  `unavailable` and retried, never a failure of the message; a refused
+  key (`401`, `403`) is `misconfigured`. Its connection gives `host:`,
+  `https://api.resend.com`.
 
 ### Chosen in chunk 7.3b2
 

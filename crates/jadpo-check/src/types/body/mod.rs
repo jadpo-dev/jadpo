@@ -30,6 +30,7 @@ mod failing;
 mod fakes;
 mod features;
 mod files;
+mod generate;
 mod identity;
 mod json;
 
@@ -121,6 +122,10 @@ pub struct Checked {
     pub deferred: Vec<(String, Diagnostic)>,
     /// Its body lets out a failure its `fails` list doesn't name.
     pub undeclared: bool,
+    /// Each `ai.generate` call it makes, with its prompt's name and the
+    /// type its answer is decoded into (area 21; chunk 5.5v3): what a
+    /// test's `fakes: { ai.<prompt>: }` scripts a value of.
+    pub generates: Vec<(String, Ty)>,
     /// For a function, action or library function: its name
     /// (`library.function` for a library's) and the failures that can
     /// leave it.
@@ -322,6 +327,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         problems,
         deferred,
         undeclared: checker.undeclared,
+        generates: std::mem::take(&mut checker.generates),
         set: checker.set,
         key,
         body: std::sync::Arc::new(body),
@@ -578,6 +584,8 @@ struct Body<'a> {
     deferred: Vec<(usize, String)>,
     /// See [`Checked::undeclared`].
     undeclared: bool,
+    /// See [`Checked::generates`].
+    generates: Vec<(String, Ty)>,
     /// What resolving the body's names finds (area 1), kept apart from
     /// `out`, whose length tells the checks what is already reported, so
     /// a name error never changes what the type checks decide.
@@ -646,6 +654,7 @@ impl<'a> Body<'a> {
             out: Vec::new(),
             deferred: Vec::new(),
             undeclared: false,
+            generates: Vec::new(),
             resolved: Vec::new(),
             loops: 0,
             pending_block: None,
@@ -1288,14 +1297,16 @@ impl Body<'_> {
                 // A member is a later area's setting (an entity write's
                 // block, a test's settings): its names are resolved.
                 BlockItem::Member(member) => {
-                    self.walk(|walk| walk.member(&member));
                     // A test's `fakes:` (area 13; chunk 7.2d).
-                    if self.test
+                    let fakes = self.test
                         && member
                             .member_key()
-                            .is_some_and(|key| tree::written(key.syntax()) == "fakes")
-                    {
+                            .is_some_and(|key| tree::written(key.syntax()) == "fakes");
+                    if fakes {
+                        self.walk_fakes(&member);
                         self.fakes(&member);
+                    } else {
+                        self.walk(|walk| walk.member(&member));
                     }
                     continue;
                 }
@@ -1442,13 +1453,18 @@ impl Body<'_> {
             }
             Stmt::EmitStmt(emit) => {
                 // A package's action emits only about the outside world,
-                // run by its own subscribers (area 11; chunk 7.6).
+                // run by its own subscribers (area 11; chunks 7.6, 7.6b).
                 if let Ownership::Package(home) = self.ownership
                     && self.context == Context::Action
                 {
                     let folder = home.folder.clone();
-                    self.package_emits(&folder, emit);
-                    return true;
+                    if !self.package_emits(&folder, emit) {
+                        // Refused, its values still read.
+                        if let Some(expr) = emit.expr() {
+                            self.infer(&expr);
+                        }
+                        return true;
+                    }
                 }
                 if let Some(expr) = emit.expr() {
                     let before = self.out.len();
@@ -1504,11 +1520,19 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::EVENT_EMIT_INVALID,
-                    format!("`{name}` is published only by signing in"),
+                    format!(
+                        "`{name}` is published only by {}",
+                        jadpo_std::http::published_by(name)
+                    ),
                 )
                 .at(self.span(expr), "a sign-in event")
                 .reason(format!(
-                    "Jadpo publishes `{name}` itself as a person signs in, so its subscribers can trust that it happened; code never emits it."
+                    "Jadpo publishes `{name}` itself as {}, so its subscribers can trust that it happened; code never emits it.",
+                    match name.as_str() {
+                        jadpo_std::http::PASSKEY_ADDED => "a person adds a passkey",
+                        jadpo_std::http::PASSKEY_REMOVED => "a person removes a passkey",
+                        _ => "a person signs in",
+                    }
                 ))
                 .next("Remove the `emit`, or emit an event of the application's own"),
             );

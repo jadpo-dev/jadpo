@@ -1126,14 +1126,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and an unmapped latitude and longitude; the summary's `standard` count,
   "Mapped by shape" list and each guess under "To check", `mapped` in
   `--json`. Choices in area 11's "Chosen in chunk 7.2e".
-- [ ] **7.2e2 The scoped review and unconfirmed operations** `opus ·
+- [x] **7.2e2 The scoped review and unconfirmed operations** `opus ·
   high`, after 7.2d2 and 7.2e (area 11, "Mapping imported types to
   standard types", layers 4 and 5): the import's one review instruction
   scoped to the types the app's operations reach, each imported type
   tracked as reviewed or not in `jadpo check` (and recorded for `jadpo
   approval`, which comes after the first build), growing when the app
   calls something new; operations the app calls still unconfirmed by a
-  recording, listed in `jadpo check` and the import's summary.
+  recording, listed in `jadpo check` and the import's summary. Built:
+  `reviewed:` in `provider.jadpo`'s `imported:`, each one of the
+  package's own types once (`package.provider_invalid`); the scope worked
+  out from the app's calls on every check, the types their input and
+  output reach; `jadpo check` listing the types still to review and the
+  calls no recording confirms once it passes, counted in its footer and
+  given as `providers` in `--json`, and writing both to
+  `build/report/providers.md` and `.json` for `jadpo approval`; the
+  import ending with the scoped instruction and the unconfirmed calls,
+  keeping `reviewed:` when it merges, less any type the description
+  added to. Choices in area 11's "Chosen in chunk 7.2e2".
 - [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
@@ -1286,7 +1296,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the answer; `FirstSignIn` and the events built in tests, fixtures and
   seeds. Live tests in `crates/jadpo-cli/tests/magic_links.rs`. Choices
   in area 8's "Sign-in events (chosen in chunk 7.3b4)".
-- [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
+- [x] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
   from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
@@ -1294,7 +1304,16 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and `.sign_in` with `TestPasskey` in route tests; `SignedIn` and
   `SignInRefused` for passkeys, `PasskeyAdded` and `PasskeyRemoved`. Done
   when a person with no passkey left recovers through a magic link and
-  adds a new one, in a route test written with `test_passkeys`.
+  adds a new one, in a route test written with `test_passkeys`. Built: the
+  check and area 8's example with magic links and a route test; the
+  device's name read from the address field; the passkey events published
+  through 7.3b4's code, committed with the session or passkey, refusals
+  logged; `test_passkeys` checked in tests only and run on the test
+  host's software authenticator. Recovery through the link's code is
+  proved live (`crates/jadpo-cli/tests/passkeys.rs`); in a route test
+  `as:` stands in for the link until `email.sent` (7.3c). Choices in area
+  8's "Passkey recovery, events and route tests (chosen in chunk
+  5.5z2)".
 - [x] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the
@@ -1393,17 +1412,32 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `in_use` and `reused`, an older generation writing nothing, an answer
   past 1 MB, area 6's rerun, a route's client retry, and a recorded step
   never reached. Choices in area 12's "The record, chosen in chunk 7.5b".
-- [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
-  high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
-  as an operator item (`jadpo deliveries show`, `retry --not-done` under
-  the next key generation, `abandon`, a route's key lapsing), kept 30
-  days, with 7.5b's `diverged` deliveries listed and retried, and the
-  provider's `new_key_on:` sending under the next key generation; `jadpo runs unfinished
-  --build`; fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
-  crash at each step boundary; each step's state in `jadpo dev` and
-  `jadpo watch`; the late-failure warning (a declinable error) and the
-  deadline sum; the personal-data report's entry, and the metric and
-  alert.
+- [x] **7.5c Multi-step calls: operators** `opus · high`, after 7.5b
+  (split from 7.5 on 2026-10-20, and again into this and 7.5d): an
+  unfinished record as an operator item (`jadpo deliveries show`, `retry
+  --not-done` under the next key generation, `abandon`, a route's key
+  lapsing), kept 30 days, with 7.5b's `diverged` deliveries listed and
+  retried, and the provider's `new_key_on:` sending under the next key
+  generation; `jadpo runs unfinished --build`. Built: the runtime's
+  `unfinished` module reads a record's steps (never a request, answer or
+  key) and changes it beside its delivery, in one statement with the log
+  row in the same store; `deliveries` gains `diverged`, `unfinished` (a
+  route's record a day after its last run) and `abandoned`, the actions
+  `retry_not_done` and `abandon`, and a retry resetting the record's
+  generation; the tick drops answers after 30 days and deletes abandoned
+  records and deliveries 30 days on; an abandoned record refuses a rerun;
+  `steps::new_key` and the provider call's resend on `new_key_on:`;
+  `jadpo deliveries show` and `abandon`, `retry --not-done`, and the
+  `jadpo runs unfinished` command (`cli.runs_arguments`,
+  `runs.unavailable`). Live tests in `step_operators.rs`. Choices in area
+  12's "Operators, chosen in chunk 7.5c".
+- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
+  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
+  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
+  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
+  warning (a declinable error) and the deadline sum; the metric and alert
+  on unfinished records; the personal-data report's entry, with the report
+  itself if it isn't built by then.
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1423,18 +1457,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/package_actions.rs` and `package_recipes.rs`;
   example 26 calls a package action. Choices in area 11's "Chosen in
   chunk 7.6".
-- [ ] **7.6b Package subscribers, polls and `max_concurrent:`** `opus ·
-  high`, after 7.6 (split from 7.6 on 2026-10-20): package subscribers on
-  their own webhooks (non-public events included), running a non-public
-  package action that enriches the event through the connection the
-  webhook came in on and emits the package's own declared events through
-  the app's outbox; `polls:` in `provider.jadpo` and the connection's
-  `polls: { <name>: <interval> }`, run only while something subscribes to
-  the poll's event, what it last saw kept as runtime state and only
-  changes emitted; `max_concurrent:` in `provider.jadpo`, lowered by a
-  connection, capping calls at once per app instance (further calls wait,
-  waiting deliveries retry later); and recipes compiled against the
-  package's `sample/` app by `jadpo package check`.
+- [x] **7.6b Package subscribers and recipes in `sample/`** `opus ·
+  high`, after 7.6 (split from 7.6 on 2026-10-20, and again on
+  2026-10-20: polls and `max_concurrent:` are 7.6c). Built: a package's
+  subscribers on its own webhooks' events, public or not
+  (`subscriber.event_invalid` for any other), each heard once per
+  connection receiving them (`subscriber AcmePay.renewal payments`) and
+  running one of the package's actions with its operations going through
+  that connection; a package action without `public` emitting the
+  package's own events, declared without `wire_name:`, kept in the
+  outbox where the webhooks are and delivered to the app's subscribers
+  of its public ones (`package.action_invalid` for emitting a webhook's
+  event); and `jadpo package check`'s `recipes` row, each recipe compiled
+  in the one domain of the package's `sample/` app, shown at its own path
+  (`publish.sample_missing` without such an app). Tests in
+  `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
+  `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
+  `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
+- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
+  connection's `polls: { <name>: <interval> }`, run only while something
+  subscribes to the poll's event, what it last saw kept as runtime state
+  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, capping calls at once per app instance
+  (further calls wait, waiting deliveries retry later). Both keys are
+  accepted without effect today; they are checked and run here.
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's
@@ -1484,23 +1531,59 @@ The design is area 11 as revised on 2026-10-16, with its research in
   SQS package in `packages/amazon_sqs`, tested against a local fake of
   SQS's JSON API that checks every signature (`receiving.rs`). Choices in
   area 11's "Chosen in chunk 7.7c".
-- [ ] **7.7c2 Cloudflare Queues on Workers** `opus · high`, after 7.7c:
-  the built-in Cloudflare Queues driver, a queue's consumer handed a
-  batch, each message kept as 7.7c keeps one and acknowledged or retried
-  by the batch's answer, a parked one acknowledged; its seam and its
-  consumer configuration for the Wrangler file built and unit-tested
-  here, deploying it Phase 8's.
-- [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
-  xhigh` (area 21, "The `ai` capability" and "Typed output"), after
-  5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`
-  settings, `provides/ai.jadpo`, `ai.generate(prompt, as: T)` with the
-  schema from `T`, the provider's structured mode or the schema in the
-  instructions, `json.read`'s decoding, one repair with the decode
-  problem, the five failures, answers reused on a rerun, the fake in
-  `jadpo test` and `jadpo dev` (`fakes: { ai.<prompt>: }`, `raw(...)`,
-  `.requests`), and `Driver.openai_compatible`. Done when a test drives
-  every failure and a repaired answer through the fake, and a local
-  model answers through the driver in `jadpo dev`.
+- [x] **7.7c2 Cloudflare Queues on Workers** `opus · high`. Built:
+  `driver: Driver.cloudflare_queues` with `queue:` and a required, different
+  `dead_letter_queue:` (`connection.key_missing`, `.key_invalid`,
+  `.value_invalid`), read by `receiving:` as a package's connection is;
+  the seam the Workers consumer will call, `receiving::consume`, keeping
+  each message of a batch as 7.7c keeps one and answering each:
+  acknowledged once kept, as a repeat or parked, retried after a delay
+  growing per attempt when the store can't take it now, a batch from an
+  unknown queue retried whole; the tick fetching nothing from it but
+  rereading retried parked messages; and its consumer for the Wrangler
+  file (`wrangler_queues`, as JSON). Tested in-process against PostgreSQL
+  (`cloudflare_queues.rs`); deploying it is Phase 8's. Choices in area
+  11's "Chosen in chunk 7.7c2".
+- [x] **5.5v3 The `ai` capability: `generate`, its fake and the local
+  driver** `opus · xhigh` (area 21, "The `ai` capability" and "Typed
+  output"; split on 2026-10-20: a package filling `ai` is 5.5v3b).
+  Built: `ai:` in `application { }` naming a `Driver.openai_compatible`
+  connection (`url:`, plain HTTP only to this machine) and its models,
+  each a `ModelId` setting, read from its text (`ai.settings_invalid`,
+  `ai.connection_required`), and a `ModelId` written in code refused
+  (`semantic.ai_model_literal`); `ai.generate(prompt, as: T)` with
+  `model:`, `max_output:`, `timeout:` and `attempts:` written out, `as:`
+  refusing a reference, a file, bytes and display text
+  (`semantic.ai_output_type`) and secrets, each of its five failures
+  mapped to an `unavailable` failure and `malformed`'s carrying the last
+  `DecodeProblem`; at run time (`jadpo_runtime::ai`) the prompt
+  rendered and sent as OpenAI's Chat Completions request through the
+  package driver's HTTP, `T`'s OpenAPI schema in the strict structured
+  mode (a `T` that isn't an object wrapped as `value`; the schema in the
+  instructions built for 5.5v3b's packages), the answer decoded by
+  `json.read`'s decoding, one repair with the decode problem, the five
+  failures read from the answer, and answers reused on area 6's rerun by
+  step and request and kept as steps of a 7.5b record; the `ai` fake in
+  every test (`fakes: { ai.<prompt>: }` with values, `raw(...)` and the
+  five failures, one answered attempt each, `ai.<prompt>.requests`,
+  generated values, `test.fake_exhausted` and `test.fake_unused`);
+  `jadpo dev` asking a model on this machine, each attempt in `jadpo
+  calls`; and the network report's row. Tests in `ai_generate.rs` (every
+  failure and a repair through the fake in `jadpo test`; `jadpo dev`
+  against an OpenAI-compatible server started in the test) and the live
+  `ai_steps.rs` (a model's answer replayed from a record). Choices in
+  area 21's "Chosen in chunk 5.5v3".
+- [ ] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
+  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20): a
+  package's `provides/ai.jadpo` mapping `generate:` onto its own
+  operation as data (`request.*`, `response.*`, `refused_when:`,
+  `cut_off_when:`, `usage:`, `schema: { mode: at: }`, `models: { context:
+  prices: }`), `AiSchema.json_only` and `.none` sending the schema in the
+  instructions, `too_long` checked before sending from the package's
+  context table, `development: { sandbox: [<prompt>] }`, a package's
+  `ai` faked in `jadpo dev` with generated defaults, and `jadpo calls
+  script` for a prompt. Done when a package fills `ai` in a test against
+  a local server and `jadpo dev` fakes it.
 - [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
   5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
   and its check, the fake's seeded embeddings, `jadpo ai record` and
@@ -1509,7 +1592,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   21 runs end to end in a test: embed, nearest query, typed answer from a
   recording.
 - [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
-  21, "Safety and privacy"), after 5.5v3: the per-call, per-request,
+  21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
   per-day and per-caller limits counted in the main store, the cost
   estimate from the package's prices, `jadpo ai usage`, `personal_data: {
   allowed: }` with the flow check from placeholders back to marked
@@ -1518,13 +1601,27 @@ The design is area 11 as revised on 2026-10-16, with its research in
   a marked field reaching a prompt unlisted fails to compile.
 - [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, and the stream fake. Done
+  an `AiStream`, the final and error events, the stream fake, and the
+  check that a route's deadline leaves room for the `timeout:` of each
+  `ai` call it reaches (left from 5.5v3). Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
-  after 5.5v4 and 5.5v6: two provider packages filling `ai`, each with its
-  context and price tables, recordings and `jadpo package conform <package>
-  ai`. **Needs Richard** for the API keys the live conformance run uses.
+  after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
+  with its context and price tables, recordings and `jadpo package conform
+  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+- [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
+  7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
+  (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
+  the `ai` schema); and the two tests that failed once and passed on
+  rerun made deterministic: `http::an_api_token_signs_its_app_in_until_it_is_ended`
+  (compares timestamps as text) and
+  `batch_calls::a_files_rows_that_call_are_each_a_batch_of_their_own`.
+  Built: every field's schema, parameter and record line reads the field
+  itself (`wire::field_type`), so its inline rules come before its
+  type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
+  the token test compares instants as instants, and the open-transaction
+  count of the call tests leaves out the server's autovacuum workers.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.
@@ -1560,6 +1657,12 @@ The design is area 11 as revised on 2026-10-16, with its research in
   minute an error naming the schedule (area 12, decided 2026-10-19); a
   batch carried on in a fresh invocation; 6.7's budgets set to Workers'
   (30 s for `waitUntil`, 15 minutes' wall time for the cron).
+  From chunk 7.7c2: the queue handler calling `receiving::consume` and
+  answering each message (`ack()`, `retry({ delaySeconds })`), the kept
+  events' deliveries in `waitUntil`; `wrangler_queues` written into the
+  Wrangler file, its setting names and Jadpo's queue-name form checked
+  against Wrangler's own; `Driver.cloudflare_queues` refused in a native
+  deployable.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well

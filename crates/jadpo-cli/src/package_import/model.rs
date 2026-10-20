@@ -59,6 +59,9 @@ pub struct Provider {
     /// The description, as the command was given it, and its digest.
     pub file: String,
     pub digest: String,
+    /// The types an agent has reviewed, kept from the file an import
+    /// merges into (chunk 7.2e2).
+    pub reviewed: Vec<String>,
 }
 
 /// The provider's `idempotency:`.
@@ -236,10 +239,17 @@ impl Package {
             out.push_str(&format!("    error_code: {}\n", quote(path)));
         }
         out.push_str(&format!(
-            "    imported: {{\n        file: {}\n        digest: {}\n    }}\n}}\n",
+            "    imported: {{\n        file: {}\n        digest: {}\n",
             quote(&provider.file),
             quote(&provider.digest)
         ));
+        if !provider.reviewed.is_empty() {
+            out.push_str(&format!(
+                "        reviewed: [{}]\n",
+                provider.reviewed.join(", ")
+            ));
+        }
+        out.push_str("    }\n}\n");
         out
     }
 }
