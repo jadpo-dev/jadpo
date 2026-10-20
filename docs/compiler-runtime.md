@@ -2112,6 +2112,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
+| Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer hands each batch to `receiving::consume`, which answers each message (chunk 7.7c2) |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
 

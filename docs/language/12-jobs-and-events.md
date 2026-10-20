@@ -2162,7 +2162,12 @@ application {
   its subscribers then delivered from the outbox; one that can't be kept
   is parked whole in `jadpo_parked_messages`, which `jadpo deliveries`
   lists, retries and dismisses; queues are received on the tick, at least
-  every 10 seconds; the Cloudflare Queues driver is chunk 7.7c2.
+  every 10 seconds. The Cloudflare Queues driver is built in chunk 7.7c2
+  (area 11, "Chosen in chunk 7.7c2"), deploying it with Phase 8: a
+  connection with `driver: Driver.cloudflare_queues`, `queue:` and
+  `dead_letter_queue:`, its consumer handed each batch and answering for
+  each message, acknowledged once kept, as a repeat or parked, retried
+  when the store can't take it now.
 
 ## Retries and giving up
 
@@ -2624,7 +2629,8 @@ check failed: 1 error, 1 file
 ### `receiving.invalid`
 
 A queue in `receiving:` is read through a connection to a package that
-provides `receiving`, says where each message's id is with `id_at:`, and
+provides `receiving` or to Cloudflare Queues (`driver:
+Driver.cloudflare_queues`), says where each message's id is with `id_at:`, and
 lists the events its messages may be; with more than one event, `type_at:`
 says where each message's type is. A database's connection reads no queue:
 
@@ -2645,13 +2651,13 @@ application {
 ```
 
 ```text output
-error: `main` isn't a connection to a package
+error: `main` isn't a connection a queue is read through
  --> app.jadpo:8:9
   |
 8 |         main: {
   |         ^^^^ not a queue's connection
-  reason: A queue in `receiving:` is a connection to a package that provides `receiving`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.
-  next: Add `main` to `connections:` with the `package:` its queue is read through, or name one that is (agent)
+  reason: A queue in `receiving:` is a connection to a package that provides `receiving`, or one with `driver: Driver.cloudflare_queues`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.
+  next: Add `main` to `connections:` with the `package:` its queue is read through, or `driver: Driver.cloudflare_queues`, or name one that is (agent)
   rule: receiving.invalid
   help: docs/language/12-jobs-and-events.html#receiving-invalid
 

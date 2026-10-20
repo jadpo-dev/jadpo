@@ -265,6 +265,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
         out.extend(receiving::mappings(db, project).problems.iter().cloned());
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
+        out.extend(
+            receiving::cloudflare_queues(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

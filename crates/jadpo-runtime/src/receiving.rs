@@ -28,11 +28,23 @@
 //!   again, and the queue's own dead-letter queue takes one that keeps
 //!   failing.
 //!
+//! A queue on Cloudflare Queues (`Driver.cloudflare_queues`, chunk 7.7c2)
+//! isn't fetched: Cloudflare pushes its messages to the Workers host's
+//! consumer a batch at a time, and the host hands each batch to
+//! [`consume`], which keeps each message as the tick keeps a fetched one
+//! and answers for each: acknowledged once kept, as a repeat or parked,
+//! retried after a delay when the store can't take it now, so Cloudflare
+//! hands it again and moves it to the queue's dead-letter queue once its
+//! retries are spent. The tick still reads again the parked messages an
+//! operator retried.
+//!
 //! Every message is read by the build that receives it, and a parked
 //! message retried is read by the build running then.
 
 use jadpo_std::provider::CallSite;
-use jadpo_std::receiving::{Mapped, QueueEvent, QueuePlan};
+use jadpo_std::receiving::{
+    AcknowledgePlan, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
+};
 use jadpo_value::Value;
 use jadpo_value::json::Problem;
 
@@ -154,12 +166,21 @@ pub async fn receive(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> 
             break;
         }
         retried(executor, &receiving, queue, host, now, &mut out).await;
+        // A queue on Cloudflare Queues is pushed to the consumer
+        // ([`consume`]): the tick only reads again what an operator retried.
+        let QueueSource::Package {
+            receive,
+            acknowledge: ack,
+        } = &queue.source
+        else {
+            continue;
+        };
         for _ in 0..ROUNDS {
             if budget.spent() {
                 break;
             }
             let mut ctx = system_ctx(executor, host, now);
-            let messages = match fetch(executor, &receiving, queue, &mut ctx).await {
+            let messages = match fetch(executor, &receiving, queue, receive, &mut ctx).await {
                 Ok(messages) => messages,
                 Err(why) => {
                     out.problems.push((queue.source(), why));
@@ -170,7 +191,7 @@ pub async fn receive(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> 
             for (body, handle) in messages {
                 let taken = take(executor, queue, &mut ctx, &body).await;
                 if taken.acknowledged() {
-                    acknowledge(executor, &receiving, queue, &mut ctx, &handle).await;
+                    acknowledge(executor, &receiving, queue, ack, &mut ctx, &handle).await;
                 }
                 if let Taken::Left(error) = &taken {
                     out.problems.push((queue.store.clone(), error.clone()));
@@ -181,6 +202,108 @@ pub async fn receive(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> 
                 break;
             }
         }
+    }
+    out
+}
+
+/// One message of a batch Cloudflare Queues hands a queue's consumer on
+/// Workers (chunk 7.7c2), as the host passes it on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pushed {
+    /// Its body as text: a text body as it was sent, any other as its
+    /// JSON.
+    pub body: String,
+    /// How many times Cloudflare has handed it to the consumer, this time
+    /// among them: 1 the first time.
+    pub attempts: u32,
+}
+
+/// What the consumer answers Cloudflare for one message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Answer {
+    /// Acknowledged (`message.ack()`): its event is kept, it was a
+    /// repeat, or it is parked for an operator.
+    Ack,
+    /// Retried (`message.retry({ delaySeconds })`): the store couldn't
+    /// take it now, so Cloudflare hands it again after this many seconds,
+    /// and moves it to the queue's dead-letter queue once its retries are
+    /// spent.
+    Retry { delay_seconds: u32 },
+}
+
+/// The first retry's delay, doubled for each attempt after it, and the
+/// longest.
+pub const RETRY_DELAY_SECONDS: u32 = 10;
+pub const RETRY_DELAY_MAX_SECONDS: u32 = 300;
+
+/// How long a message handed `attempts` times waits before Cloudflare
+/// hands it again.
+pub fn retry_delay(attempts: u32) -> u32 {
+    let doublings = attempts.saturating_sub(1).min(16);
+    RETRY_DELAY_SECONDS
+        .saturating_mul(1 << doublings)
+        .min(RETRY_DELAY_MAX_SECONDS)
+}
+
+/// What the consumer did with one batch.
+#[derive(Debug, Default)]
+pub struct Consumed {
+    /// The answer for each message, in the batch's order.
+    pub answers: Vec<Answer>,
+    /// What it kept, and the deliveries its events left, which the host
+    /// runs after answering ([`crate::runner::run_deferred`], in
+    /// `waitUntil` on Workers).
+    pub received: Received,
+}
+
+/// The seam the Workers host's queue consumer calls (chunk 7.7c2): keeps
+/// each message of `batch`, handed to the consumer of the Cloudflare queue
+/// named `queue` at `now`, as the tick keeps a fetched one ([`take`]), and
+/// answers for each. A batch from a queue the program doesn't receive is
+/// retried whole, so nothing is lost while a deploy catches up.
+pub async fn consume(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    queue: &str,
+    batch: &[Pushed],
+    now: i64,
+) -> Consumed {
+    let mut out = Consumed::default();
+    let plan = executor.receiving().and_then(|receiving| {
+        receiving.queues.iter().find(|plan| {
+            matches!(&plan.source, QueueSource::Cloudflare(cloudflare) if cloudflare.queue == queue)
+        })
+    });
+    let Some(plan) = plan else {
+        out.received.left = batch.len() as u64;
+        out.received.problems.push((
+            format!("cloudflare queue {queue}"),
+            StoreError::Fault(format!("`{queue}`, a queue the program doesn't receive")),
+        ));
+        out.answers = batch
+            .iter()
+            .map(|message| Answer::Retry {
+                delay_seconds: retry_delay(message.attempts),
+            })
+            .collect();
+        return out;
+    };
+    let mut ctx = system_ctx(executor, host, now);
+    for message in batch {
+        let taken = take(executor, plan, &mut ctx, &message.body).await;
+        out.answers.push(if taken.acknowledged() {
+            Answer::Ack
+        } else {
+            Answer::Retry {
+                delay_seconds: retry_delay(message.attempts),
+            }
+        });
+        if let Taken::Left(error) = &taken {
+            out.received
+                .problems
+                .push((plan.store.clone(), error.clone()));
+        }
+        out.received.count(taken);
     }
     out
 }
@@ -392,9 +515,9 @@ async fn fetch(
     executor: &dyn Executor,
     receiving: &Receiving<'_>,
     queue: &QueuePlan,
+    plan: &ReceivePlan,
     ctx: &mut Ctx<'_>,
 ) -> Result<Vec<(String, String)>, StoreError> {
-    let plan = &queue.receive;
     let given = input(
         executor,
         receiving,
@@ -441,10 +564,10 @@ async fn acknowledge(
     executor: &dyn Executor,
     receiving: &Receiving<'_>,
     queue: &QueuePlan,
+    plan: &AcknowledgePlan,
     ctx: &mut Ctx<'_>,
     handle: &str,
 ) {
-    let plan = &queue.acknowledge;
     let Ok(given) = input(
         executor,
         receiving,

@@ -21,6 +21,7 @@ mod check;
 mod circuit_breaker;
 mod cli;
 mod client_address;
+mod cloudflare_queues;
 mod config;
 mod connections;
 mod crate_graph;
