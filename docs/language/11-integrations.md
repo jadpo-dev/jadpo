@@ -15,6 +15,7 @@ rules:
   - semantic.service_import_pin_invalid
   - semantic.service_secret_sink_invalid
   - package.*
+  - connection.*
 ---
 
 # External services
@@ -986,6 +987,204 @@ application {
   callers move across (question 3).
 - A library package needs no connection: any domain brings it in with a
   `use` line.
+
+Built in chunk 7.1c and checked by this checkout's `jadpo`: a connection to
+the app's own integration with fixed live and sandbox hosts, and one to an
+integration with no fixed host, reached at the address a setting gives and
+taking a setting of its own. The `package:` line names the package by its
+name and version, as the lock does, with no `use` line; `timeout:` is read
+with provider calls (chunk 7.2c).
+
+```jadpo check project=p71c-connect file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+        }
+        ledger: {
+            package: Ledger.v1
+            domains: [billing]
+            credential: config.ledger_token
+            host: config.ledger_address
+            account: "shop"
+        }
+    }
+}
+```
+
+```jadpo check project=p71c-connect file=config.jadpo
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+    ledger_address: Url
+    ledger_token: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API, written from its documentation.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking and tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+    slot: Text
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/package.jadpo hidden
+/// The shop's ledger service, run by its finance team.
+package Ledger.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/provider.jadpo
+/// The ledger's API, at the address each deployment gives.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    settings: {
+        account: Text
+    }
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/resources/postings.jadpo hidden
+public resource postings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/postings"
+        input: NewPosting
+        output: Posting
+        changes: true
+        idempotent: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/types/new_posting.jadpo hidden
+/// An amount to record.
+public type NewPosting = Object {
+    reference: Text
+    pence: Int
+}
+```
+
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/types/posting.jadpo hidden
+/// A recorded amount.
+public type Posting = Object {
+    id: Text
+}
+```
+
+```jadpo check project=p71c-connect file=domains/shipping/types/parcel_reference.jadpo hidden
+/// A courier's reference for a parcel.
+type ParcelReference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p71c-connect file=domains/shipping/actions/read_reference.jadpo hidden
+use shipping/types { ParcelReference }
+
+/// Reads a parcel's reference.
+action read_reference(reference: ParcelReference) -> ParcelReference {
+    return reference
+}
+```
+
+```jadpo check project=p71c-connect file=domains/billing/types/invoice_code.jadpo hidden
+/// The code an invoice is filed under.
+type InvoiceCode = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=p71c-connect file=domains/billing/actions/file_invoice.jadpo hidden
+use billing/types { InvoiceCode }
+
+/// Files an invoice under its code.
+action file_invoice(code: InvoiceCode) -> InvoiceCode {
+    return code
+}
+```
+
+A package declares its own settings in `provider.jadpo`'s `settings:`, each
+a plain value (`Text`, `Int`, `Decimal`, `Bool` or `Duration`), and every
+connection to it gives each one by name, written out or read from a
+setting of that type (`account: config.ledger_account`).
+
+### The network report
+
+`jadpo check` writes `build/report/network.md`, with a `.json` twin, once
+the connections read cleanly: every host the app can reach, the connection
+that reaches it, when (a package's live and sandbox hosts are chosen by its
+environment setting), what for (a package, or a driver's capability) and
+the domains that use it. It is built for small diffs, as the permissions
+report is (area 9): rows in order of connection and host, each host as
+written, no times or totals, so a new connection or a changed host is a
+one-line change in review. For the app above:
+
+| Connection | Host | When | For | Domains |
+|---|---|---|---|---|
+| `couriers` | `https://api.acme-couriers.example` | `config.couriers_environment` is `live` | `AcmeCouriers.v1` | `shipping` |
+| `couriers` | `https://sandbox.acme-couriers.example` | `config.couriers_environment` is `sandbox` | `AcmeCouriers.v1` | `shipping` |
+| `ledger` | the address in `config.ledger_address` | always | `Ledger.v1` | `billing` |
+
+A database or cache connection is listed at the address in its `url:`
+setting, for the domains whose entities it stores; a store of files on
+the disk driver reaches no host and isn't listed. A package Jadpo runs
+(`runs:`) is listed as the service it runs from its image; the hosts a
+service asks for join the report with services (not yet on the roadmap).
 
 ## Calling
 
@@ -1989,7 +2188,7 @@ example and real output under "Errors".
 | An `emails/` folder in a package; `requires:` or any key besides `licence:` and `jadpo:` in `package.jadpo`; an unknown key in `provider.jadpo` | By `jadpo check` | 7.1 |
 | A non-public type or failure reachable from a public declaration, in a package or a domain | By `jadpo check` | 7.1 |
 | A package's resource and action with the same name; a public action that emits; subscribing to a package's non-public event | By `jadpo check` | 7.1 |
-| A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1 |
+| A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1c; both `hosts:` and `runs:` 7.1 |
 | A capability's connection whose package does not provide it | By `jadpo check` | 7.3 |
 | A function call or expression in a `provide` mapping | By `jadpo check` | 7.3 |
 | A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d |
@@ -2006,8 +2205,9 @@ example and real output under "Errors".
 > Chunk 7.1b2 built a surface that differs at install and a link in CI,
 > under "Installing errors". Still to come: a resource and an action with one
 > name, a public action that emits and subscribing to a non-public event
-> (chunk 7.6); a connection's `host:` for a package with fixed `hosts:`
-> (chunk 7.1c).
+> (chunk 7.6). Chunk 7.1c built a connection's `host:` for a package
+> with fixed `hosts:`, with the rest of a connection's keys, under
+> "Connection errors".
 
 ## Package errors
 
@@ -2804,6 +3004,304 @@ error: CHANGELOG.md doesn't say why 2.1.0 is released
   next: Write why 2.1.0 is released under `## 2.1.0` in CHANGELOG.md, after the list (agent)
   rule: publish.changelog_missing
   help: docs/language/14-tooling.html#command-errors
+```
+
+## Connection errors
+
+> Built in chunk 7.1c: a connection to a package checked against what the
+> package takes and needs. Each example below is checked by this
+> checkout's `jadpo`.
+
+### `connection.package_unknown`
+
+A connection names a provider package the app holds, by its name and
+version; a library package needs no connection at all:
+
+```jadpo check project=e71c-package-unknown file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e71c-package-unknown file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e71c-package-unknown file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e71c-package-unknown file=domains/shipping/types/parcel_reference.jadpo hidden
+/// A courier's reference for a parcel.
+type ParcelReference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e71c-package-unknown file=domains/shipping/actions/read_reference.jadpo hidden
+use shipping/types { ParcelReference }
+
+/// Reads a parcel's reference.
+action read_reference(reference: ParcelReference) -> ParcelReference {
+    return reference
+}
+```
+
+```jadpo check project=e71c-package-unknown file=app.jadpo expect=connection.package_unknown
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v2
+            domains: [shipping]
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```text output
+error: `couriers` connects to `AcmeCouriers.v2`, which the app doesn't hold
+ --> app.jadpo:4:22
+  |
+4 |             package: AcmeCouriers.v2
+  |                      ^^^^^^^^^^^^^^^ no such package
+  reason: A connection's `package:` names a provider package by its name and version, installed in `packages/` or the app's own in `shared/providers/`; the app holds `AcmeCouriers.v1`.
+  next: Write `package: AcmeCouriers.v1` (agent)
+  rule: connection.package_unknown
+  help: docs/language/11-integrations.html#connection-package-unknown
+
+check failed: 1 error, 6 files
+```
+
+### `connection.key_invalid`
+
+Where an API is comes from exactly one place, so a package with fixed
+`hosts:` takes no `host:`; a key the package doesn't take, or no
+connection takes, is refused the same way:
+
+```jadpo check project=e71c-key-invalid file=config.jadpo hidden
+config {
+    couriers_address: Url
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e71c-key-invalid file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e71c-key-invalid file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e71c-key-invalid file=domains/shipping/types/parcel_reference.jadpo hidden
+/// A courier's reference for a parcel.
+type ParcelReference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e71c-key-invalid file=domains/shipping/actions/read_reference.jadpo hidden
+use shipping/types { ParcelReference }
+
+/// Reads a parcel's reference.
+action read_reference(reference: ParcelReference) -> ParcelReference {
+    return reference
+}
+```
+
+```jadpo check project=e71c-key-invalid file=app.jadpo expect=connection.key_invalid
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+            host: config.couriers_address
+        }
+    }
+}
+```
+
+```text output
+error: `couriers` gives `host:`, but `AcmeCouriers.v1` has fixed hosts
+ --> app.jadpo:7:13
+  |
+7 |             host: config.couriers_address
+  |             ^^^^ a second place for its address
+  reason: Where an API is comes from exactly one place: `AcmeCouriers.v1`'s `hosts:` give its live and sandbox addresses, and `environment:` chooses between them.
+  next: Remove `host:` (agent)
+  rule: connection.key_invalid
+  help: docs/language/11-integrations.html#connection-key-invalid
+
+check failed: 1 error, 6 files
+```
+
+### `connection.key_missing`
+
+Every connection to a package lists the domains that may call it, and
+gives the credential, environment, host and settings its package needs:
+
+```jadpo check project=e71c-key-missing file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e71c-key-missing file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e71c-key-missing file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e71c-key-missing file=domains/shipping/types/parcel_reference.jadpo hidden
+/// A courier's reference for a parcel.
+type ParcelReference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e71c-key-missing file=domains/shipping/actions/read_reference.jadpo hidden
+use shipping/types { ParcelReference }
+
+/// Reads a parcel's reference.
+action read_reference(reference: ParcelReference) -> ParcelReference {
+    return reference
+}
+```
+
+```jadpo check project=e71c-key-missing file=app.jadpo expect=connection.key_missing
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```text output
+error: `couriers` doesn't give `domains:`
+ --> app.jadpo:3:9
+  |
+3 |         couriers: {
+  |         ^^^^^^^^ no `domains:`
+  reason: A connection lists the domains whose actions may call it, so a new caller is a one-line change a reviewer sees; other domains go through those domains' public actions.
+  next: Add `domains: [<domain>]`, listing the domains that call `couriers` (agent)
+  rule: connection.key_missing
+  help: docs/language/11-integrations.html#connection-key-missing
+
+check failed: 1 error, 6 files
+```
+
+### `connection.value_invalid`
+
+A credential is read from a secret setting, which code never sees:
+
+```jadpo check project=e71c-value-invalid file=config.jadpo hidden
+config {
+    couriers_api_key: Text
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e71c-value-invalid file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e71c-value-invalid file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e71c-value-invalid file=domains/shipping/types/parcel_reference.jadpo hidden
+/// A courier's reference for a parcel.
+type ParcelReference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e71c-value-invalid file=domains/shipping/actions/read_reference.jadpo hidden
+use shipping/types { ParcelReference }
+
+/// Reads a parcel's reference.
+action read_reference(reference: ParcelReference) -> ParcelReference {
+    return reference
+}
+```
+
+```jadpo check project=e71c-value-invalid file=app.jadpo expect=connection.value_invalid
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```text output
+error: `couriers`'s credential must be a secret setting
+ --> app.jadpo:6:25
+  |
+6 |             credential: config.couriers_api_key
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^ `couriers_api_key` isn't secret
+  reason: A credential is read from the deployment's environment and never seen by code, so it is a `secret: true` setting, `config.<name>` (area 10, "Secrets").
+  next: Add `secret: true` to `couriers_api_key` in `config.jadpo` (agent)
+  rule: connection.value_invalid
+  help: docs/language/11-integrations.html#connection-value-invalid
+
+check failed: 1 error, 6 files
 ```
 
 ## Errors
@@ -3703,13 +4201,16 @@ entity Reminder {
 
 Chunk 7.1 built the package format, names and the lock, chunk 7.1b
 the surface, `jadpo package show` and `jadpo package check` with the
-publishing bar, and chunk 7.1b2 installing (`add` from a folder or git,
+publishing bar, chunk 7.1b2 installing (`add` from a folder or git,
 `update`, `remove`, `link` and `unlink`) with the bar's examples and
-changelog (below); the rest is still to build.
+changelog, and chunk 7.1c connections to packages and the network report
+(below); the rest is still to build.
 
 | Part | Chunk |
 |---|---|
-| The package format (both kinds, `package.jadpo`, `provider.jadpo`, folders laid out as `shared/`, `public` and the reachability rule), `packages/<name>/<version>/` committed and checked against `jadpo.lock`, the app's own integrations in `shared/providers/`, reserved names, `connections:`, lazy loading, the surface and `jadpo package show`, the publishing bar, the network report | 7.1 |
+| The package format (both kinds, `package.jadpo`, `provider.jadpo`, folders laid out as `shared/`, `public` and the reachability rule), `packages/<name>/<version>/` committed and checked against `jadpo.lock`, the app's own integrations in `shared/providers/`, reserved names, the surface and `jadpo package show`, the publishing bar | 7.1, 7.1b, 7.1b2 |
+| `connections:` to packages (`package:`, `domains:`, `credential:`, `environment:`, `host:`, settings) and the network report | 7.1c |
+| Lazy loading of a package's resources, cached per digest; two versions side by side, names carrying the version | 7.1c2 |
 | The OpenAPI importer (writing into `shared/providers/`, reading `x-jadpo` fields) | 7.2 |
 | Hand-written packages' wire and decoding, provider calls through the connection, derived idempotency keys | 7.2c |
 | Generated fakes, recordings checked by decoders, `jadpo package record`, provider calls faked in `jadpo dev`, `jadpo calls` | 7.2d |
@@ -3753,6 +4254,25 @@ changelog (below); the rest is still to build.
 > under "Installing errors", and `publish.example_missing`,
 > `publish.example_failed` and `publish.changelog_missing` under
 > "Publishing errors"; the choices are in "Chosen in chunk 7.1b2" below.
+>
+> **Built (chunk 7.1c).** Connections to packages, under "Connecting in
+> `app.jadpo`": `package:` naming a provider package the app holds by its
+> name and version, `domains:`, `credential:` from a secret setting,
+> `environment:` from a `ProviderEnvironment` setting, `host:` from a
+> `Url` setting where the package has no fixed hosts, and the package's
+> own `settings:` by name; the network report, `build/report/network.md`
+> and `.json`; and the dev and test hosts giving a connection only its
+> declared driver. The errors are `connection.package_unknown`,
+> `connection.key_invalid`, `connection.key_missing` and
+> `connection.value_invalid` under "Connection errors"; the choices are in
+> "Chosen in chunk 7.1c" below. Next: lazy loading and two versions side
+> by side (chunk 7.1c2).
+
+> **Built (chunk 7.1d).** A package's names kept to it: its declarations
+> never clash with the app's or another package's, in the checker, the
+> graph and the interpreter; and `jadpo dev` and `jadpo test --watch`
+> watching a linked checkout as they run. The choices are in "Chosen in
+> chunk 7.1d" below.
 
 > **Built (chunk 7.2).** `jadpo package import openapi <file>`: a local
 > OpenAPI 3 document read into the app's own integration in
@@ -3969,10 +4489,11 @@ What the pages leave to the build, each the most conservative reading:
   `unlink`. The installed folder stays. Every load reads the checkout's
   files, without hidden ones or its `build/`, in the installed folder's
   place, so `jadpo check`, `test` and `dev` compile the app against it;
-  `jadpo check` and `link` show its problems at the checkout's paths. A
-  checkout with no `package.jadpo` can't be read. `link` itself shows the
-  app's check against it. `jadpo dev` and `jadpo test --watch` read the
-  checkout when they start: an edit there shows at their next start.
+  `jadpo check` and `link` show its problems at the checkout's paths (and,
+  since chunk 7.1d, `test` and `dev` too). A checkout with no
+  `package.jadpo` can't be read. `link` itself shows the app's check
+  against it. `jadpo dev` and `jadpo test --watch` watch the checkout as
+  they run (chunk 7.1d, below).
 - **Where a link is refused.** CI is the `CI` variable set to anything but
   empty, as CI services set it and as `jadpo suggest share` and the
   terminal's animation already read it; there `jadpo check` and `jadpo
@@ -4003,6 +4524,106 @@ What the pages leave to the build, each the most conservative reading:
   updates it; a released section is never rewritten. A new version whose
   section has no text of the author's fails the bar
   (`publish.changelog_missing`); an already released one passes.
+
+### Chosen in chunk 7.1c
+
+What the pages leave to the build, each the most conservative reading:
+
+- **Naming the package.** `package:` names a provider package the app
+  holds, installed or its own, by its name and version
+  (`AcmeCouriers.v1`), as the lock does; `app.jadpo` needs no `use` line
+  for it. A version the app doesn't hold names the ones it does; a library
+  package is refused, since it needs no connection
+  (`connection.package_unknown`).
+- **The keys.** A connection to a package takes `package:`, `domains:`,
+  `credential:`, `environment:`, `host:`, `timeout:`, `retry:`,
+  `max_concurrent:`, `webhooks:`, `erasure:`, `development:`, `polls:`
+  and `outbound:`, and each setting its package declares; anything else is
+  `connection.key_invalid`, with the nearest key. This chunk reads the
+  first five and the settings; the rest are read with the chunks that use
+  them (7.2c, 7.2d, 7.6 and services), as 7.1 did for `provider.jadpo`.
+  Driver connections' keys are unchanged.
+- **What a package needs.** `domains:` always, a list of the app's
+  domains by name, each once and at least one (question 18).
+  `credential:` exactly when `provider.jadpo` names a `credential:`
+  scheme, read from a `secret: true` setting. `environment:` exactly when
+  the package has `hosts:`, read from a `ProviderEnvironment` setting, the
+  new built-in enum (`.sandbox`, `.live`); a value written in source is
+  refused, so each deployment says which it calls. `host:` exactly when
+  the package has neither `hosts:` nor `runs:`, read from a `Url` setting
+  (or a type built on it); beside `runs:` it may be given, and beside
+  `hosts:` it is refused. A missing one is `connection.key_missing`, a
+  value of the wrong kind `connection.value_invalid`, a key the package
+  doesn't take `connection.key_invalid`. That a host is HTTPS is checked
+  when calls go out (chunk 7.2c), since a `Url` setting may hold
+  `http://`.
+- **A package's settings.** `provider.jadpo`'s `settings:` names each
+  setting and its type, one of `Text`, `Int`, `Decimal`, `Bool` and
+  `Duration` (`package.provider_invalid` otherwise), and every connection
+  gives each, written out or read from a setting whose type is built on
+  it. There are no defaults yet: a setting is given on every connection.
+- **The network report.** `build/report/network.md` and `.json`, written
+  by `jadpo check` once the connections and their addresses read cleanly,
+  designed with the CLI design language's calm, plain rules: a title, one
+  sentence, and one table row per host in order of connection and host,
+  with no times or totals, so a change is a one-line diff. A package's
+  live and sandbox hosts each get a row, `when` its environment setting
+  says so; a package with no fixed host is listed at the address in its
+  `host:` setting; a package Jadpo runs, as the service it runs from its
+  image. Database and cache connections are listed at their `url:`
+  setting, for the domains whose entities they store; the disk driver
+  reaches no host and isn't listed. The JSON gives each host's
+  `connection`, `address`, `setting` or `service`, `when`, `for` and
+  `domains`. The manifest's hosts, and the approval report's changes to
+  them, come with the approval review (area 18).
+- **How the seam finds a connection's driver.** The capability seam (7.0c)
+  asks the host for `capability(connection)`; a host gives a driver only
+  for a connection whose declared driver it carries. Natively and in
+  `jadpo dev` that is the disk driver for the stores of files the running
+  program's plan lists (re-read after every reload); in `jadpo test` the
+  in-memory store for the same list, which the executor gives the test's
+  host. Every other connection, a package's included, has no driver, and
+  a call through it is refused and logged until the package driver comes
+  (chunk 7.2c); a test fakes it meanwhile (area 13).
+- **Not yet.** Only the listed domains calling a connection is checked
+  with provider calls (chunk 7.2c); a connection's name clashing with a
+  domain's or a library's (question 17) is left to the name resolution
+  that chunk 7.1d reworks.
+
+### Chosen in chunk 7.1d
+
+What the pages leave to the build, each the most conservative reading:
+
+- **Where a package's name must be unique.** In its package only. Two
+  declarations of one package can't share a name
+  (`semantic.duplicate_declaration`), but none clashes with the app's,
+  of any kind and wherever it is declared (a domain, `shared/`, public or
+  not), nor with another package's: `Postcodes.uk.tidy` beside the app's
+  action `tidy`, or `Postcodes.UkPostcode` beside the app's
+  `UkPostcode` and `ZipCodes.UkPostcode`, are three things. Their file
+  names never fold together either, since each package is its own
+  folder. A package's library may be named as an app's library or
+  domain is, since it is always written through its package.
+- **Which one a name means.** In the app, a bare name is always the
+  app's and `Postcodes.<name>` always the package's, so returning
+  `Postcodes.UkPostcode` where the app's `UkPostcode` is declared is
+  `type.mismatch`. Inside a package, a bare name is the package's own
+  (chunk 7.1). Failures keep their package too: `fails
+  Postcodes.InvalidPostcode` and the app's `fails InvalidPostcode` are
+  told apart in tests and at runtime.
+- **What a watch watches.** The files every load reads: for a linked
+  package, its checkout's sources and data, each at its path in the
+  package's folder (`packages/postcodes/v2/libraries/uk.jadpo`), and not
+  the installed copy, which stays as it was. The watcher reads the lock at
+  every look, so `jadpo package link` or `unlink` while `jadpo dev` or
+  `jadpo test --watch` runs moves the watch, and `test --watch` reads the
+  whole folder again from where it now lives. A save in the checkout gets
+  5.13b's guard for a file emptied mid-save. `jadpo dev` loads the
+  project afresh on each save, so it needs nothing more.
+- **Where its problems show.** At the checkout's paths in `jadpo test`,
+  `test --watch` and `jadpo dev`, as `jadpo check` shows them, since
+  that is where they are fixed; the rule line still names the save at
+  the package's path, as the project reads it.
 
 ### Chosen in chunk 7.2
 

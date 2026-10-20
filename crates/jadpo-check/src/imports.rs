@@ -670,6 +670,12 @@ impl Here<'_> {
                     return None;
                 }
                 if self.table.is_package(name) {
+                    // A connection in `app.jadpo` names its package by
+                    // name and version, as the lock does, with no `use`
+                    // line (area 11, "Connecting in `app.jadpo`").
+                    if self.path == jadpo_db::PROJECT_FILE {
+                        return None;
+                    }
                     return self.package_needed(name);
                 }
                 // A name the file declares itself is its own, even when

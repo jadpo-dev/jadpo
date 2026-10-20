@@ -305,11 +305,15 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
             root: root.clone(),
         });
     }
-    let diagnostics = jadpo_check::check(db, loaded.project);
+    let mut diagnostics = jadpo_check::check(db, loaded.project);
     if diagnostics.iter().any(jadpo_check::blocks_running) {
+        // A linked package's problems show in its checkout, where they are
+        // fixed (area 11).
+        let mut sources = sources(loaded);
+        jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
         return Err(Ran::Refused {
             diagnostics,
-            sources: sources(loaded),
+            sources,
             files: file_count,
             root: root.clone(),
         });

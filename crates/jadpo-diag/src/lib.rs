@@ -236,6 +236,14 @@ rules! {
         "14-tooling.html#command-errors", "Configuration value is invalid";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "14-tooling.html#command-errors", "Required configuration is missing";
+    CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,
+        "11-integrations.html#connection-key-invalid", "Connection gives a key its package doesn't take";
+    CONNECTION_KEY_MISSING: "connection.key_missing", area 11, Error, Agent,
+        "11-integrations.html#connection-key-missing", "Connection leaves out a key its package needs";
+    CONNECTION_PACKAGE_UNKNOWN: "connection.package_unknown", area 11, Error, Agent,
+        "11-integrations.html#connection-package-unknown", "Connection names no provider package the app holds";
+    CONNECTION_VALUE_INVALID: "connection.value_invalid", area 11, Error, Agent,
+        "11-integrations.html#connection-value-invalid", "Connection's key holds a value it can't";
     CONSTANT_CYCLE: "constant.cycle", area 3, Error, Agent,
         "03-logic.html#constant-cycle", "Constant's value depends on itself";
     CONSTANT_SIMILAR_EXISTS: "constant.similar_exists", area 3, Declinable, Agent,

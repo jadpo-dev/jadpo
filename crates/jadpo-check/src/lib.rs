@@ -14,6 +14,7 @@ mod case;
 pub mod client_address;
 pub mod completion;
 pub mod config;
+pub mod connections;
 pub mod constants;
 pub mod data;
 pub mod declines;
@@ -227,6 +228,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());
         out.extend(packages::package_problems(db, project).iter().cloned());
+        out.extend(
+            connections::connection_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

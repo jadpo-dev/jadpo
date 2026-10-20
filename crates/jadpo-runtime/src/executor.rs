@@ -73,6 +73,13 @@ pub trait Executor {
         None
     }
 
+    /// The connections the program keeps files in (area 16; chunk 6.4b):
+    /// what a test's host gives its store of files for, and no other
+    /// connection (chunk 7.1c).
+    fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
+        &[]
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

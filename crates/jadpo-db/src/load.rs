@@ -1,6 +1,6 @@
 //! Finding and reading a project: the only I/O in the compiler crates.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use salsa::{Durability, Setter};
@@ -193,15 +193,8 @@ fn linked(
     sources: &mut Vec<(PathBuf, String)>,
     unreadable: &mut Vec<Unreadable>,
 ) -> Vec<(String, String)> {
-    let Ok(text) = std::fs::read_to_string(root.join(crate::LOCK)) else {
-        return Vec::new();
-    };
-    // A lock that can't be read is the records' to report.
-    let Ok(lines) = crate::parse_lock(&text) else {
-        return Vec::new();
-    };
     let mut links = Vec::new();
-    for line in lines {
+    for line in link_lines(root) {
         let crate::Source::Link { path } = &line.source else {
             continue;
         };
@@ -209,16 +202,8 @@ fn linked(
         let prefix = format!("{folder}/");
         sources.retain(|(_, shown)| !shown.starts_with(&prefix));
         let checkout = root.join(path);
-        if !checkout.join(crate::PACKAGE_INDEX).is_file() {
-            unreadable.push(Unreadable {
-                path: format!("{path}/"),
-                error: format!(
-                    "`{}` links `{}` to it, and it holds no `{}`",
-                    crate::LOCK,
-                    line.package,
-                    crate::PACKAGE_INDEX
-                ),
-            });
+        if let Some(missing) = missing_checkout(root, &line) {
+            unreadable.push(missing);
             links.push((folder, path.clone()));
             continue;
         }
@@ -230,6 +215,115 @@ fn linked(
     }
     sources.sort_by(|a, b| a.1.cmp(&b.1));
     links
+}
+
+/// The lines of `root`'s `jadpo.lock` that link a package to a live
+/// checkout. A lock that can't be read is the records' to report.
+fn link_lines(root: &Path) -> Vec<crate::Locked> {
+    let Ok(text) = std::fs::read_to_string(root.join(crate::LOCK)) else {
+        return Vec::new();
+    };
+    let Ok(lines) = crate::parse_lock(&text) else {
+        return Vec::new();
+    };
+    lines
+        .into_iter()
+        .filter(|line| matches!(line.source, crate::Source::Link { .. }))
+        .collect()
+}
+
+/// Why the checkout `line` links to can't be read: it holds no index.
+fn missing_checkout(root: &Path, line: &crate::Locked) -> Option<Unreadable> {
+    let crate::Source::Link { path } = &line.source else {
+        return None;
+    };
+    if root.join(path).join(crate::PACKAGE_INDEX).is_file() {
+        return None;
+    }
+    Some(Unreadable {
+        path: format!("{path}/"),
+        error: format!(
+            "`{}` links `{}` to it, and it holds no `{}`",
+            crate::LOCK,
+            line.package,
+            crate::PACKAGE_INDEX
+        ),
+    })
+}
+
+/// Each package `root`'s `jadpo.lock` links to a live checkout: its folder
+/// in the project, `packages/acme_pricing/v2`, and the checkout as the
+/// lock writes it, `../acme-pricing`.
+pub fn links(root: &Path) -> Vec<(String, String)> {
+    link_lines(root)
+        .iter()
+        .filter_map(|line| match &line.source {
+            crate::Source::Link { path } => Some((line.folder(), path.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Shows a linked package's problems and sources in its checkout: each
+/// path under `packages/<name>/<version>/` as the same path under the
+/// link's folder (area 11, "Developing and publishing a package").
+pub fn show_in_checkouts(
+    links: &[(String, String)],
+    diagnostics: &mut [jadpo_diag::Diagnostic],
+    sources: &mut BTreeMap<String, String>,
+) {
+    let moved = |path: &str| -> Option<String> {
+        links.iter().find_map(|(folder, checkout)| {
+            let rest = path.strip_prefix(&format!("{folder}/"))?;
+            Some(format!("{checkout}/{rest}"))
+        })
+    };
+    for d in diagnostics.iter_mut() {
+        for label in d.primary.iter_mut().chain(d.secondary.iter_mut()) {
+            if let Some(path) = moved(&label.span.path) {
+                label.span.path = path;
+            }
+        }
+    }
+    let paths: Vec<String> = sources.keys().cloned().collect();
+    for path in paths {
+        if let Some(to) = moved(&path)
+            && let Some(text) = sources.remove(&path)
+        {
+            sources.insert(to, text);
+        }
+    }
+}
+
+/// Every file a watcher of `root` watches, as the project names it, with
+/// where it is on disk, in path order: the files [`load`] reads, so a
+/// linked package's are its checkout's, at the package's folder, and the
+/// folder's own installed copy isn't watched (area 11, "Chosen in chunk
+/// 7.1d").
+pub fn watched_files(root: &Path, project: bool) -> Vec<(String, PathBuf)> {
+    let mut found: Vec<(String, PathBuf)> = files_under(root, project)
+        .into_iter()
+        .map(|path| {
+            let file = root.join(&path);
+            (path, file)
+        })
+        .collect();
+    if !project {
+        return found;
+    }
+    for (folder, path) in links(root) {
+        let prefix = format!("{folder}/");
+        found.retain(|(shown, _)| !shown.starts_with(&prefix));
+        let checkout = root.join(path);
+        for file in package_files(&checkout) {
+            let shown = format!("{prefix}{}", display(&checkout, &file));
+            if tracked(&shown, true) {
+                found.push((shown, file));
+            }
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
 }
 
 /// Every file of a package's own folder, leaving out hidden entries (its
@@ -291,11 +385,6 @@ fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, (String, S
         .map_err(|error| failed(error.clone()))?;
     parse_legacy_identities(text)
         .map_err(|error| failed(format!("it isn't a JSON object of names: {error}")))
-}
-
-/// The record at `path`, read from `root`.
-fn read_record(root: &Path, path: &str) -> Record {
-    read_record_at(&root.join(path), path)
 }
 
 /// The record the project names `path`, read from `file`.
@@ -377,10 +466,95 @@ impl Loaded {
     /// Reads `path` from disk again: its text now, or its removal when it
     /// is gone or unreadable.
     pub fn reload(&mut self, path: &str) {
-        match std::fs::read_to_string(self.root.join(path)) {
+        match std::fs::read_to_string(self.on_disk(path)) {
             Ok(text) => self.set_text(path, text),
             Err(_) => self.remove(path),
         }
+    }
+
+    /// Where the project-relative `path` is on disk: in a linked package's
+    /// checkout for a path in its folder, and under the root otherwise.
+    pub fn on_disk(&self, path: &str) -> PathBuf {
+        for (folder, checkout) in &self.links {
+            if let Some(rest) = path
+                .strip_prefix(folder.as_str())
+                .and_then(|rest| rest.strip_prefix('/'))
+            {
+                return self.root.join(checkout).join(rest);
+            }
+        }
+        self.root.join(path)
+    }
+
+    /// Reads the lock's links again, after a change to it: a package
+    /// linked, unlinked or linked elsewhere has every file of its folder
+    /// read again from where it now lives.
+    fn relink(&mut self) {
+        let now = links(&self.root);
+        if now == self.links {
+            return;
+        }
+        let changed: BTreeSet<String> = self
+            .links
+            .iter()
+            .chain(now.iter())
+            .filter(|link| !(self.links.contains(link) && now.contains(link)))
+            .map(|(folder, _)| folder.clone())
+            .collect();
+        // What each changed folder holds now, and held before.
+        let mut paths: BTreeSet<String> = BTreeSet::new();
+        let db = &self.db;
+        for folder in &changed {
+            let prefix = format!("{folder}/");
+            let under = |path: &String| path.starts_with(&prefix);
+            paths.extend(
+                self.project
+                    .files(db)
+                    .iter()
+                    .map(|file| file.path(db).clone())
+                    .filter(under),
+            );
+            paths.extend(
+                self.project
+                    .records(db)
+                    .iter()
+                    .map(|record| record.path.clone())
+                    .filter(under),
+            );
+            paths.extend(
+                self.project
+                    .other_files(db)
+                    .iter()
+                    .filter(|&path| under(path))
+                    .cloned(),
+            );
+        }
+        // A checkout that couldn't be read is read again too.
+        let gone: Vec<String> = self
+            .links
+            .iter()
+            .filter(|(folder, _)| changed.contains(folder))
+            .map(|(_, checkout)| format!("{checkout}/"))
+            .collect();
+        self.unreadable.retain(|file| !gone.contains(&file.path));
+        self.links = now;
+        for line in link_lines(&self.root) {
+            if changed.contains(&line.folder())
+                && let Some(missing) = missing_checkout(&self.root, &line)
+            {
+                self.unreadable.push(missing);
+            }
+        }
+        for folder in &changed {
+            let disk = self.on_disk(&format!("{folder}/"));
+            for file in package_files(&disk) {
+                paths.insert(format!("{folder}/{}", display(&disk, &file)));
+            }
+        }
+        for path in paths {
+            self.refresh(&path);
+        }
+        self.unreadable.sort_by(|a, b| a.path.cmp(&b.path));
     }
 
     /// Whether the project holds `path`, project-relative: a source file,
@@ -398,12 +572,12 @@ impl Loaded {
             return;
         }
         self.unreadable.retain(|file| file.path != path);
-        let full = self.root.join(path);
+        let full = self.on_disk(path);
         if self.project.layout(&self.db) == Layout::Project && is_record(path) {
             let mut records = self.project.records(&self.db).clone();
             records.retain(|record| record.path != path);
             if full.is_file() {
-                records.push(read_record(&self.root, path));
+                records.push(read_record_at(&full, path));
                 records.sort_by(|a, b| a.path.cmp(&b.path));
             }
             if path == IDENTITIES || path == LEGACY_IDENTITIES {
@@ -420,6 +594,9 @@ impl Loaded {
             }
             if &records != self.project.records(&self.db) {
                 self.project.set_records(&mut self.db).to(records);
+            }
+            if path == crate::LOCK {
+                self.relink();
             }
             return;
         }
