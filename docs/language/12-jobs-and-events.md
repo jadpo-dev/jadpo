@@ -1801,6 +1801,9 @@ calls each under its own key, then records the payment, in a subscriber:
 
 ```jadpo check project=several-steps file=app.jadpo hidden
 application {
+    events: {
+        store: main
+    }
     connections: {
         main: {
             driver: Driver.postgres
@@ -1829,7 +1832,9 @@ config {
     pay_api_key: Text {
         secret: true
     }
-    pay_environment: ProviderEnvironment
+    pay_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
     step_encryption_key: SigningKey
 }
 ```
@@ -1995,8 +2000,8 @@ its key and is answered with what the fake kept, so one answer is enough
 (chunk 7.5d):
 
 ```jadpo check project=several-steps file=domains/bakery/actions/approve_invoice.jadpo hidden
-use bakery/events { InvoiceApproved }
 use bakery/types { PriceList }
+use bakery/events { InvoiceApproved }
 use shared/providers/acme_pay
 
 /// Approves a supplier's invoice, which is then paid.
@@ -2009,6 +2014,7 @@ action approve_invoice(invoice: AcmePay.Reference, lines: PriceList) -> Unit {
 ```
 
 ```jadpo check project=several-steps file=domains/bakery/actions/approve_invoice.test.jadpo
+use app { pay }
 use shared/providers/acme_pay
 
 test "an approved invoice is paid once" {
