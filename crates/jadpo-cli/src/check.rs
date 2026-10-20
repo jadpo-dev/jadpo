@@ -52,7 +52,8 @@ pub fn check(call: &Call) -> Reply {
         },
     };
     let started = Instant::now();
-    let loaded = jadpo_db::load(&target);
+    let mut loaded = jadpo_db::load(&target);
+    let cache = crate::package_cache::apply(&call.environment, &mut loaded);
     let db = &loaded.db;
     let mut diagnostics: Vec<Diagnostic> = loaded
         .unreadable
@@ -68,6 +69,11 @@ pub fn check(call: &Call) -> Reply {
         })
         .collect();
     let mut checked = jadpo_check::check(db, loaded.project);
+    if let Some(cache) = &cache
+        && loaded.unreadable.is_empty()
+    {
+        cache.record(&loaded, &checked);
+    }
     if crate::run::in_ci(&call.environment) {
         checked.extend(jadpo_check::packages::links_refused(db, loaded.project));
     }

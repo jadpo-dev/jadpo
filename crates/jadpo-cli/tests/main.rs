@@ -57,6 +57,7 @@ mod rule_slice;
 mod schedules;
 mod served_openapi;
 mod settle;
+mod side_by_side;
 mod signed;
 mod sql;
 mod sql_forms;

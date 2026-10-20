@@ -38,6 +38,10 @@ pub struct NameFacts {
     pub domain: bool,
     pub connection: bool,
     pub package: bool,
+    /// For a package held in two versions side by side, the names the app
+    /// writes it through, `Postcodes.v2` and `Postcodes.v3` (chunk
+    /// 7.1c2); empty otherwise.
+    pub versions: Vec<String>,
 }
 
 #[salsa::tracked(returns(ref))]
@@ -49,6 +53,7 @@ pub fn name_facts<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Na
         domain: table.domains.contains(text),
         connection: table.connections.contains(text),
         package: table.packages.contains(text),
+        versions: table.versions.get(text).cloned().unwrap_or_default(),
     }
 }
 
@@ -239,6 +244,9 @@ pub trait NameView {
     fn is_domain(&self, name: &str) -> bool;
     fn is_connection(&self, name: &str) -> bool;
     fn is_package(&self, name: &str) -> bool;
+    /// The names a package held in two versions is written through,
+    /// `Postcodes.v2` and `Postcodes.v3`; empty for any other name.
+    fn versions(&self, name: &str) -> Vec<String>;
     /// The whole table: for suggestions on a mistake only, since reading it
     /// depends on every declaration.
     fn all(&self) -> &Symbols;
@@ -378,7 +386,13 @@ impl<'db> Lookup<'db> {
     fn identified<'w>(&self, written: &'w str) -> Option<(&'w str, &'w str)> {
         let (domain, name) = written.split_once('.')?;
         if name.contains('.') {
-            return None;
+            // A package held in two versions is written through its name
+            // and version, `Postcodes.v3.UkPostcode` (chunk 7.1c2).
+            let (package, name) = written.rsplit_once('.')?;
+            if !package.contains('.') || !self.facts(package).package {
+                return None;
+            }
+            return (!self.in_domain(name, package).is_empty()).then_some((package, name));
         }
         let facts = self.facts(domain);
         if !facts.domain && !facts.package {
@@ -481,6 +495,13 @@ impl NameView for Lookup<'_> {
 
     fn is_package(&self, name: &str) -> bool {
         !self.in_package && self.facts(name).package
+    }
+
+    fn versions(&self, name: &str) -> Vec<String> {
+        if self.in_package {
+            return Vec::new();
+        }
+        self.facts(name).versions.clone()
     }
 
     fn all(&self) -> &Symbols {

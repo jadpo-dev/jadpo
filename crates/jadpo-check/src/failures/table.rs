@@ -138,7 +138,7 @@ pub fn failure_table(db: &dyn Db, project: Project) -> FailureTable {
             let package = jadpo_db::location(db, project, *file)
                 .ownership
                 .package()
-                .map(|home| home.code.clone());
+                .map(|home| home.through.clone());
             (package, failure_decls(db, *file).as_slice())
         })
         .chain(std::iter::once((None, provided.as_slice())))

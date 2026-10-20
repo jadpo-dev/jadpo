@@ -103,7 +103,7 @@ pub fn domain_scope(
     // Every name a package declares is its own: bare inside it, written
     // through it outside (`Postcodes.UkPostcode`, area 11).
     if let Ownership::Package(home) = ownership {
-        return Some(home.code.clone());
+        return Some(home.through.clone());
     }
     let Ownership::Domain(domain) = ownership else {
         return None;
@@ -131,7 +131,7 @@ pub fn identity_name(
     ownership: &Ownership,
 ) -> String {
     match (kind, ownership) {
-        (_, Ownership::Package(home)) => format!("{}.{name}", home.code),
+        (_, Ownership::Package(home)) => format!("{}.{name}", home.through),
         (ItemKind::Type(_), Ownership::Domain(domain)) => format!("{domain}.{name}"),
         (ItemKind::Function | ItemKind::Constant, Ownership::Domain(domain)) if !in_library => {
             format!("{domain}.{name}")
@@ -156,6 +156,11 @@ pub struct Symbols {
     /// The packages the project holds, by their name in code: installed in
     /// `packages/` and its own in `shared/providers/` (area 11).
     pub homes: BTreeMap<String, Vec<crate::places::PackageHome>>,
+    /// The packages held in two versions side by side, by their name in
+    /// code, each with the names the app writes them through, sorted:
+    /// `Postcodes` as `Postcodes.v2` and `Postcodes.v3` (area 11; chunk
+    /// 7.1c2).
+    pub versions: BTreeMap<String, Vec<String>>,
     /// Tests by their sentence, each as its file's path and position, in
     /// path order; more than one is a duplicate (area 13).
     pub tests: BTreeMap<String, Vec<(String, u32)>>,
@@ -250,9 +255,17 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
         }
         if let Some(home) = location.ownership.package() {
             table.packages.insert(home.code.clone());
+            table.packages.insert(home.through.clone());
             let homes = table.homes.entry(home.code.clone()).or_default();
             if !homes.contains(home) {
                 homes.push(home.clone());
+            }
+            if home.through != home.code {
+                let versions = table.versions.entry(home.code.clone()).or_default();
+                if !versions.contains(&home.through) {
+                    versions.push(home.through.clone());
+                    versions.sort();
+                }
             }
         }
         let symbol = |item: &Item, library: Option<(String, u32)>, index: u32| Symbol {
@@ -294,7 +307,7 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
                     // A package's library is known through its package,
                     // `Postcodes.uk`, so its functions say so.
                     let library = match location.ownership.package() {
-                        Some(home) => format!("{}.{}", home.code, item.name),
+                        Some(home) => format!("{}.{}", home.through, item.name),
                         None => item.name.clone(),
                     };
                     for function in &item.functions {

@@ -170,6 +170,9 @@ pub struct Item {
     pub connections: Vec<String>,
     /// For `application { }`: the packages its connections name.
     pub packages: Vec<String>,
+    /// For `application { }`: each connection to a package, with the
+    /// package as its `package:` writes it, `AcmeCouriers.v1`.
+    pub connected: Vec<(String, String)>,
     /// For an entity: the transitions its `lifecycle:` names, each an
     /// operation beside `get`, `create`, `update` and `delete` (area 6).
     pub transitions: Vec<String>,
@@ -282,6 +285,7 @@ fn item(kind: ItemKind, name: String, public: bool, index: u32) -> Item {
         prefix: None,
         connections: Vec::new(),
         packages: Vec::new(),
+        connected: Vec::new(),
         transitions: Vec::new(),
     }
 }
@@ -417,10 +421,11 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
         Decl::ProvideDecl(decl) => item(ItemKind::Provide, name_of(decl.name())?, false, index),
         Decl::SingletonDecl(decl) => {
             let keyword = decl.keyword()?.text().to_string();
-            let (connections, packages) = connections(decl.member_list());
+            let (connections, packages, connected) = connections(decl.member_list());
             Item {
                 connections,
                 packages,
+                connected,
                 ..item(ItemKind::Singleton, keyword, false, index)
             }
         }
@@ -462,15 +467,16 @@ fn route_prefix(list: Option<ast::MemberList>) -> Option<Vec<String>> {
 /// The connections an `application { }` block declares (`connections:`,
 /// and the `stores:` and `providers:` it replaces), and the packages they
 /// name.
-fn connections(list: Option<ast::MemberList>) -> (Vec<String>, Vec<String>) {
+#[allow(clippy::type_complexity)]
+fn connections(list: Option<ast::MemberList>) -> (Vec<String>, Vec<String>, Vec<(String, String)>) {
     let mut names = Vec::new();
     let mut packages = Vec::new();
+    let mut connected = Vec::new();
     for (key, member) in members(list) {
         if !matches!(key.as_str(), "connections" | "stores" | "providers") {
             continue;
         }
         for (name, entry) in members(member.block()) {
-            names.push(name);
             for (setting, value) in members(entry.block()) {
                 if setting == "package"
                     && let Some(value) = value.value()
@@ -478,9 +484,11 @@ fn connections(list: Option<ast::MemberList>) -> (Vec<String>, Vec<String>) {
                     let text = written(value.syntax());
                     let ownership = text.split('.').next().unwrap_or_default();
                     packages.push(ownership.to_string());
+                    connected.push((name.clone(), text));
                 }
             }
+            names.push(name);
         }
     }
-    (names, packages)
+    (names, packages, connected)
 }

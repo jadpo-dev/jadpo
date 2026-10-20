@@ -720,7 +720,11 @@ checked by the same compiler and cached in `build/before/<commit>/`.
 **Packages.** A package's index is always parsed, a resource file only when
 the app calls into it. A checked package subgraph is cached on disk by
 package digest and compiler version (`~/.cache/jadpo/packages/`), so an
-unchanged package costs nothing after its first check (area 11).
+unchanged package costs nothing after its first check (area 11). Built in
+chunk 7.1c2: an installed package's resources wait in the project's
+`lazy` input until the app writes `<connection>.<resource>`, and the cache
+holds the package files `jadpo check` found clean, which it then skips
+(area 11, "Chosen in chunk 7.1c2").
 
 ### 2.4 Incremental engine
 
