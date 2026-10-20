@@ -1603,13 +1603,18 @@ The design is area 11 as revised on 2026-10-16, with its research in
   after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
   <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
-- [ ] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
+- [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
   the `ai` schema); and the two tests that failed once and passed on
   rerun made deterministic: `http::an_api_token_signs_its_app_in_until_it_is_ended`
   (compares timestamps as text) and
   `batch_calls::a_files_rows_that_call_are_each_a_batch_of_their_own`.
+  Built: every field's schema, parameter and record line reads the field
+  itself (`wire::field_type`), so its inline rules come before its
+  type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
+  the token test compares instants as instants, and the open-transaction
+  count of the call tests leaves out the server's autovacuum workers.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

@@ -45,6 +45,14 @@ pub enum Shape {
     Other(String),
 }
 
+/// What a field sends: the field itself, so [`Wire::shape`] keeps the rules
+/// it writes inline (`reply: Text { max_length: 2000 }`) before its type's.
+/// Every schema and record line of a field reads it through this, OpenAPI's
+/// and `ai.generate`'s alike (chunk 7.7d).
+pub fn field_type(field: &Node) -> TypeRef {
+    TypeRef::Field(field.key.clone())
+}
+
 /// Every rule along a chain, the first (most specific) of each kept.
 pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
     let mut out = Rules::default();

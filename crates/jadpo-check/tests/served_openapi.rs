@@ -324,3 +324,127 @@ principal {
     assert!(operation.get("security").is_none());
     assert!(at(operation, &["responses", "401"]).is_some());
 }
+
+/// A field's own rules, written inline (`reply: Text { max_length: 2000 }`),
+/// reach its schema as a named type's do: the schema's keywords and its
+/// `x-jadpo-constraints` (chunk 7.7d).
+#[test]
+fn a_field_s_inline_rules_reach_its_schema() {
+    let mut files = with_app(APP);
+    files.push((
+        "domains/planning/actions/answer_todo.jadpo",
+        r#"type Answer = Input {
+    reply: Text {
+        min_length: 1
+        max_length: 2000
+    }
+    code: Text {
+        pattern: "[A-Z]{3}"
+    }
+    stars: Int {
+        min: 1
+        max: 5
+    }
+    tags: List<Text> {
+        max_length: 4
+    }
+    note: Text? {
+        max_length: 50
+    }
+}
+
+type Answered = Output {
+    reply: Text {
+        min_length: 1
+        max_length: 2000
+    }
+}
+
+action answer_todo(input: Answer) -> Answered {
+    return Answered {
+        reply: input.reply
+    }
+}
+"#,
+    ));
+    files.push((
+        "domains/planning/routes/v1_answers.jadpo",
+        r#"use planning/actions { Answer, Answered, answer_todo }
+
+routes V1Answers {
+    prefix: /v1/answers
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Answer
+        output: Answered
+        run: answer_todo(input)
+    }
+}
+"#,
+    ));
+    files.push((
+        "policy.jadpo",
+        "use planning\n\npolicy {\n    actions: {\n        planning.answer_todo: [Access.public]\n    }\n}\n",
+    ));
+    assert_eq!(problems(&files), Vec::<String>::new());
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "todos", "1")
+        .expect("a document");
+    let field = |name: &str| {
+        at(
+            &document,
+            &["components", "schemas", "Answer", "properties", name],
+        )
+        .cloned()
+        .unwrap_or_else(|| panic!("`{name}` in {document:#?}"))
+    };
+    let reply = field("reply");
+    assert_eq!(
+        reply.get("maxLength"),
+        Some(&Value::from(2000u32)),
+        "{reply:#?}"
+    );
+    assert_eq!(
+        reply.get("minLength"),
+        Some(&Value::from(1u32)),
+        "{reply:#?}"
+    );
+    assert_eq!(
+        reply.get("x-jadpo-constraints"),
+        Some(&Value::from("Text { min_length: 1, max_length: 2000 }"))
+    );
+    let code = field("code");
+    assert_eq!(
+        code.get("pattern"),
+        Some(&Value::from("^(?:[A-Z]{3})$")),
+        "{code:#?}"
+    );
+    let stars = field("stars");
+    assert_eq!(stars.get("minimum"), Some(&Value::from(1i64)), "{stars:#?}");
+    assert_eq!(stars.get("maximum"), Some(&Value::from(5i64)), "{stars:#?}");
+    let tags = field("tags");
+    assert_eq!(tags.get("maxItems"), Some(&Value::from(4u32)), "{tags:#?}");
+    let answered = at(
+        &document,
+        &["components", "schemas", "Answered", "properties", "reply"],
+    )
+    .unwrap_or_else(|| panic!("{document:#?}"));
+    assert_eq!(
+        answered.get("maxLength"),
+        Some(&Value::from(2000u32)),
+        "{answered:#?}"
+    );
+    let note = field("note");
+    let some = note
+        .get("anyOf")
+        .and_then(Value::as_array)
+        .and_then(|options| options.first())
+        .unwrap_or_else(|| panic!("{note:#?}"));
+    assert_eq!(
+        some.get("maxLength"),
+        Some(&Value::from(50u32)),
+        "{note:#?}"
+    );
+}
