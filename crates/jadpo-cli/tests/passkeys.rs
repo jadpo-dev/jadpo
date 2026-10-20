@@ -28,16 +28,23 @@ use std::sync::Arc;
 use jadpo_host_native::test_authenticator::TestAuthenticator;
 use jadpo_host_native::{NativeHost, Postgres, Runtime};
 use jadpo_interp::{Prepared, Program};
+use jadpo_runtime::capability::{Capability, Fake};
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use jadpo_runtime::{Database, Host, LocalFuture};
 
-/// The native host, with a wall clock the test sets.
+/// The native host, with a wall clock the test sets and the `email`
+/// connection faked.
 struct Clocked {
     inner: NativeHost,
     now: Cell<i64>,
+    mail: Fake,
 }
 
 impl Host for Clocked {
+    fn capability(&self, connection: &str) -> Option<&dyn Capability> {
+        (connection == "mail").then_some(&self.mail as &dyn Capability)
+    }
+
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
         self.inner.passkeys()
     }
@@ -73,17 +80,43 @@ const MINUTE: i64 = 60_000;
 const ORIGIN: &str = "https://notes.example";
 
 const FILES: &[(&str, &str)] = &[
-    ("config.jadpo", "config {\n    browser_origin: Url\n}\n"),
+    (
+        "config.jadpo",
+        r#"config {
+    browser_origin: Url {
+        test: "https://notes.example"
+    }
+    mail_sender: Email {
+        default: "hello@notes.example"
+    }
+    smtp_host: Hostname {
+        default: "localhost"
+    }
+}
+"#,
+    ),
     (
         "app.jadpo",
         r#"use notes/entities { Member }
 use notes/types { MemberStatus }
 
-application {}
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
 
 principal {
     user: {
-        subject: Member.email
+        subject: Member.handle
         active: Member.status == MemberStatus.active
     }
 }
@@ -97,6 +130,9 @@ principal {
         origin: config.browser_origin
     }
     sign_in: {
+        magic_link: {
+            link: "/sign-in/confirm"
+        }
         passkey: {
             expires_after: 2m
         }
@@ -106,15 +142,18 @@ principal {
     ),
     (
         "policy.jadpo",
-        "use notes\n\npolicy {\n    actions: {\n        notes.sign_up: [Access.public]\n    }\n}\n",
+        "use notes\n\npolicy {\n    actions: {\n        notes.sign_up: [Access.public]\n        notes.add_member: [Access.public]\n    }\n}\n",
     ),
     (
         "domains/notes/entities/member.jadpo",
-        r#"use notes/types { MemberStatus }
+        r#"use notes/types { Handle, MemberStatus }
 
 entity Member {
     id: Uuid
     email: Email {
+        unique: true
+    }
+    handle: Handle {
         unique: true
     }
     status: MemberStatus
@@ -130,25 +169,49 @@ entity Member {
     (
         "domains/notes/actions/sign_up.jadpo",
         r#"use notes/entities { Member }
-use notes/types { MemberStatus }
+use notes/types { MemberStatus, NewMember }
 use notes/failures { EmailTaken }
 
 /// Registers a member and signs this browser in.
-action sign_up(input: SignUp) fails EmailTaken -> Unit {
+action sign_up(input: NewMember) fails EmailTaken -> Unit {
     var member: Member = attempt Member.create {
         set: {
             email: input.email
+            handle: input.handle
             status: MemberStatus.active
         }
         conflict: {
             Member.email: EmailTaken
+            Member.handle: EmailTaken
         }
     }
     sessions.start(member.id)
 }
+"#,
+    ),
+    (
+        "domains/notes/types/new_member.jadpo",
+        "use notes/types { Handle }\n\ntype NewMember = Input {\n    email: Email\n    handle: Handle\n}\n",
+    ),
+    (
+        "domains/notes/actions/add_member.jadpo",
+        r#"use notes/entities { Member }
+use notes/types { MemberStatus, NewMember }
+use notes/failures { EmailTaken }
 
-type SignUp = Input {
-    email: Email
+/// Registers a member, signing no one in.
+action add_member(input: NewMember) fails EmailTaken -> Member {
+    return attempt Member.create {
+        set: {
+            email: input.email
+            handle: input.handle
+            status: MemberStatus.active
+        }
+        conflict: {
+            Member.email: EmailTaken
+            Member.handle: EmailTaken
+        }
+    }
 }
 "#,
     ),
@@ -157,15 +220,20 @@ type SignUp = Input {
         "type EmailTaken = Failure {\n    kind: FailureKind.conflict\n    message: \"That address has an account.\"\n}\n",
     ),
     (
+        "domains/notes/failures/member_not_found.jadpo",
+        "type MemberNotFound = Failure {\n    kind: FailureKind.not_found\n}\n",
+    ),
+    (
         "domains/notes/routes/account.jadpo",
-        r#"use notes/actions { SignUp, sign_up }
+        r#"use notes/actions { sign_up }
+use notes/types { NewMember }
 
 routes Account {
     prefix: /account
 
     POST /sign-up {
         authentication: RouteAuthentication.none
-        input: SignUp
+        input: NewMember
         status: SuccessStatus.no_content
         run: sign_up(input)
     }
@@ -175,6 +243,176 @@ routes Account {
     (
         "domains/notes/types/member_status.jadpo",
         "type MemberStatus = Enum {\n    active\n    suspended\n}\n",
+    ),
+    (
+        "domains/notes/types/handle.jadpo",
+        "type Handle = Text {\n    max_length: 40\n}\n",
+    ),
+    (
+        "domains/notes/types/note_kind.jadpo",
+        "type NoteKind = Enum {\n    signed_in\n    refused\n    passkey_added\n    passkey_removed\n}\n",
+    ),
+    // What the application hears of sign-ins and passkeys (chunk 5.5z2).
+    (
+        "domains/notes/entities/sign_in_note.jadpo",
+        r#"use notes/entities { Member }
+use notes/types { NoteKind }
+
+/// What the application heard of a sign-in or a passkey.
+entity SignInNote {
+    id: Uuid
+    kind: NoteKind
+    member_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    method: SignInMethod?
+    reason: SignInRefusal?
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/note_signed_in.jadpo",
+        r#"use notes/entities { SignInNote }
+use notes/failures { MemberNotFound }
+use notes/types { NoteKind }
+
+/// Notes a sign-in.
+action note_signed_in(event: SignedIn) fails MemberNotFound -> SignInNote {
+    return attempt SignInNote.create {
+        set: {
+            kind: NoteKind.signed_in
+            member_id: event.user_id
+            method: event.method
+            reason: none
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/note_refused.jadpo",
+        r#"use notes/entities { SignInNote }
+use notes/failures { MemberNotFound }
+use notes/types { NoteKind }
+
+/// Notes a refusal.
+action note_refused(event: SignInRefused) fails MemberNotFound -> SignInNote {
+    return attempt SignInNote.create {
+        set: {
+            kind: NoteKind.refused
+            member_id: event.user_id
+            method: event.method
+            reason: event.reason
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/note_added.jadpo",
+        r#"use notes/entities { SignInNote }
+use notes/failures { MemberNotFound }
+use notes/types { NoteKind }
+
+/// Notes a passkey added.
+action note_added(event: PasskeyAdded) fails MemberNotFound -> SignInNote {
+    return attempt SignInNote.create {
+        set: {
+            kind: NoteKind.passkey_added
+            member_id: event.user_id
+            method: none
+            reason: none
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/actions/note_removed.jadpo",
+        r#"use notes/entities { SignInNote }
+use notes/failures { MemberNotFound }
+use notes/types { NoteKind }
+
+/// Notes a passkey removed.
+action note_removed(event: PasskeyRemoved) fails MemberNotFound -> SignInNote {
+    return attempt SignInNote.create {
+        set: {
+            kind: NoteKind.passkey_removed
+            member_id: event.user_id
+            method: none
+            reason: none
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/notes/subscribers/note_sign_ins.jadpo",
+        "use notes/actions { note_signed_in }\n\n/// Notes each sign-in.\nsubscriber note_sign_ins {\n    on: SignedIn\n    run: note_signed_in(event)\n}\n",
+    ),
+    (
+        "domains/notes/subscribers/note_refusals.jadpo",
+        "use notes/actions { note_refused }\n\n/// Notes each refusal.\nsubscriber note_refusals {\n    on: SignInRefused\n    run: note_refused(event)\n}\n",
+    ),
+    (
+        "domains/notes/subscribers/note_additions.jadpo",
+        "use notes/actions { note_added }\n\n/// Notes each passkey added.\nsubscriber note_additions {\n    on: PasskeyAdded\n    run: note_added(event)\n}\n",
+    ),
+    (
+        "domains/notes/subscribers/note_removals.jadpo",
+        "use notes/actions { note_removed }\n\n/// Notes each passkey removed.\nsubscriber note_removals {\n    on: PasskeyRemoved\n    run: note_removed(event)\n}\n",
+    ),
+];
+
+/// A route test driving the passkey routes with `test_passkeys` (chunk
+/// 5.5z2): Ada adds a passkey and signs in with it; when it is lost she
+/// is signed in another way, adds a new one, and that signs her in. Until
+/// `email.sent` reads the magic link's email in a test (chunk 7.3c), `as:`
+/// signs her in in its place, as it does for every route test.
+const ROUTE_TESTS: &[(&str, &str)] = &[
+    (
+        "domains/notes/fixtures/signed_up_ada.jadpo",
+        r#"use notes/actions { add_member }
+use notes/entities { Member }
+use notes/types { NewMember }
+
+/// Ada, signed up, with no passkey.
+public fixture signed_up_ada() -> Principal.user {
+    var member: Member = attempt add_member(NewMember {
+        email: "ada@example.com"
+        handle: "ada"
+    })
+    return Principal.user(member)
+}
+"#,
+    ),
+    (
+        "tests/passkeys.test.jadpo",
+        r#"use notes
+
+test "a passkey signs Ada in" {
+    var ada: Principal.user = notes.signed_up_ada()
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var response: Response = test_passkeys.sign_in(phone)
+    assert response.status == 204
+    assert response.code == none
+}
+
+test "with her phone lost, Ada adds a new passkey and signs in with it" {
+    var ada: Principal.user = notes.signed_up_ada()
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var first: Response = test_passkeys.sign_in(phone)
+    assert first.status == 204
+    var new_phone: TestPasskey = test_passkeys.register(ada, "New phone")
+    var response: Response = test_passkeys.sign_in(new_phone)
+    assert response.status == 204
+}
+"#,
     ),
 ];
 
@@ -209,7 +447,7 @@ impl Live {
             std::fs::write(path, text).expect("write");
         }
         jadpo(&root, &["migrate", "new", "initial"]);
-        jadpo(&root, &["api", "update"]);
+        jadpo(&root, &["records", "update"]);
         jadpo(&root, &["check"]);
         let loaded = jadpo_db::load(&root);
         let prepared = Prepared::load(&loaded.db, loaded.project).expect("checks");
@@ -244,6 +482,7 @@ impl Live {
             host: Clocked {
                 inner: NativeHost::new().with_store("main", store),
                 now: Cell::new(START),
+                mail: Fake::new(),
             },
             runtime,
             worker: Worker::default(),
@@ -254,15 +493,55 @@ impl Live {
         self.host.now.set(now);
     }
 
+    /// Answers `request`, then runs what it left for after the response:
+    /// its events' deliveries and any email.
     fn send(&self, request: &Request) -> Response {
         let app = self.program.app();
-        self.runtime.block_on(serve_request(
+        let response = self.runtime.block_on(serve_request(
             &app,
             &self.program,
             &self.host,
             &self.worker,
             request,
-        ))
+        ));
+        let work = response.deferred.clone();
+        self.runtime.block_on(jadpo_runtime::runner::run_deferred(
+            &self.program,
+            &self.host,
+            work,
+        ));
+        response
+    }
+
+    /// What the subscribers heard, oldest first: each note's kind, the
+    /// member's address, and the way in or the reason.
+    fn notes(&self) -> Vec<String> {
+        self.rows(
+            "SELECT concat_ws(' ', n.\"kind\", coalesce(m.\"email\", '-'), n.\"method\", n.\"reason\") FROM \"sign_in_note\" AS n LEFT JOIN \"member\" AS m ON m.\"id\" = n.\"member_id\" ORDER BY n.\"ctid\"",
+        )
+        .into_iter()
+        .map(|row| match row.first() {
+            Some(jadpo_runtime::SqlValue::Text(text)) => text.clone(),
+            other => panic!("not a note: {other:?}"),
+        })
+        .collect()
+    }
+
+    /// The six-digit code of the last email, which must have gone to
+    /// `address`.
+    fn code_sent_to(&self, address: &str) -> String {
+        let call = self.host.mail.sent().pop().expect("an email");
+        let jadpo_value::Value::Record(record) = &call.input else {
+            panic!("not a message: {:?}", call.input);
+        };
+        let text = |name: &str| match record.get(name) {
+            Some(jadpo_value::Value::Text(text)) => text.to_string(),
+            other => panic!("{name}: {other:?}"),
+        };
+        assert_eq!(text("to"), address);
+        let body = text("text");
+        let (_, rest) = body.split_once("code: ").expect("a code");
+        rest.chars().take(6).collect()
     }
 
     fn rows(&self, statement: &str) -> Vec<jadpo_runtime::Row> {
@@ -272,13 +551,15 @@ impl Live {
             .expect("runs")
     }
 
-    /// Signs a new member up in a browser of their own.
+    /// Signs a new member up in a browser of their own, their handle the
+    /// address's local part.
     fn sign_up(&self, email: &str) -> Browser {
+        let handle = email.split('@').next().unwrap_or_default();
         let response = self.send(&request(
             "POST",
             "/account/sign-up",
             &[("origin", ORIGIN)],
-            &format!("{{\"email\":\"{email}\"}}"),
+            &format!("{{\"email\":\"{email}\",\"handle\":\"{handle}\"}}"),
         ));
         assert_eq!(response.status, 204, "{}", text(&response));
         let mut browser = Browser::default();
@@ -466,7 +747,10 @@ fn a_person_registers_a_passkey_and_signs_in_with_it() {
     assert_eq!(options.header("cache-control"), Some("no-store"));
     let key = &json(&options)["publicKey"];
     assert_eq!(key["rp"]["id"], "notes.example");
+    // The device lists it under her address, the one a magic link gets
+    // her back in with, rather than her handle, the principal's subject.
     assert_eq!(key["user"]["name"], "ada@example.com");
+    assert_eq!(key["user"]["displayName"], "ada@example.com");
     assert_eq!(key["authenticatorSelection"]["residentKey"], "required");
     assert_eq!(
         key["authenticatorSelection"]["userVerification"],
@@ -844,7 +1128,20 @@ fn a_disabled_person_signs_in_with_no_passkey_and_writes_need_the_origin() {
     let mut phone = TestAuthenticator::new(ORIGIN);
     assert_eq!(live.register(&mut ada, &mut phone, "Phone").status, 201);
     live.rows("UPDATE \"member\" SET \"status\" = 'suspended'");
-    refused(&live.sign_in(&mut phone).1, 403, "user_disabled");
+    let (_, response) = live.sign_in(&mut phone);
+    refused(&response, 403, "user_disabled");
+    // The log says why, and the application hears it, with whose passkey.
+    assert_eq!(
+        response.refused.as_ref().map(|refused| refused.reason),
+        Some("user_disabled")
+    );
+    assert_eq!(
+        live.notes(),
+        [
+            "passkey_added ada@example.com",
+            "refused ada@example.com passkey user_disabled"
+        ]
+    );
 
     // From another site, or with no `Origin`, the public routes refuse.
     for origin in [&[("origin", "https://evil.example")][..], &[]] {
@@ -864,4 +1161,116 @@ fn a_disabled_person_signs_in_with_no_passkey_and_writes_need_the_origin() {
         "{\"address\":\"ada@example.com\"}",
     ));
     assert_eq!(extra.status, 422, "{}", text(&extra));
+}
+
+/// Recovery (chunk 5.5z2): a person with no passkey left signs in with a
+/// magic link's code and adds a new passkey, which then signs her in; the
+/// application hears every step, and no event names a credential.
+#[test]
+fn a_person_with_no_passkey_left_recovers_through_a_magic_link() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("recovery");
+    let mut ada = live.sign_up("ada@example.com");
+    let mut phone = TestAuthenticator::new(ORIGIN);
+    let added = live.register(&mut ada, &mut phone, "Phone");
+    assert_eq!(added.status, 201, "{}", text(&added));
+    let (_, signed) = live.sign_in(&mut phone);
+    assert_eq!(signed.status, 204, "{}", text(&signed));
+
+    // She removes her only passkey, and it signs no one in.
+    let id = json(&added)["id"].as_str().expect("an id").to_string();
+    let removed = live.send(&ada.write("DELETE", &format!("/auth/passkey/{id}"), ""));
+    assert_eq!(removed.status, 204, "{}", text(&removed));
+    let (mut laptop, response) = live.sign_in(&mut phone);
+    refused(&response, 401, "passkey_rejected");
+    assert_eq!(
+        response.refused.as_ref().map(|refused| refused.reason),
+        Some("passkey_rejected")
+    );
+    assert!(!laptop.signed_in());
+
+    // A magic link's code signs her in on the laptop.
+    let asked = live.send(&laptop.public(
+        "POST",
+        "/auth/magic-link",
+        "{\"address\":\"ada@example.com\"}",
+    ));
+    assert_eq!(asked.status, 202, "{}", text(&asked));
+    let code = live.code_sent_to("ada@example.com");
+    let confirmed = live.send(&laptop.public(
+        "POST",
+        "/auth/magic-link/confirm",
+        &format!("{{\"address\":\"ada@example.com\",\"code\":\"{code}\"}}"),
+    ));
+    assert_eq!(confirmed.status, 200, "{}", text(&confirmed));
+    laptop.keep(&confirmed);
+    assert!(laptop.signed_in());
+
+    // From there she adds a new passkey, which signs her in.
+    let mut new_phone = TestAuthenticator::new(ORIGIN);
+    let added = live.register(&mut laptop, &mut new_phone, "New phone");
+    assert_eq!(added.status, 201, "{}", text(&added));
+    let (browser, signed) = live.sign_in(&mut new_phone);
+    assert_eq!(signed.status, 204, "{}", text(&signed));
+    assert!(browser.signed_in());
+    let listed = live.send(&browser.public("GET", "/auth/passkey", ""));
+    let listed = json(&listed);
+    let names: Vec<&str> = listed
+        .as_array()
+        .expect("a list")
+        .iter()
+        .filter_map(|view| view["name"].as_str())
+        .collect();
+    assert_eq!(names, ["New phone"]);
+
+    assert_eq!(
+        live.notes(),
+        [
+            "passkey_added ada@example.com",
+            "signed_in ada@example.com passkey",
+            "passkey_removed ada@example.com",
+            "refused - passkey passkey_rejected",
+            "signed_in ada@example.com magic_link",
+            "passkey_added ada@example.com",
+            "signed_in ada@example.com passkey",
+        ]
+    );
+    // What the outbox kept names the user and the passkey by `id` only.
+    for row in live.rows("SELECT \"payload\"::text FROM \"jadpo_outbox\"") {
+        let jadpo_runtime::SqlValue::Text(payload) = &row[0] else {
+            panic!("{row:?}")
+        };
+        assert!(
+            !payload.contains("credential") && !payload.contains("challenge"),
+            "{payload}"
+        );
+    }
+}
+
+/// `jadpo test` runs a route test written with `test_passkeys`, which
+/// drives the generated routes with the test host's own authenticator.
+#[test]
+fn a_route_test_signs_in_with_test_passkeys() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("jadpo-passkeys-route-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let root = dir.join("notes");
+    for (path, text) in FILES.iter().chain(ROUTE_TESTS) {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        std::fs::write(path, text).expect("write");
+    }
+    jadpo(&root, &["migrate", "new", "initial"]);
+    jadpo(&root, &["records", "update"]);
+    let env = jadpo_term::Environment::empty()
+        .with_var("SOURCE_DATE_EPOCH", "1792504800")
+        .with_cwd(&root);
+    let done = jadpo_cli::run(&["test".to_string()], &env);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
+    assert!(done.stdout.contains("2 passed"), "{}", done.stdout);
 }

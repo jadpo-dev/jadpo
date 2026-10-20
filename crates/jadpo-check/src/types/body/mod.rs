@@ -1509,11 +1509,19 @@ impl Body<'_> {
             self.out.push(
                 Diagnostic::new(
                     &rule::EVENT_EMIT_INVALID,
-                    format!("`{name}` is published only by signing in"),
+                    format!(
+                        "`{name}` is published only by {}",
+                        jadpo_std::http::published_by(name)
+                    ),
                 )
                 .at(self.span(expr), "a sign-in event")
                 .reason(format!(
-                    "Jadpo publishes `{name}` itself as a person signs in, so its subscribers can trust that it happened; code never emits it."
+                    "Jadpo publishes `{name}` itself as {}, so its subscribers can trust that it happened; code never emits it.",
+                    match name.as_str() {
+                        jadpo_std::http::PASSKEY_ADDED => "a person adds a passkey",
+                        jadpo_std::http::PASSKEY_REMOVED => "a person removes a passkey",
+                        _ => "a person signs in",
+                    }
                 ))
                 .next("Remove the `emit`, or emit an event of the application's own"),
             );

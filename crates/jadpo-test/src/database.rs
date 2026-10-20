@@ -872,6 +872,35 @@ pub struct TestHost<'d> {
     mail: jadpo_runtime::capability::Fake,
     /// The connection `email:` names, which it is given for.
     mail_connection: Option<String>,
+    /// The authenticators `test_passkeys.register` made, each holding one
+    /// passkey, by number (area 8; chunk 5.5z2).
+    authenticators: TestPasskeyAuthenticators,
+}
+
+/// A test's software authenticators: one device per passkey
+/// `test_passkeys.register` adds, which only a test's host has.
+#[derive(Default)]
+struct TestPasskeyAuthenticators(
+    std::cell::RefCell<Vec<jadpo_host_native::test_authenticator::TestAuthenticator>>,
+);
+
+impl jadpo_runtime::TestAuthenticators for TestPasskeyAuthenticators {
+    fn create(&self, origin: &str, options: &str) -> Result<(u32, String), String> {
+        let mut device = jadpo_host_native::test_authenticator::TestAuthenticator::new(origin);
+        let answer = device.create(options)?;
+        let mut authenticators = self.0.borrow_mut();
+        let number = u32::try_from(authenticators.len()).map_err(|e| e.to_string())?;
+        authenticators.push(device);
+        Ok((number, answer))
+    }
+
+    fn get(&self, device: u32, options: &str) -> Result<String, String> {
+        let mut authenticators = self.0.borrow_mut();
+        let device = authenticators
+            .get_mut(device as usize)
+            .ok_or("no such device in this test")?;
+        device.get(options)
+    }
 }
 
 enum Held {
@@ -909,6 +938,7 @@ impl<'d> TestHost<'d> {
             file_stores: Vec::new(),
             mail: jadpo_runtime::capability::Fake::new(),
             mail_connection: None,
+            authenticators: TestPasskeyAuthenticators::default(),
         }
     }
 
@@ -974,6 +1004,11 @@ impl jadpo_runtime::Host for TestHost<'_> {
     /// `webauthn-rs`, as natively (area 8, "Passkeys").
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
         Some(&PASSKEYS)
+    }
+
+    /// The authenticators `test_passkeys` makes (chunk 5.5z2).
+    fn test_authenticators(&self) -> Option<&dyn jadpo_runtime::TestAuthenticators> {
+        Some(&self.authenticators)
     }
 
     fn database(&self, store: &str) -> Option<&dyn jadpo_runtime::Database> {
