@@ -753,7 +753,7 @@ pub const AI_USAGE: SystemTable = SystemTable {
         column("cost_micros", "bigint", false),
         column("reserved_micros", "bigint", false),
         column("currency", "text", true),
-        column("updated_at", "timestamptz(3)", false),
+        column("touched_at", "timestamptz(3)", false),
     ],
     primary_key: &["day", "scope", "key"],
     unique: &[],

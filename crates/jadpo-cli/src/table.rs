@@ -661,7 +661,7 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--url",
             value: Some("url"),
-            description: "The database usage is counted in, for `usage`",
+            description: "The database `usage` reads",
             values: &[],
         }],
         examples: &[

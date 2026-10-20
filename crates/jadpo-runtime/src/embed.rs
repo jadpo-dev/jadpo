@@ -230,7 +230,7 @@ pub async fn embed(
     };
     let (answer, _) = match crate::ai::sent(ctx, call, request, began, site.timeout_ms).await {
         Ok(sent) => sent,
-        Err(done) => return crate::ai_budget::charged(ctx, taken, estimate(input), done).await,
+        Err(done) => return crate::ai_budget::debited(ctx, taken, texts_used(input), done).await,
     };
     // A fake's own: the vectors made from each text and the seed.
     let answer = match answer {
@@ -245,10 +245,10 @@ pub async fn embed(
         Answer::Wire(text) => serde_json::from_str::<serde_json::Value>(text)
             .ok()
             .and_then(|json| json.get("usage")?.get("prompt_tokens")?.as_u64())
-            .map_or_else(|| estimate(input), estimate),
-        _ => estimate(input),
+            .map_or_else(|| texts_used(input), texts_used),
+        _ => texts_used(input),
     };
-    crate::ai_budget::charge(ctx, taken, used).await;
+    crate::ai_budget::debit(ctx, taken, used).await;
     let kept = match &answer {
         Answer::Wire(text) => Kept::Answer(text.clone()),
         Answer::TimedOut => Kept::Condition(RuleKey::TimedOut),
@@ -290,7 +290,7 @@ pub async fn embed(
 }
 
 /// An embedding's use: `input` tokens, and none answered.
-fn estimate(input: u64) -> crate::ai_budget::Used {
+fn texts_used(input: u64) -> crate::ai_budget::Used {
     crate::ai_budget::Used {
         input,
         output: 0,

@@ -225,7 +225,7 @@ fn development_counts_each_caller_and_the_sandbox_and_shows_the_usage() {
             "model": "acme/acme-small",
             "calls": 1,
             "tokensToday": 39,
-            "tokensThisMonth": 39,
+            "tokensMonth": 39,
             "inputTokens": 30,
             "outputTokens": 9,
             "cachedTokens": 0,

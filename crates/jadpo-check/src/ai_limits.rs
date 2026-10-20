@@ -327,6 +327,6 @@ fn invalid(title: impl Into<String>, span: Span, label: &str) -> Diagnostic {
 fn missing(span: Span, title: &str, label: &str, next: &str) -> Diagnostic {
     Diagnostic::new(&rule::SEMANTIC_AI_BUDGET_MISSING, title)
         .at(span, label.to_string())
-        .reason("Nothing an application asks a model is unlimited: `per_day: { tokens: }` caps the day's tokens, so a loop or an injected \"write ten thousand words\" can't spend without end.")
+        .reason("Nothing an application asks a model is unlimited: `per_day: { tokens: }` caps the day's tokens, so a loop, or a prompt an injection makes run on, can't spend without end.")
         .next(next.to_string())
 }

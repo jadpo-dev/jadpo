@@ -12,7 +12,7 @@
 //!   can't cover is `over_budget` with nothing sent, and a store that
 //!   can't be reached refuses it `unavailable` rather than spend
 //!   unmetered.
-//! - **After** ([`charge`]), it is charged what the provider says it used,
+//! - **After** ([`debit`]), it is charged what the provider says it used,
 //!   or, for an answer that says nothing, the estimate of what was sent
 //!   and answered, and what it took is given back; its prompt and model's
 //!   row counts it too, for `jadpo ai usage`.
@@ -52,17 +52,17 @@ pub const PROMPT: &str = "prompt";
 /// still hold, would pass `$6`, or its cost would pass `$7` (`NULL` for no
 /// cost limit): a row when taken, none when not. A first call of the day
 /// makes the row, its use already checked against the limits.
-pub const TAKE: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"updated_at\") VALUES ($1, $2, $3, 0, 0, 0, 0, $4::bigint, 0, $5::bigint, NULL, $8) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"reserved_tokens\" = \"used\".\"reserved_tokens\" + $4::bigint, \"reserved_micros\" = \"used\".\"reserved_micros\" + $5::bigint, \"updated_at\" = $8 WHERE \"used\".\"input_tokens\" + \"used\".\"output_tokens\" + \"used\".\"reserved_tokens\" + $4::bigint <= $6::bigint AND ($7::bigint IS NULL OR \"used\".\"cost_micros\" + \"used\".\"reserved_micros\" + $5::bigint <= $7::bigint) RETURNING 1";
+pub const TAKE: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"touched_at\") VALUES ($1, $2, $3, 0, 0, 0, 0, $4::bigint, 0, $5::bigint, NULL, $8) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"reserved_tokens\" = \"used\".\"reserved_tokens\" + $4::bigint, \"reserved_micros\" = \"used\".\"reserved_micros\" + $5::bigint, \"touched_at\" = $8 WHERE \"used\".\"input_tokens\" + \"used\".\"output_tokens\" + \"used\".\"reserved_tokens\" + $4::bigint <= $6::bigint AND ($7::bigint IS NULL OR \"used\".\"cost_micros\" + \"used\".\"reserved_micros\" + $5::bigint <= $7::bigint) RETURNING 1";
 
 /// Charges window `$2` `$3` of day `$1` one call of `$4` input, `$5`
 /// output and `$6` cached tokens costing `$8` millionths of `$10` (`NULL`
 /// with no price), at `$11`, giving back the `$7` tokens and `$9`
 /// millionths it took.
-pub const CHARGE: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"updated_at\") VALUES ($1, $2, $3, 1, $4::bigint, $5::bigint, $6::bigint, 0, $8::bigint, 0, $10, $11) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"calls\" = \"used\".\"calls\" + 1, \"input_tokens\" = \"used\".\"input_tokens\" + $4::bigint, \"output_tokens\" = \"used\".\"output_tokens\" + $5::bigint, \"cached_tokens\" = \"used\".\"cached_tokens\" + $6::bigint, \"reserved_tokens\" = GREATEST(\"used\".\"reserved_tokens\" - $7::bigint, 0), \"cost_micros\" = \"used\".\"cost_micros\" + $8::bigint, \"reserved_micros\" = GREATEST(\"used\".\"reserved_micros\" - $9::bigint, 0), \"currency\" = COALESCE($10, \"used\".\"currency\"), \"updated_at\" = $11";
+pub const DEBIT: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"touched_at\") VALUES ($1, $2, $3, 1, $4::bigint, $5::bigint, $6::bigint, 0, $8::bigint, 0, $10, $11) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"calls\" = \"used\".\"calls\" + 1, \"input_tokens\" = \"used\".\"input_tokens\" + $4::bigint, \"output_tokens\" = \"used\".\"output_tokens\" + $5::bigint, \"cached_tokens\" = \"used\".\"cached_tokens\" + $6::bigint, \"reserved_tokens\" = GREATEST(\"used\".\"reserved_tokens\" - $7::bigint, 0), \"cost_micros\" = \"used\".\"cost_micros\" + $8::bigint, \"reserved_micros\" = GREATEST(\"used\".\"reserved_micros\" - $9::bigint, 0), \"currency\" = COALESCE($10, \"used\".\"currency\"), \"touched_at\" = $11";
 
 /// Gives back to window `$2` `$3` of day `$1` the `$4` tokens and `$5`
 /// millionths a call took and didn't use, at `$6`.
-pub const GIVE_BACK: &str = "UPDATE \"jadpo_ai_usage\" SET \"reserved_tokens\" = GREATEST(\"reserved_tokens\" - $4::bigint, 0), \"reserved_micros\" = GREATEST(\"reserved_micros\" - $5::bigint, 0), \"updated_at\" = $6 WHERE \"day\" = $1 AND \"scope\" = $2 AND \"key\" = $3";
+pub const GIVE_BACK: &str = "UPDATE \"jadpo_ai_usage\" SET \"reserved_tokens\" = GREATEST(\"reserved_tokens\" - $4::bigint, 0), \"reserved_micros\" = GREATEST(\"reserved_micros\" - $5::bigint, 0), \"touched_at\" = $6 WHERE \"day\" = $1 AND \"scope\" = $2 AND \"key\" = $3";
 
 /// The application's and each prompt's counts from day `$1` on, for
 /// `jadpo ai usage`.
@@ -70,7 +70,7 @@ pub const READ: &str = "SELECT \"day\", \"scope\", \"key\", \"calls\", \"input_t
 
 /// Counts last changed at or before `$1`, at most `$2`, which the tick
 /// deletes.
-pub const OLD_DAYS: &str = "DELETE FROM \"jadpo_ai_usage\" WHERE (\"day\", \"scope\", \"key\") IN (SELECT \"day\", \"scope\", \"key\" FROM \"jadpo_ai_usage\" WHERE \"updated_at\" <= $1 LIMIT $2) RETURNING 1";
+pub const OLD_DAYS: &str = "DELETE FROM \"jadpo_ai_usage\" WHERE (\"day\", \"scope\", \"key\") IN (SELECT \"day\", \"scope\", \"key\" FROM \"jadpo_ai_usage\" WHERE \"touched_at\" <= $1 LIMIT $2) RETURNING 1";
 
 /// Why a call isn't sent.
 #[derive(Debug, PartialEq, Eq)]
@@ -131,7 +131,7 @@ fn cost(tokens: u64, per_million: u64) -> u64 {
 }
 
 /// What `used` cost at `price`.
-fn priced(used: Used, price: &AiPrice) -> u64 {
+fn cost_of(used: Used, price: &AiPrice) -> u64 {
     let cached = used.cached.min(used.input);
     cost(used.input - cached, price.input)
         .saturating_add(cost(cached, price.cached))
@@ -239,7 +239,7 @@ pub(crate) async fn take(
     {
         return Err(Refused::Misconfigured);
     }
-    let micros = price.as_ref().map_or(0, |price| priced(most, price));
+    let micros = price.as_ref().map_or(0, |price| cost_of(most, price));
     let tokens = most.tokens();
     let mut windows: Vec<(&'static str, String, u64)> = vec![(APP, String::new(), limits.per_day)];
     if let (Some(per_caller), Some(key)) = (limits.per_caller_per_day, caller_key(ctx)) {
@@ -327,7 +327,7 @@ async fn give_back(
 /// Charges a call what it `used`, giving back what it took, and counts it
 /// against its request. A count that can't be written leaves what was
 /// taken taken.
-pub(crate) async fn charge(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) {
+pub(crate) async fn debit(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) {
     ctx.add_ai_spent(used.tokens());
     let Some(taken) = taken else {
         return;
@@ -335,7 +335,7 @@ pub(crate) async fn charge(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) 
     let Some(database) = ctx.host().database(&taken.store) else {
         return;
     };
-    let micros = taken.price.as_ref().map_or(0, |price| priced(used, price));
+    let micros = taken.price.as_ref().map_or(0, |price| cost_of(used, price));
     let currency = match &taken.price {
         Some(price) => SqlValue::Text(price.currency.clone()),
         None => SqlValue::Null(SqlType::Text),
@@ -350,7 +350,7 @@ pub(crate) async fn charge(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) 
     for (scope, key, tokens, reserved_micros) in windows {
         let _ = database
             .query_once(
-                CHARGE,
+                DEBIT,
                 &[
                     SqlValue::Date(taken.day),
                     SqlValue::Text(scope.to_string()),
@@ -369,9 +369,9 @@ pub(crate) async fn charge(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) 
     }
 }
 
-/// [`charge`], then `done`: what a call that ends early gives.
-pub(crate) async fn charged<T>(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used, done: T) -> T {
-    charge(ctx, taken, used).await;
+/// [`debit`], then `done`: what a call that ends early gives.
+pub(crate) async fn debited<T>(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used, done: T) -> T {
+    debit(ctx, taken, used).await;
     done
 }
 
@@ -400,7 +400,7 @@ mod tests {
             cached: 200,
         };
         // 800 × 0.40 + 200 × 0.10 + 500 × 1.60 millionths a token.
-        assert_eq!(priced(used, &price()), 320 + 20 + 800);
+        assert_eq!(cost_of(used, &price()), 320 + 20 + 800);
         assert_eq!(cost(1, 1), 1);
         assert_eq!(cost(0, 400_000), 0);
     }

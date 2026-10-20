@@ -276,7 +276,7 @@ fn shown(rows: &[Row], today: i32, per_day: u64) -> Reply {
                     ("model", Json::from(model.as_str())),
                     ("calls", json_count(counted.calls)),
                     ("tokensToday", json_count(counted.today)),
-                    ("tokensThisMonth", json_count(counted.month)),
+                    ("tokensMonth", json_count(counted.month)),
                     ("inputTokens", json_count(counted.input)),
                     ("outputTokens", json_count(counted.output)),
                     ("cachedTokens", json_count(counted.cached)),

@@ -645,7 +645,7 @@ pub async fn stream(
                 output: u64::from(site.max_output),
                 cached: 0,
             };
-            crate::ai_budget::charge(ctx, taken, most).await;
+            crate::ai_budget::debit(ctx, taken, most).await;
         }
         Err(crate::ai_budget::Refused::OverBudget) => {
             let now = ctx.now();

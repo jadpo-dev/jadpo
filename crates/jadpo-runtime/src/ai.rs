@@ -413,10 +413,10 @@ pub async fn generate(
                 Ok(request) => request,
                 Err(crate::provider::Unready::Misconfigured) => {
                     let done = misconfigured(ctx);
-                    return crate::ai_budget::charged(ctx, taken, used, done).await;
+                    return crate::ai_budget::debited(ctx, taken, used, done).await;
                 }
                 Err(crate::provider::Unready::Fault(kind)) => {
-                    return crate::ai_budget::charged(ctx, taken, used, Done::Fault(kind)).await;
+                    return crate::ai_budget::debited(ctx, taken, used, Done::Fault(kind)).await;
                 }
             },
         };
@@ -434,7 +434,7 @@ pub async fn generate(
                     input: sent_tokens,
                     ..Default::default()
                 });
-                return crate::ai_budget::charged(ctx, taken, used, done).await;
+                return crate::ai_budget::debited(ctx, taken, used, done).await;
             }
         };
         // A fake answers in the built-in driver's own form, whatever the
@@ -457,7 +457,7 @@ pub async fn generate(
                 Some(reply) => reply,
                 None => {
                     used.add(unanswered);
-                    return crate::ai_budget::charged(
+                    return crate::ai_budget::debited(
                         ctx,
                         taken,
                         used,
@@ -475,12 +475,12 @@ pub async fn generate(
                         Ok(reply) => reply,
                         Err(done) => {
                             used.add(unanswered);
-                            return crate::ai_budget::charged(ctx, taken, used, done).await;
+                            return crate::ai_budget::debited(ctx, taken, used, done).await;
                         }
                     }
                 }
                 Via::Driver(_) => {
-                    return crate::ai_budget::charged(
+                    return crate::ai_budget::debited(
                         ctx,
                         taken,
                         used,
@@ -499,7 +499,7 @@ pub async fn generate(
                 break;
             }
             Answer::Failed(_) | Answer::Misconfigured => {
-                return crate::ai_budget::charged(
+                return crate::ai_budget::debited(
                     ctx,
                     taken,
                     used,
@@ -509,7 +509,7 @@ pub async fn generate(
             }
             Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
                 used.add(unanswered);
-                return crate::ai_budget::charged(
+                return crate::ai_budget::debited(
                     ctx,
                     taken,
                     used,
@@ -518,7 +518,7 @@ pub async fn generate(
                 .await;
             }
             Answer::Value(_) | Answer::Generated | Answer::Recorded => {
-                return crate::ai_budget::charged(
+                return crate::ai_budget::debited(
                     ctx,
                     taken,
                     used,
@@ -560,7 +560,7 @@ pub async fn generate(
             }
         }
     }
-    crate::ai_budget::charge(ctx, taken, used).await;
+    crate::ai_budget::debit(ctx, taken, used).await;
     let (kept, done) = ended.unwrap_or_else(|| {
         let problem = last_problem.unwrap_or_else(|| Problem {
             field: String::new(),
