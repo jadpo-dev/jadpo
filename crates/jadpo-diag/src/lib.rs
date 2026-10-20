@@ -98,6 +98,8 @@ rules! {
         "21-ai.html#ai-connection-required", "Action asks a model but the application names no `ai:` connection";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
         "21-ai.html#ai-settings-invalid", "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
+    AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "AI usage's database couldn't be read";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
         "07-http.html#api-authentication-invalid", "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
@@ -792,6 +794,8 @@ rules! {
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedules' database couldn't be read";
+    SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-budget-missing", "Application's `ai:` sets no daily limit";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,

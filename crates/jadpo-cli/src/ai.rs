@@ -7,8 +7,8 @@
 //!
 //! The screen: the prompt's fields (its type, file and version), one
 //! section per message in the order they are sent, then a footer counting
-//! the placeholders and the data blocks among them. `jadpo ai record` and
-//! `jadpo ai usage` come with the `ai` capability.
+//! the placeholders and the data blocks among them. `jadpo ai usage` is
+//! [`crate::ai_usage`]; `jadpo ai record` comes with chunk 5.5v4.
 
 use std::path::PathBuf;
 
@@ -23,26 +23,31 @@ use crate::suggest::nearest;
 use crate::table::Value;
 
 /// What `jadpo ai` does.
-pub const ACTIONS: &[Value] = &[Value {
-    name: "show",
-    description: "Show what a prompt sends, its placeholders in place",
-}];
+pub const ACTIONS: &[Value] = &[
+    Value {
+        name: "show",
+        description: "Show what a prompt sends, its placeholders in place",
+    },
+    Value {
+        name: "usage",
+        description: "Show the tokens and cost models used today and this month",
+    },
+];
 
 pub fn ai(call: &Call) -> Reply {
     let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
     match call.arguments.first().map(String::as_str) {
         Some("show") => {}
-        Some(later @ ("record" | "usage")) => {
+        Some("usage") => return crate::ai_usage::usage(call),
+        Some(later @ "record") => {
             return Reply::failed(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
                     format!("`jadpo ai {later}` isn't built yet"),
                 )
-                .reason(if later == "record" {
-                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and comes with the `ai` capability."
-                } else {
-                    "`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and comes with the `ai` capability."
-                })
+                .reason(
+                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and comes with roadmap chunk 5.5v4.",
+                )
                 .next("Run `jadpo ai show <prompt>` to see what a prompt sends"),
             );
         }

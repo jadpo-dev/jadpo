@@ -88,6 +88,8 @@ pub struct AiMapping {
     pub schema_at: Option<String>,
     /// Each model's context window, by its name after its provider.
     pub contexts: Vec<(String, u64)>,
+    /// Each model's prices, from `models: { prices: }` (chunk 5.5v5).
+    pub prices: Vec<jadpo_std::ai::AiPrice>,
 }
 
 /// Every provider package's `provide ai`, by its folder.
@@ -254,7 +256,7 @@ impl Reader<'_> {
         if !ok {
             return None;
         }
-        mapping.contexts = contexts;
+        (mapping.contexts, mapping.prices) = contexts;
         Some(mapping)
     }
 
@@ -329,6 +331,7 @@ impl Reader<'_> {
             schema,
             schema_at,
             contexts: Vec::new(),
+            prices: Vec::new(),
         })
     }
 
@@ -930,15 +933,24 @@ impl Reader<'_> {
     }
 
     /// `models: { context: <library>.<constant>  prices: <library>.<constant> }`:
-    /// each model's context window, from the first.
-    fn models(&mut self, member: &ast::Member) -> Option<Vec<(String, u64)>> {
+    /// each model's context window, from the first, and its prices, from
+    /// the second.
+    #[allow(clippy::type_complexity)]
+    fn models(
+        &mut self,
+        member: &ast::Member,
+    ) -> Option<(Vec<(String, u64)>, Vec<jadpo_std::ai::AiPrice>)> {
         let shape = "Write `models: { context: <library>.<table> }`, a constant of the package's `libraries/` listing each model's `model:` and its context window in `tokens:`";
         let mut context = None;
+        let mut prices = Vec::new();
         let mut ok = true;
         for (key, inner) in tree::members(member.block()) {
             match name_text(&key).as_deref() {
                 Some("context") => context = Some(inner),
-                Some("prices") => ok &= self.constant(&inner).is_some(),
+                Some("prices") => match self.prices(&inner) {
+                    Some(read) => prices = read,
+                    None => ok = false,
+                },
                 _ => {
                     ok = false;
                     self.invalid(
@@ -997,7 +1009,75 @@ impl Reader<'_> {
             );
             return None;
         }
-        ok.then_some(out)
+        ok.then_some((out, prices))
+    }
+
+    /// `models: { prices: <library>.<constant> }` (chunk 5.5v5): a table
+    /// of each model's price per million tokens, as objects of `model:`,
+    /// its name after its provider; `currency:`, a `Currency`; `input:`,
+    /// `cached:` and `output:`, decimals in the currency's major unit to
+    /// six places; and `from:`, the day the price holds from.
+    fn prices(&mut self, member: &ast::Member) -> Option<Vec<jadpo_std::ai::AiPrice>> {
+        use crate::constants::Value;
+        let table = self.constant(member)?;
+        let micros = |value: &Value| match value {
+            Value::Number { value, .. } if value.mantissa >= 0 && value.scale <= 6 => {
+                u64::try_from(value.mantissa)
+                    .ok()?
+                    .checked_mul(10u64.pow(6 - value.scale))
+            }
+            _ => None,
+        };
+        let row = |item: &Value| -> Option<jadpo_std::ai::AiPrice> {
+            let Value::Object(_, fields) = item else {
+                return None;
+            };
+            let field = |name: &str| {
+                fields
+                    .iter()
+                    .find(|(field, _)| field == name)
+                    .map(|(_, value)| value)
+            };
+            let model = match field("model")? {
+                Value::Text(text) => text.clone(),
+                _ => return None,
+            };
+            let currency = match field("currency")? {
+                Value::Variant(_, variant, data) if data.is_empty() => jadpo_std::money::CURRENCIES
+                    .iter()
+                    .find(|(name, _)| name == variant)
+                    .map(|(_, code)| (*code).to_string())?,
+                _ => return None,
+            };
+            let from = match field("from")? {
+                Value::Text(text) if is_day(text) => text.clone(),
+                _ => return None,
+            };
+            Some(jadpo_std::ai::AiPrice {
+                model,
+                from,
+                currency,
+                input: micros(field("input")?)?,
+                cached: micros(field("cached")?)?,
+                output: micros(field("output")?)?,
+            })
+        };
+        let read = match &table {
+            Value::List(items) => items.iter().map(row).collect::<Option<Vec<_>>>(),
+            _ => None,
+        };
+        if read.is_none() {
+            let span = member
+                .value()
+                .map_or_else(|| self.span(member), |value| self.span(&value));
+            self.invalid(
+                span,
+                "`prices:` isn't a table of models and their prices".to_string(),
+                "not each model's prices",
+                "Write `models: { prices: <library>.<table> }`, a constant listing each model's `model:`, `currency:`, its price per million `input:`, `cached:` and `output:` tokens to six places, and `from:`, the day the price holds from".to_string(),
+            );
+        }
+        read
     }
 
     /// `<library>.<constant>` in the package's own libraries, worked out.
@@ -1053,6 +1133,16 @@ impl Reader<'_> {
         );
         None
     }
+}
+
+/// Whether `text` is a day as ISO 8601 writes it, `2026-04-14`.
+fn is_day(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() == 10
+        && bytes.iter().enumerate().all(|(at, byte)| match at {
+            4 | 7 => *byte == b'-',
+            _ => byte.is_ascii_digit(),
+        })
 }
 
 /// Whether `ty` counts tokens: a whole number, or a `TokenCount`.

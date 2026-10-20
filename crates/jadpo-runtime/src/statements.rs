@@ -11,6 +11,17 @@
 /// Each statement, by `module::NAME`, with its SQL.
 pub fn system_statements() -> Vec<(&'static str, String)> {
     vec![
+        ("ai_budget::CHARGE", crate::ai_budget::CHARGE.to_string()),
+        (
+            "ai_budget::GIVE_BACK",
+            crate::ai_budget::GIVE_BACK.to_string(),
+        ),
+        (
+            "ai_budget::OLD_DAYS",
+            crate::ai_budget::OLD_DAYS.to_string(),
+        ),
+        ("ai_budget::READ", crate::ai_budget::READ.to_string()),
+        ("ai_budget::TAKE", crate::ai_budget::TAKE.to_string()),
         ("batches::ADVANCE", crate::batches::ADVANCE.to_string()),
         ("batches::CANCEL", crate::batches::CANCEL.to_string()),
         ("batches::CLAIM", crate::batches::CLAIM.to_string()),

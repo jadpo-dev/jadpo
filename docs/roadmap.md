@@ -1634,12 +1634,29 @@ The design is area 11 as revised on 2026-10-16, with its research in
   prompt's recordings warned about. Done when the support example on area
   21 runs end to end in a test: embed, nearest query, typed answer from a
   recording.
-- [ ] **5.5v5 Budgets** `opus · high` (area 21, "Budgets"), after 5.5v3b
-  (split on 2026-10-20: personal data to models is 5.5v5b): the per-call,
-  per-request, per-day and per-caller limits counted in the main store,
-  the cost estimate from the package's prices, `jadpo ai usage`, and the
-  development daily limit on sandboxed prompts (left from 5.5v3b). Done
-  when a test exhausts each limit and is refused `over_budget`.
+- [x] **5.5v5 Budgets** `opus · high` (area 21, "Budgets"), after 5.5v3b
+  (split on 2026-10-20: personal data to models is 5.5v5b). Built:
+  `ai: { limits: }` with `per_request:`, `per_day: { tokens: cost: }`
+  (required, `semantic.ai_budget_missing`), `per_caller_per_day:` and
+  `store:` (`jadpo_check::ai_limits`); a `Money` setting read from
+  `"GBP 20.00"`; `jadpo_ai_usage` in the main store, one row per day and
+  window (the app's, each caller's digest, each prompt and model's), the
+  tick deleting days past 62; before sending, the call's most possible use
+  (its prompt's estimate and `max_output:`, times `attempts:`) checked
+  against the request's count and taken from the day's rows by one
+  conditional statement each, `over_budget` with nothing sent when a
+  limit can't cover it, `unavailable` when the store can't be reached;
+  after, charged the answer's reported usage or the estimate
+  (`jadpo_runtime::ai_budget`); `models: { prices: }` read and the cost
+  estimated in millionths of the price's currency, another currency than
+  the limit's `misconfigured`; every call counted in tests, `jadpo dev`
+  (the development daily limit on sandboxed prompts) and production; and
+  `jadpo ai usage` (`ai.usage_unavailable`). Tests in
+  `crates/jadpo-check/tests/ai_generate.rs` and `ai_providers.rs`, and
+  `crates/jadpo-cli/tests/ai_budgets.rs` (each limit exhausted in `jadpo
+  test`; a caller's day and a sandboxed prompt's reported usage in `jadpo
+  dev`, and `jadpo ai usage`). A setting overriding a price moved to
+  5.5v7. Choices in area 21's "Chosen in chunk 5.5v5".
 - [ ] **5.5v5b Personal data to models** `opus · high` (area 21, "Personal
   data sent to a model"), after 5.5v5 (split from 5.5v5 on 2026-10-20):
   `personal_data: { allowed: }` with the flow check from placeholders back
@@ -1657,8 +1674,8 @@ The design is area 11 as revised on 2026-10-16, with its research in
   after the first piece arrives as an error event.
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
   after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
-  with its context and price tables, recordings and `jadpo package conform
-  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+  with its context and price tables, a setting overriding a price (moved
+  from 5.5v5), recordings and `jadpo package conform <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for

@@ -28,20 +28,20 @@ use crate::support::fake_provider::FakeProvider;
 
 const PACKAGE: &str = "shared/providers/acme_models/v1";
 
-fn folder(name: &str) -> PathBuf {
+pub(crate) fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("ai-providers-5.5v3b-{name}"));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("temporary folder");
     dir
 }
 
-fn write(root: &Path, path: &str, text: &str) {
+pub(crate) fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
     fs::write(path, text).expect("write");
 }
 
-fn jadpo(cwd: &Path, args: &[&str]) -> Output {
+pub(crate) fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     run(&args, &Environment::empty().with_cwd(cwd))
 }
@@ -49,22 +49,34 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
 /// The package's mapping, its schema written `schema`.
 fn mapping(schema: &str) -> String {
     format!(
-        "/// Acme's chat answers `ai.generate`.\nprovide ai {{\n    generate: {{\n        call: chat.complete\n        input: {{\n            model: request.model\n            instructions: request.instructions\n            messages: {{\n                each: request.messages\n                as: {{\n                    role: item.role\n                    content: item.content\n                }}\n            }}\n            max_tokens: request.max_output\n        }}\n        answer: response.choices.first.message.content\n        refused_when: response.choices.first.message.refusal\n        cut_off_when: {{\n            path: \"choices.0.finish_reason\"\n            equals: \"length\"\n        }}\n        usage: {{\n            input: response.usage.prompt_tokens\n            output: response.usage.completion_tokens\n        }}\n        schema: {{\n{schema}        }}\n    }}\n    models: {{\n        context: models.context_windows\n    }}\n}}\n"
+        "/// Acme's chat answers `ai.generate`.\nprovide ai {{\n    generate: {{\n        call: chat.complete\n        input: {{\n            model: request.model\n            instructions: request.instructions\n            messages: {{\n                each: request.messages\n                as: {{\n                    role: item.role\n                    content: item.content\n                }}\n            }}\n            max_tokens: request.max_output\n        }}\n        answer: response.choices.first.message.content\n        refused_when: response.choices.first.message.refusal\n        cut_off_when: {{\n            path: \"choices.0.finish_reason\"\n            equals: \"length\"\n        }}\n        usage: {{\n            input: response.usage.prompt_tokens\n            output: response.usage.completion_tokens\n        }}\n        schema: {{\n{schema}        }}\n    }}\n    models: {{\n        context: models.context_windows\n        prices: models.prices\n    }}\n}}\n"
     )
 }
 
-const STRICT: &str = "            mode: AiSchema.strict_subset\n            at: \"format\"\n";
+/// The package's library: its model's context window, and its prices per
+/// million input, cached and output tokens, in US dollars (chunk 5.5v5).
+pub(crate) fn library(input: &str, cached: &str, output: &str) -> String {
+    format!(
+        "/// The models Acme serves.\nlibrary models {{\n    /// Each model's context window, in tokens.\n    constant context_windows: List<ModelContext> = [\n        ModelContext {{\n            model: \"acme-small\"\n            tokens: 400\n        }}\n    ]\n    /// What each model costs, per million tokens.\n    constant prices: List<ModelPrice> = [\n        ModelPrice {{\n            model: \"acme-small\"\n            currency: Currency.usd\n            input: {input}\n            cached: {cached}\n            output: {output}\n            from: \"2000-01-01\"\n        }}\n    ]\n}}\n"
+    )
+}
+
+/// Where the library is.
+pub(crate) const LIBRARY: &str = "shared/providers/acme_models/v1/libraries/models.jadpo";
+
+pub(crate) const STRICT: &str =
+    "            mode: AiSchema.strict_subset\n            at: \"format\"\n";
 
 /// The desk: a provider package filling `ai`, whose sandbox is
 /// `sandbox`, its schema written `schema`; `development` is the
 /// connection's `development:` block, if any.
-fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
+pub(crate) fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
     let root = folder(name);
     write(
         &root,
         "app.jadpo",
         &format!(
-            "application {{\n    connections: {{\n        acme: {{\n            package: AcmeModels.v1\n            domains: [support]\n            credential: config.acme_key\n            environment: config.acme_environment\n{development}        }}\n    }}\n    ai: {{\n        connection: acme\n        models: {{\n            default: config.drafting_model\n        }}\n    }}\n}}\n"
+            "application {{\n    connections: {{\n        acme: {{\n            package: AcmeModels.v1\n            domains: [support]\n            credential: config.acme_key\n            environment: config.acme_environment\n{development}        }}\n    }}\n    ai: {{\n        connection: acme\n        models: {{\n            default: config.drafting_model\n        }}\n        limits: {{\n            per_day: {{\n                tokens: 2000000\n            }}\n        }}\n    }}\n}}\n"
         ),
     );
     write(
@@ -120,6 +132,10 @@ fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
             "/// The model's answer.\npublic type ChatResponse = Object {\n    choices: List<ChatChoice>\n    usage: ChatUsage\n}\n",
         ),
         (
+            "model_price",
+            "/// What a model costs per million tokens, from a day.\ntype ModelPrice = Object {\n    model: Text {\n        max_length: 100\n    }\n    currency: Currency\n    input: Decimal\n    cached: Decimal\n    output: Decimal\n    from: CalendarDate\n}\n",
+        ),
+        (
             "model_context",
             "/// A model's context window.\ntype ModelContext = Object {\n    model: Text {\n        max_length: 100\n    }\n    tokens: TokenCount\n}\n",
         ),
@@ -129,7 +145,7 @@ fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
     write(
         &root,
         &format!("{PACKAGE}/libraries/models.jadpo"),
-        "/// The models Acme serves.\nlibrary models {\n    /// Each model's context window, in tokens.\n    constant context_windows: List<ModelContext> = [\n        ModelContext {\n            model: \"acme-small\"\n            tokens: 400\n        }\n    ]\n}\n",
+        &library("0.40", "0.10", "1.60"),
     );
     write(
         &root,
@@ -181,15 +197,18 @@ fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
         "domains/support/routes/answers.jadpo",
         "use support/actions { answer_customer }\nuse support/types { Asked, SupportAnswer }\n\n/// Customers' questions.\nroutes Answers {\n    prefix: /answers\n\n    /// Anyone asks one.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: SupportAnswer\n        run: answer_customer(input)\n    }\n}\n",
     );
-    let updated = jadpo(&root, &["api", "update"]);
-    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    // The counts of what its calls use are kept in `main` (chunk 5.5v5).
+    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
     root
 }
 
-const SANDBOXED: &str =
+pub(crate) const SANDBOXED: &str =
     "            development: {\n                sandbox: [answer_question]\n            }\n";
 
-fn ask(dev: &Dev, question: &str) -> crate::http::Reply {
+pub(crate) fn ask(dev: &Dev, question: &str) -> crate::http::Reply {
     dev.send(
         "POST",
         "/answers",
@@ -200,7 +219,7 @@ fn ask(dev: &Dev, question: &str) -> crate::http::Reply {
 
 /// The package's answer, `content` and `refusal` as given, stopped for
 /// `finish`.
-fn chat(content: Option<&str>, refusal: Option<&str>, finish: &str) -> String {
+pub(crate) fn chat(content: Option<&str>, refusal: Option<&str>, finish: &str) -> String {
     serde_json::json!({
         "choices": [{
             "message": {"content": content, "refusal": refusal},

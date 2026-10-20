@@ -70,6 +70,7 @@
 )]
 
 pub mod ai;
+pub mod ai_budget;
 pub mod batches;
 mod boundary;
 pub mod breaker;

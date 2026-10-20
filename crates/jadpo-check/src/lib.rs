@@ -10,6 +10,7 @@
 //! position so the same source always gives the same output.
 
 pub mod ai;
+pub mod ai_limits;
 pub mod ai_mapping;
 pub mod batches;
 mod case;

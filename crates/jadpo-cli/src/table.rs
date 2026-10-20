@@ -633,16 +633,21 @@ pub static COMMANDS: &[Command] = &[
         name: "ai",
         synonyms: &[],
         group: "Look things up",
-        summary: "Show what a prompt sends",
+        summary: "Show prompts and AI usage",
         description: "`show` prints what a prompt sends a model (area 21): its type, its file and its \
                       version, the first 8 hex characters of a SHA-256 over its two files, then the \
                       instructions as the system message, the conversation's turns, and the request \
                       as the user message. Placeholders are shown as the prompt's file writes them, \
-                      each free-text one inside the tagged data block it is sent in.",
+                      each free-text one inside the tagged data block it is sent in. `usage` shows \
+                      the tokens the app's calls used today and this month (UTC) and their \
+                      estimated cost, by prompt and model, against the daily limit, from the counts \
+                      `ai: { limits: }` keeps; never a prompt or an answer. The database is the one \
+                      its store's connection's setting gives, or a running jadpo dev's, or the one \
+                      --url names.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show",
+                description: "What to do: show, usage",
                 required: true,
                 values: Values::Fixed(crate::ai::ACTIONS),
             },
@@ -653,7 +658,12 @@ pub static COMMANDS: &[Command] = &[
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[],
+        flags: &[Flag {
+            name: "--url",
+            value: Some("url"),
+            description: "The database usage is counted in, for `usage`",
+            values: &[],
+        }],
         examples: &[
             Example {
                 description: "See what the summarise_ticket prompt sends",
@@ -663,9 +673,14 @@ pub static COMMANDS: &[Command] = &[
                 description: "Print it as data for tools",
                 command: "jadpo ai show summarise_ticket --json",
             },
+            Example {
+                description: "See the tokens and cost models used today and this month",
+                command: "jadpo ai usage",
+            },
         ],
         arguments_rule: &rule::CLI_AI_ARGUMENTS,
         raises: &[
+            &rule::AI_USAGE_UNAVAILABLE,
             &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
