@@ -808,23 +808,41 @@ The design is area 11 as revised on 2026-10-16, with its research in
   resources by file name with the check cached per digest, and two
   versions of one package side by side, names carrying the version. The
   public registry stays after the first build.
-- [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
-  fields in every API's OpenAPI document and each API serving it at
+- [ ] **7.2 Served OpenAPI and the importer** `opus · high` (split from
+  7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
+  every API's OpenAPI document, and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
-  false` to turn off, listed in its own OpenAPI and record); the OpenAPI
-  importer reading them, hand-written packages, `wire:`,
-  `decode:`, `wire_output:`, `output_at:` and `failed_when:`, recordings
-  and `jadpo package record`, generated fakes, provider calls faked by
-  default in `jadpo dev` with `development: { sandbox: }` and the call log
-  (`jadpo calls`), and derived provider idempotency keys (app,
-  environment, caller, step), which also close a collision between users; and mapping imported types
-  to standard types (area 11, "Mapping imported types to standard types",
-  Richard 2026-10-17): exact format mappings, shape and name detection
-  decoded at the edge, declinable findings with `(agent)` steps, one review
-  instruction scoped to the types the app's operations reach and tracked per
-  type in `jadpo check` and `jadpo approval`, and the import's summary.
+  false` to turn off, listed in its own OpenAPI and record and in `jadpo
+  routes`); `jadpo package import openapi <file>` reading a local
+  document into the app's own integration in
+  `shared/providers/<name>/<version>/` (index, `provider.jadpo` with
+  `imported:`, resources, types and failures), exact where it finds
+  `x-jadpo` fields, with area 11's exact format mappings (its first
+  layer), merging into an earlier import rather than overwriting it, and
+  its summary.
+- [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
+  and 7.1c: a provider operation called through its connection over
+  7.0c's seam by the package driver (JSON over HTTP), tested against a
+  local HTTP server started in the test; hand-written packages' `wire:`,
+  `decode:` and `encode:`, `wire_output:`, `output_at:` and
+  `failed_when:`; and derived provider idempotency keys (app,
+  environment, caller, step), which also close a collision between
+  users.
+- [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
+  7.2c: a generated fake per package and `fakes:` for provider
+  operations in tests; recordings and `jadpo package record`, every
+  decoder run over every recording; provider calls faked by default in
+  `jadpo dev`, with `development: { sandbox: }`; and the call log screen,
+  `jadpo calls` and `jadpo calls script`, on 7.0c's data.
+- [ ] **7.2e Mapping imported types to standard types** `opus · high`,
+  after 7.2d and 7.1b (area 11, "Mapping imported types to standard
+  types", Richard 2026-10-17): shape and name detection decoded at the
+  edge, declinable findings with `(agent)` steps, one review instruction
+  scoped to the types the app's operations reach and tracked per type in
+  `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
+  it in the import's summary.
 - [ ] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
-  question 18), after 7.2: per connection, after a run of `unavailable`
+  question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
   than attempted, one probe delivery is tried after a pause, and success
   releases the rest; held deliveries keep their retry budget, are shown
