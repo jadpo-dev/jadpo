@@ -958,6 +958,10 @@ rules! {
         "13-testing.html#test-fault", "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
         "14-tooling.html#command-errors", "No tests to run";
+    TEST_RECORDING_UNDECODABLE: "test.recording_undecodable", area 11, Error, Agent,
+        "11-integrations.html#test-recording-undecodable", "Recorded provider answer its operation's decoders don't read";
+    TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
+        "11-integrations.html#test-round-trip-failed", "Field's decode and encode don't round-trip a recorded value";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Test runtime could not start";
     TEST_SUBSCRIBER_FAILED: "test.subscriber_failed", area 13, Error, Agent,

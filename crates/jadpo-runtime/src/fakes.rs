@@ -248,7 +248,7 @@ pub fn as_sent(
 }
 
 /// A UUID's text: lower case, in its five groups.
-fn uuid_text(bytes: [u8; 16]) -> String {
+pub(crate) fn uuid_text(bytes: [u8; 16]) -> String {
     let hex = jadpo_value::encoding::to_hex(&bytes);
     format!(
         "{}-{}-{}-{}-{}",

@@ -99,6 +99,7 @@ mod purge;
 mod race;
 mod ratelimit;
 mod read;
+pub mod recorded;
 mod report;
 pub mod rows;
 pub mod runner;

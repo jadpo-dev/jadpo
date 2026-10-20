@@ -44,6 +44,119 @@ pub enum Detail {
     /// A faked provider operation called more or fewer times than the
     /// test's `fakes:` scripts (chunk 7.2d).
     Fake(Box<FakeInfo>),
+    /// A recording its operation's decoders don't read (chunk 7.2d2).
+    Recording(Box<RecordingInfo>),
+}
+
+/// Why a recording of one of the app's own integrations isn't read by its
+/// operation's decoders (area 11, "Provenance and confirmation"; chunk
+/// 7.2d2): `test.recording_undecodable` or `test.round_trip_failed`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordingInfo {
+    /// `pickups.create`.
+    pub operation: String,
+    /// `SwiftCouriers.v1`.
+    pub package: String,
+    /// What happened, as the report says it.
+    pub subject: String,
+    /// For a field's decoder: the field, dotted from the output, and the
+    /// rule it broke.
+    pub field: Option<String>,
+    pub rule: Option<String>,
+    /// For `test.round_trip_failed`: the value recorded, and the one its
+    /// `encode:` writes back.
+    pub recorded: Option<String>,
+    pub written: Option<String>,
+    pub reason: String,
+    pub next: String,
+}
+
+/// The failure a recording at `test.file`, of `package`'s operation
+/// `operation`, gives when `unread` says why its decoders don't read it.
+pub(crate) fn recording(
+    sources: &dyn Sources,
+    test: &Test,
+    (package, operation): (&str, &str),
+    unread: &jadpo_runtime::recorded::Unread,
+    rerun: &Rerun,
+) -> TestFailure {
+    use jadpo_runtime::recorded::Unread;
+    let mut info = RecordingInfo {
+        operation: operation.to_string(),
+        package: package.to_string(),
+        subject: String::new(),
+        field: None,
+        rule: None,
+        recorded: None,
+        written: None,
+        reason: String::new(),
+        next: format!(
+            "Correct the operation against the provider's documentation, or record `{operation}` again with `jadpo package record` (agent)"
+        ),
+    };
+    let mut failed = &rule::TEST_RECORDING_UNDECODABLE;
+    match unread {
+        Unread::NoOperation => {
+            info.subject = format!("`{package}` has no operation `{operation}` to read it");
+            info.reason = "A recording is named after the operation it records, `recordings/<resource>.<operation>.json`, and only that operation's decoders read it.".to_string();
+            info.next = format!(
+                "Rename it after one of `{package}`'s operations, or remove it if the operation is gone (agent)"
+            );
+        }
+        Unread::NotJson => {
+            info.subject = format!("`{operation}`'s recording isn't JSON");
+            info.reason = "A recording is the provider's answer as it sent it, one JSON document, with its values replaced by placeholders such as `\"{Text}\"`.".to_string();
+        }
+        Unread::NothingAt(path) => {
+            info.subject = format!("`{operation}`'s recording has nothing at `{path}`");
+            info.reason = format!(
+                "The operation reads its answer from `output_at: \"{path}\"`, and the recorded answer holds nothing there."
+            );
+        }
+        Unread::Undecoded { field, rule } => {
+            info.subject = if field.is_empty() {
+                format!("`{operation}`'s recording doesn't decode: `{rule}`")
+            } else {
+                format!("`{operation}`'s recording doesn't decode: `{rule}` on `{field}`")
+            };
+            info.field = (!field.is_empty()).then(|| field.clone());
+            info.rule = Some(rule.clone());
+            info.reason = "Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.".to_string();
+            info.next = "Correct the type or its decoder against the recording and the provider's documentation (agent)".to_string();
+        }
+        Unread::DecoderFailed(how) => {
+            info.subject =
+                format!("`{operation}`'s `decode:` fails on its recording, ending with {how}");
+            info.reason = "Every decoder decodes every recorded answer: the operation's own `decode:` turns the answer as sent into its output, and it doesn't for this one.".to_string();
+            info.next = "Correct the operation's `decode:` so it reads the recorded answer (agent)"
+                .to_string();
+        }
+        Unread::RoundTrip {
+            decode,
+            encode,
+            recorded,
+            back,
+        } => {
+            failed = &rule::TEST_ROUND_TRIP_FAILED;
+            info.subject =
+                format!("`{decode}` and `{encode}` don't round-trip `{operation}`'s recording");
+            info.recorded = Some(recorded.clone());
+            info.written = Some(back.clone());
+            info.reason = format!(
+                "A field's `encode:` writes back what its `decode:` read, so what the app sends is what the provider sent; `{encode}` doesn't give back the value `{decode}` read from the recording."
+            );
+            info.next =
+                format!("Correct `{decode}` or `{encode}` so each undoes the other (agent)");
+        }
+    }
+    TestFailure {
+        rule: failed,
+        delivery: None,
+        location: Located::new(sources, &test.file, None, test.line, ""),
+        rerun: rerun.command(&test.file, test.line),
+        kept: Vec::new(),
+        detail: Detail::Recording(Box::new(info)),
+    }
 }
 
 /// How a scripted provider operation was used (area 13, "Fakes for
