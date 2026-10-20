@@ -360,6 +360,7 @@ mod tests {
     fn shape(ty: &str, fields: &[&str]) -> Shape {
         Shape::new(&ShapePlan {
             ty: ty.to_string(),
+            open: false,
             variant: None,
             fields: fields
                 .iter()
@@ -371,6 +372,7 @@ mod tests {
                     absent: Some(jadpo_std::Constant::None),
                     none_left_out: false,
                     section: None,
+                    wire: None,
                 })
                 .collect(),
         })

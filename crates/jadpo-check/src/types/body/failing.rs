@@ -162,9 +162,11 @@ impl Body<'_> {
             return write.fallible.clone();
         }
         match self.facts.reaches.get(&key) {
+            Some(Reach::Provider { checked: false, .. }) => Fallible::Unknown,
             Some(
                 Reach::Callable { fails, .. }
                 | Reach::Library { fails, .. }
+                | Reach::Provider { fails, .. }
                 | Reach::Schedule { fails, .. },
             ) => self.fails_fallible(fails),
             // The standard library computes its results; nothing in it
@@ -275,7 +277,33 @@ impl Body<'_> {
             .map(|callee| tree::written(callee.syntax()))
             .unwrap_or_default();
         let span = self.span(call);
+        let provider = matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Provider { .. })
+        );
         let problem = match &fallible {
+            // A provider's failures are mapped at the call by their codes
+            // (area 11, "Calling").
+            Fallible::Fails(names) if provider => {
+                let codes: Vec<String> = names
+                    .iter()
+                    .filter_map(|name| self.failures.failure_info(name))
+                    .map(|info| info.code.clone())
+                    .collect();
+                let first = codes.first().cloned().unwrap_or_default();
+                Diagnostic::new(
+                    &rule::FAILURE_ATTEMPT_REQUIRED,
+                    format!("`{written}` can fail, and nothing handles it"),
+                )
+                .at(span, format!(
+                    "can fail with {}",
+                    crate::and_list(&codes.iter().map(|code| format!("`{code}`")).collect::<Vec<_>>())
+                ))
+                .reason("A provider's operation can fail with its package's failures, which the call maps to the app's own by their codes; one left unmapped is a fault when it comes.")
+                .next(format!(
+                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each failure to one of the app's of the same kind, or `match` on the call"
+                ))
+            }
             Fallible::Fails(names) => {
                 let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
                 Diagnostic::new(
@@ -335,6 +363,12 @@ impl Body<'_> {
         // through the package.
         let failure = self.symbols.canonical(failure);
         self.flow.leaving.entry(failure).or_insert((span, how));
+    }
+
+    /// Records that `failure`, which an `attempt`'s arm maps a provider's
+    /// failure to, can leave the callable here (area 11).
+    pub(super) fn leave_mapped(&mut self, failure: &str, span: Span) {
+        self.leave(failure, span, "mapped here");
     }
 
     /// `reject Failure` or `reject Failure { ... }`.
@@ -755,6 +789,20 @@ impl Body<'_> {
                     } else if let Some(name) = failure {
                         self.leave(&name, span.clone(), "mapped here");
                     }
+                }
+            }
+            // A provider's operation (area 11, "Calling"): its package's
+            // failures are mapped at the call by their codes, and one left
+            // unmapped is a fault, never passed on.
+            Fallible::Fails(names)
+                if matches!(&inner, Expr::CallExpr(call) if matches!(
+                    self.facts.reaches.get(&node_key(call.syntax())),
+                    Some(Reach::Provider { .. })
+                )) =>
+            {
+                let mapped = self.provider_arms(&arms, names, &inner, &written, span);
+                if !mapped.is_empty() {
+                    self.facts.mapped.insert(node_key(attempt.syntax()), mapped);
                 }
             }
             Fallible::Fails(names) => {
@@ -1421,7 +1469,7 @@ impl Body<'_> {
 
     /// `invalid:` on something that isn't a construction: it covers only a
     /// construction's rules, never another operation's conditions.
-    fn invalid_outside_construction(&mut self, arm: &Arm, inner: &Expr, written: &str) {
+    pub(super) fn invalid_outside_construction(&mut self, arm: &Arm, inner: &Expr, written: &str) {
         let entity = matches!(inner, Expr::CallExpr(call) if matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
             Some(Reach::Entity { .. })

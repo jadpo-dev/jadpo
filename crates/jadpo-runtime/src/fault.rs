@@ -33,6 +33,11 @@ pub enum FaultKind {
     /// (docs/compiler-runtime.md §2.6): a database a test couldn't get, or
     /// an error the server gave.
     Store(String),
+    /// A provider's answer the call can't read (area 11, "Decoding";
+    /// chunk 7.2c): one that doesn't decode as its operation's output,
+    /// named by the operation, the field and the rule, never the value, or
+    /// a refusal with a code the operation doesn't declare.
+    Provider(String),
     /// An outside call, named (`mail.send`), made while the action's
     /// transaction was open, which the runtime refuses before it goes out
     /// (area 6, "Outside calls hold no transaction"; chunk 7.0c).
@@ -53,7 +58,7 @@ impl FaultKind {
             FaultKind::DeadlineExceeded => "deadline_exceeded",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
             FaultKind::CallInTransaction(_) => "call_in_transaction",
-            FaultKind::Defect(_) | FaultKind::Store(_) => "internal_fault",
+            FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => "internal_fault",
         }
     }
 }

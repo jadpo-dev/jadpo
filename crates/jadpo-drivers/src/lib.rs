@@ -9,8 +9,11 @@
 //! - [`postgres`]: the PostgreSQL driver, behind the `postgres` feature,
 //!   and its error classification.
 //!
-//! Built so far: PostgreSQL (chunk 3.1). Redis, SMTP, S3 and the package
-//! driver come with their areas.
+//! - [`package`]: the package driver, behind the `package` feature: JSON
+//!   over HTTP through the [`package::Fetch`] the host gives (chunk 7.2c).
+//!
+//! Built so far: PostgreSQL (chunk 3.1) and the package driver (chunk
+//! 7.2c). Redis, SMTP and S3 come with their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
@@ -26,6 +29,8 @@
     )
 )]
 
+#[cfg(feature = "package")]
+pub mod package;
 pub mod postgres;
 mod transport;
 

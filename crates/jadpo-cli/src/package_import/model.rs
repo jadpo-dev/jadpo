@@ -84,7 +84,7 @@ pub enum TypeDecl {
     },
     Enum {
         doc: Option<String>,
-        variants: Vec<String>,
+        variants: Vec<Variant>,
     },
     /// A built-in type with rules: what a constrained item of a list or a
     /// map needs, since a field's type can carry rules only on itself.
@@ -100,6 +100,18 @@ pub enum TypeDecl {
 pub struct Field {
     pub name: String,
     pub ty: Ty,
+    /// The provider's spelling, where it differs from `name`: written as
+    /// the field's `wire_name:` (area 11, decided 2026-10-20).
+    pub wire: Option<String>,
+}
+
+/// A variant of an enumeration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Variant {
+    pub name: String,
+    /// The provider's spelling, where it differs from `name`: written as
+    /// the variant's `wire_name:`.
+    pub wire: Option<String>,
 }
 
 /// A field's type as written: `List<Tag>`, whether it may be absent, and
@@ -262,7 +274,14 @@ fn type_file(name: &str, ty: &TypeDecl) -> String {
                 if field.ty.optional {
                     out.push('?');
                 }
-                out.push_str(&rules_block(&field.ty.rules, "    "));
+                // Its spelling on the wire first, then its rules.
+                let mut settings: Vec<(String, String)> = field
+                    .wire
+                    .iter()
+                    .map(|wire| ("wire_name".to_string(), quote(wire)))
+                    .collect();
+                settings.extend(field.ty.rules.iter().cloned());
+                out.push_str(&rules_block(&settings, "    "));
                 out.push('\n');
             }
             out.push_str("}\n");
@@ -275,7 +294,14 @@ fn type_file(name: &str, ty: &TypeDecl) -> String {
             let mut out = doc(written.as_deref(), "");
             out.push_str(&format!("public type {name} = Enum {{\n"));
             for variant in variants {
-                out.push_str(&format!("    {variant}\n"));
+                match &variant.wire {
+                    Some(wire) => out.push_str(&format!(
+                        "    {}: {{\n        wire_name: {}\n    }}\n",
+                        variant.name,
+                        quote(wire)
+                    )),
+                    None => out.push_str(&format!("    {}\n", variant.name)),
+                }
             }
             out.push_str("}\n");
             out

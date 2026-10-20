@@ -121,6 +121,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             default,
             header,
             column,
+            wire_name,
             section,
             copied_from,
             replaces,
@@ -132,14 +133,20 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("default", default.as_ref().map(|d| d.render(name)));
             out.set_some("header", header.as_deref());
             out.set_some("column", column.as_deref());
+            out.set_some("wireName", wire_name.as_deref());
             out.set_some("section", section.map(|s| s.word()));
             out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
             out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));
             out.set_some("rules", rules_json(rules));
         }
-        Detail::Variant { order, payload } => {
+        Detail::Variant {
+            order,
+            payload,
+            wire_name,
+        } => {
             out.set("order", i64::from(*order));
             out.set_some("payload", *payload);
+            out.set_some("wireName", wire_name.as_deref());
         }
         Detail::Rule { order, condition } => {
             out.set("order", i64::from(*order));
@@ -296,6 +303,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "column",
         "The file column an input field is read from, or an output field written to, when not its name",
+    ),
+    (
+        "wireName",
+        "A provider package's field's or variant's spelling on the wire, when not its name",
     ),
     ("section", "A failure field's block: client or internal"),
     ("copiedFrom", "The field an include or pick line copied"),

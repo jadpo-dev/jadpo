@@ -24,6 +24,12 @@ pub struct Shape {
     /// The places of those whose type isn't nullable: `none` given to one
     /// is the same as leaving it out.
     none_left_out: Vec<u32>,
+    /// Each field's member name in JSON where it isn't its name: a
+    /// provider package's field's `wire_name:` (area 11, chunk 7.2c).
+    wire: Vec<Option<Rc<str>>>,
+    /// Whether JSON may hold members it doesn't declare, left out as it
+    /// is read: a provider package's type's (area 11, chunk 7.2c).
+    open: bool,
 }
 
 impl Shape {
@@ -58,7 +64,29 @@ impl Shape {
                 .filter(|(_, field)| field.none_left_out)
                 .map(|(at, _)| at as u32)
                 .collect(),
+            wire: plan
+                .fields
+                .iter()
+                .map(|field| field.wire.as_deref().map(Rc::from))
+                .collect(),
+            open: plan.open,
         }
+    }
+
+    /// Field `slot`'s member name in JSON: its `wire_name:` where a
+    /// provider package gives one, a standard object's part named for a
+    /// reserved word without its `_` (chunk 5.5n), otherwise its name.
+    pub fn json_name(&self, slot: usize) -> Option<&str> {
+        if let Some(Some(wire)) = self.wire.get(slot) {
+            return Some(wire);
+        }
+        let (name, _) = self.fields.get(slot)?;
+        Some(jadpo_std::standard::wire_name(&self.ty, name))
+    }
+
+    /// Whether JSON may hold members it doesn't declare (area 11).
+    pub fn open(&self) -> bool {
+        self.open
     }
 
     /// The object's type or entity, or the variant's enum.

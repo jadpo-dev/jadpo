@@ -74,6 +74,7 @@ mod operations;
 pub mod percentage;
 pub mod policy;
 pub mod prompt;
+pub mod provider;
 pub mod quantity;
 pub mod read;
 mod rules;

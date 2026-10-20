@@ -146,9 +146,11 @@ fn table() -> Table {
             absent,
             none_left_out: false,
             section: None,
+            wire: None,
         };
     let delivery = ShapePlan {
         ty: "Delivery".to_string(),
+        open: false,
         variant: None,
         fields: vec![
             field("Delivery", "id", v_uuid, None),
@@ -171,6 +173,7 @@ fn table() -> Table {
     };
     let line = ShapePlan {
         ty: "Line".to_string(),
+        open: false,
         variant: None,
         fields: vec![
             field("Line", "sku", v_text, None),

@@ -1094,9 +1094,11 @@ mod tests {
             absent: None,
             none_left_out: false,
             section: None,
+            wire: None,
         };
         let shapes = [crate::shape::Shape::new(&ShapePlan {
             ty: "SignIn".to_string(),
+            open: false,
             variant: None,
             fields: vec![field("email", 0), field("email_verified", 1)],
         })];

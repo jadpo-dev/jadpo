@@ -559,7 +559,10 @@ impl<'t> Codecs<'t> {
             }
             Made::Enum(key) => {
                 let ty_name = self.types.name(&key).to_string();
-                let variants: Vec<(String, u32, Key, bool)> = {
+                // A provider package's variant is sent as its `wire_name:`
+                // where it gives one (area 11, chunk 7.2c).
+                type Found = (String, u32, Key, bool, Option<String>);
+                let variants: Vec<Found> = {
                     let g = self.types.graph();
                     let Some(id) = g.find(&key) else {
                         return Codec::Enum {
@@ -567,16 +570,21 @@ impl<'t> Codecs<'t> {
                             variants: Vec::new(),
                         };
                     };
-                    let mut found: Vec<(String, u32, Key, bool)> = g
+                    let mut found: Vec<Found> = g
                         .children(id)
                         .filter_map(|child| {
                             let node = g.node(child);
                             match &node.detail {
-                                Detail::Variant { order, payload } => Some((
+                                Detail::Variant {
+                                    order,
+                                    payload,
+                                    wire_name,
+                                } => Some((
                                     last(&node.name).to_string(),
                                     *order,
                                     node.key.clone(),
                                     *payload,
+                                    wire_name.clone(),
                                 )),
                                 _ => None,
                             }
@@ -587,7 +595,7 @@ impl<'t> Codecs<'t> {
                 };
                 let variants = variants
                     .into_iter()
-                    .map(|(name, ordinal, key, payload)| {
+                    .map(|(name, ordinal, key, payload, wire_name)| {
                         let fields = if payload {
                             self.types.shape_id(&key).map(|shape| {
                                 let keys: Vec<String> = self
@@ -605,7 +613,7 @@ impl<'t> Codecs<'t> {
                             None
                         };
                         VariantCodec {
-                            wire: name.clone(),
+                            wire: wire_name.unwrap_or_else(|| name.clone()),
                             name,
                             ordinal,
                             fields,

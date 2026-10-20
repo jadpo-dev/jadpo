@@ -1038,6 +1038,7 @@ impl Part<'_> {
             default: def.and_then(|def| field_default(self.lookup, def.default.as_ref()?)),
             header: def.and_then(|def| def.header.clone()),
             column: def.and_then(|def| def.column.clone()),
+            wire_name: def.and_then(|def| def.wire_name.clone()),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
@@ -1093,6 +1094,7 @@ impl Part<'_> {
                 .and_then(|value| field_default(self.lookup, value)),
             header: field.header.clone(),
             column: field.column.clone(),
+            wire_name: field.wire_name.clone(),
             section: None,
             copied_from: from.clone(),
             replaces: None,
@@ -1121,13 +1123,20 @@ impl Part<'_> {
             syntax.clone(),
         );
         node.parent = Some(parent.clone());
+        // A block holding only `wire_name:` gives a variant without data
+        // its spelling on the wire (area 11, decided 2026-10-20).
+        let (wire_name, payload) = crate::types::variant_block(block.as_ref());
         node.detail = Detail::Variant {
             order,
-            payload: block.is_some(),
+            payload,
+            wire_name,
         };
         self.out.nodes.push(node);
         let mut order = 0;
         for (field, member) in tree::members(block) {
+            if crate::types::is_wire_name(&member) {
+                continue;
+            }
             if let Some(field) = tree::name_text(&field) {
                 let path = vec![variant.to_string(), field];
                 self.field(host, &key, path, &member, None, order);

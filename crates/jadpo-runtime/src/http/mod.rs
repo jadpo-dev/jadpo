@@ -917,6 +917,12 @@ async fn run_with_caller(
             });
         }
     }
+    // What a provider call's key is derived from (area 12, "Keys"; chunk
+    // 7.2c): the client's key in its caller's scope, else the request's id.
+    match &guard {
+        Some(guard) => ctx.set_call_key(guard.scope.clone(), guard.key.clone()),
+        None => ctx.set_call_key("request", request_id),
+    }
     let claimed = Cell::new(false);
     // What was left for after the response before this route ran: only
     // its own action's work is waited for (chunk 6.3).

@@ -44,6 +44,11 @@ pub struct Call {
     pub input: Value,
     /// Whether it may be sent again.
     pub repeat: Repeat,
+    /// A provider operation's request as the package driver sends it:
+    /// its method, address, headers and body, made from `input` by the
+    /// runtime (area 11, "Calling"; chunk 7.2c). `None` for every other
+    /// capability's call, and for a fake, which reads `input`.
+    pub request: Option<Box<crate::provider::Request>>,
 }
 
 impl Call {
@@ -59,7 +64,14 @@ impl Call {
             operation: operation.into(),
             input,
             repeat,
+            request: None,
         }
+    }
+
+    /// The same call, sent as `request` by the package driver.
+    pub fn with_request(mut self, request: crate::provider::Request) -> Call {
+        self.request = Some(Box::new(request));
+        self
     }
 
     /// How a report names it: `mail.send`.
@@ -85,6 +97,12 @@ impl std::fmt::Debug for Call {
 pub enum Answer {
     /// What the operation gives.
     Value(Value),
+    /// A provider's answer as it was sent, its JSON text, for the call's
+    /// site to decode into its operation's output (area 11, "Decoding";
+    /// chunk 7.2c): what the package driver answers, and a recording
+    /// keeps, so a replay decodes it again as the build it runs under
+    /// does.
+    Wire(Rc<str>),
     /// One of the operation's own failures, by its code: a condition the
     /// call maps (area 11, "Calling"), which the provider refused.
     Failed(String),
@@ -103,6 +121,7 @@ impl std::fmt::Debug for Answer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Answer::Value(_) => f.write_str("Value(..)"),
+            Answer::Wire(_) => f.write_str("Wire(..)"),
             Answer::Failed(code) => f.debug_tuple("Failed").field(code).finish(),
             Answer::Unavailable => f.write_str("Unavailable"),
             Answer::Unknown => f.write_str("Unknown"),
@@ -159,7 +178,7 @@ pub enum Ended {
 impl Ended {
     pub(crate) fn of(answer: &Answer) -> Ended {
         match answer {
-            Answer::Value(_) => Ended::Answered,
+            Answer::Value(_) | Answer::Wire(_) => Ended::Answered,
             Answer::Failed(code) => Ended::Failed(code.clone()),
             Answer::Unavailable => Ended::Unavailable,
             Answer::Unknown => Ended::Unknown,

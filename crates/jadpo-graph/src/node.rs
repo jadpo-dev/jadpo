@@ -183,6 +183,9 @@ pub enum Detail {
         /// output field written to one: the column's name as written (area
         /// 12, "Batches"; chunks 6.4b and 6.4b2).
         column: Option<String>,
+        /// A provider package's field's spelling on the wire, its
+        /// `wire_name:` (area 11, decided 2026-10-20).
+        wire_name: Option<String>,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,
@@ -197,6 +200,9 @@ pub enum Detail {
         order: u32,
         /// Whether it carries data.
         payload: bool,
+        /// A provider package's variant's spelling on the wire, its
+        /// `wire_name:` (area 11, decided 2026-10-20).
+        wire_name: Option<String>,
     },
     /// A rule across an object type's fields (area 2, "Rules across
     /// fields"): its place among its type's rules, which run in that

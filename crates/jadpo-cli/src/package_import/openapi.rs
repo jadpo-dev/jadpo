@@ -42,7 +42,7 @@ use serde_json::Value;
 
 use super::model::{
     FailureDecl, Field, Finding, Idempotency, Operation, Package, Provider, Resource, Ty, TypeDecl,
-    camel, snake,
+    Variant, camel, snake,
 };
 use super::notation::{self, Written};
 
@@ -522,7 +522,7 @@ impl Reader<'_> {
         }
     }
 
-    fn variants(&mut self, at: &str, values: &[Value]) -> Vec<String> {
+    fn variants(&mut self, at: &str, values: &[Value]) -> Vec<Variant> {
         let mut out = Vec::new();
         for value in values {
             let Some(text) = value.as_str() else {
@@ -539,14 +539,14 @@ impl Reader<'_> {
             if !fits_as_variant(&variant) {
                 variant = format!("{variant}_value");
             }
-            if variant != text {
-                self.find(
-                    format!("{at}.{variant}"),
-                    format!("The provider sends `{text}`; until a variant can name its wire value, this one is decoded by its name"),
-                );
-            }
-            if !out.contains(&variant) {
-                out.push(variant);
+            // Sent as the provider spells it (area 11, decided
+            // 2026-10-20).
+            let wire = (variant != text).then(|| text.to_string());
+            if !out.iter().any(|known: &Variant| known.name == variant) {
+                out.push(Variant {
+                    name: variant,
+                    wire,
+                });
             }
         }
         out
@@ -583,12 +583,6 @@ impl Reader<'_> {
                 name = format!("{name}_value");
             }
             let at = format!("{parent}.{name}");
-            if name != *wire {
-                self.find(
-                    at.clone(),
-                    format!("The provider names it `{wire}`; until a field can name its wire name, this one is decoded by its name"),
-                );
-            }
             let synthesised = format!("{parent}{}", camel(&name));
             let Some(mut ty) = self.ty(property, &at, &synthesised) else {
                 continue;
@@ -599,7 +593,8 @@ impl Reader<'_> {
             if fields.iter().any(|known: &Field| known.name == name) {
                 continue;
             }
-            fields.push(Field { name, ty });
+            let wire = (name != *wire).then(|| wire.clone());
+            fields.push(Field { name, ty, wire });
         }
         fields
     }
@@ -986,12 +981,7 @@ impl Reader<'_> {
             } else {
                 format!("{name}_value")
             };
-            if name != *wire {
-                self.find(
-                    format!("{input_name}.{name}"),
-                    format!("The provider names it `{wire}`; until a field can name its wire name, this one is sent by its name"),
-                );
-            }
+
             let schema = parameter.get("schema").cloned().unwrap_or(Value::Null);
             let Some(mut ty) = self.ty(
                 &schema,
@@ -1003,7 +993,8 @@ impl Reader<'_> {
             if place == "query" && parameter.get("required") != Some(&Value::Bool(true)) {
                 ty.optional = true;
             }
-            fields.push(Field { name, ty });
+            let wire = (name != *wire).then(|| wire.clone());
+            fields.push(Field { name, ty, wire });
         }
         // Its body.
         let body = operation

@@ -572,6 +572,9 @@ pub(crate) async fn attempt_delivery(
     }
     // What the run sends outside is logged from here (chunk 7.0c).
     let mark = ctx.capabilities().calls().len();
+    // A provider call's key is derived from the delivery's id, which every
+    // attempt shares (area 12, "Keys"; chunk 7.2c).
+    ctx.set_call_key("delivery", jadpo_value::encoding::to_hex(&delivery.id));
     let ran = match &subscriber.target {
         // A capability's operation is handed the event whole (chunk 7.0c).
         Target::Capability {

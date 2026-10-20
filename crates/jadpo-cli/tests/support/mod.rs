@@ -1,6 +1,7 @@
 //! Shared by the CLI's snapshot tests.
 
 pub mod fake_hq;
+pub mod fake_provider;
 
 /// A slow machine adds the run's duration to the footer (` in 0.1 s`);
 /// snapshots compare the output without it. Rich output ends the footer

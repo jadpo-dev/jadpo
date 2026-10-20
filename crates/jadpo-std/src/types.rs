@@ -91,6 +91,9 @@ pub struct FieldPlan {
     pub none_left_out: bool,
     /// A failure field's section.
     pub section: Option<Section>,
+    /// A provider package's field's spelling on the wire, its
+    /// `wire_name:` (area 11, chunk 7.2c): its member's name in JSON.
+    pub wire: Option<String>,
 }
 
 /// A variant: its name and where it stands among its enum's variants.
@@ -110,6 +113,10 @@ pub struct ShapePlan {
     pub variant: Option<VariantPlan>,
     /// In the order the type declares them.
     pub fields: Vec<FieldPlan>,
+    /// A provider package's type (area 11, "Calling"; chunk 7.2c): read
+    /// from JSON, a member it doesn't declare is left out rather than
+    /// refused, so a provider adding fields breaks nothing.
+    pub open: bool,
 }
 
 impl ShapePlan {

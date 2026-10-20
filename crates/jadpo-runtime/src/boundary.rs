@@ -283,7 +283,11 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     let hold = ctx.own_boundary();
     let isolation = body.isolation();
     let mut attempt = 1;
+    // Run again after a concurrent change, its keyed calls take the same
+    // steps, so each sends the same key (area 12, "Keys"; chunk 7.2c).
+    let steps = ctx.steps();
     loop {
+        ctx.set_steps(steps);
         ctx.open_boundary(isolation);
         let mut outcome = gated(ctx, body).await;
         if matches!(outcome, Outcome::Value(_)) {

@@ -506,6 +506,13 @@ pub enum Callee {
         connection: String,
         op: jadpo_std::files::FilesOp,
     },
+    /// `connection.resource.operation(input)` in an action (area 11,
+    /// "Calling"; chunk 7.2c): an outside call of a provider package's
+    /// operation through the connection named, `bookings.create`.
+    Provider {
+        connection: String,
+        operation: String,
+    },
     /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
     /// the test's clock moved on.
     AdvanceClock,
@@ -545,6 +552,7 @@ impl Callee {
             | Callee::Session(_)
             | Callee::Batch(_)
             | Callee::Files { .. }
+            | Callee::Provider { .. }
             | Callee::AdvanceClock
             | Callee::Translation(_)
             | Callee::Prompt(_)

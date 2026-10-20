@@ -15,7 +15,7 @@ jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 # The values the disk driver is sent and answers (chunk 6.4b).
 jadpo-value.workspace = true
-jadpo-drivers = { workspace = true, features = ["postgres"] }
+jadpo-drivers = { workspace = true, features = ["postgres", "package"] }
 # `signal`: a server drains on SIGTERM, and on ctrl-c under `jadpo dev`
 # (chunk 6.7), which adds signal-hook-registry to the lock.
 tokio = { workspace = true, features = ["rt", "net", "sync", "time", "signal"] }
@@ -34,12 +34,13 @@ webauthn-rs.workspace = true
 webauthn-rs-core.workspace = true
 serde_cbor_2.workspace = true
 serde_json.workspace = true
-# A software authenticator for tests (`test-authenticator`): ES256 keys
-# and signatures on the OpenSSL `webauthn-rs` already links.
-openssl = { workspace = true, optional = true }
+# HTTPS for provider calls (chunk 7.2c), and a software authenticator's
+# ES256 keys and signatures for tests (`test-authenticator`): the OpenSSL
+# `webauthn-rs` already links.
+openssl.workspace = true
 
 [features]
-test-authenticator = ["dep:openssl"]
+test-authenticator = []
 
 [lints]
 workspace = true

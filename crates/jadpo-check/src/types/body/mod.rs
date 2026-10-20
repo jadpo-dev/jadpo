@@ -38,6 +38,7 @@ mod numbers;
 mod ops;
 mod outcome;
 mod prompt;
+mod provider;
 mod quantities;
 mod ranges;
 mod request;
@@ -1311,6 +1312,7 @@ impl Body<'_> {
                         out: Vec::new(),
                         headers: Vec::new(),
                         failure: false,
+                        provider: false,
                     };
                     let ok = decls.type_node(&TypeNode::Type(ty.clone()), false);
                     self.out.append(&mut decls.out);

@@ -323,7 +323,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # have, so tokio-postgres is proven to build for wasm32 too.
         crates = wasm_crates()
         packages = [arg for name in crates for arg in ('-p', name)]
-        features = (['--features', 'jadpo-drivers/postgres']
+        features = (['--features', 'jadpo-drivers/postgres,jadpo-drivers/package']
                     if 'jadpo-drivers' in crates else [])
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],

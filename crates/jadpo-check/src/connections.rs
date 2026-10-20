@@ -77,6 +77,28 @@ pub struct Reach {
     pub credential: Option<String>,
     /// Each setting it declares, by name, with its type.
     pub settings: Vec<(String, Prim)>,
+    /// `protocol:`'s variant, `json_http`.
+    pub protocol: Option<String>,
+    /// `idempotency:`, when its API takes a key (chunk 7.2c).
+    pub idempotency: Option<Idempotency>,
+    /// `error_code:`: where a failed answer's code is, dotted from its
+    /// root (`error.code`).
+    pub error_code: Option<String>,
+}
+
+/// A provider's `idempotency:` (area 11, "How the API is reached"): what
+/// the runtime needs of it to send a call's derived key (chunk 7.2c).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Idempotency {
+    /// The header the key goes in, `Idempotency-Key`.
+    pub header: String,
+    /// The longest key the provider takes.
+    pub max_length: Option<u32>,
+    /// The provider's error code for a key whose first request is still
+    /// running.
+    pub in_use: Option<String>,
+    /// The provider's error code for a key sent with a different request.
+    pub reused: Option<String>,
 }
 
 /// One connection to a provider package, as `app.jadpo` gives it.
@@ -93,6 +115,9 @@ pub struct PackageConnection {
     pub credential: Option<String>,
     pub environment: Option<String>,
     pub host: Option<String>,
+    /// `timeout:`, how long a call waits for its answer, in milliseconds,
+    /// when the connection gives one (area 11, question 8; chunk 7.2c).
+    pub timeout_ms: Option<u64>,
     pub reach: Reach,
 }
 
@@ -148,6 +173,21 @@ pub fn package_connections(db: &dyn Db, project: Project) -> PackageConnections 
         }
     }
     out
+}
+
+/// Whether `application { }`'s block `list` declares connection `name`
+/// with a `package:`, read or not.
+pub fn names_package(list: &Option<ast::MemberList>, name: &str) -> bool {
+    tree::members(list.clone())
+        .into_iter()
+        .filter(|(key, _)| name_text(key).as_deref() == Some("connections"))
+        .flat_map(|(_, member)| tree::members(member.block()))
+        .filter(|(key, _)| name_text(key).as_deref() == Some(name))
+        .any(|(_, entry)| {
+            tree::members(entry.block())
+                .iter()
+                .any(|(key, _)| name_text(key).as_deref() == Some("package"))
+        })
 }
 
 /// The problems with the connections to packages, and every connection
@@ -251,6 +291,40 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                     .iter()
                     .find(|(key, _)| name_text(key).as_deref() == Some("image"))
                     .and_then(|(_, inner)| text_of(inner));
+            }
+            Some("protocol") => {
+                reach.protocol = member.value().map(|value| {
+                    let written = tree::written(value.syntax());
+                    written
+                        .strip_prefix("Protocol.")
+                        .unwrap_or(&written)
+                        .to_string()
+                });
+            }
+            Some("error_code") => reach.error_code = text_of(&member),
+            Some("idempotency") => {
+                let mut idempotency = Idempotency::default();
+                for (key, inner) in tree::members(member.block()) {
+                    match name_text(&key).as_deref() {
+                        Some("header") => idempotency.header = text_of(&inner).unwrap_or_default(),
+                        Some("max_length") => {
+                            idempotency.max_length =
+                                match inner.value().as_ref().map(Const::from_expr) {
+                                    Some(Const::Number {
+                                        value,
+                                        decimal: false,
+                                    }) => (value.scale == 0)
+                                        .then_some(value.mantissa)
+                                        .and_then(|n| u32::try_from(n).ok()),
+                                    _ => None,
+                                };
+                        }
+                        Some("in_use") => idempotency.in_use = text_of(&inner),
+                        Some("reused") => idempotency.reused = text_of(&inner),
+                        _ => {}
+                    }
+                }
+                reach.idempotency = Some(idempotency);
             }
             Some("credential") => {
                 reach.credential = member.value().map(|value| {
@@ -432,6 +506,7 @@ impl Reader<'_> {
             credential: None,
             environment: None,
             host: None,
+            timeout_ms: None,
             reach: reach.clone(),
         };
         let mut given: BTreeSet<String> = BTreeSet::new();
@@ -444,6 +519,7 @@ impl Reader<'_> {
             match written.as_str() {
                 "package" => {}
                 "domains" => read.domains = self.domains(member, out),
+                "timeout" => read.timeout_ms = self.timeout(member, out),
                 "credential" => match &reach.credential {
                     Some(_) => read.credential = self.credential(member, out),
                     None => out.push(
@@ -842,6 +918,30 @@ impl Reader<'_> {
             return None;
         }
         Some(field)
+    }
+
+    /// `timeout: 5s`: how long a call waits for its answer, a duration
+    /// written out (chunk 7.2c).
+    fn timeout(&self, member: &ast::Member, out: &mut Vec<Diagnostic>) -> Option<u64> {
+        let span = self.value_span(member);
+        let given = match member.value().as_ref().map(Const::from_expr) {
+            Some(Const::Duration(text)) => jadpo_std::Dur::parse(&text)
+                .and_then(|dur| u64::try_from(dur.millis).ok())
+                .filter(|millis| *millis > 0),
+            _ => None,
+        };
+        if given.is_none() {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `timeout:` must be a duration", self.connection),
+                    span,
+                    "not a duration",
+                )
+                .reason("`timeout:` is how long each call through the connection waits for its answer before it is given up, a duration written out such as `5s`; without it a call waits 10 seconds.")
+                .next("Write `timeout: 5s`, or remove it to wait 10 seconds"),
+            );
+        }
+        given
     }
 
     /// A setting the package declares: a value of its type, or a setting
