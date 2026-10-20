@@ -377,7 +377,7 @@ rules! {
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
     EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
-        "16-built-in-services.html#email-attachment-limit", "Email's attachments may be larger than its mail package accepts";
+        "16-built-in-services.html#email-attachment-limit", "Email's attachments may exceed what its mail package accepts";
     EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
         "16-built-in-services.html#email-connection-required", "Action emits an email but the application names no email connection";
     EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
@@ -385,7 +385,7 @@ rules! {
     EMAIL_PARTIAL_INVALID: "email.partial_invalid", area 16, Error, Agent,
         "16-built-in-services.html#email-partial-invalid", "Template includes a partial that doesn't exist, can't be reached or is given the wrong fields";
     EMAIL_SENT_CONTEXT: "email.sent_context", area 16, Error, Agent,
-        "16-built-in-services.html#email-sent-context", "`email.sent` is read outside a test";
+        "16-built-in-services.html#email-sent-context", "Reads `email.sent` outside a test";
     EMAIL_SETTINGS_INVALID: "email.settings_invalid", area 16, Error, Agent,
         "16-built-in-services.html#email-settings-invalid", "Application's `email:` or `display_name:` is invalid";
     EMAIL_TEMPLATE_MISSING: "email.template_missing", area 16, Error, Agent,

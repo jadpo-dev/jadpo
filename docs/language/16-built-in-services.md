@@ -5,8 +5,11 @@ status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - data.file_field_invalid
+  - email.attachment_limit
   - email.connection_required
   - email.field_unused
+  - email.partial_invalid
+  - email.sent_context
   - email.settings_invalid
   - email.template_missing
   - email.template_not_allowed
@@ -2121,8 +2124,8 @@ provider {
 }
 ```
 
-```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/resources/emails.jadpo hidden
-public resource emails {
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/resources/transmissions.jadpo hidden
+public resource transmissions {
     send: {
         method: HttpMethod.post
         path: "/emails"
@@ -2154,10 +2157,10 @@ public type OutgoingAttachment = Object {
 ```
 
 ```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/provides/email.jadpo
-/// Sends each email through `emails.send`.
+/// Sends each email through `transmissions.send`.
 provide email {
     send: {
-        call: emails.send
+        call: transmissions.send
         input: {
             from: message.from
             to: message.to
@@ -2186,18 +2189,15 @@ translations {
 ```
 
 ```jadpo check project=e-email-attachment-limit file=domains/billing/emails/invoice_email.txt hidden
-Hello {{ name }}, your invoice and our terms are attached.
+Hello {{ name }}, your invoice is attached.
 ```
 
 ```jadpo check project=e-email-attachment-limit file=domains/billing/emails/invoice_email.jadpo expect=email.attachment_limit
-/// Sends a customer their invoice and the terms it is under.
+/// Sends a customer their invoice.
 type InvoiceEmail = EmailMessage {
     name: Text
     invoice: File {
-        max_size: 8mb
-    }
-    terms: File {
-        max_size: 4mb
+        max_size: 12mb
     }
 }
 ```
@@ -2209,7 +2209,7 @@ error: `InvoiceEmail`'s attachments may be 12 MB, over the 10 MB `postbox` accep
 2 | type InvoiceEmail = EmailMessage {
   |      ^^^^^^^^^^^^ too large to send
   reason: An email's `File` fields are sent as attachments, each at most its `max_size:`, and `postbox`'s package accepts 10 MB of them in all, so an email at its largest would be refused.
-  next: Lower the `max_size:` of `InvoiceEmail`'s `File` fields to 10 MB in all, or send the larger files as links (agent)
+  next: Lower the `max_size:` of `InvoiceEmail`'s `File` fields to 10 MB in all, or send the biggest files as links (agent)
   rule: email.attachment_limit
   help: docs/language/16-built-in-services.html#email-attachment-limit
 

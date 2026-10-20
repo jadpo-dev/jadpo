@@ -26,6 +26,16 @@ quote
 display_name
 recipient
 attachment
+# Email's words (area 16, chunk 7.3c): the parts of the message a mail
+# package's mapping gives (`message.html`, each attachment's
+# `item.content` and its `filename` on the wire), the `attachments`,
+# `receipt:`, and a `button`, the partial Jadpo's own sign-in email has too
+html
+content
+attachments
+filename
+receipt
+button
 # CSS properties in Jadpo's own sign-in email's inline styles
 # (`font-weight`, `white-space`; area 16, chunk 7.3b)
 weight

@@ -330,11 +330,11 @@ impl Body<'_> {
             return;
         };
         // A domain's partial is its own emails'; a shared one everyone's.
-        if let jadpo_db::Ownership::Domain(owner) = &partial.ownership
-            && host.ownership.domain() != Some(owner.as_str())
+        if let jadpo_db::Ownership::Domain(domain) = &partial.ownership
+            && host.ownership.domain() != Some(domain.as_str())
         {
             self.out.push(invalid(
-                format!("`{called}` is domain `{owner}`'s partial"),
+                format!("`{called}` is domain `{domain}`'s partial"),
                 callee_span,
                 "another domain's",
                 format!(

@@ -879,7 +879,7 @@ pub fn attachment_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                         )
                         .at(span.clone(), "no `max_size:`")
                         .reason(format!(
-                            "An email's `File` fields are sent as attachments, and `{connection}` accepts {shown} of them in all, so each says the most it may hold, and together they fit."
+                            "An email's `File` fields are sent as attachments, and `{connection}` accepts {shown} of them in all, so each says the most it may hold, and their sum fits."
                         ))
                         .next(format!(
                             "Give `{name}` a `max_size:`, such as `{name}: File {{ max_size: 5mb }}`, keeping the email's total within {shown}"
@@ -903,7 +903,7 @@ pub fn attachment_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     "An email's `File` fields are sent as attachments, each at most its `max_size:`, and `{connection}`'s package accepts {shown} of them in all, so an email at its largest would be refused."
                 ))
                 .next(format!(
-                    "Lower the `max_size:` of `{}`'s `File` fields to {shown} in all, or send the larger files as links",
+                    "Lower the `max_size:` of `{}`'s `File` fields to {shown} in all, or send the biggest files as links",
                     email.type_name
                 )),
             );
