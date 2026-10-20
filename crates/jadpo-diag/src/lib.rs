@@ -870,6 +870,8 @@ rules! {
         "14-tooling.html#command-errors", "No tests to run";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Test runtime could not start";
+    TEST_SUBSCRIBER_FAILED: "test.subscriber_failed", area 13, Error, Agent,
+        "13-testing.html#test-subscriber-failed", "Subscriber failed for good during a test";
     TEST_UNEXPECTED_FAILURE: "test.unexpected_failure", area 13, Error, Agent,
         "13-testing.html#test-unexpected-failure", "Test ended in a failure it did not expect";
     TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,

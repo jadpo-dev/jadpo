@@ -92,6 +92,19 @@ fn footer(run: &Run) -> Block {
 
 fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
     let mut groups = Vec::new();
+    // A subscriber's delivery that failed for good between the test's
+    // steps: which one, before what it failed with (chunk 6.11).
+    if let Some(delivery) = &failure.delivery {
+        groups.push(vec![Item::Field(Field::new(
+            "delivery",
+            vec![Text::Prose(format!(
+                "`{}` to subscriber `{}` failed for good on attempt {} of {}",
+                delivery.event, delivery.subscriber, delivery.attempt, delivery.attempts
+            ))],
+        ))]);
+    }
+    // What it failed with follows in the same block.
+    let joined = !groups.is_empty() && !matches!(failure.detail, Detail::Assertion(_));
     match &failure.detail {
         Detail::Assertion(assertion) => {
             groups.push(vec![Item::Diagram(diagram(assertion))]);
@@ -111,6 +124,10 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
             groups.push(items);
         }
         Detail::Fault(info) => groups.push(fault_items(info, root)),
+    }
+    if joined && groups.len() > 1 {
+        let rest = groups.remove(1);
+        groups[0].extend(rest);
     }
     let mut last = Vec::new();
     if !failure.kept.is_empty() {

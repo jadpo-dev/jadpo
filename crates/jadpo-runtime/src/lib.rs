@@ -93,6 +93,7 @@ pub mod schedules;
 pub mod serve;
 pub mod statements;
 mod store;
+pub mod test_steps;
 mod write;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, commit_held, unavailable};

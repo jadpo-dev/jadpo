@@ -353,6 +353,7 @@ pub static COMMANDS: &[Command] = &[
             &rule::TEST_ASSERTION_FAILED,
             &rule::TEST_UNEXPECTED_FAILURE,
             &rule::TEST_FAULT,
+            &rule::TEST_SUBSCRIBER_FAILED,
             &rule::TEST_FAILED,
             &rule::TEST_NO_TESTS,
             &rule::TEST_RUNTIME_START_FAILED,

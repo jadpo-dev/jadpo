@@ -15,6 +15,7 @@ rules:
   - syntax.assertion_form
   - test.assertion_failed
   - test.fault
+  - test.subscriber_failed
   - test.unexpected_failure
   - type.test_call_context
   - type.test_clock_context
@@ -512,8 +513,8 @@ that can fail takes `attempt`, and `assert overdue_reminders.run() fails
 ReminderFailed` checks a failing run. It takes no arguments
 (`type.argument_count`), writes no run record and takes no lease: a
 schedule test proves what one run does, and the tick's records are the
-compiler's own live tests'. What the run emits waits as any step's does,
-until events are delivered in tests ("Caches and events"). A test that
+compiler's own live tests'. What the run emits is delivered once it
+comes back, as any step's is ("Caches and events"). A test that
 runs a schedule is a schedule test, whatever it calls to set up its data,
 a `request` included, and `--kind schedule` runs only those.
 
@@ -925,8 +926,10 @@ FAIL  a rate-limited reminder is retried
 - **How to reproduce it:** the clock, the order seed, configuration
   overrides, fake usage, the kept database and the exact rerun command.
 - Every failure has a stable code (`test.assertion_failed`,
-  `test.fake_unused`, `test.fake_exhausted`, `test.unexpected_failure`, and
-  `test.fault` for a fault such as an overflow) so an agent can act on it
+  `test.fake_unused`, `test.fake_exhausted`, `test.unexpected_failure`,
+  `test.fault` for a fault such as an overflow, and
+  `test.subscriber_failed` for a subscriber's delivery that failed for
+  good between the test's steps) so an agent can act on it
   without parsing text. Each is shown with its real report under
   [Errors](#errors).
 
@@ -939,7 +942,9 @@ shares (`schemaVersion` 2, `command`, `ok`, `data`, `diagnostics`), and
 seen from where the command ran (`"."` from inside it), which every path is
 relative to; the `selection`; the `counts`; and the `tests` in the order
 they ran. A failed test's `failure` has its `code` and `help`, its
-`location` in the test, one of `assertion`, `failure` or `fault`, and the
+`location` in the test, one of `assertion`, `failure` or `fault`, for
+`test.subscriber_failed` the `delivery` it happened in (its `event`,
+`subscriber`, `attempt` and `attempts`, `null` otherwise), and the
 `rerun` command, which works from where the command ran. Part of the
 document for the `test.fault` example under [Errors](#errors):
 
@@ -1025,24 +1030,212 @@ routes, and area 1 that events run after the action that emits them commits.
 In a test (question 8 for the database, question 9 for these):
 
 - **Events** are delivered after each step of the test commits and before
-  the next statement runs: subscribers run in order, at the test's clock,
-  until no events are left. A test checks their effects, such as a sent
-  reminder in `requests`. A subscriber that fails fails the test; retries are
-  area 12.
-  Not built yet: what a step emits waits in its database, delivered by
-  no one, until roadmap 6.11 delivers it in the shuffled order (area 12,
-  question 15); a fake failing a subscriber follows with 7.0c's fakes.
+  the next statement runs, at the test's clock, until no events are left.
+  A test checks their effects, such as a sent reminder in `requests`. A
+  subscriber that fails fails the test; retries are area 12.
+  Built in chunk 6.11, as below.
 - **Caches** are on and start empty for each test, in the application's real
   cache store, so a route test sees the same invalidation as production.
   Tests cannot read, fill or clear a cache directly. Actions never read
   caches, so only route tests meet them.
 
+What each step emits is delivered as area 12, question 15 decides
+(chosen in chunk 6.11):
+
+- A step is a call of an action or fixture, a route test's request, a
+  schedule's `.run()` or `clock.advance(...)`. Once it comes back, what
+  is due in the test's outbox is delivered as the runner delivers it
+  anywhere, as the system limited to its event's tenant, and then what
+  those subscribers emit in turn, until nothing is due.
+- Subscribers run in an order shuffled by the run's seed, the one the
+  report prints and `--seed` gives again, mixed with the test's own
+  identity: each delivery is drawn from all those due at that moment, so
+  a test that relies on the order its subscribers run in fails under
+  some seed, and rerunning it with that seed fails the same way.
+- A delivery whose subscriber fails in a way worth trying again waits
+  its full backoff, 30 seconds and then twice as long each time, since a
+  test has no randomness to draw jitter from. The test's clock moves only
+  when the test moves it, so the retry runs once `clock.advance` reaches
+  it.
+- A delivery that fails for good, with a failure not worth retrying, on
+  its last attempt, or with a fault, ends the test there as
+  [`test.subscriber_failed`](#test-subscriber-failed), naming the event,
+  the subscriber and the attempt. What a route's `settle:` delivers
+  while its request waits belongs to the request, and the response says
+  how it ended (area 7, "Waiting for follow-on work").
+- A batch run a step starts is left as it was started; batches in tests
+  come with question 18's.
+
+A fake failing a subscriber, to test its retries against a provider,
+follows with 7.0c's fakes (roadmap 6.11b). A subscriber's own failure
+worth retrying tests them already. Here placing an order emits
+`OrderPlaced`, and `cook_placed` cooks it once a chef is on shift:
+
+```jadpo check project=events-in-tests file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/entities/order.jadpo hidden
+/// A dinner order.
+entity Order {
+    id: Uuid
+    cooked_at: Instant?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/entities/chef.jadpo hidden
+/// A chef on shift.
+entity Chef {
+    id: Uuid
+    on_shift: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/events/order_placed.jadpo hidden
+use kitchen/entities { Order }
+
+/// Someone placed an order.
+type OrderPlaced = Event {
+    order_id: Order.id
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain kitchen; update it with `jadpo records update`, never by hand.
+record events 1
+
+event OrderPlaced
+    order_id: Uuid
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/failures/no_chef.jadpo hidden
+/// Nobody is on shift to cook.
+type NoChef = Failure {
+    kind: FailureKind.unavailable
+    message: "Nobody is cooking yet."
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/queries/chefs.jadpo hidden
+use kitchen/entities { Chef }
+
+/// The chefs on shift.
+query chefs() -> List<Chef> {
+    from: Chef
+    where: Chef.on_shift == true
+    order: [Chef.id asc]
+    limit: 10
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/actions/place_order.jadpo hidden
+use kitchen/entities { Order }
+use kitchen/events { OrderPlaced }
+
+/// Places an order; cooking it follows in a subscriber.
+action place_order() -> Order {
+    var order: Order = Order.create {
+        set: {
+            cooked_at: none
+        }
+    }
+    emit OrderPlaced {
+        order_id: order.id
+    }
+    return order
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/actions/start_shift.jadpo hidden
+use kitchen/entities { Chef }
+
+/// Puts a chef on shift.
+action start_shift() -> Chef {
+    return Chef.create {
+        set: {
+            on_shift: true
+        }
+    }
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/actions/cook.jadpo
+use kitchen/entities { Order, OrderNotFound }
+use kitchen/failures { NoChef }
+use kitchen/queries { chefs }
+
+/// Cooks an order, once a chef is on shift.
+action cook(order_id: Order.id) fails OrderNotFound, NoChef -> Unit {
+    if (list.count(chefs()) == 0) {
+        reject NoChef {}
+    }
+    attempt Order.update(order_id) {
+        set: {
+            cooked_at: clock.now
+        }
+    }
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/subscribers/cook_placed.jadpo migrate=initial
+use kitchen/actions { cook }
+use kitchen/events { OrderPlaced }
+
+/// Cooks each order placed.
+subscriber cook_placed {
+    on: OrderPlaced
+    run: cook(event.order_id)
+}
+```
+
+```jadpo check project=events-in-tests file=domains/kitchen/actions/place_order.test.jadpo
+use kitchen/entities { Chef, Order }
+use kitchen/actions { start_shift }
+
+test "an order is cooked before the next line" {
+    clock: "2026-10-20T18:00:00Z"
+    var chef: Chef = start_shift()
+    assert chef.on_shift
+    var order: Order = place_order()
+    var cooked: Order = attempt Order.get(order.id)
+    assert cooked.cooked_at == "2026-10-20T18:00:00Z"
+}
+
+test "an order placed before the shift is cooked when its retry comes round" {
+    clock: "2026-10-20T18:00:00Z"
+    var order: Order = place_order()
+    var chef: Chef = start_shift()
+    assert chef.on_shift
+    var waiting: Order = attempt Order.get(order.id)
+    assert waiting.cooked_at == none
+    clock.advance(30s)
+    var cooked: Order = attempt Order.get(order.id)
+    assert cooked.cooked_at == "2026-10-20T18:00:30Z"
+}
+```
+
+The first test reads the order cooked on the line after placing it.
+In the second, the delivery fails with `NoChef`, which is worth
+retrying, so it waits 30 seconds; starting the shift doesn't move the
+clock, and the retry runs once `clock.advance(30s)` reaches it.
+
 ## Errors
 
-> The three `test.*` codes run on the new compiler, with `jadpo test`'s real report, and so does `type.test_clock_context` (chunk 5.2). The other `check` errors after them (fakes and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
+> The four `test.*` codes run on the new compiler, with `jadpo test`'s real report, and so does `type.test_clock_context` (chunk 5.2). The other `check` errors after them (fakes and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
 
 Every error this area can produce, with an example that triggers it:
-first the three codes a failed test gets from `jadpo test`, each with its
+first the four codes a failed test gets from `jadpo test`, each with its
 report (run with `--seed 1`), then the `jadpo check` errors for what the
 new compiler hasn't built yet.
 
@@ -1193,6 +1386,151 @@ FAIL  a long plan still adds up
   rerun: jadpo test plans.test.jadpo:3 --seed 1
 
 test failed: 1 failed, 1 pure test
+```
+
+### `test.subscriber_failed`
+
+A delivery between the test's steps failed for good (chosen in chunk
+6.11): here its subscriber's action refuses with a failure not worth
+retrying. The report names the event, the subscriber and the attempt,
+then the failure as `test.unexpected_failure` shows one, at the step
+whose events were being delivered:
+
+```jadpo check project=e-subscriber-failed file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/types/address.jadpo hidden
+/// Where a parcel goes.
+type Address = Text {
+    min_length: 1
+    max_length: 200
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/entities/parcel.jadpo hidden
+use post/types { Address }
+
+/// A parcel handed in at the counter.
+entity Parcel {
+    id: Uuid
+    address: Address
+    labelled: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/events/parcel_handed_in.jadpo hidden
+use post/entities { Parcel }
+use post/types { Address }
+
+/// A parcel was handed in.
+type ParcelHandedIn = Event {
+    parcel_id: Parcel.id
+    address: Address
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain post; update it with `jadpo records update`, never by hand.
+record events 1
+
+event ParcelHandedIn
+    address: Text { min_length: 1, max_length: 200 }
+    parcel_id: Uuid
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/failures/no_such_place.jadpo hidden
+/// No round goes there.
+type NoSuchPlace = Failure {
+    kind: FailureKind.rejected
+    message: "We don't deliver there."
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/actions/hand_in.jadpo hidden
+use post/entities { Parcel }
+use post/types { Address }
+use post/events { ParcelHandedIn }
+
+/// Takes a parcel in; labelling it follows in a subscriber.
+action hand_in(address: Address) -> Parcel {
+    var parcel: Parcel = Parcel.create {
+        set: {
+            address: address
+            labelled: false
+        }
+    }
+    emit ParcelHandedIn {
+        parcel_id: parcel.id
+        address: parcel.address
+    }
+    return parcel
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/actions/label.jadpo
+use post/entities { Parcel, ParcelNotFound }
+use post/types { Address }
+use post/failures { NoSuchPlace }
+
+/// Labels a parcel for its round.
+action label(parcel_id: Parcel.id, address: Address) fails ParcelNotFound, NoSuchPlace -> Unit {
+    if (address == "The Moon") {
+        reject NoSuchPlace {}
+    }
+    attempt Parcel.update(parcel_id) {
+        set: {
+            labelled: true
+        }
+    }
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/subscribers/label_handed_in.jadpo migrate=initial
+use post/actions { label }
+use post/events { ParcelHandedIn }
+
+/// Labels each parcel handed in.
+subscriber label_handed_in {
+    on: ParcelHandedIn
+    run: label(event.parcel_id, event.address)
+}
+```
+
+```jadpo check project=e-subscriber-failed file=domains/post/actions/hand_in.test.jadpo expect=test.subscriber_failed
+use post/entities { Parcel }
+
+test "a parcel for the moon is taken in" {
+    var parcel: Parcel = hand_in("The Moon")
+    assert parcel.labelled == false
+}
+```
+
+```text output
+FAIL  a parcel for the moon is taken in
+ --> domains/post/actions/hand_in.test.jadpo:4
+
+  delivery: `ParcelHandedIn` to subscriber `label_handed_in` failed for good on attempt 1 of 10
+  failure: `NoSuchPlace` from action label
+  at: domains/post/actions/label.jadpo:8:9
+  |
+8 |         reject NoSuchPlace {}
+  |         ^^^^^^^^^^^^^^^^^^^^^ rejected here
+  code: no_such_place
+  kind: FailureKind.rejected
+  message: We don't deliver there.
+  path: test "a parcel for the moon is taken in" -> action label
+
+  rule: test.subscriber_failed
+  rerun: jadpo test domains/post/actions/hand_in.test.jadpo:4 --seed 1
+
+test failed: 1 failed, 1 action test
 ```
 
 ### `semantic.request_route_unknown`
@@ -1779,6 +2117,7 @@ with when it comes.
 | Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
+| Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"). A fake failing a subscriber comes with 7.0c's fakes (roadmap 6.11b). |
 | Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
 | Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2), `email.sent` with email (7.3). Capability fakes, crash points for several changing calls, grants, documents and batches come with those features (areas 12 and 16). |

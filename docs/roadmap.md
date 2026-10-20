@@ -715,12 +715,14 @@ chunks below, taken before Phase 7, in this order.
   outbox) at a time, ten times a tick; statements in
   `jadpo_runtime::statements`; live tests in `tick_deletes.rs`. Choices
   in area 12, "The tick".
-- [ ] **6.11 Events in tests** `opus · high` (area 13, "Caches and
-  events"; area 12, question 15): what each step of a test emits
-  delivered after it commits and before the next statement, at the
-  test's clock, until none are left, in an order shuffled by the
-  printed seed, a subscriber that fails failing the test; a fake failing
-  a subscriber, to test retries, follows with 7.0c's fakes.
+- [x] **6.11 Events in tests** `opus · high`. Built: what each step of
+  a test emits (a call, a request, a schedule's run, `clock.advance`)
+  delivered before the next statement, at the test's clock, until none
+  is due, each drawn in an order the printed seed and the test's key
+  decide; a retry waiting its full backoff for `clock.advance`; a
+  delivery that fails for good ending the test as
+  `test.subscriber_failed`; examples 23 and 25 reading what their
+  subscribers did.
 - [ ] **6.12 `jadpo deliveries`** `opus · high` (area 14, question 13;
   area 12, "What an operator sees"): list, retry, dismiss, cancel and
   resolve deliveries and schedule runs against an environment, each
@@ -758,6 +760,11 @@ The design is area 11 as revised on 2026-10-16, with its research in
   shared test host; a delivery that targets an action or a capability;
   no capability call inside an open transaction. 6.4b, 7.1, 7.3 and
   5.5v3 build on it.
+- [ ] **6.11b A fake failing a subscriber** `opus · high` (area 13,
+  "Caches and events"; area 12, question 15), after 7.0c, from chunk
+  6.11: a test's fake answering a subscriber's provider call with a
+  failure, so the test sees the delivery retried at the next
+  `clock.advance` and given up after its last attempt, on 7.0c's fakes.
 - [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
   moved after 7.0c from Phase 6, since it needs a minimal `files`
   capability on that seam: a store's `put` and `read` of a `File` with a

@@ -424,7 +424,7 @@ const GIVEN_BACK: &str = "given back";
 /// one it stops is given back too. A delivery claimed over its `retry:`
 /// budget or past `within:` from its event fails without running (chunk
 /// 6.6a).
-async fn attempt_delivery(
+pub(crate) async fn attempt_delivery(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     budget: &Budget<'_>,
@@ -666,10 +666,35 @@ pub(crate) async fn sweep_within(
     store: &str,
     now: i64,
 ) -> Result<Vec<Outcome>, StoreError> {
-    use crate::outbox::{DUE, PARK, SWEEP_BATCH, Trace, failure_json, micros};
     let Some(events) = executor.events() else {
         return Ok(Vec::new());
     };
+    let work = due(&events, host, store, now).await?;
+    let worked = drive(
+        executor,
+        host,
+        budget,
+        vec![Deferred::Deliveries(work)],
+        Some(now),
+    )
+    .await;
+    Ok(worked.outcomes)
+}
+
+/// The deliveries due in `store`'s outbox at `now`, at most
+/// [`SWEEP_BATCH`] of them, oldest first, each with its event read as its
+/// type; one whose payload no longer reads is parked with its problem,
+/// never dropped. What [`sweep`] delivers, and a test between its steps
+/// ([`crate::test_steps`]; chunk 6.11).
+///
+/// [`SWEEP_BATCH`]: crate::outbox::SWEEP_BATCH
+pub(crate) async fn due(
+    events: &crate::outbox::Events<'_>,
+    host: &dyn Host,
+    store: &str,
+    now: i64,
+) -> Result<Vec<Delivery>, StoreError> {
+    use crate::outbox::{DUE, PARK, SWEEP_BATCH, Trace, failure_json, micros};
     let database = host
         .database(store)
         .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
@@ -741,15 +766,7 @@ pub(crate) async fn sweep_within(
             }
         }
     }
-    let worked = drive(
-        executor,
-        host,
-        budget,
-        vec![Deferred::Deliveries(work)],
-        Some(now),
-    )
-    .await;
-    Ok(worked.outcomes)
+    Ok(work)
 }
 
 /// Runs `work` and what it sets off within `budget`, as the tick runs
