@@ -30,7 +30,7 @@ named in `expect=`. `## Errors` sections show the v0 compiler's real output, and
 every v0 catalogue rule an area claims must have an example there. Proposed
 code is written in `fragment` blocks, which are not compiled.
 
-  python3 tools/language_docs.py --check     # verify only
+  python3 tools/language_docs.py --check     # verify, and render into a scratch folder
   python3 tools/language_docs.py             # verify and write build/language-site
   python3 tools/language_docs.py --bless     # rewrite the output blocks after `check` blocks
   python3 tools/language_docs.py --check --export-corpus  # also write build/spec-corpus/
@@ -56,10 +56,12 @@ import html
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -93,6 +95,8 @@ COMMAND_AREA = 14
 SKIP_POSTGRES = os.environ.get('JADPO_SKIP_POSTGRES') == '1'
 # What a note says about a block still on the frozen v0 result.
 ARCHIVED_NOTES = ('archived compiler', 'being removed')
+# Seconds rendering one page may take; each takes well under one.
+RENDER_LIMIT = 10
 
 
 # A slow machine adds the run's duration to a summary line (` in 0.1 s`);
@@ -580,6 +584,60 @@ def render_diagnostic(output):
     return '\n'.join(lines)
 
 
+# A list item: its indent, its marker, and the text on the line.
+LIST_ITEM = re.compile(r'^( *)(- |\d+\. )(.*)$')
+
+
+def parse_list(lines, i, end):
+    """The list starting at lines[i], up to a blank line, a line at or left
+    of its items' indent that isn't one of its items, or `end`. A line
+    indented further continues the last item; an item indented further
+    starts a list inside it. Returns (ordered, items, the next line); each
+    item has its `parts` (text, or a nested (ordered, items)) and `flat`,
+    its text with any nested items' lines as written."""
+    first = LIST_ITEM.match(lines[i])
+    indent, ordered = len(first.group(1)), first.group(2)[0].isdigit()
+    items = []
+    while i < end and lines[i].strip():
+        line = lines[i]
+        depth = len(line) - len(line.lstrip(' '))
+        item = LIST_ITEM.match(line)
+        if item and depth == indent:
+            items.append({'parts': [item.group(3)], 'flat': [item.group(3)]})
+            i += 1
+        elif depth <= indent:
+            break
+        elif item:
+            start = i
+            nested = parse_list(lines, i, end)
+            i = nested[2]
+            items[-1]['parts'].append(nested[:2])
+            items[-1]['flat'].extend(lines[k].strip() for k in range(start, i))
+        else:
+            items[-1]['parts'].append(line.strip())
+            items[-1]['flat'].append(line.strip())
+            i += 1
+    return ordered, items, i
+
+
+def render_list(ordered, items):
+    tag = 'ol' if ordered else 'ul'
+    out = []
+    for item in items:
+        body, text = '', []
+        for part in item['parts'] + [None]:
+            if isinstance(part, str):
+                text.append(part)
+                continue
+            if text:
+                body += (' ' if body else '') + inline(' '.join(text))
+                text = []
+            if part is not None:
+                body += render_list(*part)
+        out.append(f'<li>{body}</li>')
+    return f'<{tag}>' + ''.join(out) + f'</{tag}>'
+
+
 class Renderer:
     def __init__(self, page):
         self.page = page
@@ -732,26 +790,14 @@ class Renderer:
                     i += 1
                 out.append(f'<blockquote class="note"><p>{inline(" ".join(quote))}</p></blockquote>')
                 continue
-            item = re.match(r'^(\s*)(- |\d+\. )(.*)$', line)
-            if item:
+            if LIST_ITEM.match(line):
                 flush()
-                ordered = item.group(2)[0].isdigit()
-                items = []
-                while i < len(lines):
-                    m = re.match(r'^(- |\d+\. )(.*)$', lines[i])
-                    if m:
-                        items.append([m.group(2)])
-                    elif lines[i].startswith('   ') and lines[i].strip() and items:
-                        items[-1].append(lines[i].strip())
-                    else:
-                        break
-                    i += 1
+                ordered, items, i = parse_list(lines, i, end)
                 if self.in_questions and ordered:
-                    for k, parts in enumerate(items, 1):
-                        out.append(self.question(k, ' '.join(parts)))
+                    for k, item in enumerate(items, 1):
+                        out.append(self.question(k, ' '.join(item['flat'])))
                 else:
-                    tag = 'ol' if ordered else 'ul'
-                    out.append(f'<{tag}>' + ''.join(f'<li>{inline(" ".join(p))}</li>' for p in items) + f'</{tag}>')
+                    out.append(render_list(ordered, items))
                 continue
             if not line.strip():
                 flush()
@@ -953,9 +999,43 @@ AREAS = [
 ]
 
 
+def write_site(pages, out):
+    """Every page and the decision log, as HTML in `out`, each page under
+    RENDER_LIMIT."""
+    out.mkdir(parents=True, exist_ok=True)
+    for page in pages:
+        with time_limit(page.path.name):
+            (out / f'{page.path.stem}.html').write_text(render_page(page, pages))
+    published = load_published()
+    with time_limit('the decision log'):
+        content, toc = render_log(pages, published)
+    toc_html = ''.join(f'<li><a href="#{a}">{html.escape(t)}</a></li>' for a, t, _ in toc)
+    (out / 'decisions.html').write_text(
+        TEMPLATE.read_text()
+        .replace('{{area}}', 'log').replace('{{checked}}', 'all pages')
+        .replace('{{source}}', 'docs/language/*.md (Decisions, Open questions, Carried tables)')
+        .replace('{{nav}}', ''.join(build_nav(None, pages, published)))
+        .replace('{{toc}}', toc_html).replace('{{content}}', content))
+
+
+@contextmanager
+def time_limit(what):
+    """Raises TimeoutError when the body runs past RENDER_LIMIT, so a
+    renderer that stops moving fails instead of hanging."""
+    def stop(*_):
+        raise TimeoutError(f'rendering {what} took over {RENDER_LIMIT} s')
+    previous = signal.signal(signal.SIGALRM, stop)
+    signal.alarm(RENDER_LIMIT)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--check', action='store_true', help='verify examples without writing pages')
+    parser.add_argument('--check', action='store_true', help='verify examples and render the pages without writing them')
     parser.add_argument('--out', default=str(OUT_DEFAULT))
     parser.add_argument('--freeze', action='store_true', help='compile with the v0 compiler and rewrite the frozen results')
     parser.add_argument('--bless', action='store_true', help='rewrite the output blocks after check blocks')
@@ -1029,21 +1109,15 @@ def main():
             'pages': {page.path.name: page.results for page in pages},
         }, indent=1, sort_keys=True) + '\n')
         print(f'froze {sum(len(p.results) for p in pages)} results to {FROZEN.relative_to(ROOT)}')
-    if not args.check:
-        out = Path(args.out)
-        out.mkdir(parents=True, exist_ok=True)
-        for page in pages:
-            (out / f'{page.path.stem}.html').write_text(render_page(page, pages))
-        published = load_published()
-        content, toc = render_log(pages, published)
-        toc_html = ''.join(f'<li><a href="#{a}">{html.escape(t)}</a></li>' for a, t, _ in toc)
-        (out / 'decisions.html').write_text(
-            TEMPLATE.read_text()
-            .replace('{{area}}', 'log').replace('{{checked}}', 'all pages')
-            .replace('{{source}}', 'docs/language/*.md (Decisions, Open questions, Carried tables)')
-            .replace('{{nav}}', ''.join(build_nav(None, pages, published)))
-            .replace('{{toc}}', toc_html).replace('{{content}}', content))
-        print(f'wrote {len(pages)} page(s) to {out}')
+    # `--check` renders too, into a scratch folder, so a page the renderer
+    # can't finish fails the gate rather than only `language_docs.py`.
+    if args.check:
+        with tempfile.TemporaryDirectory() as scratch:
+            write_site(pages, Path(scratch))
+        print(f'rendered {len(pages)} page(s)')
+    else:
+        write_site(pages, Path(args.out))
+        print(f'wrote {len(pages)} page(s) to {args.out}')
     sys.exit(1 if failed else 0)
 
 
