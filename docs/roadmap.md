@@ -960,19 +960,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
   field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
   the importer lists each; recommendation `wire_name:`.
-- [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
-  and 7.1c: a provider operation called through its connection over
-  7.0c's seam by the package driver (JSON over HTTP), tested against a
-  local HTTP server started in the test; hand-written packages' `wire:`,
-  `decode:` and `encode:`, `wire_output:`, `output_at:` and
-  `failed_when:`; and derived provider idempotency keys (app,
-  environment, caller, step), which also close a collision between
-  users.
+- [ ] **7.2c Provider calls** `opus · high`, after 7.2 and 7.1c (split
+  from 7.2c Wire, decoding and provider calls on 2026-10-20): a provider
+  operation called through its connection over 7.0c's seam by the package
+  driver (JSON over HTTP), tested against a local HTTP server started in
+  the test; a package's operations read and checked; `output_at:` and
+  `failed_when:`; derived provider idempotency keys (app, environment,
+  caller, step), which also close a collision between users; and the
+  connection's `domains:` enforced at the call.
   Also `wire_name:` on a provider's fields and enum variants (area 11,
   decided 2026-10-20), written by the importer where the spelling
   differs.
+- [ ] **7.2c2 Wire encodings and decoders** `opus · high`, after 7.2c:
+  hand-written packages' `wire:` (the built-in encodings), `decode:` and
+  `encode:` on fields, and `wire_output:` with `decode:` on operations,
+  each package function run by the executor at the call's site; and
+  `retry:` with its backoff.
 - [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
-  7.2c: a generated fake per package and `fakes:` for provider
+  7.2c2: a generated fake per package and `fakes:` for provider
   operations in tests; recordings and `jadpo package record`, every
   decoder run over every recording; provider calls faked by default in
   `jadpo dev`, with `development: { sandbox: }`; and the call log screen,
