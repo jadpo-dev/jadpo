@@ -29,8 +29,7 @@ use crate::lookups::{Lookup, NameView, SigView};
 use crate::tree::{self, name_text, node_span};
 use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView, type_table};
 
-/// The keys an operation may give (area 11). `large_output:` is read by
-/// a later chunk.
+/// The keys an operation may give (area 11).
 pub const OPERATION_KEYS: [&str; 15] = [
     "method",
     "path",
@@ -97,6 +96,10 @@ pub struct Operation {
     pub decode: Option<(Ty, jadpo_graph::Key)>,
     pub changes: bool,
     pub idempotent: bool,
+    /// `large_output: true`: its answer may be large, so it is never one
+    /// of several changing calls, whose answers are kept for a rerun
+    /// (area 12, "Several changing calls in one action"; chunk 7.5).
+    pub large_output: bool,
     /// Its failures as the checker knows them.
     pub failures: Vec<String>,
     /// Where it is declared.
@@ -500,6 +503,7 @@ impl Reader<'_> {
         let mut decode = None;
         let mut changes = None;
         let mut idempotent = false;
+        let mut large_output = false;
         let mut failures = Vec::new();
         for (key, inner) in tree::members(Some(block.clone())) {
             let word = name_text(&key).unwrap_or_default();
@@ -531,7 +535,12 @@ impl Reader<'_> {
                         .map(|(ty, _)| (ty, key_span, value_span));
                 }
                 "decode" => decode = Some((constant, key_span, value_span)),
-                "source" | "docs" | "scope" | "large_output" => {}
+                "large_output" => {
+                    large_output = self
+                        .flag(&constant, value_span, "large_output", out)
+                        .unwrap_or(false);
+                }
+                "source" | "docs" | "scope" => {}
                 other => {
                     let near = nearest(other, OPERATION_KEYS.iter().copied());
                     let mut problem = self
@@ -657,6 +666,7 @@ impl Reader<'_> {
             failed_when,
             decode,
             idempotent,
+            large_output,
             failures,
             file: String::new(),
         })
@@ -959,6 +969,7 @@ impl Reader<'_> {
             )
             .reason(match key {
                 "changes" => "`changes:` says whether the operation changes anything at the provider, which decides whether it may be sent again.".to_string(),
+                "large_output" => "`large_output: true` says the operation's answer may be large, so it is never one of several changing calls, whose answers are kept for a rerun.".to_string(),
                 _ => "`idempotent: true` says the operation is safe to send again: with the package's `idempotency:` key, or because repeating it changes nothing.".to_string(),
             })
             .next(format!("Write `{key}: true` or `{key}: false`")),

@@ -151,6 +151,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(types::step_problems(db, project, file).iter().cloned());
             out.extend(types::store_problems(db, project, file).iter().cloned());
             out.extend(
                 types::batch_store_problems(db, project, file)

@@ -89,6 +89,7 @@ mod soundness;
 mod standard_literals;
 mod standard_rules;
 mod standard_types;
+mod steps;
 mod stores;
 mod suggest;
 mod surfaces;
