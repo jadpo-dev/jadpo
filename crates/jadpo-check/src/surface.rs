@@ -465,7 +465,7 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
         // A package's library is known through its package
         // (`Postcodes.uk`); the surface names it as the app writes it
         // after the package's name.
-        let own = format!("{}.", home.code);
+        let own = format!("{}.", home.through);
         let name = node.name.strip_prefix(&own).unwrap_or(&node.name);
         let made = |what: What| Declaration {
             name: name.to_string(),

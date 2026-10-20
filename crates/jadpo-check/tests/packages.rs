@@ -1035,3 +1035,56 @@ action read_zip(
         Vec::<String>::new()
     );
 }
+
+/// An app whose one connection is called `name`.
+fn connected_as(name: &str) -> String {
+    format!(
+        "application {{
+    connections: {{
+        {name}: {{
+            driver: Driver.postgres
+            url: config.database_url
+        }}
+    }}
+}}
+"
+    )
+}
+
+#[test]
+fn a_connection_is_never_named_like_a_domain_or_a_library() {
+    // Area 11, question 17: connections share one namespace with domains
+    // and libraries (chunk 7.1c2).
+    let config = (
+        "config.jadpo",
+        "config {\n    database_url: Text {\n        secret: true\n    }\n}\n",
+    );
+    let domain = (
+        "domains/billing/actions/bill.jadpo",
+        "/// Bills.\naction bill() -> Unit {}\n",
+    );
+    let app = connected_as("billing");
+    let found = problems(&[("app.jadpo", &app), config, domain], &[]);
+    assert!(
+        found.iter().any(|p| p
+            == "app.jadpo semantic.duplicate_declaration: Connection `billing` is named like domain `billing`"),
+        "{found:#?}"
+    );
+    let library = (
+        "shared/libraries/rounding.jadpo",
+        "/// Rounding.\nlibrary rounding {\n    /// Keeps it.\n    function keep(value: Int) -> Int {\n        return value\n    }\n}\n",
+    );
+    let app = connected_as("rounding");
+    let found = problems(&[("app.jadpo", &app), config, library], &[]);
+    assert!(
+        found.iter().any(|p| p
+            == "app.jadpo semantic.duplicate_declaration: Connection `rounding` is named like library `rounding` in `shared/libraries/rounding.jadpo`"),
+        "{found:#?}"
+    );
+    let app = connected_as("main");
+    let found = problems(&[("app.jadpo", &app), config, domain], &[]);
+    assert!(
+        !found.iter().any(|p| p.contains("Connection `main`")),
+        "{found:#?}"
+    );
+}

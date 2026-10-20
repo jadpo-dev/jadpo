@@ -446,6 +446,14 @@ impl Loaded {
         Some(display(Path::new(""), relative))
     }
 
+    /// The installed package files the package cache holds as checked
+    /// with no problem, which a check skips (chunk 7.1c2).
+    pub fn set_checked(&mut self, checked: BTreeSet<String>) {
+        if &checked != self.project.checked(&self.db) {
+            self.project.set_checked(&mut self.db).to(checked);
+        }
+    }
+
     /// Compiles each lazily loaded resource the app now calls into
     /// ([`crate::lazy`]).
     fn settle(&mut self) {

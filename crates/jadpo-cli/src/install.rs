@@ -88,8 +88,25 @@ fn find<'a>(lines: &'a [Locked], wanted: &str, command: &str) -> Result<&'a Lock
         let (code, _) = line.package.rsplit_once('.').unwrap_or((&line.package, ""));
         wanted == line.package || wanted == code || wanted == jadpo_db::to_snake(code)
     };
-    if let Some(line) = lines.iter().find(|line| matches(line)) {
+    let found: Vec<&Locked> = lines.iter().filter(|line| matches(line)).collect();
+    if let [line] = found.as_slice() {
         return Ok(line);
+    }
+    if let [first, .., last] = found.as_slice() {
+        // Two versions side by side (chunk 7.1c2): each is its own package.
+        let held: Vec<String> = found.iter().map(|line| line.package.clone()).collect();
+        return Err(Reply::failed(arguments(
+            format!("`{wanted}` names {} packages", found.len()),
+            format!(
+                "`{}` holds {} side by side, so the command needs the version too.",
+                jadpo_db::LOCK,
+                and_list(&crate::run::quoted(&held))
+            ),
+            format!(
+                "Use `jadpo package {command} {}` or `jadpo package {command} {}`",
+                first.package, last.package
+            ),
+        )));
     }
     let folders: Vec<String> = lines
         .iter()
@@ -993,7 +1010,7 @@ pub fn update(call: &Call) -> Reply {
     }
     // Area 18's review of the change: what the app uses and a person
     // decides.
-    let used = used_names(&root, &line.package);
+    let used = used_names(&root, &line.package, held_beside(&lines, &line.package));
     let changes = publishing::changes(&before, &verified.surface_text);
     let mut rows: Vec<(ChangeMark, Vec<String>)> = Vec::new();
     let mut decide = 0;
@@ -1119,11 +1136,36 @@ fn app_sources(root: &Path) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Whether the lock holds another version of `package` beside it.
+fn held_beside(lines: &[Locked], package: &str) -> bool {
+    let code = |package: &str| package.rsplit_once('.').map_or(package, |(code, _)| code).to_string();
+    lines
+        .iter()
+        .any(|line| line.package != package && code(&line.package) == code(package))
+}
+
+/// Whether `text` writes `word` as a whole name, not part of a longer one:
+/// `Postcodes.v2` in `Postcodes.v2.uk.parse(...)` or `package:
+/// Postcodes.v2`, but not in `Postcodes.v20`.
+fn writes_word(text: &str, word: &str) -> bool {
+    let part = |c: char| c.is_alphanumeric() || c == '_';
+    text.match_indices(word).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + word.len()..].chars().next();
+        !before.is_some_and(|c| part(c) || c == '.') && !after.is_some_and(part)
+    })
+}
+
 /// The package's names the app writes, after its name: `uk.parse`,
-/// `UkPostcode`.
-fn used_names(root: &Path, package: &str) -> Vec<String> {
+/// `UkPostcode`; after its name and version, `Postcodes.v3.uk.parse`,
+/// while another version is held beside it (chunk 7.1c2).
+fn used_names(root: &Path, package: &str, beside: bool) -> Vec<String> {
     let (code, _) = package.rsplit_once('.').unwrap_or((package, ""));
-    let lead = format!("{code}.");
+    let lead = if beside {
+        format!("{package}.")
+    } else {
+        format!("{code}.")
+    };
     let mut out: Vec<String> = Vec::new();
     for (_, text) in app_sources(root) {
         for (at, _) in text.match_indices(&lead) {
@@ -1179,11 +1221,40 @@ pub fn remove(call: &Call) -> Reply {
         ));
     }
     let use_line = format!("use {}/{name}", jadpo_db::PACKAGES);
+    // Beside another version, the `use` line stays for that one, and this
+    // version is in use while code writes names through it (chunk 7.1c2).
+    let beside = held_beside(&lines, &line.package);
     let users: Vec<String> = app_sources(&root)
         .into_iter()
-        .filter(|(_, text)| text.lines().any(|l| l.trim() == use_line))
+        .filter(|(_, text)| {
+            if beside {
+                writes_word(text, &line.package)
+            } else {
+                text.lines().any(|l| l.trim() == use_line)
+            }
+        })
         .map(|(path, _)| path)
         .collect();
+    if beside && !users.is_empty() {
+        let quoted: Vec<String> = users.iter().map(|path| format!("`{path}`")).collect();
+        return Reply::failed(
+            Diagnostic::new(
+                &rule::INSTALL_IN_USE,
+                format!("The app still uses `{}`", line.package),
+            )
+            .reason(format!(
+                "{} {} names through `{}`, so removing it would leave {} unable to compile.",
+                and_list(&quoted),
+                if users.len() == 1 { "writes" } else { "write" },
+                line.package,
+                if users.len() == 1 { "that file" } else { "them" }
+            ))
+            .next(format!(
+                "Move what is written through `{}` to the other version, then run `jadpo package remove {}` again",
+                line.package, line.package
+            )),
+        );
+    }
     if !users.is_empty() {
         let quoted: Vec<String> = users.iter().map(|path| format!("`{path}`")).collect();
         return Reply::failed(

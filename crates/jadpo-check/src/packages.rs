@@ -757,6 +757,31 @@ fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnos
             }
         }
     }
+    // A library package's messages are worded under its folder's name
+    // (`postcodes: { }`, area 10), which two versions would share; how an
+    // app words each version apart isn't decided (chunk 7.1c2).
+    if home.through != home.code
+        && let Some(file) = package.files.iter().find(|file| {
+            location(db, project, **file).place == Place::Folder(Folder::Translations)
+        })
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!(
+                    "Two versions of package `{}` with translations side by side aren't built yet",
+                    home.code
+                ),
+            )
+            .at(file_span(file.path(db)), "")
+            .reason(format!(
+                "The app words a package's messages under its folder's name, `{}: {{ }}`, which `{}` shares with the other version held beside it, so the two versions' messages can't be told apart yet.",
+                home.name,
+                home.versioned()
+            ))
+            .next("Move every caller to one version and remove the other, then add the new one"),
+        );
+    }
     // Two versions of one package, both installed or both the app's own,
     // sit side by side with names carrying the version (chunk 7.1c2); an
     // installed package and the app's own of one name are a clash.

@@ -150,9 +150,62 @@ pub fn package_connections(db: &dyn Db, project: Project) -> PackageConnections 
     out
 }
 
-/// The problems with the connections to packages.
-pub fn connection_problems(db: &dyn Db, project: Project) -> &Vec<Diagnostic> {
-    &package_connections(db, project).problems
+/// The problems with the connections to packages, and every connection
+/// whose name is a domain's or a library's.
+#[salsa::tracked(returns(ref))]
+pub fn connection_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let mut out = package_connections(db, project).problems.clone();
+    out.extend(name_clashes(db, project));
+    out
+}
+
+/// A connection's name shares one namespace with the app's domains and
+/// libraries (area 11, question 17), since `name.call(...)` has to mean
+/// one thing: a connection named like either is reported at the
+/// connection, the one `app.jadpo` can rename without moving code.
+fn name_clashes(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let table = jadpo_db::symbols(db, project);
+    let mut out = Vec::new();
+    for found in singletons(db, project, "application") {
+        for (key, member) in tree::members(found.list.clone()) {
+            if name_text(&key).as_deref() != Some("connections") {
+                continue;
+            }
+            for (name, _) in tree::members(member.block()) {
+                let Some(connection) = name_text(&name) else {
+                    continue;
+                };
+                let library = table.declarations.get(&connection).and_then(|found| {
+                    found.iter().find(|symbol| {
+                        symbol.kind == jadpo_db::ItemKind::Library
+                            && symbol.library.is_none()
+                            && symbol.ownership.package().is_none()
+                    })
+                });
+                let what = if table.domains.contains(&connection) {
+                    format!("domain `{connection}`")
+                } else if let Some(library) = library {
+                    format!("library `{connection}` in `{}`", library.path)
+                } else {
+                    continue;
+                };
+                out.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_DUPLICATE_DECLARATION,
+                        format!("Connection `{connection}` is named like {what}"),
+                    )
+                    .at(node_span(&found.path, name.syntax()), "named like a domain or library")
+                    .reason(format!(
+                        "Connections share one namespace with domains and libraries, so `{connection}.<name>` means one thing; it is already the {what}."
+                    ))
+                    .next(format!(
+                        "Rename the connection, such as `{connection}_api`, and the calls through it"
+                    )),
+                );
+            }
+        }
+    }
+    out
 }
 
 /// `provider.jadpo`'s word for how the package in `home` is reached;

@@ -212,9 +212,27 @@ fn show(call: &Call) -> Reply {
             "Run `jadpo package show <name>`".to_string(),
         ));
     };
-    let found = homes
+    let all: Vec<&jadpo_db::PackageHome> = homes
         .values()
-        .find(|home| *wanted == home.name || *wanted == home.code || *wanted == home.versioned());
+        .filter(|home| *wanted == home.name || *wanted == home.code || *wanted == home.versioned())
+        .collect();
+    if let [first, .., last] = all.as_slice() {
+        // Two versions side by side (chunk 7.1c2): each is its own package.
+        let held: Vec<String> = all.iter().map(|home| home.versioned()).collect();
+        return Reply::failed(arguments(
+            format!("`{wanted}` names {} packages", all.len()),
+            format!(
+                "The project holds {} side by side, so `jadpo package show` needs the version too.",
+                and_list(&quoted(&held))
+            ),
+            format!(
+                "Use `jadpo package show {}` or `jadpo package show {}`",
+                first.versioned(),
+                last.versioned()
+            ),
+        ));
+    }
+    let found = all.first().copied();
     let Some(home) = found else {
         let diagnostic = |reason: String, next: String| {
             arguments(

@@ -635,7 +635,7 @@ impl Names<'_> {
     fn access(&self, symbol: &Symbol, span: Span, out: &mut Vec<Diagnostic>) {
         if let Ownership::Package(home) = &symbol.ownership {
             if !symbol.visible_from(self.ownership) {
-                out.push(package_private(symbol, &home.code, span));
+                out.push(package_private(symbol, &home.through, span));
             }
             return;
         }
