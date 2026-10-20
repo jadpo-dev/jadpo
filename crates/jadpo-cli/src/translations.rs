@@ -30,6 +30,19 @@
 //!   `Unused`, a row for each message or enum (its type's name, then its
 //!   place, `path:line`, never cut), and a footer that counts what is
 //!   unused and how many of all are used. No hint.
+//! - `unused` and library packages (7.1b4; impeccable's shape pass,
+//!   unattended). *Job:* someone tidying the root file after a package
+//!   update, or after code stopped calling a package's message, needs the
+//!   app's wording that shows nothing, and where it is, to delete it.
+//!   Mode: operate. A second list after `Unused`, the bold heading
+//!   `Package wording`, a row for each member of the root file: its name
+//!   as `missing` and the record write it (`postcodes.postcode_hint`), its
+//!   place, `path:line`, never cut, and why it shows nothing (`no code
+//!   calls it`, `not in Postcodes`, `private to Postcodes`, `no such
+//!   package`). The footer's count takes both lists in and says how many
+//!   are package wording. A package's text the app doesn't word is the
+//!   package's, so it is never listed. *Assumption:* one row per root file,
+//!   since each is a member to delete.
 //! - `update` and `accept` are a status line for each record written,
 //!   `✓ Wrote domains/shipping/translations/sources.jadpo_record`, and a
 //!   row under it for each translation that changed (`de_de.parcels` and
@@ -522,13 +535,66 @@ fn unused(loaded: &Loaded, cwd: &Path) -> Reply {
         .iter()
         .map(|item| format!("{}:{}", item.path, line_of(&item.path, item.span.start)))
         .collect();
+    let wording = outstanding::unused_package_wording(db, project);
+    let wording_places: Vec<String> = wording
+        .iter()
+        .map(|item| format!("{}:{}", item.path, line_of(&item.path, item.span.start)))
+        .collect();
+    let why = |item: &outstanding::UnusedWording| -> String {
+        let package = item.package.as_deref().unwrap_or(&item.group);
+        match item.why {
+            outstanding::Unshown::Uncalled => "no code calls it".to_string(),
+            outstanding::Unshown::NotInPackage => format!("not in {package}"),
+            outstanding::Unshown::Private => format!("private to {package}"),
+            outstanding::Unshown::NoPackage => "no such package".to_string(),
+        }
+    };
     let width = found
         .iter()
         .map(|item| item.type_name.len())
         .max()
         .unwrap_or(0);
     let mut screen = Screen::new();
-    if found.is_empty() {
+    let package_lines = |screen: &mut Screen| {
+        if wording.is_empty() {
+            return;
+        }
+        let names: Vec<String> = wording
+            .iter()
+            .map(outstanding::UnusedWording::name)
+            .collect();
+        let name_width = names.iter().map(String::len).max().unwrap_or(0);
+        let place_width = wording_places.iter().map(String::len).max().unwrap_or(0);
+        let lines = wording
+            .iter()
+            .zip(&names)
+            .zip(&wording_places)
+            .map(|((item, name), place)| {
+                format!("{name:name_width$}  {place:place_width$}  {}", why(item))
+            })
+            .collect();
+        screen.push(Block::Section {
+            heading: "Package wording".to_string(),
+            lines,
+        });
+    };
+    if found.is_empty() && !wording.is_empty() {
+        package_lines(&mut screen);
+        let mut facts = Vec::new();
+        if total > 0 {
+            facts.push(Fact::plain(format!("{total} of {total} used")));
+        }
+        facts.push(Fact::plain(count(
+            wording.len(),
+            "package wording",
+            "package wordings",
+        )));
+        screen.push(Block::summary(
+            Outcome::Success,
+            format!("{} unused", wording.len()),
+            facts,
+        ));
+    } else if found.is_empty() {
         screen.push(Block::summary(
             Outcome::Success,
             if total == 0 {
@@ -552,13 +618,22 @@ fn unused(loaded: &Loaded, cwd: &Path) -> Reply {
             heading: "Unused".to_string(),
             lines,
         });
+        package_lines(&mut screen);
+        let mut facts = vec![Fact::plain(format!(
+            "{} of {total} used",
+            total - found.len()
+        ))];
+        if !wording.is_empty() {
+            facts.push(Fact::plain(count(
+                wording.len(),
+                "package wording",
+                "package wordings",
+            )));
+        }
         screen.push(Block::summary(
             Outcome::Success,
-            format!("{} unused", found.len()),
-            [Fact::plain(format!(
-                "{} of {total} used",
-                total - found.len()
-            ))],
+            format!("{} unused", found.len() + wording.len()),
+            facts,
         ));
     }
     let data = Json::object([
@@ -582,6 +657,23 @@ fn unused(loaded: &Loaded, cwd: &Path) -> Reply {
             })),
         ),
         ("total", total.into()),
+        (
+            "packageWording",
+            Json::array(wording.iter().zip(&wording_places).map(|(item, place)| {
+                Json::object([
+                    ("name", Json::from(item.name().as_str())),
+                    ("group", Json::from(item.group.as_str())),
+                    (
+                        "package",
+                        item.package.as_deref().map_or(Json::Null, Json::from),
+                    ),
+                    ("member", Json::from(item.member.as_str())),
+                    ("path", Json::from(item.path.as_str())),
+                    ("place", Json::from(place.as_str())),
+                    ("reason", Json::from(item.why.word())),
+                ])
+            })),
+        ),
     ]);
     Reply::screen(screen, data)
 }
