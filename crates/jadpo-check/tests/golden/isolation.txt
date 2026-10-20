@@ -90,6 +90,18 @@
   action remind_holder               read_committed
   action round_progress              read_committed
   fixture two_societies              read_committed
+26-delivery-desk
+  action SwiftCouriers.announce_collection read_committed
+  action SwiftCouriers.book_first_slot read_committed
+  action book_first_pickup           read_committed
+  action book_pickup                 read_committed
+  action book_with_return            read_committed
+  action check_postcode              read_committed
+  action keep_collection             read_committed
+  action keep_scan                   read_committed
+  action keep_tariff                 read_committed
+  action postcode_hint_text          read_committed
+  action quote_parcel                read_committed
 27-guest-house
   action ask_to_sign_in              read_committed
   action book_stay                   read_committed
