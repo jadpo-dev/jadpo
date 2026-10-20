@@ -95,6 +95,78 @@ pub(crate) fn held_secret(
     }
 }
 
+/// Whether a value of `ty` is or holds a magic link's code, however deep
+/// (area 8, "Magic links"): in a list, a set, a map or an option, in a
+/// field of an object or an `Input`, or in a variant's data.
+pub(crate) fn holds_sign_in_code(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
+    match table.structure(ty) {
+        Ty::Prim(jadpo_std::Builtin::SignInCode) => true,
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            holds_sign_in_code(table, &inner, seen)
+        }
+        Ty::Map(key, value) => {
+            holds_sign_in_code(table, &key, seen) || holds_sign_in_code(table, &value, seen)
+        }
+        Ty::Named(name) => {
+            if seen.contains(&name) {
+                return false;
+            }
+            seen.push(name.clone());
+            match table.def(&name) {
+                Some(Def::Fields {
+                    base: FieldsBase::Object | FieldsBase::Input,
+                    fields,
+                    ..
+                }) => fields
+                    .iter()
+                    .any(|field| holds_sign_in_code(table, &field.declared, seen)),
+                Some(Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .any(|field| holds_sign_in_code(table, &field.declared, seen)),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// A field holding a magic link's code where none may go: a response, a
+/// failure or an event (area 8, "Magic links").
+pub(crate) fn sign_in_code_field(
+    base: FieldsBase,
+    failure: bool,
+    host: &str,
+    name: &str,
+    span: Span,
+) -> Diagnostic {
+    let (label, why) = if failure || base == FieldsBase::Failure {
+        (
+            "in a failure",
+            "A failure is logged and its client fields reach the client.",
+        )
+    } else if base == FieldsBase::Event {
+        (
+            "in an event",
+            "An event is kept in the outbox and handed to every subscriber.",
+        )
+    } else {
+        (
+            "sent to a client",
+            "A response is written out, logged by proxies and kept by browsers.",
+        )
+    };
+    Diagnostic::new(
+        &rule::TYPE_SECRET_EXPOSED,
+        format!("`{host}.{name}` holds a `SignInCode`"),
+    )
+    .at(span, label)
+    .reason(format!(
+        "A sign-in code goes only into the email that carries it, or to the application's own sending, so nobody reading a response, a log or the outbox can sign in as the person it was sent to. {why}"
+    ))
+    .next(format!("Remove `{name}`"))
+}
+
 /// Whether a declaration of `base` keeps a secret value out of its fields:
 /// everything but an `Object` or an `Input`, which stay in memory or arrive
 /// from outside (an entity's fields are the data model's to refuse).

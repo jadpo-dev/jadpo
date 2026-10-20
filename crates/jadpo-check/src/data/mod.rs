@@ -1117,31 +1117,33 @@ impl Reader<'_> {
         // the runtime (area 8), in a column of its own or inside a value
         // stored as JSON (chunk 5.9b).
         if let Some(credential) = held_credential(self.lookup, &ty, &mut Vec::new()) {
-            let what = if credential == jadpo_std::Builtin::ApiToken {
-                "An API token"
+            let (what, kept, given) = match credential {
+                jadpo_std::Builtin::ApiToken => ("An API token", "an API token", "token"),
+                jadpo_std::Builtin::SignInCode => ("A sign-in code", "a sign-in code", "code"),
+                _ => ("A service key", "a service key", "key"),
+            };
+            let reason = if credential == jadpo_std::Builtin::SignInCode {
+                "A sign-in code is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own email and sending are given it only to send it.".to_string()
             } else {
-                "A service key"
+                format!(
+                    "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
+                )
+            };
+            let next = if credential == jadpo_std::Builtin::SignInCode {
+                format!("Remove `{name}`; send the code, never keep it")
+            } else {
+                format!(
+                    "Remove `{name}`, and give the {given} in the output of the action that issues it"
+                )
             };
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_AUTH_CREDENTIAL_STORED,
-                    format!(
-                        "`{entity}.{name}` keeps {}",
-                        if credential == jadpo_std::Builtin::ApiToken {
-                            "an API token"
-                        } else {
-                            "a service key"
-                        }
-                    ),
+                    format!("`{entity}.{name}` keeps {kept}"),
                 )
                 .at(node_span(path, value.syntax()), "a secret, stored")
-                .reason(format!(
-                    "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
-                ))
-                .next(format!(
-                    "Remove `{name}`, and give the {} in the output of the action that issues it",
-                    if credential == jadpo_std::Builtin::ApiToken { "token" } else { "key" }
-                )),
+                .reason(reason)
+                .next(next),
             );
             return Some(field);
         }
@@ -2518,9 +2520,11 @@ fn held_credential(
     seen: &mut Vec<String>,
 ) -> Option<jadpo_std::Builtin> {
     match lookup.structure(ty) {
-        Ty::Prim(credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey)) => {
-            Some(credential)
-        }
+        Ty::Prim(
+            credential @ (jadpo_std::Builtin::ApiToken
+            | jadpo_std::Builtin::ServiceKey
+            | jadpo_std::Builtin::SignInCode),
+        ) => Some(credential),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
             held_credential(lookup, &inner, seen)
         }

@@ -629,10 +629,18 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             KEY_TEXT_LENGTH
         )),
         Builtin::IpAddress if !is_ip_address(text) => Err("isn't an IPv4 or IPv6 address".into()),
+        Builtin::SignInCode if !is_sign_in_code(text) => {
+            Err("isn't a sign-in code, which is six digits".into())
+        }
         Builtin::Instant => crate::time::check_instant(text),
         Builtin::CalendarDate => crate::time::check_calendar_date(text),
         _ => Ok(()),
     }
+}
+
+/// Whether `text` is a magic link's code (area 8): six ASCII digits.
+pub fn is_sign_in_code(text: &str) -> bool {
+    text.len() == 6 && text.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// The version digit of a UUID in its textual form; `None` when it isn't

@@ -11,6 +11,9 @@
 # options they use. `DecodeProblem` is what a failure mapped from
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
 # `FirstSignIn` is what `on_first_sign_in:`'s action is given (area 8).
+# `MagicLinkEmail` is what the application's own sign-in email picks its
+# fields from, and `MagicLinkRequest` what its own sending is given (area
+# 16, "Built-in emails"), their fields in `jadpo-std`'s `email`.
 # The batch types are what `batches` gives and `finished:` receives (area
 # 12), their fields in `jadpo-std`'s `batch`; `BatchState` is an enum
 # there, and `CsvFormat`, who a written CSV is for, another. `File` is a stored file and `FileContents` what `store.read`
@@ -18,7 +21,7 @@
 [types]
 Page Nearest
 File FileContents Principal Response Access
-IssuedToken IssuedKey DecodeProblem FirstSignIn
+IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange

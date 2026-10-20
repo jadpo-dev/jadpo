@@ -166,12 +166,20 @@ pub struct MagicLink {
     pub link: String,
     /// Where the generated routes go: `path:`'s segments.
     pub path: Vec<String>,
+    /// `email:`, the application's own sign-in email (area 16, "Built-in
+    /// emails", level 4), as written.
+    pub email: Option<FirstSignIn>,
+    /// `send:`, the action that sends the sign-in email itself (level 5),
+    /// as written.
+    pub send: Option<FirstSignIn>,
     /// Where `magic_link:` is written.
     pub span: Span,
 }
 
-/// `on_first_sign_in:` as written: the action's name, `domain.action` or
-/// a single-file project's bare action, and where it is written.
+/// A name `authentication { }` gives as written: `on_first_sign_in:`'s
+/// action, `domain.action` or a single-file project's bare action, or
+/// `magic_link:`'s `email:` type and `send:` action; and where it is
+/// written.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FirstSignIn {
     pub names: Vec<String>,
@@ -393,6 +401,166 @@ pub fn first_sign_in_action(db: &dyn Db, project: Project) -> (Option<String>, V
     (None, vec![problem])
 }
 
+/// The symbol `written` names among `kind`'s declarations: `domain.name`
+/// in a domain, or a single-file project's bare name.
+fn named_symbol(
+    lookup: &Lookup<'_>,
+    written: &FirstSignIn,
+    wanted: impl Fn(&ItemKind) -> bool,
+) -> Option<jadpo_db::Symbol> {
+    use crate::lookups::NameView;
+    use jadpo_db::Ownership;
+    let (domain, name) = match written.names.as_slice() {
+        [name] => (None, name.clone()),
+        [domain, name] => (Some(domain.clone()), name.clone()),
+        _ => return None,
+    };
+    lookup
+        .declared(&name)
+        .iter()
+        .find(|symbol| {
+            wanted(&symbol.kind)
+                && match (&symbol.ownership, domain.as_ref()) {
+                    (Ownership::Domain(holder), Some(domain)) => holder == domain,
+                    (Ownership::Loose, None) => true,
+                    _ => false,
+                }
+        })
+        .cloned()
+}
+
+/// The application's own sign-in email `magic_link: { email: }` names
+/// (area 16, "Built-in emails", level 4), by its canonical name, when it
+/// is an email whose fields besides `to` and `locale` are each picked from
+/// `MagicLinkEmail`; with its problem when it isn't.
+#[salsa::tracked(returns(ref))]
+pub fn own_magic_link_email(db: &dyn Db, project: Project) -> (Option<String>, Vec<Diagnostic>) {
+    let identity = identity(db, project);
+    let Some(written) = identity.magic_link.as_ref().and_then(|m| m.email.as_ref()) else {
+        return (None, Vec::new());
+    };
+    let span = written.span.clone();
+    let shown = written.names.join(".");
+    let shape = "`email:` names the application's own sign-in email, `type <Name> = EmailMessage { pick: [MagicLinkEmail.sign_in_link, MagicLinkEmail.code, ...] }`, whose fields Jadpo fills: each is one of `MagicLinkEmail`'s, `address`, `sign_in_link`, `code` and `expires_in`, besides the `to:` and `locale:` every email has.";
+    let lookup = Lookup::new(db, project);
+    let symbol = named_symbol(&lookup, written, |kind| matches!(kind, ItemKind::Type(_)));
+    let Some(symbol) = symbol else {
+        let problem = Diagnostic::new(
+            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+            format!("`{shown}` isn't an email"),
+        )
+        .at(span, "no such email")
+        .reason(shape)
+        .next("Name an email type, written `<domain>.<Email>`, declared in the domain's `emails/` folder");
+        return (None, vec![problem]);
+    };
+    let fields = match lookup.def(&symbol.canonical) {
+        Some(Def::Fields {
+            base: crate::types::FieldsBase::EmailMessage,
+            fields,
+            ..
+        }) => fields.clone(),
+        _ => {
+            let problem = Diagnostic::new(
+                &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                format!("`{shown}` isn't an email"),
+            )
+            .at(span, "not an `EmailMessage`")
+            .reason(shape)
+            .next(format!(
+                "Declare `type {} = EmailMessage {{ pick: [MagicLinkEmail.sign_in_link, MagicLinkEmail.code] }}`",
+                symbol.name
+            ));
+            return (None, vec![problem]);
+        }
+    };
+    let own: Vec<String> = fields
+        .iter()
+        .filter(|field| {
+            !crate::types::EMAIL_FIELDS
+                .iter()
+                .any(|(name, _)| *name == field.name)
+        })
+        .filter(|field| {
+            !(field.copied
+                && matches!(&field.declared, Ty::Field(host, _)
+                    if host == jadpo_std::email::MAGIC_LINK_EMAIL_TYPE))
+        })
+        .map(|field| format!("`{}`", field.name))
+        .collect();
+    if own.is_empty() {
+        return (Some(symbol.canonical.clone()), Vec::new());
+    }
+    let problem = Diagnostic::new(
+        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+        format!("`{shown}` has fields Jadpo can't fill"),
+    )
+    .at(
+        span,
+        format!("{} not from `MagicLinkEmail`", crate::and_list(&own)),
+    )
+    .reason(shape)
+    .next(format!(
+        "Take {} out of `{}`, picking only from `MagicLinkEmail`",
+        crate::and_list(&own),
+        symbol.name
+    ));
+    (None, vec![problem])
+}
+
+/// The action `magic_link: { send: }` names (area 16, "Built-in emails",
+/// level 5), by its canonical name, when it takes one `MagicLinkRequest`
+/// and returns `Unit`; with its problem when it isn't.
+#[salsa::tracked(returns(ref))]
+pub fn sign_in_send_action(db: &dyn Db, project: Project) -> (Option<String>, Vec<Diagnostic>) {
+    use crate::lookups::SigView;
+    let identity = identity(db, project);
+    let Some(written) = identity.magic_link.as_ref().and_then(|m| m.send.as_ref()) else {
+        return (None, Vec::new());
+    };
+    let span = written.span.clone();
+    let shown = written.names.join(".");
+    let action = written.names.last().cloned().unwrap_or_default();
+    let shape = "`send:` names the action that sends the sign-in email itself, through any connection: it takes one `MagicLinkRequest` (the address, the link, the code, when they stop working and the locale) and returns `Unit`. It runs after the request commits, as a subscriber does, and a failure is retried as a subscriber's is.";
+    let lookup = Lookup::new(db, project);
+    let Some(symbol) = named_symbol(&lookup, written, |kind| *kind == ItemKind::Action) else {
+        let problem = Diagnostic::new(
+            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+            format!("`{shown}` isn't an action"),
+        )
+        .at(span, "no such action")
+        .reason(shape)
+        .next("Name an action, written `<domain>.<action>`");
+        return (None, vec![problem]);
+    };
+    let Some(signature) = lookup.signature(&symbol.canonical).cloned() else {
+        return (None, Vec::new());
+    };
+    let takes = matches!(
+        signature.params.as_slice(),
+        [(_, Ty::Opaque(name, args))] if name == jadpo_std::email::MAGIC_LINK_REQUEST && args.is_empty()
+    );
+    let gives = signature.result == Ty::Prim(Prim::Unit);
+    if takes && gives {
+        return (Some(symbol.canonical.clone()), Vec::new());
+    }
+    let label = if takes {
+        "doesn't return `Unit`"
+    } else {
+        "doesn't take one `MagicLinkRequest`"
+    };
+    let problem = Diagnostic::new(
+        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+        format!("`{shown}` can't send the sign-in email"),
+    )
+    .at(span, label)
+    .reason(shape)
+    .next(format!(
+        "Declare it `action {action}(request: MagicLinkRequest) -> Unit`"
+    ));
+    (None, vec![problem])
+}
+
 /// What `sign_in:` needs from the rest of the application (area 8,
 /// "Magic links"; area 16, "Built-in emails"): the `email:` connection
 /// the sign-in email goes through and the `display_name:` it names the
@@ -400,12 +568,16 @@ pub fn first_sign_in_action(db: &dyn Db, project: Project) -> (Option<String>, V
 #[salsa::tracked(returns(ref))]
 pub fn sign_in_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = first_sign_in_action(db, project).1.clone();
+    out.extend(own_magic_link_email(db, project).1.iter().cloned());
+    out.extend(sign_in_send_action(db, project).1.iter().cloned());
     let identity = identity(db, project);
     let Some(magic) = &identity.magic_link else {
         return out;
     };
     let settings = crate::emails::settings(db, project);
-    if settings.connection.is_none() {
+    // An application that sends the sign-in email itself needs no email
+    // connection for it (area 16, level 5).
+    if settings.connection.is_none() && magic.send.is_none() {
         out.push(
             Diagnostic::new(
                 &rule::EMAIL_CONNECTION_REQUIRED,
@@ -1657,6 +1829,8 @@ impl Reader<'_> {
             same_browser: false,
             link: String::new(),
             path: h::MAGIC_LINK_PATH.iter().map(|t| t.to_string()).collect(),
+            email: None,
+            send: None,
             span: span.clone(),
         };
         let mut ok = true;
@@ -1844,7 +2018,50 @@ impl Reader<'_> {
                         }
                     }
                 }
-                "email" | "send" => level.push((name.clone(), key_span)),
+                "email" | "send" => {
+                    let names: Option<Vec<String>> =
+                        value.as_ref().and_then(dotted).map(|(first, rest)| {
+                            std::iter::once(first)
+                                .chain(rest)
+                                .filter_map(|name| tree::name_ref_text(&name))
+                                .collect()
+                        });
+                    match names.filter(|names| (1..=2).contains(&names.len())) {
+                        Some(names) => {
+                            let written = FirstSignIn {
+                                names,
+                                span: value_span,
+                            };
+                            if name == "email" {
+                                read.email = Some(written);
+                            } else {
+                                read.send = Some(written);
+                            }
+                        }
+                        None => {
+                            ok = false;
+                            let (what, form) = if name == "email" {
+                                ("an email type", "<domain>.<Email>")
+                            } else {
+                                ("an action", "<domain>.<action>")
+                            };
+                            self.out.problems.push(
+                                Diagnostic::new(
+                                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                    format!("`{name}:` doesn't name {what}"),
+                                )
+                                .at(value_span, format!("not `{form}`"))
+                                .reason(if name == "email" {
+                                    "`email:` names the application's own sign-in email, a `type <Name> = EmailMessage { pick: [...] }` taking its fields from `MagicLinkEmail`, which Jadpo fills and sends in place of its own.".to_string()
+                                } else {
+                                    "`send:` names the action that sends the sign-in email itself: it takes one `MagicLinkRequest` and returns `Unit`.".to_string()
+                                })
+                                .next(format!("Write `{name}: {form}`")),
+                            );
+                        }
+                    }
+                    level.push((name.clone(), key_span));
+                }
                 other => {
                     ok = false;
                     let near = nearest(other, MAGIC_LINK.iter().copied());
@@ -1866,8 +2083,7 @@ impl Reader<'_> {
                 }
             }
         }
-        // Levels 4 and 5 of the built-in email (area 16): exclusive, and
-        // built with chunk 7.3b2.
+        // Levels 4 and 5 of the built-in email (area 16) are exclusive.
         if let [(_, first), (_, second), ..] = level.as_slice() {
             ok = false;
             self.out.problems.push(
@@ -1880,14 +2096,6 @@ impl Reader<'_> {
                 .reason("`email:` names an email of the application's that Jadpo fills and sends; `send:` names an action that sends it some other way. One email is sent one way.")
                 .next("Keep `email:` or `send:`, not both"),
             );
-        } else if let Some((word, at)) = level.first() {
-            ok = false;
-            let what = if word == "email" {
-                "The application's own sign-in email (area 16, \"Built-in emails\", level 4) comes with chunk 7.3b2"
-            } else {
-                "Sending the sign-in email from the application's own action (area 16, \"Built-in emails\", level 5) comes with chunk 7.3b2"
-            };
-            self.later(at.clone(), &format!("`{word}:`"), what);
         }
         if read.link.is_empty() && ok {
             self.out.problems.push(
