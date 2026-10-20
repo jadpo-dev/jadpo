@@ -575,6 +575,9 @@ impl<'t> Codecs<'t> {
                     .map(str::to_string);
                 jadpo_std::http::WireCoding::Encoding { encoding, currency }
             }
+            jadpo_graph::FieldCoding::Parts { standard, parts } => {
+                jadpo_std::http::WireCoding::Parts { standard, parts }
+            }
             jadpo_graph::FieldCoding::Functions {
                 decode,
                 encode,

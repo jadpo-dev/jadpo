@@ -54,7 +54,7 @@ pub struct Own {
 }
 
 /// What a site does that matters here.
-enum Does<'b> {
+pub(super) enum Does<'b> {
     /// An outside call.
     Calls,
     /// A write.
@@ -65,7 +65,7 @@ enum Does<'b> {
     Nothing,
 }
 
-fn does(node: &Node) -> Does<'_> {
+pub(super) fn does(node: &Node) -> Does<'_> {
     match node {
         Node::Expr(Expr::Write { .. }) => Does::Writes,
         Node::Expr(Expr::Call { callee, .. }) => match callee {
@@ -85,7 +85,7 @@ fn does(node: &Node) -> Does<'_> {
 /// The sites a site runs first, in the order it runs them, but an inline
 /// function's body, which a run or a standard operation runs, never the
 /// site itself.
-fn children(node: &Node) -> Vec<SiteId> {
+pub(super) fn children(node: &Node) -> Vec<SiteId> {
     let mut out = Vec::new();
     match node {
         Node::Stmt(stmt) => match stmt {
@@ -197,14 +197,14 @@ fn heads(source: &ast::SourceFile, path: &str) -> BTreeMap<(u32, u32), (u32, u32
 }
 
 /// A body's sites' names, as its file writes them.
-struct Names<'f> {
+pub(super) struct Names<'f> {
     path: &'f str,
     text: &'f str,
     heads: BTreeMap<(u32, u32), (u32, u32)>,
 }
 
 impl<'f> Names<'f> {
-    fn of(db: &'f dyn Db, file: File) -> Option<Names<'f>> {
+    pub(super) fn of(db: &'f dyn Db, file: File) -> Option<Names<'f>> {
         let source = tree::source(db, file)?;
         let path = file.path(db).as_str();
         Some(Names {
@@ -215,7 +215,7 @@ impl<'f> Names<'f> {
     }
 
     /// Where the site's name is written: its head, or the site itself.
-    fn span(&self, body: &Body, id: SiteId) -> Span {
+    pub(super) fn span(&self, body: &Body, id: SiteId) -> Span {
         let site = body.site(id);
         let (start, end) = self
             .heads
@@ -226,7 +226,7 @@ impl<'f> Names<'f> {
     }
 
     /// The site's name, as written.
-    fn name(&self, body: &Body, id: SiteId) -> String {
+    pub(super) fn name(&self, body: &Body, id: SiteId) -> String {
         let span = self.span(body, id);
         let written = self
             .text
@@ -243,7 +243,11 @@ impl<'f> Names<'f> {
 }
 
 /// The actions and fixtures `file` declares, each with its typed body.
-fn bodies(db: &dyn Db, project: Project, file: File) -> Vec<(Key, std::sync::Arc<Body>)> {
+pub(super) fn bodies(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+) -> Vec<(Key, std::sync::Arc<Body>)> {
     callables_of(db, file)
         .into_iter()
         .filter_map(|callable| {

@@ -224,7 +224,7 @@ fn batch_of(body: &Body, args: &[Option<SiteId>], op: BatchOp) -> (BatchFact, Ve
 
 /// Each of `body`'s facts with the site it is at, in source order: a
 /// `batches.each` call's own fact in place of the run's calls inside it.
-fn facts_of(body: &Body) -> Vec<(Fact, SiteId)> {
+pub(super) fn facts_of(body: &Body) -> Vec<(Fact, SiteId)> {
     let mut batches: Vec<(SiteId, BatchFact)> = Vec::new();
     let mut skip: BTreeSet<SiteId> = BTreeSet::new();
     for (at, site) in body.sites.iter().enumerate() {

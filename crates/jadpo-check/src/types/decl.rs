@@ -14,7 +14,7 @@ use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 use super::literal;
 use super::rules::{self, CONSTRAINTS, Const, FIELD_SETTINGS, Problem, Rules, Subject};
 use super::shape::{self, FieldsBase, Line, ShapeKind};
-use super::table::{Def, Found, LineKind, LineProblem, TypeView, derive};
+use super::table::{Def, FieldDef, Found, LineKind, LineProblem, TypeView, WrittenCoding, derive};
 use super::ty::{BASES, Prim, Ty, TypeNode, TypeRef, container_arity};
 use crate::lookups::Lookup;
 use crate::std_lib::StdNames;
@@ -479,6 +479,9 @@ impl Decls<'_> {
                 self.lines(list, *base, &shape.name, lines);
                 if *base == FieldsBase::Object {
                     self.standard_exists(decl, &shape.name);
+                    if self.provider {
+                        self.standard_candidates(decl, &shape.name);
+                    }
                 }
             }
             ShapeKind::Format { .. } => self.format_decl(decl, &shape.name),
@@ -641,6 +644,128 @@ impl Decls<'_> {
             .reason(reason)
             .next(next),
         );
+    }
+
+    /// `package.standard_candidate` (area 11, "Mapping imported types to
+    /// standard types"; chunk 7.2e): in a provider package's public
+    /// object, a field the provider sends in its own shape that looks
+    /// like a standard type the package doesn't use. A whole number named
+    /// like a time may be an `Instant` sent as seconds; one named like an
+    /// amount beside a currency, `Money` in minor units; a latitude beside
+    /// a longitude, a `Point`. The package says how each is sent once it is
+    /// swapped, so a field that says so already is never one. An object
+    /// that is a standard type whole is `type.standard_exists` instead.
+    fn standard_candidates(&mut self, decl: &ast::TypeDecl, name: &str) {
+        use jadpo_std::provider::{
+            amount_like, currency_named, latitude_named, longitude_named, time_named,
+        };
+        if decl.visibility().is_none()
+            || jadpo_std::standard_type(name).is_some()
+            || standard_match(self.table, name, None).is_some()
+        {
+            return;
+        }
+        let Some(fields) = self.table.fields(name).map(<[FieldDef]>::to_vec) else {
+            return;
+        };
+        let spans: BTreeMap<String, Span> = tree::members(decl.member_list())
+            .into_iter()
+            .filter_map(|(key, _)| Some((tree::name_text(&key)?, self.span(key.syntax()))))
+            .collect();
+        let plain = |field: &FieldDef| field.coding.is_none() && !field.copied;
+        let built_on = |field: &FieldDef, prims: &[Prim]| {
+            !is_enum(self.table, &field.declared)
+                && self
+                    .table
+                    .base_prim(field.declared.strip_nullable())
+                    .is_some_and(|prim| prims.contains(&prim))
+        };
+        let spelled = |field: &FieldDef| field.wire_name.clone().unwrap_or(field.name.clone());
+        // Where the object's currency is sent: a field of its own, or a
+        // part another field reads.
+        let currency = fields.iter().find_map(|field| match &field.coding {
+            None if currency_named(&field.name) => Some((spelled(field), true)),
+            Some(WrittenCoding::Parts(parts)) => parts
+                .iter()
+                .find(|(part, _)| part == "currency")
+                .map(|(_, at)| (at.clone(), false)),
+            _ => None,
+        });
+        let longitude = fields.iter().find(|field| {
+            plain(field)
+                && longitude_named(&field.name)
+                && built_on(field, &[Prim::Int, Prim::Decimal])
+        });
+        let mut found: Vec<Diagnostic> = Vec::new();
+        for field in fields.iter().filter(|field| plain(field)) {
+            let Some(span) = spans.get(&field.name).cloned() else {
+                continue;
+            };
+            let at = format!("{name}.{}", field.name);
+            let own = &field.name;
+            let wire = spelled(field);
+            if built_on(field, &[Prim::Int]) && time_named(own) {
+                found.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_STANDARD_CANDIDATE,
+                        format!("`{at}` may be an `Instant` sent as seconds"),
+                    )
+                    .at(span, "a whole number named like a time")
+                    .reason(format!(
+                        "`{own}` is a whole number named like a time, which providers usually send as seconds since 1970. A package's public types use the standard types, so an app reads an `Instant` rather than a number to convert, and the package decodes it at the edge."
+                    ))
+                    .next(format!(
+                        "Check the provider's documentation, then make it `{own}: Instant {{ wire: Wire.unix_seconds }}`, or `Wire.unix_milliseconds` for milliseconds"
+                    )),
+                );
+                continue;
+            }
+            if built_on(field, &[Prim::Int])
+                && amount_like(own)
+                && let Some((currency, own_field)) = &currency
+            {
+                let removing = if *own_field {
+                    format!(", and remove the field sent as `{currency}`, which it then reads")
+                } else {
+                    String::new()
+                };
+                found.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_STANDARD_CANDIDATE,
+                        format!("`{at}` may be `Money` in minor units"),
+                    )
+                    .at(span, "a whole number named like an amount")
+                    .reason(format!(
+                        "`{own}` is a whole number named like an amount beside a currency, `{currency}`, which providers usually send as minor units, pence or cents. A package's public types use the standard types, so an app reads `Money` rather than a number and a code it has to combine."
+                    ))
+                    .next(format!(
+                        "Check the provider's documentation, then make it `{own}: Money {{ wire_parts: {{ amount: \"{wire}\" currency: \"{currency}\" }} }}`{removing}"
+                    )),
+                );
+                continue;
+            }
+            if built_on(field, &[Prim::Int, Prim::Decimal])
+                && latitude_named(own)
+                && let Some(longitude) = longitude
+            {
+                let other = &longitude.name;
+                let other_wire = spelled(longitude);
+                found.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_STANDARD_CANDIDATE,
+                        format!("`{at}` and `{name}.{other}` may be a `Point`"),
+                    )
+                    .at(span, "a latitude beside a longitude")
+                    .reason(format!(
+                        "`{own}` and `{other}` are a latitude and a longitude, which are the standard `Point`. A package's public types use the standard types, so an app reads one `Point` rather than two numbers whose order it has to know."
+                    ))
+                    .next(format!(
+                        "Check the provider's documentation, then replace both with `location: Point {{ wire_parts: {{ latitude: \"{wire}\" longitude: \"{other_wire}\" }} }}`"
+                    )),
+                );
+            }
+        }
+        self.out.extend(found);
     }
 
     fn variants(&mut self, list: Option<ast::MemberList>, host: &str) {
@@ -1165,7 +1290,8 @@ impl Decls<'_> {
             // How a provider package's field is sent (area 11, "Decoding";
             // chunk 7.2c2): checked once the block is read, as a whole.
             if field.is_some()
-                && [shape::WIRE, shape::DECODE, shape::ENCODE].contains(&key.as_str())
+                && [shape::WIRE, shape::DECODE, shape::ENCODE, shape::WIRE_PARTS]
+                    .contains(&key.as_str())
             {
                 continue;
             }
@@ -1334,10 +1460,11 @@ impl Decls<'_> {
     /// those functions take and give the right types is checked with the
     /// package's operations (`crate::providers`).
     fn coding(&mut self, written: &BTreeMap<String, ast::Member>, field: &FieldCtx, own: &Rules) {
-        let given: Vec<(&str, &ast::Member)> = [shape::WIRE, shape::DECODE, shape::ENCODE]
-            .into_iter()
-            .filter_map(|key| written.get(key).map(|member| (key, member)))
-            .collect();
+        let given: Vec<(&str, &ast::Member)> =
+            [shape::WIRE, shape::DECODE, shape::ENCODE, shape::WIRE_PARTS]
+                .into_iter()
+                .filter_map(|key| written.get(key).map(|member| (key, member)))
+                .collect();
         if given.is_empty() {
             return;
         }
@@ -1373,6 +1500,28 @@ impl Decls<'_> {
         let wire = written.get(shape::WIRE);
         let decode = written.get(shape::DECODE);
         let encode = written.get(shape::ENCODE);
+        if let Some(parts) = written.get(shape::WIRE_PARTS) {
+            if let Some((other, member)) = [
+                (shape::WIRE, wire),
+                (shape::DECODE, decode),
+                (shape::ENCODE, encode),
+            ]
+            .into_iter()
+            .find_map(|(key, member)| member.map(|member| (key, member)))
+            {
+                let span = key_span(self, member);
+                self.out.push(
+                    invalid(format!("`{name}` gives both `wire_parts:` and `{other}:`"))
+                        .at(span, "a second way to send it")
+                        .also(key_span(self, parts), "the first")
+                        .reason("A field is sent one way: as its standard type's parts among its object's members with `wire_parts:`, in a built-in encoding with `wire:`, or by the package's own `decode:` and `encode:` functions.")
+                        .next(format!("Keep `wire_parts:` or `{other}:`, and remove the other")),
+                );
+                return;
+            }
+            self.wire_parts(parts, &name, field);
+            return;
+        }
         if let (Some(wire), Some(other)) = (wire, decode.or(encode)) {
             let which = if decode.is_some() { "decode" } else { "encode" };
             let span = key_span(self, other);
@@ -1432,6 +1581,148 @@ impl Decls<'_> {
                     format!("Add `decode: <library>.<function>`, turning what the provider sends into a `{declared}`")
                 }),
         );
+    }
+
+    /// The standard type `ty` is built on, by its name: `Money`, `Point`.
+    fn standard_of(&self, ty: &Ty) -> Option<String> {
+        let ty = ty.strip_nullable();
+        if let Some(entry) = self
+            .table
+            .base_prim(ty)
+            .and_then(jadpo_std::standard::of_builtin)
+        {
+            return Some(entry.name.to_string());
+        }
+        match self.table.structure(ty) {
+            Ty::Opaque(name, args) if args.is_empty() => Some(name),
+            _ => None,
+        }
+    }
+
+    /// `wire_parts: { part: "spelling" }` (chunk 7.2e): the field is a
+    /// standard type made of parts, and the block spells each of them, as
+    /// text, once.
+    fn wire_parts(&mut self, member: &ast::Member, name: &str, field: &FieldCtx) {
+        let invalid = |message: String| Diagnostic::new(&rule::PACKAGE_WIRE_INVALID, message);
+        let key = member
+            .member_key()
+            .map_or_else(|| self.span(member.syntax()), |key| self.span(key.syntax()));
+        let shown = field.declared.to_string();
+        let standard = self.standard_of(&field.declared);
+        let Some((standard, wanted)) = standard
+            .as_deref()
+            .and_then(|standard| Some((standard, jadpo_std::provider::wire_parts(standard)?)))
+        else {
+            self.out.push(
+                invalid(format!(
+                    "`wire_parts` is for a standard type made of parts, and `{name}` is a `{shown}`"
+                ))
+                .at(key, format!("a `{shown}` field"))
+                .reason("`wire_parts:` reads a standard type made of parts, such as `Money` or `Point`, from the members of the object that holds the field, each part under its own spelling.")
+                .next("Remove `wire_parts:`, or give the field the standard type the provider's members make"),
+            );
+            return;
+        };
+        let Some(block) = member.block() else {
+            self.out.push(
+                invalid(format!("`wire_parts` takes a block of `{standard}`'s parts"))
+                    .at(key, "no block")
+                    .reason(format!(
+                        "`wire_parts:` spells each of `{standard}`'s parts ({}) as the provider's member that holds it.",
+                        crate::and_list(&wanted.iter().map(|part| format!("`{part}`")).collect::<Vec<_>>())
+                    ))
+                    .next(format!(
+                        "Write `wire_parts: {{ {} }}`",
+                        wanted
+                            .iter()
+                            .map(|part| format!("{part}: \"<spelling>\""))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )),
+            );
+            return;
+        };
+        let mut given: Vec<String> = Vec::new();
+        for (part_key, part) in tree::members(Some(block)) {
+            let Some(part_name) = tree::name_text(&part_key) else {
+                continue;
+            };
+            let part_span = self.span(part_key.syntax());
+            if !wanted.contains(&part_name.as_str()) {
+                let near = nearest(&part_name, wanted.iter().copied());
+                let mut problem = invalid(format!("`{standard}` has no part `{part_name}`"))
+                    .at(part_span.clone(), "no such part")
+                    .reason(format!(
+                        "`{standard}`'s parts are {}.",
+                        crate::and_list(
+                            &wanted
+                                .iter()
+                                .map(|part| format!("`{part}`"))
+                                .collect::<Vec<_>>()
+                        )
+                    ));
+                problem = match near {
+                    Some(near) => problem
+                        .next(format!("Use `{near}` instead"))
+                        .edit(part_span, near.to_string()),
+                    None => problem.next(format!("Remove `{part_name}`")),
+                };
+                self.out.push(problem);
+                continue;
+            }
+            if given.contains(&part_name) {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_CONSTRAINT_REPEATED,
+                        format!("`{part_name}` is given twice"),
+                    )
+                    .at(part_span, "given again")
+                    .reason("Each part is spelled once, so there is never a question of which member it is read from.")
+                    .next(format!("Remove one `{part_name}`")),
+                );
+                continue;
+            }
+            given.push(part_name.clone());
+            let value = part.value().as_ref().map_or(Const::Other, Const::from_expr);
+            let value_span = part
+                .value()
+                .map_or_else(|| self.span(part.syntax()), |v| self.span(v.syntax()));
+            if !matches!(&value, Const::Str(text) if !text.is_empty()) {
+                self.out.push(
+                    invalid("`wire_parts` takes each part's spelling as text".to_string())
+                        .at(value_span, format!("{} here", value.describe()))
+                        .reason("Each part is read from the member of the provider's object that its spelling names, in quotes, as the provider's documentation writes it.")
+                        .next(format!("Write `{part_name}: \"<the provider's spelling>\"`")),
+                );
+            }
+        }
+        let missing: Vec<&str> = wanted
+            .iter()
+            .copied()
+            .filter(|part| !given.iter().any(|given| given == part))
+            .collect();
+        if !missing.is_empty() {
+            let listed: Vec<String> = missing.iter().map(|part| format!("`{part}`")).collect();
+            self.out.push(
+                invalid(format!(
+                    "`{name}`'s `wire_parts` leaves out {}",
+                    crate::and_list(&listed)
+                ))
+                .at(key, format!("no {}", crate::and_list(&listed)))
+                .reason(format!(
+                    "A `{standard}` is read from all its parts, so `wire_parts:` spells each of them."
+                ))
+                .next(format!(
+                    "Add {}",
+                    crate::and_list(
+                        &missing
+                            .iter()
+                            .map(|part| format!("`{part}: \"<spelling>\"`"))
+                            .collect::<Vec<_>>()
+                    )
+                )),
+            );
+        }
     }
 
     /// `wire: Wire.<name>`: one of the built-in encodings, holding the
@@ -2007,7 +2298,7 @@ impl Decls<'_> {
     /// Two written fields of one type sent under one spelling: a field's
     /// `wire_name:` and another's name or `wire_name:` (area 11).
     fn wire_clashes(&mut self, items: &[MemberItem], lines: &[Line], host: &str) {
-        let mut sent: BTreeMap<String, (String, Span)> = BTreeMap::new();
+        let mut sent: BTreeMap<String, (String, Span, Option<String>)> = BTreeMap::new();
         for (index, line) in lines.iter().enumerate() {
             let Line::Field { name, settings, .. } = line else {
                 continue;
@@ -2031,17 +2322,38 @@ impl Decls<'_> {
                     .member_key()
                     .map_or_else(|| self.span(member.syntax()), |key| self.span(key.syntax())),
             };
-            let spelling = wire.unwrap_or_else(|| name.clone());
-            match sent.get(&spelling) {
-                Some((other, first)) => {
-                    let problem = wire_clash(host, name, other, &spelling, span, first.clone())
-                        .reason(format!(
-                            "A provider's object has one member per spelling, so two fields of `{host}` can't both be `{spelling}` on the wire: one would be read into both."
-                        ));
-                    self.out.push(problem);
-                }
-                None => {
-                    sent.insert(spelling, (name.clone(), span));
+            // A field read from its standard type's parts sends each part
+            // under its spelling, and none of its own (chunk 7.2e); fields
+            // may share one part's member, as a charge's amounts share its
+            // currency.
+            let parts = settings.iter().find_map(|(key, value)| match value {
+                Const::Block(parts) if key == shape::WIRE_PARTS => Some(parts.clone()),
+                _ => None,
+            });
+            let spellings: Vec<(String, Option<String>)> = match parts {
+                Some(parts) => parts
+                    .into_iter()
+                    .filter_map(|(part, value)| match value {
+                        Const::Str(text) if !text.is_empty() => Some((text, Some(part))),
+                        _ => None,
+                    })
+                    .collect(),
+                None => vec![(wire.unwrap_or_else(|| name.clone()), None)],
+            };
+            for (spelling, part) in spellings {
+                match sent.get(&spelling) {
+                    Some((_, _, Some(theirs))) if part.as_ref() == Some(theirs) => {}
+                    Some((other, first, _)) => {
+                        let problem =
+                            wire_clash(host, name, other, &spelling, span.clone(), first.clone())
+                                .reason(format!(
+                                    "A provider's object has one member per spelling, so two fields of `{host}` can't both be `{spelling}` on the wire: one would be read into both."
+                                ));
+                        self.out.push(problem);
+                    }
+                    None => {
+                        sent.insert(spelling, (name.clone(), span.clone(), part));
+                    }
                 }
             }
         }

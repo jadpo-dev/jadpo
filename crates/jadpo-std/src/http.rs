@@ -147,6 +147,14 @@ pub enum WireCoding {
         encode: String,
         wire: CodecId,
     },
+    /// Its `wire_parts:` (chunk 7.2e): standard type `standard`'s parts,
+    /// each read from and written to the member of the object holding the
+    /// field that `parts` spells it, in the type's own order. The field
+    /// has no member of its own on the provider's wire.
+    Parts {
+        standard: String,
+        parts: Vec<(String, String)>,
+    },
 }
 
 /// One variant of an enum codec.

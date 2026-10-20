@@ -127,6 +127,13 @@ pub enum FieldCoding {
         encode: Key,
         wire: TypeRef,
     },
+    /// Its `wire_parts:` (chunk 7.2e): its standard type, by name, and
+    /// each of its parts with the member of the object holding the field
+    /// it is spelled as, in the type's own order.
+    Parts {
+        standard: String,
+        parts: Vec<(String, String)>,
+    },
 }
 
 /// A callable's signature.

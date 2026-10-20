@@ -2198,6 +2198,25 @@ each write some way runs before a call as `data.write_before_call`, at
 the write and naming the last such call, not declinable. The seam's
 `call_in_transaction` stays as the guard.
 
+**Several changing calls, checked** (chunk 7.5; area 12, "Several
+changing calls in one action"). `jadpo_check::types::action_steps` works
+out, once per project, what each action's and fixture's outside calls
+come to (`Steps`): the most changing calls one way through it makes (a
+provider operation with `changes: true`, a store's `put`), counted as
+`call_order_problems` walks a body, an action called adding its own
+longest way; how many it can make on every way; and the first call, the
+first with no key and the first `large_output: true` one, each named as
+written where it is made. `step_problems` reads it per file:
+`effect.call_in_loop` for an outside call in a `for` body, made there or
+by an action called there; `step.too_many` past 8 on one way;
+`step.unkeyed` for a call with no key in an action that can make another
+changing call; `step.large_output`; `step.context` where an action making
+several on one way is run by a schedule, a route whose API doesn't
+require `Idempotency-Key`, or a run's `each:` or `finished:`; and
+`step.store_required` for one a subscriber, or a route whose API requires
+the key (`resumable_runs`), runs with no store for its record. The
+record itself is roadmap 7.5b's.
+
 **A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
 kept"). The plan marks a `BatchCall` whose action makes outside calls
 (`calls`, from `outside_calls`), and the runner runs each of its items

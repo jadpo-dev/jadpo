@@ -1022,6 +1022,35 @@ impl Part<'_> {
                 jadpo_std::provider::WireEncoding::from_name(name)
                     .map(|_| jadpo_graph::FieldCoding::Encoding(name.clone()))
             }
+            // Its parts in the standard type's own order, once checked to
+            // be all of them (chunk 7.2e).
+            crate::types::WrittenCoding::Parts(written) => {
+                use crate::types::TypeView;
+                let declared = def.declared.strip_nullable();
+                let standard = match self
+                    .lookup
+                    .base_prim(declared)
+                    .and_then(jadpo_std::standard::of_builtin)
+                {
+                    Some(entry) => entry.name.to_string(),
+                    None => match self.lookup.structure(declared) {
+                        crate::types::Ty::Opaque(name, args) if args.is_empty() => name,
+                        _ => return None,
+                    },
+                };
+                let wanted = jadpo_std::provider::wire_parts(&standard)?;
+                let parts = wanted
+                    .iter()
+                    .map(|part| {
+                        written
+                            .iter()
+                            .find(|(given, _)| given == part)
+                            .map(|(_, spelling)| (part.to_string(), spelling.clone()))
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                (written.len() == parts.len())
+                    .then_some(jadpo_graph::FieldCoding::Parts { standard, parts })
+            }
             crate::types::WrittenCoding::Functions { .. } => {
                 let [field] = path else {
                     return None;
