@@ -30,7 +30,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use jadpo_std::ai::{AiDriver, AiPlan, AiUrl, StreamSite, events};
+use jadpo_std::ai::{AiDriver, AiMarker, AiUrl, PackageStream, StreamSite, events};
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::{HttpMethod, RuleKey};
 use jadpo_value::Value;
@@ -127,6 +127,9 @@ enum Said {
 /// completion, from a server that doesn't stream.
 #[derive(Debug, Default)]
 struct Reader {
+    /// How a package's `stream:` reads its provider's events (chunk
+    /// 5.5v7); OpenAI's chat completion chunks otherwise.
+    mapped: Option<PackageStream>,
     buffer: Vec<u8>,
     /// Its finish reason came, so the answer is whole once the body ends.
     finished: bool,
@@ -154,7 +157,7 @@ impl Reader {
             return;
         }
         let rest = String::from_utf8_lossy(&std::mem::take(&mut self.buffer)).into_owned();
-        if !self.evented && rest.trim_start().starts_with('{') {
+        if !self.evented && self.mapped.is_none() && rest.trim_start().starts_with('{') {
             // A server that answered whole, not as a stream.
             self.ended = true;
             match crate::ai::reply_of(&rest) {
@@ -189,6 +192,9 @@ impl Reader {
 
     /// One event's lines.
     fn event(&mut self, text: &str, out: &mut VecDeque<Said>) {
+        if self.mapped.is_some() {
+            return self.mapped_event(text, out);
+        }
         let data: Vec<&str> = text
             .lines()
             .filter_map(|line| line.strip_prefix("data:"))
@@ -255,6 +261,79 @@ impl Reader {
     }
 }
 
+impl Reader {
+    /// One event of a package's stream, read as its `stream:` says: its
+    /// piece of text, then whether it says the model declined, was cut
+    /// off or is done. `data: [DONE]` ends it whole too, and an `error`
+    /// event, or one with an `error` member, breaks it.
+    fn mapped_event(&mut self, text: &str, out: &mut VecDeque<Said>) {
+        let Some(mapped) = self.mapped.as_ref() else {
+            return;
+        };
+        let name = text
+            .lines()
+            .find_map(|line| line.strip_prefix("event:"))
+            .map(str::trim);
+        let data: Vec<&str> = text
+            .lines()
+            .filter_map(|line| line.strip_prefix("data:"))
+            .map(|data| data.strip_prefix(' ').unwrap_or(data))
+            .collect();
+        if data.is_empty() {
+            return;
+        }
+        self.evented = true;
+        let data = data.join("\n");
+        if data.trim() == "[DONE]" {
+            self.ended = true;
+            out.push_back(Said::Whole);
+            return;
+        }
+        let json = match serde_json::from_str::<serde_json::Value>(&data) {
+            Ok(json) if name != Some("error") && json.get("error").is_none() => json,
+            _ => {
+                self.ended = true;
+                out.push_back(Said::Broken);
+                return;
+            }
+        };
+        let at = |path: &str| crate::provider::at_path(&json, path);
+        if let Some(piece) = at(&mapped.pieces.join("."))
+            .and_then(serde_json::Value::as_str)
+            .filter(|piece| !piece.is_empty())
+        {
+            out.push_back(Said::Piece(piece.to_string()));
+        }
+        let refused = mapped.refused_when.iter().any(|marker| match marker {
+            AiMarker::Holds(path) => at(&path.join(".")).is_some_and(|found| match found {
+                serde_json::Value::Null => false,
+                serde_json::Value::String(text) => !text.trim().is_empty(),
+                serde_json::Value::Bool(flag) => *flag,
+                _ => true,
+            }),
+            AiMarker::Equals(path, equals) => crate::ai::equal_at(&json, path, equals),
+        });
+        let marked = |marker: &Option<(String, String)>| {
+            marker
+                .as_ref()
+                .is_some_and(|(path, equals)| crate::ai::equal_at(&json, path, equals))
+        };
+        let said = if refused {
+            Some(Said::Refused)
+        } else if marked(&mapped.cut_off_when) {
+            Some(Said::CutOff)
+        } else if marked(&mapped.done_when) {
+            Some(Said::Whole)
+        } else {
+            None
+        };
+        if let Some(said) = said {
+            self.ended = true;
+            out.push_back(said);
+        }
+    }
+}
+
 /// Where the first whole event in `buffer` ends, and the length of the
 /// blank line that ends it.
 fn boundary(buffer: &[u8]) -> Option<(usize, usize)> {
@@ -286,10 +365,13 @@ struct Reply {
 }
 
 impl Reply {
-    fn new(body: Box<dyn Coming>, ends_at: Option<u64>) -> Reply {
+    fn new(body: Box<dyn Coming>, ends_at: Option<u64>, mapped: Option<PackageStream>) -> Reply {
         Reply {
             body,
-            reader: Reader::default(),
+            reader: Reader {
+                mapped,
+                ..Reader::default()
+            },
             said: VecDeque::new(),
             ends_at,
             over: false,
@@ -545,11 +627,23 @@ impl EventStream {
 // --- the call --------------------------------------------------------------
 
 /// The settings a call reads, by number, for its model and its address.
-pub fn settings_read(plan: &AiPlan, site: &StreamSite) -> Vec<u32> {
-    let mut read: Vec<u32> = plan.model(&site.model).into_iter().collect();
-    if let AiDriver::OpenAiCompatible(AiUrl::Setting(at)) = &plan.driver {
-        read.push(*at);
+pub fn settings_read(ai: &Ai<'_>, site: &StreamSite) -> Vec<u32> {
+    let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
+    match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
+        AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
+        AiDriver::Package(package) => {
+            if let Some(stream) = &package.stream {
+                read.extend(crate::ai::package_reads(
+                    ai,
+                    &stream.operation,
+                    &stream.input,
+                ));
+            }
+        }
     }
+    read.sort_unstable();
+    read.dedup();
     read
 }
 
@@ -590,27 +684,96 @@ pub async fn stream(
             Ok(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         });
-    // Through the built-in driver only: a package's `stream:` mapping
-    // comes with chunk 5.5v7, and the checker refuses a stream through one.
-    let base = match &ai.plan.driver {
-        AiDriver::OpenAiCompatible(AiUrl::Written(text)) => Some(text.clone()),
-        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => match setting(*at) {
-            Some(Value::Text(text)) => Some(text.to_string()),
-            _ => None,
-        },
-        AiDriver::Package(_) => return defect("a stream through a package's connection"),
-    };
     let made = Call::new(&ai.plan.connection, &site.prompt, prompt, Repeat::Safe);
-    let (Some(model), Some(base)) = (
-        model,
-        base.and_then(|base| crate::provider::sendable(&base)),
-    ) else {
+    let refused = |ctx: &mut Ctx<'_>| {
         let now = ctx.now();
         ctx.capabilities_mut().refused(&made, now);
-        return Done::Failed(Box::new(crate::misconfigured()));
+        Done::Failed(Box::new(crate::misconfigured()))
     };
-    let url = format!("{}/chat/completions", base.trim_end_matches('/'));
-    let body = request_body(&model, &messages, site.max_output);
+    let Some(model) = model else {
+        return refused(ctx);
+    };
+    // Through the built-in driver's `<url>/chat/completions`, or a
+    // package's `stream:` (chunk 5.5v7).
+    let (request, mapped) = match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(url) => {
+            let base = match url {
+                AiUrl::Written(text) => Some(text.clone()),
+                AiUrl::Setting(at) => match setting(*at) {
+                    Some(Value::Text(text)) => Some(text.to_string()),
+                    _ => None,
+                },
+            };
+            let Some(base) = base.and_then(|base| crate::provider::sendable(&base)) else {
+                return refused(ctx);
+            };
+            let request = Request {
+                method: HttpMethod::Post,
+                url: format!("{}/chat/completions", base.trim_end_matches('/')),
+                headers: vec![
+                    ("Accept".to_string(), events::CONTENT_TYPE.to_string()),
+                    ("Content-Type".to_string(), "application/json".to_string()),
+                    ("user-agent".to_string(), "jadpo".to_string()),
+                ],
+                body: Some(request_body(&model, &messages, site.max_output)),
+                timeout_ms: site.timeout_ms,
+                reading: Reading {
+                    error_code: Some("error.code".to_string()),
+                    ..Reading::default()
+                },
+            };
+            (request, None)
+        }
+        AiDriver::Package(filled) => {
+            let (Some(mapped), Some(providers)) = (&filled.stream, ai.providers) else {
+                return defect("a stream through a package that maps no `stream:`");
+            };
+            let name = crate::ai::model_name(&model);
+            // Checked before sending, from the package's table (area 21).
+            if let Some(context) = filled.context(name) {
+                let tokens: u64 = messages
+                    .iter()
+                    .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
+                    .sum();
+                if tokens > context {
+                    return broke(RuleKey::TooLong);
+                }
+            }
+            let given = crate::ai::Given {
+                model: name,
+                max_output: site.max_output,
+                messages: &messages,
+                instructions_apart: mapped.instructions_apart,
+                texts: &[],
+                dimensions: 0,
+            };
+            let Some(json) = crate::ai::mapped_input(&mapped.input, &given, settings) else {
+                return refused(ctx);
+            };
+            let mut request = match crate::ai::package_request(
+                ctx,
+                &providers,
+                (&ai.plan.connection, &mapped.operation),
+                &json,
+                settings,
+                None,
+                &site.prompt,
+            ) {
+                Ok(request) => request,
+                Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
+                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+            };
+            // Its answer is a stream of events.
+            for (header, value) in &mut request.headers {
+                if header.eq_ignore_ascii_case("accept") {
+                    *value = events::CONTENT_TYPE.to_string();
+                }
+            }
+            request.timeout_ms = site.timeout_ms;
+            (request, Some(mapped.clone()))
+        }
+    };
+    let body = request.body.clone().unwrap_or_default();
     let digest = jadpo_value::hash::sha256(body.as_bytes());
     let step = ctx.next_step();
     // An action run again after a concurrent change is given the stream
@@ -627,10 +790,13 @@ pub async fn stream(
     let host = ctx.host();
     let began = host.monotonic_ms();
     let ends_at = began.map(|began| began.saturating_add(site.timeout_ms));
-    let opened = match opened(ctx, made, &url, &body, began, site.timeout_ms).await {
+    let (opened, source) = match opened(ctx, made, &request, began, site.timeout_ms).await {
         Ok(opened) => opened,
         Err(done) => return done,
     };
+    // A fake answers in the built-in driver's own form, whatever the
+    // connection; the package's provider as its `stream:` says.
+    let mapped = mapped.filter(|_| matches!(source, Source::Live | Source::Sandbox));
     let coming: Box<dyn Coming> = match opened {
         Streamed::Coming(body) => body,
         Streamed::Whole(answer) => match answer {
@@ -650,7 +816,7 @@ pub async fn stream(
             }
         },
     };
-    let mut reply = Reply::new(coming, ends_at);
+    let mut reply = Reply::new(coming, ends_at, mapped);
     match reply.first(host).await {
         None => {}
         Some(Said::Refused) => return broke(RuleKey::Refused),
@@ -704,11 +870,10 @@ fn request_body(model: &str, messages: &[(String, String)], max_output: u32) -> 
 async fn opened(
     ctx: &mut Ctx<'_>,
     made: Call,
-    url: &str,
-    body: &str,
+    asked: &Request,
     began: Option<u64>,
     timeout_ms: u64,
-) -> Result<Streamed, Done> {
+) -> Result<(Streamed, Source), Done> {
     let host = ctx.host();
     let mut sends = 1;
     loop {
@@ -718,23 +883,12 @@ async fn opened(
         };
         let left = timeout_ms.saturating_sub(spent);
         if left == 0 {
-            return Ok(Streamed::Whole(Answer::TimedOut));
+            return Ok((Streamed::Whole(Answer::TimedOut), Source::Live));
         }
-        let request = Request {
-            method: HttpMethod::Post,
-            url: url.to_string(),
-            headers: vec![
-                ("Accept".to_string(), events::CONTENT_TYPE.to_string()),
-                ("Content-Type".to_string(), "application/json".to_string()),
-                ("user-agent".to_string(), "jadpo".to_string()),
-            ],
-            body: Some(body.to_string()),
-            timeout_ms: left,
-            reading: Reading {
-                error_code: Some("error.code".to_string()),
-                ..Reading::default()
-            },
-        };
+        let mut request = asked.clone();
+        request.timeout_ms = left;
+        let url = request.url.clone();
+        let body = request.body.clone().unwrap_or_default();
         let call = made.clone().with_request(request);
         let streamed = match exchange(ctx, call.clone()).await {
             Ok(streamed) => streamed,
@@ -747,15 +901,20 @@ async fn opened(
                 Streamed::Whole(answer) => answer.clone(),
                 Streamed::Coming(_) => Answer::Unknown,
             };
-            crate::ai::log(ctx, &call, url, body, &answer);
+            crate::ai::log(ctx, &call, &url, &body, &answer);
         }
-        let asked = match &streamed {
+        let source = ctx
+            .capabilities()
+            .calls()
+            .last()
+            .map_or(Source::Live, |logged| logged.source);
+        let later = match &streamed {
             Streamed::Whole(Answer::Unavailable | Answer::Unknown) => None,
             Streamed::Whole(Answer::RetryAfter(millis)) => Some(*millis),
-            _ => return Ok(streamed),
+            _ => return Ok((streamed, source)),
         };
         if sends >= jadpo_std::ai::SENDS {
-            return Ok(streamed);
+            return Ok((streamed, source));
         }
         sends += 1;
         let Some(began) = began else {
@@ -765,8 +924,8 @@ async fn opened(
         let left = timeout_ms.saturating_sub(spent);
         let mut random = [0u8; 8];
         let random = host.random(&mut random).then_some(random);
-        let Some(wait) = crate::provider::retry_wait(sends - 1, asked, left, random) else {
-            return Ok(streamed);
+        let Some(wait) = crate::provider::retry_wait(sends - 1, later, left, random) else {
+            return Ok((streamed, source));
         };
         if wait > 0 {
             host.sleep(wait).await;
@@ -1049,7 +1208,7 @@ mod tests {
             let Streamed::Coming(body) = faked("answer_question", answer) else {
                 panic!("a stream");
             };
-            let mut reply = Reply::new(body, None);
+            let mut reply = Reply::new(body, None, None);
             let mut out = Vec::new();
             while let Some(event) = crate::block_on(reply.next(None)).expect("nothing waits") {
                 out.push(event);

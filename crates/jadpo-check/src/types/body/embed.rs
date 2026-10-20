@@ -254,22 +254,25 @@ impl Body<'_> {
             );
             ok = false;
         } else if let Some(connection) = settings.connection.as_ref().filter(|connection| {
-            !crate::ai::model_connections(self.db, self.project)
-                .list
-                .iter()
-                .any(|model| model.name == **connection)
+            crate::ai_mapping::maps(self.db, self.project, connection, "embed") == Some(false)
         }) {
-            // A package's `provide ai` maps `generate:` alone so far.
+            // A package's `provide ai` that maps no `embed:` (chunk 5.5v7).
+            let package = crate::connections::package_connections(self.db, self.project)
+                .connections
+                .iter()
+                .find(|known| known.name == *connection)
+                .map(|known| known.package.clone())
+                .unwrap_or_default();
             self.out.push(
                 Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` through a package isn't built yet"),
+                    &rule::AI_SETTINGS_INVALID,
+                    format!("`{connection}` doesn't embed"),
                 )
-                .at(span.clone(), "a package's connection")
+                .at(span.clone(), "no `embed:` to ask through")
                 .reason(format!(
-                    "`{connection}` is a package's connection, and a package's `provides/ai.jadpo` maps `generate:` alone so far; its `embed:` comes with roadmap chunk 5.5v7. An embedding is asked through a connection with `driver: Driver.openai_compatible`."
+                    "`ai: {{ connection: }}` names `{connection}`, and its package `{package}` maps no `embed:` in its `provides/ai.jadpo`, so it has no embeddings to give."
                 ))
-                .next("Name a connection with `driver: Driver.openai_compatible` in `ai:` to embed, for now"),
+                .next("Name a connection in `ai:` whose package maps `embed:`, or one with `driver: Driver.openai_compatible`"),
             );
             ok = false;
         } else if settings.connection.is_some() && settings.complete() {

@@ -311,6 +311,10 @@ pub enum CredentialScheme {
     /// secret access key, which is the connection's secret setting, under
     /// the access key id the setting numbered here holds.
     AwsSigV4 { key_id: u32 },
+    /// The secret alone, in the header the connection's
+    /// [`ConnectionPlan::credential_header`] names (chunk 5.5v7), as
+    /// Anthropic's `x-api-key`.
+    Header,
 }
 
 /// How a provider's bodies are sent (area 11, `protocol:`).
@@ -385,6 +389,11 @@ pub struct ConnectionPlan {
     /// The scheme its credential is sent with, and the secret setting it
     /// is read from.
     pub credential: Option<(CredentialScheme, u32)>,
+    /// The header [`CredentialScheme::Header`] sends the credential in.
+    pub credential_header: Option<String>,
+    /// The fixed headers every request carries, each its name and value
+    /// (chunk 5.5v7).
+    pub headers: Vec<(String, String)>,
     /// How its bodies are sent, and, for an AWS API, what its requests are
     /// signed for and named under (chunk 7.7c).
     pub protocol: Protocol,

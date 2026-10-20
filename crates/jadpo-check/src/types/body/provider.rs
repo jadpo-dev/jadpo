@@ -22,7 +22,7 @@ use super::{Body, CallKind, Context};
 /// (chunk 7.2c): JSON over HTTP, with a bearer token or basic credentials,
 /// and AWS's JSON protocol signed with Signature Version 4 (chunk 7.7c).
 pub(crate) const BUILT_PROTOCOLS: [&str; 2] = ["json_http", "aws_json"];
-pub(crate) const BUILT_CREDENTIALS: [&str; 3] = ["bearer", "basic", "aws_sigv4"];
+pub(crate) const BUILT_CREDENTIALS: [&str; 4] = ["bearer", "basic", "aws_sigv4", "header"];
 
 impl Body<'_> {
     /// `connection.resource.operation(input)` through the package

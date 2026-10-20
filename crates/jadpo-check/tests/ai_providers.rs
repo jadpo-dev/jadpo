@@ -2,8 +2,8 @@
 //! package's `provides/ai.jadpo` maps `generate` onto one of its own
 //! operations as data, and `ai: { connection: }` names a connection to
 //! a package that does; each mistake in the mapping is
-//! `package.provider_invalid` where it is written, and `stream:` and
-//! `embed:` wait for their chunks.
+//! `package.provider_invalid` where it is written; `stream:` and
+//! `embed:` (chunk 5.5v7) are read and checked as `generate:` is.
 
 use jadpo_db::{Database, Layout};
 
@@ -33,7 +33,8 @@ fn problems_with(app: &str, mapping: Option<&str>) -> Vec<String> {
     problems_with_extra(app, mapping, &[])
 }
 
-/// [`problems_with`], with `extra` files besides.
+/// [`problems_with`], with `extra` files besides, or in place of the
+/// files of the same paths.
 fn problems_with_extra(app: &str, mapping: Option<&str>, extra: &[(&str, &str)]) -> Vec<String> {
     let mut files: Vec<(String, String)> = vec![
         ("app.jadpo".into(), app.into()),
@@ -103,6 +104,8 @@ fn problems_with_extra(app: &str, mapping: Option<&str>, extra: &[(&str, &str)])
             "use support/failures { AssistantUnavailable }\nuse support/prompts { AnswerQuestion }\nuse support/types { CustomerQuestion, SupportAnswer }\n\n/// Answers a customer's question.\naction answer_customer(question: CustomerQuestion) fails AssistantUnavailable -> SupportAnswer {\n    return attempt ai.generate(AnswerQuestion { question: question }, as: SupportAnswer) {\n        refused: AssistantUnavailable\n        malformed: AssistantUnavailable\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: AssistantUnavailable\n    }\n}\n".into(),
         ),
     ];
+    // An extra file in a base file's place stands in for it.
+    files.retain(|(path, _)| !extra.iter().any(|(given, _)| given == path));
     files.extend(
         extra
             .iter()
@@ -165,24 +168,202 @@ fn a_package_without_the_mapping_does_not_fill_ai() {
     );
 }
 
-/// `stream:` and `embed:` are decided and built by later chunks.
+/// The `stream:` mapping of the package as the tests write it (chunk
+/// 5.5v7): the chat operation's answer read as a stream of events.
+const STREAM: &str = "    stream: {\n        call: chat.complete\n        input: {\n            model: request.model\n            instructions: request.instructions\n            messages: {\n                each: request.messages\n                as: {\n                    role: item.role\n                    content: item.content\n                }\n            }\n            max_tokens: request.max_output\n        }\n        pieces: event.choices.first.message.content\n        refused_when: {\n            holds: event.choices.first.message.refusal\n            path: \"choices.0.finish_reason\"\n            equals: \"content_filter\"\n        }\n        cut_off_when: {\n            path: \"choices.0.finish_reason\"\n            equals: \"length\"\n        }\n        done_when: {\n            path: \"choices.0.finish_reason\"\n            equals: \"stop\"\n        }\n    }\n";
+
+/// The `embed:` mapping of the package as the tests write it (chunk
+/// 5.5v7), onto [`EMBEDDINGS`]' operation.
+const EMBED: &str = "    embed: {\n        call: embeddings.create\n        input: {\n            model: request.model\n            input: request.texts\n            dimensions: request.dimensions\n        }\n        vectors: response.data\n        vector: item.embedding\n        index: item.index\n        batch: 2048\n        usage: {\n            input: response.usage.prompt_tokens\n            output: 0\n        }\n    }\n";
+
+/// The package's embeddings operation and its types.
+const EMBEDDINGS: &[(&str, &str)] = &[
+    (
+        "shared/providers/acme_models/v1/resources/embeddings.jadpo",
+        "public resource embeddings {\n    create: {\n        method: HttpMethod.post\n        path: \"/v1/embeddings\"\n        input: EmbedRequest\n        output: EmbedResponse\n        changes: false\n        source: PackageSource.written\n        docs: \"https://docs.acme-models.example/embeddings\"\n    }\n}\n",
+    ),
+    (
+        "shared/providers/acme_models/v1/types/embed_request.jadpo",
+        "/// What embedding texts takes.\npublic type EmbedRequest = Object {\n    model: Text {\n        max_length: 100\n    }\n    input: List<Text>\n    dimensions: Int? {\n        min: 1\n        max: 16000\n    }\n}\n",
+    ),
+    (
+        "shared/providers/acme_models/v1/types/embed_item.jadpo",
+        "/// One text's embedding.\npublic type EmbedItem = Object {\n    index: Int {\n        min: 0\n        max: 1000\n    }\n    embedding: Vector\n}\n",
+    ),
+    (
+        "shared/providers/acme_models/v1/types/embed_response.jadpo",
+        "/// The texts' embeddings.\npublic type EmbedResponse = Object {\n    data: List<EmbedItem>\n    usage: ChatUsage\n}\n",
+    ),
+];
+
+/// A package maps `stream:` and `embed:` beside `generate:` (chunk
+/// 5.5v7).
 #[test]
-fn streaming_and_embedding_wait_for_their_chunks() {
-    let found = problems(&provides(&format!(
-        "{GENERATE}    stream: {{\n        call: chat.complete\n    }}\n    embed: {{\n        call: chat.complete\n    }}\n{MODELS}"
-    )));
+fn a_package_maps_streaming_and_embedding() {
+    let found = problems_with_extra(
+        APP,
+        Some(&provides(&format!("{GENERATE}{STREAM}{EMBED}{MODELS}"))),
+        EMBEDDINGS,
+    );
+    assert!(found.is_empty(), "{found:#?}");
+}
+
+/// Each mistake in `stream:` and `embed:` is reported where it is written.
+#[test]
+fn each_mistake_in_streaming_and_embedding_is_reported() {
+    let cases: [(&str, &str, &str); 8] = [
+        (
+            "pieces: event.choices.first.message.content",
+            "pieces: event.choices.first.message.text",
+            "`event.choices.first.message.text` has no field `text`",
+        ),
+        (
+            "pieces: event.choices.first.message.content",
+            "pieces: response.choices.first.message.content",
+            "`response.choices.first.message.content` isn't a place in the event",
+        ),
+        (
+            "            path: \"choices.0.finish_reason\"\n            equals: \"content_filter\"\n",
+            "            path: \"choices.0.finish_reason\"\n",
+            "`refused_when:` needs a `path:` with the value it `equals:`, or a place it `holds:`",
+        ),
+        (
+            "            path: \"choices.0.finish_reason\"\n            equals: \"stop\"\n",
+            "            path: \"choices.0.done\"\n            equals: \"stop\"\n",
+            "The answer has nothing at `choices.0.done`",
+        ),
+        (
+            "            input: request.texts\n",
+            "            input: request.messages\n",
+            "`request.messages` isn't a value a mapping can give",
+        ),
+        (
+            "vector: item.embedding",
+            "vector: item.index",
+            "`item.index` isn't a vector",
+        ),
+        (
+            "vectors: response.data",
+            "vectors: response.usage",
+            "`response.usage` isn't a list of objects",
+        ),
+        (
+            "        index: item.index\n",
+            "        index: item.index\n        size: 3\n",
+            "`embed:` has no `size:`",
+        ),
+    ];
+    let both = format!("{STREAM}{EMBED}");
+    for (from, to, message) in cases {
+        let changed = both.replacen(from, to, 1);
+        assert_ne!(changed, both, "{from}");
+        let found = problems_with_extra(
+            APP,
+            Some(&provides(&format!("{GENERATE}{changed}{MODELS}"))),
+            EMBEDDINGS,
+        );
+        assert_eq!(
+            found,
+            [format!("{PROVIDES} package.provider_invalid: {message}")],
+            "{from} -> {to}"
+        );
+    }
+    // A provider that takes fewer texts at once than `ai.embed_all` sends.
+    let found = problems_with_extra(
+        APP,
+        Some(&provides(&format!(
+            "{GENERATE}{}{MODELS}",
+            EMBED.replace("batch: 2048", "batch: 16")
+        ))),
+        EMBEDDINGS,
+    );
     assert_eq!(
         found,
-        [
-            format!(
-                "{PROVIDES} toolchain.not_built_yet: `provide ai {{ stream: }}` isn't built yet"
-            ),
-            format!(
-                "{PROVIDES} toolchain.not_built_yet: `provide ai {{ embed: }}` isn't built yet"
-            ),
-        ],
+        [format!(
+            "{PROVIDES} toolchain.not_built_yet: Embedding fewer than 100 texts a request isn't built yet"
+        )],
         "{found:#?}"
     );
+}
+
+/// `schema: { envelope: }` names the provider's own shape; Anthropic's has
+/// no JSON-only mode, and no mode has none's.
+#[test]
+fn the_envelope_goes_with_its_mode() {
+    let anthropic = GENERATE.replace(
+        "            at: \"format\"\n",
+        "            at: \"output_config.format\"\n            envelope: AiEnvelope.anthropic\n",
+    );
+    let found = problems(&provides(&format!("{anthropic}{MODELS}")));
+    assert!(found.is_empty(), "{found:#?}");
+    let json_only = anthropic.replace("AiSchema.strict_subset", "AiSchema.json_only");
+    let found = problems(&provides(&format!("{json_only}{MODELS}")));
+    assert_eq!(
+        found,
+        [format!(
+            "{PROVIDES} package.provider_invalid: This envelope doesn't go with the schema's mode"
+        )],
+        "{found:#?}"
+    );
+    let unknown = anthropic.replace("AiEnvelope.anthropic", "AiEnvelope.gemini");
+    let found = problems(&provides(&format!("{unknown}{MODELS}")));
+    assert_eq!(
+        found,
+        [format!(
+            "{PROVIDES} package.provider_invalid: `AiEnvelope.gemini` isn't an envelope"
+        )],
+        "{found:#?}"
+    );
+}
+
+/// `CredentialScheme.header` sends the credential in the header
+/// `credential_header:` names, and `headers:` lists the fixed headers
+/// every request carries, never one the driver writes (chunk 5.5v7).
+#[test]
+fn a_header_credential_names_its_header() {
+    let provider = "shared/providers/acme_models/v1/provider.jadpo";
+    let with = |body: &str| {
+        problems_with_extra(
+            APP,
+            Some(&provides(&format!("{GENERATE}{MODELS}"))),
+            &[(
+                provider,
+                &format!(
+                    "/// Acme Models' API.\nprovider {{\n    protocol: Protocol.json_http\n    hosts: {{\n        live: \"https://api.acme-models.example\"\n        sandbox: \"https://sandbox.acme-models.example\"\n    }}\n{body}    error_code: \"error.code\"\n}}\n"
+                ),
+            )],
+        )
+    };
+    let found = with(
+        "    credential: CredentialScheme.header\n    credential_header: \"x-api-key\"\n    headers: [\"acme-version: 2026-01-01\"]\n",
+    );
+    assert!(found.is_empty(), "{found:#?}");
+    let cases: [(&str, &str); 4] = [
+        (
+            "    credential: CredentialScheme.header\n",
+            "`provider` doesn't give `credential_header:`",
+        ),
+        (
+            "    credential: CredentialScheme.bearer\n    credential_header: \"x-api-key\"\n",
+            "`credential_header:` goes with `CredentialScheme.header` alone",
+        ),
+        (
+            "    credential: CredentialScheme.header\n    credential_header: \"Authorization\"\n",
+            "`credential_header:` isn't a header the credential can go in",
+        ),
+        (
+            "    credential: CredentialScheme.bearer\n    headers: [\"acme-version 2026\"]\n",
+            "`headers:` has `acme-version 2026`, which isn't `Name: value`",
+        ),
+    ];
+    for (body, message) in cases {
+        let found = with(body);
+        assert_eq!(
+            found,
+            [format!("{provider} package.provider_invalid: {message}")],
+            "{body}"
+        );
+    }
 }
 
 /// Each mistake in `generate:` is reported where it is written.
@@ -291,10 +472,10 @@ fn a_sandbox_names_a_prompt_only_of_the_connection_that_fills_ai() {
     );
 }
 
-/// A package's mapping has no `embed:` yet (chunk 5.5v7), so an embedding
-/// asked through a package's connection isn't built yet (chunk 5.5v4).
+/// An embedding asked through a package's connection whose mapping has
+/// no `embed:` is told so where it asks (chunk 5.5v7).
 #[test]
-fn an_embedding_through_a_package_waits_for_its_mapping() {
+fn an_embedding_through_a_package_needs_its_mapping() {
     let found = problems_with_extra(
         APP,
         Some(&provides(&format!("{GENERATE}{MODELS}"))),
@@ -311,9 +492,7 @@ fn an_embedding_through_a_package_waits_for_its_mapping() {
     );
     assert_eq!(
         found,
-        [
-            "domains/support/actions/meaning_of.jadpo toolchain.not_built_yet: `ai.embed` through a package isn't built yet"
-        ],
+        ["domains/support/actions/meaning_of.jadpo ai.settings_invalid: `acme` doesn't embed"],
         "{found:#?}"
     );
 }

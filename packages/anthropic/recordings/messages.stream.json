@@ -1,0 +1,8 @@
+{
+  "delta": {
+    "text": "{Text}",
+    "type": "{Text}"
+  },
+  "index": "{Int}",
+  "type": "{Text}"
+}

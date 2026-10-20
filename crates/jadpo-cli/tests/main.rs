@@ -10,6 +10,7 @@ mod aggregates;
 mod ai;
 mod ai_embed;
 mod ai_generate;
+mod ai_packages;
 mod ai_providers;
 mod ai_steps;
 mod ai_stream;

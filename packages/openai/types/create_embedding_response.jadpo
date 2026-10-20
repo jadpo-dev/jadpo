@@ -1,0 +1,6 @@
+/// The embeddings of the texts sent, each with its place among them.
+public type CreateEmbeddingResponse = Object {
+    data: List<EmbeddingData>
+    model: Text
+    usage: EmbeddingUsage
+}

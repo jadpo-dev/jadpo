@@ -43,9 +43,17 @@ use crate::provider::{Reading, Request};
 /// The settings a call reads, by number, for its model and its address.
 pub fn settings_read(ai: &Ai<'_>, site: &EmbedSite) -> Vec<u32> {
     let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
-    if let AiDriver::OpenAiCompatible(AiUrl::Setting(at)) = &ai.plan.driver {
-        read.push(*at);
+    match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
+        AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
+        AiDriver::Package(package) => {
+            if let Some(embed) = &package.embed {
+                read.extend(crate::ai::package_reads(ai, &embed.operation, &embed.input));
+            }
+        }
     }
+    read.sort_unstable();
+    read.dedup();
     read
 }
 
@@ -112,27 +120,95 @@ pub async fn embed(
             Ok(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         });
-    // A package's `provide ai` maps no `embed:` yet (chunk 5.5v7), which
-    // the checker refuses.
-    let base = match &ai.plan.driver {
-        AiDriver::OpenAiCompatible(AiUrl::Written(text)) => Some(text.clone()),
-        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => match setting(*at) {
-            Some(Value::Text(text)) => Some(text.to_string()),
-            _ => None,
-        },
-        AiDriver::Package(_) => None,
-    };
     let made = Call::new(&ai.plan.connection, OPERATION, given, Repeat::Safe);
-    let (Some(model), Some(base)) = (
-        model,
-        base.and_then(|base| crate::provider::sendable(&base)),
-    ) else {
+    let refused = |ctx: &mut Ctx<'_>| {
         let now = ctx.now();
         ctx.capabilities_mut().refused(&made, now);
-        return Done::Failed(Box::new(crate::misconfigured()));
+        Done::Failed(Box::new(crate::misconfigured()))
     };
-    let url = format!("{}/embeddings", base.trim_end_matches('/'));
-    let body = request_body(&model, &texts);
+    let Some(model) = model else {
+        return refused(ctx);
+    };
+    // Through the built-in driver's `<url>/embeddings`, or a package's
+    // `embed:` (chunk 5.5v7).
+    let mut package = None;
+    let request = match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(url) => {
+            let base = match url {
+                AiUrl::Written(text) => Some(text.clone()),
+                AiUrl::Setting(at) => match setting(*at) {
+                    Some(Value::Text(text)) => Some(text.to_string()),
+                    _ => None,
+                },
+            };
+            let Some(base) = base.and_then(|base| crate::provider::sendable(&base)) else {
+                return refused(ctx);
+            };
+            Request {
+                method: HttpMethod::Post,
+                url: format!("{}/embeddings", base.trim_end_matches('/')),
+                headers: vec![
+                    ("Accept".to_string(), "application/json".to_string()),
+                    ("Content-Type".to_string(), "application/json".to_string()),
+                    ("user-agent".to_string(), "jadpo".to_string()),
+                ],
+                body: Some(request_body(&model, &texts)),
+                timeout_ms: site.timeout_ms,
+                reading: Reading {
+                    error_code: Some("error.code".to_string()),
+                    ..Reading::default()
+                },
+            }
+        }
+        AiDriver::Package(filled) => {
+            let (Some(embed), Some(providers)) = (&filled.embed, ai.providers) else {
+                return Done::Fault(FaultKind::Defect(
+                    "an embedding through a package that maps no `embed:`".into(),
+                ));
+            };
+            let name = crate::ai::model_name(&model);
+            // Checked before sending, from the package's table: a text
+            // longer than the model takes costs nothing (area 21).
+            if let Some(context) = filled.context(name)
+                && texts
+                    .iter()
+                    .any(|text| jadpo_std::ai::estimated_tokens(text) > context)
+            {
+                return broke(RuleKey::TooLong);
+            }
+            let given = crate::ai::Given {
+                model: name,
+                max_output: 0,
+                messages: &[],
+                instructions_apart: false,
+                texts: &texts,
+                dimensions: site.dimensions,
+            };
+            let Some(json) = crate::ai::mapped_input(&embed.input, &given, settings) else {
+                return refused(ctx);
+            };
+            match crate::ai::package_request(
+                ctx,
+                &providers,
+                (&ai.plan.connection, &embed.operation),
+                &json,
+                settings,
+                None,
+                OPERATION,
+            ) {
+                Ok(request) => {
+                    package = Some((embed, providers));
+                    Request {
+                        timeout_ms: site.timeout_ms,
+                        ..request
+                    }
+                }
+                Err(crate::provider::Unready::Misconfigured) => return refused(ctx),
+                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+            }
+        }
+    };
+    let body = request.body.clone().unwrap_or_default();
     let digest = jadpo_value::hash::sha256(body.as_bytes());
     // Given back on a rerun: from the record of the action's steps, or
     // from the first run's answers kept by the invocation.
@@ -185,22 +261,7 @@ pub async fn embed(
     let began = ctx.host().monotonic_ms();
     let mut call = made.clone();
     call.step = step_at;
-    let request = Request {
-        method: HttpMethod::Post,
-        url: url.clone(),
-        headers: vec![
-            ("Accept".to_string(), "application/json".to_string()),
-            ("Content-Type".to_string(), "application/json".to_string()),
-            ("user-agent".to_string(), "jadpo".to_string()),
-        ],
-        body: Some(body.clone()),
-        timeout_ms: site.timeout_ms,
-        reading: Reading {
-            error_code: Some("error.code".to_string()),
-            ..Reading::default()
-        },
-    };
-    let (answer, _) = match crate::ai::sent(ctx, call, request, began, site.timeout_ms).await {
+    let (answer, source) = match crate::ai::sent(ctx, call, request, began, site.timeout_ms).await {
         Ok(sent) => sent,
         Err(done) => return done,
     };
@@ -211,6 +272,19 @@ pub async fn embed(
             Answer::Wire(fake_answer(&texts, seed, site.dimensions))
         }
         other => other,
+    };
+    // A package's own answer, read where its `embed:` says and kept in the
+    // built-in driver's form; a fake answers in that form already.
+    let answer = match (answer, package) {
+        (Answer::Wire(text), Some((embed, providers)))
+            if matches!(source, Source::Live | Source::Sandbox) =>
+        {
+            match package_vectors(ctx, &providers, &ai.plan.connection, embed, &text) {
+                Ok(vectors) => Answer::Wire(vectors),
+                Err(done) => return done,
+            }
+        }
+        (answer, _) => answer,
     };
     let kept = match &answer {
         Answer::Wire(text) => Kept::Answer(text.clone()),
@@ -309,6 +383,68 @@ fn read(ai: &Ai<'_>, site: &EmbedSite, count: usize, kept: &Kept) -> Done {
             Done::Value,
         )
     }
+}
+
+/// A package's answer to its `embed:` operation (chunk 5.5v7), decoded by
+/// its types and read on the answer as sent where the mapping says, as
+/// the built-in driver's form keeps it; a fault naming the connection
+/// when it isn't one, never its values.
+fn package_vectors(
+    ctx: &mut Ctx<'_>,
+    providers: &crate::provider::Providers<'_>,
+    connection: &str,
+    embed: &jadpo_std::ai::PackageEmbed,
+    text: &str,
+) -> Result<Rc<str>, Done> {
+    let Some((_, op)) = providers.plan.operation(connection, &embed.operation) else {
+        return Err(Done::Fault(FaultKind::Defect(format!(
+            "`{connection}.{}`, which the plan doesn't have",
+            embed.operation
+        ))));
+    };
+    let call = jadpo_std::provider::CallSite::default();
+    let name = format!("{connection}.{}", embed.operation);
+    match crate::provider::decode(
+        ctx,
+        providers,
+        op,
+        &name,
+        text,
+        crate::provider::Site {
+            call: &call,
+            functions: &crate::ai::NoFunctions,
+            at: 0,
+        },
+    ) {
+        crate::provider::Done::Value(_) => {}
+        crate::provider::Done::Failed(failure) => return Err(Done::Failed(failure)),
+        crate::provider::Done::Fault(kind) => return Err(Done::Fault(kind)),
+    }
+    let not_one = || {
+        Done::Fault(FaultKind::Provider(format!(
+            "`{connection}`'s answer to `{OPERATION}` isn't an embedding of each text"
+        )))
+    };
+    let sent: serde_json::Value = serde_json::from_str(text).map_err(|_| not_one())?;
+    let items = crate::provider::at_path(&sent, &embed.vectors.join("."))
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(not_one)?;
+    let mut data = Vec::with_capacity(items.len());
+    for (at, item) in items.iter().enumerate() {
+        let vector = crate::provider::at_path(item, &embed.vector.join("."))
+            .filter(|vector| vector.is_array())
+            .ok_or_else(not_one)?;
+        let index = match &embed.index {
+            Some(path) => crate::provider::at_path(item, &path.join("."))
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(not_one)?,
+            None => at as u64,
+        };
+        data.push(serde_json::json!({"object": "embedding", "index": index, "embedding": vector}));
+    }
+    Ok(Rc::from(
+        serde_json::json!({"object": "list", "data": data}).to_string(),
+    ))
 }
 
 /// OpenAI's embeddings request's JSON body.

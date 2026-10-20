@@ -577,11 +577,14 @@ impl Plan {
                 }
             }
         }
+        // Every provider package's types read its provider's answers, a
+        // package with no connection's too, whose recordings `jadpo
+        // package check` decodes (chunk 5.5v7).
         let mut types = Types::new(Arc::clone(&graph), rule_bodies).with_providers(
-            jadpo_check::connections::package_connections(db, project)
-                .connections
-                .iter()
-                .map(|connection| connection.folder.clone())
+            jadpo_check::surface::homes(db, project)
+                .into_values()
+                .filter(|home| jadpo_check::connections::reach(db, project, home).is_some())
+                .map(|home| home.folder)
                 .collect(),
         );
         if !backfills.is_empty() {
@@ -1387,6 +1390,8 @@ fn ai_package(
             MappedInput::Instructions => AiInput::Instructions,
             MappedInput::Role => AiInput::Role,
             MappedInput::Content => AiInput::Content,
+            MappedInput::Texts => AiInput::Texts,
+            MappedInput::Dimensions => AiInput::Dimensions,
             MappedInput::Text(text) => AiInput::Text(text.clone()),
             MappedInput::Int(n) => AiInput::Int(*n),
             MappedInput::Bool(flag) => AiInput::Bool(*flag),
@@ -1410,13 +1415,38 @@ fn ai_package(
             },
         })
     }
-    Some(jadpo_std::ai::PackageAi {
-        operation: mapping.operation.clone(),
-        input: mapping
-            .input
+    let inputs = |given: &[(String, MappedInput)]| -> Option<Vec<(String, AiInput)>> {
+        given
             .iter()
             .map(|(member, mapped)| Some((member.clone(), input(mapped, connection, number)?)))
-            .collect::<Option<_>>()?,
+            .collect()
+    };
+    let stream = match &mapping.stream {
+        Some(stream) => Some(jadpo_std::ai::PackageStream {
+            operation: stream.operation.clone(),
+            input: inputs(&stream.input)?,
+            instructions_apart: stream.instructions_apart,
+            pieces: stream.pieces.clone(),
+            refused_when: stream.refused_when.clone(),
+            cut_off_when: stream.cut_off_when.clone(),
+            done_when: stream.done_when.clone(),
+        }),
+        None => None,
+    };
+    let embed = match &mapping.embed {
+        Some(embed) => Some(jadpo_std::ai::PackageEmbed {
+            operation: embed.operation.clone(),
+            input: inputs(&embed.input)?,
+            vectors: embed.vectors.clone(),
+            vector: embed.vector.clone(),
+            index: embed.index.clone(),
+            batch: embed.batch,
+        }),
+        None => None,
+    };
+    Some(jadpo_std::ai::PackageAi {
+        operation: mapping.operation.clone(),
+        input: inputs(&mapping.input)?,
         instructions_apart: mapping.instructions_apart,
         answer: mapping.answer.clone(),
         refused_when: mapping.refused_when.clone(),
@@ -1427,6 +1457,9 @@ fn ai_package(
             cached: mapping.usage.cached.clone(),
         }),
         schema_at: mapping.schema_at.clone(),
+        envelope: mapping.envelope,
         contexts: mapping.contexts.clone(),
+        stream,
+        embed,
     })
 }

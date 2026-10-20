@@ -1724,12 +1724,25 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 7's "Streaming a model's answer" and area 21's "Chosen in chunk
   5.5v6".
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
-  after 5.5v3b, 5.5v4b and 5.5v6: a package's `provide ai { embed: }`
+  after 5.5v3b, 5.5v4b and 5.5v6 (split on 2026-10-20: `jadpo package
+  conform` is 5.5v7b): a package's `provide ai { embed: }`
   (`toolchain.not_built_yet` since 5.5v3b; 5.5v4 built `ai.embed` through
-  the built-in driver alone), and two provider packages filling `ai`, each
-  with its context and price tables, recordings and `jadpo package conform
-  <package> ai`, and a package's `provide ai { stream: }` mapping (5.5v6
-  streams through the built-in driver only). **Needs Richard** for the API keys the live conformance run uses.
+  the built-in driver alone) and `provide ai { stream: }` (5.5v6 streams
+  through the built-in driver only), and two provider packages filling
+  `ai`, `openai` and `anthropic` under `packages/`, each with its context
+  and price tables and recordings, checked against the providers' own
+  documentation. Done when both packages, installed with `jadpo package
+  add`, generate, stream and (OpenAI's) embed through `jadpo dev` against
+  a server started in the test, and their recordings decode.
+- [ ] **5.5v7b `jadpo package conform <package> ai`** `opus · high`
+  (area 21, "How a provider fills it"; area 11, "Proving a package
+  works"), after 5.5v7 (split from 5.5v7 on 2026-10-20): the capability's
+  conformance suite (a typed answer, a refusal, a cut-off, a stream, an
+  embedding of the declared length, usage reported), designed with the CLI
+  design language first, run by default against the package's recordings
+  and a local fake, and refused against the real API without an explicit
+  live flag and a set credential. **Needs Richard** for the API keys the
+  live conformance run uses; that run is left to him.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for

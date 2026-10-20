@@ -421,6 +421,11 @@ impl Reply {
     pub(super) fn json(&self) -> serde_json::Value {
         serde_json::from_str(&self.body).unwrap_or_else(|_| panic!("not JSON: {}", self.body))
     }
+
+    /// Its body as text: a stream's events, as sent.
+    pub(super) fn text(&self) -> &str {
+        &self.body
+    }
 }
 
 /// Sends one HTTP/1.1 request and reads the whole response. A body goes

@@ -1,0 +1,85 @@
+/// OpenAI fills `ai`: `generate` as a Chat Completion in its strict
+/// structured-output mode, a refusal where the model gives one or the
+/// content filter stops it, a cut-off at `max_output:`; `stream` as the
+/// same request streamed, ended by `data: [DONE]`; and `embed` through
+/// the embeddings endpoint, at the dimensions `ai:` asks for.
+provide ai {
+    generate: {
+        call: chat_completions.create
+        input: {
+            model: request.model
+            messages: {
+                each: request.messages
+                as: {
+                    role: item.role
+                    content: item.content
+                }
+            }
+            max_completion_tokens: request.max_output
+        }
+        answer: response.choices.first.message.content
+        refused_when: {
+            holds: response.choices.first.message.refusal
+            path: "choices.0.finish_reason"
+            equals: "content_filter"
+        }
+        cut_off_when: {
+            path: "choices.0.finish_reason"
+            equals: "length"
+        }
+        usage: {
+            input: response.usage.prompt_tokens
+            output: response.usage.completion_tokens
+            cached: response.usage.prompt_tokens_details.cached_tokens
+        }
+        schema: {
+            mode: AiSchema.strict_subset
+            at: "response_format"
+        }
+    }
+    stream: {
+        call: chat_completions.stream
+        input: {
+            model: request.model
+            messages: {
+                each: request.messages
+                as: {
+                    role: item.role
+                    content: item.content
+                }
+            }
+            max_completion_tokens: request.max_output
+            stream: true
+        }
+        pieces: event.choices.first.delta.content
+        refused_when: {
+            holds: event.choices.first.delta.refusal
+            path: "choices.0.finish_reason"
+            equals: "content_filter"
+        }
+        cut_off_when: {
+            path: "choices.0.finish_reason"
+            equals: "length"
+        }
+    }
+    embed: {
+        call: embeddings.create
+        input: {
+            model: request.model
+            input: request.texts
+            dimensions: request.dimensions
+        }
+        vectors: response.data
+        vector: item.embedding
+        index: item.index
+        batch: 2048
+        usage: {
+            input: response.usage.prompt_tokens
+            output: 0
+        }
+    }
+    models: {
+        context: models.context_windows
+        prices: models.prices
+    }
+}

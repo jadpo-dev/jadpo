@@ -71,6 +71,7 @@ pub(crate) fn plan(
                 let scheme = match scheme {
                     "bearer" => Some(CredentialScheme::Bearer),
                     "basic" => Some(CredentialScheme::Basic),
+                    "header" => Some(CredentialScheme::Header),
                     "aws_sigv4" => connection
                         .key_id
                         .as_deref()
@@ -100,6 +101,8 @@ pub(crate) fn plan(
             package: connection.package.clone(),
             address,
             credential,
+            credential_header: reach.credential_header.clone(),
+            headers: reach.headers.clone(),
             protocol: match reach.protocol.as_deref() {
                 Some("aws_json") => Protocol::AwsJson,
                 _ => Protocol::JsonHttp,

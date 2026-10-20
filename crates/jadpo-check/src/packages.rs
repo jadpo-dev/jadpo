@@ -51,7 +51,7 @@ pub const PROPRIETARY: &str = "proprietary";
 
 /// The keys `provider.jadpo`'s `provider { }` may hold (area 11, "How the
 /// API is reached").
-pub const PROVIDER_KEYS: [&str; 15] = [
+pub const PROVIDER_KEYS: [&str; 17] = [
     "protocol",
     "hosts",
     "runs",
@@ -67,7 +67,37 @@ pub const PROVIDER_KEYS: [&str; 15] = [
     "imported",
     "description",
     "aws",
+    "credential_header",
+    "headers",
 ];
+
+/// The headers the package driver writes itself, which `headers:` and
+/// `credential_header:` can't name (chunk 5.5v7), in lowercase.
+pub const DRIVER_HEADERS: [&str; 8] = [
+    "accept",
+    "authorization",
+    "content-length",
+    "content-type",
+    "host",
+    "user-agent",
+    "x-amz-date",
+    "x-amz-target",
+];
+
+/// `Name: value`, one of `headers:`'s lines, split; `None` for a line
+/// that isn't a header: a name of a token's characters, and a value with
+/// no line breaks.
+pub fn header_line(line: &str) -> Option<(String, String)> {
+    let (name, value) = line.split_once(':')?;
+    let name = name.trim();
+    let value = value.trim();
+    let token = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(c));
+    (token && !value.is_empty() && !value.contains(['\r', '\n']))
+        .then(|| (name.to_string(), value.to_string()))
+}
 
 /// How a provider's bodies are sent: `Protocol.<name>`.
 pub const PROTOCOLS: [&str; 4] = ["json_http", "form_http", "multipart_http", "aws_json"];
@@ -672,6 +702,8 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
                 .next("Write the provider's limit, such as `max_concurrent: 4`, or remove it"),
             ),
             "settings" => crate::connections::provider_settings(&path, &member, out),
+            "credential_header" => credential_header(&path, &member, out),
+            "headers" => headers(&path, &member, out),
             "imported" => {
                 crate::review::imported_problems(db, project, &home.folder, &path, &member, out);
             }
@@ -690,6 +722,7 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
         );
     }
     aws_needs(&path, &decl, out);
+    header_needs(&path, &decl, out);
     if let (Some(hosts), Some(_)) = (seen.get("hosts"), seen.get("runs")) {
         out.push(
             Diagnostic::new(
@@ -700,6 +733,112 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             .reason("Where an API is comes from exactly one place: `hosts:` when it is on the internet, `runs:` when Jadpo runs it in a container, or neither when the app gives `host:` on the connection.")
             .next("Keep `hosts:` or `runs:`, and remove the other"),
         );
+    }
+}
+
+/// `credential_header:` (chunk 5.5v7): the header
+/// `CredentialScheme.header` sends the credential in, a header's name the
+/// driver doesn't write itself.
+fn credential_header(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
+    let span = member.value().map_or_else(
+        || node_span(path, member.syntax()),
+        |value| node_span(path, value.syntax()),
+    );
+    let name = match member.value().as_ref().map(crate::types::Const::from_expr) {
+        Some(crate::types::Const::Str(text)) => Some(text),
+        _ => None,
+    };
+    let fits = name.as_deref().is_some_and(|name| {
+        header_line(&format!("{name}: x")).is_some_and(|(found, _)| found == name)
+            && !DRIVER_HEADERS.contains(&name.to_ascii_lowercase().as_str())
+    });
+    if !fits {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                "`credential_header:` isn't a header the credential can go in",
+            )
+            .at(span, "not a header's name")
+            .reason("`CredentialScheme.header` sends the connection's credential in the header `credential_header:` names, as the provider's documentation spells it, and never in one the driver writes itself (`Authorization`, `Content-Type`, `Accept`, `User-Agent`, `Host`).")
+            .next("Write the header's name as text, such as `credential_header: \"x-api-key\"`"),
+        );
+    }
+}
+
+/// `headers:` (chunk 5.5v7): the headers every request to the API
+/// carries, each `"Name: value"`, never one the driver writes itself.
+fn headers(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
+    let span = member.value().map_or_else(
+        || node_span(path, member.syntax()),
+        |value| node_span(path, value.syntax()),
+    );
+    let lines = match member.value().as_ref().map(crate::types::Const::from_expr) {
+        Some(crate::types::Const::List(items)) => items
+            .into_iter()
+            .map(|item| match item {
+                crate::types::Const::Str(text) => Some(text),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>(),
+        _ => None,
+    };
+    let bad = match &lines {
+        None => Some("isn't a list of header lines".to_string()),
+        Some(lines) => lines.iter().find_map(|line| match header_line(line) {
+            None => Some(format!("has `{line}`, which isn't `Name: value`")),
+            Some((name, _)) if DRIVER_HEADERS.contains(&name.to_ascii_lowercase().as_str()) => {
+                Some(format!("names `{name}`, which the driver writes itself"))
+            }
+            Some(_) => None,
+        }),
+    };
+    if let Some(bad) = bad {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                format!("`headers:` {bad}"),
+            )
+            .at(span, "not the API's headers")
+            .reason("`headers:` lists the fixed headers every request to the API carries, such as the version of the API it is written for, each as text `\"Name: value\"`; the driver writes `Authorization`, `Content-Type`, `Accept`, `User-Agent` and `Host` itself.")
+            .next("Write `headers: [\"anthropic-version: 2023-06-01\"]`, a line for each header the provider's documentation requires"),
+        );
+    }
+}
+
+/// `CredentialScheme.header` names its header with `credential_header:`,
+/// and only it does (chunk 5.5v7).
+fn header_needs(path: &str, decl: &ast::SingletonDecl, out: &mut Vec<Diagnostic>) {
+    let members = tree::members(decl.member_list());
+    let find = |key: &str| {
+        members
+            .iter()
+            .find(|(name, _)| tree::name_text(name).as_deref() == Some(key))
+            .map(|(_, member)| member)
+    };
+    let scheme = find("credential")
+        .and_then(ast::Member::value)
+        .map(|value| tree::written(value.syntax()));
+    let header = scheme.as_deref() == Some("CredentialScheme.header");
+    match (header, find("credential_header")) {
+        (true, None) => out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                "`provider` doesn't give `credential_header:`",
+            )
+            .at(node_span(path, decl.syntax()), "no `credential_header:`")
+            .reason("`CredentialScheme.header` sends the credential in a header the provider names, which `credential_header:` gives.")
+            .next("Add `credential_header: \"<name>\"`, the header the provider's documentation names"),
+        ),
+        (false, Some(member)) => out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                "`credential_header:` goes with `CredentialScheme.header` alone",
+            )
+            .at(node_span(path, member.syntax()), "no header credential")
+            .reason("Only `CredentialScheme.header` sends the credential in a header the provider names; the other schemes write their own.")
+            .next("Remove `credential_header:`, or write `credential: CredentialScheme.header`"),
+        ),
+        _ => {}
     }
 }
 

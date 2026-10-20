@@ -103,9 +103,10 @@ pub enum AiDriver {
     Package(Box<PackageAi>),
 }
 
-/// A package's `provide ai { generate: }`, as data: the operation it
-/// calls, what its input is made of, and where the answer and what it
-/// says about it are in the operation's output.
+/// A package's `provide ai`, as data (chunks 5.5v3b and 5.5v7): for
+/// `generate:`, the operation it calls, what its input is made of, and
+/// where the answer and what it says about it are in the operation's
+/// output; its `stream:` and `embed:`, where it maps them.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PackageAi {
     /// `chat.completions.create`, one of the connection's operations.
@@ -117,11 +118,12 @@ pub struct PackageAi {
     /// with them as the `system` message.
     pub instructions_apart: bool,
     /// Where the answer's text is in the output, by field names; `0` is
-    /// a list's first item.
+    /// a list's first item, and [`EACH`] every item's, their texts joined.
     pub answer: Vec<String>,
-    /// Where the model's refusal is, by field names: the call is
-    /// `refused` when it holds anything.
-    pub refused_when: Option<Vec<String>>,
+    /// What says the model declined, any of them: a place in the output
+    /// by field names that holds anything, or a member of the answer as
+    /// sent equal to a value.
+    pub refused_when: Vec<AiMarker>,
     /// Where the answer as sent says it was cut off, dotted, and the JSON
     /// value there that says so.
     pub cut_off_when: Option<(String, String)>,
@@ -131,9 +133,82 @@ pub struct PackageAi {
     /// Where in the request the structured mode's envelope is written,
     /// dotted; `None` where the mode takes none.
     pub schema_at: Option<String>,
+    /// The envelope's shape, the provider's own (chunk 5.5v7).
+    pub envelope: AiEnvelope,
     /// Each model's context window in tokens, by the model's name as its
     /// `ModelId` writes it after its provider, from the package's table.
     pub contexts: Vec<(String, u64)>,
+    /// `stream:`, where the package maps `ai.stream` (chunk 5.5v7).
+    pub stream: Option<PackageStream>,
+    /// `embed:`, where the package maps `ai.embed` (chunk 5.5v7).
+    pub embed: Option<PackageEmbed>,
+}
+
+/// The step of a place that reads every item of a list, their texts
+/// joined in order: `response.content.text` over a list of content
+/// blocks, the blocks with no text left out.
+pub const EACH: &str = "*";
+
+/// What says something of an answer (`refused_when:`): a place holding
+/// anything but `none`, blank text or `false`, or a member of the answer
+/// as sent equal to a JSON value.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AiMarker {
+    /// By field names in a decoded answer (`generate:`), or by spellings
+    /// on the wire in a streamed event (`stream:`); `0` a list's first.
+    Holds(Vec<String>),
+    /// Dotted by spellings on the wire, a list's items by number, and the
+    /// JSON value there.
+    Equals(String, String),
+}
+
+/// The shape of the envelope a structured mode is sent in (`schema: {
+/// envelope: }`; chunk 5.5v7).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum AiEnvelope {
+    /// OpenAI's `{"type": "json_schema", "json_schema": {"name": <prompt>,
+    /// "strict": true, "schema": ...}}`, or `{"type": "json_object"}`.
+    #[default]
+    OpenAi,
+    /// Anthropic's `output_config.format`: `{"type": "json_schema",
+    /// "schema": ...}`; it has no JSON-only mode.
+    Anthropic,
+}
+
+/// A package's `provide ai { stream: }`, as data (chunk 5.5v7): the
+/// operation whose answer is a stream of server-sent events, its input
+/// made as `generate:`'s is, and where each event says what it says, each
+/// by spellings on the wire. A stream is whole at `data: [DONE]` or at an
+/// event `done_when:` marks; an `error` event, or one with an `error`
+/// member, breaks it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PackageStream {
+    pub operation: String,
+    pub input: Vec<(String, AiInput)>,
+    pub instructions_apart: bool,
+    /// Where an event's piece of text is.
+    pub pieces: Vec<String>,
+    pub refused_when: Vec<AiMarker>,
+    pub cut_off_when: Option<(String, String)>,
+    pub done_when: Option<(String, String)>,
+}
+
+/// A package's `provide ai { embed: }`, as data (chunk 5.5v7): the
+/// operation, its input, and where the answer as sent holds each vector,
+/// by spellings on the wire.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PackageEmbed {
+    pub operation: String,
+    pub input: Vec<(String, AiInput)>,
+    /// The list of the answer's items.
+    pub vectors: Vec<String>,
+    /// Each item's vector, within it.
+    pub vector: Vec<String>,
+    /// Each item's place among the texts sent, within it, where the
+    /// provider says.
+    pub index: Option<Vec<String>>,
+    /// The most texts the provider takes in one request.
+    pub batch: u32,
 }
 
 impl PackageAi {
@@ -147,7 +222,7 @@ impl PackageAi {
     }
 }
 
-/// A value a package's `generate:` gives a member of its operation's
+/// A value a package's mapping gives a member of its operation's
 /// input: data, never code.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AiInput {
@@ -164,6 +239,10 @@ pub enum AiInput {
     /// `item.role` and `item.content`, inside `as:`.
     Role,
     Content,
+    /// `request.texts`, the texts an `ai.embed` call embeds (chunk 5.5v7).
+    Texts,
+    /// `request.dimensions`, `ai: { embedding_dimensions: }`.
+    Dimensions,
     /// The value of the setting numbered here, from the connection's
     /// setting of the package (`settings.<name>`).
     Setting(u32),
