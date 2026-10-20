@@ -462,7 +462,8 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         harness.set_now(T0 + 31 * SECOND);
         let again = tick(program, &host, T0 + 31 * SECOND).await;
         assert!(again.raised.is_empty(), "{:?}", again.raised);
-
+    });
+    {
         // An operator sees what is held, and why.
         let listed = jadpo(
             &loaded.root,
@@ -470,9 +471,11 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
             &["deliveries", "--url", &loaded.url],
         );
         assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
+        // The alert's line wraps at 80 columns.
         assert!(
             listed
                 .stdout
+                .replace("\n  ", " ")
                 .contains("`couriers` has been unavailable since 09:00:00: 7 deliveries held, one tried again at 09:01:00"),
             "{}",
             listed.stdout
@@ -502,6 +505,8 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
             "{items:?}"
         );
         assert_eq!(document["data"]["unavailable"][0]["connection"], "couriers");
+    }
+    runtime.block_on(async {
 
         // After the pause, one held delivery is the probe: refused, so the
         // rest stay held for twice as long.
