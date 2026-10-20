@@ -39,7 +39,14 @@ fn a_recipe_is_copied_into_a_domain() {
     let root = dir.path();
     let copied = jadpo(
         root,
-        &["package", "recipe", "couriers", "track_parcels", "--into", "shipping"],
+        &[
+            "package",
+            "recipe",
+            "couriers",
+            "track_parcels",
+            "--into",
+            "shipping",
+        ],
     );
     assert_eq!(copied.code, 0, "{}{}", copied.stdout, copied.stderr);
     assert_eq!(
@@ -63,13 +70,20 @@ next: jadpo check  shows what to fit to the app
         .expect("remove one");
     let refused = jadpo(
         root,
-        &["package", "recipe", "couriers", "track_parcels", "--into", "shipping"],
+        &[
+            "package",
+            "recipe",
+            "couriers",
+            "track_parcels",
+            "--into",
+            "shipping",
+        ],
     );
     assert_eq!(refused.code, 2, "{}", refused.stdout);
     assert!(
-        refused.stderr.starts_with(
-            "error: `domains/shipping/actions/track_parcel.jadpo` already exists\n"
-        ),
+        refused
+            .stderr
+            .starts_with("error: `domains/shipping/actions/track_parcel.jadpo` already exists\n"),
         "{}",
         refused.stderr
     );
@@ -87,15 +101,36 @@ fn a_recipe_command_names_what_it_cant_find() {
     let root = dir.path();
     let cases: [(&[&str], &str); 4] = [
         (
-            &["package", "recipe", "couriers", "track_parcel", "--into", "shipping"],
+            &[
+                "package",
+                "recipe",
+                "couriers",
+                "track_parcel",
+                "--into",
+                "shipping",
+            ],
             "error: `Couriers.v1` has no recipe `track_parcel`\n  reason: `Couriers.v1` ships `track_parcels`. Did you mean `track_parcels`?\n  next: Use `jadpo package recipe couriers track_parcels --into shipping` (agent)\n",
         ),
         (
-            &["package", "recipe", "courier", "track_parcels", "--into", "shipping"],
+            &[
+                "package",
+                "recipe",
+                "courier",
+                "track_parcels",
+                "--into",
+                "shipping",
+            ],
             "error: `courier` isn't a package in this project\n",
         ),
         (
-            &["package", "recipe", "couriers", "track_parcels", "--into", "shiping"],
+            &[
+                "package",
+                "recipe",
+                "couriers",
+                "track_parcels",
+                "--into",
+                "shiping",
+            ],
             "error: `shiping` isn't a domain of the app\n  reason: The app's domains are `shipping`. Did you mean `shipping`?\n",
         ),
         (

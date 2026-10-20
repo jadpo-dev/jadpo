@@ -103,10 +103,7 @@ pub fn recipe(call: &Call) -> Reply {
         let has = if recipes.is_empty() {
             format!("`{package}` ships no recipes.")
         } else {
-            format!(
-                "`{package}` ships {}.",
-                and_list(&quoted(&recipes))
-            )
+            format!("`{package}` ships {}.", and_list(&quoted(&recipes)))
         };
         return Reply::failed(match nearest(name, recipes.iter().map(String::as_str)) {
             Some(near) => arguments(
@@ -123,7 +120,10 @@ pub fn recipe(call: &Call) -> Reply {
             None => arguments(
                 format!("`{package}` has no recipe `{name}`"),
                 has,
-                format!("Run `jadpo package show {}` to see what it ships", home.name),
+                format!(
+                    "Run `jadpo package show {}` to see what it ships",
+                    home.name
+                ),
             ),
         });
     }
@@ -135,7 +135,8 @@ pub fn recipe(call: &Call) -> Reply {
     let Some(domain) = call.value("--into") else {
         return Reply::failed(arguments(
             "`jadpo package recipe` needs `--into <domain>`".to_string(),
-            "A recipe becomes one of the app's domains' own code, so the command names which.".to_string(),
+            "A recipe becomes one of the app's domains' own code, so the command names which."
+                .to_string(),
             format!(
                 "Run `jadpo package recipe {} {name} --into <domain>`",
                 home.name

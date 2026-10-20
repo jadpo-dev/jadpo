@@ -162,7 +162,11 @@ fn a_package_action_calls_its_own_operations_and_the_app_calls_it() {
 fn an_own_operation_that_doesnt_exist_is_named_with_the_nearest() {
     let start = START.replace("customers.create", "customers.craete");
     assert_eq!(
-        problems(&[("start_subscription", &start)], "pay.start_subscription", &[SUBSCRIBER]),
+        problems(
+            &[("start_subscription", &start)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
         [
             "shared/providers/acme_pay/v1/actions/start_subscription.jadpo semantic.unknown_callee: Resource `customers` has no operation `craete`"
         ]
@@ -173,7 +177,11 @@ fn an_own_operation_that_doesnt_exist_is_named_with_the_nearest() {
 fn an_own_operations_failure_is_passed_on_or_handled() {
     let start = START.replace("attempt customers.create", "customers.create");
     assert_eq!(
-        problems(&[("start_subscription", &start)], "pay.start_subscription", &[SUBSCRIBER]),
+        problems(
+            &[("start_subscription", &start)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
         [
             "shared/providers/acme_pay/v1/actions/start_subscription.jadpo failure.attempt_required: `customers.create` can fail, and nothing handles it"
         ]
@@ -189,7 +197,11 @@ fn a_packages_function_cant_call_its_api() {
     )];
     more.push(SUBSCRIBER);
     assert_eq!(
-        problems(&[("start_subscription", START)], "pay.start_subscription", &more),
+        problems(
+            &[("start_subscription", START)],
+            "pay.start_subscription",
+            &more
+        ),
         [
             "shared/providers/acme_pay/v1/libraries/customer_opening.jadpo effect.function_persistence: A function can't call `customers.create`"
         ]
@@ -233,7 +245,11 @@ fn a_resource_and_an_action_of_one_name_clash() {
 fn a_package_action_without_public_isnt_called_by_the_app() {
     let start = START.replace("public action", "action");
     assert_eq!(
-        problems(&[("start_subscription", &start)], "pay.start_subscription", &[SUBSCRIBER]),
+        problems(
+            &[("start_subscription", &start)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
         [
             "domains/billing/actions/subscribe.jadpo package.not_public: `AcmePay.v1`'s action `start_subscription` isn't public"
         ]
@@ -264,7 +280,11 @@ fn a_package_actions_failures_are_mapped_at_the_call() {
 #[test]
 fn an_unknown_name_through_the_connection_lists_its_actions_too() {
     assert_eq!(
-        problems(&[("start_subscription", START)], "pay.start_subscriptoin", &[SUBSCRIBER]),
+        problems(
+            &[("start_subscription", START)],
+            "pay.start_subscriptoin",
+            &[SUBSCRIBER]
+        ),
         [
             "domains/billing/actions/subscribe.jadpo semantic.unknown_callee: `pay` has no operation or action `start_subscriptoin`"
         ]
@@ -290,7 +310,11 @@ fn nightly() -> Vec<(&'static str, &'static str)> {
 #[test]
 fn a_package_actions_changing_calls_are_steps_of_the_calling_action() {
     assert_eq!(
-        problems(&[("start_subscription", START)], "pay.start_subscription", &nightly()),
+        problems(
+            &[("start_subscription", START)],
+            "pay.start_subscription",
+            &nightly()
+        ),
         [
             "domains/billing/schedules/nightly.jadpo step.context: `nightly` runs `renew`, which makes 2 changing calls, but a schedule's retry is its next run"
         ]
@@ -310,7 +334,11 @@ fn a_package_action_over_eight_steps_is_refused_where_it_is_declared() {
     }
     body.push_str("    return c9\n}\n");
     assert_eq!(
-        problems(&[("start_subscription", &body)], "pay.start_subscription", &[SUBSCRIBER]),
+        problems(
+            &[("start_subscription", &body)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
         [
             "shared/providers/acme_pay/v1/actions/start_subscription.jadpo step.too_many: `start_subscription` makes 9 changing calls in a row, more than 8"
         ]
@@ -367,7 +395,11 @@ fn a_package_action_that_emits_waits_for_package_subscribers() {
 
 #[test]
 fn a_public_package_action_is_on_the_surface() {
-    let files = files(&[("start_subscription", START)], "pay.start_subscription", &[]);
+    let files = files(
+        &[("start_subscription", START)],
+        "pay.start_subscription",
+        &[],
+    );
     let files: Vec<(&str, &str)> = files
         .iter()
         .map(|(path, text)| (path.as_str(), text.as_str()))
@@ -385,7 +417,11 @@ fn a_public_package_action_is_on_the_surface() {
     );
     // One without `public` isn't.
     let private = START.replace("public action", "action");
-    let files = self::files(&[("start_subscription", &private)], "pay.start_subscription", &[]);
+    let files = self::files(
+        &[("start_subscription", &private)],
+        "pay.start_subscription",
+        &[],
+    );
     let files: Vec<(&str, &str)> = files
         .iter()
         .map(|(path, text)| (path.as_str(), text.as_str()))

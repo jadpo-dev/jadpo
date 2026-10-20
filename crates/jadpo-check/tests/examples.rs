@@ -140,12 +140,8 @@ const EXEMPT: &[(&str, &str)] = &[
     ("place seeds", "not built: seeds (area 5)"),
     ("place acceptances", "not built: acceptances (area 18)"),
     (
-        "package folder actions",
-        "not built: a package's actions (area 11, chunk 7.6)",
-    ),
-    (
         "package folder subscribers",
-        "not built: a package's subscribers (area 11, chunk 7.6)",
+        "not built: a package's subscribers (area 11, chunk 7.6b)",
     ),
     (
         "package folder events",
@@ -546,6 +542,7 @@ const BODY: &[&str] = &[
     "call files put",
     "call files read",
     "call provider operation",
+    "call package action",
     "script a provider's fake",
     "advance the test clock",
     "run a schedule in a test",
