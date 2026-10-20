@@ -66,14 +66,20 @@ pub fn in_scope<'db>(
 ) -> Vec<Symbol> {
     let all = &name_facts(db, project, name).declarations;
     let domain = Some(domain.text(db).as_str()).filter(|domain| !domain.is_empty());
-    let mut seen: Vec<Symbol> = all
+    // A package's names are seen outside it only written through it
+    // (`Postcodes.UkPostcode`, area 11), never bare.
+    let outside: Vec<&Symbol> = all
+        .iter()
+        .filter(|symbol| symbol.ownership.package().is_none())
+        .collect();
+    let mut seen: Vec<Symbol> = outside
         .iter()
         .filter(|symbol| symbol.scope.is_some() && symbol.in_scope_of(domain))
-        .chain(all.iter().filter(|symbol| symbol.scope.is_none()))
-        .cloned()
+        .chain(outside.iter().filter(|symbol| symbol.scope.is_none()))
+        .map(|symbol| (*symbol).clone())
         .collect();
     if seen.is_empty() {
-        seen = all.clone();
+        seen = outside.into_iter().cloned().collect();
     }
     seen
 }
@@ -299,8 +305,12 @@ pub trait FailureView {
 pub struct Lookup<'db> {
     db: &'db dyn Db,
     project: Project,
-    /// The domain whose private names the reader sees.
+    /// The domain whose private names the reader sees, or the package
+    /// whose names it sees bare.
     domain: Option<String>,
+    /// Whether the reader is a package's own code, which sees only its
+    /// package's names and the built-ins (area 11).
+    in_package: bool,
     /// Lookups already made by this check, to save interning a name again.
     defs: RefCell<HashMap<String, Option<&'db Def>>>,
 }
@@ -325,6 +335,7 @@ impl<'db> Lookup<'db> {
             db,
             project,
             domain: None,
+            in_package: false,
             defs: RefCell::new(HashMap::new()),
         }
     }
@@ -333,6 +344,7 @@ impl<'db> Lookup<'db> {
     pub fn within(db: &'db dyn Db, project: Project, ownership: &Ownership) -> Lookup<'db> {
         Lookup {
             domain: ownership.scope().map(str::to_string),
+            in_package: ownership.package().is_some(),
             ..Lookup::new(db, project)
         }
     }
@@ -431,6 +443,19 @@ impl TypeView for Lookup<'_> {
 
 impl NameView for Lookup<'_> {
     fn declared(&self, name: &str) -> &[Symbol] {
+        if self.in_package {
+            // A package is published apart from any app, so its code sees
+            // only its own names (and the built-ins), bare.
+            let own = self.domain.clone().unwrap_or_default();
+            if let Some((package, rest)) = self.identified(name) {
+                return if package == own {
+                    self.in_domain(rest, package)
+                } else {
+                    &[]
+                };
+            }
+            return self.in_domain(name, &own);
+        }
         if let Some((domain, rest)) = self.identified(name) {
             return self.in_domain(rest, domain);
         }
@@ -447,15 +472,15 @@ impl NameView for Lookup<'_> {
     }
 
     fn is_domain(&self, name: &str) -> bool {
-        self.facts(name).domain
+        !self.in_package && self.facts(name).domain
     }
 
     fn is_connection(&self, name: &str) -> bool {
-        self.facts(name).connection
+        !self.in_package && self.facts(name).connection
     }
 
     fn is_package(&self, name: &str) -> bool {
-        self.facts(name).package
+        !self.in_package && self.facts(name).package
     }
 
     fn all(&self) -> &Symbols {
@@ -464,11 +489,13 @@ impl NameView for Lookup<'_> {
 
     fn library_function(&self, library: &str, function: &str) -> Option<&Symbol> {
         let library = self.canonical_name(library);
-        self.declared(function).iter().find(|symbol| {
+        // The library names its function exactly, a package's included,
+        // which code outside the package sees only through its library.
+        self.facts(function).declarations.iter().find(|symbol| {
             symbol
                 .library
                 .as_ref()
-                .is_some_and(|(owner, _)| *owner == library)
+                .is_some_and(|(held_by, _)| *held_by == library)
         })
     }
 

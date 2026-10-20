@@ -473,3 +473,10 @@ street
 # background work may run (area 12, chunk 6.7); area 9's example names a
 # field `budget` too
 budget
+
+# A package's folders and keys, and the provider names Jadpo reserves for
+# its curated packages (area 11, "The package format", "How the API is
+# reached" and "Names"; chunk 7.1)
+recipes
+new_key
+stripe

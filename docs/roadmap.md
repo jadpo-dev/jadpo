@@ -873,9 +873,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `surface.jadpo_record` and `jadpo package show`, `jadpo package check`
   with `type.standard_exists` on packages' public types in the publishing
   bar (area 19, question 1), `jadpo package add` from a path and a git
-  repository with verification at install, `link` and `unlink` with the
-  linked checkout compiled and refused where production and CI build,
-  and library packages' translations.
+  repository with verification at install, `update` and `remove`, `link`
+  and `unlink` with the linked checkout compiled and refused where
+  production and CI build, and library packages' translations.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,

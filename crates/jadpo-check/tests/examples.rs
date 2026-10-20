@@ -135,14 +135,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: a drop needs a person's acceptance (area 18)",
     ),
     (
-        "syntax PACKAGE_DECL",
-        "not built: provider packages (area 11)",
-    ),
-    (
-        "syntax RESOURCE_DECL",
-        "not built: provider packages (area 11)",
-    ),
-    (
         "syntax PROVIDE_DECL",
         "not built: provider packages (area 11)",
     ),
@@ -187,6 +179,26 @@ const EXEMPT: &[(&str, &str)] = &[
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
     ("place acceptances", "not built: acceptances (area 18)"),
+    (
+        "package folder actions",
+        "not built: a package's actions (area 11, chunk 7.6)",
+    ),
+    (
+        "package folder subscribers",
+        "not built: a package's subscribers (area 11, chunk 7.6)",
+    ),
+    (
+        "package folder events",
+        "not built: a package's events (area 11, chunk 7.6)",
+    ),
+    (
+        "package folder provides",
+        "not built: a package's capability mappings (area 11, chunk 7.3)",
+    ),
+    (
+        "package folder translations",
+        "not built: a library package's translations (area 11, chunk 7.1b)",
+    ),
 ];
 
 fn root() -> PathBuf {

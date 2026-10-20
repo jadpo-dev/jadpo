@@ -47,6 +47,7 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
             .ownership
             .domain()
             .map(str::to_string),
+        ownership: location(db, project, file).ownership.clone(),
         resolver: Resolver {
             symbols: &lookup,
             table: &lookup,
@@ -86,6 +87,9 @@ struct Part<'a> {
     path: &'a String,
     lines: LineIndex,
     domain: Option<String>,
+    /// Who owns the file: a domain, or a package whose declarations' keys
+    /// carry its name (area 11).
+    ownership: jadpo_db::Ownership,
     resolver: Resolver<'a>,
     lookup: &'a Lookup<'a>,
     items: &'a [Item],
@@ -96,9 +100,10 @@ impl Part<'_> {
     /// The key of this file's declaration `name` of `item`, which carries
     /// the file's domain for a function or type (area 18).
     fn item_key(&self, kind: Kind, item: &jadpo_db::ItemKind, name: &str) -> Key {
-        let ownership = match &self.domain {
-            Some(domain) => jadpo_db::Ownership::Domain(domain.clone()),
-            None => jadpo_db::Ownership::Root,
+        let ownership = match (&self.ownership, &self.domain) {
+            (jadpo_db::Ownership::Package(_), _) => self.ownership.clone(),
+            (_, Some(domain)) => jadpo_db::Ownership::Domain(domain.clone()),
+            (_, None) => jadpo_db::Ownership::Root,
         };
         item_key(self.lookup.registry(), kind, item, name, &ownership)
     }

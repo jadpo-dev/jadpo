@@ -1,0 +1,13 @@
+public resource pickups {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/pickups"
+        input: PickupRequest
+        output: Pickup
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.swift-couriers.example/pickups"
+    }
+}

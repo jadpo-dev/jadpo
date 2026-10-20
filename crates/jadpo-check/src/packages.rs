@@ -208,7 +208,7 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
             )
             .at(file_span(&at), "")
             .reason(format!(
-                "Every package has `{}` at its root: its description, its licence and the lowest Jadpo version it needs. It is how a package is recognised and installed.",
+                "Every package has `{}` at its root: its description, its licence and the earliest Jadpo version it needs. It is how a package is known and installed.",
                 jadpo_db::PACKAGE_INDEX
             ))
             .next(format!(
@@ -270,7 +270,7 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
                 format!("Package `{written}` has no description"),
             )
             .at(name_span.clone(), "no `///` description")
-            .reason("A package's index starts with a `///` description of what the package is for: it heads its surface, `jadpo package show` and the registry's page.")
+            .reason("A package's index starts with a `///` description of what the package is for: it heads `jadpo package show` and the registry's page.")
             .next("Add a `///` line above `package` saying what the package does"),
         );
     }
@@ -345,8 +345,8 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
                         span,
                         "jadpo",
                         value.as_deref().unwrap_or(""),
-                        "`jadpo:` is the lowest Jadpo version the package needs, its major and minor numbers as text.",
-                        "Write `jadpo: \"1.0\"`, or the lowest version the package needs",
+                        "`jadpo:` is the earliest Jadpo version the package needs, its major and minor numbers as text.",
+                        "Write `jadpo: \"1.0\"`, or the earliest version the package needs",
                     ));
                 }
             }
@@ -364,13 +364,13 @@ fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<In
                 .reason(if key == "licence" {
                     "Every package declares its licence, from a fixed list, so an app knows on what terms it uses the code.".to_string()
                 } else {
-                    "Every package gives the lowest Jadpo version it needs, so an older Jadpo refuses it rather than misreading it.".to_string()
+                    "Every package gives the earliest Jadpo version it needs, so an older Jadpo refuses it rather than misreading it.".to_string()
                 })
                 .next(if key == "licence" {
                     "Add `licence: Licence.mit`, or the licence the package is published under"
                         .to_string()
                 } else {
-                    "Add `jadpo: \"1.0\"`, or the lowest version the package needs".to_string()
+                    "Add `jadpo: \"1.0\"`, or the earliest version the package needs".to_string()
                 }),
             );
         }
@@ -475,8 +475,8 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
                 ),
             )
             .at(file_span(translations.path(db)), "")
-            .reason("A provider package shows people no text: its failures are always mapped to the app's own, which the app words. Only a library package carries translations, for its own messages and failures.")
-            .next("Remove the package's `translations/`, and word what people see in the app's own failures"),
+            .reason("A provider package shows no text of its own: its failures are always mapped to the app's own, which the app words. Only a library package carries translations, for its own messages and failures.")
+            .next("Remove the package's `translations/`, and word what users see in the app's own failures"),
         );
     }
     let path = provider_path;
@@ -706,11 +706,32 @@ fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnos
             .iter()
             .find(|other| other.folder != home.folder && other.folder < home.folder)
     {
-        taken.push(if other.installed == home.installed {
-            format!("package `{}` in `{}`", other.versioned(), other.folder)
+        if other.installed == home.installed {
+            // Two versions side by side, names carrying the version
+            // (`Postcodes.v3.UkPostcode`), come with a later chunk.
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!(
+                        "Two versions of package `{}` side by side aren't built yet",
+                        home.code
+                    ),
+                )
+                .at(span.clone(), "")
+                .reason(format!(
+                    "The language lets `{}` and `{}` sit side by side while callers move across, each written with its version, but this compiler can hold one version of a package at a time.",
+                    other.versioned(),
+                    home.versioned()
+                ))
+                .next(format!("Keep one of `{}/` and `{}/` for now", other.folder, home.folder)),
+            );
         } else {
-            format!("package `{}` in `{}`", other.versioned(), other.folder)
-        });
+            taken.push(format!(
+                "package `{}` in `{}`",
+                other.versioned(),
+                other.folder
+            ));
+        }
     }
     if taken.is_empty() {
         return;
@@ -882,8 +903,9 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's actions, subscribers and events (chunk 7.6)
-/// and its capability mappings (chunk 7.3).
+/// doesn't run: a package's actions, subscribers and events (chunk 7.6),
+/// its capability mappings (chunk 7.3) and a library package's
+/// translations (chunk 7.1b).
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -895,6 +917,16 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         Place::Folder(Folder::Subscribers) => "A package's subscribers",
         Place::Folder(Folder::Events) => "A package's events",
         Place::Folder(Folder::Provides) => "A package's capability mappings",
+        // A provider package's are `package.provider_translations`.
+        Place::Folder(Folder::Translations) => {
+            let provider = format!("{}/{}", home.folder, jadpo_db::PROVIDER_FILE);
+            if crate::lookups::file_at(db, project, crate::lookups::Name::new(db, provider))
+                .is_some()
+            {
+                return Vec::new();
+            }
+            "A library package's translations"
+        }
         _ => return Vec::new(),
     };
     let path = file.path(db);

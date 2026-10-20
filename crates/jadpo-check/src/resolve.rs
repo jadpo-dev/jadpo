@@ -853,7 +853,10 @@ impl Names<'_> {
         };
         match &symbol.kind {
             ItemKind::Function => match (&symbol.library, other_domain) {
-                (Some((library, _)), _) if self.library != Some(library.as_str()) => {
+                (Some((library, _)), _)
+                    if self.library.map(|own| self.table.canonical(own)).as_ref()
+                        != Some(library) =>
+                {
                     out.push(
                         Diagnostic::new(
                             &rule::SEMANTIC_UNKNOWN_CALLEE,
@@ -950,7 +953,7 @@ impl Names<'_> {
                             symbol
                                 .library
                                 .as_ref()
-                                .is_some_and(|(owner, _)| *owner == library)
+                                .is_some_and(|(held_by, _)| *held_by == library)
                         })
                         .map(|symbol| symbol.name.clone())
                         .collect();

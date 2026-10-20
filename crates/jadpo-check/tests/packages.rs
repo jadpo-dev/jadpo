@@ -578,3 +578,52 @@ fn a_package_s_tests_and_recipes_are_data() {
         Vec::<String>::new()
     );
 }
+
+#[test]
+fn a_package_s_code_sees_only_its_own_names() {
+    let pence = (
+        "shared/types/pence.jadpo",
+        "type Pence = Int {\n    min: 0\n}\n",
+    );
+    let uses = (
+        "packages/postcodes/v2/types/fee.jadpo",
+        "/// A fee.\npublic type Fee = Object {\n    amount: Pence\n}\n",
+    );
+    let found = installed(&with(&[pence, uses]));
+    assert!(
+        found.iter().any(|p| p.contains(
+            "packages/postcodes/v2/types/fee.jadpo semantic.unknown_name: `Pence` isn't declared"
+        )),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn two_versions_of_a_package_wait_for_a_later_chunk() {
+    let other = (
+        "packages/postcodes/v3/package.jadpo",
+        "/// UK postcodes.\npackage Postcodes.v3 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+    );
+    let found = installed(&with(&[other]));
+    assert!(
+        found.iter().any(|p| p.contains(
+            "toolchain.not_built_yet: Two versions of package `Postcodes` side by side aren't built yet"
+        )),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_library_package_s_translations_wait_for_a_later_chunk() {
+    let words = (
+        "packages/postcodes/v2/translations/postcode_hint.jadpo",
+        "/// Shown under a postcode field.\npublic type PostcodeHint = Message {}\n",
+    );
+    let found = installed(&with(&[words]));
+    assert!(
+        found.iter().any(|p| p.contains(
+            "toolchain.not_built_yet: A library package's translations aren't built yet"
+        )),
+        "{found:#?}"
+    );
+}

@@ -258,7 +258,7 @@ pub fn public_reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<D
             let Some(hidden) = hidden else {
                 continue;
             };
-            let owner = match &location.ownership {
+            let whose = match &location.ownership {
                 Ownership::Package(home) => format!("package `{}`", home.code),
                 Ownership::Domain(domain) => format!("domain `{domain}`"),
                 _ => continue,
@@ -269,9 +269,9 @@ pub fn public_reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<D
                     &rule::VISIBILITY_PUBLIC_REACHES_PRIVATE,
                     format!("`{}` is public, but `{text}` isn't", item.name),
                 )
-                .at(tree::node_span(path, name.syntax()), format!("a {kind} only {owner} sees"))
+                .at(tree::node_span(path, name.syntax()), format!("a {kind} only {whose} sees"))
                 .reason(format!(
-                    "Whoever uses a public {} has to build or handle what its signature names, so everything it names is public too; `{text}` is {} in `{}` that only {owner} sees.",
+                    "Whoever uses a public {} has to build or handle what its signature names, so everything it names is public too; `{text}` is {} in `{}` that only {whose} sees.",
                     item.kind.word(),
                     hidden.kind.with_a(),
                     hidden.path

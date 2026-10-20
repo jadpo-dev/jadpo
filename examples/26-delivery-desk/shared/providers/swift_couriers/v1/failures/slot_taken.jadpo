@@ -1,0 +1,5 @@
+/// The slot was taken before the booking reached Swift Couriers.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That pickup slot is no longer available."
+}

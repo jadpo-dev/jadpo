@@ -319,7 +319,7 @@ fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Ite
         ),
         Stray::PackageEmails => (
             "A package can't hold email templates".to_string(),
-            "Email templates, partials and layouts are the app's own, in `emails/` of the domain that sends them; a package reaches people only through the app.".to_string(),
+            "Email templates, partials and layouts are the app's own, in `emails/` of the domain that sends them; a package sends no email itself.".to_string(),
         ),
     };
     if matches!(stray, Stray::PackageEmails) {

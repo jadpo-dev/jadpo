@@ -1195,7 +1195,7 @@ impl Here<'_> {
         let shape = match (name, line.names.is_some()) {
             ([_], false) => None,
             _ => Some(format!(
-                "A package comes in whole, by its folder's name, `use {}`: what it offers is then written through its name, such as `Postcodes.UkPostcode`.",
+                "A package comes in whole, by its folder's name, `use {}`: what it offers is then written through its name, `<Package>.<name>`.",
                 if installed {
                     "packages/<name>"
                 } else {
