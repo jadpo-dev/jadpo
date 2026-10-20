@@ -86,6 +86,13 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
     if let Some(api) = &passkey_api {
         by_api.entry(api.clone()).or_default();
     }
+    // Each connection's webhook, in the `webhooks` API the app declares
+    // (chunk 7.7).
+    if !crate::webhooks::declared_in(db, project, crate::webhooks::DEFAULT_PREFIX).is_empty() {
+        by_api
+            .entry(crate::webhooks::DEFAULT_PREFIX.to_string())
+            .or_default();
+    }
     by_api
         .into_iter()
         .map(|(api, routes)| {
@@ -115,6 +122,9 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
             // Its own OpenAPI document (area 7, "OpenAPI").
             if let Some(served) = super::served::served_by(db, project, &api) {
                 generated.push(openapi_entry(&served));
+            }
+            for webhook in crate::webhooks::declared_in(db, project, &api) {
+                generated.push(webhook_entry(&webhook));
             }
             let mut head = Entry::new(format!("api {api}"));
             let mut names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
@@ -196,6 +206,22 @@ fn openapi_entry(served: &super::served::Served) -> Generated {
     Generated {
         at: (path, order_of(jadpo_std::HttpMethod::Get)),
         entry,
+        sections: Vec::new(),
+    }
+}
+
+/// A connection's generated webhook (area 11, "Receiving from outside";
+/// chunk 7.7), as the record lists it: the runtime's, its body the
+/// provider's, checked by its signature, answered with no content.
+fn webhook_entry(webhook: &crate::webhooks::WebhookModel) -> Generated {
+    let path = webhook.path();
+    Generated {
+        entry: Entry::new(format!("POST {path}"))
+            .with("generated webhook")
+            .with(format!("connection {}", webhook.connection))
+            .with("authentication signature")
+            .with("status 204"),
+        at: (path, order_of(jadpo_std::HttpMethod::Post)),
         sections: Vec::new(),
     }
 }

@@ -2061,6 +2061,11 @@ outbox and delivered to subscribers like any event, with the same retries.
   older than what it stored (a recipe shows it). A webhook that needs a
   reply runs the connection's named action inside the request instead
   (area 11).
+  Built in chunk 7.7 (area 11, "Chosen in chunk 7.7"): the event's id
+  recorded in `jadpo_received_events` and its outbox row and deliveries
+  written in one transaction in `events: { store: }` or the only store
+  of records, `within:` counted from arrival, the ids deleted by the tick
+  after 30 days.
 - **A package's own events.** A package's `public` events, its webhooks
   and the enriched events its own subscribers emit
   (`Stripe.SubscriptionRenewed`), are subscribed to with `on:` like the

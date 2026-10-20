@@ -327,6 +327,11 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             "schedules::watch::history_sql",
             crate::schedules::watch::history_sql(),
         ),
+        (
+            "webhooks::OLD_RECEIVED",
+            crate::webhooks::OLD_RECEIVED.to_string(),
+        ),
+        ("webhooks::RECEIVE", crate::webhooks::RECEIVE.to_string()),
     ]
 }
 

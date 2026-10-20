@@ -504,3 +504,9 @@ recipe
 checkout
 linked
 unlinked
+# Words the language itself defines for receiving from outside (area 11,
+# chunk 7.7): every webhook event's `occurred_at`, a connection's
+# `webhooks: { replies: }`, and the ids of events `received`
+occurred_at
+replies
+received

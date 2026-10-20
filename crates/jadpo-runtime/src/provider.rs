@@ -313,41 +313,88 @@ fn base32(bytes: &[u8]) -> String {
 
 /// Each connection's credential, by its place in the provider plan: the
 /// secret setting's text, held apart from the values code reads, since
-/// code never reads a credential (area 10, "Secrets").
+/// code never reads a credential (area 10, "Secrets"). Beside them, each
+/// webhook's secret, by its place in the plan's webhooks, with the value
+/// it replaced while a deployment rotates it (chunk 7.7).
 #[derive(Clone, Default)]
-pub struct Credentials(Vec<Option<String>>);
+pub struct Credentials {
+    held: Vec<Option<String>>,
+    webhooks: Vec<Option<(String, Option<String>)>>,
+}
 
 impl fmt::Debug for Credentials {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Credentials")
-            .field("held", &self.0.iter().filter(|held| held.is_some()).count())
+            .field(
+                "held",
+                &self.held.iter().filter(|held| held.is_some()).count(),
+            )
+            .field(
+                "webhooks",
+                &self.webhooks.iter().filter(|held| held.is_some()).count(),
+            )
             .finish()
     }
 }
 
 impl Credentials {
-    /// The credentials `values` hold for `plan`'s connections.
+    /// The credentials `values` hold for `plan`'s connections, and the
+    /// secrets for its webhooks.
     pub fn read(plan: &ProviderPlan, values: &crate::config::ConfigValues) -> Credentials {
-        Credentials(
-            plan.connections
+        Credentials {
+            held: plan
+                .connections
                 .iter()
                 .map(|connection| {
                     let (_, at) = connection.credential?;
                     values.text_at(at).map(str::to_string)
                 })
                 .collect(),
-        )
+            webhooks: plan
+                .webhooks
+                .iter()
+                .map(|webhook| {
+                    let current = values.text_at(webhook.secret)?.to_string();
+                    let previous = values.previous_at(webhook.secret).map(str::to_string);
+                    Some((current, previous))
+                })
+                .collect(),
+        }
     }
 
     /// The credential of the connection at `at` in the plan.
     pub fn get(&self, at: u32) -> Option<&str> {
-        self.0.get(at as usize)?.as_deref()
+        self.held.get(at as usize)?.as_deref()
+    }
+
+    /// The secrets the webhook at `at` in the plan is checked with: its
+    /// current one, then the one it replaced while that is still given.
+    pub fn webhook(&self, at: usize) -> Vec<&str> {
+        match self.webhooks.get(at) {
+            Some(Some((current, previous))) => std::iter::once(current.as_str())
+                .chain(previous.as_deref())
+                .collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// Credentials given as they are, by the connection's place: for a
     /// test.
     pub fn given(held: Vec<Option<String>>) -> Credentials {
-        Credentials(held)
+        Credentials {
+            held,
+            webhooks: Vec::new(),
+        }
+    }
+
+    /// Webhook secrets given as they are, by the webhook's place: for a
+    /// test.
+    pub fn with_webhooks(mut self, secrets: Vec<Option<String>>) -> Credentials {
+        self.webhooks = secrets
+            .into_iter()
+            .map(|secret| secret.map(|secret| (secret, None)))
+            .collect();
+        self
     }
 }
 

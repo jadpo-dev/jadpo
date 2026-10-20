@@ -567,6 +567,34 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 continue;
             }
         }
+        // The runtime answers each connection's webhook itself, whatever
+        // the method (area 11, "Receiving from outside"; chunk 7.7).
+        let webhook = crate::webhooks::webhooks(db, project)
+            .routes
+            .iter()
+            .find(|webhook| {
+                let segments: Vec<Segment> = webhook
+                    .segments
+                    .iter()
+                    .map(|text| Segment::Fixed(text.clone()))
+                    .collect();
+                overlaps(&route.segments, &segments)
+            });
+        if let Some(webhook) = webhook {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is where `{}` receives its webhooks", route.label(), webhook.connection),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!(
+                    "A connection given a webhook secret has `POST {}`, which the runtime answers itself, so this route would never run.",
+                    webhook.path()
+                ))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
         // The runtime answers the routes magic links generate (area 8,
         // "Magic links").
         if let Some(magic) = crate::identity::identity(db, project).magic_links() {
