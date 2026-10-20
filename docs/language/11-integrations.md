@@ -3272,6 +3272,12 @@ its next key generation; `jadpo runs unfinished --build` (area 14).
 Choices in area 12's decisions table, "Operators, chosen in chunk
 7.5c".
 
+Built in chunk 7.5f, as area 12's "Several changing calls in one
+action" says: each step's state under its request's or delivery's line
+in `jadpo dev`, and the metric and the alert with no setup on unfinished
+records, their number and when the oldest started. Choices in area 12's
+decisions table, "Development and the metric, chosen in chunk 7.5f".
+
 Built in chunk 7.5d, the tests and tools' fakes and crash points, as
 area 13's "Provider calls and capabilities in tests" says: a fake keeps
 each key's first answer, answers a different request under it with the

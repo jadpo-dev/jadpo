@@ -335,6 +335,10 @@ pub struct Ticked {
     /// How many polls it called, and how many of those saw a change, when
     /// it called any (chunk 7.6c).
     pub polled: Option<(u64, u64)>,
+    /// The metric on the unfinished records of actions with several
+    /// changing calls, for each store that keeps them: how many, and when
+    /// the oldest started (chunk 7.5f).
+    pub unfinished: Vec<(String, crate::unfinished::Metric)>,
 }
 
 /// How many rows a tick deleted.
@@ -532,6 +536,19 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
     for store in &plan.steps {
         if budget.spent() {
             return ticked;
+        }
+        // The metric on its unfinished records, and their alert once one
+        // has been unfinished a day, raised once (chunk 7.5f).
+        let raised = match host.database(store) {
+            Some(database) => crate::unfinished::raise(database, store, now).await,
+            None => Err(StoreError::Fault(format!("no store called `{store}`"))),
+        };
+        match raised {
+            Ok((metric, alert)) => {
+                ticked.unfinished.push((store.clone(), metric));
+                ticked.raised.extend(alert);
+            }
+            Err(error) => ticked.problems.push((store.clone(), error)),
         }
         match delete(host, store, crate::unfinished::OLD_ANSWERS, kept).await {
             Ok(count) => ticked.deleted.answers += count,

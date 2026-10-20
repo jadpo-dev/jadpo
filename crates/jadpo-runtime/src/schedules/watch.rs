@@ -267,6 +267,14 @@ pub enum AlertKind {
         since: i64,
         held: u64,
     },
+    /// `count` runs of actions with several changing calls are unfinished
+    /// in `store`, the oldest since `oldest`, a day or more ago (area 11,
+    /// "Personal data"; chunk 7.5f).
+    UnfinishedSteps {
+        store: String,
+        count: u64,
+        oldest: i64,
+    },
 }
 
 impl Alert {
@@ -279,6 +287,7 @@ impl Alert {
             AlertKind::FailedInARow { .. } => "failed_in_a_row",
             AlertKind::NoSuccess { .. } => "no_success",
             AlertKind::ConnectionUnavailable { .. } => "connection_unavailable",
+            AlertKind::UnfinishedSteps { .. } => "unfinished_steps",
         }
     }
 
@@ -287,6 +296,7 @@ impl Alert {
     pub fn identity(&self) -> String {
         let of = match &self.kind {
             AlertKind::ConnectionUnavailable { connection, .. } => connection.as_str(),
+            AlertKind::UnfinishedSteps { store, .. } => store.as_str(),
             _ => self.schedule.as_deref().unwrap_or(""),
         };
         format!("{} {of}", self.id())
@@ -309,6 +319,19 @@ impl Alert {
             object.insert("connection".into(), connection.as_str().into());
             object.insert("since".into(), at(*since));
             object.insert("held".into(), (*held).into());
+            return serde_json::Value::Object(object);
+        }
+        if let AlertKind::UnfinishedSteps {
+            store,
+            count,
+            oldest,
+        } = &self.kind
+        {
+            object.insert("event".into(), "step.alert".into());
+            object.insert("alert".into(), self.id().into());
+            object.insert("store".into(), store.as_str().into());
+            object.insert("unfinished".into(), (*count).into());
+            object.insert("oldest".into(), at(*oldest));
             return serde_json::Value::Object(object);
         }
         object.insert("event".into(), "schedule.alert".into());
@@ -350,7 +373,7 @@ impl Alert {
                 object.insert("succeededBefore".into(), (*ever).into());
                 object.insert("everyMs".into(), (*every_ms).into());
             }
-            AlertKind::ConnectionUnavailable { .. } => {}
+            AlertKind::ConnectionUnavailable { .. } | AlertKind::UnfinishedSteps { .. } => {}
         }
         serde_json::Value::Object(object)
     }

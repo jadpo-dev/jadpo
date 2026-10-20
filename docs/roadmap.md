@@ -1465,13 +1465,29 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the one check chunk 5.5v6's streaming routes rely on. Example 26's
   route waits 20 seconds. Choices in area 12's "The late-failure warning
   and the deadline sum, chosen in chunk 7.5e".
-- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+- [x] **7.5f Multi-step calls: development and the metric** `opus ·
   high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
   `jadpo dev`'s request lines and timeline; the metric and the no-setup
   alert on unfinished records (their number and the oldest's age). Each
   step's state in `jadpo watch` comes with `jadpo watch` (after the first
   build, item 6), and the records' entry in the personal-data report with
-  the report itself (area 15, after the first build, item 1).
+  the report itself (area 15, after the first build, item 1). Built: the
+  runtime's `steps` module notes what became of each step a run reached
+  (`StepState`: replayed, answered, failed by its code, in doubt,
+  diverged, outcome unknown) and keeps it on the invocation as the record
+  closes (`RunSteps`), a response carrying its own and each call logged
+  with its step (`Logged::step`); a delivery's attempt with steps is
+  handed to the development call log (`CallLog::delivered`); `jadpo dev`
+  shows each step under its request's line in place of its call, and a
+  delivery with steps as a line of its own with `jadpo deliveries show`
+  when it needs an operator, both in `--json`. The `unfinished` module's
+  `Metric` (records not abandoned, the oldest's start) is carried by the
+  tick for each store, which raises `unfinished_steps` once a record has
+  been unfinished a day, once until none is (`jadpo_step_records.
+  alerted_at`); `jadpo deliveries` shows it and its `--json` the metric.
+  Until area 17's timelines, a request's line and its trace are its
+  timeline. Live tests in `step_development.rs`. Choices in area 12's
+  "Development and the metric, chosen in chunk 7.5f".
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
