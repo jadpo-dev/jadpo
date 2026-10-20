@@ -1,0 +1,51 @@
+// The office looks for a loss: its description is embedded as an item's
+// is, the shelves are searched by meaning, and the model drafts the reply
+// from what was found. It is asked as the type its answer is decoded
+// into, `PassengerReply`, and each of its five failures is mapped. A
+// model's answer is only as trustworthy as a request body, so it is kept
+// as a draft, for someone in the office to check and send.
+//
+// Every outside call comes before the action's one write: no transaction
+// is held while a model is asked.
+
+use lost_property/entities { LossReport, LossReportNotFound }
+use lost_property/types { ItemMeaning, PassengerReply, PossibleMatch }
+use lost_property/failures { ReplyUnavailable }
+use lost_property/queries { found_like }
+use lost_property/prompts { ReplyToPassenger }
+
+/// Drafts the reply to a passenger's loss from what is on the shelves.
+action draft_reply(
+    report_id: LossReport.id
+) fails LossReportNotFound, ReplyUnavailable -> LossReport {
+    var loss_report: LossReport = attempt LossReport.get(report_id)
+    var lost_meaning: ItemMeaning = attempt ai.embed(loss_report.what_was_lost, as: ItemMeaning) {
+        timed_out: ReplyUnavailable
+        over_budget: ReplyUnavailable
+        too_long: ReplyUnavailable
+    }
+    var possible_matches: List<PossibleMatch> = found_like(lost_meaning, loss_report.lost_on)
+    var model_reply: PassengerReply = attempt ai.generate(
+        ReplyToPassenger {
+            passenger_name: loss_report.passenger_name
+            what_was_lost: loss_report.what_was_lost
+            lost_on: loss_report.lost_on
+            possible_matches: possible_matches
+            reader_locale: loss_report.reader_locale
+        },
+        as: PassengerReply,
+        max_output: 400
+    ) {
+        refused: ReplyUnavailable
+        malformed: ReplyUnavailable
+        timed_out: ReplyUnavailable
+        over_budget: ReplyUnavailable
+        too_long: ReplyUnavailable
+    }
+    return LossReport.update(loss_report) {
+        set: {
+            likely_found: model_reply.likely_found
+            drafted_reply: model_reply.reply
+        }
+    }
+}

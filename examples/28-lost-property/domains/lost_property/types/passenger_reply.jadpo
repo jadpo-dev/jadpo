@@ -1,0 +1,13 @@
+// What the model is asked for. Its JSON Schema, with each field's `///`
+// description, is sent in the provider's structured-output mode, and its
+// answer is decoded as any request body is, every rule included.
+
+use lost_property/types { DraftedReply }
+
+/// The office's reply to a passenger who reported a loss.
+type PassengerReply = Output {
+    /// True when one of the items given is very likely what they lost.
+    likely_found: Bool
+    /// The reply to email the passenger, at most a few short paragraphs.
+    reply: DraftedReply
+}

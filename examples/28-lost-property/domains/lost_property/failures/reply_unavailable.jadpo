@@ -1,0 +1,5 @@
+/// The model can't write a reply now; someone in the office will.
+type ReplyUnavailable = Failure {
+    kind: FailureKind.unavailable
+    message: "We can't check the shelves just now. The office will email you."
+}

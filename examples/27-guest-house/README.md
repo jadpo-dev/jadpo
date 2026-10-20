@@ -7,7 +7,9 @@ beside it and checked against its fields, its subject worded like any
 message, a layout that wraps every email, and sending as emitting, so
 only a booking that was made is ever confirmed. Guests sign in with a
 link, or a code, emailed to them: no passwords. It teaches magic-link
-sign-in too, with routes and a sign-in email of the guest house's own.
+sign-in too, with routes and a sign-in email of the guest house's own,
+and passkeys, with a way back in by email for a guest who loses them
+all.
 
 An email's words are templates: HTML and plain text with Jadpo inside
 `{{ }}`. They read the email's fields, translate and format, and
@@ -30,6 +32,8 @@ reviewer reads its words in one place.
 12. **Jadpo's own words in Welsh.** Jadpo words its failures and its sign-in email in English only, so `translations/cy_gb.jadpo` words every message of the features the app has on, under `jadpo: { }`. See `translations/cy_gb.jadpo` and [area 16, Built-in emails](../../docs/language/16-built-in-services.md#built-in-emails).
 13. **Sign-in events.** Every sign-in publishes `SignedIn`, and every refusal `SignInRefused`, which a subscriber hears as the system; here it notes when a guest last signed in. See `domains/lodging/subscribers/note_sign_ins.jadpo` and `domains/lodging/actions/note_sign_in.jadpo`.
 14. **Signing in in a route test.** The test asks for a link, reads the email from `email.sent`, and posts the token from the end of its link, as the guest's browser would. See `domains/lodging/routes/sign_in.test.jadpo`, and `domains/lodging/routes/my_stays.test.jadpo` for a guest's own bookings.
+15. **Passkeys.** `passkey: {}` beside `magic_link:` lets a guest add passkeys and sign in with their phone's fingerprint or face, through seven routes Jadpo writes under `/auth/passkey`; only a public key is kept, in Jadpo's own table, which the migration `add_passkeys` creates. Its refusals are worded in Welsh too. See `authentication.jadpo`, `translations/cy_gb.jadpo` and [area 8, Passkeys](../../docs/language/08-identity.md#passkeys).
+16. **Recovery is a magic link.** A guest who loses every device holding a passkey signs in by email and adds a new one, so `passkey:` needs `magic_link:` in the same `sign_in:`. A route test drives the passkey routes with `test_passkeys`, a software authenticator: Megan signs in with her phone, loses it, signs in with the emailed link and adds a passkey on her new one. See `domains/lodging/routes/sign_in.test.jadpo` and [area 8, In development and tests](../../docs/language/08-identity.md#in-development-and-tests).
 
 ## Run it
 
@@ -44,7 +48,7 @@ target/release/jadpo fmt --check examples/27-guest-house
 ```
 
 - `check` ends with `checked: 50 files` and no errors.
-- `test` needs PostgreSQL, and ends with `tested: 6 passed, 2 action tests, 4 route tests`.
+- `test` needs PostgreSQL, and ends with `tested: 7 passed, 2 action tests, 5 route tests`.
 
 ## Try next
 
@@ -58,4 +62,4 @@ target/release/jadpo fmt --check examples/27-guest-house
   <!-- try {"file": "domains/lodging/emails/booking_confirmed.html", "replace": "url: stay_page", "with": "link: stay_page", "check": ["email.partial_invalid"]} -->
 - In `translations/cy_gb.jadpo`, leave out `sign_in_code_invalid`. `jadpo check` reports `translation.jadpo_missing`, naming it: a guest reading Welsh would be told their code was wrong in English.
   <!-- try {"file": "translations/cy_gb.jadpo", "replace": "        sign_in_code_invalid: \"Dydy'r cod hwnnw ddim yn iawn. Gwiriwch ef, neu gofynnwch am un newydd.\"\n", "with": "", "check": ["translation.jadpo_missing"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [28-lost-property](../28-lost-property/README.md), where a model drafts replies, finds items by meaning and streams answers.

@@ -1,0 +1,24 @@
+// Handing an item in only writes it down. Its meaning is an outside call
+// that can wait, so it is made after the item is kept, in a subscriber
+// (`subscribers/place_handed_in_items.jadpo`), never in the request.
+
+use lost_property/entities { FoundItem }
+use lost_property/types { HandedIn }
+use lost_property/events { ItemHandedIn }
+
+/// Puts an item handed in on the shelves.
+action hand_in(new_item: HandedIn) -> FoundItem {
+    var item: FoundItem = FoundItem.create {
+        set: {
+            what_was_found: new_item.what_was_found
+            where_found: new_item.where_found
+            handed_in_on: new_item.handed_in_on
+            returned_to_owner: false
+            description_meaning: none
+        }
+    }
+    emit ItemHandedIn {
+        item_id: item.id
+    }
+    return item
+}

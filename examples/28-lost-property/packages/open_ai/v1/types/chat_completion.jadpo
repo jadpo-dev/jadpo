@@ -1,0 +1,7 @@
+/// A chat completion: the model's answer, and the tokens it took.
+public type ChatCompletion = Object {
+    id: Text
+    model: Text
+    choices: List<ChatCompletionChoice>
+    usage: CompletionUsage?
+}

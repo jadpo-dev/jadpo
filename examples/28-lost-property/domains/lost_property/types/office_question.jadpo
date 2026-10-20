@@ -1,0 +1,6 @@
+use lost_property/types { QuestionText }
+
+/// A question for the office, as the website sends it.
+type OfficeQuestion = Input {
+    asked_question: QuestionText
+}

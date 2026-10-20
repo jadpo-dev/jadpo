@@ -1,0 +1,10 @@
+// Asking the office a question reaches no entity, so no entity's grants
+// can say who may: the action is listed here, for anyone on the website.
+
+use lost_property
+
+policy {
+    actions: {
+        lost_property.ask_the_office: [Access.public]
+    }
+}

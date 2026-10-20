@@ -108,7 +108,13 @@ README saying what it teaches, how to run it and what to try next.
     layout and a shared partial, sending by emitting after commit, the
     SMTP connection, tests that read what they sent, magic-link sign-in
     with routes and a sign-in email of the app's own, a link's token and
-    a code, Jadpo's own words in another language, and sign-in events.
+    a code, Jadpo's own words in another language, sign-in events, and
+    passkeys, recovered through a magic link.
+28. [28-lost-property/](28-lost-property/README.md): AI: a model
+    package and its connection, budgets, embeddings one at a time and
+    many at once, a search by meaning, typed answers from a model,
+    personal data sent to it, a stream sent to a route, the fake every
+    test answers through, and recorded answers.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

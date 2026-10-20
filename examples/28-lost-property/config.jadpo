@@ -1,0 +1,23 @@
+config {
+    /// The most the office spends on models in a day, an estimate from
+    /// the package's dated prices, in the currency they are in.
+    ai_daily_spend: Money {
+        default: "USD 5.00"
+    }
+    /// The office's OpenAI key: a secret, given only to the connection.
+    openai_api_key: Text {
+        secret: true
+    }
+    /// Where OpenAI's API is.
+    openai_host: Url {
+        default: "https://api.openai.com/v1"
+    }
+    /// The model that writes replies and answers questions.
+    reply_model: ModelId {
+        default: "openai/gpt-6-luna"
+    }
+    /// The model that places descriptions by their meaning.
+    search_model: ModelId {
+        default: "openai/text-embedding-3-small"
+    }
+}

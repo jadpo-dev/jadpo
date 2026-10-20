@@ -1,0 +1,21 @@
+// An item's meaning is made after it is handed in, by a subscriber, so
+// it is `none` until the embedding model has placed it. Only the office
+// reads and changes items: the system, in its subscribers.
+
+use lost_property/types { ItemDescription, ItemMeaning, ServiceDay, WhereFound }
+
+/// An item on the office's shelves.
+entity FoundItem {
+    id: Uuid
+    what_was_found: ItemDescription
+    where_found: WhereFound
+    handed_in_on: ServiceDay
+    returned_to_owner: Bool
+    description_meaning: ItemMeaning?
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}

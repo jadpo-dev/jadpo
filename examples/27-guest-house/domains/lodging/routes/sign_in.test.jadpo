@@ -4,6 +4,7 @@
 // email itself; the test only follows them.
 
 use lodging/types { CodeGiven, LinkGiven, SignInAsk, SignedInView }
+use lodging/fixtures { guest_at }
 
 test "a guest signs in with the link from their email, in Welsh" {
     var asked: Response = request {
@@ -60,4 +61,42 @@ test "a wrong code is refused, with the same answer every time" {
     }
     assert refused.status == 401
     assert refused.code == "sign_in_code_invalid"
+}
+
+// `test_passkeys` is a software authenticator only a route test holds:
+// `register` adds a passkey for a guest through the routes Jadpo writes,
+// signed in as `as:` signs a test in, and `sign_in` signs in with it
+// through them, as the guest's phone would.
+test "a guest who loses her phone signs in by email and adds a new passkey" {
+    var megan: Principal.user = guest_at("megan@example.cymru")
+    var phone: TestPasskey = test_passkeys.register(megan, "Phone")
+    var by_phone: Response = test_passkeys.sign_in(phone)
+    assert by_phone.status == 204
+    // The phone is lost: Megan signs in with the link emailed to her.
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sign-in"
+        input: SignInAsk {
+            address: "megan@example.cymru"
+            locale: Locale.en_gb
+        }
+    }
+    assert asked.status == 204
+    var emailed_links: List<Text> = list.flatten(list.map(email.sent, item -> item.links))
+    var emailed_link: Text = match list.first(emailed_links) {
+        none -> ""
+        some(found) -> found
+    }
+    var by_link: Response = request {
+        method: HttpMethod.post
+        path: "/sign-in/link"
+        input: LinkGiven {
+            token: SignInToken(text.keep_last(emailed_link, 64))
+        }
+    }
+    assert by_link.status == 200
+    // Signed in again, she adds a passkey on her new phone.
+    var new_phone: TestPasskey = test_passkeys.register(megan, "New phone")
+    var by_new_phone: Response = test_passkeys.sign_in(new_phone)
+    assert by_new_phone.status == 204
 }

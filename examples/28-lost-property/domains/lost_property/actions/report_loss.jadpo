@@ -1,0 +1,24 @@
+use lost_property/entities { LossReport }
+use lost_property/types { LossReceipt, ReportedLoss }
+use lost_property/events { LossReported }
+
+/// Keeps a passenger's loss, for the office to look for.
+action report_loss(loss: ReportedLoss) -> LossReceipt {
+    var loss_report: LossReport = LossReport.create {
+        set: {
+            passenger_name: loss.passenger_name
+            passenger_email: loss.passenger_email
+            what_was_lost: loss.what_was_lost
+            lost_on: loss.lost_on
+            reader_locale: loss.reader_locale
+            likely_found: none
+            drafted_reply: none
+        }
+    }
+    emit LossReported {
+        report_id: loss_report.id
+    }
+    return LossReceipt {
+        reference: loss_report.id
+    }
+}

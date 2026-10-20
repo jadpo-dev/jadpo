@@ -1,0 +1,5 @@
+/// A reply the office's model drafted, for someone in the office to
+/// check and send.
+type DraftedReply = Text {
+    max_length: 1500
+}

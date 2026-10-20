@@ -1,0 +1,4 @@
+/// What an item is, in the words of whoever found it or lost it.
+type ItemDescription = Text {
+    max_length: 500
+}

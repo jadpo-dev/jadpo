@@ -1,0 +1,6 @@
+/// OpenAI: the app's models asked through OpenAI's API, as the `ai`
+/// capability: typed answers, streamed answers and embeddings.
+package OpenAi.v1 {
+    licence: Licence.apache_2_0
+    jadpo: "1.0"
+}

@@ -1,0 +1,5 @@
+/// Where on the line an item was found: a train, a platform, a waiting
+/// room.
+type WhereFound = Text {
+    max_length: 120
+}

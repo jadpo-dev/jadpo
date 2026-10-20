@@ -1,0 +1,8 @@
+use lost_property/entities { FoundItem }
+use lost_property/types { ItemMeaning }
+
+/// An item and the meaning the embedding model gave it.
+type ItemPlacing = Object {
+    item: FoundItem
+    description_meaning: ItemMeaning
+}

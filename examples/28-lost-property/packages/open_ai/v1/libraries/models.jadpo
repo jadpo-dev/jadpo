@@ -1,0 +1,82 @@
+/// The models OpenAI serves through this package, as OpenAI's own pages
+/// gave them on 2026-10-20: each model's page for its context window
+/// (`developers.openai.com/api/docs/models/<model>`), the embeddings
+/// reference for an embedding model's most tokens a text, and the pricing
+/// page for its standard prices. They need refreshing whenever OpenAI
+/// changes them; a model either table leaves out isn't checked or priced.
+library models {
+    /// Each model's context window, in tokens; for an embedding model, the
+    /// most one text may be.
+    constant context_windows: List<ModelContext> = [
+        ModelContext {
+            model: "gpt-6-astra"
+            tokens: 1050000
+        },
+        ModelContext {
+            model: "gpt-6.1-sol"
+            tokens: 1050000
+        },
+        ModelContext {
+            model: "gpt-6-luna"
+            tokens: 1050000
+        },
+        ModelContext {
+            model: "text-embedding-3-small"
+            tokens: 8192
+        },
+        ModelContext {
+            model: "text-embedding-3-large"
+            tokens: 8192
+        }
+    ]
+
+    /// Each model's standard price per million tokens, in US dollars, as
+    /// the pricing page gave it on 2026-10-20. A prompt over 272,000 input
+    /// tokens is billed at twice the input and cached prices and one and a
+    /// half times the output price, which this table doesn't hold. An
+    /// embedding model's answer has no output or cached tokens, so its
+    /// `output:` is 0 and its `cached:` repeats its input price, which
+    /// OpenAI doesn't publish separately.
+    constant prices: List<ModelPrice> = [
+        ModelPrice {
+            model: "gpt-6-astra"
+            currency: Currency.usd
+            input: 10.00
+            cached: 1.00
+            output: 50.00
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "gpt-6.1-sol"
+            currency: Currency.usd
+            input: 2.00
+            cached: 0.10
+            output: 10.00
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "gpt-6-luna"
+            currency: Currency.usd
+            input: 0.10
+            cached: 0.01
+            output: 0.50
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "text-embedding-3-small"
+            currency: Currency.usd
+            input: 0.02
+            cached: 0.02
+            output: 0.00
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "text-embedding-3-large"
+            currency: Currency.usd
+            input: 0.13
+            cached: 0.13
+            output: 0.00
+            from: "2026-10-20"
+        }
+    ]
+}

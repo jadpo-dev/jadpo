@@ -1,0 +1,87 @@
+// `fakes: { ai.<prompt>: [...] }` scripts the model's answers to one
+// prompt, in order: a value of the type it is asked for, checked when
+// the test compiles, or `recorded("<name>")`, an answer a real model gave,
+// kept beside the prompt. `ai.<prompt>.requests` lists what was asked,
+// as prompt values, so a test checks what reached the model: here the
+// passenger's name, and never their address.
+
+use lost_property/entities { FoundItem, LossReport }
+use lost_property/types { HandedIn, LossReceipt, PassengerReply, PossibleMatch, ReportedLoss }
+use lost_property/actions { hand_in }
+use lost_property/prompts { ReplyToPassenger }
+
+test "a lost umbrella is matched with the one handed in" {
+    fakes: {
+        ai.reply_to_passenger: [
+            PassengerReply {
+                likely_found: true
+                reply: "Dear Ana, an umbrella like yours was handed in on Platform 2."
+            }
+        ]
+    }
+    var umbrella: FoundItem = hand_in(
+        HandedIn {
+            what_was_found: "Black umbrella with a curved wooden handle"
+            where_found: "Platform 2"
+            handed_in_on: "2026-11-03"
+        }
+    )
+    var rucksack: FoundItem = hand_in(
+        HandedIn {
+            what_was_found: "Blue rucksack with a broken zip"
+            where_found: "The 08:12 to Aberystwyth"
+            handed_in_on: "2026-11-04"
+        }
+    )
+    var receipt: LossReceipt = report_loss(
+        ReportedLoss {
+            passenger_name: "Ana Morgan"
+            passenger_email: "ana@example.cymru"
+            what_was_lost: "Black umbrella with a curved wooden handle"
+            lost_on: "2026-11-03"
+            reader_locale: Locale.en_gb
+        }
+    )
+    var loss_report: LossReport = attempt LossReport.get(receipt.reference)
+    assert loss_report.likely_found == true
+    assert loss_report.drafted_reply == "Dear Ana, an umbrella like yours was handed in on Platform 2."
+    // Both were found since, and both are placed, but only the umbrella
+    // means much what Ana's loss does, so only it is sent.
+    assert ai.reply_to_passenger.requests == [
+        ReplyToPassenger {
+            passenger_name: "Ana Morgan"
+            what_was_lost: "Black umbrella with a curved wooden handle"
+            lost_on: "2026-11-03"
+            possible_matches: [
+                PossibleMatch {
+                    what_was_found: umbrella.what_was_found
+                    where_found: umbrella.where_found
+                    handed_in_on: umbrella.handed_in_on
+                }
+            ]
+            reader_locale: Locale.en_gb
+        }
+    ]
+    var rucksack_placed: FoundItem = attempt FoundItem.get(rucksack.id)
+    assert rucksack_placed.description_meaning != none
+}
+
+test "a loss with nothing like it on the shelves" {
+    fakes: {
+        ai.reply_to_passenger: [recorded("nothing_found")]
+    }
+    var receipt: LossReceipt = report_loss(
+        ReportedLoss {
+            passenger_name: "Owen Price"
+            passenger_email: "owen@example.cymru"
+            what_was_lost: "Red wool scarf"
+            lost_on: "2026-11-05"
+            reader_locale: Locale.cy_gb
+        }
+    )
+    var loss_report: LossReport = attempt LossReport.get(receipt.reference)
+    assert loss_report.likely_found == false
+    assert loss_report.drafted_reply != none
+    var asked: List<ReplyToPassenger> = ai.reply_to_passenger.requests
+    assert list.all(asked, item -> item.possible_matches == [])
+}

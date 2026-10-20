@@ -1,0 +1,21 @@
+// A test never reaches a model: every `ai` call answers through one
+// fake. Its embedding of a text comes from the text's digest and the
+// test's seed, so the same text always gives the same vector, and two
+// texts give vectors far apart. What the subscriber does after the
+// action commits is done before the test's next line.
+
+use lost_property/entities { FoundItem }
+use lost_property/types { HandedIn }
+
+test "an item handed in is placed by its meaning" {
+    var item: FoundItem = hand_in(
+        HandedIn {
+            what_was_found: "Black umbrella with a curved wooden handle"
+            where_found: "Platform 2"
+            handed_in_on: "2026-11-03"
+        }
+    )
+    assert item.description_meaning == none
+    var placed: FoundItem = attempt FoundItem.get(item.id)
+    assert placed.description_meaning != none
+}

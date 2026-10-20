@@ -1,0 +1,8 @@
+use lost_property/types { ItemDescription, ServiceDay, WhereFound }
+
+/// An item on the shelves that may be the one a passenger lost.
+type PossibleMatch = Object {
+    what_was_found: ItemDescription
+    where_found: WhereFound
+    handed_in_on: ServiceDay
+}

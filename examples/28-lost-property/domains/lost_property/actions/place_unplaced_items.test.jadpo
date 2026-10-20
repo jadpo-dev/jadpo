@@ -1,0 +1,37 @@
+// `fakes: { ai.embed: [...] }` scripts how the `ai.embed` and
+// `ai.embed_all` calls fail, in the order they are made.
+
+use lost_property/entities { FoundItem }
+use lost_property/failures { ItemNotPlaced }
+use lost_property/queries { unplaced_items }
+use lost_property/fixtures { item_on_shelf }
+
+test "items the model couldn't place are placed in one call" {
+    var umbrella: FoundItem = item_on_shelf(
+        "Black umbrella with a curved wooden handle",
+        "Platform 2",
+        "2026-11-03"
+    )
+    var rucksack: FoundItem = item_on_shelf(
+        "Blue rucksack with a broken zip",
+        "The 08:12 to Aberystwyth",
+        "2026-11-04"
+    )
+    var placed: List<FoundItem> = attempt place_unplaced_items()
+    assert list.map(placed, item -> item.id) == [umbrella.id, rucksack.id]
+    assert list.all(placed, item -> item.description_meaning != none)
+    assert list.count(unplaced_items()) == 0
+}
+
+test "when the model is slow, they wait for the next pass" {
+    fakes: {
+        ai.embed: [timed_out]
+    }
+    var umbrella: FoundItem = item_on_shelf(
+        "Black umbrella with a curved wooden handle",
+        "Platform 2",
+        "2026-11-03"
+    )
+    assert place_unplaced_items() fails ItemNotPlaced
+    assert list.map(unplaced_items(), item -> item.id) == [umbrella.id]
+}

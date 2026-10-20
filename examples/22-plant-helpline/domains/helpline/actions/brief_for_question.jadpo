@@ -2,7 +2,7 @@
 // sent with it, so the model answers from the help desk's own advice.
 // `prompts.render` gives the messages a model would be sent: the
 // instructions as the `system` message, then the request as the `user`
-// one. Sending them is the `ai` capability's, which comes later.
+// one. Sending them is the `ai` capability's (see 28-lost-property).
 
 use helpline/types { GardenerQuestion, GuideCard, GuideExcerpt, GuideMeaning }
 use helpline/queries { closest_guides }

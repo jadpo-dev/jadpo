@@ -1,0 +1,7 @@
+use lost_property/entities { LossReport }
+
+/// What a passenger is told when their report is kept: its reference,
+/// to quote if they ring the office.
+type LossReceipt = Output {
+    reference: LossReport.id
+}

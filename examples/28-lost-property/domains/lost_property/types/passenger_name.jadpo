@@ -1,0 +1,4 @@
+/// The name a passenger gives when they report a loss.
+type PassengerName = Text {
+    max_length: 120
+}

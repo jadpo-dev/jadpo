@@ -4,6 +4,49 @@ record api 1
 api main
     authentication browser_session
 
+GET /auth/passkey
+    generated passkey
+    caller user
+    output List<PasskeyView>
+    status 200
+
+POST /auth/passkey/register
+    generated passkey
+    caller user
+    input PasskeyRegistration (body)
+    output PasskeyView
+    status 201
+
+POST /auth/passkey/register/options
+    generated passkey
+    caller user
+    output PasskeyCreationOptions
+    status 200
+
+POST /auth/passkey/sign-in
+    generated passkey
+    authentication none
+    input PasskeyAnswer (body)
+    status 204
+
+POST /auth/passkey/sign-in/options
+    generated passkey
+    authentication none
+    output PasskeyRequestOptions
+    status 200
+
+PATCH /auth/passkey/{passkey_id: Uuid}
+    generated passkey
+    caller user
+    input PasskeyName (body)
+    output PasskeyView
+    status 200
+
+DELETE /auth/passkey/{passkey_id: Uuid}
+    generated passkey
+    caller user
+    status 204
+
 GET /my-stays
     output List<BookingView>
     status 200
@@ -48,6 +91,12 @@ input CodeGiven
 
 input LinkGiven
     token: SignInToken
+
+output PasskeyView
+    id: Uuid
+    last_used_at: Instant?
+    name: Text
+    registered_at: Instant
 
 enum RoomKind
     variant double_room

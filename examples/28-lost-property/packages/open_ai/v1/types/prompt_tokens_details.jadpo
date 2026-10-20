@@ -1,0 +1,4 @@
+/// Of a prompt's tokens, those read from OpenAI's prompt cache.
+public type PromptTokensDetails = Object {
+    cached_tokens: TokenCount?
+}
