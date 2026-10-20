@@ -1079,6 +1079,11 @@ The design is area 11 as revised on 2026-10-16, with its research in
   trace`, timelines; enum variants written through a package's name in
   an expression (`AcmeCouriers.Window.morning`) are refused as
   `type.not_a_value`, so a scripted value can't give an enum field yet.
+- [ ] **7.1e Enum values through a package's name** `opus · high` (found
+  in chunk 7.2d): `AcmeCouriers.Window.morning` refused as
+  `type.not_a_value`, so code and a test's `fakes:` can't write a
+  package enum's value; written through the package (and its version
+  while two are held) as a type's name already is.
 - [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
   recordings and `jadpo package record` (against a local HTTP server in
   tests), every decoder run over every recording in `jadpo test` and the
