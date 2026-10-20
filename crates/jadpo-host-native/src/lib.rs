@@ -20,6 +20,8 @@
 //!   runtime answering with its own handler (chunk 4.1).
 //! - [`files`]: the disk driver, which keeps `jadpo dev`'s stores of files
 //!   under `.jadpo/files/` (chunk 6.4b).
+//! - [`fetch`]: HTTP for the package driver (chunk 7.2c), HTTPS through
+//!   OpenSSL or plain HTTP to this machine.
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
 //!
@@ -45,6 +47,7 @@
     )
 )]
 
+pub mod fetch;
 pub mod files;
 pub mod http;
 pub mod passkeys;

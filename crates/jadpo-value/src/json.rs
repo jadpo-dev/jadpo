@@ -291,7 +291,12 @@ impl Codecs<'_> {
                         Self::problem(problems, &path.with("tag"), "required");
                         return None;
                     };
-                    let Some(variant) = variants.iter().find(|v| v.name == *tag) else {
+                    // A provider package's variant is sent as its
+                    // `wire_name:` (area 11, chunk 7.2c).
+                    let Some(variant) = variants
+                        .iter()
+                        .find(|v| v.wire == *tag || v.name == *tag)
+                    else {
                         Self::problem(problems, &path.with("tag"), "variant");
                         return None;
                     };
@@ -540,12 +545,15 @@ impl Codecs<'_> {
         let before = problems.len();
         let mut given = Vec::new();
         for (slot, codec) in fields.iter().enumerate() {
-            let Some((name, absent)) = shape.field(slot) else {
+            let Some((_, absent)) = shape.field(slot) else {
                 continue;
             };
             // A standard object's part named for a reserved word is sent
-            // without its `_` (chunk 5.5n).
-            let name = jadpo_std::standard::wire_name(shape.ty(), name);
+            // without its `_` (chunk 5.5n), and a provider package's field
+            // by its `wire_name:` (chunk 7.2c).
+            let Some(name) = shape.json_name(slot) else {
+                continue;
+            };
             let at = path.with(name);
             match entries.get(name) {
                 None if absent => {}
@@ -561,11 +569,12 @@ impl Codecs<'_> {
             }
         }
         for name in entries.keys() {
-            if !(0..shape.len()).any(|slot| {
-                shape
-                    .field(slot)
-                    .is_some_and(|(n, _)| jadpo_std::standard::wire_name(shape.ty(), n) == name)
-            }) {
+            // A provider adding members breaks nothing (area 11, chunk
+            // 7.2c): its type's are read and the rest left out.
+            if shape.open() {
+                break;
+            }
+            if !(0..shape.len()).any(|slot| shape.json_name(slot) == Some(name.as_str())) {
                 // A key set's members a `Jwk` doesn't hold are ignored, as
                 // RFC 7517 §4 requires, but a private key's (chunk 5.5r4).
                 if shape.ty() == jadpo_std::standard::security::JWK
@@ -963,7 +972,8 @@ impl Codecs<'_> {
             (Some(Codec::Scalar { int_as_number, .. }), value) => {
                 write_scalar(value, *int_as_number, out)
             }
-            (Some(Codec::Object { fields, .. }), Value::Record(record)) => {
+            (Some(Codec::Object { fields, shape, .. }), Value::Record(record)) => {
+                let shape = self.shapes.get(shape.0 as usize);
                 out.push('{');
                 let mut first = true;
                 let omitted = record.omitted.as_deref().unwrap_or(&[]);
@@ -985,7 +995,10 @@ impl Codecs<'_> {
                         out.push(',');
                     }
                     first = false;
-                    write_string(jadpo_std::standard::wire_name(&record.ty, name), out);
+                    let name = shape
+                        .and_then(|shape| shape.json_name(at))
+                        .unwrap_or_else(|| jadpo_std::standard::wire_name(&record.ty, name));
+                    write_string(name, out);
                     out.push(':');
                     self.write(*codec, field, out);
                 }
@@ -995,12 +1008,18 @@ impl Codecs<'_> {
                 let found = variants.iter().find(|v| v.name == *variant.name);
                 match found.and_then(|v| v.fields.as_ref()) {
                     None => write_string(found.map_or(&*variant.name, |v| &v.wire), out),
-                    Some((_, codecs)) => {
+                    Some((shape, codecs)) => {
+                        let shape = self.shapes.get(shape.0 as usize);
                         out.push_str("{\"tag\":");
-                        write_string(&variant.name, out);
-                        for ((name, field), codec) in variant.fields.iter().zip(codecs) {
+                        write_string(found.map_or(&*variant.name, |v| &v.wire), out);
+                        for (at, ((name, field), codec)) in
+                            variant.fields.iter().zip(codecs).enumerate()
+                        {
                             out.push(',');
-                            write_string(name, out);
+                            write_string(
+                                shape.and_then(|shape| shape.json_name(at)).unwrap_or(name),
+                                out,
+                            );
                             out.push(':');
                             self.write(*codec, field, out);
                         }
@@ -1223,9 +1242,11 @@ mod tests {
             absent,
             none_left_out: false,
             section: None,
+            wire: None,
         };
         let shape = Shape::new(&ShapePlan {
             ty: "Line".to_string(),
+            open: false,
             variant: None,
             fields: vec![
                 field("quantity", 0, None),

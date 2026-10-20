@@ -96,6 +96,9 @@ pub(crate) enum Target {
     /// `store.put(bytes, type)` or `store.read(file)` through the `files`
     /// connection its site names (area 16, chunk 6.4b): an outside call.
     Files(jadpo_std::files::FilesOp),
+    /// `connection.resource.operation(input)` through the connection its
+    /// site names (area 11, chunk 7.2c): an outside call.
+    Provider,
     /// A test's run of a schedule, by the callable number of the action it
     /// runs (area 13; chunk 6.2c).
     Schedule(u32),
@@ -300,6 +303,16 @@ enum Task<'p> {
         problem: Option<Value>,
         count: usize,
     },
+    /// Raises the failure an `attempt`'s arm maps a provider's failure to,
+    /// with its `count` fields on top and the provider's as its cause
+    /// (area 11, chunk 7.2c).
+    RaiseMapped {
+        at: SiteId,
+        inner: SiteId,
+        arm: usize,
+        cause: Box<Failure>,
+        count: usize,
+    },
     /// Raises the failure a write's `conflict:` arm maps the store's
     /// refusal to, with its `count` fields on top.
     RaiseConflict {
@@ -489,6 +502,32 @@ impl<'p> Machine<'p> {
             }) => Some(connection.as_str()),
             _ => None,
         }
+    }
+
+    /// The connection and operation the provider call at `at` makes
+    /// (chunk 7.2c).
+    pub fn provider_call(&self, at: SiteId) -> Option<(&'p str, &'p str)> {
+        match &self.site(at)?.node {
+            Node::Expr(Expr::Call {
+                callee:
+                    Callee::Provider {
+                        connection,
+                        operation,
+                    },
+                ..
+            }) => Some((connection.as_str(), operation.as_str())),
+            _ => None,
+        }
+    }
+
+    /// Whether `key` is a failure of the provider operation `operation` of
+    /// `connection`: its package's, which its call maps.
+    fn provider_failure(&self, connection: &str, operation: &str, key: &str) -> bool {
+        self.program
+            .plan()
+            .providers()
+            .operation(connection, operation)
+            .is_some_and(|(_, op)| op.failures.iter().any(|known| known == key))
     }
 
     /// Whether the call it paused at is caught, its failure handled by an
@@ -1033,6 +1072,7 @@ impl<'p> Machine<'p> {
                     | Target::Session(_)
                     | Target::Batch(..)
                     | Target::Files(..)
+                    | Target::Provider
                     | Target::Schedule(_)
                     | Target::AdvanceClock => {
                         return Ok(Flow::Pause { target, args, at });
@@ -1288,6 +1328,32 @@ impl<'p> Machine<'p> {
                 failure.broken = Some(written);
                 return Err(Stop::Failed(ctx.fail(failure, inner.0)));
             }
+            Task::RaiseMapped {
+                at,
+                inner,
+                arm,
+                cause,
+                count,
+            } => {
+                let values = self.take(count);
+                let failure = match self.decoded(at) {
+                    Some(Decoded::Attempt { arms }) => {
+                        arms.get(arm).and_then(Option::as_ref).and_then(|raise| {
+                            self.program.failure(raise.failure, &raise.slots, values)
+                        })
+                    }
+                    _ => None,
+                };
+                let Some(mut failure) = failure else {
+                    return Err(self.defect(
+                        ctx,
+                        "an arm naming something that isn't a failure",
+                        at,
+                    ));
+                };
+                failure.cause = Some(cause);
+                return Err(Stop::Failed(ctx.fail(failure, inner.0)));
+            }
             Task::RaiseConflict {
                 at,
                 arm,
@@ -1423,6 +1489,45 @@ impl<'p> Machine<'p> {
                             arm: index,
                             written,
                             problem,
+                            count: fields.len(),
+                        });
+                        for (_, site) in fields.iter().rev() {
+                            self.tasks.push(Task::Expr(*site));
+                        }
+                        return Flow::Next;
+                    }
+                    // A provider's failure is mapped by its code (area 11,
+                    // chunk 7.2c), with the provider's kept as the cause;
+                    // one no arm maps is a fault, never passed on.
+                    if let Stop::Failed(failure) = &stop
+                        && let Some((connection, operation)) = self.provider_call(inner)
+                        && self.provider_failure(connection, operation, &failure.key)
+                    {
+                        let code = failure.code.clone();
+                        self.values.truncate(base);
+                        let Some(index) = arms
+                            .iter()
+                            .position(|arm| arm.named.as_deref() == Some(code.as_str()))
+                        else {
+                            stop = self.fault(
+                                ctx,
+                                FaultKind::Provider(format!(
+                                    "`{connection}.{operation}` was refused with `{code}`, which its call maps to nothing"
+                                )),
+                                inner,
+                            );
+                            continue;
+                        };
+                        let Stop::Failed(cause) = std::mem::replace(&mut stop, Stop::Return(Value::Unit))
+                        else {
+                            continue;
+                        };
+                        let fields = &arms[index].fields;
+                        self.tasks.push(Task::RaiseMapped {
+                            at,
+                            inner,
+                            arm: index,
+                            cause,
                             count: fields.len(),
                         });
                         for (_, site) in fields.iter().rev() {
@@ -2000,6 +2105,17 @@ impl<'p> Machine<'p> {
             Callee::Files { op, .. } => {
                 self.tasks.push(Task::Invoke {
                     target: Target::Files(*op),
+                    count: args.len(),
+                    at: id,
+                    then: None,
+                });
+                self.arguments(args, id);
+            }
+            // A provider's operation: an outside call, before the action's
+            // first read or write (area 11, chunk 7.2c).
+            Callee::Provider { .. } => {
+                self.tasks.push(Task::Invoke {
+                    target: Target::Provider,
                     count: args.len(),
                     at: id,
                     then: None,

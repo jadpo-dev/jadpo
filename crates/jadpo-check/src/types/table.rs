@@ -35,6 +35,9 @@ pub struct FieldDef {
     /// An `Input` field's `column:`: the column a file helper reads it
     /// from, when not its name (area 12, "Batches"; chunk 6.4b).
     pub column: Option<String>,
+    /// A provider package's field's spelling on the wire, its `wire_name:`
+    /// (area 11, decided 2026-10-20), when it differs from its name.
+    pub wire_name: Option<String>,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
     /// For a written field that replaces one an `include` or `pick` above
@@ -50,6 +53,9 @@ pub struct VariantDef {
     pub name: String,
     /// A payload variant's fields; `None` for a plain variant.
     pub fields: Option<Vec<FieldDef>>,
+    /// A provider package's variant's spelling on the wire (area 11,
+    /// decided 2026-10-20), when it differs from its name.
+    pub wire_name: Option<String>,
 }
 
 /// What a type name means.
@@ -183,6 +189,8 @@ pub struct RawField {
     pub header: Option<String>,
     /// An `Input` field's `column:`, as written.
     pub column: Option<String>,
+    /// A provider package's field's `wire_name:`, as written.
+    pub wire_name: Option<String>,
     /// The type a copied field it replaced came from.
     pub replaces: Option<String>,
 }
@@ -266,6 +274,13 @@ pub fn derive(
                     column: settings
                         .iter()
                         .find(|(key, _)| (input || base == FieldsBase::Output) && key == "column")
+                        .and_then(|(_, value)| match value {
+                            rules::Const::Str(text) if !text.is_empty() => Some(text.clone()),
+                            _ => None,
+                        }),
+                    wire_name: settings
+                        .iter()
+                        .find(|(key, _)| key == super::shape::WIRE_NAME)
                         .and_then(|(_, value)| match value {
                             rules::Const::Str(text) if !text.is_empty() => Some(text.clone()),
                             _ => None,
@@ -410,6 +425,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
         default: None,
         header: None,
         column: None,
+        wire_name: None,
         replaces: None,
     });
 }
@@ -494,6 +510,7 @@ impl TypeTable {
             default: raw.default.clone(),
             header: raw.header.clone(),
             column: raw.column.clone(),
+            wire_name: raw.wire_name.clone(),
             copied: matches!(raw.source, Source::Copied { .. }),
             replaces: raw.replaces.clone(),
         };
@@ -552,6 +569,7 @@ impl TypeTable {
                         .map(|variant| VariantDef {
                             name: variant.clone(),
                             fields: None,
+                            wire_name: None,
                         })
                         .collect(),
                 },
@@ -575,6 +593,7 @@ impl TypeTable {
                                         .map(|(field, part)| standard_field(field, *part))
                                         .collect(),
                                 ),
+                                wire_name: None,
                             })
                             .collect(),
                     },
@@ -617,6 +636,7 @@ impl TypeTable {
                             fields: variant.fields.as_ref().map(|lines| {
                                 variant_fields(lines).iter().map(placeholder).collect()
                             }),
+                            wire_name: variant.wire_name.clone(),
                         })
                         .collect(),
                 },
@@ -678,6 +698,7 @@ impl TypeTable {
                                 .fields
                                 .as_ref()
                                 .map(|lines| resolve_fields(&variant_fields(lines))),
+                            wire_name: variant.wire_name.clone(),
                         })
                         .collect(),
                 },
@@ -744,6 +765,7 @@ impl TypeTable {
                         .iter()
                         .zip(shapes)
                         .map(|(variant, shape)| VariantDef {
+                            wire_name: variant.wire_name.clone(),
                             name: variant.name.clone(),
                             fields: variant.fields.as_ref().map(|fields| {
                                 let raws = shape
@@ -1365,6 +1387,7 @@ fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
         default: None,
         header: None,
         column: None,
+        wire_name: None,
         copied: false,
         replaces: None,
         generated: false,

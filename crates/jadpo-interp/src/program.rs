@@ -191,6 +191,9 @@ pub struct Program {
     /// The key settings' keys: what a `crypto` call's `key:
     /// config.<name>` gives it (area 19).
     keys: jadpo_runtime::effects::Keys,
+    /// Each provider connection's credential, held apart as the keys are,
+    /// since code never reads one (area 11; chunk 7.2c).
+    credentials: jadpo_runtime::provider::Credentials,
     /// What signing in reads from them: the signing keys and the browser
     /// session's origin (area 8).
     auth: jadpo_runtime::http::signed::AuthSettings,
@@ -260,6 +263,12 @@ impl Program {
             .as_ref()
             .map(|values| jadpo_runtime::effects::Keys::read(prepared.plan.config(), values))
             .unwrap_or_default();
+        let credentials = values
+            .as_ref()
+            .map(|values| {
+                jadpo_runtime::provider::Credentials::read(prepared.plan.providers(), values)
+            })
+            .unwrap_or_default();
         let auth = values
             .as_ref()
             .map(|values| Self::auth(&prepared, values))
@@ -276,6 +285,7 @@ impl Program {
             proof_checks: false,
             settings,
             keys,
+            credentials,
             auth,
             client,
             purge_after,
@@ -304,6 +314,8 @@ impl Program {
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
         self.settings = Self::decoded(&self.prepared, values);
         self.keys = jadpo_runtime::effects::Keys::read(self.prepared.plan.config(), values);
+        self.credentials =
+            jadpo_runtime::provider::Credentials::read(self.prepared.plan.providers(), values);
         self.auth = Self::auth(&self.prepared, values);
         self.client = Self::client(&self.prepared, values);
         self.purge_after = Self::purge_periods(&self.prepared, Some(values));
@@ -505,6 +517,19 @@ impl Program {
             events: self.plan().events(),
             config: self.plan().config(),
             keys: &self.keys,
+        }
+    }
+
+    /// What a provider call runs with (area 11, chunk 7.2c): the plan's
+    /// connections and operations, the JSON codecs their types are written
+    /// and read with, the failures they raise and the credentials.
+    pub(crate) fn providers(&self) -> jadpo_runtime::provider::Providers<'_> {
+        jadpo_runtime::provider::Providers {
+            plan: self.plan().providers(),
+            json: self.stored_json(),
+            failures: self.plan().types().failures(),
+            credentials: &self.credentials,
+            application: &self.plan().providers().application,
         }
     }
 

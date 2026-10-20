@@ -165,6 +165,7 @@ impl Body<'_> {
             Some(
                 Reach::Callable { fails, .. }
                 | Reach::Library { fails, .. }
+                | Reach::Provider { fails, .. }
                 | Reach::Schedule { fails, .. },
             ) => self.fails_fallible(fails),
             // The standard library computes its results; nothing in it
@@ -335,6 +336,12 @@ impl Body<'_> {
         // through the package.
         let failure = self.symbols.canonical(failure);
         self.flow.leaving.entry(failure).or_insert((span, how));
+    }
+
+    /// Records that `failure`, which an `attempt`'s arm maps a provider's
+    /// failure to, can leave the callable here (area 11).
+    pub(super) fn leave_mapped(&mut self, failure: &str, span: Span) {
+        self.leave(failure, span, "mapped here");
     }
 
     /// `reject Failure` or `reject Failure { ... }`.
@@ -755,6 +762,20 @@ impl Body<'_> {
                     } else if let Some(name) = failure {
                         self.leave(&name, span.clone(), "mapped here");
                     }
+                }
+            }
+            // A provider's operation (area 11, "Calling"): its package's
+            // failures are mapped at the call by their codes, and one left
+            // unmapped is a fault, never passed on.
+            Fallible::Fails(names)
+                if matches!(&inner, Expr::CallExpr(call) if matches!(
+                    self.facts.reaches.get(&node_key(call.syntax())),
+                    Some(Reach::Provider { .. })
+                )) =>
+            {
+                let mapped = self.provider_arms(&arms, names, &inner, &written, span);
+                if !mapped.is_empty() {
+                    self.facts.mapped.insert(node_key(attempt.syntax()), mapped);
                 }
             }
             Fallible::Fails(names) => {
@@ -1421,7 +1442,7 @@ impl Body<'_> {
 
     /// `invalid:` on something that isn't a construction: it covers only a
     /// construction's rules, never another operation's conditions.
-    fn invalid_outside_construction(&mut self, arm: &Arm, inner: &Expr, written: &str) {
+    pub(super) fn invalid_outside_construction(&mut self, arm: &Arm, inner: &Expr, written: &str) {
         let entity = matches!(inner, Expr::CallExpr(call) if matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
             Some(Reach::Entity { .. })

@@ -161,6 +161,32 @@ pub struct Ctx<'p> {
     background: Background,
     /// What it reaches outside itself, through its host.
     capabilities: Capabilities<'p>,
+    /// The scope and key a provider call's idempotency key is derived
+    /// from (area 12, "Keys"; chunk 7.2c): the caller's scope and the
+    /// client's `Idempotency-Key` or the request's id in a route, the
+    /// delivery's id in a subscriber; one made from the invocation's
+    /// randomness otherwise.
+    call_key: Option<CallKey>,
+}
+
+/// What a provider call's idempotency key is derived from besides the
+/// application, the connection and the step (area 12, "Keys").
+#[derive(Clone, PartialEq, Eq)]
+pub struct CallKey {
+    /// Whose it is: a route's caller's idempotency scope, `delivery`.
+    pub scope: String,
+    /// The action's key: the client's `Idempotency-Key`, the request's id,
+    /// the delivery's id.
+    pub key: String,
+}
+
+impl fmt::Debug for CallKey {
+    /// Never the key, which a client sent.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CallKey")
+            .field("scope", &self.scope)
+            .finish_non_exhaustive()
+    }
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -195,7 +221,38 @@ impl<'p> Ctx<'p> {
             settings: Vec::new(),
             background: Background::default(),
             capabilities: Capabilities::new(host, env.seed),
+            call_key: None,
         }
+    }
+
+    /// Gives the invocation the scope and key its provider calls' keys are
+    /// derived from (area 12, "Keys"; chunk 7.2c).
+    pub fn set_call_key(&mut self, scope: impl Into<String>, key: impl Into<String>) {
+        self.call_key = Some(CallKey {
+            scope: scope.into(),
+            key: key.into(),
+        });
+    }
+
+    /// The scope and key its provider calls' keys are derived from: the
+    /// one it was given, or one made from its randomness the first time
+    /// it is asked, kept for the rest of the invocation so an action run
+    /// again sends the same keys; `None` with no randomness to make one.
+    pub fn call_key(&mut self) -> Option<CallKey> {
+        if self.call_key.is_none() {
+            let id = self.new_id()?;
+            self.call_key = Some(CallKey {
+                scope: "invocation".to_string(),
+                key: jadpo_value::encoding::to_hex(&id),
+            });
+        }
+        self.call_key.clone()
+    }
+
+    /// The running action's next keyed call's step, from 1 (chunk 7.2c);
+    /// `None` outside an action.
+    pub fn next_step(&mut self) -> Option<u32> {
+        self.boundary.as_mut().map(Boundary::next_step)
     }
 
     /// Its background-run state, for the runner and the boundary.

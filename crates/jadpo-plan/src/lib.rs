@@ -35,6 +35,7 @@ mod config;
 mod constant;
 mod identity;
 mod policy;
+mod providers;
 mod purge;
 mod queries;
 mod routes;
@@ -335,6 +336,9 @@ pub struct Plan {
     batch_numbers: Vec<Option<u32>>,
     /// The connections that keep files (area 16, chunk 6.4b).
     file_stores: Vec<jadpo_std::files::FilesConnection>,
+    /// The connections to provider packages and their operations (area
+    /// 11, chunk 7.2c).
+    providers: jadpo_std::provider::ProviderPlan,
 }
 
 /// A structured field the latest migration checks, rewrites or fills as
@@ -484,7 +488,13 @@ impl Plan {
                 }
             }
         }
-        let mut types = Types::new(Arc::clone(&graph), rule_bodies);
+        let mut types = Types::new(Arc::clone(&graph), rule_bodies).with_providers(
+            jadpo_check::connections::package_connections(db, project)
+                .connections
+                .iter()
+                .map(|connection| connection.folder.clone())
+                .collect(),
+        );
         if !backfills.is_empty() {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
             for ((backfill, (entity, field)), reads) in backfills
@@ -802,6 +812,18 @@ impl Plan {
                 });
             }
         }
+        // Each provider operation's input and output (area 11, chunk 7.2c).
+        let providers = providers::plan(
+            db,
+            project,
+            &mut types,
+            &|name| {
+                setting_ids
+                    .get(&config::key(jadpo_check::graph::registry(db, project), name))
+                    .copied()
+            },
+            &mut json_types,
+        );
         let mut json = routes::json_table(db, project, &mut types, &json_types);
         json.events = events;
         let mut routes = routes::table(
@@ -840,7 +862,14 @@ impl Plan {
             batches,
             batch_numbers,
             file_stores: jadpo_check::data::files_connections(db, project).clone(),
+            providers,
         }
+    }
+
+    /// The connections to provider packages and the operations called
+    /// through them (area 11, chunk 7.2c).
+    pub fn providers(&self) -> &jadpo_std::provider::ProviderPlan {
+        &self.providers
     }
 
     /// Every `batches.each` call's run (area 12, chunk 6.4).

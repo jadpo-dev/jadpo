@@ -64,6 +64,14 @@ pub(crate) enum Reach {
     /// `store.put(bytes, type)` or `store.read(file)` through the `files`
     /// connection it names (area 16; chunk 6.4b).
     Files(String, jadpo_std::files::FilesOp),
+    /// `connection.resource.operation(input)` (area 11, "Calling"; chunk
+    /// 7.2c): the connection, the operation (`bookings.create`) and the
+    /// package failures it answers with.
+    Provider {
+        connection: String,
+        operation: String,
+        fails: Vec<String>,
+    },
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
     /// `schedule.run()` in a test (area 13, "Kinds of test"; chunk 6.2c):

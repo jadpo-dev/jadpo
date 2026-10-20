@@ -349,6 +349,7 @@ impl Lower<'_> {
                     | Callee::Session(_)
                     | Callee::Batch(_)
                     | Callee::Files { .. }
+                    | Callee::Provider { .. }
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -616,6 +617,11 @@ impl Lower<'_> {
                 // fields, its only rules (area 2, "Rules across fields").
                 let across = matches!(attempt.expr(), Some(Expr::RecordExpr(record))
                     if self.facts.builds.contains_key(&node_key(record.syntax())));
+                // A provider's operation's arms name its package failures'
+                // codes (area 11, chunk 7.2c), never the language's rules.
+                let provider = matches!(attempt.expr(), Some(Expr::CallExpr(call))
+                    if matches!(self.facts.reaches.get(&node_key(call.syntax())), Some(Reach::Provider { .. })));
+                let across = across || provider;
                 // The arms follow the call, so their sites do too.
                 let mapped = self.facts.mapped.get(&key).cloned().unwrap_or_default();
                 let mut arms = Vec::new();
@@ -856,6 +862,14 @@ impl Lower<'_> {
                 connection: connection.clone(),
                 op: *op,
             },
+            Reach::Provider {
+                connection,
+                operation,
+                ..
+            } => Callee::Provider {
+                connection: connection.clone(),
+                operation: operation.clone(),
+            },
             Reach::AdvanceClock => Callee::AdvanceClock,
             Reach::Schedule {
                 schedule,
@@ -1078,6 +1092,7 @@ impl Lower<'_> {
             | Reach::Session(_)
             | Reach::Batch(_)
             | Reach::Files(..)
+            | Reach::Provider { .. }
             | Reach::AdvanceClock
             | Reach::Translation { .. }
             | Reach::Prompt(_) => {}

@@ -191,6 +191,28 @@ pub enum Unanswered {
 /// as it is answered ([`crate::capability::Logged`]), and its answer kept
 /// while recording. The log never holds its input or its answer.
 pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
+    match send(ctx, call).await? {
+        Given::Value(value) => Ok(value),
+        // Only a provider's operation is answered as it was sent.
+        Given::Wire(_) => Err(Unanswered::Fault(FaultKind::Defect(
+            "an answer as sent where a capability's value was expected".into(),
+        ))),
+    }
+}
+
+/// What a call that was answered gives ([`send`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Given {
+    /// Its value: a capability's, or a fake's in a provider's place.
+    Value(Value),
+    /// A provider's answer as it was sent, for its site to decode (area
+    /// 11, "Decoding"; chunk 7.2c).
+    Wire(std::rc::Rc<str>),
+}
+
+/// [`call`], giving a provider's answer as it was sent where its driver
+/// answers so (chunk 7.2c).
+pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
     let now = ctx.now();
     if ctx.transaction_open() {
         ctx.capabilities_mut().refused(&call, now);
@@ -227,10 +249,11 @@ pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
 }
 
 /// What `answer` gives a call that may be sent again as `repeat` says.
-fn answered(repeat: Repeat, answer: Answer) -> Result<Value, Unanswered> {
+fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
     let raised = |failure: Failure| Err(Unanswered::Failure(Box::new(failure)));
     match answer {
-        Answer::Value(value) => Ok(value),
+        Answer::Value(value) => Ok(Given::Value(value)),
+        Answer::Wire(text) => Ok(Given::Wire(text)),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
         Answer::Unavailable => raised(crate::unavailable()),
         // Sent again under its key, or a call that changes nothing, it

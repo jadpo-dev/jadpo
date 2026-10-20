@@ -236,6 +236,8 @@ rules! {
         "14-tooling.html#command-errors", "Configuration value is invalid";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "14-tooling.html#command-errors", "Required configuration is missing";
+    CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
+        "11-integrations.html#connection-domain-not-listed", "Action calls a connection its domain isn't listed on";
     CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,
         "11-integrations.html#connection-key-invalid", "Connection gives a key its package doesn't take";
     CONNECTION_KEY_MISSING: "connection.key_missing", area 11, Error, Agent,
@@ -528,6 +530,8 @@ rules! {
         "11-integrations.html#package-not-locked", "Installed package has no line in the lock";
     PACKAGE_NOT_PUBLIC: "package.not_public", area 11, Error, Agent,
         "11-integrations.html#package-not-public", "Code uses a package's declaration that isn't public";
+    PACKAGE_OPERATION_INVALID: "package.operation_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-operation-invalid", "Provider operation holds what it can't, or lacks what it needs";
     PACKAGE_PROVIDER_INVALID: "package.provider_invalid", area 11, Error, Agent,
         "11-integrations.html#package-provider-invalid", "Provider file holds what it can't, or lacks `protocol:`";
     PACKAGE_PROVIDER_MISSING: "package.provider_missing", area 11, Error, Agent,
@@ -536,6 +540,8 @@ rules! {
         "11-integrations.html#package-provider-translations", "Provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
+    PACKAGE_WIRE_NAME_INVALID: "package.wire_name_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-wire-name-invalid", "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,

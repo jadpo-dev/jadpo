@@ -32,6 +32,7 @@ mod not_value;
 pub mod packages;
 pub mod policy;
 pub mod prompts;
+pub mod providers;
 pub mod publishing;
 pub mod records;
 mod resolve;
@@ -228,6 +229,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());
         out.extend(packages::package_problems(db, project).iter().cloned());
+        out.extend(
+            providers::operation_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(
             connections::connection_problems(db, project)
                 .iter()

@@ -14,6 +14,9 @@ license.workspace = true
 [features]
 default = []
 postgres = ["dep:tokio-postgres", "dep:bytes"]
+# The package driver (area 11, chunk 7.2c): JSON over HTTP through the
+# `Fetch` the host gives; the runtime makes and reads each request.
+package = []
 
 [dependencies]
 jadpo-runtime.workspace = true
@@ -25,6 +28,10 @@ bytes = { workspace = true, optional = true }
 # from JavaScript.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 tokio-postgres = { workspace = true, optional = true, features = ["js"] }
+
+[dev-dependencies]
+jadpo-std.workspace = true
+jadpo-value.workspace = true
 
 [lints]
 workspace = true

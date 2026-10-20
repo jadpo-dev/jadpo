@@ -27,12 +27,19 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         return Vec::new();
     };
     let lookup = Lookup::for_file(db, project, file);
+    // A provider package's types may say a field's or variant's spelling on
+    // the wire (area 11, decided 2026-10-20).
+    let provider = jadpo_db::location(db, project, file)
+        .ownership
+        .package()
+        .is_some_and(|home| crate::connections::reach(db, project, home).is_some());
     let mut checker = Decls {
         path: file.path(db),
         table: &lookup,
         out: Vec::new(),
         headers: Vec::new(),
         failure: false,
+        provider,
     };
     for decl in source.decls() {
         checker.decl(&decl);
@@ -70,6 +77,9 @@ pub(super) struct Decls<'a> {
     /// Whether the fields being checked are a failure's (area 8: a caller
     /// is never put in one).
     pub failure: bool,
+    /// Whether the file is in a provider package, whose fields and
+    /// variants may give `wire_name:` (area 11).
+    pub provider: bool,
 }
 
 impl Decls<'_> {
@@ -635,6 +645,9 @@ impl Decls<'_> {
 
     fn variants(&mut self, list: Option<ast::MemberList>, host: &str) {
         let mut seen: BTreeMap<String, Span> = BTreeMap::new();
+        // Each variant's spelling on the wire, its name unless it gives
+        // `wire_name:`, with the variant and where.
+        let mut wires: BTreeMap<String, (String, Span)> = BTreeMap::new();
         for item in list.iter().flat_map(|list| list.member_items()) {
             let (name, block) = match item {
                 MemberItem::BareMember(variant) => (variant.name(), None),
@@ -676,7 +689,35 @@ impl Decls<'_> {
                     .next("Rename the variant"),
                 );
             }
-            seen.insert(text.clone(), span);
+            seen.insert(text.clone(), span.clone());
+            // A variant's spelling on the wire (area 11): `after_noon: {
+            // wire_name: "after-noon" }`, never one another variant is
+            // sent as.
+            let wire = block.as_ref().and_then(|block| {
+                tree::members(Some(block.clone()))
+                    .into_iter()
+                    .find(|(_, member)| shape::is_wire_name(member))
+            });
+            let mut sent = text.clone();
+            if let Some((key, member)) = &wire {
+                let value = member.value().as_ref().map_or(Const::Other, Const::from_expr);
+                let value_span = member
+                    .value()
+                    .map_or_else(|| self.span(member.syntax()), |v| self.span(v.syntax()));
+                let key_span = self.span(key.syntax());
+                self.wire_name(&value, key_span, value_span.clone(), &text, "variant");
+                if let Const::Str(spelling) = value {
+                    sent = spelling;
+                }
+                if let Some((other, first)) = wires.get(&sent) {
+                    self.out.push(wire_clash(host, &text, other, &sent, value_span, first.clone()));
+                    continue;
+                }
+            } else if let Some((other, first)) = wires.get(&sent) {
+                self.out.push(wire_clash(host, &text, other, &sent, span.clone(), first.clone()));
+                continue;
+            }
+            wires.insert(sent, (text.clone(), span));
             if let Some(block) = block {
                 let lines = shape::lines(Some(block.clone()), FieldsBase::Object);
                 self.lines(
@@ -705,6 +746,7 @@ impl Decls<'_> {
         };
         let area_two = base.is_area_two();
         self.headers.clear();
+        self.wire_clashes(&items, lines, host);
         for (index, line) in lines.iter().enumerate() {
             let Some(member) = member(index) else {
                 continue;
@@ -1073,6 +1115,16 @@ impl Decls<'_> {
             if field.is_some_and(|field| field.later)
                 && LATER_FIELD_SETTINGS.contains(&key.as_str())
             {
+                continue;
+            }
+            if let Some(field) = field
+                && key == shape::WIRE_NAME
+            {
+                let name = match &field.ty {
+                    Ty::Field(_, path) => path.last().cloned().unwrap_or_default(),
+                    _ => String::new(),
+                };
+                self.wire_name(&value, key_span, value_span, &name, "field");
                 continue;
             }
             if let Some(field) = field
@@ -1608,6 +1660,112 @@ impl Decls<'_> {
             .reason("No value could follow both rules, so the type could never be built.")
             .next(format!("Correct `{low}` or `{high}`")),
         );
+    }
+
+    /// A field's or variant's `wire_name:` (area 11, decided 2026-10-20):
+    /// only in a provider package, its spelling as text, and only where
+    /// it differs from the name.
+    fn wire_name(
+        &mut self,
+        value: &Const,
+        key_span: Span,
+        value_span: Span,
+        name: &str,
+        what: &str,
+    ) {
+        if !self.provider {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_NAME_INVALID,
+                    format!("`wire_name` is for a provider package's {what}s"),
+                )
+                .at(key_span, "outside a provider package")
+                .reason(format!(
+                    "`wire_name:` gives a {what}'s spelling on a provider's wire, where it differs from its Jadpo name, so only a provider package's types say it; the app's own types are sent as its contract writes them."
+                ))
+                .next("Remove `wire_name:`"),
+            );
+            return;
+        }
+        match value {
+            Const::Str(spelling) if spelling.is_empty() => self.out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_NAME_INVALID,
+                    format!("`{name}`'s `wire_name` is empty"),
+                )
+                .at(value_span, "no spelling")
+                .reason(format!(
+                    "`wire_name:` is the {what}'s spelling on the provider's wire, as its documentation writes it."
+                ))
+                .next("Write the provider's spelling, or remove `wire_name:`"),
+            ),
+            Const::Str(spelling) if spelling == name => self.out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_NAME_INVALID,
+                    format!("`{name}`'s `wire_name` is its own name"),
+                )
+                .at(value_span, "the same spelling")
+                .reason(format!(
+                    "A {what} is sent by its name; `wire_name:` is written only where the provider spells it differently."
+                ))
+                .next("Remove `wire_name:`"),
+            ),
+            Const::Str(_) => {}
+            other => self.out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_NAME_INVALID,
+                    "`wire_name` takes the provider's spelling as text",
+                )
+                .at(value_span, format!("{} here", other.describe()))
+                .reason(format!(
+                    "`wire_name:` is the {what}'s spelling on the provider's wire, in quotes: `wire_name: \"collectAt\"`."
+                ))
+                .next("Write the provider's spelling in quotes"),
+            ),
+        }
+    }
+
+    /// Two written fields of one type sent under one spelling: a field's
+    /// `wire_name:` and another's name or `wire_name:` (area 11).
+    fn wire_clashes(&mut self, items: &[MemberItem], lines: &[Line], host: &str) {
+        let mut sent: BTreeMap<String, (String, Span)> = BTreeMap::new();
+        for (index, line) in lines.iter().enumerate() {
+            let Line::Field { name, settings, .. } = line else {
+                continue;
+            };
+            let Some(MemberItem::Member(member)) = items.get(index) else {
+                continue;
+            };
+            let wire = settings.iter().find_map(|(key, value)| match value {
+                Const::Str(text) if key == shape::WIRE_NAME && !text.is_empty() => {
+                    Some(text.clone())
+                }
+                _ => None,
+            });
+            let span = match (&wire, member.value()) {
+                (Some(_), Some(Expr::RecordExpr(record))) => tree::members(record.member_list())
+                    .into_iter()
+                    .find(|(key, _)| tree::name_text(key).as_deref() == Some(shape::WIRE_NAME))
+                    .and_then(|(_, setting)| setting.value())
+                    .map_or_else(|| self.span(member.syntax()), |v| self.span(v.syntax())),
+                _ => member
+                    .member_key()
+                    .map_or_else(|| self.span(member.syntax()), |key| self.span(key.syntax())),
+            };
+            let spelling = wire.unwrap_or_else(|| name.clone());
+            match sent.get(&spelling) {
+                Some((other, first)) => {
+                    let problem = wire_clash(host, name, other, &spelling, span, first.clone())
+                        .reason(format!(
+                            "A provider's object has one member per spelling, so two fields of `{host}` can't both be `{spelling}` on the wire: one would be read into both."
+                        ));
+                    self.out.push(problem);
+                }
+                None => {
+                    sent.insert(spelling, (name.clone(), span));
+                }
+            }
+        }
     }
 
     fn field_setting(
@@ -2214,4 +2372,25 @@ pub(crate) fn standard_match(
         }
     }
     None
+}
+
+/// Two members of `host` sent under one spelling (area 11, "Decoding").
+fn wire_clash(
+    host: &str,
+    name: &str,
+    other: &str,
+    spelling: &str,
+    span: Span,
+    first: Span,
+) -> Diagnostic {
+    Diagnostic::new(
+        &rule::PACKAGE_WIRE_NAME_INVALID,
+        format!("`{host}.{name}` and `{host}.{other}` are both `{spelling}` on the wire"),
+    )
+    .at(span, "sent as `".to_string() + spelling + "` again")
+    .also(first, format!("`{other}` is sent as `{spelling}`"))
+    .reason(format!(
+        "A provider sends each of `{host}`'s spellings for one thing, so two can't share `{spelling}`: one would be read as both."
+    ))
+    .next(format!("Give `{name}` the provider's own spelling, or remove it"))
 }

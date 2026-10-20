@@ -193,6 +193,7 @@ fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
     use jadpo_std::types::{FieldPlan, ShapeId, ShapePlan, ValidatorId};
     let properties = ShapePlan {
         ty: "PinProperties".to_string(),
+        open: false,
         variant: None,
         fields: vec![FieldPlan {
             key: "field PinProperties.label".to_string(),
@@ -202,6 +203,7 @@ fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
             omittable: false,
             none_left_out: false,
             section: None,
+            wire: None,
         }],
     };
     let codecs = vec![

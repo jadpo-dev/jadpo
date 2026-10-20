@@ -62,6 +62,10 @@ pub struct Types {
     shape_ids: HashMap<Key, ShapeId>,
     failures: Vec<FailurePlan>,
     failure_ids: HashMap<Key, FailureId>,
+    /// The folders of the provider packages, each with its `/`: their
+    /// types are read from JSON open to members they don't declare (area
+    /// 11, chunk 7.2c).
+    providers: Vec<String>,
 }
 
 impl Types {
@@ -78,7 +82,29 @@ impl Types {
             shape_ids: HashMap::new(),
             failures: Vec::new(),
             failure_ids: HashMap::new(),
+            providers: Vec::new(),
         }
+    }
+
+    /// The same, with the provider packages' folders (area 11, chunk
+    /// 7.2c).
+    pub(crate) fn with_providers(mut self, folders: Vec<String>) -> Types {
+        self.providers = folders
+            .into_iter()
+            .map(|folder| format!("{}/", folder.trim_end_matches('/')))
+            .collect();
+        self
+    }
+
+    /// Whether `key`'s declaration is a provider package's.
+    fn from_provider(&self, key: &Key) -> bool {
+        self.node(key)
+            .and_then(|node| node.place.as_ref())
+            .is_some_and(|place| {
+                self.providers
+                    .iter()
+                    .any(|folder| place.file.starts_with(folder.as_str()))
+            })
     }
 
     pub fn graph(&self) -> &Graph {
@@ -227,11 +253,13 @@ impl Types {
                 omittable: false,
                 none_left_out: false,
                 section: None,
+                wire: None,
             })
             .collect();
         let id = ShapeId(self.shapes.len() as u32);
         self.shapes.push(ShapePlan {
             ty: name.to_string(),
+            open: false,
             variant: None,
             fields,
         });
@@ -283,11 +311,13 @@ impl Types {
                 omittable: false,
                 none_left_out: false,
                 section: None,
+                wire: None,
             })
             .collect();
         let id = ShapeId(self.shapes.len() as u32);
         self.shapes.push(ShapePlan {
             ty: name.to_string(),
+            open: false,
             variant: None,
             fields,
         });
@@ -315,11 +345,13 @@ impl Types {
                 omittable: false,
                 none_left_out: false,
                 section: None,
+                wire: None,
             })
             .collect();
         let id = ShapeId(self.shapes.len() as u32);
         self.shapes.push(ShapePlan {
             ty: jadpo_std::RANGE.to_string(),
+            open: false,
             variant: None,
             fields,
         });
@@ -843,6 +875,7 @@ impl Types {
                     section,
                     optional,
                     default,
+                    wire_name,
                     ..
                 } => {
                     let absent = match default {
@@ -866,6 +899,7 @@ impl Types {
                         omittable,
                         none_left_out,
                         section: *section,
+                        wire: wire_name.clone(),
                     })
                 }
                 _ => None,
@@ -911,6 +945,7 @@ impl Types {
                 };
                 Some(ShapePlan {
                     ty: ty.to_string(),
+                    open: self.from_provider(key),
                     variant: Some(VariantPlan {
                         name: variant.to_string(),
                         ordinal,
@@ -920,6 +955,7 @@ impl Types {
             }
             Kind::Type | Kind::Entity => Some(ShapePlan {
                 ty: self.name(key).to_string(),
+                open: self.from_provider(key),
                 variant: None,
                 fields: self.fields(key, depth),
             }),
@@ -1000,6 +1036,7 @@ fn standard_variant_fields(key: &Key) -> Vec<FieldPlan> {
             omittable: false,
             none_left_out: false,
             section: None,
+            wire: None,
         })
         .collect()
 }

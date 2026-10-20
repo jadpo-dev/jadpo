@@ -103,6 +103,45 @@ pub enum Line {
 pub struct VariantShape {
     pub name: String,
     pub fields: Option<Vec<Line>>,
+    /// Its spelling on a provider's wire, when its block gives
+    /// `wire_name:` (area 11, decided 2026-10-20).
+    pub wire_name: Option<String>,
+}
+
+/// The setting a provider package's field or enum variant gives its
+/// spelling on the wire with (area 11, "Decoding"; decided 2026-10-20):
+/// `collect_at: Instant { wire_name: "collectAt" }`, `after_noon: {
+/// wire_name: "after-noon" }`.
+pub const WIRE_NAME: &str = "wire_name";
+
+/// Whether `member` of a variant's block is its `wire_name:`, a setting
+/// rather than a field: the key `wire_name` with a value that isn't a
+/// type.
+pub fn is_wire_name(member: &ast::Member) -> bool {
+    single_key(member).as_deref() == Some(WIRE_NAME)
+        && !member.value().as_ref().is_some_and(looks_like_type)
+}
+
+/// A variant's block read as its settings and its fields: the spelling
+/// its `wire_name:` gives, if text, and whether anything else is in it, so
+/// a block holding only `wire_name:` is a variant without data.
+pub fn variant_block(block: Option<&ast::MemberList>) -> (Option<String>, bool) {
+    let Some(block) = block else {
+        return (None, false);
+    };
+    let mut wire = None;
+    let mut fields = false;
+    for item in block.member_items() {
+        match item {
+            MemberItem::Member(member) if is_wire_name(&member) => {
+                if let Some(Const::Str(text)) = member.value().as_ref().map(Const::from_expr) {
+                    wire = Some(text);
+                }
+            }
+            _ => fields = true,
+        }
+    }
+    (wire, fields)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -231,6 +270,7 @@ impl Shape {
                             .fields
                             .as_deref()
                             .map(|lines| scoped_lines(lines, canonical)),
+                        wire_name: variant.wire_name.clone(),
                     })
                     .collect(),
             },
@@ -399,13 +439,19 @@ fn variants(list: Option<ast::MemberList>) -> Vec<VariantShape> {
             MemberItem::BareMember(variant) => Some(VariantShape {
                 name: variant.name().as_ref().and_then(tree::name_text)?,
                 fields: None,
+                wire_name: None,
             }),
-            MemberItem::Member(variant) => Some(VariantShape {
-                name: single_key(&variant)?,
-                fields: variant
-                    .block()
-                    .map(|block| lines(Some(block), FieldsBase::Object)),
-            }),
+            MemberItem::Member(variant) => {
+                let block = variant.block();
+                let (wire_name, fields) = variant_block(block.as_ref());
+                Some(VariantShape {
+                    name: single_key(&variant)?,
+                    fields: block
+                        .filter(|_| fields)
+                        .map(|block| lines(Some(block), FieldsBase::Object)),
+                    wire_name,
+                })
+            }
             _ => None,
         })
         .collect()

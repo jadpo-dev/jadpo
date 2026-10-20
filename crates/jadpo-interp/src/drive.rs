@@ -76,6 +76,10 @@ async fn body(
                         let connection = machine.files_connection(at).unwrap_or_default();
                         files(ctx, connection, op, &args, at.0).await
                     }
+                    Target::Provider => {
+                        let called = machine.provider_call(at).unwrap_or_default();
+                        provider(program, ctx, called, args, at.0).await
+                    }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
                         schedule(program, ctx, action, at.0, caught).await
@@ -179,6 +183,7 @@ fn store<'a, 'p: 'a>(
             | Target::Session(_)
             | Target::Batch(..)
             | Target::Files(..)
+            | Target::Provider
             | Target::Schedule(_)
             | Target::AdvanceClock => None,
         };
@@ -192,6 +197,7 @@ fn store<'a, 'p: 'a>(
                 | Target::Session(_)
                 | Target::Batch(..)
                 | Target::Files(..)
+                | Target::Provider
                 | Target::Schedule(_)
                 | Target::AdvanceClock => "a call run as a read",
             };
@@ -354,6 +360,43 @@ async fn files(
             problem: None,
             name: None,
         }),
+        Done::Failed(failure) => Err(Stop::Failed(failure)),
+        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
+    }
+}
+
+/// `connection.resource.operation(input)` at site `at` (area 11, chunk
+/// 7.2c): the runtime makes the request from the plan, sends it through
+/// the capability seam and decodes the answer; a failure the operation
+/// declares is the call's, for its `attempt` to map.
+async fn provider(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    (connection, operation): (&str, &str),
+    args: Vec<Value>,
+    at: u32,
+) -> Result<Value, Stop> {
+    use jadpo_runtime::provider::{self, Done};
+    let providers = program.providers();
+    // The settings its address is read from: a test's own value, or the
+    // application's.
+    let settings: Vec<(u32, Value)> = providers
+        .plan
+        .operation(connection, operation)
+        .map(|(plan, _)| provider::settings_read(plan))
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|number| {
+            let value = ctx
+                .setting(number)
+                .cloned()
+                .or_else(|| program.setting(number))?;
+            Some((number, value))
+        })
+        .collect();
+    let input = args.into_iter().next();
+    match provider::call(ctx, &providers, (connection, operation), input, &settings).await {
+        Done::Value(value) => Ok(value),
         Done::Failed(failure) => Err(Stop::Failed(failure)),
         Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
     }

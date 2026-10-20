@@ -257,6 +257,7 @@ impl Report {
             FaultKind::NotBuiltYet(_) => "not built yet".to_string(),
             FaultKind::Defect(_) => "here".to_string(),
             FaultKind::Store(_) => "the store refused".to_string(),
+            FaultKind::Provider(_) => "the provider's answer".to_string(),
             FaultKind::CallInTransaction(_) => "not sent".to_string(),
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
@@ -326,6 +327,13 @@ impl Report {
                 ),
                 "Check the database it runs against, then run it again".to_string(),
                 "human",
+            ),
+            FaultKind::Provider(what) => (
+                format!(
+                    "{what}, so the call's site can't give its operation's output or map its failure."
+                ),
+                "Correct the package's types or `failures:` to what the provider sends, and confirm them against a recorded answer".to_string(),
+                "agent",
             ),
             FaultKind::CallInTransaction(call) => (
                 format!(

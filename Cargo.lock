@@ -1474,6 +1474,8 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "jadpo-runtime",
+ "jadpo-std",
+ "jadpo-value",
  "tokio",
  "tokio-postgres",
 ]

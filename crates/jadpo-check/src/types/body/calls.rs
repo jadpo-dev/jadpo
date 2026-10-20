@@ -379,8 +379,26 @@ impl Body<'_> {
             {
                 return self.files_call(op, &head, call, callee, &written);
             }
-            // A connection's operations, `connection.resource.operation`,
-            // come with area 11.
+            // A provider package's operation, `connection.resource.
+            // operation(input)` (area 11, chunk 7.2c).
+            let connections = crate::connections::package_connections(self.db, self.project);
+            if let Some(connection) = connections
+                .connections
+                .iter()
+                .find(|connection| connection.name == head)
+            {
+                return self.provider_call(connection, &rest, call, callee, &written);
+            }
+            // A connection to a package that doesn't read is reported in
+            // `app.jadpo`.
+            let package = crate::config::singletons(self.db, self.project, "application")
+                .iter()
+                .any(|found| crate::connections::names_package(&found.list, &head));
+            if package {
+                self.args_only(call);
+                return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
+            }
+            // A driver's other operations come with their areas.
             let span = self.span(callee);
             self.not_built_yet(span, &written);
             self.args_only(call);

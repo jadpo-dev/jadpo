@@ -45,8 +45,11 @@ pub use facts::{
 };
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
-pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules};
-pub use shape::{COPY_LINES, FieldsBase, Shape, looks_like_type, type_shapes};
+pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules, show as show_number};
+pub use shape::{
+    COPY_LINES, FieldsBase, Shape, WIRE_NAME, is_wire_name, looks_like_type, type_shapes,
+    variant_block,
+};
 pub use signatures::{Callables, Sig, callables};
 pub use stores::{
     Reach as StoreReach, batch_store_problems, batch_stores, file_run_problems, file_run_stores,
