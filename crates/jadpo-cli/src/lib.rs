@@ -28,6 +28,7 @@ mod package_cache;
 mod package_import;
 mod package_recipe;
 mod package_record;
+mod provider_review;
 mod records;
 mod routes;
 mod run;

@@ -23,6 +23,10 @@ rules:
 # External services
 
 An external service is another company's API (Stripe, a courier, another
+Jadpo 
+# External services
+
+An external service is another company's API (Stripe, a courier, another
 Jadpo app) that an action calls. In Jadpo, each one is described once, as a
 **provider package**: Jadpo source that lists the API's operations, types,
 failures and webhook events, and says which calls change something, which
@@ -235,7 +239,7 @@ and `shared/providers/`.
 | `erasure:` | The operation that deletes a person at the provider and the key it takes (`by:`) |
 | `max_concurrent:` | How many of its calls run at once per app instance |
 | `settings:` | Typed values the app gives on the connection (`message_stream:`) |
-| `imported:` | The description it was imported from, and that file's digest |
+| `imported:` | The description it was imported from, `file:`, that file's digest, `digest:`, and `reviewed:`, the package's types an agent has reviewed against the provider's documentation (chunk 7.2e2) |
 
 **Where an API is comes from exactly one place**: `hosts:` (it is on the
 internet), `runs:` (Jadpo runs it), or neither, when the app gives `host:`
@@ -648,7 +652,7 @@ operation and grow.
 > detection, decoded at the edge with a field's `wire_parts:` (under
 > "Decoding"), and the findings, `package.standard_candidate`, with chunk
 > 7.2e ("Chosen in chunk 7.2e"); the scoped review and unconfirmed
-> operations come with chunk 7.2e2.
+> operations with chunk 7.2e2 ("Chosen in chunk 7.2e2").
 
 An imported description says little about what a field *is*: OpenAPI's
 `integer` may be pence, Unix seconds or a count. Area 19 decides that a
@@ -695,6 +699,42 @@ The import's own output lists what it mapped, the findings, the scoped
 review instruction and the operations still unconfirmed, with `--json` for
 agents. Corrections made in review survive the next import, because the
 importer merges rather than overwrites.
+
+> **Built (chunk 7.2e2).** The agent marks a type reviewed by listing it in
+> `provider.jadpo`'s `imported:`, `reviewed: [Charge, Shop]`, each one of
+> the package's own types, once (`package.provider_invalid`). The review's
+> scope is worked out from the calls on every check, so it grows when the
+> app calls something new: the package's types each operation the app
+> calls takes and gives reach, through fields, list items, payload
+> variants and refinements. `jadpo check`, once it passes, lists the types
+> still to review and the calls no recording confirms, counts both in its
+> footer, and gives every call and type in `--json` as `providers`;
+> neither stops it. With nothing left a passing check is one line, as
+> before; with something left it reads:
+>
+> ```text
+> $ jadpo check
+> To review
+>   Go through each type against the provider's documentation, then add it to
+>   `reviewed:` in `imported:` in its package's `provider.jadpo` (agent)
+>     Tidepay.v2024_06_20  Charge, ChargesGetChargesInput, Shop; 0 of 3 reviewed
+>
+> Not yet confirmed
+>   Record each with `jadpo package record`, which checks a sandbox answer
+>   against its types (agent)
+>     payments.charges.get_charges
+>
+> ✓ checked  3 to review · 1 unconfirmed · 9 files
+> ```
+>
+> It writes the same to `build/report/providers.md` and `.json` for `jadpo
+> approval` (after the first build) to show a person what ships unreviewed
+> or unconfirmed. The import ends with the scoped instruction: the types
+> the app's calls reach still to review, or, while it calls none of the
+> package's operations, when the review starts; and the calls not yet
+> confirmed. Importing again keeps `reviewed:`, less any type the
+> description added to, which the summary lists under "To review again".
+> The choices are in "Chosen in chunk 7.2e2" below.
 
 ### Provenance and confirmation
 
@@ -4179,6 +4219,58 @@ error: `provider` has no key `host:`
 check failed: 1 error, 3 files
 ```
 
+`imported:`'s `reviewed:` names the package's own types the agent has
+gone through (area 11, "Mapping imported types to standard types"), so a
+name that isn't one is a mistake:
+
+```jadpo check project=e72e2-reviewed file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72e2-reviewed file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72e2-reviewed file=shared/providers/acme_couriers/v1/types/delivery.jadpo hidden
+/// A parcel delivered.
+public type Delivery = Object {
+    id: Text
+}
+```
+
+```jadpo check project=e72e2-reviewed file=shared/providers/acme_couriers/v1/provider.jadpo expect=package.provider_invalid
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+    imported: {
+        file: "acme-couriers.json"
+        digest: "sha256:4f1c"
+        reviewed: [Delivry]
+    }
+}
+```
+
+```text output
+error: `Delivry` in `reviewed:` isn't one of the package's types
+ --> shared/providers/acme_couriers/v1/provider.jadpo:10:20
+   |
+10 |         reviewed: [Delivry]
+   |                    ^^^^^^^ not a type of the package
+  reason: `imported:` gives the description the package was imported from, `file:` and `digest:`, and `reviewed:`, the package's types the agent has gone through against the provider's documentation, each named once. The package declares no type `Delivry` in its `types/`.
+  next: Use `Delivery` instead of `Delivry` (agent)
+  rule: package.provider_invalid
+  help: docs/language/11-integrations.html#package-provider-invalid
+
+check failed: 1 error, 4 files
+```
+
 ### `package.provider_missing`
 
 A package with `resources/` describes an API, so it says how the API is
@@ -6920,7 +7012,7 @@ side (below); the rest is still to build.
 | Generated fakes, `fakes:` in tests, provider calls faked in `jadpo dev` with `development: { sandbox: }`, `jadpo calls` | 7.2d |
 | Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
 | Mapping imported types to standard types beyond the exact format mappings: shape and name detection, `wire_parts:`, `package.standard_candidate` | 7.2e |
-| The scoped review of an import's types, tracked per type, and unconfirmed operations | 7.2e2 |
+| The scoped review of an import's types, tracked per type, and unconfirmed operations (built) | 7.2e2 |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
@@ -7058,6 +7150,13 @@ side (below); the rest is still to build.
 > decoder (`test.recording_undecodable`, `test.round_trip_failed`); and
 > `jadpo dev`'s fake answers an operation from its recording. The choices
 > are in "Chosen in chunk 7.2d2" below.
+
+> **Built (chunk 7.2e2).** The scoped review and the unconfirmed
+> operations, under "Mapping imported types to standard types":
+> `reviewed:` in `imported:`, the review's scope worked out from the
+> app's calls, both listed by `jadpo check` and the import's summary, and
+> `build/report/providers.md` and `.json` for `jadpo approval`. The
+> choices are in "Chosen in chunk 7.2e2" below.
 
 ### Chosen in chunk 7.1
 
@@ -7974,6 +8073,55 @@ Recordings, each choice the most conservative reading:
   `toolchain.not_built_yet`: writing the type from the answer comes with
   chunk 7.2e.
 
+### Chosen in chunk 7.2e2
+
+The scoped review and the unconfirmed operations (layers 4 and 5), each
+choice the most conservative reading:
+
+- **Where a review is marked: `reviewed:` in `imported:`.** The page says
+  the agent marks a type reviewed but not where. It is a list in
+  `provider.jadpo`'s `imported:`, beside the description it reviews,
+  written by the agent like any source and kept in review's diff; each
+  entry is one of the package's own types, in its `types/`, once
+  (`package.provider_invalid`), and `imported:` now holds only `file:`,
+  `digest:` and `reviewed:`. A package with no `imported:` was written,
+  not imported, and has no types to review. Every imported type starts
+  unreviewed, a Jadpo application's exact import included: the page makes
+  no exception.
+- **What is in scope.** The package's own types each called operation's
+  `input:`, `output:` and `wire_output:` reach, through fields, list,
+  set and map items, `?`, payload variants and the type a refinement is
+  built on; failures, whose codes and messages aren't a decoding, are
+  left out. A call is any provider call in an action outside a
+  `.test.jadpo` file. The scope is worked out from the calls on every
+  check, so it grows, and shrinks, with them.
+- **Only the app's own integrations.** The review and the unconfirmed
+  operations cover the packages in `shared/providers/`, which an import
+  writes and `jadpo package record` records into. An installed package
+  was reviewed and recorded by its publisher, its files held to its
+  digest, and its surface already says which operations are `confirmed`,
+  so listing its calls would name a step the app can't take.
+- **Not a finding.** A type to review and a call to confirm stop nothing:
+  the page lets an unreviewed type ship, for `jadpo approval` to show, and
+  allows unconfirmed operations in every build. `jadpo check` shows both
+  only once it passes, after the errors would be, and counts them, muted,
+  in its footer; while it has errors those come first.
+- **Recorded for `jadpo approval`.** `jadpo check` writes
+  `build/report/providers.md` and `.json` once the connections read
+  cleanly and the app has an integration of its own: per package, each
+  call and whether a recording confirms it, and each type in scope and
+  whether it is reviewed, rows in name order for small diffs.
+- **Importing again.** `reviewed:` is kept, as the agent's correction, but
+  a type the description adds a member to is new to review: it leaves
+  the list, and the summary shows it under "To review again". A type
+  whose description changed where the file kept its own version is still
+  as reviewed.
+- **The import's summary** ends with "To review": the page's one
+  instruction, then the types the app's calls reach still to review, or,
+  while the app calls none of the package's operations, when the review
+  starts; then "Not yet confirmed" with the calls no recording confirms.
+  `--json` gives them as `review` and `again`.
+
 ### Chosen in chunk 7.7
 
 Webhooks as events (the first part of chunk 7.7, split on 2026-10-20:
@@ -8854,6 +9002,7 @@ packages and extension points, as each note says; 26 was decided then.
 | `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
 | A standard type read from its object's members (chunk 7.2e) | A provider package's field gives `wire_parts:`, the member of the object holding it that each part of its standard type is read from and written to, so Stripe's `amount` and `currency` are one `Money` and `lat` and `lng` one `Point`; for the standard types made of named parts and `Point`; fields may share a part's member, and two values that differ there stop the call; the field has no member of its own on the wire and is the contract's everywhere else. Decided by the building session where the page names the decoding but no mechanism could do it; follows `wire_name:`'s shape (decided for Richard) | 2026-10-20 |
 | What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |
+| Where a type is marked reviewed (chunk 7.2e2) | An imported provider package lists the types an agent has gone through in `provider.jadpo`'s `imported:`, `reviewed: [Charge, Shop]`, each one of its own types once; the review covers the types the app's calls reach, worked out on every check, for the app's own integrations only, and stops nothing (decided by the building session) | 2026-10-20 |
 | Webhook replies and handshakes (chunk 7.7b) | `SignatureScheme.slack` joins the built-in schemes, since no named one checks Slack; an SNS connection's `secret:` is its topic's ARN, a message from any other topic refused before its certificate is fetched; SNS's certificate fetched only from AWS's SNS hosts over HTTPS through the host's guard (no redirect, no private address) and kept a day; an SNS message refused once signed 30 days ago, as long as a received id is kept; Microsoft Graph's validation the one request answered unsigned; a reply kept after its action commits, not in its transaction (decided by the building session; details under "Chosen in chunk 7.7b") | 2026-10-20 |
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |

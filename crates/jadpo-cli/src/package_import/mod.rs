@@ -29,7 +29,7 @@ use crate::run::{Call, Reply};
 const PLANNED: [&str; 4] = ["smithy", "postman", "har", "dts"];
 
 /// The width findings are wrapped to, inside the screen's gutter.
-const WIDTH: usize = 76;
+pub(crate) const WIDTH: usize = 76;
 
 fn arguments(message: String, reason: &str) -> Diagnostic {
     Diagnostic::new(&rule::CLI_PACKAGE_ARGUMENTS, message)
@@ -140,39 +140,64 @@ pub(crate) fn import(call: &Call) -> Reply {
             );
         }
     };
+    let mut package = package;
     let folder = package.folder();
+    // The types an agent has reviewed are kept (chunk 7.2e2), less any
+    // the description adds to, which is new to review.
+    let provider_path = root.join(&folder).join(jadpo_db::PROVIDER_FILE);
+    let reviewed = std::fs::read_to_string(&provider_path)
+        .map(|text| merge::reviewed_in(&text))
+        .unwrap_or_default();
+    package.provider.reviewed = reviewed.clone();
+    let mut planned = plan(&root, &folder, package.files());
+    let added_to: Vec<String> = planned
+        .iter()
+        .filter(|file| file.path.starts_with("types/"))
+        .flat_map(|file| file.added.iter())
+        .filter_map(|added| added.split_once('.').map(|(ty, _)| ty.to_string()))
+        .collect();
+    let again: Vec<String> = reviewed
+        .iter()
+        .filter(|name| added_to.contains(name))
+        .cloned()
+        .collect();
+    if !again.is_empty() {
+        package
+            .provider
+            .reviewed
+            .retain(|name| !again.contains(name));
+        let provider = package
+            .files()
+            .remove(jadpo_db::PROVIDER_FILE)
+            .unwrap_or_default();
+        planned.retain(|file| file.path != jadpo_db::PROVIDER_FILE);
+        planned.extend(plan(
+            &root,
+            &folder,
+            [(jadpo_db::PROVIDER_FILE.to_string(), provider)].into(),
+        ));
+        planned.sort_by(|a, b| a.path.cmp(&b.path));
+    }
     let mut written: Vec<(String, &'static str)> = Vec::new();
     let mut added: Vec<String> = Vec::new();
     let mut kept: Vec<String> = Vec::new();
-    for (path, text) in package.files() {
-        let full = root.join(&folder).join(&path);
-        let text = jadpo_fmt::format_file(&text).unwrap_or(text);
-        let (text, change) = match std::fs::read_to_string(&full) {
-            Ok(existing) => match merge::merge(&existing, &text) {
-                Some(merged) if merged.text == existing => (existing, "unchanged"),
-                Some(merged) => {
-                    added.extend(merged.added);
-                    kept.extend(merged.kept);
-                    (merged.text, "merged")
-                }
-                // A file that doesn't read is left as it is.
-                None => (existing, "unreadable"),
-            },
-            Err(_) => (text, "written"),
-        };
-        if matches!(change, "written" | "merged")
-            && let Err(error) = save(&full, &text)
+    for file in planned {
+        let full = root.join(&folder).join(&file.path);
+        added.extend(file.added);
+        kept.extend(file.kept);
+        if matches!(file.change, "written" | "merged")
+            && let Err(error) = save(&full, &file.text)
         {
             return Reply::failed(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
-                    format!("`{folder}/{path}` couldn't be written"),
+                    format!("`{folder}/{}` couldn't be written", file.path),
                 )
                 .reason(format!("Writing it failed: {error}."))
                 .next("Check that the folder can be written, then import again"),
             );
         }
-        written.push((format!("{folder}/{path}"), change));
+        written.push((format!("{folder}/{}", file.path), file.change));
     }
     let unreadable: Vec<&String> = written
         .iter()
@@ -186,15 +211,60 @@ pub(crate) fn import(call: &Call) -> Reply {
             next: "Left as it is, since it doesn't read as Jadpo: fix it, then import again to merge into it".to_string(),
         });
     }
+    // What the app calls of it now, read from the project as it stands.
+    let loaded = jadpo_db::load(&root);
+    let review = jadpo_check::review::review(&loaded.db, loaded.project)
+        .iter()
+        .find(|review| review.folder == folder)
+        .cloned();
     report(
         &package,
         &shown_file,
         &folder,
         &written,
-        &added,
-        &kept,
+        (&added, &kept, &again),
         &findings,
+        review.as_ref(),
     )
+}
+
+/// One file of the package as an import would leave it.
+struct Planned {
+    path: String,
+    text: String,
+    /// `written`, `merged`, `unchanged` or `unreadable`.
+    change: &'static str,
+    added: Vec<String>,
+    kept: Vec<String>,
+}
+
+/// Each of `files`, merged into the file already at its place in
+/// `folder`, if there is one; nothing is written yet.
+fn plan(root: &Path, folder: &str, files: BTreeMap<String, String>) -> Vec<Planned> {
+    let mut out = Vec::new();
+    for (path, text) in files {
+        let full = root.join(folder).join(&path);
+        let text = jadpo_fmt::format_file(&text).unwrap_or(text);
+        let (text, change, added, kept) = match std::fs::read_to_string(&full) {
+            Ok(existing) => match merge::merge(&existing, &text) {
+                Some(merged) if merged.text == existing => {
+                    (existing, "unchanged", Vec::new(), Vec::new())
+                }
+                Some(merged) => (merged.text, "merged", merged.added, merged.kept),
+                // A file that doesn't read is left as it is.
+                None => (existing, "unreadable", Vec::new(), Vec::new()),
+            },
+            Err(_) => (text, "written", Vec::new(), Vec::new()),
+        };
+        out.push(Planned {
+            path,
+            text,
+            change,
+            added,
+            kept,
+        });
+    }
+    out
 }
 
 fn report(
@@ -202,9 +272,9 @@ fn report(
     file: &str,
     folder: &str,
     written: &[(String, &'static str)],
-    added: &[String],
-    kept: &[String],
+    (added, kept, again): (&[String], &[String], &[String]),
     findings: &[model::Finding],
+    review: Option<&jadpo_check::review::ProviderReview>,
 ) -> Reply {
     let first = written.iter().all(|(_, change)| *change == "written");
     let operations: usize = package
@@ -273,7 +343,7 @@ fn report(
         ),
         rows,
     });
-    if !added.is_empty() || !kept.is_empty() {
+    if !added.is_empty() || !kept.is_empty() || !again.is_empty() {
         let mut groups = Vec::new();
         if !added.is_empty() {
             groups.push((
@@ -288,6 +358,16 @@ fn report(
             groups.push((
                 "Kept, not in the description".to_string(),
                 kept.iter()
+                    .map(|what| (ChangeMark::Changed, vec![what.clone()]))
+                    .collect(),
+            ));
+        }
+        // A reviewed type the description added to is new to review.
+        if !again.is_empty() {
+            groups.push((
+                "To review again, as the description added to them".to_string(),
+                again
+                    .iter()
                     .map(|what| (ChangeMark::Changed, vec![what.clone()]))
                     .collect(),
             ));
@@ -353,6 +433,11 @@ fn report(
             lines,
         });
     }
+    // The one scoped review instruction, and the calls unconfirmed
+    // (chunk 7.2e2).
+    for block in crate::provider_review::import_blocks(review) {
+        screen.push(block);
+    }
     let count =
         |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
     let mut facts = vec![
@@ -368,6 +453,9 @@ fn report(
     }
     if !findings.is_empty() {
         facts.push(Fact::plain(format!("{} to check", findings.len())));
+    }
+    if let Some(review) = review {
+        facts.extend(crate::provider_review::facts(std::slice::from_ref(review)));
     }
     screen.push(Block::summary(
         Outcome::Success,
@@ -418,6 +506,14 @@ fn report(
         (
             "kept",
             Json::array(kept.iter().map(|what| Json::from(what.as_str()))),
+        ),
+        (
+            "review",
+            crate::provider_review::json(review.map(std::slice::from_ref).unwrap_or_default()),
+        ),
+        (
+            "again",
+            Json::array(again.iter().map(|name| Json::from(name.as_str()))),
         ),
         (
             "findings",
@@ -520,7 +616,7 @@ fn save(path: &Path, text: &str) -> std::io::Result<()> {
 }
 
 /// `text` in lines of at most `width` characters, long words whole.
-fn wrap(text: &str, width: usize) -> Vec<String> {
+pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
     for word in text.split(' ') {

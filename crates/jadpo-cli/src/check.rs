@@ -101,6 +101,7 @@ pub fn check(call: &Call) -> Reply {
             .then(|| jadpo_check::policy::report::report(db, loaded.project));
         let mut surfaces = derived::surfaces(db, loaded.project);
         surfaces.extend(derived::network(db, loaded.project));
+        surfaces.extend(derived::providers(db, loaded.project));
         match derived::write(
             &loaded.root,
             graph,
@@ -123,13 +124,20 @@ pub fn check(call: &Call) -> Reply {
     }
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
     let root = jadpo_db::shown_root(&cwd, &loaded.root);
+    // The scoped review and the unconfirmed calls (chunk 7.2e2), for a
+    // project only.
+    let reviews: &[jadpo_check::review::ProviderReview] = if layout == Layout::Project {
+        jadpo_check::review::review(db, loaded.project)
+    } else {
+        &[]
+    };
     report(
         diagnostics,
         sources,
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written),
+        (layout, written, reviews),
         elapsed,
     )
 }
@@ -144,13 +152,17 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written): (Layout, Vec<String>),
+    (layout, written, reviews): (Layout, Vec<String>, &[jadpo_check::review::ProviderReview]),
     elapsed: Duration,
 ) -> Reply {
     let errors = diagnostics.len();
     let mut facts = Vec::new();
     if errors > 0 {
         facts.push(Fact::problem(count(errors, "error", "errors")));
+    } else {
+        // What is left to review and confirm is the agent's work, not a
+        // problem: shown only once the check passes.
+        facts.extend(crate::provider_review::facts(reviews));
     }
     let total = paths.len() + unreadable;
     let mut files = count(total, "file", "files");
@@ -171,6 +183,11 @@ fn report(
             root.as_deref(),
         ));
     }
+    if errors == 0 {
+        for block in crate::provider_review::check_blocks(reviews) {
+            screen.push(block);
+        }
+    }
     screen.push(Block::summary(outcome, headline, facts));
     let data = Json::object([
         (
@@ -185,6 +202,7 @@ fn report(
         ("files", Json::array(paths.iter().map(|path| path.as_str()))),
         ("errors", errors.into()),
         ("build", Json::array(written)),
+        ("providers", crate::provider_review::json(reviews)),
     ]);
     Reply::Report {
         screen,
