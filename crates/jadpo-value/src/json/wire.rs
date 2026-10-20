@@ -169,6 +169,61 @@ pub(super) fn write(encoding: WireEncoding, written: &str) -> Result<String, &'s
     }
 }
 
+/// The contract's JSON for standard type `standard` made of `parts`, each
+/// part's name and what the provider sent for it (chunk 7.2e): an object
+/// of the parts, and a `Point` as GeoJSON, `[longitude, latitude]`.
+pub(super) fn parts_read(
+    standard: &str,
+    parts: &[(String, serde_json::Value)],
+) -> serde_json::Value {
+    use serde_json::Value as Json;
+    let part = |name: &str| {
+        parts
+            .iter()
+            .find(|(given, _)| given == name)
+            .map_or(Json::Null, |(_, json)| json.clone())
+    };
+    if standard == jadpo_std::standard::geo::POINT {
+        return serde_json::json!({
+            "type": "Point",
+            "coordinates": [part("longitude"), part("latitude")]
+        });
+    }
+    Json::Object(
+        parts
+            .iter()
+            .map(|(name, json)| (name.clone(), json.clone()))
+            .collect(),
+    )
+}
+
+/// `contract`, the contract's JSON for a value of standard type
+/// `standard`, as each of `parts`' members and what it holds (chunk
+/// 7.2e); `null` for each when the value is `none`.
+pub(super) fn parts_write(
+    standard: &str,
+    contract: &serde_json::Value,
+    parts: &[(String, String)],
+) -> Vec<(String, serde_json::Value)> {
+    use serde_json::Value as Json;
+    let coordinates = contract.get("coordinates").and_then(Json::as_array);
+    parts
+        .iter()
+        .map(|(part, member)| {
+            let json = if standard == jadpo_std::standard::geo::POINT {
+                let at = usize::from(part == "latitude");
+                coordinates
+                    .and_then(|pair| pair.get(at))
+                    .cloned()
+                    .unwrap_or(Json::Null)
+            } else {
+                contract.get(part).cloned().unwrap_or(Json::Null)
+            };
+            (member.clone(), json)
+        })
+        .collect()
+}
+
 /// Whether `text` is a number as JSON writes one: an optional `-`, digits,
 /// and places after a `.`.
 fn is_number(text: &str) -> bool {
@@ -264,6 +319,52 @@ mod tests {
         assert_eq!(
             write(W::MinorUnits, "{\"amount\":1250,\"currency\":\"GBP\"}"),
             Ok("1250".into())
+        );
+    }
+    /// A standard type's parts are put together as the contract's JSON,
+    /// a `Point` as GeoJSON's `[longitude, latitude]`, and taken apart
+    /// again, each part under its member.
+    #[test]
+    fn parts_are_put_together_and_taken_apart() {
+        let money = parts_read(
+            "Money",
+            &[
+                ("amount".into(), serde_json::json!(1050)),
+                ("currency".into(), serde_json::json!("gbp")),
+            ],
+        );
+        assert_eq!(
+            money,
+            serde_json::json!({"amount": 1050, "currency": "gbp"})
+        );
+        let point = parts_read(
+            "Point",
+            &[
+                ("latitude".into(), serde_json::json!(51.5)),
+                ("longitude".into(), serde_json::json!(-0.125)),
+            ],
+        );
+        assert_eq!(
+            point,
+            serde_json::json!({"type": "Point", "coordinates": [-0.125, 51.5]})
+        );
+        let spelled = [
+            ("latitude".to_string(), "lat".to_string()),
+            ("longitude".to_string(), "lng".to_string()),
+        ];
+        assert_eq!(
+            parts_write("Point", &point, &spelled),
+            vec![
+                ("lat".to_string(), serde_json::json!(51.5)),
+                ("lng".to_string(), serde_json::json!(-0.125))
+            ]
+        );
+        assert_eq!(
+            parts_write("Point", &serde_json::Value::Null, &spelled),
+            vec![
+                ("lat".to_string(), serde_json::Value::Null),
+                ("lng".to_string(), serde_json::Value::Null)
+            ]
         );
     }
 }

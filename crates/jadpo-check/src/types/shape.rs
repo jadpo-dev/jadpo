@@ -120,6 +120,10 @@ pub const WIRE_NAME: &str = "wire_name";
 /// `decode: slots.parse_window` and `encode: slots.format_window`.
 pub const WIRE: &str = "wire";
 pub const DECODE: &str = "decode";
+/// A provider package's field read from its standard type's parts among
+/// its object's own members (chunk 7.2e): `wire_parts: { amount: "amount"
+/// currency: "currency" }`.
+pub const WIRE_PARTS: &str = jadpo_std::provider::WIRE_PARTS;
 pub const ENCODE: &str = "encode";
 
 /// Whether `member` of a variant's block is its `wire_name:`, a setting
@@ -418,7 +422,7 @@ fn line(member: &ast::Member, base: FieldsBase) -> Line {
             name: key,
             ty: TypeRef::from_expr(&value),
             settings: match &value {
-                Expr::RecordExpr(record) => settings(record.member_list()),
+                Expr::RecordExpr(record) => field_settings(record.member_list()),
                 _ => Vec::new(),
             },
         },
@@ -476,6 +480,23 @@ pub fn settings(list: Option<ast::MemberList>) -> Vec<Setting> {
                     .value()
                     .map_or(Const::Other, |v| Const::from_expr(&v)),
             ))
+        })
+        .collect()
+}
+
+/// A field's settings: every `name: value` member, and a member with a
+/// block of settings, as a provider package's `wire_parts:` is, its
+/// block's (chunk 7.2e).
+pub fn field_settings(list: Option<ast::MemberList>) -> Vec<Setting> {
+    tree::members(list)
+        .into_iter()
+        .filter_map(|(name, member)| {
+            let value = match (member.value(), member.block()) {
+                (Some(value), _) => Const::from_expr(&value),
+                (None, Some(block)) => Const::Block(settings(Some(block))),
+                (None, None) => Const::Other,
+            };
+            Some((tree::name_text(&name)?, value))
         })
         .collect()
 }

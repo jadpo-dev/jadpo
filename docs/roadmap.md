@@ -1089,13 +1089,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   tests), every decoder run over every recording in `jadpo test` and the
   publishing bar, and `jadpo dev`'s fakes answering from a package's
   recordings, their placeholders filled.
-- [ ] **7.2e Mapping imported types to standard types** `opus · high`,
+- [x] **7.2e Mapping imported types to standard types** `opus · high`,
   after 7.2d and 7.1b (area 11, "Mapping imported types to standard
   types", Richard 2026-10-17): shape and name detection decoded at the
-  edge, declinable findings with `(agent)` steps, one review instruction
-  scoped to the types the app's operations reach and tracked per type in
-  `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
-  it in the import's summary.
+  edge, and declinable findings with `(agent)` steps, in the import's
+  summary. Split in this chunk: the scoped review and unconfirmed
+  operations are 7.2e2. Built: `wire_parts:` on a provider package's
+  field, a standard type read from and written as members of the object
+  holding it (`Money` from Stripe's `amount` and `currency`, a `Point` from
+  `lat` and `lng`, fields sharing a member), checked as
+  `package.wire_invalid` and `package.wire_name_invalid`; the importer
+  writing it for an amount beside its currency and a latitude beside a
+  longitude, and an object that is `Money` or `InstantRange` whole as that
+  type; `package.standard_candidate`, a declinable error on a whole
+  number named like a time, one named like an amount beside a currency
+  and an unmapped latitude and longitude; the summary's `standard` count,
+  "Mapped by shape" list and each guess under "To check", `mapped` in
+  `--json`. Choices in area 11's "Chosen in chunk 7.2e".
+- [ ] **7.2e2 The scoped review and unconfirmed operations** `opus ·
+  high`, after 7.2d2 and 7.2e (area 11, "Mapping imported types to
+  standard types", layers 4 and 5): the import's one review instruction
+  scoped to the types the app's operations reach, each imported type
+  tracked as reviewed or not in `jadpo check` (and recorded for `jadpo
+  approval`, which comes after the first build), growing when the app
+  calls something new; operations the app calls still unconfirmed by a
+  recording, listed in `jadpo check` and the import's summary.
 - [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather

@@ -35,6 +35,9 @@ pub enum Const {
     /// A name or a dotted name: `email`, `TextFormat.email`.
     Path(Vec<String>),
     List(Vec<Const>),
+    /// A setting's block of settings, each its name and value: a provider
+    /// package's field's `wire_parts: { amount: "amount" }` (chunk 7.2e).
+    Block(Vec<(String, Const)>),
     /// A number with more digits than an exact number holds (38).
     TooLong,
     /// Anything else: computed, not a constant.
@@ -57,7 +60,9 @@ impl Const {
             Const::Str(text) => Literal::Text(text.clone()),
             Const::Bool(value) => Literal::Bool(*value),
             Const::None => Literal::None,
-            Const::Path(_) | Const::List(_) | Const::TooLong | Const::Other => return None,
+            Const::Path(_) | Const::List(_) | Const::Block(_) | Const::TooLong | Const::Other => {
+                return None;
+            }
         })
     }
 
@@ -147,6 +152,7 @@ impl Const {
             Const::None => "`none`",
             Const::Path(_) => "a name",
             Const::List(_) => "a list",
+            Const::Block(_) => "a block",
             Const::TooLong => "a number",
             Const::Other => "a computed value",
         }

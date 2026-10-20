@@ -55,6 +55,7 @@ mod passkeys;
 mod policy;
 mod provider_calls;
 mod provider_fakes;
+mod provider_parts;
 mod provider_wire;
 mod purge_schedule;
 mod queries;

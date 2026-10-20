@@ -75,6 +75,8 @@ pub enum WrittenCoding {
         decode: Option<(String, String)>,
         encode: Option<(String, String)>,
     },
+    /// `wire_parts:` (chunk 7.2e): each part and its spelling, as written.
+    Parts(Vec<(String, String)>),
 }
 
 impl WrittenCoding {
@@ -88,6 +90,17 @@ impl WrittenCoding {
             },
             _ => None,
         };
+        if let Some((_, rules::Const::Block(parts))) = given(super::shape::WIRE_PARTS) {
+            return Some(WrittenCoding::Parts(
+                parts
+                    .iter()
+                    .filter_map(|(part, value)| match value {
+                        rules::Const::Str(text) => Some((part.clone(), text.clone())),
+                        _ => None,
+                    })
+                    .collect(),
+            ));
+        }
         if let Some((_, value)) = given(super::shape::WIRE) {
             return match value {
                 rules::Const::Path(names) => match names.as_slice() {
