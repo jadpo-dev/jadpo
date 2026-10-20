@@ -130,14 +130,29 @@ impl Body<'_> {
         let mut completes = arms.is_empty();
         let mut value: Option<Ty> = None;
         let mut deferred: Vec<Expr> = Vec::new();
+        // An arm whose name resolution refuses, such as a package's failure
+        // without its version while two are held, leaves its failure
+        // unknown, so the `match` isn't also told it misses one.
+        let mut misread = false;
         for arm in arms {
             self.scopes.push(Vec::new());
-            if let Some(Pat::CasePat(case)) = arm.pat() {
-                self.resolved_by(|names, out| crate::resolve::pattern(names, &case, out));
-            }
-            let pattern = arm
-                .pat()
-                .map_or(Pattern::Unknown, |pat| self.outcome_pattern(&pat));
+            let refused = match arm.pat() {
+                Some(Pat::CasePat(case)) => {
+                    !self.resolved_by(|names, out| crate::resolve::pattern(names, &case, out))
+                }
+                _ => false,
+            };
+            misread |= refused;
+            let pattern = match arm.pat() {
+                Some(pat) if !refused => self.outcome_pattern(&pat),
+                Some(Pat::CasePat(case)) => {
+                    if let Some(name) = case.pat_binding().and_then(|b| b.name()) {
+                        self.declare(Some(name), Ty::Error, LocalKind::Inline, None, "variable");
+                    }
+                    Pattern::Unknown
+                }
+                _ => Pattern::Unknown,
+            };
             if let Some(pat) = arm.pat() {
                 let fact = match &pattern {
                     Pattern::Success(..) => PatternFact::Success,
@@ -313,7 +328,7 @@ impl Body<'_> {
                 .next("Add `success(value) -> ...` as the first arm"),
             );
         }
-        if checked && !wildcard {
+        if checked && !wildcard && !misread {
             let missing: Vec<String> = known
                 .iter()
                 .filter(|n| !handled.contains_key(*n))
@@ -364,6 +379,13 @@ impl Body<'_> {
                     [only] if only == "success" => Pattern::Success(name, brackets),
                     [only] if starts_upper(only) && self.is_failure(only) => {
                         Pattern::Failure(only.clone(), name, brackets)
+                    }
+                    // A package's failure, written through its name as
+                    // `fails` writes it: `AcmePay.CardDeclined`, or
+                    // `Postcodes.v3.InvalidPostcode` while two are held
+                    // (chunk 7.8d).
+                    _ if self.is_package_failure(&path) => {
+                        Pattern::Failure(path.join("."), name, brackets)
                     }
                     [only]
                         if starts_upper(only)

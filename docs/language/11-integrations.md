@@ -314,8 +314,9 @@ replaces, a `DELETE`). An operation of a connection whose credential is
 an OAuth grant also names the scope it needs, `scope: "calendar.events"`.
 
 Inside the package, names are bare. An app names them through the package:
-`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16), and an
-enum's values the same way, `AcmeCouriers.Window.morning`. A failure's
+`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16), in a
+`match` arm too (`AcmeCouriers.SlotTaken -> ...`), and an enum's values
+the same way, `AcmeCouriers.Window.morning`. A failure's
 code (`slot_taken`, from its name) is the provider's error code, read from
 the place `error_code:` names.
 
@@ -9294,6 +9295,19 @@ Enum values through a package's name, each the most conservative reading:
   its arm's case unknown, so the `match` isn't also reported as not
   covering it. The enum written alone, `Postcodes.Round`, is
   `type.not_a_value` naming the enum, not the package.
+
+### Chosen in chunk 7.8d
+
+- **A package's failure in an outcome `match`.** An app's `match` on a
+  provider call, a package action or a library package's function names
+  the package's failure in its arm as `fails` and `attempt` write it,
+  through the package, `AcmeCouriers.SlotTaken ->`, and through the
+  package and its version while two are held,
+  `Postcodes.v3.InvalidPostcode ->`; an arm it misses is named the same
+  way. The version is missing or needless exactly as for a type, and an
+  arm resolution refuses leaves its failure unknown, so the `match`
+  isn't also told it misses one. Inside its own code a package still
+  names its failures bare (chunk 7.7e).
 
 ### Consistency with the rest of the language
 

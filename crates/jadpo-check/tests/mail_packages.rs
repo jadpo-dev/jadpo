@@ -144,6 +144,38 @@ fn a_mail_package_that_provides_email_is_the_email_connection() {
     assert_eq!(problems_with("mail", MAPPING, INVOICE), NONE);
 }
 
+/// Area 16: a connection only `email:` names needs no `domains:`, since
+/// no domain's action calls it (chunk 7.8d); one `email:` doesn't name
+/// still lists its callers.
+#[test]
+fn a_connection_only_email_names_needs_no_domains() {
+    let bare = |connection: &str| {
+        let mut files = vec![
+            (
+                "app.jadpo".to_string(),
+                app(connection)
+                    .replace("            domains: []\n", "")
+                    .replace("            domains: [billing]\n", ""),
+            ),
+            ("config.jadpo".to_string(), CONFIG.to_string()),
+        ];
+        files.extend(package(MAPPING));
+        let files: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str()))
+            .collect();
+        support::problems(Layout::Project, &files)
+    };
+    assert_eq!(bare("postbox"), NONE);
+    let unnamed = bare("mail");
+    assert!(
+        unnamed
+            .iter()
+            .any(|p| p.contains("connection.key_missing: `postbox` doesn't give `domains:`")),
+        "{unnamed:#?}"
+    );
+}
+
 #[test]
 fn a_package_that_provides_no_email_cant_be_the_email_connection() {
     let mut files = vec![

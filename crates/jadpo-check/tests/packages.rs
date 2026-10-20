@@ -1266,3 +1266,76 @@ action round_for() -> Postcodes.Round {
         ]
     );
 }
+
+// --- a package's failures in an outcome match (chunk 7.8d) ----------------
+
+/// The app matching the package's call on its outcome, its failure's arm
+/// written through the package's name as `fails` writes it.
+const MATCHED: (&str, &str) = (
+    "domains/addresses/actions/maybe_postcode.jadpo",
+    "use packages/postcodes
+
+/// Reads a customer's postcode, or nothing when it isn't one.
+action maybe_postcode(written: Postcodes.WrittenPostcode) -> Postcodes.UkPostcode? {
+    return match Postcodes.uk.parse(written) {
+        success(postcode) -> postcode
+        Postcodes.InvalidPostcode -> none
+    }
+}
+",
+);
+
+#[test]
+fn a_package_s_failure_is_matched_through_its_name() {
+    assert_eq!(installed(&with(&[MATCHED])), Vec::<String>::new());
+}
+
+#[test]
+fn a_package_s_unhandled_failure_is_named_through_the_package() {
+    let unhandled = (
+        MATCHED.0,
+        "use packages/postcodes
+
+/// Reads a customer's postcode.
+action maybe_postcode(written: Postcodes.WrittenPostcode) -> Postcodes.UkPostcode? {
+    return match Postcodes.uk.parse(written) {
+        success(postcode) -> postcode
+    }
+}
+",
+    );
+    assert_eq!(
+        installed(&with(&[unhandled])),
+        vec![
+            "domains/addresses/actions/maybe_postcode.jadpo failure.outcome_missing_arm: This `match` doesn't handle `Postcodes.InvalidPostcode`"
+                .to_string()
+        ]
+    );
+}
+
+/// The project with [`MATCHED`]'s action written as `text`.
+fn matched(text: &str) -> Vec<(&str, &str)> {
+    let mut files: Vec<(&str, &str)> = with(&[]);
+    files.push((MATCHED.0, text));
+    files
+}
+
+#[test]
+fn a_package_s_failure_carries_the_version_while_two_are_held() {
+    let moved = MATCHED.1.replace("Postcodes.", "Postcodes.v3.");
+    assert_eq!(both_installed(&matched(&moved)), Vec::<String>::new());
+}
+
+#[test]
+fn a_package_s_failure_arm_without_its_version_is_refused_once() {
+    let moved = MATCHED.1.replace("Postcodes.", "Postcodes.v3.").replace(
+        "Postcodes.v3.InvalidPostcode ->",
+        "Postcodes.InvalidPostcode ->",
+    );
+    assert_eq!(
+        both_installed(&matched(&moved)),
+        vec![
+            "domains/addresses/actions/maybe_postcode.jadpo package.version_needed: `Postcodes` is held in two versions, so a name through it says which".to_string(),
+        ]
+    );
+}

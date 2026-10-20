@@ -46,7 +46,6 @@ application {
         }
         mail: {
             package: Resend.v1
-            domains: []
             credential: config.resend_api_key
             host: config.resend_host
         }

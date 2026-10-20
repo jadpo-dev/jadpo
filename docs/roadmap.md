@@ -1909,15 +1909,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   drops the exemptions for `provides/` and `PROVIDE_DECL`, which 28's
   installed package uses; the example-name ban skips verbatim copies of
   first-party packages an example installs.
-- [ ] **7.8d Fixes found in chunk 7.8b** `opus · high`: an app can't
-  `match` on a package's failure from a provider call or package action
-  (`match couriers.pickups.create(...) { success(p) -> ...
-  SwiftCouriers.SlotTaken -> ... }` gives `failure.outcome_missing_arm`
-  asking for `SwiftCouriers.SlotTaken` and `failure.outcome_pattern_invalid`
-  on it, since an outcome pattern is one name), so a late failure is
-  handled only through an app action that maps it; and area 16 says a
-  connection only `email:` names needs no `domains:`, but
-  `connection.key_missing` asks for `domains: []`.
+- [x] **7.8d Fixes found in chunk 7.8b** `opus · high`. Built: an app's
+  outcome `match` names a package's failure through the package as `fails`
+  writes it (`SwiftCouriers.SlotTaken ->`, `Postcodes.v3.InvalidPostcode
+  ->` while two versions are held) for provider calls, package actions
+  and library functions, an arm resolution refuses no longer also
+  reporting the `match` as missing it; a connection only `email:` names
+  needs no `domains:`. 26-delivery-desk books the return with its own
+  call to Swift, matching `SwiftCouriers.SlotTaken` directly, and its mail
+  connection drops `domains: []`.
 
 ## Phase 8 — Compiled deployables
 
