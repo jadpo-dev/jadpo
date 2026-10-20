@@ -148,10 +148,13 @@ stays declined meanwhile, so one error shows, not two. An agent or a
 person may decline; every declinable error's `next:` ends with ``, or
 write `decline <rule>: "<why>"` above it if this is deliberate``.
 Declinable today: [`library.similar_exists`](#library-similar-exists),
-area 3's [`constant.similar_exists`](03-logic.md#constant-similar-exists)
-and area 21's [`query.nearest_exact`](21-ai.md#query-nearest-exact)
-(chunk 5.5v1c); the other judgement calls question 11 lists join as
-their rules are built. Naming any other rule, or one Jadpo doesn't have,
+area 3's [`constant.similar_exists`](03-logic.md#constant-similar-exists),
+area 21's [`query.nearest_exact`](21-ai.md#query-nearest-exact)
+(chunk 5.5v1c) and area 12's
+[`type.batch_order_updatable`](12-jobs-and-events.md#type-batch-order-updatable),
+a batch walking a query in an order an update can change (chunk 6.4b3);
+the other judgement calls question 11 lists join as their rules are
+built. Naming any other rule, or one Jadpo doesn't have,
 is [`decline.not_declinable`](#decline-not-declinable), which names the
 nearest declinable rule.
 
@@ -1532,7 +1535,7 @@ error: `layout.unused_declaration` can't be declined
   |
 5 | decline layout.unused_declaration: "Kept for next quarter"
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
-  reason: Only judgement calls can be declined: `constant.similar_exists`, `library.similar_exists`, `query.nearest_exact`, `translation.field_unused`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  reason: Only judgement calls can be declined: `constant.similar_exists`, `library.similar_exists`, `query.nearest_exact`, `translation.field_unused`, `type.batch_order_updatable`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
   help: docs/language/01-project-layout-and-modules.html#decline-not-declinable
@@ -2581,6 +2584,7 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
      | `constant.similar_exists` | 3 | Two constants can share a value by coincidence (a VAT rate and a fee) |
      | `type.standard_exists` (decided 2026-10-17) | 19 | A shape can match a standard type by chance |
      | `type.variant_retired` (decided 2026-10-17) | 19 | Code that reads old records names a withdrawn code on purpose |
+     | `type.batch_order_updatable` (area 12's question 13; built in chunk 6.4b3) | 12 | A field that can change only in a way that never moves a record behind the walk |
      | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
      | Rate limits counted in memory | 16 | One instance, by design |
      | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |

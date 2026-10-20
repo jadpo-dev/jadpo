@@ -361,10 +361,12 @@ passing bytes on (area 16), which the helpers do not accept; a provider's
 CSV report is put in a store and read like an upload; `json.read` given
 text (named `json.decode` until area 19, 2026-10-17) is only for single
 JSON documents in memory. An export walks live data, so a
-record changed during it appears as its page saw it; `jadpo check` warns
-when `from:` orders by a field that can be updated, since ordering by an
-immutable field (`id`, or a creation time with `id`) is what keeps every
-record in exactly once.
+record changed during it appears as its page saw it; a `from:` that
+orders by a field that can be updated is a declinable error
+([`type.batch_order_updatable`](#type-batch-order-updatable), area 1's
+"Declining a judgement call"; Jadpo has no warnings), since ordering by
+a field no update changes (`id`, or a creation time with `id`) is what
+keeps every record in exactly once.
 
 Batches replace chained events for paging: an event per page would stop
 at the 16-deep chain limit ("Limits and runtime faults") after 16 pages.
@@ -381,8 +383,10 @@ page per subscriber delivery.
 > kept", below). Built in chunk 6.4b2: the writers, `csv.write`,
 > `tsv.write`, `json_lines.write` and `json.write`'s file form, with
 > `CsvFormat` and `ExportSummary` ("How an export's run is kept",
-> below). `json.read`'s file form, the warning for a `from:` ordered by a
-> field that can be updated and `estimated_total` come in roadmap 6.4b3.
+> below). Built in chunk 6.4b3: `json.read`'s file form and gzip read
+> with `max_unpacked_size:` ("How a file's run is kept"), the declinable
+> error for a `from:` ordered by a field that can be updated, and
+> `estimated_total` ("How a run is kept").
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -561,11 +565,35 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   the page in hand; the next page finds it and ends the run `cancelled`.
   Until then `batches.status` says `running`.
 - **Status.** `batches.status` reads the counts and the state in the
-  calling action's transaction; `estimated_total` is `none` until a
-  query's count is built (roadmap 6.4b2). A `BatchRun` no store keeps is a
+  calling action's transaction. A `BatchRun` no store keeps is a
   fault. Both find a run by its `id` alone, so they need the
   application's runs in one store: with none, or more than one, they are
   `toolchain.not_built_yet`.
+- **The estimated total** (chosen in chunk 6.4b3). A query's run counts
+  its query as its first page is read, in that page's transaction, as
+  the system limited to the run's tenant: the query's statement with no
+  page's limit or cursor, so the count is of what the walk would meet if
+  nothing changed; later pages keep the count it was given. A file's run
+  works its estimate out with each page: the items done so far, scaled
+  by the file's size over how far into the file they end, and never
+  fewer than are done; for a gzip file the size is what it is unpacking
+  to at the rate it has so far. `estimated_total` is `none` until then,
+  the items done once the run has finished, and the last estimate once
+  it failed or was cancelled. It is kept in
+  `jadpo_batch_runs.estimated_total`. A count the store refuses leaves
+  the run without one rather than stopping it, and a query whose records
+  Jadpo checks again after its statement (area 20's `geo.` conditions)
+  has none.
+- **An order an update can change** (chosen in chunk 6.4b3). A `from:`
+  whose query orders by a field that can be updated, before any `id`, is
+  `type.batch_order_updatable`, reported at the `from:` and declined on
+  the action that starts the run. A field can't be updated when it is
+  `id`, marked `immutable: true` or generated with
+  `Generated.on_create`; what comes after `id`, or after a unique field
+  that can't be updated, is passed over, since it never moves a record.
+  Which updates the program makes doesn't count, so adding one elsewhere
+  never makes a run's order wrong after the fact; a policy with no
+  `update:` doesn't either, since adding one is a one-line change.
 - **Carried on by time.** A runner holds its run by a lease of what is
   left of its budget and a minute ("Running background work"), renewed
   with each page it commits, and goes page after page while its budget
@@ -594,8 +622,9 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 
 ### How a file's run is kept
 
-What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read`)
-does beyond a query's run, chosen in chunk 6.4b, each the most
+What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read`,
+and from chunk 6.4b3 `json.read`'s file form) does beyond a query's run,
+chosen in chunk 6.4b and, for JSON and gzip, chunk 6.4b3, each the most
 conservative reading of "Batches" above and area 19's "Data formats":
 
 - **Where it is kept.** A file has no query whose store keeps its run,
@@ -641,10 +670,48 @@ conservative reading of "Batches" above and area 19's "Data formats":
 - **What stops it.** At the file's level, before or at the place it is,
   the rows before it done: a quote that never closes, named by the line
   it opened on; bytes that aren't text in the file's encoding (a NUL
-  among them), named by their line; a gzip file, which only
-  `max_unpacked_size:` reads (roadmap 6.4b2); and a row longer than 16 MB.
-  The run ends `failed` with why. A store that can't be reached pauses
-  it, as it does a query's.
+  among them), named by their line; a gzip file read without
+  `max_unpacked_size:`, and one that unpacks past it, is damaged or is
+  cut short (below); and a row longer than 16 MB. The run ends `failed`
+  with why. A store that can't be reached pauses it, as it does a
+  query's.
+- **A JSON file's list** (chunk 6.4b3). `json.read`'s file form reads
+  the list `items_at:` names, or the document when it is given none, an
+  item a row: its row is its place in the list, from 1, and a problem's
+  column the field's path, as JSON Lines' is. The document is walked a
+  window at a time, holding only where the walk is and the item in hand,
+  so a document of any size is read in the memory of its largest item:
+  the objects on the way to the list are read for their members' names,
+  and every other value is passed over, its brackets matched and its
+  strings followed. An item is the text of one value in the list, which
+  the row type's codec reads as a request's body is read, so an item that
+  isn't JSON (`tru`), or isn't the row type, is that item's problem and
+  the rest carry on. What stops the run, at the place it is, the items
+  before it done: no list where `items_at:` says (or, with none, a
+  document that isn't a list), structure that isn't JSON (a missing comma,
+  a bracket that doesn't match), named by its line, a document that ends
+  before its JSON does, an object on the way naming a member twice, and
+  an item longer than 16 MB. Once the list closes, the rest of the
+  document is walked to its end, so one cut short or followed by more
+  text stops the run after its last item. Each runner walks the document
+  from its start to the list once, as it reads a CSV's header; a page
+  starts from that walk, set to the position its run committed: the byte
+  after the last item done, with its line and the next item's place.
+  `items_at:` is part of the call's shape, so a deploy that changes it
+  ends a running run `failed`, as one that changes what it saves does.
+- **gzip** (chunk 6.4b3). A file whose first bytes are gzip's is read
+  only when the helper is given `max_unpacked_size:`, and is unpacked as
+  it is read (area 16, "Chosen in chunk 6.4b3"): the run's position, its
+  rows' lines and its encoding are its unpacked text's. Its text is never
+  read past `max_unpacked_size:`: the run stops at the row that would
+  reach past it ("its file unpacks to more than 200 MB, its
+  `max_unpacked_size:`"), the rows wholly inside it done, so a small
+  upload can't unpack to gigabytes. A runner that picks the run up
+  unpacks the file again from its start to its position, since gzip
+  can't be entered part way. A file that isn't gzip is read as it is,
+  whatever `max_unpacked_size:` says. `max_unpacked_size:` is the
+  plan's, not a value the run saves, so a deploy may change it under a
+  running run.
 - **Encodings.** UTF-8, a byte-order mark removed, and UTF-16 with its
   mark, little- or big-endian, never guessed; anything else isn't text.
 
@@ -3117,6 +3184,151 @@ error: `StopSweep.shelf_run` holds a `BatchRun`, which no request carries
 check failed: 1 error, 2 files
 ```
 
+### `type.batch_order_updatable`
+
+A run walks live records a page at a time, each page after the record
+the one before ended on, so a `from:` whose query orders by a field an
+update can change can miss a record whose field moved behind that place
+mid-run, or meet it twice. An order no update changes keeps every record
+in exactly once: `id`, a field marked `immutable: true`, or a time
+generated as the record is created, then `id` (chunk 6.4b3; "How a run
+is kept"):
+
+```jadpo check project=e-batch-order-updatable file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type StockCount = Int {
+    min: 0
+    max: 100000
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    stock: StockCount
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-order-updatable expect=type.batch_order_updatable
+/// The items, a page at a time, in code order.
+query items_by_code(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+/// Starts marking every item seen.
+action sweep_shelves(page: ItemPage) -> BatchRun {
+    return batches.each(from: items_by_code(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `batches.each` walks `items_by_code` in an order an update can change
+ --> main.jadpo:13:31
+   |
+13 |     return batches.each(from: items_by_code(page), each: item -> mark_seen(item))
+   |                               ^^^^^^^^^^^^^^^^^^^ ordered by `Item.code`, which an update can change
+  reason: A run walks live records a page at a time, each page after the record the one before ended on, so a record whose `Item.code` changes mid-run can move behind that place and be missed, or ahead of it and be met twice. An order no update changes meets every record once: `id`, or a time generated as the record is created, then `id`.
+  next: Order `items_by_code` by `Item.id`, or by a field marked `immutable: true` or generated with `Generated.on_create` and then `Item.id`, or write `decline type.batch_order_updatable: "<why>"` above it if this is deliberate (agent)
+  rule: type.batch_order_updatable
+  help: docs/language/12-jobs-and-events.html#type-batch-order-updatable
+
+check failed: 1 error, 2 files
+```
+
+It is a judgement call, so it can be declined on the action, with the
+reason the order is safe. Here the walk goes from the most stock to the
+least while sales only ever lower an item's stock: a sale moves an item
+further along the walk, so it can be met twice but never missed, and
+marking an item seen twice does no harm:
+
+```jadpo check project=batch-order-declined file=stock.jadpo hidden
+type StockCount = Int {
+    min: 0
+    max: 100000
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    stock: StockCount
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=batch-order-declined
+/// The items, a page at a time, the most stock first.
+query items_by_stock(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.stock desc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+/// Starts marking every item seen, the best stocked first.
+decline type.batch_order_updatable: "Sales only lower stock, which moves an item further along the walk, never past it; marking one seen twice does no harm"
+action sweep_by_stock(page: ItemPage) -> BatchRun {
+    return batches.each(from: items_by_stock(page), each: item -> mark_seen(item))
+}
+```
+
 ### `type.batch_row_invalid`
 
 A file helper reads each row as the `Input` its `as:` names, and writes
@@ -3125,7 +3337,9 @@ holds one value a cell, so a row type holding a list, a map, an object
 or a standard type with no one text form is refused, pointing at JSON
 Lines, whose rows hold any JSON value; so is a row type that isn't an
 `Input` (or, written, an `Output`), or two fields reading or writing one
-column:
+column. From chunk 6.4b3 the same rule refuses `json.read`'s `items_at:`
+when it isn't member names written out between dots (`"data.items"`),
+and a reader's `max_unpacked_size:` when it isn't a size (`200mb`):
 
 ```jadpo check project=e-batch-row-invalid file=app.jadpo hidden
 application {
@@ -3267,14 +3481,13 @@ by its row and column, the faults that stop a file's run, and
 `json.write`'s file form, with `CsvFormat` and `ExportSummary`, each
 page's rows put once its transaction has closed ("How an export's run is
 kept"). Built in chunk 6.13: the tick deleting what an operator settled,
-and the operator's log, after 30 days.
+and the operator's log, after 30 days. Built in chunk 6.4b3: `json.read`'s
+file form, gzip read with `max_unpacked_size:`, `estimated_total`, and
+`type.batch_order_updatable` for a `from:` ordered by a field that can be
+updated, declinable.
 
 Not yet:
 
-- `json.read`'s file form, gzip with `max_unpacked_size:`,
-  `estimated_total` and the warning for a `from:` ordered by a field
-  that can be updated: roadmap 6.4b3 (the reads came in 6.4b, the
-  writers in 6.4b2).
 - A test's `fakes:` failing a subscriber's provider call: roadmap 7.2,
   with its generated fakes. Delivering events in tests after each step,
   in an order the printed seed shuffles, and retrying or giving up a
@@ -3423,7 +3636,9 @@ Not yet:
     and how is that declared? *Decided 2026-10-13:* yes, as recommended.
     *Revised 2026-10-16 (Richard):* an export is a batch (question 19)
     walking keyset pages of live data, and `jadpo check` warns when its
-    `from:` orders by a field that can be updated.
+    `from:` orders by a field that can be updated. Built in chunk 6.4b3
+    as a declinable error, `type.batch_order_updatable`, since every
+    finding is an error (area 1, question 11).
 14. **What carries on after a route answers `status: SuccessStatus.accepted`?**
     (carried from area 7) Area 7 has a route answer 202 and continue the work
     in the background. Is that always an event and a subscriber, and how

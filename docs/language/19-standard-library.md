@@ -6905,7 +6905,7 @@ stays area 12's.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `csv.read(file, as:, each:, finished:, key:)` | `BatchRun`: each row of a stored `File` decoded as an `Input` of `as:` and handed to `each:`; `finished:` receives an `ImportSummary` | Never as a call: a row that can't be decoded, or whose action fails, is a `RowProblem` and the rest carry on; a file-level fault (a missing required column, an unterminated quote named by the line where it opened, an encoding the format doesn't declare, text that isn't text) stops the run | none |
+| `csv.read(file, as:, each:, finished:, key:, max_unpacked_size:)` | `BatchRun`: each row of a stored `File` decoded as an `Input` of `as:` and handed to `each:`; `finished:` receives an `ImportSummary`; a gzip file unpacked up to `max_unpacked_size:` | Never as a call: a row that can't be decoded, or whose action fails, is a `RowProblem` and the rest carry on; a file-level fault (a missing required column, an unterminated quote named by the line where it opened, an encoding the format doesn't declare, text that isn't text) stops the run | none |
 | `csv.write(store, name:, format:, from:, each:, finished:, key:)` | `BatchRun`: each item of `from:` turned into an `Output` row by `each:` and written to `name:` in `store`; `format:` a `CsvFormat`, required; `finished:` receives an `ExportSummary` | Never as a call: an item whose action fails is a `RowProblem` | none |
 
 - **Rows are typed both ways.** A row read is an `Input` and a row
@@ -6931,7 +6931,10 @@ stays area 12's.
 - **Encodings.** Reading takes UTF-8 (a byte-order mark removed), UTF-16
   with a mark, and legacy encodings the format declares, never guessing;
   writing is UTF-8. gzip (`.csv.gz`) is read only with
-  `max_unpacked_size:`, and no archives are opened.
+  `max_unpacked_size:`, and no archives are opened. `max_unpacked_size:`
+  is a size written out as a `File` field's `max_size:` is (`200mb`),
+  taken by every reader; a file that isn't gzip is read as it is
+  (chosen in chunk 6.4b3; area 12, "How a file's run is kept").
 - **A `RowProblem`** holds the row as a spreadsheet numbers it (the
   header is row 1, the first data row row 2), the column, the field and
   the rule, never the value, so personal data stays out of problem lists
@@ -6945,8 +6948,9 @@ stays area 12's.
 > chunk 6.4b2: `csv.write`, `tsv.write`, `json_lines.write` and
 > `json.write`'s file form, with `CsvFormat` and `ExportSummary` (area 12,
 > "How an export's run is kept"), as the rules below write their rows.
-> `json.read`'s file form and gzip with `max_unpacked_size:` come in
-> roadmap 6.4b3, legacy encodings when an application needs one.
+> Built in chunk 6.4b3: `json.read`'s file form ("How a JSON file's list
+> is read", under `json`) and gzip with `max_unpacked_size:`; legacy
+> encodings come when an application needs one.
 
 How a row is written (chosen in chunk 6.4b2, each the most conservative
 reading of the rules above and the research behind them):
@@ -7301,7 +7305,7 @@ oat,2.95
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `tsv.read(file, as:, each:, finished:, key:)` | As `csv.read`, with a tab between cells | As `csv.read` | none |
+| `tsv.read(file, as:, each:, finished:, key:, max_unpacked_size:)` | As `csv.read`, with a tab between cells | As `csv.read` | none |
 | `tsv.write(store, name:, format:, from:, each:, finished:, key:)` | As `csv.write`, with a tab between cells | As `csv.write` | none |
 
 TSV is CSV's tab-delimited form: every rule under `csv` applies.
@@ -7310,7 +7314,7 @@ TSV is CSV's tab-delimited form: every rule under `csv` applies.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `json_lines.read(file, as:, each:, finished:, key:)` | `BatchRun`: each line of a stored `File` decoded as one JSON value, an `Input` of `as:`, and handed to `each:`; `finished:` receives an `ImportSummary` | As `csv.read`: a line that can't be decoded is a `RowProblem`; text that isn't text stops the run | none |
+| `json_lines.read(file, as:, each:, finished:, key:, max_unpacked_size:)` | `BatchRun`: each line of a stored `File` decoded as one JSON value, an `Input` of `as:`, and handed to `each:`; `finished:` receives an `ImportSummary` | As `csv.read`: a line that can't be decoded is a `RowProblem`; text that isn't text stops the run | none |
 | `json_lines.write(store, name:, from:, each:, finished:, key:)` | `BatchRun`: each item of `from:` turned into an `Output` by `each:` and written as one line; `finished:` receives an `ExportSummary` | As `csv.write` | none |
 
 A JSON Lines row may hold lists and objects, which is why a CSV row that
@@ -7323,7 +7327,7 @@ JSON Lines file takes no `format:`.
 |---|---|---|---|
 | `json.read(text, as: T)` | `T`, decoded and checked against every rule of `T`; `text` is a value built on `Text`, or on `Bytes` in UTF-8 | `malformed` (not JSON, or an object naming a member twice), `mismatch` (a field missing, unknown or breaking a rule) | none |
 | `json.write(value)` | `Text`, compact; fields in declared order, sets and map keys in canonical order, so the same value always gives the same text | | none |
-| `json.read(file, items_at:, as:, each:, finished:, key:)` | `BatchRun` over a large JSON list in a stored `File`, `items_at:` naming where the list sits in the document; each item an `Input` of `as:`, handed to `each:` | As `csv.read` | none |
+| `json.read(file, items_at:, as:, each:, finished:, key:, max_unpacked_size:)` | `BatchRun` over a large JSON list in a stored `File`, `items_at:` naming where the list sits in the document, or left out when the document is the list; each item an `Input` of `as:`, handed to `each:` | As `csv.read` | none |
 | `json.write(store, name:, from:, each:, finished:, key:)` | `BatchRun` writing a large JSON list, each item of `from:` turned into an `Output` by `each:` | As `csv.write` | none |
 
 - **One name per direction** (question 14): the packages design's
@@ -7628,6 +7632,168 @@ The failure's log is its report, the problem among the fields it is
 declared in, until the runtime's hosts write area 4's `failure.rejected`
 event (not built yet), which writes a `DecodeProblem` as itself, not as a
 keyed hash, since it never holds a value.
+
+How a JSON file's list is read (chosen in chunk 6.4b3, each the most
+conservative reading of the rules above; how its run goes is area 12's
+"How a file's run is kept"):
+
+- **`items_at:` is written out:** text naming the members that lead
+  from the document's top object to its list, between dots, as a
+  problem's path names fields (`"data.items"`). It names members only, so
+  a list inside a list isn't reached, and a member whose name holds a dot
+  can't be named. When the document is itself the list, as `json.write`
+  writes one, `items_at:` is left out. Text that isn't written out, or
+  with an empty member name, is `type.batch_row_invalid`.
+- **The file form is the one given `each:`:** a `json.read` call with
+  `each:`, or anything else only the file form takes (`items_at:`,
+  `finished:`, `key:`, `max_unpacked_size:`), is the file form, whose
+  first argument is a stored `File`; given only text and `as:`, it reads
+  one document in memory, as above.
+- **Each item is a row,** an `Input` of `as:` that, unlike a CSV row's,
+  may hold lists and objects, as a JSON Lines row may: its row is its
+  place in the list, from 1, and a problem's column is the field's path
+  (`lines.0.count`), never the value. An item that isn't JSON is a
+  `malformed` problem; one that isn't the row type has its `mismatch`
+  problem's rule, an item that isn't an object `type`.
+- **The document is held to JSON's structure** around the items: the
+  objects on the way to the list name each member once, and what can't
+  be read on from stops the run (area 12), the items before it done.
+
+A seed library reads the catalogue a partner library exports, a JSON
+document whose packets sit at `catalogue.packets`, each packet's sowing
+months a list, and which arrives gzipped:
+
+```jadpo check project=json-file file=app.jadpo
+application {
+    connections: {
+        catalogues: {
+            driver: Driver.disk
+            path: "/var/lib/seeds/catalogues"
+        }
+    }
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/types/packet_code.jadpo hidden
+/// A packet's code in a catalogue.
+type PacketCode = Text {
+    min_length: 1
+    max_length: 20
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/types/sowing_month.jadpo hidden
+/// A month to sow in, January as 1.
+type SowingMonth = Int {
+    min: 1
+    max: 12
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/types/packet_entry.jadpo
+use seeds/types { PacketCode, SowingMonth }
+
+/// One packet a partner's catalogue lists.
+type PacketEntry = Input {
+    code: PacketCode
+    sow_in: List<SowingMonth>
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/entities/packet.jadpo hidden
+use seeds/types { PacketCode }
+
+/// A packet the library lends.
+entity Packet {
+    id: Uuid
+    code: PacketCode
+    sowing_months: Int
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/entities/partner_catalogue.jadpo hidden
+/// A partner library's catalogue, kept as it arrived.
+entity PartnerCatalogue {
+    id: Uuid
+    catalogue: File {
+        store: catalogues
+        max_size: 20mb
+        types: [FileType.json]
+    }
+    catalogue_run: BatchRun?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/actions/add_packet.jadpo hidden
+use seeds/entities { Packet }
+use seeds/types { PacketEntry }
+
+/// Adds the packet one catalogue entry lists.
+action add_packet(entry: PacketEntry) -> Unit {
+    var packet: Packet = Packet.create {
+        set: {
+            code: entry.code
+            sowing_months: list.count(entry.sow_in)
+        }
+    }
+    assert packet.sowing_months >= 0
+}
+```
+
+```jadpo check project=json-file file=domains/seeds/actions/read_catalogue.jadpo migrate=initial
+use seeds/entities { PartnerCatalogue, PartnerCatalogueNotFound }
+use seeds/types { PacketEntry }
+use seeds/actions { add_packet }
+
+/// Starts reading a kept catalogue's packets, once, unpacking it to at
+/// most 200 MB.
+action read_catalogue(
+    catalogue_id: PartnerCatalogue.id
+) fails PartnerCatalogueNotFound -> PartnerCatalogue {
+    var partner: PartnerCatalogue = attempt PartnerCatalogue.get(catalogue_id)
+    var catalogue_run: BatchRun = json.read(
+        partner.catalogue,
+        items_at: "catalogue.packets",
+        as: PacketEntry,
+        each: entry -> add_packet(entry),
+        key: partner.id,
+        max_unpacked_size: 200mb
+    )
+    return PartnerCatalogue.update(partner) {
+        set: {
+            catalogue_run: catalogue_run
+        }
+    }
+}
+```
+
+A document like this one, gzipped or not, adds two packets; the second
+item's month is a problem, `(2, "sow_in.1", "max")`, and the rest carry
+on:
+
+```json
+{
+  "partner": "Hilltop Seed Swap",
+  "catalogue": {
+    "packets": [
+      {"code": "PEA-01", "sow_in": [3, 4]},
+      {"code": "BEAN-02", "sow_in": [5, 13]},
+      {"code": "KALE-03", "sow_in": [6]}
+    ]
+  }
+}
+```
 
 XML is deferred: it waits for an XML byte format in a later release.
 

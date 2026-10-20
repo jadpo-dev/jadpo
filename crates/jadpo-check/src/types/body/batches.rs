@@ -496,7 +496,7 @@ impl Body<'_> {
                     )
                     .at(span, format!("ordered by `{host}.{name}`, which an update can change"))
                     .reason(format!(
-                        "A run walks live records a page at a time, each page after the record the one before ended on, so a `{host}` whose `{name}` changes mid-run can move behind that place and be missed, or ahead of it and be met twice. An order no update changes meets every record once: `id`, or a time generated as the record is created, then `id`."
+                        "A run walks live records a page at a time, each page after the record the one before ended on, so a record whose `{host}.{name}` changes mid-run can move behind that place and be missed, or ahead of it and be met twice. An order no update changes meets every record once: `id`, or a time generated as the record is created, then `id`."
                     ))
                     .next(format!(
                         "Order `{query}` by `{host}.id`, or by a field marked `immutable: true` or generated with `Generated.on_create` and then `{host}.id`"

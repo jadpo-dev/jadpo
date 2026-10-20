@@ -1471,7 +1471,9 @@ files with and the in-memory store a test's are in, which the file
 helpers' reads walk (area 19, "Data formats"; "Chosen in chunk 6.4b"
 below). Built in chunk 6.4b2: the pieces the file helpers' writes put,
 joined into one file or dropped by the store ("Chosen in chunk 6.4b2"
-below). Upload slots, downloads, deleting and erasing a file's bytes,
+below). Built in chunk 6.4b3: a gzip file unpacked as the file helpers
+read it, up to `max_unpacked_size:` ("Chosen in chunk 6.4b3" below).
+Upload slots, downloads, deleting and erasing a file's bytes,
 the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
 `max_size:`, `types:` and `store:` as it is written come with the rest
@@ -1611,6 +1613,39 @@ conservative reading:
   in-memory store a test's files are in does the same in memory.
 - **`FileType.json_lines`,** `application/jsonl` as jsonlines.org names
   it, a written JSON Lines file's type, after `json`.
+
+### Chosen in chunk 6.4b3
+
+What "Uploads sent with a `Content-Encoding` are refused" and question 7
+leave to the build of reading gzip, each the most conservative reading:
+
+- **Only the file helpers unpack, and only when told how far.** A file
+  whose first two bytes are gzip's magic number is unpacked by a format
+  helper given `max_unpacked_size:` (area 19, "Data formats"), and by
+  nothing else: `store.read` gives its bytes as they are stored, and a
+  helper given none stops the run before its first row. The limit is the
+  most text the run reads: it stops at the row that would reach past it,
+  the rows wholly inside it done, and unpacks at most 64 KiB past it, so
+  a small upload can't unpack to gigabytes.
+- **gzip as RFC 1952 writes it, every member in turn.** A file is one
+  member or more, one after another, as `cat a.gz b.gz` makes, read as
+  one text. Each member's header is read whole, with every optional part
+  its flags say it has (an extra field, a name, a comment) and its own
+  CRC-16 checked when it has one; a reserved flag, a method other than
+  deflate, or anything after a member that isn't another is damage. Each
+  member's trailer is held to what it unpacked to, its CRC-32 and its size
+  modulo 2³². A damaged file, and one cut short inside a member, stop the
+  run where they are found, the rows before done. No other compression,
+  and no archive (zip, tar), is opened.
+- **Unpacked as it is read, never whole.** Its packed bytes are read
+  from the store through the seam a window at a time, as a plain file's
+  are, and unpacked (miniz_oxide's streaming inflate) as far as a page
+  needs. gzip can't be entered part way, so a runner that picks a run up
+  unpacks the file from its start to the run's position, discarding what
+  comes before; within one runner each page goes on from the last.
+- **A file that isn't gzip is read as it is,** whatever
+  `max_unpacked_size:` says, so one helper serves uploads that are packed
+  and ones that aren't.
 
 ### Consistency with the rest of the language
 

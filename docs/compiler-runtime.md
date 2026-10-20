@@ -2179,6 +2179,30 @@ the next place (cursor, pieces, bytes, rows) in a second transaction
 held to the place it read from; once every page is written,
 `files::join` joins the pieces and `finished:` gets the `ExportSummary`.
 
+**JSON lists, gzip and estimates** (chunk 6.4b3; area 12, "How a file's
+run is kept" and "How a run is kept"; area 16, "Chosen in chunk 6.4b3";
+area 19, "How a JSON file's list is read"). `json.read` given `each:` is
+`BatchOp::Read(RowFormat::Json)`; its `items_at:` and any read's
+`max_unpacked_size:` are written out, lower to text literals, and the
+plan puts them in `FileRows` (`items_at`, `max_unpacked`), `items_at:`
+in the run's shape too. `jadpo_runtime::rows::json::Walker` walks a
+document pure, a window at a time, to the list (`Walked::Opened`), then
+item by item and on to the document's end, holding only its frames and
+the item in hand; `Opened` keeps the walk that opened the list and each
+page starts a copy at its position (`Walker::at_item`), each item read by
+`Codecs::read_value` as a JSON Lines line is. A file's text comes through
+`batches::file::Source`: its stored bytes, or `Unpacking`, which feeds
+`rows::gzip::Unpacker` (RFC 1952 members over miniz_oxide's inflate,
+each header and trailer checked) the packed windows and serves the text
+up to the limit, again from the start when a position is behind what it
+holds. `jadpo_batch_runs.estimated_total` is written by `ADVANCE` (a
+`NULL` keeps the last): a query's run's from `read::count`, its first
+page's statement under `count(*)` with its limit `NULL`, behind a
+savepoint; a file's from its items over how far into its text they end.
+`batches.status` gives it, and the items done once finished.
+`type.batch_order_updatable` is the checker's, at `from:`'s query
+(`Body::batch_order`), declinable.
+
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in
