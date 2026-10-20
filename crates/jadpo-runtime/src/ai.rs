@@ -301,11 +301,11 @@ pub async fn generate(
             // Checked before sending, from the package's table, so a prompt
             // longer than the model's context costs nothing (area 21).
             if let Some(context) = package.context(model_name(&asked.model)) {
-                let estimate: u64 = messages
+                let prompt_tokens: u64 = messages
                     .iter()
                     .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
                     .sum();
-                if estimate > context {
+                if prompt_tokens > context {
                     return broke(RuleKey::TooLong);
                 }
             }
