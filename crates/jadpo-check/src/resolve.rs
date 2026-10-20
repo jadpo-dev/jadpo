@@ -951,7 +951,7 @@ impl Names<'_> {
             out.push(not_callable(
                 &via.package,
                 "a package",
-                "A package is called through what it offers: a function of its public library, `Postcodes.uk.parse(...)`, or its type built from a value, `Postcodes.UkPostcode(...)`.",
+                "A package is called through what it offers: a function of its public library, `<Package>.<library>.<function>(...)`, or one of its types built from a value, `<Package>.<Type>(...)`.",
                 format!("Call something `{}` offers, `{}.<library>.<function>(...)`", via.package, via.package),
                 span,
             ));

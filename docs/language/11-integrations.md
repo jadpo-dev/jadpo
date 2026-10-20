@@ -476,8 +476,8 @@ public type InvalidPostcode = Failure {
 /// Reading UK postcodes.
 public library uk {
     /// Reads a UK postcode as it is written.
-    function parse(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
-        return attempt UkPostcode(text.upper(written)) {
+    function standard_form(postcode_text: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(postcode_text)) {
             invalid: InvalidPostcode
         }
     }
@@ -518,8 +518,8 @@ public type InvalidPostcode = Failure {
 /// Reading UK postcodes.
 public library uk {
     /// Reads a UK postcode as it is written, spaces around it left out.
-    function parse(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
-        return attempt UkPostcode(text.upper(text.trim(written))) {
+    function standard_form(postcode_text: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(text.trim(postcode_text))) {
             invalid: InvalidPostcode
         }
     }
@@ -533,7 +533,7 @@ use shared/providers/postcodes
 action read_postcode(
     written: Postcodes.v2.WrittenPostcode
 ) fails Postcodes.v2.InvalidPostcode -> Postcodes.v2.UkPostcode {
-    return attempt Postcodes.v2.uk.parse(written)
+    return attempt Postcodes.v2.uk.standard_form(written)
 }
 ```
 
@@ -544,7 +544,7 @@ use shared/providers/postcodes
 action read_typed_postcode(
     written: Postcodes.v3.WrittenPostcode
 ) fails Postcodes.v3.InvalidPostcode -> Postcodes.v3.UkPostcode {
-    return attempt Postcodes.v3.uk.parse(written)
+    return attempt Postcodes.v3.uk.standard_form(written)
 }
 ```
 

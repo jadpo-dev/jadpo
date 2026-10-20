@@ -64,13 +64,13 @@ pub fn reached(db: &dyn Db, project: Project) -> BTreeSet<String> {
             .filter(|token| !token.kind().is_trivia())
             .collect();
         for window in tokens.windows(3) {
-            let [owner, dot, resource] = window else {
+            let [connection, dot, resource] = window else {
                 continue;
             };
             if dot.kind() != SyntaxKind::DOT {
                 continue;
             }
-            if let Some(folder) = connected.get(owner.text()) {
+            if let Some(folder) = connected.get(connection.text()) {
                 out.insert(format!("{folder}/resources/{}.jadpo", resource.text()));
             }
         }
