@@ -74,6 +74,19 @@ pub const PROTOCOLS: [&str; 4] = ["json_http", "form_http", "multipart_http", "a
 /// The keys of `hosts:`.
 pub const HOST_KEYS: [&str; 2] = ["live", "sandbox"];
 
+/// The keys of `webhooks:` (area 11, "Receiving from outside"; chunk
+/// 7.7): how the provider signs them, the header one scheme reads, and
+/// where each event's id, type and time are in the body; `handshake:`
+/// waits for chunk 7.7b.
+pub const WEBHOOK_KEYS: [&str; 6] = [
+    "check",
+    "header",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "handshake",
+];
+
 /// The keys of `idempotency:`.
 pub const IDEMPOTENCY_KEYS: [&str; 7] = [
     "header",
@@ -638,6 +651,7 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
                 }
             }
             "runs" => nested_keys(&path, &key, &member, &RUNS_KEYS, out),
+            "webhooks" => webhooks(&path, &member, out),
             "settings" => crate::connections::provider_settings(&path, &member, out),
             _ => {}
         }
@@ -662,6 +676,172 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             .at(hosts.clone(), "a fixed host")
             .reason("Where an API is comes from exactly one place: `hosts:` when it is on the internet, `runs:` when Jadpo runs it in a container, or neither when the app gives `host:` on the connection.")
             .next("Keep `hosts:` or `runs:`, and remove the other"),
+        );
+    }
+}
+
+/// `webhooks:` (chunk 7.7): `check:` one of the built-in signature
+/// schemes, `header:` for the one that reads a header the provider names
+/// and only for it, `event_id:` and `event_type:` given, and each place in
+/// the body a dotted path.
+fn webhooks(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
+    use jadpo_std::provider::SignatureScheme;
+    let span = node_span(path, member.syntax());
+    let Some(block) = member.block() else {
+        out.push(
+            Diagnostic::new(&rule::PACKAGE_PROVIDER_INVALID, "`webhooks:` isn't a block")
+                .at(span, "not a block")
+                .reason("`webhooks:` says how the provider signs its webhooks, `check:`, and where each event's id and type are in its body, `event_id:` and `event_type:`.")
+                .next("Write `webhooks: { check: SignatureScheme.stripe  event_id: \"id\"  event_type: \"type\" }`"),
+        );
+        return;
+    };
+    nested_keys(path, "webhooks", member, &WEBHOOK_KEYS, out);
+    let members = tree::members(Some(block));
+    let find = |key: &str| {
+        members
+            .iter()
+            .find(|(name, _)| tree::name_text(name).as_deref() == Some(key))
+            .map(|(_, inner)| inner)
+    };
+    let value_span = |inner: &ast::Member| {
+        inner.value().map_or_else(
+            || node_span(path, inner.syntax()),
+            |value| node_span(path, value.syntax()),
+        )
+    };
+    let schemes: Vec<String> = SignatureScheme::BUILT
+        .iter()
+        .map(|name| format!("`SignatureScheme.{name}`"))
+        .collect();
+    let scheme = match find("check") {
+        None => {
+            out.push(
+                Diagnostic::new(&rule::PACKAGE_PROVIDER_INVALID, "`webhooks:` doesn't give `check:`")
+                    .at(span.clone(), "no `check:`")
+                    .reason(format!(
+                        "`check:` names how the provider signs its webhooks, which the runtime checks before anything in one is kept: {}.",
+                        crate::or_list(&schemes)
+                    ))
+                    .next("Add `check:` with the provider's scheme, such as `check: SignatureScheme.standard_webhooks`"),
+            );
+            None
+        }
+        Some(inner) => {
+            let written = inner
+                .value()
+                .map(|value| tree::written(value.syntax()))
+                .unwrap_or_default();
+            let name = written.strip_prefix("SignatureScheme.").unwrap_or_default();
+            if SignatureScheme::BUILT.contains(&name) {
+                Some(name.to_string())
+            } else if SignatureScheme::NAMED.contains(&name) {
+                out.push(
+                    Diagnostic::new(
+                        &rule::TOOLCHAIN_NOT_BUILT_YET,
+                        format!("`SignatureScheme.{name}` isn't built yet"),
+                    )
+                    .at(value_span(inner), "declared, not built")
+                    .reason("The language names this signature scheme, but this compiler can't check it yet.")
+                    .next(format!("Use one of {} for now", crate::and_list(&schemes))),
+                );
+                None
+            } else {
+                out.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_PROVIDER_INVALID,
+                        format!("`{written}` isn't a signature scheme"),
+                    )
+                    .at(value_span(inner), "not a signature scheme")
+                    .reason(format!(
+                        "`check:` names one of the built-in signature schemes: {}.",
+                        crate::or_list(&schemes)
+                    ))
+                    .next("Name the scheme the provider signs with, such as `SignatureScheme.standard_webhooks`"),
+                );
+                None
+            }
+        }
+    };
+    match (scheme.as_deref(), find("header")) {
+        (Some("hmac_sha256"), None) => out.push(
+            Diagnostic::new(&rule::PACKAGE_PROVIDER_INVALID, "`webhooks:` doesn't give `header:`")
+                .at(span.clone(), "no `header:`")
+                .reason("`SignatureScheme.hmac_sha256` reads the signature from the header the provider names, which `header:` gives.")
+                .next("Add `header:` with the provider's header, such as `header: \"X-Signature\"`"),
+        ),
+        (Some("hmac_sha256"), Some(inner)) => {
+            let fits = matches!(
+                inner.value().as_ref().map(crate::types::Const::from_expr),
+                Some(crate::types::Const::Str(text)) if !text.is_empty() && text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            );
+            if !fits {
+                out.push(
+                    Diagnostic::new(&rule::PACKAGE_PROVIDER_INVALID, "`header:` isn't a header's name")
+                        .at(value_span(inner), "not a header's name")
+                        .reason("`header:` names the header the signature comes in, as text of letters, digits and dashes.")
+                        .next("Write the header's name as text, such as `header: \"X-Signature\"`"),
+                );
+            }
+        }
+        (Some(other), Some(inner)) => out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                format!("`SignatureScheme.{other}` takes no `header:`"),
+            )
+            .at(value_span(inner), "not read")
+            .reason(format!(
+                "Only `SignatureScheme.hmac_sha256` reads a header the provider names; `SignatureScheme.{other}` knows where its signature is."
+            ))
+            .next("Remove `header:`"),
+        ),
+        _ => {}
+    }
+    for (key, required) in [
+        ("event_id", true),
+        ("event_type", true),
+        ("occurred_at", false),
+    ] {
+        match find(key) {
+            None if required => out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    format!("`webhooks:` doesn't give `{key}:`"),
+                )
+                .at(span.clone(), format!("no `{key}:`"))
+                .reason(
+                    "`event_id:` says where each webhook's event id is in its body, by which repeats are dropped, and `event_type:` where its type is, which names the event it carries.",
+                )
+                .next(format!("Add `{key}:` with the place in the body, such as `{key}: \"{}\"`", if key == "event_id" { "id" } else { "type" })),
+            ),
+            None => {}
+            Some(inner) => {
+                let fits = matches!(
+                    inner.value().as_ref().map(crate::types::Const::from_expr),
+                    Some(crate::types::Const::Str(text)) if !text.is_empty() && text.split('.').all(|part| !part.is_empty())
+                );
+                if !fits {
+                    out.push(
+                        Diagnostic::new(
+                            &rule::PACKAGE_PROVIDER_INVALID,
+                            format!("`{key}:` isn't a place in the body"),
+                        )
+                        .at(value_span(inner), "not a place")
+                        .reason(format!(
+                            "`{key}:` says where in a webhook's JSON body the value is, as its members' names from the root joined by dots, such as `\"data.id\"`."
+                        ))
+                        .next(format!("Write `{key}:` as text, such as `{key}: \"id\"`")),
+                    );
+                }
+            }
+        }
+    }
+    if let Some(inner) = find("handshake") {
+        out.push(
+            Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Webhook handshakes aren't built yet")
+                .at(value_span(inner), "declared, not built")
+                .reason("The language answers a provider's check of a webhook address with built-in rules, but this compiler can't run them yet.")
+                .next("Do without `handshake:` for now"),
         );
     }
 }
@@ -956,8 +1136,9 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's subscribers and events (chunk 7.6b) and its
-/// capability mappings (chunk 7.3c); its actions came with chunk 7.6.
+/// doesn't run: a package's subscribers (chunk 7.6) and its capability
+/// mappings (chunk 7.3c). Its events are read since chunk 7.7, each a
+/// webhook's event the app subscribes to, and its actions since chunk 7.6.
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -966,7 +1147,6 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
     };
     let what = match location.place {
         Place::Folder(Folder::Subscribers) => "A package's subscribers",
-        Place::Folder(Folder::Events) => "A package's events",
         Place::Folder(Folder::Provides) => "A package's capability mappings",
         _ => return Vec::new(),
     };

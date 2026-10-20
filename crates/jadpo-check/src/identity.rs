@@ -12,9 +12,10 @@
 //! keys; in chunk 5.1b: the revocation delay, with each method's
 //! `signing_key:` and a browser session's `origin:` read from settings
 //! (area 10), and the generated `POST /auth/exchange`; in chunk 5.5z:
-//! `sign_in:` with `passkey:`, whose routes the runtime answers. External
-//! tokens, magic links, sign-in providers and acting as an OAuth provider
-//! come later: each is `toolchain.not_built_yet` where it is written.
+//! `sign_in:` with `passkey:`, whose routes the runtime answers; in chunk
+//! 7.3b: `magic_link:` and `on_first_sign_in:`. External tokens, sign-in
+//! providers and acting as an OAuth provider come later: each is
+//! `toolchain.not_built_yet` where it is written.
 
 use std::sync::Arc;
 
@@ -83,21 +84,30 @@ const BROWSER_SESSION: [&str; 3] = ["cookie", "origin", "signing_key"];
 /// The settings `passkey` takes (area 8, "Passkeys").
 const PASSKEY: [&str; 2] = ["expires_after", "path"];
 
+/// The settings `magic_link` takes (area 8, "Magic links").
+const MAGIC_LINK: [&str; 11] = [
+    "address",
+    "expires_after",
+    "code_attempts",
+    "codes_per_hour",
+    "failed_codes_per_day",
+    "resend_after",
+    "same_browser",
+    "link",
+    "path",
+    "email",
+    "send",
+];
+
 /// The ways `sign_in:` checks a person (area 8, "Checking the person").
 const SIGN_IN_WAYS: [&str; 3] = ["magic_link", "passkey", "providers"];
 
 /// What `authentication { }` may hold besides its methods, each built by a
 /// later chunk.
-const LATER_BLOCKS: [(&str, &str); 2] = [
-    (
-        "sign_in_providers",
-        "Sign-in providers (\"Sign in with Google\") come after the first build (area 8, question 11)",
-    ),
-    (
-        "oauth_provider",
-        "Acting as an OAuth provider comes after the first build (area 8, question 13)",
-    ),
-];
+const LATER_BLOCKS: [(&str, &str); 1] = [(
+    "oauth_provider",
+    "Acting as an OAuth provider comes after the first build (area 8, question 13)",
+)];
 
 /// One kind of caller, as `principal { }` declares it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,6 +148,36 @@ pub struct Passkey {
     pub path: Vec<String>,
 }
 
+/// `sign_in: { magic_link: }` (area 8, "Magic links"), read cleanly and
+/// with the browser session and origin it needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagicLink {
+    /// The user entity's field `address:` names: an `Email`, unique.
+    pub address: String,
+    /// How long a link and its code last, in milliseconds.
+    pub expires_after_ms: i64,
+    pub code_attempts: u32,
+    pub codes_per_hour: u32,
+    pub failed_codes_per_day: u32,
+    /// The least time between two sends to one address, in milliseconds.
+    pub resend_after_ms: i64,
+    pub same_browser: bool,
+    /// The frontend path the email's link opens.
+    pub link: String,
+    /// Where the generated routes go: `path:`'s segments.
+    pub path: Vec<String>,
+    /// Where `magic_link:` is written.
+    pub span: Span,
+}
+
+/// `on_first_sign_in:` as written: the action's name, `domain.action` or
+/// a single-file project's bare action, and where it is written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FirstSignIn {
+    pub names: Vec<String>,
+    pub span: Span,
+}
+
 /// Area 8's declarations, read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Identity {
@@ -155,6 +195,11 @@ pub struct Identity {
     /// `sign_in: { passkey: }`, when it reads cleanly and a browser session
     /// with its `origin:` signs the person in.
     pub passkey: Option<Passkey>,
+    /// `sign_in: { magic_link: }`, when it reads cleanly and a browser
+    /// session with its `origin:` signs the person in.
+    pub magic_link: Option<MagicLink>,
+    /// `on_first_sign_in:`, as written.
+    pub first_sign_in: Option<FirstSignIn>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -248,6 +293,14 @@ impl Identity {
             .as_ref()
             .filter(|_| self.sessions_store().is_some())
     }
+
+    /// The magic links the runtime answers for (area 8, "Magic links"),
+    /// kept beside the sessions they start.
+    pub fn magic_links(&self) -> Option<&MagicLink> {
+        self.magic_link
+            .as_ref()
+            .filter(|_| self.sessions_store().is_some())
+    }
 }
 
 /// The project's identity declarations, read with their problems.
@@ -267,7 +320,117 @@ pub fn identity_problems(db: &dyn Db, project: Project) -> &[Diagnostic] {
     &identity(db, project).problems
 }
 
-/// One singleton as written: its file, its keyword's span and its block.
+/// The action `on_first_sign_in:` names, by its canonical name, when it
+/// is an action taking one `FirstSignIn` and returning the user entity's
+/// `id` (area 8, "A person the app has not seen"); with its problem when
+/// it isn't.
+#[salsa::tracked(returns(ref))]
+pub fn first_sign_in_action(db: &dyn Db, project: Project) -> (Option<String>, Vec<Diagnostic>) {
+    use crate::lookups::{NameView, SigView};
+    use jadpo_db::{ItemKind, Ownership};
+    let identity = identity(db, project);
+    let Some(written) = &identity.first_sign_in else {
+        return (None, Vec::new());
+    };
+    let span = written.span.clone();
+    let shown = written.names.join(".");
+    let user = identity.variant(PrincipalKind::User);
+    let entity = user.map_or("<Entity>", |variant| variant.entity.as_str());
+    let shape = format!(
+        "`on_first_sign_in:` names an action that takes one `FirstSignIn` and returns `{entity}.id`, of a user it created or one that already exists; it refuses with any failure it declares."
+    );
+    let lookup = Lookup::new(db, project);
+    let (domain, action) = match written.names.as_slice() {
+        [action] => (None, action.clone()),
+        [domain, action] => (Some(domain.clone()), action.clone()),
+        _ => return (None, Vec::new()),
+    };
+    let symbol = lookup.declared(&action).iter().find(|symbol| {
+        symbol.kind == ItemKind::Action
+            && match (&symbol.ownership, domain.as_ref()) {
+                (Ownership::Domain(holder), Some(domain)) => holder == domain,
+                (Ownership::Loose, None) => true,
+                _ => false,
+            }
+    });
+    let Some(symbol) = symbol else {
+        let problem = Diagnostic::new(
+            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+            format!("`{shown}` isn't an action"),
+        )
+        .at(span, "no such action")
+        .reason(shape)
+        .next("Name an action, written `<domain>.<action>`");
+        return (None, vec![problem]);
+    };
+    let Some(signature) = lookup.signature(&symbol.canonical).cloned() else {
+        return (None, Vec::new());
+    };
+    let takes = matches!(
+        signature.params.as_slice(),
+        [(_, Ty::Opaque(name, args))] if name == jadpo_std::http::FIRST_SIGN_IN && args.is_empty()
+    );
+    let gives = user.is_some_and(|variant| {
+        signature.result == Ty::Field(variant.entity.clone(), vec!["id".to_string()])
+    });
+    if takes && gives {
+        return (Some(symbol.canonical.clone()), Vec::new());
+    }
+    let label = if takes {
+        format!("doesn't return `{entity}.id`")
+    } else {
+        "doesn't take one `FirstSignIn`".to_string()
+    };
+    let problem = Diagnostic::new(
+        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+        format!("`{shown}` can't decide a first sign-in"),
+    )
+    .at(span, label)
+    .reason(shape)
+    .next(format!(
+        "Declare it `action {action}(first: FirstSignIn) -> {entity}.id`"
+    ));
+    (None, vec![problem])
+}
+
+/// What `sign_in:` needs from the rest of the application (area 8,
+/// "Magic links"; area 16, "Built-in emails"): the `email:` connection
+/// the sign-in email goes through and the `display_name:` it names the
+/// application by; and the action `on_first_sign_in:` names.
+#[salsa::tracked(returns(ref))]
+pub fn sign_in_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let mut out = first_sign_in_action(db, project).1.clone();
+    let identity = identity(db, project);
+    let Some(magic) = &identity.magic_link else {
+        return out;
+    };
+    let settings = crate::emails::settings(db, project);
+    if settings.connection.is_none() {
+        out.push(
+            Diagnostic::new(
+                &rule::EMAIL_CONNECTION_REQUIRED,
+                "`magic_link:` sends email, but nothing sends email",
+            )
+            .at(magic.span.clone(), "no email connection")
+            .reason("A magic link and its code are sent by email, through the connection `application { email: }` names, from the address its `from:` gives; `app.jadpo` names none.")
+            .next("Declare a connection with `driver: Driver.smtp` in `connections:`, and add `email: { connection: <its name>  from: config.mail_sender }` to `application { }` in `app.jadpo`"),
+        );
+    }
+    if settings.display_name.is_none() {
+        out.push(
+            Diagnostic::new(
+                &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                "`magic_link:` needs the application's `display_name:`",
+            )
+            .at(magic.span.clone(), "no `display_name:`")
+            .reason("Jadpo's sign-in email names the application, \"Sign in to Acme\", by `application { display_name: }`, the name its readers know it by.")
+            .next("Add `display_name: \"<name>\"` to `application { }` in `app.jadpo`"),
+        );
+    }
+    out
+}
+
+/// One singleton as written: its file, its keyword's span and its block./// One singleton as written: its file, its keyword's span and its block.
 struct Found {
     path: String,
     keyword: Span,
@@ -742,10 +905,11 @@ impl Reader<'_> {
             .iter()
             .copied()
             .chain(LATER_BLOCKS.iter().map(|(name, _)| *name))
-            .chain(["sign_in"])
+            .chain(["sign_in", "on_first_sign_in"])
             .collect();
-        // `passkey:`'s settings and where it is written, once read.
-        let mut passkey: Option<(Passkey, Span)> = None;
+        // `passkey:`'s and `magic_link:`'s settings and where each is
+        // written, once read.
+        let mut ways = Ways::default();
         let mut seen: Vec<(String, Span)> = Vec::new();
         // The built methods with no `signing_key:`, which a revocation
         // delay needs.
@@ -787,8 +951,29 @@ impl Reader<'_> {
             seen.push((word.clone(), span.clone()));
             if word == "sign_in" {
                 if let Some(member) = &member {
-                    passkey = self.sign_in(&path, &span, member);
+                    ways = self.sign_in(&path, &span, member);
                 }
+                continue;
+            }
+            if word == "on_first_sign_in" {
+                if let Some(member) = &member {
+                    self.first_sign_in(&path, &span, member);
+                }
+                continue;
+            }
+            // `sign_in_providers:` was renamed `sign_in:` (area 8,
+            // revised 2026-10-16).
+            if word == "sign_in_providers" {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_METHOD_UNKNOWN,
+                        "`sign_in_providers:` is now `sign_in:`",
+                    )
+                    .at(span.clone(), "renamed")
+                    .reason("`sign_in:` lists every way the language checks a person: `magic_link:`, `passkey:` and `providers: [...]`, the providers being connections in `app.jadpo`.")
+                    .next("Rename `sign_in_providers:` to `sign_in:`")
+                    .edit(span, "sign_in"),
+                );
                 continue;
             }
             if let Some((_, why)) = LATER_BLOCKS.iter().find(|(name, _)| *name == word) {
@@ -897,8 +1082,33 @@ impl Reader<'_> {
             }
             self.out.methods.push(read);
         }
+        // A magic link starts a browser session at its origin.
+        if let Some((read, span)) = ways.magic_link {
+            let session = self.out.method(AuthenticationMethod::BrowserSession);
+            match session.map(|session| session.origin.is_some()) {
+                None => self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`magic_link:` needs a browser session",
+                    )
+                    .at(span, "no `browser_session:`")
+                    .reason("A magic link signs a person in to a browser session, at the origin the application's pages are served from, which the email's link opens.")
+                    .next("Declare `browser_session: { cookie: \"<name>\"  origin: config.<name> }`"),
+                ),
+                Some(false) => self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`magic_link:` needs the browser session's `origin:`",
+                    )
+                    .at(span, "no origin to link to")
+                    .reason("The email's link opens the frontend's `link:` path at the origin `browser_session:`'s `origin:` reads from configuration (area 10), never one the request names.")
+                    .next("Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting"),
+                ),
+                Some(true) => self.out.magic_link = Some(read),
+            }
+        }
         // A passkey is bound to the browser session's origin.
-        if let Some((read, span)) = passkey {
+        if let Some((read, span)) = ways.passkey {
             let session = self.out.method(AuthenticationMethod::BrowserSession);
             match session.map(|session| session.origin.is_some()) {
                 None => self.out.problems.push(
@@ -1214,15 +1424,10 @@ impl Reader<'_> {
         })
     }
 
-    /// `sign_in: { ... }`: the ways the language checks a person. Only
-    /// `passkey:` is built; it is given with where it is written when it
-    /// reads cleanly.
-    fn sign_in(
-        &mut self,
-        path: &str,
-        span: &Span,
-        member: &ast::Member,
-    ) -> Option<(Passkey, Span)> {
+    /// `sign_in: { ... }`: the ways the language checks a person.
+    /// `passkey:` and `magic_link:` are built; each is given with where it
+    /// is written when it reads cleanly.
+    fn sign_in(&mut self, path: &str, span: &Span, member: &ast::Member) -> Ways {
         let Some(list) = member.block() else {
             self.out.problems.push(
                 Diagnostic::new(
@@ -1233,10 +1438,10 @@ impl Reader<'_> {
                 .reason("`sign_in:` lists the ways the language checks a person, each a block of its own settings.")
                 .next("Write `sign_in: { passkey: {} }`"),
             );
-            return None;
+            return Ways::default();
         };
         let mut seen: Vec<(String, Span)> = Vec::new();
-        let mut passkey = None;
+        let mut ways = Ways::default();
         for (key, setting) in tree::members(Some(list)) {
             let Some(word) = tree::name_text(&key) else {
                 continue;
@@ -1258,19 +1463,19 @@ impl Reader<'_> {
             seen.push((word.clone(), key_span.clone()));
             match word.as_str() {
                 "passkey" => {
-                    passkey = self
+                    ways.passkey = self
                         .passkey(path, &key_span, &setting)
                         .map(|read| (read, key_span));
                 }
-                "magic_link" => self.later(
-                    key_span,
-                    "`magic_link:`",
-                    "Magic links come with chunk 7.3b, once the application can send email",
-                ),
+                "magic_link" => {
+                    ways.magic_link = self
+                        .magic_link(path, &key_span, &setting)
+                        .map(|read| (read, key_span));
+                }
                 "providers" => self.later(
                     key_span,
                     "`providers:`",
-                    "Signing in through a provider such as Google comes after magic links (area 8, question 11)",
+                    "Signing in through a provider such as Google comes after the first build (area 8, question 11)",
                 ),
                 other => {
                     let near = nearest(other, SIGN_IN_WAYS.iter().copied());
@@ -1292,7 +1497,7 @@ impl Reader<'_> {
                 }
             }
         }
-        passkey
+        ways
     }
 
     /// `passkey: { ... }`: how long a challenge lasts and where the routes
@@ -1398,6 +1603,416 @@ impl Reader<'_> {
         ok.then_some(read)
     }
 
+    /// `on_first_sign_in: <domain>.<action>`: kept as written; whether it
+    /// names an action of the right shape is checked once every
+    /// signature is known ([`sign_in_problems`]).
+    fn first_sign_in(&mut self, path: &str, span: &Span, member: &ast::Member) {
+        let value = member.value();
+        let names: Option<Vec<String>> = value.as_ref().and_then(dotted).map(|(first, rest)| {
+            std::iter::once(first)
+                .chain(rest)
+                .filter_map(|name| tree::name_ref_text(&name))
+                .collect()
+        });
+        let at = value
+            .as_ref()
+            .map_or_else(|| span.clone(), |v| node_span(path, v.syntax()));
+        match names.filter(|names| (1..=2).contains(&names.len())) {
+            Some(names) => self.out.first_sign_in = Some(FirstSignIn { names, span: at }),
+            None => self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`on_first_sign_in:` doesn't name an action",
+                )
+                .at(at, "not `<domain>.<action>`")
+                .reason("`on_first_sign_in:` names the action that decides what a first sign-in does: it takes one `FirstSignIn` and returns the user entity's `id`, of a user it created or one that already exists.")
+                .next("Write `on_first_sign_in: <domain>.<action>`"),
+            ),
+        }
+    }
+
+    /// `magic_link: { ... }`: its settings, each checked. `None` when it
+    /// doesn't read cleanly.
+    fn magic_link(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<MagicLink> {
+        use jadpo_std::http as h;
+        let Some(list) = member.block() else {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`magic_link:` isn't a block",
+                )
+                .at(span.clone(), "a block goes here")
+                .reason("Magic links are declared as a block of their settings, holding at least `link:`, the frontend path the email's link opens.")
+                .next("Write `magic_link: { link: \"/sign-in/confirm\" }`"),
+            );
+            return None;
+        };
+        let mut read = MagicLink {
+            address: String::new(),
+            expires_after_ms: h::MAGIC_LINK_EXPIRES_MS,
+            code_attempts: h::MAGIC_LINK_CODE_ATTEMPTS,
+            codes_per_hour: h::MAGIC_LINK_CODES_PER_HOUR,
+            failed_codes_per_day: h::MAGIC_LINK_FAILED_CODES_PER_DAY,
+            resend_after_ms: h::MAGIC_LINK_RESEND_AFTER_MS,
+            same_browser: false,
+            link: String::new(),
+            path: h::MAGIC_LINK_PATH.iter().map(|t| t.to_string()).collect(),
+            span: span.clone(),
+        };
+        let mut ok = true;
+        let mut address: Option<(Vec<String>, Span)> = None;
+        let mut level: Vec<(String, Span)> = Vec::new();
+        for (key, setting) in tree::members(Some(list)) {
+            let Some(name) = tree::name_text(&key) else {
+                continue;
+            };
+            let key_span = node_span(path, key.syntax());
+            let value = setting.value();
+            let value_span = value
+                .as_ref()
+                .map_or_else(|| key_span.clone(), |v| node_span(path, v.syntax()));
+            let written = value
+                .as_ref()
+                .map(|v| tree::written(v.syntax()))
+                .unwrap_or_default();
+            let constant = value.as_ref().map(Const::from_expr);
+            let whole = match &constant {
+                Some(Const::Number {
+                    value,
+                    decimal: false,
+                }) => u32::try_from(value.mantissa).ok(),
+                _ => None,
+            };
+            let millis =
+                jadpo_std::Dur::parse(&written).and_then(|dur| i64::try_from(dur.millis).ok());
+            match name.as_str() {
+                "address" => {
+                    let names: Option<Vec<String>> =
+                        value.as_ref().and_then(dotted).map(|(first, rest)| {
+                            std::iter::once(first)
+                                .chain(rest)
+                                .filter_map(|name| tree::name_ref_text(&name))
+                                .collect()
+                        });
+                    match names.filter(|names| names.len() == 2) {
+                        Some(names) => address = Some((names, value_span)),
+                        None => {
+                            ok = false;
+                            self.out.problems.push(
+                                Diagnostic::new(
+                                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                    format!("`{written}` isn't a field of the user entity"),
+                                )
+                                .at(value_span, "not `<Entity>.<field>`")
+                                .reason("`address:` names the user entity's field holding the address a link is sent to: built on `Email` and `unique: true`, written `<Entity>.<field>`, such as `Member.email`.")
+                                .next("Name the user entity's address field, such as `address: Member.email`"),
+                            );
+                        }
+                    }
+                }
+                "expires_after" => match millis {
+                    Some(millis) if (60_000..=h::MAGIC_LINK_EXPIRES_MAX_MS).contains(&millis) => {
+                        read.expires_after_ms = millis;
+                    }
+                    Some(millis) if millis > h::MAGIC_LINK_EXPIRES_MAX_MS => {
+                        ok = false;
+                        self.acceptance(value_span, "`expires_after:`", &written, "`1h`");
+                    }
+                    _ => {
+                        ok = false;
+                        self.out.problems.push(
+                            Diagnostic::new(
+                                &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                format!("`{written}` can't be how long a magic link lasts"),
+                            )
+                            .at(value_span, if millis.is_some() { "under 1m" } else { "not a duration" })
+                            .reason("`expires_after:` is how long a link and its code work, a duration of at least `1m`; `15m` unless it says otherwise.")
+                            .next("Write a duration such as `15m`"),
+                        );
+                    }
+                },
+                "resend_after" => match millis {
+                    Some(millis) if millis > 0 => read.resend_after_ms = millis,
+                    _ => {
+                        ok = false;
+                        self.out.problems.push(
+                            Diagnostic::new(
+                                &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                format!("`{written}` can't be how long to wait between sends"),
+                            )
+                            .at(value_span, if millis.is_some() { "not above zero" } else { "not a duration" })
+                            .reason("`resend_after:` is the least time between two emails to one address, a duration above zero; `1m` unless it says otherwise.")
+                            .next("Write a duration such as `1m`"),
+                        );
+                    }
+                },
+                "code_attempts" | "codes_per_hour" | "failed_codes_per_day" => {
+                    let most = match name.as_str() {
+                        "code_attempts" => Some(h::MAGIC_LINK_CODE_ATTEMPTS_MAX),
+                        "failed_codes_per_day" => Some(h::MAGIC_LINK_FAILED_CODES_PER_DAY_MAX),
+                        _ => None,
+                    };
+                    match whole {
+                        Some(count) if count >= 1 && most.is_none_or(|most| count <= most) => {
+                            match name.as_str() {
+                                "code_attempts" => read.code_attempts = count,
+                                "codes_per_hour" => read.codes_per_hour = count,
+                                _ => read.failed_codes_per_day = count,
+                            }
+                        }
+                        Some(count) if count >= 1 => {
+                            ok = false;
+                            self.acceptance(
+                                value_span,
+                                &format!("`{name}:`"),
+                                &written,
+                                &format!("`{}`", most.unwrap_or_default()),
+                            );
+                        }
+                        _ => {
+                            ok = false;
+                            let what = match name.as_str() {
+                                "code_attempts" => "how many wrong guesses end a code",
+                                "codes_per_hour" => {
+                                    "how many emails one address is sent in an hour"
+                                }
+                                _ => "how many wrong codes one address may send in a day",
+                            };
+                            self.out.problems.push(
+                                Diagnostic::new(
+                                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                    format!("`{name}:` must be a whole number from 1"),
+                                )
+                                .at(value_span, "not a count")
+                                .reason(format!("`{name}:` is {what}, a whole number from 1."))
+                                .next(format!("Write a count, such as `{name}: 5`")),
+                            );
+                        }
+                    }
+                }
+                "same_browser" => match constant {
+                    Some(Const::Bool(on)) => read.same_browser = on,
+                    _ => {
+                        ok = false;
+                        self.out.problems.push(
+                            Diagnostic::new(
+                                &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                "`same_browser:` must be `true` or `false`",
+                            )
+                            .at(value_span, "not `true` or `false`")
+                            .reason("`same_browser: true` makes a link work only in the browser that asked for it; the code still works anywhere.")
+                            .next("Write `same_browser: true` or `same_browser: false`"),
+                        );
+                    }
+                },
+                "link" | "path" => {
+                    let text = match &constant {
+                        Some(Const::Str(text)) => Some(text.clone()),
+                        _ => None,
+                    };
+                    if name == "link" {
+                        match text.filter(|text| site_path(text)) {
+                            Some(text) => read.link = text,
+                            None => {
+                                ok = false;
+                                self.out.problems.push(
+                                    Diagnostic::new(
+                                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                        "`link:` isn't a path on the application's site",
+                                    )
+                                    .at(value_span, "not a path")
+                                    .reason("`link:` is the frontend's page the email's link opens, at the browser session's origin: a path starting with one `/`, with no query or fragment, such as `\"/sign-in/confirm\"`. The page posts the link's token to the confirm route.")
+                                    .next("Write the page's path, such as `link: \"/sign-in/confirm\"`"),
+                                );
+                            }
+                        }
+                    } else {
+                        match text.as_deref().and_then(fixed_path) {
+                            Some(segments) => read.path = segments,
+                            None => {
+                                ok = false;
+                                self.out.problems.push(
+                                    Diagnostic::new(
+                                        &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                        "`path:` isn't a path of fixed segments",
+                                    )
+                                    .at(value_span, "not a fixed path")
+                                    .reason("`path:` moves the generated magic-link routes: `/` and one or more segments of lower-case letters, digits, `-` and `_`, in quotes, such as `\"/account/sign-in\"`.")
+                                    .next("Write a path such as `path: \"/account/sign-in\"`"),
+                                );
+                            }
+                        }
+                    }
+                }
+                "email" | "send" => level.push((name.clone(), key_span)),
+                other => {
+                    ok = false;
+                    let near = nearest(other, MAGIC_LINK.iter().copied());
+                    let problem = Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_UNKNOWN,
+                        format!("`{other}` isn't a `magic_link` setting"),
+                    )
+                    .at(key_span.clone(), "unknown setting")
+                    .reason(format!(
+                        "Magic links take `address:`, `link:`, `expires_after:`, `code_attempts:`, `codes_per_hour:`, `failed_codes_per_day:`, `resend_after:`, `same_browser:`, `path:`, `email:` and `send:`; the language sets the tokens, the codes and how they are kept.{}",
+                        near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+                    ));
+                    self.out.problems.push(match near {
+                        Some(near) => problem
+                            .next(format!("Use `{near}` instead of `{other}`"))
+                            .edit(key_span, near),
+                        None => problem.next(format!("Remove `{other}:`")),
+                    });
+                }
+            }
+        }
+        // Levels 4 and 5 of the built-in email (area 16): exclusive, and
+        // built with chunk 7.3b2.
+        if let [(_, first), (_, second), ..] = level.as_slice() {
+            ok = false;
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`magic_link:` has both `email:` and `send:`",
+                )
+                .at(second.clone(), "both")
+                .also(first.clone(), "first here")
+                .reason("`email:` names an email of the application's that Jadpo fills and sends; `send:` names an action that sends it some other way. One email is sent one way.")
+                .next("Keep `email:` or `send:`, not both"),
+            );
+        } else if let Some((word, at)) = level.first() {
+            ok = false;
+            let what = if word == "email" {
+                "The application's own sign-in email (area 16, \"Built-in emails\", level 4) comes with chunk 7.3b2"
+            } else {
+                "Sending the sign-in email from the application's own action (area 16, \"Built-in emails\", level 5) comes with chunk 7.3b2"
+            };
+            self.later(at.clone(), &format!("`{word}:`"), what);
+        }
+        if read.link.is_empty() && ok {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    "`magic_link:` doesn't say which page the link opens",
+                )
+                .at(span.clone(), "no `link:`")
+                .reason("Jadpo generates endpoints, never pages: the email's link opens the frontend's own page at `link:`, which posts the link's token to the confirm route.")
+                .next("Add `link: \"/sign-in/confirm\"`, the path of the page that confirms"),
+            );
+            return None;
+        }
+        read.address = self.address_field(address, span)?;
+        ok.then_some(read)
+    }
+
+    /// The user entity's field `address:` names, or its `email` field when
+    /// it names none: built on `Email` and `unique: true`.
+    fn address_field(
+        &mut self,
+        written: Option<(Vec<String>, Span)>,
+        span: &Span,
+    ) -> Option<String> {
+        let variant = self.out.variant(PrincipalKind::User)?.clone();
+        let entity = crate::data::entity_model(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, variant.entity.clone()),
+        )
+        .clone()
+        .map(|model| (*model).clone())?;
+        let (field_name, at) = match written {
+            Some((names, at)) => {
+                if names[0] != variant.entity {
+                    self.out.problems.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                            format!("`{}` isn't the user entity", names[0]),
+                        )
+                        .at(at, "not the user entity")
+                        .reason(format!(
+                            "A link is sent to the address of the person signing in, a field of `{}`, the entity the principal's `user:` names.",
+                            variant.entity
+                        ))
+                        .next(format!("Name a field of `{}`", variant.entity)),
+                    );
+                    return None;
+                }
+                (names[1].clone(), at)
+            }
+            None => ("email".to_string(), span.clone()),
+        };
+        let Some(field) = entity.fields.iter().find(|f| f.name == field_name) else {
+            if at == *span {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`magic_link:` doesn't say where the address is kept",
+                    )
+                    .at(span.clone(), "no `address:`")
+                    .reason(format!(
+                        "A link is sent to the user's address, in `{}`'s `email` field unless `address:` names another; `{}` has no `email` field.",
+                        variant.entity, variant.entity
+                    ))
+                    .next(format!(
+                        "Add `address: {}.<field>`, naming its unique `Email` field",
+                        variant.entity
+                    )),
+                );
+            } else {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::TYPE_UNKNOWN_FIELD,
+                        format!("`{}` has no field `{field_name}`", variant.entity),
+                    )
+                    .at(at, "not declared")
+                    .reason("`address:` names the user entity's field holding the address a link is sent to.")
+                    .next(format!("Name a field of `{}`", variant.entity)),
+                );
+            }
+            return None;
+        };
+        let lookup = Lookup::new(self.db, self.project);
+        let email = lookup.base_prim(&field_ty(&entity, field)) == Some(jadpo_std::Builtin::Email);
+        if !email || !field.unique {
+            let why = if email {
+                format!("`{}.{field_name}` isn't `unique: true`", variant.entity)
+            } else {
+                format!("`{}.{field_name}` isn't built on `Email`", variant.entity)
+            };
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    format!("`{}.{field_name}` can't be where a link is sent", variant.entity),
+                )
+                .at(at, if email { "not unique" } else { "not an `Email`" })
+                .reason(format!(
+                    "A link is sent to an address, and an address names one person: `address:` names a field built on `Email` with `unique: true`; {why}."
+                ))
+                .next(format!(
+                    "Make `{field_name}` an `Email` with `unique: true`, or name the field that is"
+                )),
+            );
+            return None;
+        }
+        Some(field_name)
+    }
+
+    /// A setting loosened past what needs an acceptance (area 8, "Magic
+    /// links"), which comes with acceptances (area 18).
+    fn acceptance(&mut self, span: Span, setting: &str, written: &str, most: &str) {
+        self.out.problems.push(
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("{setting} `{written}` isn't built yet"),
+            )
+            .at(span, format!("past {most}"))
+            .reason(format!(
+                "Loosening {setting} past {most} weakens sign-in, so it needs a person's acceptance (area 8), which comes with acceptances (area 18)."
+            ))
+            .next(format!("Keep {setting} at {most} or under for now")),
+        );
+    }
+
     fn later(&mut self, span: Span, what: &str, why: &str) {
         self.out.problems.push(
             Diagnostic::new(
@@ -1409,6 +2024,26 @@ impl Reader<'_> {
             .next(format!("Leave {what} out for now")),
         );
     }
+}
+
+/// The ways `sign_in:` checks a person that read cleanly, each with
+/// where it is written.
+#[derive(Default)]
+struct Ways {
+    passkey: Option<(Passkey, Span)>,
+    magic_link: Option<(MagicLink, Span)>,
+}
+
+/// Whether `text` is a path on the application's own site, which a
+/// browser can't read as another host: one `/`, then printable ASCII with
+/// no `\`, query or fragment, 2,000 bytes at most.
+fn site_path(text: &str) -> bool {
+    text.len() <= 2000
+        && text.starts_with('/')
+        && !text.starts_with("//")
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_graphic() && !matches!(b, b'\\' | b'?' | b'#'))
 }
 
 /// The segments of a path written as `/` and one or more segments of
