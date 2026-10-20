@@ -1524,12 +1524,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   SQS package in `packages/amazon_sqs`, tested against a local fake of
   SQS's JSON API that checks every signature (`receiving.rs`). Choices in
   area 11's "Chosen in chunk 7.7c".
-- [ ] **7.7c2 Cloudflare Queues on Workers** `opus · high`, after 7.7c:
-  the built-in Cloudflare Queues driver, a queue's consumer handed a
-  batch, each message kept as 7.7c keeps one and acknowledged or retried
-  by the batch's answer, a parked one acknowledged; its seam and its
-  consumer configuration for the Wrangler file built and unit-tested
-  here, deploying it Phase 8's.
+- [x] **7.7c2 Cloudflare Queues on Workers** `opus · high`. Built:
+  `driver: Driver.cloudflare_queues` with `queue:` and a required, different
+  `dead_letter_queue:` (`connection.key_missing`, `.key_invalid`,
+  `.value_invalid`), read by `receiving:` as a package's connection is;
+  the seam the Workers consumer will call, `receiving::consume`, keeping
+  each message of a batch as 7.7c keeps one and answering each:
+  acknowledged once kept, as a repeat or parked, retried after a delay
+  growing per attempt when the store can't take it now, a batch from an
+  unknown queue retried whole; the tick fetching nothing from it but
+  rereading retried parked messages; and its consumer for the Wrangler
+  file (`wrangler_queues`, as JSON). Tested in-process against PostgreSQL
+  (`cloudflare_queues.rs`); deploying it is Phase 8's. Choices in area
+  11's "Chosen in chunk 7.7c2".
 - [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
   xhigh` (area 21, "The `ai` capability" and "Typed output"), after
   5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`
@@ -1600,6 +1607,12 @@ The design is area 11 as revised on 2026-10-16, with its research in
   minute an error naming the schedule (area 12, decided 2026-10-19); a
   batch carried on in a fresh invocation; 6.7's budgets set to Workers'
   (30 s for `waitUntil`, 15 minutes' wall time for the cron).
+  From chunk 7.7c2: the queue handler calling `receiving::consume` and
+  answering each message (`ack()`, `retry({ delaySeconds })`), the kept
+  events' deliveries in `waitUntil`; `wrangler_queues` written into the
+  Wrangler file, its setting names and Jadpo's queue-name form checked
+  against Wrangler's own; `Driver.cloudflare_queues` refused in a native
+  deployable.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well

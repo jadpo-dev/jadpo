@@ -4,7 +4,10 @@
 //! the events it may carry, each with its `wire_name:`; the package maps
 //! the capability's operations onto its own in `provides/receiving.jadpo`;
 //! an AWS package names its signing service and its operations' prefix in
-//! `aws:`, and its connection gives a key id and a secret.
+//! `aws:`, and its connection gives a key id and a secret. A queue on
+//! Cloudflare Queues is a connection with `driver:
+//! Driver.cloudflare_queues` naming the queue and its dead-letter queue
+//! (chunk 7.7c2).
 
 use crate::support;
 
@@ -152,7 +155,7 @@ fn a_queue_says_where_ids_and_types_are_and_names_each_event() {
         ),
         (
             "        main: {\n            id_at: \"message_id\"\n            events: [OrderShipped]\n        }\n",
-            "app.jadpo receiving.invalid: `main` isn't a connection to a package",
+            "app.jadpo receiving.invalid: `main` isn't a connection a queue is read through",
         ),
     ];
     for (queue, problem) in cases {
@@ -252,4 +255,97 @@ fn an_aws_package_names_its_service_and_its_connection_gives_a_key_id_and_a_secr
             "app.jadpo connection.value_invalid: `warehouse`'s secret access key must be a secret setting"
         ]
     );
+}
+
+const CLOUDFLARE: &str = "            driver: Driver.cloudflare_queues\n            queue: \"warehouse-events\"\n            dead_letter_queue: \"warehouse-events-dead\"\n";
+
+/// Each problem of an app receiving `QUEUE` through Cloudflare Queues,
+/// its connection `warehouse` holding `connection` and `extra` declaring
+/// more connections.
+fn cloudflare_problems(connection: &str, extra: &str) -> Vec<String> {
+    let app = format!(
+        "use stock/events {{ OrderShipped, StockLow }}\n\napplication {{\n    connections: {{\n        main: {{\n            driver: Driver.postgres\n        }}\n        warehouse: {{\n{connection}        }}\n{extra}    }}\n    events: {{\n        store: main\n    }}\n    receiving: {{\n{QUEUE}    }}\n}}\n"
+    );
+    let files = [
+        ("app.jadpo", app.as_str()),
+        ("domains/stock/events/order_shipped.jadpo", SHIPPED),
+        ("domains/stock/events/stock_low.jadpo", LOW),
+        (
+            "domains/stock/entities/shipment.jadpo",
+            "entity Shipment {\n    id: Uuid\n    order: Text {\n        max_length: 40\n    }\n\n    policy: {\n        create: [Access.system]\n        read: [Access.system]\n    }\n}\n",
+        ),
+    ];
+    support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|problem| {
+            !["import.unused", "layout.unused_declaration"]
+                .iter()
+                .any(|rule| problem.contains(&format!(" {rule}:")))
+                && !problem.contains(" migration.")
+                && !problem.contains(" record.")
+        })
+        .collect()
+}
+
+#[test]
+fn a_queue_on_cloudflare_queues_names_the_queue_and_its_dead_letter_queue() {
+    assert_eq!(cloudflare_problems(CLOUDFLARE, ""), Vec::<String>::new());
+    let cases: [(String, &str); 5] = [
+        (
+            CLOUDFLARE.replace("            queue: \"warehouse-events\"\n", ""),
+            "app.jadpo connection.key_missing: `warehouse` doesn't give `queue:`",
+        ),
+        (
+            CLOUDFLARE.replace(
+                "            dead_letter_queue: \"warehouse-events-dead\"\n",
+                "",
+            ),
+            "app.jadpo connection.key_missing: `warehouse` doesn't give `dead_letter_queue:`",
+        ),
+        (
+            CLOUDFLARE.replace("\"warehouse-events\"", "\"Warehouse_Events\""),
+            "app.jadpo connection.value_invalid: `warehouse`'s `queue:` must be a queue's name",
+        ),
+        (
+            CLOUDFLARE.replace("warehouse-events-dead", "warehouse-events"),
+            "app.jadpo connection.value_invalid: `warehouse`'s dead-letter queue is the queue itself",
+        ),
+        (
+            format!("{CLOUDFLARE}            retries: 5\n"),
+            "app.jadpo connection.key_invalid: A connection with `driver: Driver.cloudflare_queues` takes no `retries:`",
+        ),
+    ];
+    for (connection, problem) in cases {
+        assert_eq!(
+            cloudflare_problems(&connection, ""),
+            [problem],
+            "{connection}"
+        );
+    }
+    let second = "        billing: {\n            driver: Driver.cloudflare_queues\n            queue: \"warehouse-events\"\n            dead_letter_queue: \"billing-dead\"\n        }\n";
+    assert_eq!(
+        cloudflare_problems(CLOUDFLARE, second),
+        [
+            "app.jadpo connection.value_invalid: `billing` and `warehouse` both name the queue `warehouse-events`"
+        ]
+    );
+}
+
+#[test]
+fn a_queue_name_is_lowercase_letters_digits_and_dashes() {
+    use jadpo_check::receiving::queue_name_ok;
+    for good in ["warehouse-events", "q", "2026-orders", &"a".repeat(63)] {
+        assert!(queue_name_ok(good), "{good}");
+    }
+    for bad in [
+        "",
+        "-events",
+        "events-",
+        "Events",
+        "warehouse_events",
+        "a b",
+        &"a".repeat(64),
+    ] {
+        assert!(!queue_name_ok(bad), "{bad}");
+    }
 }

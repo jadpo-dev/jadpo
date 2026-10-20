@@ -1,8 +1,11 @@
 //! Queues received as events, as plain data (area 12, "Events from
 //! outside"; area 11, "Queues"; chunk 7.7c): each queue `receiving:`
 //! names, where each message's type and id are in its body, the events it
-//! may carry, the store they are kept in, and how its connection's package
-//! fetches and acknowledges messages (`provides/receiving.jadpo`).
+//! may carry, the store they are kept in, and how its messages arrive:
+//! fetched and acknowledged through its connection's package
+//! (`provides/receiving.jadpo`), or pushed in batches to a consumer on
+//! Workers by Cloudflare Queues (`Driver.cloudflare_queues`, chunk 7.7c2),
+//! whose consumer [`wrangler_queues`] writes for the Wrangler file.
 
 /// One queue the application receives.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,8 +24,23 @@ pub struct QueuePlan {
     /// The store the events, the ids received and the messages parked are
     /// kept in.
     pub store: String,
-    pub receive: ReceivePlan,
-    pub acknowledge: AcknowledgePlan,
+    /// How its messages arrive.
+    pub source: QueueSource,
+}
+
+/// How a queue's messages arrive.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QueueSource {
+    /// Fetched on the tick through the connection's package, and each
+    /// acknowledged once its event is kept (chunk 7.7c).
+    Package {
+        receive: ReceivePlan,
+        acknowledge: AcknowledgePlan,
+    },
+    /// Pushed by Cloudflare Queues to the Workers host's consumer, a batch
+    /// at a time, each message acknowledged or retried by the batch's
+    /// answer (chunk 7.7c2).
+    Cloudflare(CloudflareQueue),
 }
 
 impl QueuePlan {
@@ -81,4 +99,115 @@ pub enum Mapped {
     Bool(bool),
     /// The message's handle (`message.handle`).
     Handle,
+}
+
+/// A queue on Cloudflare Queues, as its connection names it
+/// (`driver: Driver.cloudflare_queues`, chunk 7.7c2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CloudflareQueue {
+    /// Its name in Cloudflare, `warehouse-events`, which a batch handed
+    /// to the consumer names.
+    pub queue: String,
+    /// The queue Cloudflare moves a message to once its retries are
+    /// spent, so no message is dropped.
+    pub dead_letter_queue: String,
+}
+
+/// The most messages Cloudflare hands the consumer in one batch, as many
+/// as one receive asks a package's queue for.
+pub const CONSUMER_BATCH: u32 = 10;
+
+/// The most seconds Cloudflare waits to fill a batch.
+pub const CONSUMER_WAIT_SECONDS: u32 = 5;
+
+/// How many times Cloudflare hands a message again that the consumer
+/// retried, before it moves it to the dead-letter queue.
+pub const CONSUMER_RETRIES: u32 = 3;
+
+/// The `queues` member of the Wrangler file for `queues`: a consumer for
+/// each one on Cloudflare Queues, none for a package's. `None` when there
+/// is none, so the file names no consumer.
+pub fn wrangler_queues(queues: &[QueuePlan]) -> Option<serde_json::Value> {
+    let consumers: Vec<serde_json::Value> = queues
+        .iter()
+        .filter_map(|queue| match &queue.source {
+            QueueSource::Cloudflare(cloudflare) => Some(serde_json::json!({
+                "queue": cloudflare.queue,
+                "max_batch_size": CONSUMER_BATCH,
+                "max_batch_timeout": CONSUMER_WAIT_SECONDS,
+                "max_retries": CONSUMER_RETRIES,
+                "dead_letter_queue": cloudflare.dead_letter_queue,
+            })),
+            QueueSource::Package { .. } => None,
+        })
+        .collect();
+    (!consumers.is_empty()).then(|| serde_json::json!({ "consumers": consumers }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn queue(connection: &str, source: QueueSource) -> QueuePlan {
+        QueuePlan {
+            connection: connection.into(),
+            type_at: None,
+            id_at: "id".into(),
+            events: Vec::new(),
+            store: "main".into(),
+            source,
+        }
+    }
+
+    fn cloudflare(name: &str) -> QueueSource {
+        QueueSource::Cloudflare(CloudflareQueue {
+            queue: name.into(),
+            dead_letter_queue: format!("{name}-dead"),
+        })
+    }
+
+    #[test]
+    fn each_cloudflare_queue_is_a_consumer_in_the_wrangler_file() {
+        let package = QueueSource::Package {
+            receive: ReceivePlan {
+                operation: "messages.receive_message".into(),
+                input: Vec::new(),
+                messages: vec!["messages".into()],
+                body: vec!["body".into()],
+                handle: vec!["handle".into()],
+            },
+            acknowledge: AcknowledgePlan {
+                operation: "messages.delete_message".into(),
+                input: Vec::new(),
+            },
+        };
+        let queues = [
+            queue("warehouse_queue", cloudflare("warehouse-events")),
+            queue("sqs", package.clone()),
+            queue("billing_queue", cloudflare("billing")),
+        ];
+        assert_eq!(
+            wrangler_queues(&queues),
+            Some(serde_json::json!({
+                "consumers": [
+                    {
+                        "queue": "warehouse-events",
+                        "max_batch_size": 10,
+                        "max_batch_timeout": 5,
+                        "max_retries": 3,
+                        "dead_letter_queue": "warehouse-events-dead",
+                    },
+                    {
+                        "queue": "billing",
+                        "max_batch_size": 10,
+                        "max_batch_timeout": 5,
+                        "max_retries": 3,
+                        "dead_letter_queue": "billing-dead",
+                    },
+                ]
+            }))
+        );
+        assert_eq!(wrangler_queues(&[queue("sqs", package)]), None);
+        assert_eq!(wrangler_queues(&[]), None);
+    }
 }

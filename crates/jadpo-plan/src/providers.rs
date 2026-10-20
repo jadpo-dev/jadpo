@@ -14,7 +14,9 @@ use jadpo_std::provider::{
     OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan, RecordedPlan, WebhookEvent,
     WebhookPlan, WebhookReply,
 };
-use jadpo_std::receiving::{AcknowledgePlan, Mapped, QueueEvent, QueuePlan, ReceivePlan};
+use jadpo_std::receiving::{
+    AcknowledgePlan, CloudflareQueue, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
+};
 use jadpo_std::subscriber::Repeat;
 
 /// The provider plan, numbering each operation's input and output in
@@ -228,10 +230,39 @@ pub(crate) fn plan(
                     })
                     .collect()
             };
-        let (Some(receive), Some(acknowledge)) =
-            (inputs(&queue.receive.1), inputs(&queue.acknowledge.1))
-        else {
-            continue;
+        use jadpo_check::receiving::SourceModel;
+        let source = match &queue.source {
+            SourceModel::Package {
+                receive,
+                messages,
+                body,
+                handle,
+                acknowledge,
+            } => {
+                let (Some(receive_input), Some(acknowledge_input)) =
+                    (inputs(&receive.1), inputs(&acknowledge.1))
+                else {
+                    continue;
+                };
+                QueueSource::Package {
+                    receive: ReceivePlan {
+                        operation: receive.0.clone(),
+                        input: receive_input,
+                        messages: messages.clone(),
+                        body: body.clone(),
+                        handle: handle.clone(),
+                    },
+                    acknowledge: AcknowledgePlan {
+                        operation: acknowledge.0.clone(),
+                        input: acknowledge_input,
+                    },
+                }
+            }
+            // Pushed to the consumer on Workers (chunk 7.7c2).
+            SourceModel::Cloudflare(cloudflare) => QueueSource::Cloudflare(CloudflareQueue {
+                queue: cloudflare.queue.clone(),
+                dead_letter_queue: cloudflare.dead_letter_queue.clone(),
+            }),
         };
         out.queues.push(QueuePlan {
             connection: queue.connection.clone(),
@@ -247,17 +278,7 @@ pub(crate) fn plan(
                 })
                 .collect(),
             store: queue.store.clone(),
-            receive: ReceivePlan {
-                operation: queue.receive.0.clone(),
-                input: receive,
-                messages: queue.messages.clone(),
-                body: queue.body.clone(),
-                handle: queue.handle.clone(),
-            },
-            acknowledge: AcknowledgePlan {
-                operation: queue.acknowledge.0.clone(),
-                input: acknowledge,
-            },
+            source,
         });
     }
     out

@@ -18,6 +18,12 @@
 //! one with the handle (`message.handle`). An input's value is a setting
 //! the package declares (`settings.<name>`), which each connection gives,
 //! or a value written there.
+//!
+//! A queue on Cloudflare Queues is a connection with `driver:
+//! Driver.cloudflare_queues` instead (chunk 7.7c2), naming the queue and
+//! its dead-letter queue as Cloudflare knows them ([`cloudflare_queues`]):
+//! Cloudflare pushes its messages to the Workers host's consumer in
+//! batches, so no package fetches it.
 
 use std::collections::BTreeMap;
 
@@ -111,11 +117,214 @@ pub struct QueueModel {
     pub id_at: String,
     pub events: Vec<QueueEventModel>,
     pub store: String,
-    pub receive: (String, Vec<(String, Input)>),
-    pub messages: Vec<String>,
-    pub body: Vec<String>,
-    pub handle: Vec<String>,
-    pub acknowledge: (String, Vec<(String, Input)>),
+    pub source: SourceModel,
+}
+
+/// How a queue's messages arrive.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum SourceModel {
+    /// Fetched through its connection's package, as its mapping says.
+    Package {
+        receive: (String, Vec<(String, Input)>),
+        messages: Vec<String>,
+        body: Vec<String>,
+        handle: Vec<String>,
+        acknowledge: (String, Vec<(String, Input)>),
+    },
+    /// Pushed by Cloudflare Queues to the consumer on Workers.
+    Cloudflare(CloudflareQueueModel),
+}
+
+/// A connection with `driver: Driver.cloudflare_queues` (chunk 7.7c2).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CloudflareQueueModel {
+    pub name: String,
+    /// `queue:`, the queue's name in Cloudflare.
+    pub queue: String,
+    /// `dead_letter_queue:`, where Cloudflare moves a message once its
+    /// retries are spent.
+    pub dead_letter_queue: String,
+}
+
+/// Each connection to Cloudflare Queues, and the problems with them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CloudflareQueues {
+    pub list: Vec<CloudflareQueueModel>,
+    /// The connections that don't read, reported where they are.
+    pub broken: Vec<String>,
+    pub problems: Vec<Diagnostic>,
+}
+
+/// What a connection to Cloudflare Queues holds.
+pub const CLOUDFLARE_KEYS: [&str; 3] = ["driver", "queue", "dead_letter_queue"];
+
+/// The most characters Jadpo takes in a queue's name.
+const QUEUE_NAME_MAX: usize = 63;
+
+/// Whether `name` is a queue's name as Jadpo takes one: lowercase letters,
+/// digits and dashes, starting and ending with a letter or digit, at most
+/// 63 characters.
+pub fn queue_name_ok(name: &str) -> bool {
+    let edge = |c: Option<char>| c.is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    !name.is_empty()
+        && name.len() <= QUEUE_NAME_MAX
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && edge(name.chars().next())
+        && edge(name.chars().last())
+}
+
+const CLOUDFLARE_REASON: &str = "A connection with `driver: Driver.cloudflare_queues` names a queue on Cloudflare Queues, which pushes its messages to the app's consumer on Workers: `queue:`, the queue's name as Cloudflare knows it, and `dead_letter_queue:`, another queue Cloudflare moves a message to once its retries are spent, so none is dropped. Each is written out, lowercase letters, digits and dashes, starting and ending with a letter or digit, at most 63 characters, since the consumer is written into the Wrangler file when the app is built.";
+
+/// Each connection with `driver: Driver.cloudflare_queues`, read.
+#[salsa::tracked(returns(ref))]
+pub fn cloudflare_queues(db: &dyn Db, project: Project) -> CloudflareQueues {
+    let mut out = CloudflareQueues::default();
+    let mut named: BTreeMap<String, String> = BTreeMap::new();
+    for found in crate::config::singletons(db, project, "application") {
+        let path = found.path.clone();
+        for (key, member) in tree::members(found.list.clone()) {
+            if name_text(&key).as_deref() != Some("connections") {
+                continue;
+            }
+            for (name, entry) in tree::members(member.block()) {
+                let Some(connection) = name_text(&name) else {
+                    continue;
+                };
+                if crate::data::connection_kind(entry.block())
+                    != crate::data::ConnectionKind::CloudflareQueue
+                {
+                    continue;
+                }
+                let before = out.problems.len();
+                let head = node_span(&path, name.syntax());
+                let mut queue = None;
+                let mut dead_letter_queue = None;
+                for (setting, option) in tree::members(entry.block()) {
+                    let word = name_text(&setting).unwrap_or_default();
+                    let span = option.value().map_or_else(
+                        || node_span(&path, option.syntax()),
+                        |value| node_span(&path, value.syntax()),
+                    );
+                    match word.as_str() {
+                        "driver" => {}
+                        "queue" | "dead_letter_queue" => {
+                            match option.value().as_ref().map(Const::from_expr) {
+                                Some(Const::Str(text)) if queue_name_ok(&text) => {
+                                    if word == "queue" {
+                                        queue = Some((text, span));
+                                    } else {
+                                        dead_letter_queue = Some((text, span));
+                                    }
+                                }
+                                _ => out.problems.push(
+                                    Diagnostic::new(
+                                        &rule::CONNECTION_VALUE_INVALID,
+                                        format!(
+                                            "`{connection}`'s `{word}:` must be a queue's name"
+                                        ),
+                                    )
+                                    .at(span, "not a queue's name")
+                                    .reason(CLOUDFLARE_REASON)
+                                    .next(format!(
+                                        "Write the queue's name as text, such as `{word}: \"{}\"`",
+                                        if word == "queue" {
+                                            "warehouse-events"
+                                        } else {
+                                            "warehouse-events-dead"
+                                        }
+                                    )),
+                                ),
+                            }
+                        }
+                        other => {
+                            let near = nearest(other, CLOUDFLARE_KEYS.iter().copied());
+                            let problem = Diagnostic::new(
+                                &rule::CONNECTION_KEY_INVALID,
+                                format!("A connection with `driver: Driver.cloudflare_queues` takes no `{other}:`"),
+                            )
+                            .at(node_span(&path, setting.syntax()), "not a queue's setting")
+                            .reason(CLOUDFLARE_REASON);
+                            out.problems.push(match near {
+                                Some(near) => {
+                                    problem.next(format!("Use `{near}:` instead of `{other}:`"))
+                                }
+                                None => problem.next(format!("Remove `{other}:`")),
+                            });
+                        }
+                    }
+                }
+                for (needed, given, example) in [
+                    ("queue", queue.is_some(), "warehouse-events"),
+                    (
+                        "dead_letter_queue",
+                        dead_letter_queue.is_some(),
+                        "warehouse-events-dead",
+                    ),
+                ] {
+                    let written = tree::members(entry.block())
+                        .iter()
+                        .any(|(setting, _)| name_text(setting).as_deref() == Some(needed));
+                    if !given && !written {
+                        out.problems.push(
+                            Diagnostic::new(
+                                &rule::CONNECTION_KEY_MISSING,
+                                format!("`{connection}` doesn't give `{needed}:`"),
+                            )
+                            .at(head.clone(), format!("no `{needed}:`"))
+                            .reason(CLOUDFLARE_REASON)
+                            .next(format!(
+                                "Add `{needed}: \"{example}\"`, the queue's name in Cloudflare"
+                            )),
+                        );
+                    }
+                }
+                if let (Some((queue, _)), Some((dead, span))) = (&queue, &dead_letter_queue)
+                    && queue == dead
+                {
+                    out.problems.push(
+                        Diagnostic::new(
+                            &rule::CONNECTION_VALUE_INVALID,
+                            format!("`{connection}`'s dead-letter queue is the queue itself"),
+                        )
+                        .at(span.clone(), "the same queue")
+                        .reason(CLOUDFLARE_REASON)
+                        .next(format!(
+                            "Name another queue, such as `dead_letter_queue: \"{queue}-dead\"`"
+                        )),
+                    );
+                }
+                if let Some((queue, span)) = &queue
+                    && let Some(first) = named.get(queue)
+                {
+                    out.problems.push(
+                        Diagnostic::new(
+                            &rule::CONNECTION_VALUE_INVALID,
+                            format!("`{connection}` and `{first}` both name the queue `{queue}`"),
+                        )
+                        .at(span.clone(), "named already")
+                        .reason("Each queue on Cloudflare Queues has one consumer, and a batch Cloudflare hands it names its queue, so one connection names each queue.")
+                        .next(format!("Name `{first}` in `receiving:` and remove `{connection}`")),
+                    );
+                }
+                match (queue, dead_letter_queue) {
+                    (Some((queue, _)), Some((dead_letter_queue, _)))
+                        if out.problems.len() == before =>
+                    {
+                        named.insert(queue.clone(), connection.clone());
+                        out.list.push(CloudflareQueueModel {
+                            name: connection,
+                            queue,
+                            dead_letter_queue,
+                        });
+                    }
+                    _ => out.broken.push(connection),
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Every queue the app receives, and the problems with them.
@@ -130,6 +339,7 @@ pub struct Receiving {
 pub fn receiving(db: &dyn Db, project: Project) -> Receiving {
     let mut out = Receiving::default();
     let mappings = mappings(db, project);
+    let cloudflare = cloudflare_queues(db, project);
     let connections = &crate::connections::package_connections(db, project).connections;
     let lookup = Lookup::within(db, project, &Ownership::Root);
     for found in crate::config::singletons(db, project, "application") {
@@ -158,7 +368,8 @@ pub fn receiving(db: &dyn Db, project: Project) -> Receiving {
                     continue;
                 };
                 let span = node_span(&found.path, name.syntax());
-                if let Some(queue) = reader.queue(&connection, span, &entry, connections, mappings)
+                if let Some(queue) =
+                    reader.queue(&connection, span, &entry, connections, mappings, cloudflare)
                 {
                     out.queues.push(queue);
                 }
@@ -177,6 +388,12 @@ pub fn store(db: &dyn Db, project: Project) -> Option<String> {
         .map(|queue| queue.store.clone())
 }
 
+/// What a queue's connection is.
+enum Via<'c> {
+    Package(&'c PackageConnection, &'c Mapping),
+    Cloudflare(&'c CloudflareQueueModel),
+}
+
 struct Reader<'r, 'db> {
     db: &'db dyn Db,
     project: Project,
@@ -185,7 +402,7 @@ struct Reader<'r, 'db> {
     out: &'r mut Vec<Diagnostic>,
 }
 
-const REASON: &str = "A queue in `receiving:` is a connection to a package that provides `receiving`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.";
+const REASON: &str = "A queue in `receiving:` is a connection to a package that provides `receiving`, or one with `driver: Driver.cloudflare_queues`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.";
 
 impl Reader<'_, '_> {
     fn invalid(&mut self, span: Span, message: String, label: &str, next: &str) {
@@ -208,35 +425,44 @@ impl Reader<'_, '_> {
         entry: &ast::Member,
         connections: &[PackageConnection],
         mappings: &Mappings,
+        cloudflare: &CloudflareQueues,
     ) -> Option<QueueModel> {
-        let Some(connection) = connections.iter().find(|known| known.name == name) else {
+        let via = if let Some(queue) = cloudflare.list.iter().find(|known| known.name == name) {
+            Via::Cloudflare(queue)
+        } else if cloudflare.broken.iter().any(|broken| broken == name) {
             // A connection that doesn't read is reported where it is.
-            if crate::connections::names_package(
-                &crate::config::singletons(self.db, self.project, "application")
-                    .first()
-                    .and_then(|found| found.list.clone()),
-                name,
-            ) {
-                return None;
-            }
-            self.invalid(
-                span,
-                format!("`{name}` isn't a connection to a package"),
-                "not a queue's connection",
-                &format!("Add `{name}` to `connections:` with the `package:` its queue is read through, or name one that is"),
-            );
             return None;
-        };
-        let Some(mapping) = mappings.of.get(&connection.folder) else {
-            if !mappings.broken.contains(&connection.folder) {
+        } else {
+            let Some(connection) = connections.iter().find(|known| known.name == name) else {
+                // A connection that doesn't read is reported where it is.
+                if crate::connections::names_package(
+                    &crate::config::singletons(self.db, self.project, "application")
+                        .first()
+                        .and_then(|found| found.list.clone()),
+                    name,
+                ) {
+                    return None;
+                }
                 self.invalid(
                     span,
-                    format!("`{}` doesn't provide `receiving`", connection.package),
-                    "can't fetch a queue",
-                    "Name a connection whose package has `provides/receiving.jadpo`, such as `AmazonSqs.v2012_11_05`",
+                    format!("`{name}` isn't a connection a queue is read through"),
+                    "not a queue's connection",
+                    &format!("Add `{name}` to `connections:` with the `package:` its queue is read through, or `driver: Driver.cloudflare_queues`, or name one that is"),
                 );
-            }
-            return None;
+                return None;
+            };
+            let Some(mapping) = mappings.of.get(&connection.folder) else {
+                if !mappings.broken.contains(&connection.folder) {
+                    self.invalid(
+                        span,
+                        format!("`{}` doesn't provide `receiving`", connection.package),
+                        "can't fetch a queue",
+                        "Name a connection whose package has `provides/receiving.jadpo`, such as `AmazonSqs.v2012_11_05`",
+                    );
+                }
+                return None;
+            };
+            Via::Package(connection, mapping)
         };
         let Some(block) = entry.block() else {
             self.invalid(
@@ -370,32 +596,44 @@ impl Reader<'_, '_> {
             );
             return None;
         };
-        let inputs = |call: &MappedCall| -> Option<(String, Vec<(String, Input)>)> {
-            let mut out = Vec::new();
-            for (member, value) in &call.input {
-                let given = match value {
-                    Mapped::Setting(setting) => {
-                        match connection
-                            .settings
-                            .iter()
-                            .find(|(name, _)| name == setting)
-                            .map(|(_, given)| given)?
-                        {
-                            Given::Setting(name) => Input::Config(name.clone()),
-                            Given::Text(text) => Input::Text(text.clone()),
-                            Given::Int(n) => Input::Int(*n),
-                            Given::Bool(flag) => Input::Bool(*flag),
-                            Given::Other => return None,
-                        }
+        let source = match via {
+            Via::Cloudflare(queue) => SourceModel::Cloudflare(queue.clone()),
+            Via::Package(connection, mapping) => {
+                let inputs = |call: &MappedCall| -> Option<(String, Vec<(String, Input)>)> {
+                    let mut out = Vec::new();
+                    for (member, value) in &call.input {
+                        let given = match value {
+                            Mapped::Setting(setting) => {
+                                match connection
+                                    .settings
+                                    .iter()
+                                    .find(|(name, _)| name == setting)
+                                    .map(|(_, given)| given)?
+                                {
+                                    Given::Setting(name) => Input::Config(name.clone()),
+                                    Given::Text(text) => Input::Text(text.clone()),
+                                    Given::Int(n) => Input::Int(*n),
+                                    Given::Bool(flag) => Input::Bool(*flag),
+                                    Given::Other => return None,
+                                }
+                            }
+                            Mapped::Text(text) => Input::Text(text.clone()),
+                            Mapped::Int(n) => Input::Int(*n),
+                            Mapped::Bool(flag) => Input::Bool(*flag),
+                            Mapped::Handle => Input::Handle,
+                        };
+                        out.push((member.clone(), given));
                     }
-                    Mapped::Text(text) => Input::Text(text.clone()),
-                    Mapped::Int(n) => Input::Int(*n),
-                    Mapped::Bool(flag) => Input::Bool(*flag),
-                    Mapped::Handle => Input::Handle,
+                    Some((call.operation.clone(), out))
                 };
-                out.push((member.clone(), given));
+                SourceModel::Package {
+                    receive: inputs(&mapping.receive)?,
+                    messages: mapping.messages.clone(),
+                    body: mapping.body.clone(),
+                    handle: mapping.handle.clone(),
+                    acknowledge: inputs(&mapping.acknowledge)?,
+                }
             }
-            Some((call.operation.clone(), out))
         };
         Some(QueueModel {
             connection: name.to_string(),
@@ -403,11 +641,7 @@ impl Reader<'_, '_> {
             id_at,
             events: events.into_iter().map(|(event, _)| event).collect(),
             store,
-            receive: inputs(&mapping.receive)?,
-            messages: mapping.messages.clone(),
-            body: mapping.body.clone(),
-            handle: mapping.handle.clone(),
-            acknowledge: inputs(&mapping.acknowledge)?,
+            source,
         })
     }
 

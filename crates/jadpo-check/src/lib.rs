@@ -268,6 +268,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
         out.extend(polls::declared(db, project).problems.iter().cloned());
         out.extend(polls::polls(db, project).problems.iter().cloned());
+        out.extend(
+            receiving::cloudflare_queues(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)
