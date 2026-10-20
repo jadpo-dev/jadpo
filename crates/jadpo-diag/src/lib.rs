@@ -1052,8 +1052,10 @@ rules! {
         "12-jobs-and-events.html#type-batch-from-invalid", "A batch's `from:` is not a call of a named query giving a `Page`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
         "12-jobs-and-events.html#type-batch-input", "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
+    TYPE_BATCH_ORDER_UPDATABLE: "type.batch_order_updatable", area 12, Declinable, Agent,
+        "12-jobs-and-events.html#type-batch-order-updatable", "A batch walks a query ordered by a field an update can change";
     TYPE_BATCH_ROW_INVALID: "type.batch_row_invalid", area 12, Error, Agent,
-        "12-jobs-and-events.html#type-batch-row-invalid", "A file helper's rows can't be read as the type its `as:` names, or written as the row its `each:` gives";
+        "12-jobs-and-events.html#type-batch-row-invalid", "A file helper's rows can't be read as the type its `as:` names or from where its `items_at:` says, its `max_unpacked_size:` isn't a size, or its rows can't be written as the row its `each:` gives";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
         "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
@@ -1500,6 +1502,7 @@ mod tests {
                 "library.similar_exists",
                 "query.nearest_exact",
                 "translation.field_unused",
+                "type.batch_order_updatable",
                 "type.standard_exists",
                 "type.variant_retired"
             ]

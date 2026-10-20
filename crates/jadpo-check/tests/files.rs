@@ -259,3 +259,98 @@ fn a_file_helpers_rows_are_an_input_a_cell_one_value_and_a_column_read_once() {
             .contains(&"type.batch_context".to_string())
     );
 }
+
+/// `json.read` given a stored `File` and `each:` is its file form (chunk
+/// 6.4b3): a run over the list `items_at:` names, a text literal of
+/// member names, each item an `Input` that may hold lists and objects;
+/// given text it is still the in-memory read. Every reader takes
+/// `max_unpacked_size:`, a size literal, and only `json.read` takes
+/// `items_at:`.
+#[test]
+fn json_reads_a_files_list_where_items_at_says_and_any_reader_unpacks() {
+    let lists = (
+        "domains/pantry/types/list_row.jadpo",
+        "use pantry/types { ShelfCode }\n\ntype ListRow = Input {\n    codes: List<ShelfCode>\n}\n",
+    );
+    let note = (
+        "domains/pantry/actions/note_listed.jadpo",
+        "use pantry/types { ListRow }\n\naction note_listed(listed: ListRow) -> Unit {\n    assert listed == listed\n}\n",
+    );
+    let read = |args: &str| {
+        format!(
+            "use pantry/types {{ ListRow, SheetText }}\nuse pantry/actions {{ note_listed }}\n\naction read_sheet(sheet: File, label: SheetText) -> BatchRun {{\n    return {args}\n}}\n"
+        )
+    };
+    for (call, expected) in [
+        (
+            "json.read(sheet, items_at: \"data.items\", as: ListRow, each: listed -> note_listed(listed))",
+            vec![],
+        ),
+        // The document itself is the list.
+        (
+            "json.read(sheet, as: ListRow, each: listed -> note_listed(listed))",
+            vec![],
+        ),
+        (
+            "json.read(sheet, items_at: \"items\", as: ListRow, each: listed -> note_listed(listed), max_unpacked_size: 200mb)",
+            vec![],
+        ),
+        (
+            "json_lines.read(sheet, as: ListRow, each: listed -> note_listed(listed), max_unpacked_size: 1gb)",
+            vec![],
+        ),
+        // `items_at:` is written out, member names between dots.
+        (
+            "json.read(sheet, items_at: label, as: ListRow, each: listed -> note_listed(listed))",
+            vec!["type.batch_row_invalid"],
+        ),
+        (
+            "json.read(sheet, items_at: \"data..items\", as: ListRow, each: listed -> note_listed(listed))",
+            vec!["type.batch_row_invalid"],
+        ),
+        (
+            "json.read(sheet, items_at: \"\", as: ListRow, each: listed -> note_listed(listed))",
+            vec!["type.batch_row_invalid"],
+        ),
+        // A size is a whole number and its unit.
+        (
+            "json.read(sheet, as: ListRow, each: listed -> note_listed(listed), max_unpacked_size: 200)",
+            vec!["type.batch_row_invalid"],
+        ),
+        (
+            "json.read(sheet, as: ListRow, each: listed -> note_listed(listed), max_unpacked_size: 0mb)",
+            vec!["type.batch_row_invalid"],
+        ),
+        // Only `json.read` takes `items_at:`.
+        (
+            "json_lines.read(sheet, items_at: \"items\", as: ListRow, each: listed -> note_listed(listed))",
+            vec!["type.named_argument_unknown"],
+        ),
+    ] {
+        let source = read(call);
+        let found = ids(&[
+            lists,
+            note,
+            ("domains/pantry/actions/read_sheet.jadpo", &source),
+        ]);
+        assert_eq!(found, expected, "{call}");
+    }
+    // A CSV row still holds one value a cell, unpacked or not.
+    let csv = "use pantry/types { ListRow }\nuse pantry/actions { note_listed }\n\naction read_sheet(sheet: File) -> BatchRun {\n    return csv.read(sheet, as: ListRow, each: listed -> note_listed(listed), max_unpacked_size: 5mb)\n}\n";
+    assert_eq!(
+        ids(&[
+            lists,
+            note,
+            ("domains/pantry/actions/read_sheet.jadpo", csv)
+        ]),
+        ["type.batch_row_invalid"]
+    );
+    // Given text, `json.read` reads one document in memory, as before.
+    let text = "use pantry/types { ListRow, SheetText }\n\naction listed(sheet_text: SheetText) fails BadSheet -> ListRow {\n    return attempt json.read(sheet_text, as: ListRow) {\n        malformed: BadSheet\n        mismatch: BadSheet\n    }\n}\n";
+    let failures = "use pantry/failures { BadSheet }\n";
+    let function = format!("{failures}{text}");
+    assert_eq!(
+        ids(&[lists, ("domains/pantry/actions/listed.jadpo", &function)]),
+        Vec::<String>::new()
+    );
+}

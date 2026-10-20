@@ -122,9 +122,8 @@ pub enum RowFormat {
     Tsv,
     /// `json_lines`: one JSON value a line.
     JsonLines,
-    /// `json`'s file form: one JSON list, an item a row. Only written so
-    /// far (chunk 6.4b2); `json.read`'s file form comes with roadmap
-    /// 6.4b3.
+    /// `json`'s file form: one JSON list, an item a row, written (chunk
+    /// 6.4b2) and read where `items_at:` says it sits (chunk 6.4b3).
     Json,
 }
 
@@ -236,8 +235,25 @@ pub const EACH_PARAMS: [&str; 4] = ["from", "each", "finished", "key"];
 /// A file helper's parameters when it reads (area 19, "Data formats"),
 /// in the order its call is lowered: the stored `File`, `as:` (a type,
 /// which lowers to nothing; `each:`'s item is of it), then as
-/// `batches.each`'s.
-pub const READ_PARAMS: [&str; 5] = ["file", "as", "each", "finished", "key"];
+/// `batches.each`'s; then, from chunk 6.4b3, `items_at:` (`json.read`'s
+/// only: where the list sits in the document, a text literal) and
+/// `max_unpacked_size:` (a size literal, which lowers to its bytes), each
+/// the plan's rather than a value the run saves.
+pub const READ_PARAMS: [&str; 7] = [
+    "file",
+    "as",
+    "each",
+    "finished",
+    "key",
+    "items_at",
+    "max_unpacked_size",
+];
+
+/// Where `items_at:` sits among [`READ_PARAMS`].
+pub const ITEMS_AT: usize = 5;
+
+/// Where `max_unpacked_size:` sits among [`READ_PARAMS`].
+pub const MAX_UNPACKED_SIZE: usize = 6;
 
 /// A file helper's parameters when it writes (area 19, "Data formats";
 /// chunk 6.4b2), in the order its call is lowered: the store of files it
@@ -332,6 +348,13 @@ pub struct FileRows {
     /// For CSV and TSV, the column each of the row type's fields is read
     /// from, in its fields' order: its `column:`, else its name.
     pub columns: Vec<String>,
+    /// For `json.read`, the members `items_at:` names, outermost first,
+    /// leading from the document's top object to its list of items; empty
+    /// when the document is the list (chunk 6.4b3).
+    pub items_at: Vec<String>,
+    /// `max_unpacked_size:`, in bytes: a gzip file is unpacked up to it,
+    /// and without it one stops the run (chunk 6.4b3).
+    pub max_unpacked: Option<u64>,
 }
 
 /// Where a run's tenant comes from: its saved values holding a tenant's

@@ -398,6 +398,12 @@ pub const BATCH_RUNS: SystemTable = SystemTable {
         // (area 19, "Changing a standard type's encoding"; chunk 6.8);
         // `NULL` in a run kept before, whose values are encoding 1's.
         column("encoding", "smallint", true),
+        // How many items the run is expected to hold, which
+        // `batches.status` gives (chunk 6.4b3): its query's count, taken
+        // as its first page is read, or worked out from its file's size
+        // and how far into it the run is; `NULL` until then, and in a run
+        // kept before.
+        column("estimated_total", "bigint", true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {

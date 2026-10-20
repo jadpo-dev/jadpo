@@ -83,7 +83,9 @@ entity Chore {
     household_id: Household.id {
         on_delete: OnDelete.cascade
     }
-    title: Title
+    title: Title {
+        immutable: true
+    }
     ticks: Int
 
     policy: {
