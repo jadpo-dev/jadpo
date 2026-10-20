@@ -92,7 +92,7 @@ pub fn domain_declarations<'db>(
         .declarations
         .iter()
         .filter(|symbol| {
-            symbol.ownership.domain() == Some(domain.text(db).as_str())
+            symbol.ownership.scope() == Some(domain.text(db).as_str())
                 && symbol.identity() != symbol.name
         })
         .cloned()
@@ -332,7 +332,7 @@ impl<'db> Lookup<'db> {
     /// Lookups that read names as code owned by `ownership` writes them.
     pub fn within(db: &'db dyn Db, project: Project, ownership: &Ownership) -> Lookup<'db> {
         Lookup {
-            domain: ownership.domain().map(str::to_string),
+            domain: ownership.scope().map(str::to_string),
             ..Lookup::new(db, project)
         }
     }
@@ -361,10 +361,15 @@ impl<'db> Lookup<'db> {
     }
 
     /// The domain and name of `written` when it is the identity of a
-    /// function or type declared in a domain, `billing.Address`.
+    /// function or type declared in a domain, `billing.Address`, or a
+    /// package's declaration written through it, `Postcodes.UkPostcode`.
     fn identified<'w>(&self, written: &'w str) -> Option<(&'w str, &'w str)> {
         let (domain, name) = written.split_once('.')?;
-        if name.contains('.') || !self.facts(domain).domain {
+        if name.contains('.') {
+            return None;
+        }
+        let facts = self.facts(domain);
+        if !facts.domain && !facts.package {
             return None;
         }
         (!self.in_domain(name, domain).is_empty()).then_some((domain, name))
@@ -457,6 +462,16 @@ impl NameView for Lookup<'_> {
         symbols(self.db, self.project)
     }
 
+    fn library_function(&self, library: &str, function: &str) -> Option<&Symbol> {
+        let library = self.canonical_name(library);
+        self.declared(function).iter().find(|symbol| {
+            symbol
+                .library
+                .as_ref()
+                .is_some_and(|(owner, _)| *owner == library)
+        })
+    }
+
     fn registry(&self) -> &Registry {
         crate::graph::registry(self.db, self.project)
     }
@@ -469,10 +484,11 @@ impl SigView for Lookup<'_> {
     }
 
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig> {
+        let library = self.canonical_name(library);
         library_signature(
             self.db,
             self.project,
-            self.name(library),
+            self.name(&library),
             self.name(function),
         )
         .as_ref()
@@ -501,6 +517,7 @@ impl WriteView for Lookup<'_> {
 
 impl FailureView for Lookup<'_> {
     fn failure_info(&self, name: &str) -> Option<&FailureInfo> {
-        failure_info(self.db, self.project, self.name(name)).as_ref()
+        let canonical = self.canonical_name(name);
+        failure_info(self.db, self.project, self.name(&canonical)).as_ref()
     }
 }

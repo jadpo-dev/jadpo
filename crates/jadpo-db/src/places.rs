@@ -13,10 +13,14 @@ pub enum Ownership {
     /// `shared/`: pure types, libraries and failures every domain may use.
     Shared,
     /// The root files and the other root folders (`tests/`, `database/`,
-    /// `providers/`, `acceptances/`): application-wide, owned by no domain.
+    /// `acceptances/`): application-wide, owned by no domain.
     Root,
     /// Loose files: one implicit domain.
     Loose,
+    /// A package (area 11): installed in `packages/<name>/<version>/`, or
+    /// the app's own integration in `shared/providers/<name>/<version>/`.
+    /// Its names are its own: bare inside it, written through it outside.
+    Package(PackageHome),
 }
 
 impl Ownership {
@@ -26,6 +30,159 @@ impl Ownership {
             _ => None,
         }
     }
+
+    /// The scope a private name of this owner is unique in: a domain's
+    /// name, or a package's name in code (`Postcodes`), which no domain's
+    /// can be, since a domain's is lower case.
+    pub fn scope(&self) -> Option<&str> {
+        match self {
+            Ownership::Domain(name) => Some(name),
+            Ownership::Package(home) => Some(&home.code),
+            _ => None,
+        }
+    }
+
+    /// The package that owns the code, if a package does.
+    pub fn package(&self) -> Option<&PackageHome> {
+        match self {
+            Ownership::Package(home) => Some(home),
+            _ => None,
+        }
+    }
+}
+
+/// Where a package sits (area 11, "Where packages live"), read from its
+/// path: `packages/postcodes/v2/` or `shared/providers/acme_couriers/v1/`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PackageHome {
+    /// The package's folder in the project: `packages/postcodes/v2`.
+    pub folder: String,
+    /// Its name as a folder, `postcodes`.
+    pub name: String,
+    /// Its version folder, `v2` or `v2024_06_20`.
+    pub version: String,
+    /// Its name in code, `Postcodes`: the folder's name in
+    /// `UpperCamelCase`, which its index has to give.
+    pub code: String,
+    /// Installed in `packages/`, rather than the app's own in
+    /// `shared/providers/`.
+    pub installed: bool,
+}
+
+impl PackageHome {
+    /// The package's name and version as code and the lock write it,
+    /// `Postcodes.v2`.
+    pub fn versioned(&self) -> String {
+        format!("{}.{}", self.code, self.version)
+    }
+
+    /// How a `use` line names it: `packages/postcodes` or
+    /// `shared/providers/acme_couriers`.
+    pub fn use_path(&self) -> String {
+        if self.installed {
+            format!("{PACKAGES}/{}", self.name)
+        } else {
+            format!("shared/{PROVIDERS}/{}", self.name)
+        }
+    }
+}
+
+/// The root folder of installed packages (area 11).
+pub const PACKAGES: &str = "packages";
+
+/// The folder of `shared/` that holds the app's own integrations.
+pub const PROVIDERS: &str = "providers";
+
+/// A package's index, at its root (area 11).
+pub const PACKAGE_INDEX: &str = "package.jadpo";
+
+/// How a package's API is reached, at its root (area 11).
+pub const PROVIDER_FILE: &str = "provider.jadpo";
+
+/// The package at the start of a project-relative path, and the rest of
+/// the path inside it: `packages/<name>/<version>/...` or
+/// `shared/providers/<name>/<version>/...`. A name that isn't
+/// `lower_snake_case` or a version that isn't `v` and digits is no
+/// package, and the path is somewhere the layout has no place for.
+pub fn package_at(path: &str) -> Option<(PackageHome, Vec<&str>)> {
+    let parts: Vec<&str> = path.split('/').collect();
+    let (installed, name, version, rest) = match parts.as_slice() {
+        [PACKAGES, name, version, rest @ ..] if !rest.is_empty() => (true, *name, *version, rest),
+        ["shared", PROVIDERS, name, version, rest @ ..] if !rest.is_empty() => {
+            (false, *name, *version, rest)
+        }
+        _ => return None,
+    };
+    if !is_package_folder(name) || !is_version_label(version) {
+        return None;
+    }
+    let root = if installed {
+        format!("{PACKAGES}/{name}/{version}")
+    } else {
+        format!("shared/{PROVIDERS}/{name}/{version}")
+    };
+    Some((
+        PackageHome {
+            folder: root,
+            name: name.to_string(),
+            version: version.to_string(),
+            code: to_upper_camel(name),
+            installed,
+        },
+        rest.to_vec(),
+    ))
+}
+
+/// A package folder's name: `lower_snake_case`.
+fn is_package_folder(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && !name.contains("__")
+        && !name.ends_with('_')
+}
+
+/// A version label (area 11, question 16): `v` then digits, in groups
+/// joined by single underscores, `v2` or `v2024_06_20`.
+pub fn is_version_label(label: &str) -> bool {
+    let Some(rest) = label.strip_prefix('v') else {
+        return false;
+    };
+    !rest.is_empty()
+        && rest
+            .split('_')
+            .all(|group| !group.is_empty() && group.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The `UpperCamelCase` form of a name in any style: `acme_couriers` is
+/// `AcmeCouriers`.
+pub fn to_upper_camel(name: &str) -> String {
+    name_words(name)
+        .iter()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// Whether a project-relative path inside a package is data rather than
+/// source: anything that isn't a `.jadpo` file, an installed package's
+/// tests (run when it is published, not in every app's `jadpo test`), and
+/// its recipes and sample app, which an app copies in rather than
+/// compiles (area 11). Each is read whole, for the package's digest.
+pub fn is_package_data(path: &str) -> bool {
+    let Some((home, rest)) = package_at(path) else {
+        return false;
+    };
+    let file = rest.last().copied().unwrap_or_default();
+    !file.ends_with(".jadpo")
+        || matches!(rest.first(), Some(&("recipes" | "sample")))
+        || (home.installed && file.ends_with(".test.jadpo"))
 }
 
 /// The root files the layout fixes.
@@ -79,10 +236,15 @@ pub enum Folder {
     /// it (area 21).
     Prompts,
     Fixtures,
+    /// A provider package's operations, one `resource` per file (area 11).
+    Resources,
+    /// A provider package's capability mappings, one `provide` per file
+    /// (area 11).
+    Provides,
 }
 
 impl Folder {
-    pub const ALL: [Folder; 14] = [
+    pub const ALL: [Folder; 16] = [
         Folder::Entities,
         Folder::Types,
         Folder::Failures,
@@ -97,6 +259,42 @@ impl Folder {
         Folder::Translations,
         Folder::Prompts,
         Folder::Fixtures,
+        Folder::Resources,
+        Folder::Provides,
+    ];
+
+    /// The folders a domain may hold.
+    pub const DOMAIN: [Folder; 14] = [
+        Folder::Entities,
+        Folder::Types,
+        Folder::Failures,
+        Folder::Actions,
+        Folder::Queries,
+        Folder::Libraries,
+        Folder::Routes,
+        Folder::Schedules,
+        Folder::Events,
+        Folder::Subscribers,
+        Folder::Emails,
+        Folder::Translations,
+        Folder::Prompts,
+        Folder::Fixtures,
+    ];
+
+    /// The folders a package may hold (area 11, "The package format"): laid
+    /// out as `shared/` is, with a provider's resources, events, actions,
+    /// subscribers and capability mappings. Never `emails/`: email
+    /// templates are the app's own.
+    pub const PACKAGE: [Folder; 9] = [
+        Folder::Types,
+        Folder::Failures,
+        Folder::Libraries,
+        Folder::Translations,
+        Folder::Resources,
+        Folder::Events,
+        Folder::Actions,
+        Folder::Subscribers,
+        Folder::Provides,
     ];
 
     /// The folders `shared/` may hold.
@@ -124,6 +322,8 @@ impl Folder {
             Folder::Translations => "translations",
             Folder::Prompts => "prompts",
             Folder::Fixtures => "fixtures",
+            Folder::Resources => "resources",
+            Folder::Provides => "provides",
         }
     }
 
@@ -155,6 +355,8 @@ impl Folder {
             }
             Folder::Prompts => *kind == ItemKind::Type(Base::Prompt),
             Folder::Fixtures => *kind == ItemKind::Fixture,
+            Folder::Resources => *kind == ItemKind::Resource,
+            Folder::Provides => *kind == ItemKind::Provide,
         }
     }
 }
@@ -173,8 +375,10 @@ pub enum Place {
     Seeds,
     /// `database/migrations/<migration>/`: backfills written in Jadpo.
     Migration,
-    /// `providers/`: provider packages (area 11).
-    Providers,
+    /// A package's index, `package.jadpo` at its root (area 11).
+    PackageIndex,
+    /// A provider package's `provider.jadpo` at its root (area 11).
+    Provider,
     /// `acceptances/` (area 18).
     Acceptances,
     /// The root `translations/` folder: the app's wording for text it did
@@ -206,6 +410,13 @@ pub enum Stray {
     Nested(String),
     /// A file in `tests/` that isn't a test.
     NotATest,
+    /// A file in a package folder that isn't a package's place: directly
+    /// in `packages/` or a package's own folder, outside a version folder.
+    PackageFile,
+    /// A folder a package can't hold.
+    PackageFolder(String),
+    /// A package's `emails/` folder: templates are the app's own (area 11).
+    PackageEmails,
 }
 
 /// A file's location: who owns it, its place, and the name its path gives it.
@@ -273,7 +484,10 @@ pub fn locate(path: &str, layout: Layout) -> Location {
         }
         ["domains", domain, folder, rest @ ..] => {
             let ownership = Ownership::Domain(domain.to_string());
-            match (Folder::from_name(folder), rest) {
+            match (
+                Folder::from_name(folder).filter(|kind| Folder::DOMAIN.contains(kind)),
+                rest,
+            ) {
                 (Some(kind), []) => at(ownership, Place::Folder(kind)),
                 (Some(_), _) => at(ownership, Place::Stray(Stray::Nested(folders.join("/")))),
                 (None, _) => at(
@@ -281,6 +495,37 @@ pub fn locate(path: &str, layout: Layout) -> Location {
                     Place::Stray(Stray::DomainFolder(domain.to_string(), folder.to_string())),
                 ),
             }
+        }
+        _ if package_at(path).is_some() => {
+            let Some((home, rest)) = package_at(path) else {
+                unreachable!("just matched")
+            };
+            let ownership = Ownership::Package(home);
+            match rest.as_slice() {
+                [PACKAGE_INDEX] => at(ownership, Place::PackageIndex),
+                [PROVIDER_FILE] => at(ownership, Place::Provider),
+                [_] => at(ownership, Place::Stray(Stray::PackageFile)),
+                ["emails", ..] => at(ownership, Place::Stray(Stray::PackageEmails)),
+                [folder, inner @ ..] => {
+                    match (
+                        Folder::from_name(folder).filter(|kind| Folder::PACKAGE.contains(kind)),
+                        inner,
+                    ) {
+                        (Some(kind), [_]) => at(ownership, Place::Folder(kind)),
+                        (Some(_), _) => {
+                            at(ownership, Place::Stray(Stray::Nested(folders.join("/"))))
+                        }
+                        (None, _) => at(
+                            ownership,
+                            Place::Stray(Stray::PackageFolder(folder.to_string())),
+                        ),
+                    }
+                }
+                [] => at(ownership, Place::Stray(Stray::PackageFile)),
+            }
+        }
+        [PACKAGES, ..] | ["shared", PROVIDERS, ..] => {
+            at(Ownership::Root, Place::Stray(Stray::PackageFile))
         }
         ["shared"] => at(Ownership::Shared, Place::Stray(Stray::SharedFolder(None))),
         ["shared", folder, rest @ ..] => {
@@ -307,7 +552,6 @@ pub fn locate(path: &str, layout: Layout) -> Location {
         ),
         ["database", "seeds"] => at(Ownership::Root, Place::Seeds),
         ["database", "migrations", _] => at(Ownership::Root, Place::Migration),
-        ["providers", ..] => at(Ownership::Root, Place::Providers),
         ["acceptances"] => at(Ownership::Root, Place::Acceptances),
         ["translations"] => at(Ownership::Root, Place::RootTranslations),
         [first, ..] if RECORD_FOLDERS.contains(first) => at(

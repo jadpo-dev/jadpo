@@ -202,3 +202,116 @@ pub fn public_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
     }
     out
 }
+
+/// `visibility.public_reaches_private` (area 1, "Everything reachable from
+/// a public declaration is public", 2026-10-16, from area 11's package
+/// surface): a public declaration's signature, its parameters, result,
+/// `fails` list, fields or a resource's operations, names only what its
+/// owner makes public too, or what isn't its owner's (`shared/`, the
+/// standard library), since whoever uses it has to build or handle what
+/// it names. Checked for domains and packages alike.
+#[salsa::tracked(returns(ref))]
+pub fn public_reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    if project.layout(db) != Layout::Project {
+        return Vec::new();
+    }
+    let location = location(db, project, file);
+    if location.test
+        || !matches!(
+            location.ownership,
+            Ownership::Domain(_) | Ownership::Package(_)
+        )
+    {
+        return Vec::new();
+    }
+    let Some(source) = tree::source(db, file) else {
+        return Vec::new();
+    };
+    let path = file.path(db);
+    let lookup = crate::lookups::Lookup::for_file(db, project, file);
+    let mut out = Vec::new();
+    // `public` where it isn't allowed is that error alone.
+    let offered = |item: &&jadpo_db::Item| {
+        item.public && (may_be_public(&item.kind) || item.kind == ItemKind::Resource)
+    };
+    for item in item_tree(db, file).items.iter().filter(offered) {
+        let Some(decl) = tree::decl_at(&source, item.index) else {
+            continue;
+        };
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for name in signature_refs(decl.syntax()) {
+            let Some(text) = tree::name_ref_text(&name) else {
+                continue;
+            };
+            if text == item.name || !seen.insert(text.clone()) {
+                continue;
+            }
+            let hidden = crate::lookups::NameView::declared(&lookup, &text)
+                .iter()
+                .find(|symbol| {
+                    symbol.ownership == location.ownership
+                        && !symbol.public
+                        && symbol.library.is_none()
+                        && matches!(symbol.kind, ItemKind::Type(_) | ItemKind::Entity)
+                })
+                .cloned();
+            let Some(hidden) = hidden else {
+                continue;
+            };
+            let owner = match &location.ownership {
+                Ownership::Package(home) => format!("package `{}`", home.code),
+                Ownership::Domain(domain) => format!("domain `{domain}`"),
+                _ => continue,
+            };
+            let kind = hidden.kind.word();
+            out.push(
+                Diagnostic::new(
+                    &rule::VISIBILITY_PUBLIC_REACHES_PRIVATE,
+                    format!("`{}` is public, but `{text}` isn't", item.name),
+                )
+                .at(tree::node_span(path, name.syntax()), format!("a {kind} only {owner} sees"))
+                .reason(format!(
+                    "Whoever uses a public {} has to build or handle what its signature names, so everything it names is public too; `{text}` is {} in `{}` that only {owner} sees.",
+                    item.kind.word(),
+                    hidden.kind.with_a(),
+                    hidden.path
+                ))
+                .next(format!(
+                    "Mark `{text}` `public`, or keep it out of `{}`'s signature",
+                    item.name
+                )),
+            );
+        }
+    }
+    out
+}
+
+/// The names written in a declaration outside its bodies, each where it
+/// is first written: what [`signature_names`] lists, with their nodes.
+fn signature_refs(node: &jadpo_syntax::SyntaxNode) -> Vec<ast::NameRef> {
+    let mut found = Vec::new();
+    let mut pending = vec![node.clone()];
+    while let Some(next) = pending.pop() {
+        for child in next.children() {
+            // Bodies, and a type's rules, which no user builds.
+            if matches!(child.kind(), SyntaxKind::BLOCK | SyntaxKind::RULE_MEMBER) {
+                continue;
+            }
+            if let Some(name) = ast::NameRef::cast(child.clone()) {
+                // Only the first name of a path names a declaration.
+                let first = child
+                    .parent()
+                    .filter(|parent| {
+                        matches!(parent.kind(), SyntaxKind::PATH | SyntaxKind::FIELD_EXPR)
+                    })
+                    .is_none_or(|parent| parent.first_child().as_ref() == Some(&child));
+                if first {
+                    found.push(name);
+                }
+            }
+            pending.push(child);
+        }
+    }
+    found.sort_by_key(|name| name.syntax().text_range().start());
+    found
+}

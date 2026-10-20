@@ -350,7 +350,9 @@ impl Part<'_> {
     }
 
     fn library(&mut self, decl: &ast::LibraryDecl, item: &Item) {
-        let key = self.lookup.registry().key(Kind::Library, &item.name, None);
+        // A package's library is known through its package (area 11).
+        let library = self.lookup.canonical_name(&item.name);
+        let key = self.lookup.registry().key(Kind::Library, &library, None);
         let mut node = self.node(
             key.clone(),
             Kind::Library,
@@ -364,13 +366,13 @@ impl Part<'_> {
             .zip(item.functions.iter())
         {
             if member.kind == jadpo_db::ItemKind::Constant {
-                let Some(child) = super::constant_key(self.lookup, Some(&item.name), &member.name)
+                let Some(child) = super::constant_key(self.lookup, Some(&library), &member.name)
                 else {
                     continue;
                 };
                 self.constant(
                     child,
-                    format!("{}.{}", item.name, member.name),
+                    format!("{library}.{}", member.name),
                     function.syntax(),
                     item,
                     Some(member),
@@ -378,11 +380,11 @@ impl Part<'_> {
                 );
                 continue;
             }
-            let child = library_function_key(self.lookup.registry(), &item.name, &member.name);
+            let child = library_function_key(self.lookup.registry(), &library, &member.name);
             let mut node = self.node(
                 child.clone(),
                 Kind::Function,
-                format!("{}.{}", item.name, member.name),
+                format!("{library}.{}", member.name),
                 function.syntax().clone(),
             );
             node.parent = Some(key.clone());

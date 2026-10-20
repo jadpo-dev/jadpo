@@ -408,7 +408,12 @@ fn lower(decl: &Decl, index: u32) -> Option<Item> {
             false,
             index,
         ),
-        Decl::ResourceDecl(decl) => item(ItemKind::Resource, name_of(decl.name())?, false, index),
+        Decl::ResourceDecl(decl) => item(
+            ItemKind::Resource,
+            name_of(decl.name())?,
+            decl.visibility().is_some(),
+            index,
+        ),
         Decl::ProvideDecl(decl) => item(ItemKind::Provide, name_of(decl.name())?, false, index),
         Decl::SingletonDecl(decl) => {
             let keyword = decl.keyword()?.text().to_string();

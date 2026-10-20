@@ -199,6 +199,9 @@ fn durability(path: &str, layout: Layout) -> Durability {
     match locate(path, layout).ownership {
         Ownership::Domain(_) | Ownership::Loose => Durability::LOW,
         Ownership::Shared | Ownership::Root => Durability::MEDIUM,
+        // An installed package changes only when it is added or updated.
+        Ownership::Package(home) if home.installed => Durability::HIGH,
+        Ownership::Package(_) => Durability::MEDIUM,
     }
 }
 
@@ -373,6 +376,7 @@ fn is_source(path: &str) -> bool {
     path.ends_with(".jadpo")
         && !path.starts_with("build/")
         && !path.split('/').any(|part| part.starts_with('.'))
+        && !crate::is_package_data(path)
 }
 
 /// A path as the reader sees it: relative to the root, with `/`.

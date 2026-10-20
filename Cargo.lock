@@ -1460,6 +1460,7 @@ dependencies = [
  "jadpo-diag",
  "jadpo-syntax",
  "salsa",
+ "sha2",
 ]
 
 [[package]]

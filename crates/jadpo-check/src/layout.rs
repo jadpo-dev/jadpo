@@ -34,6 +34,8 @@ fn holding(folder: Folder) -> &'static str {
         Folder::Translations => "one message per file, and one language file for each locale",
         Folder::Prompts => "one prompt per file, each with its `.prompt` text beside it",
         Folder::Fixtures => "test data shared by the domain's tests",
+        Folder::Resources => "one resource of the provider's API per file",
+        Folder::Provides => "one capability mapping per file",
     }
 }
 
@@ -76,13 +78,21 @@ fn destination(ownership: &Ownership, item: &Item) -> Option<String> {
     let domain = match ownership {
         Ownership::Domain(domain) => format!("domains/{domain}"),
         Ownership::Shared => "shared".to_string(),
+        Ownership::Package(home) => home.folder.clone(),
         _ => "domains/<domain>".to_string(),
+    };
+    let package = match ownership {
+        Ownership::Package(home) => home.folder.clone(),
+        _ => "shared/providers/<name>/<version>".to_string(),
     };
     match &item.kind {
         ItemKind::Seed => Some(format!("`database/seeds/{file}.jadpo`")),
-        ItemKind::Package | ItemKind::Resource | ItemKind::Provide => {
-            Some("`providers/`".to_string())
+        ItemKind::Package => Some(format!("`{package}/{}`", jadpo_db::PACKAGE_INDEX)),
+        ItemKind::Singleton if item.name == "provider" => {
+            Some(format!("`{package}/{}`", jadpo_db::PROVIDER_FILE))
         }
+        ItemKind::Resource => Some(format!("`{package}/resources/{file}.jadpo`")),
+        ItemKind::Provide => Some(format!("`{package}/provides/{file}.jadpo`")),
         ItemKind::Singleton | ItemKind::Test => None,
         ItemKind::Function | ItemKind::Constant => {
             Some(format!("a library in `{domain}/libraries/`"))
@@ -150,6 +160,20 @@ pub fn layout_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnos
                 }
             }
         }
+        Place::PackageIndex => {
+            // The index holds the package's one `package` declaration.
+            for item in items.iter().filter(|item| item.kind != ItemKind::Package) {
+                out.push(misplaced(path, "package.jadpo", location, &source, item));
+            }
+        }
+        Place::Provider => {
+            for item in items
+                .iter()
+                .filter(|item| !(item.kind == ItemKind::Singleton && item.name == "provider"))
+            {
+                out.push(misplaced(path, "provider.jadpo", location, &source, item));
+            }
+        }
         Place::Seeds => {
             for item in items {
                 if item.kind == ItemKind::Seed {
@@ -177,6 +201,7 @@ fn folder_rules(
     let primary = jadpo_db::primary(location, items);
     let place = match &location.ownership {
         Ownership::Domain(domain) => format!("domains/{domain}/{}", folder.name()),
+        Ownership::Package(home) => format!("{}/{}", home.folder, folder.name()),
         _ => format!("shared/{}", folder.name()),
     };
     if let Some(primary) = primary {
@@ -215,7 +240,7 @@ fn folder_rules(
 
 fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Item]) -> Diagnostic {
     let file = path.rsplit('/').next().unwrap_or(path);
-    let folders = Folder::ALL
+    let folders = Folder::DOMAIN
         .iter()
         .map(|folder| format!("`{}/`", folder.name()))
         .collect::<Vec<_>>();
@@ -234,7 +259,7 @@ fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Ite
         ),
         Stray::RootFolder(folder) => (
             format!("`{folder}/` isn't a place for Jadpo code"),
-            "Code lives in `domains/` and `shared/`; the other root folders are `tests/`, `database/`, `providers/` and `acceptances/`, and `api/` holds no `.jadpo` files. The root `translations/` holds only language files.".to_string(),
+            "Code lives in `domains/` and `shared/`; the other root folders are `tests/`, `database/`, `packages/` (installed packages) and `acceptances/`, and `api/` holds no `.jadpo` files. The root `translations/` holds only language files.".to_string(),
         ),
         Stray::DomainsFile => (
             format!("`{file}` is outside any domain"),
@@ -266,7 +291,43 @@ fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Ite
             format!("`{file}` isn't a test file"),
             "The root `tests/` folder holds scenarios across domains, each in a `<name>.test.jadpo` file.".to_string(),
         ),
+        Stray::PackageFile => match &location.ownership {
+            Ownership::Package(home) => (
+                format!("`{file}` sits directly in package `{}`", home.versioned()),
+                format!(
+                    "A package's root holds only `{}` and, for a provider, `{}`; its code lives in folders named after what they declare.",
+                    jadpo_db::PACKAGE_INDEX,
+                    jadpo_db::PROVIDER_FILE
+                ),
+            ),
+            _ => (
+                format!("`{path}` is outside any package"),
+                "A package lives in its own folder and version folder, `packages/<name>/<version>/` when installed or `shared/providers/<name>/<version>/` when it is the app's own, each named in `lower_snake_case`, the version `v` and its number (`v2`, `v2024_06_20`).".to_string(),
+            ),
+        },
+        Stray::PackageFolder(folder) => (
+            format!("`{folder}/` isn't a folder a package has"),
+            format!(
+                "A package is laid out as `shared/` is: it holds only {}, each named after what its files declare.",
+                crate::and_list(
+                    &Folder::PACKAGE
+                        .iter()
+                        .map(|folder| format!("`{}/`", folder.name()))
+                        .collect::<Vec<_>>()
+                )
+            ),
+        ),
+        Stray::PackageEmails => (
+            "A package can't hold email templates".to_string(),
+            "Email templates, partials and layouts are the app's own, in `emails/` of the domain that sends them; a package reaches people only through the app.".to_string(),
+        ),
     };
+    if matches!(stray, Stray::PackageEmails) {
+        return Diagnostic::new(&rule::PACKAGE_EMAILS_FOLDER, message)
+            .at(file_span(path), "")
+            .reason(reason)
+            .next("Move the email into a domain's `emails/` folder in the app, and remove it from the package");
+    }
     let main = items
         .iter()
         .find(|item| !supporting(&item.kind))

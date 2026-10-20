@@ -28,6 +28,7 @@ pub mod locales;
 pub mod lookups;
 mod naming;
 mod not_value;
+pub mod packages;
 pub mod policy;
 pub mod prompts;
 pub mod records;
@@ -104,12 +105,22 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(domain_problems(db, project).iter().cloned());
         for &file in files {
             out.extend(layout_problems(db, project, file).iter().cloned());
+            out.extend(
+                packages::unbuilt_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(naming_problems(db, project, file).iter().cloned());
             out.extend(resolve_file(db, project, file).iter().cloned());
             out.extend(import_problems(db, project, file).iter().cloned());
             out.extend(usage_problems(db, project, file).iter().cloned());
             out.extend(
                 visibility::public_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                visibility::public_reach_problems(db, project, file)
                     .iter()
                     .cloned(),
             );
@@ -212,6 +223,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());
+        out.extend(packages::package_problems(db, project).iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

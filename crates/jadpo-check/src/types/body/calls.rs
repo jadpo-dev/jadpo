@@ -22,6 +22,15 @@ use crate::case::starts_upper;
 use crate::std_lib::{Namespace, Operation, StdNames};
 use crate::tree::{self, dotted};
 
+/// The name a package's member is written with, after the package's own:
+/// `uk` in `Postcodes.uk`; any other name as it is.
+fn package_member(head: &str) -> &str {
+    match head.split_once('.') {
+        Some((package, member)) if starts_upper(package) => member,
+        _ => head,
+    }
+}
+
 pub(super) fn plural(n: usize, word: &str) -> String {
     if n == 1 {
         format!("1 {word}")
@@ -200,10 +209,32 @@ impl Body<'_> {
             self.args_only(call);
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         };
-        let head = text(&first);
-        let rest: Vec<String> = rest.iter().map(text).collect();
+        let mut head = text(&first);
+        let mut rest: Vec<String> = rest.iter().map(text).collect();
         let written = format!("{head}.{}", rest.join("."));
-        if starts_upper(&head) {
+        // A package's names are written through it (area 11):
+        // `Postcodes.uk.parse(...)` calls its library `Postcodes.uk`, and
+        // `Postcodes.UkPostcode(...)` builds its type.
+        if !rest.is_empty() && self.symbols.is_package(&head) && !self.is_local(&head) {
+            head = format!("{head}.{}", rest.remove(0));
+            if rest.is_empty() {
+                if starts_upper(package_member(&head)) {
+                    let ty = self.construct(&head, None, call);
+                    let reach = if ty.has_error() {
+                        Reach::Unknown
+                    } else {
+                        Reach::Construct(ty.clone())
+                    };
+                    return (ty, CallKind::Pure(format!("{written}(...)")), reach);
+                }
+                // A package's actions come with chunk 7.6.
+                let span = self.span(callee);
+                self.not_built_yet(span, &written);
+                self.args_only(call);
+                return (Ty::Error, CallKind::Other, Reach::Unknown);
+            }
+        }
+        if starts_upper(package_member(&head)) {
             if head == crate::identity::PRINCIPAL
                 && let [kind] = rest.as_slice()
                 && let Some(kind) = jadpo_std::http::PrincipalKind::from_name(kind)

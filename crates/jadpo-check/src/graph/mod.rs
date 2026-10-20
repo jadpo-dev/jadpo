@@ -226,6 +226,8 @@ pub fn callable_key(
     match (decl, function) {
         (Decl::LibraryDecl(library), Some(index)) => {
             let name = library.name().as_ref().and_then(tree::name_text)?;
+            // A package's library is known through its package (area 11).
+            let name = symbols.canonical(&name);
             let member = tree::library_members(library)
                 .into_iter()
                 .nth(index as usize)?;
