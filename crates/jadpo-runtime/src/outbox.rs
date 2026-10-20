@@ -95,8 +95,9 @@ pub const SETTLE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = $3, \"nex
 
 /// The deliveries due at `$1`, oldest first, at most `$2`, with what
 /// their outbox row keeps, the encoding its payload was written in last
-/// (chunk 6.8).
-pub const DUE: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscriber\", \"o\".\"event\", \"o\".\"payload\"::text, \"o\".\"emitted_at\", \"o\".\"traceparent\", \"o\".\"depth\", \"o\".\"encoding\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"status\" IN ('pending', 'running') AND \"d\".\"next_attempt_at\" <= $1 ORDER BY \"d\".\"next_attempt_at\", \"d\".\"id\" LIMIT $2";
+/// (chunk 6.8). The time a delivery's `within:` counts from is its
+/// event's, or an operator's retry's (chunk 6.12).
+pub const DUE: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscriber\", \"o\".\"event\", \"o\".\"payload\"::text, COALESCE(\"d\".\"retried_at\", \"o\".\"emitted_at\"), \"o\".\"traceparent\", \"o\".\"depth\", \"o\".\"encoding\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"status\" IN ('pending', 'running') AND \"d\".\"next_attempt_at\" <= $1 ORDER BY \"d\".\"next_attempt_at\", \"d\".\"id\" LIMIT $2";
 
 /// Gives up delivery `$1` whose payload no longer reads, with its
 /// problem `$2`: parked, never dropped (area 12, "A payload is the
@@ -283,7 +284,8 @@ pub struct Delivery {
     /// The event type's identity key.
     pub event: String,
     pub value: Value,
-    /// When the event was emitted: a delivery is given up `within:` it.
+    /// When the event was emitted, or an operator retried the delivery
+    /// (chunk 6.12): a delivery is given up `within:` it.
     pub emitted_at: i64,
     /// The trace context of the action that emitted it.
     pub trace: Option<Trace>,

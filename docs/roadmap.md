@@ -717,12 +717,15 @@ chunks below, taken before Phase 7, in this order.
   test's clock, until none are left, in an order shuffled by the
   printed seed, a subscriber that fails failing the test; a fake failing
   a subscriber, to test retries, follows with 7.0c's fakes.
-- [ ] **6.12 `jadpo deliveries`** `opus · high` (area 14, question 13;
-  area 12, "What an operator sees"): list, retry, dismiss, cancel and
-  resolve deliveries and schedule runs against an environment, each
-  logged with who did it, on the screens of the CLI design language;
-  `show`, `retry --not-done` and `abandon` come with multi-step calls
-  (7.5), and batch runs and parked queue messages with 6.4b and 7.7.
+- [x] **6.12 `jadpo deliveries`** `opus · high`. Built: `jadpo
+  deliveries` listing what failed or is in doubt (`--state` for the
+  rest), and `retry`, `dismiss`, `cancel` and `resolve --done|--not-done`
+  on a delivery or a schedule's latest run, each from its state only and
+  logged in `jadpo_operator_actions` with the operator's name and
+  database role; a retried delivery's fresh budget (`retried_at`), and a
+  schedule's run retried through the app's tick. `show`, `retry
+  --not-done` and `abandon` come with multi-step calls (7.5), and batch
+  runs and parked queue messages with 6.4b and 7.7.
 - [ ] **5.13b `jadpo dev` and half-written files** `opus · high` (from
   chunk 5.13): an editor's truncate-then-write leaves an empty routes
   file that checks cleanly with no routes, and `jadpo dev` reloads it,

@@ -69,6 +69,7 @@ mod boundary;
 pub mod budget;
 pub mod config;
 mod ctx;
+pub mod deliveries;
 pub mod effects;
 mod env;
 mod executor;

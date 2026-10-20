@@ -20,6 +20,7 @@ mod client_address;
 mod config;
 mod crate_graph;
 mod declines;
+mod deliveries;
 mod decode_problems;
 mod delivery_limits;
 mod events;

@@ -1759,6 +1759,55 @@ with its failure code and internal fields (area 4's logging rules), and the
 request that emitted it. A `failed` or `outcome_unknown` item writes a log
 event and counts towards an alert. The screens and commands are area 14's.
 
+**`jadpo deliveries`** (area 14, question 13; chunk 6.12) lists the
+items that need an operator, `failed` and `outcome_unknown`, newest
+first, 20 a page, and `--state` those `pending`, `running`, `dismissed`
+or `cancelled`; an operator acts on one by its id, the last 8 hex digits
+of its UUID (random in a version 7 UUID, whose first are its time), or
+more. Chosen in chunk 6.12, where the pages left it open:
+
+- **Two more states.** `dismissed` and `cancelled` are a delivery's
+  record set aside by an operator; neither runs again. Their event is
+  kept, as a failed delivery's is, since the tick deletes an event only
+  once every delivery of it succeeded.
+- **What each action does to a delivery.** `retry` (from `failed`) makes
+  it `pending` and due now with a fresh budget: its attempts counted from
+  none, and its `within:` from the retry (the record's `retried_at`), not
+  from its event, so one retried after its window still runs; the tick's
+  sweep then delivers it. `dismiss` (from `failed`) and `cancel` (from
+  `pending`) set it aside; `resolve --done` (from `outcome_unknown`)
+  marks it `succeeded`, and `--not-done` retries it as `retry` does. A
+  delivery whose outcome is unknown is never retried blindly: `retry`
+  is refused and points at `resolve`. Each is one statement that
+  changes the record only from the state it was read in, so of two
+  operators one acts and the other is told it changed.
+- **Schedule runs.** A schedule's item is its latest run (a skipped tick
+  aside) when that failed, or its outcome is unknown, until a later run
+  ends it or an operator settles it, so a schedule failing every 15
+  minutes is one item, not a backlog; its earlier runs stay in `jadpo
+  schedules history`. `retry`, and `resolve --not-done`, ask the app's
+  tick to run it by hand and wait for its record, as `jadpo schedules
+  run` does against a deployment ("Running a schedule by hand"); a run
+  asked for that way is `pending` until a tick takes it, and `cancel`
+  withdraws it. `dismiss` and `resolve --done` leave the run record as
+  it is and settle it in the log.
+- **Who did it.** Every action writes a row of `jadpo_operator_actions`
+  (area 5, "System tables") in the store the item is in, in the same
+  statement as its change: when, which action, the item and its state
+  then, the name the operator's machine gives (`USER`, else `LOGNAME`
+  or `USERNAME`), and the database role PostgreSQL authenticated,
+  which the statement reads itself (`session_user`), so it can't be
+  claimed. The CLI shows both under the result (`logged  sam · role
+  app_owner`). The log is kept; nothing deletes it. Jadpo has no
+  operator accounts of its own, as it has no reviewer accounts
+  (area 14, question 12): the role is the authenticated identity.
+- **Where.** The commands read every store that holds an entity, where
+  deliveries are, and `schedules: { store: }`, each found as `jadpo
+  schedules` finds its database: `--url` (with `--store` when there are
+  several), else the connection's setting, else a running `jadpo dev`'s.
+  They run none of the app's code, and read none of its settings beyond
+  those addresses.
+
 **Unfinished multi-step runs are operator items too** (decided
 2026-10-16). Whenever an action with several changing calls ends without
 committing (failed, diverged, parked, or a route whose key lapsed), the
@@ -2954,8 +3003,6 @@ Not yet:
 - Delivering events in tests after each commit, in a shuffled order
   (area 13): roadmap 6.11, and a fake failing a subscriber with 7.0c's
   fakes.
-- `jadpo deliveries` and the operator's retry, dismiss, cancel and
-  resolve (area 14): roadmap 6.12.
 - The circuit breaker (question 18): roadmap 7.2b. `Retry-After`, several
   changing calls in one action, polls, `receiving`, publishing outward,
   webhooks and a package's own events come with Phase 7; their errors are

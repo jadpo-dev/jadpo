@@ -1234,6 +1234,7 @@ that holds an entity, since any of them can be written:
 | `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, built in chunk 6.1b |
 | `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | Area 12, built in chunk 6.1b |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
+| `jadpo_operator_actions` | What an operator did to a delivery with `jadpo deliveries`: when, which action, the item and its state then, the operator's name and the database role | Area 12, built in chunk 6.12 |
 
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
@@ -1255,7 +1256,8 @@ Schedule state, each schedule's lease included, goes in the store
 `schedules: { store: }` names in `app.jadpo`, or the only store when there
 is one (area 12): `jadpo_schedules` (each schedule's next due time, lease
 and last tick) and `jadpo_schedule_runs` (each run and skipped tick),
-created when a schedule is declared. Other features that only keep state
+created when a schedule is declared, with `jadpo_operator_actions` for
+what operators did to those runs. Other features that only keep state
 name their store the same way (`flags: { store: main }`), and with
 several stores a missing one is a compile error naming the feature. The
 runtime

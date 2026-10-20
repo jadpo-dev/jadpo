@@ -332,7 +332,7 @@ fn qualified(schedule: &ScheduleModel) -> String {
 
 /// The address of `store`'s database: `--url`, else its connection's
 /// setting, else the one a running `jadpo dev` started for it.
-fn url_of(
+pub(crate) fn url_of(
     call: &Call,
     root: &Path,
     loaded: &jadpo_db::Loaded,
@@ -366,7 +366,7 @@ pub(crate) fn dev_stores(root: &Path) -> BTreeMap<String, String> {
 
 /// Now: `SOURCE_DATE_EPOCH` when it is set (the reproducible-builds
 /// convention, which tests use), else the system clock.
-fn now(call: &Call) -> i64 {
+pub(crate) fn now(call: &Call) -> i64 {
     call.environment
         .var("SOURCE_DATE_EPOCH")
         .and_then(|seconds| seconds.trim().parse::<i64>().ok())
@@ -380,7 +380,7 @@ fn now(call: &Call) -> i64 {
 
 /// How often the host ticks: once a minute, or as often as the shortest
 /// `every:` when that is shorter, at least once a second.
-fn tick_every(declared: &[Declared]) -> u64 {
+pub(crate) fn tick_every(declared: &[Declared]) -> u64 {
     declared
         .iter()
         .map(|schedule| schedule.every_ms)
@@ -417,7 +417,7 @@ fn with_database<T>(
         .map_err(|error| failed(store_error(&error)))
 }
 
-fn store_error(error: &jadpo_runtime::StoreError) -> String {
+pub(crate) fn store_error(error: &jadpo_runtime::StoreError) -> String {
     let text = match error {
         jadpo_runtime::StoreError::Fault(text) => text.clone(),
         other => format!("{other:?}"),
@@ -429,12 +429,12 @@ fn store_error(error: &jadpo_runtime::StoreError) -> String {
 
 const DAY: i64 = 86_400_000;
 
-fn plural(count: u64, one: &str, many: &str) -> String {
+pub(crate) fn plural(count: u64, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
 }
 
 /// `12:03:10` on `now`'s day (UTC), `2026-10-18 23:45` on another.
-fn clock(at: i64, now: i64) -> String {
+pub(crate) fn clock(at: i64, now: i64) -> String {
     let text = jadpo_std::format_instant(at);
     if at.div_euclid(DAY) == now.div_euclid(DAY) {
         text.get(11..19).unwrap_or_default().to_string()
@@ -461,7 +461,7 @@ fn grid_clock(at: i64, now: i64) -> String {
 }
 
 /// `412 ms`, `1.2 s`, `41 s`, `13 min`, `2 h 5 min`.
-fn duration(ms: i64) -> String {
+pub(crate) fn duration(ms: i64) -> String {
     let ms = ms.max(0);
     if ms < 1_000 {
         format!("{ms} ms")
@@ -1390,9 +1390,17 @@ fn request(
         name: name.clone(),
         every_ms: schedule.every_ms,
     };
-    let now = now(call);
     // The application ticks for all its schedules at once.
     let period = tick_every(&project.declared());
+    ask_tick(&declared, period, now(call), store, url)
+}
+
+/// Asks the application's next tick, ticking every `period`, to run
+/// `declared` by hand, and waits for that run's record, as `jadpo
+/// schedules run` does against a deployment and `jadpo deliveries retry`
+/// does for a schedule's failed run (chunk 6.12).
+pub(crate) fn ask_tick(declared: &Declared, period: u64, now: i64, store: &str, url: &str) -> Reply {
+    let name = declared.name.clone();
     crate::run::say(&format!("Asking the app's next tick to run `{name}`"));
     let waited = with_database(store, url, |database| {
         let declared = declared.clone();
