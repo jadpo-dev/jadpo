@@ -16,7 +16,8 @@
 //! `build/providers/<name>/<version>/surface.jadpo_record` (area 11, "The
 //! surface"): an installed package carries its own, committed. Since
 //! chunk 7.1c the network report to `build/report/network.md` and `.json`
-//! once the connections read cleanly (area 11).
+//! once the connections read cleanly (area 11), and since chunk 7.2e2
+//! the provider report to `build/report/providers.md` and `.json`.
 
 use std::path::Path;
 
@@ -79,6 +80,27 @@ pub fn network(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(String
         (
             "build/report/network.json".to_string(),
             report.json.to_document(),
+        ),
+    ]
+}
+
+/// The provider report (area 11, layers 4 and 5; chunk 7.2e2), once the
+/// connections read cleanly and the app has an integration of its own:
+/// `build/report/providers.md` and its `.json` twin, each call confirmed
+/// or not and each imported type it reaches reviewed or not, for `jadpo
+/// approval`.
+pub fn providers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(String, String)> {
+    if !jadpo_check::connections::connection_problems(db, project).is_empty() {
+        return Vec::new();
+    }
+    let Some((markdown, json)) = jadpo_check::review::report(db, project) else {
+        return Vec::new();
+    };
+    vec![
+        ("build/report/providers.md".to_string(), markdown),
+        (
+            "build/report/providers.json".to_string(),
+            json.to_document(),
         ),
     ]
 }

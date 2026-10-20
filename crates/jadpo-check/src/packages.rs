@@ -660,6 +660,9 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
             "aws" => nested_keys(&path, &key, &member, &AWS_KEYS, out),
             "webhooks" => webhooks(&path, &member, out),
             "settings" => crate::connections::provider_settings(&path, &member, out),
+            "imported" => {
+                crate::review::imported_problems(db, project, &home.folder, &path, &member, out);
+            }
             _ => {}
         }
     }
