@@ -39,6 +39,7 @@ pub mod publishing;
 pub mod receiving;
 pub mod records;
 mod resolve;
+pub mod review;
 pub mod routes;
 pub mod schedules;
 pub mod setting_move;

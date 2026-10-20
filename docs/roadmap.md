@@ -1126,14 +1126,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and an unmapped latitude and longitude; the summary's `standard` count,
   "Mapped by shape" list and each guess under "To check", `mapped` in
   `--json`. Choices in area 11's "Chosen in chunk 7.2e".
-- [ ] **7.2e2 The scoped review and unconfirmed operations** `opus ·
+- [x] **7.2e2 The scoped review and unconfirmed operations** `opus ·
   high`, after 7.2d2 and 7.2e (area 11, "Mapping imported types to
   standard types", layers 4 and 5): the import's one review instruction
   scoped to the types the app's operations reach, each imported type
   tracked as reviewed or not in `jadpo check` (and recorded for `jadpo
   approval`, which comes after the first build), growing when the app
   calls something new; operations the app calls still unconfirmed by a
-  recording, listed in `jadpo check` and the import's summary.
+  recording, listed in `jadpo check` and the import's summary. Built:
+  `reviewed:` in `provider.jadpo`'s `imported:`, each one of the
+  package's own types once (`package.provider_invalid`); the scope worked
+  out from the app's calls on every check, the types their input and
+  output reach; `jadpo check` listing the types still to review and the
+  calls no recording confirms once it passes, counted in its footer and
+  given as `providers` in `--json`, and writing both to
+  `build/report/providers.md` and `.json` for `jadpo approval`; the
+  import ending with the scoped instruction and the unconfirmed calls,
+  keeping `reviewed:` when it merges, less any type the description
+  added to. Choices in area 11's "Chosen in chunk 7.2e2".
 - [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
