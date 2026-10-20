@@ -867,6 +867,11 @@ pub struct TestHost<'d> {
     /// The connections that keep files, which it is given for (chunk
     /// 7.1c).
     file_stores: Vec<String>,
+    /// Every email a test sends, caught rather than sent (area 16,
+    /// "Email"; chunk 7.3): what `email.sent` will read (chunk 7.3c).
+    mail: jadpo_runtime::capability::Fake,
+    /// The connection `email:` names, which it is given for.
+    mail_connection: Option<String>,
 }
 
 enum Held {
@@ -902,7 +907,16 @@ impl<'d> TestHost<'d> {
             held: std::cell::OnceCell::new(),
             files: jadpo_runtime::files::MemoryFiles::new(),
             file_stores: Vec::new(),
+            mail: jadpo_runtime::capability::Fake::new(),
+            mail_connection: None,
         }
+    }
+
+    /// Catches every email sent through `connection`, the one `email:`
+    /// names, rather than sending it (area 16; chunk 7.3).
+    pub fn with_mail(mut self, connection: Option<String>) -> TestHost<'d> {
+        self.mail_connection = connection;
+        self
     }
 
     /// Gives its store of files for the connections in `stores`, and
@@ -977,10 +991,14 @@ impl jadpo_runtime::Host for TestHost<'_> {
     }
 
     /// A store of files' connection in memory (chunk 6.4b), and only
-    /// one (chunk 7.1c): nothing in a test leaves the process, and a
-    /// package's connection has no driver until provider calls are built
-    /// (chunk 7.2c), where a test fakes it.
+    /// one (chunk 7.1c), and the email connection's mail caught (chunk
+    /// 7.3): nothing in a test leaves the process, and a package's
+    /// connection has no driver until provider calls are built (chunk
+    /// 7.2c), where a test fakes it.
     fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
+        if self.mail_connection.as_deref() == Some(connection) {
+            return Some(&self.mail);
+        }
         self.file_stores
             .iter()
             .any(|store| store == connection)

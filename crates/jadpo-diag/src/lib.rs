@@ -374,6 +374,18 @@ rules! {
         "03-logic.html#effect-function-persistence", "Function reads or writes stored data";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
+    EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
+        "16-built-in-services.html#email-connection-required", "Action emits an email but the application names no email connection";
+    EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
+        "16-built-in-services.html#email-field-unused", "Email's field is written by no template and no subject";
+    EMAIL_SETTINGS_INVALID: "email.settings_invalid", area 16, Error, Agent,
+        "16-built-in-services.html#email-settings-invalid", "Application's `email:` or `display_name:` is invalid";
+    EMAIL_TEMPLATE_MISSING: "email.template_missing", area 16, Error, Agent,
+        "16-built-in-services.html#email-template-missing", "Email has no template, or a template no email";
+    EMAIL_TEMPLATE_NOT_ALLOWED: "email.template_not_allowed", area 16, Error, Agent,
+        "16-built-in-services.html#email-template-not-allowed", "Template does more than read fields, translate and format";
+    EMAIL_TEMPLATE_VALUE_INVALID: "email.template_value_invalid", area 16, Error, Agent,
+        "16-built-in-services.html#email-template-value-invalid", "Template writes out something that isn't text or a number";
     EVENT_EMIT_INVALID: "event.emit_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#event-emit-invalid", "Emit is given something that isn't an event, or is used outside an action";
     EVENT_SETTINGS_INVALID: "event.settings_invalid", area 12, Error, Agent,
@@ -1517,6 +1529,7 @@ mod tests {
             declinable,
             [
                 "constant.similar_exists",
+                "email.field_unused",
                 "library.similar_exists",
                 "query.nearest_exact",
                 "translation.field_unused",

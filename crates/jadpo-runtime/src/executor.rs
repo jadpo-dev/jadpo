@@ -34,6 +34,15 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// The value the program started with for setting number `at`: its
+    /// variable's, its `test:` or its `default:` (area 10). What an email's
+    /// `from:` reads (area 16; chunk 7.3). None for an executor that keeps
+    /// no settings.
+    fn setting(&self, at: u32) -> Option<Value> {
+        let _ = at;
+        None
+    }
+
     /// Where callable `callable`'s clock starts, in milliseconds since
     /// 1970-01-01T00:00:00Z: a test's `clock:` (area 13). None for anything
     /// else, which runs at its host's time or the test default.
