@@ -2447,6 +2447,9 @@ application {
     events: {
         store: main
     }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
 }
 ```
 
@@ -2456,6 +2459,7 @@ config {
         secret: true
     }
     pay_environment: ProviderEnvironment
+    step_encryption_key: SigningKey
 }
 ```
 
