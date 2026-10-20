@@ -32,6 +32,8 @@ mod features;
 mod files;
 mod identity;
 mod json;
+
+pub(crate) use identity::sign_in_object_fields;
 mod known;
 mod lower;
 mod matching;
@@ -1492,6 +1494,24 @@ impl Body<'_> {
     /// emitting it (area 16, "Email").
     fn emitted(&mut self, emit: &ast::EmitStmt, expr: &Expr, ty: &Ty) {
         if ty.has_error() {
+            return;
+        }
+        // The events sign-in publishes are the runtime's alone (area 8,
+        // "Events"; chunk 7.3b4).
+        if let Ty::Opaque(name, _) = ty
+            && jadpo_std::http::sign_in_event_key(name).is_some()
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::EVENT_EMIT_INVALID,
+                    format!("`{name}` is published only by signing in"),
+                )
+                .at(self.span(expr), "a sign-in event")
+                .reason(format!(
+                    "Jadpo publishes `{name}` itself as a person signs in, so its subscribers can trust that it happened; code never emits it."
+                ))
+                .next("Remove the `emit`, or emit an event of the application's own"),
+            );
             return;
         }
         let event = match ty {

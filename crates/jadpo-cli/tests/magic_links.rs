@@ -279,6 +279,9 @@ routes Account {
             .to_string(),
         ),
     ];
+    // What the application hears of each sign-in (area 8, "Events"; chunk
+    // 7.3b4): a note for every event, kept by a subscriber.
+    files.extend(listeners());
     // The application's own email (level 4): its words, its templates and
     // its subject, filled with the link and the code Jadpo makes.
     if variant == Variant::OwnEmail {
@@ -418,8 +421,8 @@ action send_sign_in_link(request: MagicLinkRequest) -> Unit {
                     .to_string(),
             ),
             (
-                "domains/notes/types/signed_in.jadpo",
-                "type SignedIn = Output {\n    return_to: Text\n}\n".to_string(),
+                "domains/notes/types/signed_in_view.jadpo",
+                "type SignedInView = Output {\n    return_to: Text\n}\n".to_string(),
             ),
             (
                 "domains/notes/types/app_signed_in.jadpo",
@@ -438,13 +441,13 @@ action ask_for_link(input: LinkAsked) -> Unit {
             ),
             (
                 "domains/notes/actions/confirm_link.jadpo",
-                r#"use notes/types { LinkGiven, SignedIn }
+                r#"use notes/types { LinkGiven, SignedInView }
 
 /// Signs this browser in with a link's token.
-action confirm_link(input: LinkGiven) -> SignedIn {
+action confirm_link(input: LinkGiven) -> SignedInView {
     var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
     sessions.start(redeemed.user_id)
-    return SignedIn {
+    return SignedInView {
         return_to: redeemed.return_to
     }
 }
@@ -453,13 +456,13 @@ action confirm_link(input: LinkGiven) -> SignedIn {
             ),
             (
                 "domains/notes/actions/confirm_code.jadpo",
-                r#"use notes/types { CodeGiven, SignedIn }
+                r#"use notes/types { CodeGiven, SignedInView }
 
 /// Signs this browser in with a code.
-action confirm_code(input: CodeGiven) -> SignedIn {
+action confirm_code(input: CodeGiven) -> SignedInView {
     var redeemed: MagicLinkRedeemed = magic_links.redeem_code(input.address, input.code)
     sessions.start(redeemed.user_id)
-    return SignedIn {
+    return SignedInView {
         return_to: redeemed.return_to
     }
 }
@@ -483,7 +486,7 @@ action token_for_code(input: CodeGiven) -> AppSignedIn {
             (
                 "domains/notes/routes/sign_in.jadpo",
                 r#"use notes/actions { ask_for_link, confirm_code, confirm_link, token_for_code }
-use notes/types { AppSignedIn, CodeGiven, LinkAsked, LinkGiven, SignedIn }
+use notes/types { AppSignedIn, CodeGiven, LinkAsked, LinkGiven, SignedInView }
 
 routes SignIn {
     prefix: /sign-in
@@ -500,7 +503,7 @@ routes SignIn {
     POST /link {
         authentication: RouteAuthentication.none
         input: LinkGiven
-        output: SignedIn
+        output: SignedInView
         run: confirm_link(input)
     }
 
@@ -508,7 +511,7 @@ routes SignIn {
     POST /code {
         authentication: RouteAuthentication.none
         input: CodeGiven
-        output: SignedIn
+        output: SignedInView
         run: confirm_code(input)
     }
 
@@ -575,6 +578,85 @@ policy {
         }
     }
     files
+}
+
+/// A subscriber of each sign-in event, keeping what it heard as a note.
+fn listeners() -> Vec<(&'static str, String)> {
+    let note = |action: &str, event: &str, set: &str| {
+        format!(
+            "use notes/entities {{ SignInNote }}\nuse notes/failures {{ MemberNotFound }}\n\n/// Notes what it heard.\naction {action}(event: {event}) fails MemberNotFound -> SignInNote {{\n    return attempt SignInNote.create {{\n        set: {{\n{set}        }}\n    }}\n}}\n"
+        )
+    };
+    let listen = |name: &str, event: &str, action: &str| {
+        format!(
+            "use notes/actions {{ {action} }}\n\n/// Notes each `{event}`.\nsubscriber {name} {{\n    on: {event}\n    run: {action}(event)\n}}\n"
+        )
+    };
+    vec![
+        (
+            "domains/notes/entities/sign_in_note.jadpo",
+            r#"use notes/entities { Member }
+
+/// What the application heard of a sign-in.
+entity SignInNote {
+    id: Uuid
+    member_id: Member.id? {
+        on_delete: OnDelete.cleared
+    }
+    method: SignInMethod?
+    reason: SignInRefusal?
+    first_time: Bool
+    until: Instant?
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+"#
+            .to_string(),
+        ),
+        (
+            "domains/notes/actions/note_signed_in.jadpo",
+            note(
+                "note_signed_in",
+                "SignedIn",
+                "            member_id: event.user_id\n            method: event.method\n            reason: none\n            first_time: event.first_time\n            until: none\n",
+            ),
+        ),
+        (
+            "domains/notes/actions/note_refused.jadpo",
+            note(
+                "note_refused",
+                "SignInRefused",
+                "            member_id: event.user_id\n            method: event.method\n            reason: event.reason\n            first_time: false\n            until: none\n",
+            ),
+        ),
+        (
+            "domains/notes/actions/note_codes_disabled.jadpo",
+            note(
+                "note_codes_disabled",
+                "SignInCodesDisabled",
+                "            member_id: event.user_id\n            method: none\n            reason: none\n            first_time: false\n            until: event.until\n",
+            ),
+        ),
+        (
+            "domains/notes/subscribers/note_sign_ins.jadpo",
+            listen("note_sign_ins", "SignedIn", "note_signed_in"),
+        ),
+        (
+            "domains/notes/subscribers/note_refusals.jadpo",
+            listen("note_refusals", "SignInRefused", "note_refused"),
+        ),
+        (
+            "domains/notes/subscribers/note_disabled_codes.jadpo",
+            listen(
+                "note_disabled_codes",
+                "SignInCodesDisabled",
+                "note_codes_disabled",
+            ),
+        ),
+    ]
 }
 
 fn jadpo(cwd: &Path, args: &[&str]) {
@@ -702,6 +784,32 @@ impl Live {
             work,
         ));
         response
+    }
+
+    /// What the subscribers heard, oldest first: each event's name, the
+    /// member's address, the way in or the reason, and whether it was a
+    /// first time; codes stopping gives when they start again.
+    fn notes(&self) -> Vec<String> {
+        self.rows(
+            "SELECT concat_ws(' ', CASE WHEN n.\"until\" IS NOT NULL THEN 'codes_disabled_until ' || to_char(n.\"until\" AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI') WHEN n.\"reason\" IS NOT NULL THEN 'refused ' || n.\"reason\" ELSE 'signed_in ' || n.\"method\" END, coalesce(m.\"email\", '-'), CASE WHEN n.\"first_time\" THEN 'first' END) FROM \"sign_in_note\" AS n LEFT JOIN \"member\" AS m ON m.\"id\" = n.\"member_id\" ORDER BY n.\"ctid\"",
+        )
+        .into_iter()
+        .map(|row| match row.first() {
+            Some(jadpo_runtime::SqlValue::Text(text)) => text.clone(),
+            other => panic!("not a note: {other:?}"),
+        })
+        .collect()
+    }
+
+    /// Why the request was refused, as its log line says.
+    fn reason(response: &Response) -> Option<String> {
+        response
+            .refused
+            .as_ref()
+            .map(|refused| match &refused.failure {
+                Some(failure) => format!("{} {failure}", refused.reason),
+                None => refused.reason.to_string(),
+            })
     }
 
     fn rows(&self, statement: &str) -> Vec<jadpo_runtime::Row> {
@@ -922,6 +1030,30 @@ fn a_link_signs_a_new_person_in_once_and_ends_its_code() {
         &format!("{{\"address\":\"ada@example.com\",\"code\":\"{six}\"}}"),
     );
     refused(&by_code, 401, "sign_in_code_invalid");
+    // Each was published, and the log line says why each was refused.
+    assert_eq!(Live::reason(&confirmed), None);
+    assert_eq!(Live::reason(&again).as_deref(), Some("link_expired"));
+    assert_eq!(Live::reason(&by_code).as_deref(), Some("code_invalid"));
+    assert_eq!(
+        live.notes(),
+        [
+            "signed_in magic_link ada@example.com first",
+            "refused link_expired -",
+            "refused code_invalid ada@example.com",
+        ]
+    );
+    // No sign-in event holds an address, a link or a code.
+    let kept = live.rows(
+        "SELECT \"event\" || ' ' || \"payload\"::text FROM \"jadpo_outbox\" WHERE \"event\" LIKE 'jadpo.Sign%'",
+    );
+    assert_eq!(kept.len(), 3);
+    for row in kept {
+        let found = format!("{row:?}");
+        assert!(
+            !found.contains('@') && !found.contains(&token) && !found.contains(&six),
+            "{found}"
+        );
+    }
 }
 
 #[test]
@@ -1064,8 +1196,28 @@ fn past_the_days_wrong_codes_codes_stop_but_links_work() {
     );
     refused(&disabled, 429, "sign_in_codes_disabled");
     assert!(disabled.header("retry-after").is_some());
+    assert_eq!(Live::reason(&disabled).as_deref(), Some("codes_disabled"));
     let linked = live.confirm(&mut browser, &format!("{{\"token\":\"{}\"}}", mail.token()));
     assert_eq!(linked.status, 200, "{}", text(&linked));
+    // The fifth wrong code stopped codes until midnight UTC, once.
+    let notes = live.notes();
+    assert_eq!(
+        notes[4..],
+        [
+            "codes_disabled_until 2026-10-21T00:00 -",
+            "refused code_invalid -",
+            "refused codes_disabled -",
+            "signed_in magic_link di@example.com first",
+        ],
+        "{notes:?}"
+    );
+    assert_eq!(
+        notes
+            .iter()
+            .filter(|note| note.starts_with("codes_disabled_until"))
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -1094,10 +1246,11 @@ fn a_same_browser_link_works_only_where_it_was_asked_for() {
     );
     assert!(mail.text.starts_with("Notes\n\nSign in\n"), "{}", mail.text);
     let link = format!("{{\"token\":\"{}\"}}", mail.token());
-    refused(
-        &live.confirm(&mut Browser::default(), &link),
-        401,
-        "sign_in_link_other_browser",
+    let elsewhere = live.confirm(&mut Browser::default(), &link);
+    refused(&elsewhere, 401, "sign_in_link_other_browser");
+    assert_eq!(
+        Live::reason(&elsewhere).as_deref(),
+        Some("link_other_browser")
     );
     // Left as it was: the browser that asked still signs in.
     let signed = live.confirm(&mut asker, &link);
@@ -1137,6 +1290,7 @@ fn a_code_is_redeemed_for_an_api_token() {
     ));
     assert_eq!(me.status, 200, "{}", text(&me));
     assert_eq!(json(&me)["email"], "fi@example.com");
+    assert_eq!(live.notes(), ["signed_in magic_link fi@example.com first"]);
 }
 
 #[test]
@@ -1151,6 +1305,13 @@ fn a_refused_first_sign_in_and_a_disabled_person_get_nothing() {
     let refusal = live.confirm(&mut browser, &format!("{{\"token\":\"{}\"}}", mail.token()));
     refused(&refusal, 403, "sign_in_refused");
     assert!(!browser.signed_in());
+    // The person sees only `sign_in_refused`; the log and the event keep
+    // the real reason.
+    assert_eq!(
+        Live::reason(&refusal).as_deref(),
+        Some("refused_by_app SignUpClosed")
+    );
+    assert!(!text(&refusal).contains("SignUpClosed"));
     // A member who is suspended signs in with nothing.
     assert_eq!(live.ask(&mut browser, "gu@example.com").status, 202);
     let mail = live.last_mail("gu@example.com");
@@ -1167,12 +1328,18 @@ fn a_refused_first_sign_in_and_a_disabled_person_get_nothing() {
     let mut later = Browser::default();
     assert_eq!(live.ask(&mut later, "gu@example.com").status, 202);
     let mail = live.last_mail("gu@example.com");
-    refused(
-        &live.confirm(&mut later, &format!("{{\"token\":\"{}\"}}", mail.token())),
-        403,
-        "user_disabled",
-    );
+    let disabled = live.confirm(&mut later, &format!("{{\"token\":\"{}\"}}", mail.token()));
+    refused(&disabled, 403, "user_disabled");
     assert!(!later.signed_in());
+    assert_eq!(Live::reason(&disabled).as_deref(), Some("user_disabled"));
+    assert_eq!(
+        live.notes(),
+        [
+            "refused refused_by_app -",
+            "signed_in magic_link gu@example.com first",
+            "refused user_disabled gu@example.com",
+        ]
+    );
 }
 
 #[test]
@@ -1438,6 +1605,21 @@ fn the_apps_own_routes_sign_in_with_a_link_once_in_the_browser_that_asked() {
     refused(&code, 401, "sign_in_code_invalid");
     // The failure's text never holds the token or the code.
     assert!(!text(&again).contains(&token) && !text(&code).contains(&six));
+    // The events and the log are the generated routes' own.
+    assert_eq!(
+        Live::reason(&elsewhere).as_deref(),
+        Some("link_other_browser")
+    );
+    assert_eq!(Live::reason(&code).as_deref(), Some("code_invalid"));
+    assert_eq!(
+        live.notes(),
+        [
+            "refused link_other_browser -",
+            "signed_in magic_link ada@example.com first",
+            "refused link_expired -",
+            "refused code_invalid ada@example.com",
+        ]
+    );
 }
 
 #[test]
@@ -1548,4 +1730,17 @@ fn the_apps_own_route_trades_a_code_for_an_api_token() {
     );
     refused(&closed, 403, "sign_in_refused");
     assert!(!browser.signed_in());
+    // The token's action committed, so its `SignedIn` was delivered; the
+    // refusal was kept on its own though its action failed.
+    assert_eq!(
+        Live::reason(&closed).as_deref(),
+        Some("refused_by_app SignUpClosed")
+    );
+    assert_eq!(
+        live.notes(),
+        [
+            "signed_in magic_link cy@example.com first",
+            "refused refused_by_app -",
+        ]
+    );
 }

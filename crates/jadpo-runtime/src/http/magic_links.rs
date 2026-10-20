@@ -34,6 +34,12 @@
 //!   hold is `user_disabled`. The browser session or API token is kept as
 //!   `sessions.start` and `sessions.issue_token` keep one.
 //!
+//! - **Every sign-in publishes an event** (chunk 7.3b4): `SignedIn`
+//!   with the session or token, `SignInRefused` for a link, code or first
+//!   sign-in refused, its reason kept for the request's log line too, and
+//!   `SignInCodesDisabled` when an address reaches the day's wrong codes
+//!   ([`super::sign_in_events`]).
+//!
 //! Nothing here logs or answers with a token, a code or an address.
 
 use std::rc::Rc;
@@ -44,16 +50,18 @@ use jadpo_std::http::{
     MagicLinkStep, RETURN_TO_MAX, SESSION_LIFETIME_MS,
 };
 use jadpo_std::read::SqlType;
+use jadpo_std::{SignInMethod, SignInRefusal};
 use jadpo_value::Value;
 
 use super::identity::{
     AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED, START, USER_DISABLED,
     set_cookies,
 };
+use super::sign_in_events::{self, SignInEvent};
 use super::{
     App, INTERNAL_FAULT, Problem, RATE_LIMITED, Request, Response, invalid_input, runtime_failure,
 };
-use crate::ctx::{Binding, SessionEffect, System};
+use crate::ctx::{Binding, SessionEffect, SignInRefused, System};
 use crate::outbox::{Delivery, Sealed};
 use crate::runner::Deferred;
 use crate::store::Stored;
@@ -220,6 +228,13 @@ struct Site<'s> {
     /// The request's id, for a generated route's response; empty for an
     /// operation, which answers nothing itself.
     request_id: &'s str,
+}
+
+/// The person a confirmed link or code names: their user's `id`, and
+/// whether `on_first_sign_in:`'s action made them just now.
+struct Person {
+    user: [u8; 16],
+    first_time: bool,
 }
 
 /// What a confirmed link or code gives: the address it was sent to and
@@ -722,15 +737,15 @@ impl Site<'_> {
                 }
             }
         };
-        let user = self
+        let person = self
             .person(ctx, &confirmed.address)
             .await
             .map_err(|why| self.stop(why))?;
+        let user = SqlValue::Uuid(person.user);
         let now = ctx.now();
         let (Some(token), Some(id)) = (new_token(ctx), ctx.new_id()) else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
         };
-        let database = self.database(ctx).map_err(|why| self.stop(why))?;
         if redeem {
             let token = format!("{API_TOKEN_PREFIX}{token}");
             let params = [
@@ -741,8 +756,7 @@ impl Site<'_> {
                 micros(now),
                 micros(now.saturating_add(SESSION_LIFETIME_MS)),
             ];
-            database
-                .query_once(START, &params)
+            self.start(ctx, &params, &person)
                 .await
                 .map_err(|_| self.fail(AUTHENTICATION_UNAVAILABLE))?;
             let mut body = String::from("{\"token\":");
@@ -761,8 +775,7 @@ impl Site<'_> {
             micros(now),
             micros(now.saturating_add(SESSION_LIFETIME_MS)),
         ];
-        database
-            .query_once(START, &params)
+        self.start(ctx, &params, &person)
             .await
             .map_err(|_| self.fail(AUTHENTICATION_UNAVAILABLE))?;
         let mut body = String::from("{\"return_to\":");
@@ -781,14 +794,117 @@ impl Site<'_> {
         Ok(response)
     }
 
+    /// Keeps the session or API token `params` describe, with `SignedIn`
+    /// for `person` beside it in the same transaction.
+    async fn start(
+        &self,
+        ctx: &mut Ctx<'_>,
+        params: &[SqlValue],
+        person: &Person,
+    ) -> Result<(), crate::StoreError> {
+        let database = self
+            .database(ctx)
+            .map_err(|_| crate::StoreError::Unavailable)?;
+        let mut transaction = database.begin().await?;
+        let earlier = ctx.take_deferred();
+        let event = SignInEvent::SignedIn {
+            user: person.user,
+            method: SignInMethod::MagicLink,
+            first_time: person.first_time,
+        };
+        let written = match transaction.execute(START, params).await {
+            Ok(_) => {
+                sign_in_events::write(
+                    ctx,
+                    self.executor,
+                    &self.plan.store,
+                    transaction.as_mut(),
+                    &[event],
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        let kept = match written {
+            Ok(()) => transaction.commit().await,
+            Err(error) => {
+                let _ = transaction.rollback().await;
+                Err(error)
+            }
+        };
+        let mine = ctx.take_deferred();
+        for work in earlier {
+            ctx.defer(work);
+        }
+        kept?;
+        for work in mine {
+            ctx.defer(work);
+        }
+        Ok(())
+    }
+
+    /// Keeps why the sign-in was refused for the request's log line, and
+    /// publishes `SignInRefused` with the user `address` names, when it
+    /// names one; gives back `refused`, what the caller is answered.
+    async fn refusing(
+        &self,
+        ctx: &mut Ctx<'_>,
+        reason: SignInRefusal,
+        address: Option<&str>,
+        failure: Option<String>,
+        refused: Refused,
+    ) -> Refused {
+        ctx.refuse_sign_in(SignInRefused {
+            reason: reason.name(),
+            failure,
+        });
+        let mut event = SignInEvent::Refused {
+            method: SignInMethod::MagicLink,
+            reason,
+            user: None,
+        };
+        if sign_in_events::listens(self.executor, &event) {
+            if let (SignInEvent::Refused { user, .. }, Some(address)) = (&mut event, address) {
+                *user = self.user_of(ctx, address).await;
+            }
+            sign_in_events::publish(ctx, self.executor, &self.plan.store, &[event]).await;
+        }
+        refused
+    }
+
+    /// The `id` of the user `address` belongs to, for an event; `None`
+    /// when none does or the store can't say.
+    async fn user_of(&self, ctx: &mut Ctx<'_>, address: &str) -> Option<[u8; 16]> {
+        let now = ctx.now();
+        let database = self.database(ctx).ok()?;
+        let rows = database
+            .query_once(
+                &self.magic.lookup,
+                &[SqlValue::Text(address.to_string()), micros(now)],
+            )
+            .await
+            .ok()?;
+        match rows.first().map(Vec::as_slice) {
+            Some([SqlValue::Uuid(id), ..]) => Some(*id),
+            _ => None,
+        }
+    }
+
     /// `magic_links.redeem` or `.redeem_code`: the link or the code used,
     /// then the person, found or made, as the generated routes find them;
-    /// the application's action then starts their session itself.
+    /// the application's action then starts their session itself, and
+    /// `SignedIn` is its event, delivered once it commits.
     async fn redeemed(&self, ctx: &mut Ctx<'_>, confirmed: Confirmed) -> Result<Value, Refused> {
-        let user = self.person(ctx, &confirmed.address).await?;
-        let SqlValue::Uuid(id) = user else {
-            return Err(refused(REFUSED));
+        let person = self.person(ctx, &confirmed.address).await?;
+        let id = person.user;
+        let event = SignInEvent::SignedIn {
+            user: person.user,
+            method: SignInMethod::MagicLink,
+            first_time: person.first_time,
         };
+        sign_in_events::emit(ctx, self.executor, &self.plan.store, &event)
+            .await
+            .map_err(Refused::Store)?;
         Ok(Value::record(
             MAGIC_LINK_REDEEMED,
             vec![
@@ -802,22 +918,50 @@ impl Site<'_> {
     }
 
     /// Uses a link's token, once, in a transaction of its own; `given` is
-    /// the binding cookie the request sent.
+    /// the binding cookie the request sent. A refusal is kept for the log
+    /// and published as `SignInRefused`.
     async fn by_token(
         &self,
         ctx: &mut Ctx<'_>,
         given: Option<&str>,
         token: &str,
     ) -> Result<Confirmed, Refused> {
+        match self.token_used(ctx, given, token).await {
+            Ok(confirmed) => Ok(confirmed),
+            Err((why, address)) => {
+                let reason = match &why {
+                    Refused::Failure(failure, _) if *failure == LINK_OTHER_BROWSER => {
+                        SignInRefusal::LinkOtherBrowser
+                    }
+                    Refused::Failure(failure, _) if *failure == LINK_EXPIRED => {
+                        SignInRefusal::LinkExpired
+                    }
+                    _ => return Err(why),
+                };
+                Err(self
+                    .refusing(ctx, reason, address.as_deref(), None, why)
+                    .await)
+            }
+        }
+    }
+
+    /// [`Site::by_token`]'s steps: a refusal comes with the address the
+    /// link was sent to, when the link names one.
+    async fn token_used(
+        &self,
+        ctx: &mut Ctx<'_>,
+        given: Option<&str>,
+        token: &str,
+    ) -> Result<Confirmed, (Refused, Option<String>)> {
         let Some(bytes) = token_bytes(token) else {
-            return Err(refused(LINK_EXPIRED));
+            return Err((refused(LINK_EXPIRED), None));
         };
         let now = ctx.now();
-        let database = self.database(ctx)?;
+        let database = self.database(ctx).map_err(|why| (why, None))?;
         let mut transaction = database
             .begin()
             .await
-            .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
+            .map_err(|_| (refused(AUTHENTICATION_UNAVAILABLE), None))?;
         let rows = match transaction
             .query(BY_TOKEN, &[SqlValue::Text(verifier(token.as_bytes()))])
             .await
@@ -825,23 +969,23 @@ impl Site<'_> {
             Ok(rows) => rows,
             Err(_) => {
                 let _ = transaction.rollback().await;
-                return Err(refused(AUTHENTICATION_UNAVAILABLE));
+                return Err((refused(AUTHENTICATION_UNAVAILABLE), None));
             }
         };
         let Some([SqlValue::Uuid(id), sealed, return_to, binding, expires]) =
             rows.first().map(Vec::as_slice)
         else {
             let _ = transaction.rollback().await;
-            return Err(refused(LINK_EXPIRED));
+            return Err((refused(LINK_EXPIRED), None));
         };
         let unexpired = millis(expires).is_some_and(|at| at > now);
         let SqlValue::Bytes(sealed) = sealed else {
             let _ = transaction.rollback().await;
-            return Err(refused(LINK_EXPIRED));
+            return Err((refused(LINK_EXPIRED), None));
         };
         if !unexpired {
             let _ = transaction.rollback().await;
-            return Err(refused(LINK_EXPIRED));
+            return Err((refused(LINK_EXPIRED), None));
         }
         // A `same_browser:` link works only in the browser that asked; it
         // is left as it was, so that browser or the code still works.
@@ -857,12 +1001,12 @@ impl Site<'_> {
             };
             if !here {
                 let _ = transaction.rollback().await;
-                return Err(refused(LINK_OTHER_BROWSER));
+                return Err((refused(LINK_OTHER_BROWSER), unseal(&bytes, sealed)));
             }
         }
         let Some(address) = unseal(&bytes, sealed) else {
             let _ = transaction.rollback().await;
-            return Err(refused(LINK_EXPIRED));
+            return Err((refused(LINK_EXPIRED), None));
         };
         let return_to = match return_to {
             SqlValue::Text(path) => Some(path.clone()),
@@ -870,7 +1014,7 @@ impl Site<'_> {
         };
         let used = transaction.execute(USED, &[SqlValue::Uuid(*id)]).await;
         if used.is_err() || transaction.commit().await.is_err() {
-            return Err(refused(AUTHENTICATION_UNAVAILABLE));
+            return Err((refused(AUTHENTICATION_UNAVAILABLE), None));
         }
         Ok(Confirmed { address, return_to })
     }
@@ -915,7 +1059,15 @@ impl Site<'_> {
         ) = rows.first().map(Vec::as_slice)
         else {
             let _ = transaction.rollback().await;
-            return Err(refused(CODE_INVALID));
+            return Err(self
+                .refusing(
+                    ctx,
+                    SignInRefusal::CodeInvalid,
+                    Some(address),
+                    None,
+                    refused(CODE_INVALID),
+                )
+                .await);
         };
         // Past the day's wrong codes, codes stop until the next day (UTC);
         // links still work.
@@ -926,10 +1078,15 @@ impl Site<'_> {
         };
         if u32::try_from(failed).unwrap_or(u32::MAX) >= self.magic.failed_codes_per_day {
             let _ = transaction.rollback().await;
-            return Err(Refused::Failure(
-                CODES_DISABLED,
-                Some(seconds(today + DAY_MS - now)),
-            ));
+            return Err(self
+                .refusing(
+                    ctx,
+                    SignInRefusal::CodesDisabled,
+                    Some(address),
+                    None,
+                    Refused::Failure(CODES_DISABLED, Some(seconds(today + DAY_MS - now))),
+                )
+                .await);
         }
         let right = match (exact, asked, kept) {
             (SqlValue::Text(exact), SqlValue::Uuid(asked), SqlValue::Text(kept)) => {
@@ -961,7 +1118,30 @@ impl Site<'_> {
             if counted.is_err() || transaction.commit().await.is_err() {
                 return Err(refused(AUTHENTICATION_UNAVAILABLE));
             }
-            return Err(refused(CODE_INVALID));
+            // This wrong code reached the day's: codes stop until the next
+            // day (UTC), which `SignInCodesDisabled` says.
+            let reached = u32::try_from(failed.saturating_add(1)).unwrap_or(u32::MAX)
+                >= self.magic.failed_codes_per_day;
+            let disabled = SignInEvent::CodesDisabled {
+                user: None,
+                until: today + DAY_MS,
+            };
+            if reached && sign_in_events::listens(self.executor, &disabled) {
+                let disabled = SignInEvent::CodesDisabled {
+                    user: self.user_of(ctx, address).await,
+                    until: today + DAY_MS,
+                };
+                sign_in_events::publish(ctx, self.executor, &self.plan.store, &[disabled]).await;
+            }
+            return Err(self
+                .refusing(
+                    ctx,
+                    SignInRefusal::CodeInvalid,
+                    Some(address),
+                    None,
+                    refused(CODE_INVALID),
+                )
+                .await);
         }
         let return_to = match return_to {
             SqlValue::Text(path) => Some(path.clone()),
@@ -978,8 +1158,9 @@ impl Site<'_> {
     }
 
     /// The user the address belongs to, made by `on_first_sign_in:`'s
-    /// action when none has it: its `id`, once its `active:` holds.
-    async fn person(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<SqlValue, Refused> {
+    /// action when none has it, once its `active:` holds. A refusal is
+    /// kept for the log and published as `SignInRefused`.
+    async fn person(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<Person, Refused> {
         let now = ctx.now();
         let database = self.database(ctx)?;
         let found = database
@@ -990,37 +1171,74 @@ impl Site<'_> {
             .await
             .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
         let found = match found.first().map(Vec::as_slice) {
-            Some([id @ SqlValue::Uuid(_), SqlValue::Bool(active)]) => Some((id.clone(), *active)),
+            Some([SqlValue::Uuid(id), SqlValue::Bool(active)]) => Some((*id, *active)),
             _ => None,
         };
-        let (user, active) = match found {
-            Some(found) => found,
+        let (user, active, first_time) = match found {
+            Some((user, active)) => (user, active, false),
             None => {
-                let id = self.first_sign_in(ctx, address).await?;
+                let id = match self.first_sign_in(ctx, address).await {
+                    Ok(id) => id,
+                    Err((why, failure)) => {
+                        return Err(match &why {
+                            Refused::Failure(answer, _) if *answer == REFUSED => {
+                                self.refusing(ctx, SignInRefusal::RefusedByApp, None, failure, why)
+                                    .await
+                            }
+                            _ => why,
+                        });
+                    }
+                };
                 let database = self.database(ctx)?;
                 let rows = database
                     .query_once(&self.magic.lookup_id, &[id, micros(now)])
                     .await
                     .map_err(|_| refused(AUTHENTICATION_UNAVAILABLE))?;
                 match rows.first().map(Vec::as_slice) {
-                    Some([id @ SqlValue::Uuid(_), SqlValue::Bool(active)]) => (id.clone(), *active),
-                    _ => return Err(refused(REFUSED)),
+                    Some([SqlValue::Uuid(id), SqlValue::Bool(active)]) => (*id, *active, true),
+                    _ => {
+                        return Err(self
+                            .refusing(
+                                ctx,
+                                SignInRefusal::RefusedByApp,
+                                None,
+                                None,
+                                refused(REFUSED),
+                            )
+                            .await);
+                    }
                 }
             }
         };
         if !active {
+            ctx.refuse_sign_in(SignInRefused {
+                reason: SignInRefusal::UserDisabled.name(),
+                failure: None,
+            });
+            let event = SignInEvent::Refused {
+                method: SignInMethod::MagicLink,
+                reason: SignInRefusal::UserDisabled,
+                user: Some(user),
+            };
+            sign_in_events::publish(ctx, self.executor, &self.plan.store, &[event]).await;
             return Err(refused(USER_DISABLED));
         }
-        Ok(user)
+        Ok(Person { user, first_time })
     }
 
     /// Runs `on_first_sign_in:`'s action for an address no user has, as
     /// the system, in its own transaction, whether or not an action of
     /// the application's is running: the `id` it gives. Any failure it
     /// declares, or none declared, is `sign_in_refused`.
-    async fn first_sign_in(&self, ctx: &mut Ctx<'_>, address: &str) -> Result<SqlValue, Refused> {
+    /// A refusal comes with the name of the failure it declared, for the
+    /// log.
+    async fn first_sign_in(
+        &self,
+        ctx: &mut Ctx<'_>,
+        address: &str,
+    ) -> Result<SqlValue, (Refused, Option<String>)> {
         let Some(callable) = self.magic.first_sign_in else {
-            return Err(refused(REFUSED));
+            return Err((refused(REFUSED), None));
         };
         let method = jadpo_std::SignInMethod::MagicLink;
         let ordinal = jadpo_std::variant_ordinal(jadpo_std::SignInMethod::NAME, method.name())
@@ -1052,13 +1270,15 @@ impl Site<'_> {
         ctx.restore_runner(runner);
         ctx.give_boundary(waiting);
         match outcome {
-            Outcome::Value(id) => crate::to_sql(&id, SqlType::Uuid).map_err(|_| refused(REFUSED)),
-            Outcome::Failed(failure) if failure.kind.as_deref() == Some("unavailable") => {
-                Err(refused(AUTHENTICATION_UNAVAILABLE))
+            Outcome::Value(id) => {
+                crate::to_sql(&id, SqlType::Uuid).map_err(|_| (refused(REFUSED), None))
             }
-            Outcome::Failed(_) => Err(refused(REFUSED)),
-            Outcome::Fault(fault) => Err(Refused::Fault(fault)),
-            Outcome::Assertion(_) => Err(refused(INTERNAL_FAULT)),
+            Outcome::Failed(failure) if failure.kind.as_deref() == Some("unavailable") => {
+                Err((refused(AUTHENTICATION_UNAVAILABLE), None))
+            }
+            Outcome::Failed(failure) => Err((refused(REFUSED), Some(failure.name.clone()))),
+            Outcome::Fault(fault) => Err((Refused::Fault(fault), None)),
+            Outcome::Assertion(_) => Err((refused(INTERNAL_FAULT), None)),
         }
     }
 }
@@ -1413,7 +1633,7 @@ fn millis(value: &SqlValue) -> Option<i64> {
     }
 }
 
-fn format_uuid(bytes: &[u8; 16]) -> String {
+pub(crate) fn format_uuid(bytes: &[u8; 16]) -> String {
     let mut out = String::with_capacity(36);
     for (at, byte) in bytes.iter().enumerate() {
         if matches!(at, 4 | 6 | 8 | 10) {
@@ -1424,7 +1644,7 @@ fn format_uuid(bytes: &[u8; 16]) -> String {
     out
 }
 
-fn parse_uuid(text: &str) -> Option<[u8; 16]> {
+pub(crate) fn parse_uuid(text: &str) -> Option<[u8; 16]> {
     let hex: String = text.chars().filter(|c| *c != '-').collect();
     if text.len() != 36 || hex.len() != 32 {
         return None;

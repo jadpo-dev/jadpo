@@ -438,6 +438,30 @@ std_enum! {
 }
 
 std_enum! {
+    /// Why a sign-in was refused (area 8, "Events"): what `SignInRefused`
+    /// says and the log keeps, while the person sees only the refusal's
+    /// own failure.
+    SignInRefusal: "SignInRefusal" {
+        /// The link expired, was used, was replaced or isn't one.
+        LinkExpired: "link_expired",
+        /// A `same_browser:` link opened in another browser.
+        LinkOtherBrowser: "link_other_browser",
+        /// The code was wrong, used, ended, expired or replaced.
+        CodeInvalid: "code_invalid",
+        /// The address is past the day's wrong codes.
+        CodesDisabled: "codes_disabled",
+        /// `on_first_sign_in:`'s action refused, or there is none.
+        RefusedByApp: "refused_by_app",
+        /// The user's `active:` doesn't hold.
+        UserDisabled: "user_disabled",
+        /// A passkey's challenge expired or was used.
+        PasskeyChallengeExpired: "passkey_challenge_expired",
+        /// A passkey's answer didn't check.
+        PasskeyRejected: "passkey_rejected",
+    }
+}
+
+std_enum! {
     /// The callers a grant can name besides a user field and a membership
     /// role (area 9, "Anyone signed in, or anyone").
     Access: "Access" {
@@ -653,6 +677,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
             AuthenticationStrength::NAMES.to_vec(),
         ),
         (SignInMethod::NAME, SignInMethod::NAMES.to_vec()),
+        (SignInRefusal::NAME, SignInRefusal::NAMES.to_vec()),
         (
             ClientAddressSource::NAME,
             ClientAddressSource::NAMES.to_vec(),
@@ -721,6 +746,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
         SignInMethod::NAME => position(SignInMethod::NAMES),
+        SignInRefusal::NAME => position(SignInRefusal::NAMES),
         ClientAddressSource::NAME => position(ClientAddressSource::NAMES),
         Access::NAME => position(Access::NAMES),
         Tenancy::NAME => position(Tenancy::NAMES),

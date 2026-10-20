@@ -98,8 +98,8 @@ pub use enums::{
     CodeForm, ComponentStyle, CsvFormat, Driver, Dst, FieldAccess, FieldChange, Generated,
     HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE, MembershipScope, MoneyDisplay,
     MoneyPrecision, MoneySign, Month, OnDelete, ProviderEnvironment, Rounding, RouteAuthentication,
-    SignInMethod, SuccessStatus, Tenancy, TextDirection, TextFormat, TranslationReview,
-    UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
+    SignInMethod, SignInRefusal, SuccessStatus, Tenancy, TextDirection, TextFormat,
+    TranslationReview, UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;

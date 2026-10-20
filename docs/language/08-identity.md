@@ -387,7 +387,8 @@ authentication {
 > read from chunk 5.5z, with `passkey:` built there; `magic_link:` and
 > `on_first_sign_in:` are built in chunk 7.3b, and the app's own email and
 > sending (`email:`, `send:`) in chunk 7.3b2; writing the routes yourself
-> comes in chunk 7.3b3 and the events in chunk 7.3b4; `providers:` is
+> comes in chunk 7.3b3 and the events in chunk 7.3b4 (a passkey's in
+> chunk 5.5z2); `providers:` is
 > `toolchain.not_built_yet` until after the first build.
 
 Signing in has two layers. The first checks the person; the second gives
@@ -1186,7 +1187,21 @@ reads the token or code with `jadpo email links <id>` or `show <id>` and
 posts it to `POST /auth/magic-link/confirm` itself.
 A route test asks for a link with `POST /auth/magic-link`, reads the email
 from `email.sent` and follows its link or posts its code; `as:` still
-signs a test in directly.
+signs a test in directly. A test calls `on_first_sign_in:`'s action
+directly with a `FirstSignIn` it builds, every field given, and a
+subscriber's action with a sign-in event the same way:
+
+```jadpo fragment
+test "an unproved address is refused" {
+    assert create_member(FirstSignIn {
+        method: SignInMethod.magic_link
+        address: "ada@example.com"
+        address_verified: false
+        subject: none
+        name: none
+    }) fails SignUpClosed
+}
+```
 
 Browsers allow passkeys on `http://localhost` without TLS, so in `jadpo dev`
 a browser's own passkeys work against a `browser_origin` of
@@ -1257,6 +1272,12 @@ For magic links (chunk 7.3b, except where marked):
   `route.run_invalid`; a `SignInToken` kept in an entity is
   `type.auth_credential_stored`, and one in an `Output`, a failure, an
   event, an email, a message or a prompt `type.secret_exposed`.
+- In chunk 7.3b4: a subscriber of `SignedIn`, `SignInRefused` or
+  `SignInCodesDisabled` with no `magic_link:` is
+  `subscriber.event_invalid`; a field of one it doesn't have
+  `type.unknown_field`; `emit` of one `event.emit_invalid`; and
+  `FirstSignIn` or a sign-in event built with `{ ... }` anywhere but a
+  test, fixture or seed `type.not_record`.
 
 For passkeys (chunk 5.5z, except where marked):
 
@@ -3688,15 +3709,17 @@ sign-in email and sending (chosen in chunk 7.3b2)" below). Since chunk
 7.3b3 `generate_routes: false` switches the routes off and the app's own
 routes call `magic_links.request`, `.redeem` and `.redeem_code`, through
 the same code the generated routes run ("The app's own routes (chosen in
-chunk 7.3b3)" below).
+chunk 7.3b3)" below). Since chunk 7.3b4 every way in through a magic
+link publishes `SignedIn`, `SignInRefused` and `SignInCodesDisabled` to
+the app's subscribers, the refusal's reason kept on the request's log
+line, and a test builds a `FirstSignIn` to call `on_first_sign_in:`'s
+action directly ("Sign-in events (chosen in chunk 7.3b4)" below).
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
 - `external_token`, `sign_in:`'s `providers:` and `oauth_provider:`,
   after the first build, and with them `on_first_sign_in:` for those
   ways in.
-- The events `SignedIn`, `SignInRefused` and `SignInCodesDisabled`
-  (chunk 7.3b4).
 - A setting loosened past its limit, until acceptances (area 18).
 - Passkeys' recovery through a magic link, the check that `passkey:` has
   `magic_link:` beside it, `test_passkeys` in route tests, and their
@@ -3985,3 +4008,4 @@ builds it.
 | First sign-in (chosen in chunk 7.3b) | `FirstSignIn` is a built-in object only the runtime makes (`method`, `address`, `address_verified`, `subject`, `name`); `SignInMethod` is a built-in enum of `magic_link`, `passkey` and `external_token`, a provider's value coming with providers. `on_first_sign_in:`'s action runs as the system (`Access.system` grants it), in its own transaction, before the session starts; a failure it declares is `sign_in_refused`, `unavailable` is `authentication_unavailable`, a fault `internal_fault`; the user it names is then read by its `id` and must be active. The reason a refusal had reaches the log and `SignInRefused` with the events (chunk 7.3b4) | 2026-10-20 |
 | The app's own sign-in email and sending (chosen in chunk 7.3b2) | `email:` and `send:` name a type or an action as `on_first_sign_in:` does, `<domain>.<name>`. `SignInCode` is a built-in type made of text (six digits); like an API token it is never kept in an entity (`type.auth_credential_stored`), nor put in an `Output`, a failure or an event (`type.secret_exposed`), nor written as JSON. `MagicLinkEmail` is a built-in object only an email copies from, with `pick:` or `include:` (`type.not_record` elsewhere); the email `email:` names may hold no field of its own and is never emitted (`event.emit_invalid`), so the outbox never holds its link or code. Its delivery is still Jadpo's: the link and the code are made as it is sent, the app's email filled from them and rendered as any of its emails is, in the request's locale. `send:` keeps `display_name:` required; its action is a subscriber's of `jadpo.MagicLinkEmail`, run as the system, reaching no tenant, retried and given up under area 12's defaults, each attempt given a link and a code of its own, so only the latest works; a request used or replaced since runs nothing | 2026-10-20 |
 | The app's own routes (chosen in chunk 7.3b3) | `generate_routes:` is `true` or `false`, and `false` beside `path:` is refused (`semantic.auth_setting_invalid`). The operations need `magic_link:` with `generate_routes: false` (`semantic.auth_setting_required`), so each link is asked for and used one way; only an action calls them (`type.auth_sessions_context`), and a route's `run:` never does (`route.run_invalid`). Their arguments are positional: `request` takes all three, `none` for the path meaning `/`, and a `locale` the app doesn't support falls back to its default. They run the generated routes' own code. `request` keeps the request in the action's transaction and leaves Jadpo's email as the action's own event, so it goes once the action commits, and an action that fails sends nothing and counts no send; the sweep of rows nothing counts runs on its own. `redeem` and `redeem_code` use the link or the code in a transaction of their own, before the action's writes, as the routes do: a wrong code stays counted though the action fails, and a used link or code stays used if the action fails after, so the person asks again; `on_first_sign_in:`'s action runs in its own transaction while the app's waits. An action that has asked for a link can't use one (a fault: it would wait on its own row). `same_browser:`'s cookie is read from the request; the response of the route whose action asked sets it, and the response of one whose action used a link clears it; neither response is kept for an idempotent repeat. `SignInToken` is a built-in type made of text (64 lower-case hexadecimal digits), held only by an `Input` or an `Object`: never kept (`type.auth_credential_stored`), nor put in an `Output`, a failure, an event, an email, a message or a prompt (`type.secret_exposed`), nor written as JSON. `MagicLinkRedeemed` is a built-in object only the runtime makes: `user_id`, the user entity's `id`, and `return_to: Text`, `/` unless the person gave a path. Their failures are the routes' own, raised by the runtime and passing through the action: `rate_limited` and `sign_in_codes_disabled` with `Retry-After`, and `sign_in_return_invalid` (`invalid_value`, 422), worded under the `magic_link_routes` feature of Jadpo's text. The API record and OpenAPI list the app's routes as its own, and no generated ones | 2026-10-20 |
+| Sign-in events (chosen in chunk 7.3b4) | `SignedIn`, `SignInRefused` and `SignInCodesDisabled` are built-in types only the runtime emits (`event.emit_invalid`), named in `on:` as an app's events are, and reserved as names; a subscriber of one needs `magic_link:` (`subscriber.event_invalid`), and its fields are area 8's, `user_id` typed as the user entity's `id`. A test, fixture or seed may build one, or a `FirstSignIn`, with every field, to call an action directly; elsewhere `type.not_record`. Each is kept in the outbox of the store sessions are kept in, under `jadpo.<Name>`, its payload the runtime's own (the user's `id`, the way in, the reason, `until` in milliseconds), and only when a subscriber listens, so nothing records who signed in that no one asked for. `SignedIn` commits with the session or token it reports; from the app's own routes it is the action's event, delivered only if that action commits. `SignInRefused` and `SignInCodesDisabled` are kept in a transaction of their own once the refusal is decided, so they stay though the action fails, and a store that can't keep them leaves the refusal unchanged. `user_id` is given when the link's or code's address has a user (looked up only when something listens) or the user is disabled; never for an expired link or a first sign-in the app refused. A first sign-in with no `on_first_sign_in:`, or whose action named no visible user, is `refused_by_app`; a fault or an unavailable store publishes nothing. `SignInCodesDisabled` is published by the wrong code that reaches `failed_codes_per_day:`, `until` the next midnight UTC. The reason, and for `refused_by_app` the failure the action declared, goes on the request's log line (`jadpo dev`: `└─ sign-in refused · refused_by_app · SignUpClosed`; `refused` in `--json`), never in the answer. Passkeys' events come in chunk 5.5z2 | 2026-10-20 |
