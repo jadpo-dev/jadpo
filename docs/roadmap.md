@@ -1264,11 +1264,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   operations' limits; `sign_in_return_invalid`. Live tests in
   `crates/jadpo-cli/tests/magic_links.rs`. Choices in area 8's "The app's
   own routes (chosen in chunk 7.3b3)".
-- [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
+- [x] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
   on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
   `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;
   `FirstSignIn` made in tests to call `on_first_sign_in:`'s action
-  directly.
+  directly. Built: the three events as built-in types a subscriber names
+  in `on:` (needing `magic_link:`), only the runtime emitting them, kept
+  under `jadpo.<Name>` in the sessions' store's outbox only when a
+  subscriber listens; `SignedIn` committed with the session or token, or
+  as the app's own action's event from its own routes; refusals and
+  codes stopping kept in a transaction of their own, with the user's `id`
+  where the address has one, for links, codes and first sign-ins through
+  the generated and the app's own routes; the reason, and the failure
+  the app's action refused with, on `jadpo dev`'s request line, never in
+  the answer; `FirstSignIn` and the events built in tests, fixtures and
+  seeds. Live tests in `crates/jadpo-cli/tests/magic_links.rs`. Choices
+  in area 8's "Sign-in events (chosen in chunk 7.3b4)".
 - [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
   from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
