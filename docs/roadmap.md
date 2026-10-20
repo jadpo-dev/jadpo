@@ -743,10 +743,17 @@ chunks below, taken before Phase 7, in this order.
   truncates the routes file, then writes it 400 ms later, and the old
   version serves between; `config.rs` saves `.env.local` atomically.
 
-- [ ] **6.13 Keeping what an operator settled** `opus · high` (found in
-  chunk 6.12): deliveries an operator dismissed or cancelled, and their
-  events and log rows, deleted by the tick after a window (30 days, as
-  run records), so they stop piling up; recorded in area 12.
+- [x] **6.13 Keeping what an operator settled** `opus · high` (found in
+  chunk 6.12). Built: the tick deletes a delivery dismissed or cancelled
+  30 days after the operator's last action on it (the log's time, so the
+  deliveries' table is unchanged), with its handled records wherever
+  they are, before it deletes events, so its event goes on the same tick
+  once every delivery of it left succeeded; and an operator's log rows
+  30 days old once their delivery or run is gone. A delivery that could
+  run is never deleted. 1,000 rows at a time, ten times a tick, per
+  store; statements in `jadpo_runtime::statements`; live tests in
+  `tick_deletes.rs` and `deliveries.rs`. Choices in area 12, "The tick"
+  and "What an operator sees".
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in

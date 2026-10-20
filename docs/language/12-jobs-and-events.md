@@ -128,11 +128,14 @@ only while the tick's budget lasts, the tick:
 - deletes expired idempotency keys (area 7); an event with its delivery
   records once every delivery succeeded, 24 hours after it was emitted
   (one nothing subscribes to too), so a failed delivery's event stays for
-  an operator; the handled records of those deliveries; browser
+  an operator; a delivery an operator dismissed or cancelled, 30 days
+  after the operator's last action on it ("What an operator sees"); the
+  handled records of those deliveries; browser
   sessions and API tokens that have ended and service keys that have
   expired (area 8), which a lookup already ignores, in the store each is
   kept in, beside its principal's users or services; schedule run
-  records and ended batch runs 30 days old ("How a run is kept");
+  records and ended batch runs 30 days old ("How a run is kept"); and
+  an operator's log rows 30 days old whose delivery or run is gone;
 - picks up batch runs whose lease lapsed.
 
 A handled record goes only once its delivery can no longer repeat, which
@@ -146,8 +149,26 @@ event's statement has committed; a store it can't reach then keeps those
 records, which only cost space, and never loses one early (decided in
 chunk 6.10).
 
+What an operator settled is kept as long as a run record, then goes
+(decided in chunk 6.13). A delivery `dismissed` or `cancelled` never
+runs again, so the tick deletes it 30 days after the last action logged
+on it, with its handled records as above; no other state is deleted
+while its event stays, so a delivery that could still run (`pending`,
+`running`, `failed`, `outcome_unknown`) is never deleted, however old.
+An event goes once every delivery of it left succeeded: one with a
+delivery that could run, or one set aside within the 30 days, stays, so
+`jadpo deliveries` shows that delivery with its event. The tick deletes
+those deliveries before it deletes events, so an event whose last such
+delivery goes is deleted on the same tick. Its time is the log's, not a
+column of the delivery's: each action writes its log row with its
+change, and a log row stays while its delivery does, so the window
+counts from the operator's last action without changing the delivery's
+table.
+
 Each delete takes 1,000 rows at a time, at most ten times a tick: for
-events, 1,000 events, with their delivery and handled records. The tick
+events, 1,000 events, with their delivery and handled records; for
+deliveries an operator settled, 1,000 deliveries, with their handled
+records. The tick
 hands nothing on: what it doesn't reach, the next tick carries on.
 
 ### The purge schedule
@@ -1779,9 +1800,9 @@ of its UUID (random in a version 7 UUID, whose first are its time), or
 more. Chosen in chunk 6.12, where the pages left it open:
 
 - **Two more states.** `dismissed` and `cancelled` are a delivery's
-  record set aside by an operator; neither runs again. Their event is
-  kept, as a failed delivery's is, since the tick deletes an event only
-  once every delivery of it succeeded.
+  record set aside by an operator; neither runs again. Each is kept 30
+  days after the operator's last action on it, and its event with it;
+  then the tick deletes it ("The tick"; chunk 6.13).
 - **What each action does to a delivery.** `retry` (from `failed`) makes
   it `pending` and due now with a fresh budget: its attempts counted from
   none, and its `within:` from the retry (the record's `retried_at`), not
@@ -1810,7 +1831,10 @@ more. Chosen in chunk 6.12, where the pages left it open:
   or `USERNAME`), and the database role PostgreSQL authenticated,
   which the statement reads itself (`session_user`), so it can't be
   claimed. The CLI shows both under the result (`logged  sam · role
-  app_owner`). The log is kept; nothing deletes it. Jadpo has no
+  app_owner`). A row is kept 30 days, as a run record is, and then
+  until its delivery or run is gone, so an item still on record keeps
+  the last thing done to it and a dismissed run stays settled; the tick
+  then deletes it (chunk 6.13). Jadpo has no
   operator accounts of its own, as it has no reviewer accounts
   (area 14, question 12): the role is the authenticated identity.
 - **Where.** The commands read every store that holds an entity, where
@@ -3004,7 +3028,8 @@ server draining as it stops; records a later release still reads; and
 alerts raised by the tick, once across instances, with `jadpo why`'s
 answer decided by the runtime; and the tick deleting handled records once
 their delivery's record is gone, and area 8's ended sessions, tokens and
-expired keys.
+expired keys; and the tick deleting what an operator settled, and the
+operator's log, after 30 days (chunk 6.13).
 
 Not yet:
 
