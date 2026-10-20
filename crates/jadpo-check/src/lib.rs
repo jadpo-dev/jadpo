@@ -30,6 +30,7 @@ pub mod imports;
 mod layout;
 pub mod locales;
 pub mod lookups;
+pub mod mail;
 mod naming;
 mod not_value;
 pub mod package_code;
@@ -268,6 +269,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
         out.extend(receiving::mappings(db, project).problems.iter().cloned());
+        out.extend(mail::mappings(db, project).problems.iter().cloned());
         out.extend(ai_mapping::mappings(db, project).problems.iter().cloned());
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
         out.extend(polls::declared(db, project).problems.iter().cloned());

@@ -1144,7 +1144,12 @@ impl Reader<'_> {
             }
             read.push(domain);
         }
-        if listed == 0 {
+        // The email connection may list none: Jadpo sends the app's email
+        // through it, and no domain need call it (chunk 7.3c).
+        if listed == 0
+            && crate::emails::written_connection(self.db, self.project).as_deref()
+                != Some(self.connection)
+        {
             out.push(
                 self.invalid(
                     format!("`{}`'s `domains:` lists no domain", self.connection),

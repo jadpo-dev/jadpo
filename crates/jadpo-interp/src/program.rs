@@ -797,6 +797,10 @@ impl Executor for Program {
         })
     }
 
+    fn package_calls(&self) -> Option<jadpo_runtime::provider::Providers<'_>> {
+        Some(self.providers())
+    }
+
     fn receiving(&self) -> Option<jadpo_runtime::receiving::Receiving<'_>> {
         let queues = &self.plan().providers().queues;
         (!queues.is_empty()).then(|| jadpo_runtime::receiving::Receiving {

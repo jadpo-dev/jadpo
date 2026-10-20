@@ -141,7 +141,7 @@ fn cases() -> Vec<Case> {
         let at = out.len();
         let ty = match (entry.holds, entry.examples.of) {
             // A built-in type is named by a type built on it.
-            (Holds::Builtin(_), _) => format!("Sent{}", entry.name),
+            (Holds::Builtin(_), _) => format!("Echoed{}", entry.name),
             (_, Some(item)) => format!("{}<{item}>", entry.name),
             _ => entry.name.to_string(),
         };

@@ -1,0 +1,36 @@
+/// Sends each email as one message through `emails.send`, its attachments
+/// in base64 and a part it doesn't have left out; Resend takes up to 40 MB
+/// an email once encoded, so 30 MB of files. Its refusals of the message
+/// are an email's `message_rejected`; its rate and quota limits (`429`)
+/// are retried as `unavailable`.
+provide email {
+    send: {
+        call: emails.send
+        input: {
+            from: message.from
+            to: message.to
+            subject: message.subject
+            html: message.html
+            text: message.text
+            attachments: {
+                each: message.attachments
+                as: {
+                    filename: item.name
+                    content: item.content
+                    content_type: item.content_type
+                }
+            }
+        }
+        receipt: response.id
+        failures: {
+            validation_error: EmailFailure.message_rejected
+            missing_required_field: EmailFailure.message_rejected
+            missing_required_parameter: EmailFailure.message_rejected
+            invalid_attachment: EmailFailure.message_rejected
+            invalid_parameter: EmailFailure.message_rejected
+        }
+    }
+    limits: {
+        attachments: 30mb
+    }
+}

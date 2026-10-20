@@ -777,7 +777,7 @@ enum Move<'a> {
 fn is_plain_type(kind: &ItemKind) -> bool {
     matches!(
         kind,
-        ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message | Base::Prompt)
+        ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::EmailPartial | Base::Message | Base::Prompt)
     )
 }
 

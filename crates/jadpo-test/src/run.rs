@@ -191,7 +191,7 @@ fn one<E: Executor>(
     // 13; chunk 7.2d): what the test's `fakes:` scripts, the generated
     // default otherwise.
     let fake = Rc::new(ProviderFake::new());
-    let connections = executor.provider_connections();
+    let connections = faked_connections(executor);
     // Every model asked answers through the `ai` fake (area 21, "Tests"):
     // nothing reaches a model from a test.
     let ai = Rc::new(AiFake::new());
@@ -271,6 +271,22 @@ fn one<E: Executor>(
     outcome::fakes_used(places, sources, test, &usage(&fake, &ai), failure, rerun)
 }
 
+/// The provider connections a test's package fake answers: every one but
+/// the email connection, whose mail the test's host catches whole, a mail
+/// package's included, in every run, crash runs too: the capability's
+/// fake stands in for every connection that fills it (area 13, "One fake
+/// per capability"; chunk 7.3c).
+fn faked_connections<E: Executor>(executor: &E) -> Vec<&str> {
+    let mail = executor
+        .events()
+        .and_then(|events| events.plan.emails.connection.as_deref());
+    executor
+        .provider_connections()
+        .into_iter()
+        .filter(|connection| Some(*connection) != mail)
+        .collect()
+}
+
 /// What a test with a database runs with, once for the run without a
 /// crash and once for each crash (chunk 7.5d).
 struct Stored<'s, E> {
@@ -302,7 +318,7 @@ impl<E: Executor> Stored<'_, E> {
         let (executor, test) = (self.executor, self.test);
         let places = executor.places();
         let fake = Rc::new(ProviderFake::new());
-        let connections = executor.provider_connections();
+        let connections = faked_connections(executor);
         let ai = Rc::new(AiFake::new());
         let models = executor.ai_connection();
         let mut env = self.env.clone();

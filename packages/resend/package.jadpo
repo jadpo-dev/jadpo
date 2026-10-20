@@ -1,0 +1,6 @@
+/// Resend: the app's email sent through Resend's API, as the `email`
+/// capability.
+package Resend.v1 {
+    licence: Licence.apache_2_0
+    jadpo: "1.0"
+}

@@ -1,0 +1,5 @@
+/// The email left out something Resend needs.
+public type MissingRequiredField = Failure {
+    kind: FailureKind.invalid_value
+    message: "The email left out something Resend needs."
+}

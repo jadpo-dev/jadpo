@@ -1192,17 +1192,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   teaches email. Choices in area 16's "Chosen in chunk 7.3", one flagged
   for Richard: where a partial is declared; recommendation `type X =
   EmailPartial { ... }` with its templates beside it.
-- [ ] **7.3c Email: the second connection, the dev inbox and the health
-  score** `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20): a
-  mail package as a second connection proving the swap (`provides/email.jadpo`'s
-  `provide email`, `limits: { attachments: }` checked against a `File`
-  field's `max_size`); partials (`{{ include }}`), once where a partial is
-  declared is decided; `email.sent` in tests, with which area 8's
-  passkey route test recovers through the magic link (chunk 5.5z2); the
-  dev inbox in `jadpo dev`
-  and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
-  score, `jadpo check`'s warnings about templates that would fail it, and
-  `jadpo email check-domain`.
+- [x] **7.3c Email: the second connection, partials and `email.sent`**
+  `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20; the dev
+  inbox and the health score split to 7.3c2 the same day): a mail package
+  as a second connection proving the swap; partials; `email.sent` in
+  tests. Built: `provides/email.jadpo`'s `provide email` read and checked
+  (`send:` with `call:`, `input:` giving every part of the message and the
+  attachments as `each:`/`as:`, `receipt:`, `failures:` onto
+  `EmailFailure`, and `limits: { attachments: }`), `email:` naming a
+  package's connection, which needs no `domains:`, each email's `File`
+  fields' `max_size:` within the limit (`email.attachment_limit`), and the
+  delivery calling the mapped operation with no key, its failures an
+  email's; `packages/resend`, tested against a local server, the swap
+  changing `app.jadpo` and its settings only; partials, `type X =
+  EmailPartial` in `shared/emails/` or a domain's `emails/`, included as
+  `{{ include name(field: value) }}` with the including template's locale,
+  nested but never cyclic (`email.partial_invalid`); `email.sent` in tests
+  as a `List<SentEmail>` (`email.sent_context` elsewhere), the mail caught
+  whole whichever connection `email:` names. Choices in area 16's "Chosen
+  in chunk 7.3c".
+- [ ] **7.3c2 Email: the dev inbox and the health score** `opus · high`,
+  after 7.3c (split from 7.3c on 2026-10-20): the dev inbox in `jadpo dev`
+  and `jadpo email list`, `show`, `links`, `open` and `clear`, and its
+  page; the health score, `jadpo check`'s warnings about templates that
+  would fail it, and `jadpo email check-domain` (its DNS lookups behind a
+  seam, tested with a fake resolver).
 - [x] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16; split on 2026-10-20, the rest in 7.3b2): `sign_in:` with
   `magic_link:`, the generated endpoints, link and six-digit code, the

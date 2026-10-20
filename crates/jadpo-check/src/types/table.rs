@@ -307,10 +307,10 @@ pub fn derive(
     lines: &[Line],
     find: &mut dyn FnMut(&str) -> Found,
 ) -> (Vec<RawField>, Vec<LineProblem>) {
-    let mut fields: Vec<RawField> = if base == FieldsBase::EmailMessage {
-        email_fields()
-    } else {
-        Vec::new()
+    let mut fields: Vec<RawField> = match base {
+        FieldsBase::EmailMessage => email_fields(&EMAIL_FIELDS),
+        FieldsBase::EmailPartial => email_fields(&PARTIAL_FIELDS),
+        _ => Vec::new(),
     };
     let mut problems = Vec::new();
     let input = base == FieldsBase::Input;
@@ -477,9 +477,13 @@ pub fn derive(
 /// written in.
 pub const EMAIL_FIELDS: [(&str, &str); 2] = [("to", "Email"), ("locale", "Locale")];
 
-fn email_fields() -> Vec<RawField> {
-    EMAIL_FIELDS
-        .iter()
+/// The field every `EmailPartial` has before its own (chunk 7.3c):
+/// `locale:`, the locale of the template that includes it, which goes
+/// with it.
+pub const PARTIAL_FIELDS: [(&str, &str); 1] = [("locale", "Locale")];
+
+fn email_fields(own: &[(&str, &str)]) -> Vec<RawField> {
+    own.iter()
         .map(|(name, ty)| RawField {
             name: (*name).to_string(),
             source: Source::Written {

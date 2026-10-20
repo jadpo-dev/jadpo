@@ -1956,7 +1956,7 @@ shared/
   types/          pence.jadpo  country_code.jadpo  address.jadpo
   libraries/      rounding.jadpo
   translations/   order_reference.jadpo  en_gb.jadpo  de_de.jadpo  sources.jadpo_record
-  emails/         layout.html  layout.txt
+  emails/         layout.html  layout.txt  button.jadpo  button.html  button.txt
   providers/      acme_couriers/v1/          the app's own integration, in the package format
 packages/         stripe/v2024_06_20/  postcodes/v2/   installed: in jadpo.lock, read-only
 api/              main.jadpo_record  admin.jadpo_record
@@ -2055,7 +2055,7 @@ build/
 | `events/` | Event definitions | |
 | `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
 | (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
-| `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`) | Added 2026-10-13 (Richard, area 16) |
+| `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`), and the domain's own email partials, laid out the same way | Added 2026-10-13 (Richard, area 16); partials 2026-10-20 |
 | `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Built in chunk 5.4c: the folder is one `layout.unknown_location` lists, and a language file's name is a locale, not its `translations { }` |
 | `prompts/` | One `type X = Prompt` per file, each with its text in `<name>.prompt` beside it, two sections, `# Instructions` and `# Request` (area 21) | Added 2026-10-18 (Richard, area 21); a prompt a second domain uses goes in `shared/prompts/`, as a message does. Built in chunk 5.5v2 |
 | `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
@@ -2166,7 +2166,9 @@ build/
   is read through it, `pricing.vat_rate` (2026-10-16, Richard; built in
   chunk 5.3e). `shared/emails/`
   holds only the app's optional email layout, `layout.html` and
-  `layout.txt` (area 16, 2026-10-16), and `shared/documents/` only its
+  `layout.txt` (area 16, 2026-10-16), and the email partials every
+  domain's emails may include, each a `type X = EmailPartial` with its
+  templates beside it (area 16, 2026-10-20; built in chunk 7.3c), and `shared/documents/` only its
   optional document layout, `layout.html`. `shared/providers/` holds the
   app's own integrations, each in `shared/providers/<name>/<version>/` in
   exactly the package format (area 11, 2026-10-16); they are not promoted
