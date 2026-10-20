@@ -63,7 +63,17 @@ async fn body(
                 let result = match target {
                     Target::Callable(callee) => {
                         let caught = machine.catching();
-                        invoke(program, ctx, callee, args, at.0, caught).await
+                        // A package's action goes through the connection
+                        // it was called through (chunk 7.6).
+                        let through = machine.package_connection(at);
+                        if let Some(connection) = through {
+                            ctx.enter_package(connection);
+                        }
+                        let result = invoke(program, ctx, callee, args, at.0, caught).await;
+                        if through.is_some() {
+                            ctx.leave_package();
+                        }
+                        result
                     }
                     Target::Request {
                         route,
@@ -77,7 +87,14 @@ async fn body(
                         files(ctx, connection, op, &args, at.0).await
                     }
                     Target::Provider => {
-                        let called = machine.provider_call(at).unwrap_or_default();
+                        let mut called = machine.provider_call(at).unwrap_or_default();
+                        // A package action's own operation goes through the
+                        // connection its action was called through.
+                        let own: String;
+                        if called.0 == jadpo_graph::body::OWN_CONNECTION {
+                            own = ctx.package_connection().unwrap_or_default().to_string();
+                            called.0 = &own;
+                        }
                         let site = machine.provider_site(at).cloned().unwrap_or_default();
                         provider(program, ctx, called, &site, args, at.0).await
                     }

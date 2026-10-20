@@ -1,6 +1,6 @@
 //! The provider plan (area 11, "Calling"; chunk 7.2c): each connection to
 //! a provider package, read from `app.jadpo` and the package's
-//! `provider.jadpo`, and each public operation of its package, its input
+//! `provider.jadpo`, and each operation of its package, its input
 //! and output numbered in the plan's JSON table so the runtime writes a
 //! request and reads an answer with the codecs `json.read` and
 //! `json.write` use, a provider package's field and variant spellings on
@@ -97,10 +97,9 @@ pub(crate) fn plan(
             error_code: reach.error_code.clone(),
             sandbox: jadpo_check::connections::sandboxed(db, project, connection),
         });
+        // Every operation, public or not: a package's own actions call
+        // the ones it keeps to itself (chunk 7.6).
         for operation in operations.of(&connection.folder) {
-            if !operation.public {
-                continue;
-            }
             let mut planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
             planned.recording = recording(db, project, operation);
             out.operations.push(planned);

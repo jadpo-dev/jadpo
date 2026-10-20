@@ -26,6 +26,7 @@ mod migrate;
 mod package;
 mod package_cache;
 mod package_import;
+mod package_recipe;
 mod package_record;
 mod records;
 mod routes;

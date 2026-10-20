@@ -1,0 +1,14 @@
+// A provider package's action calls only its own API: its operations by
+// their bare names, in any order, and its pure functions. The package
+// knows the courier's ways, here which slot comes first in Swift's day,
+// so the app doesn't have to. A failure of its own operation passes on.
+
+/// Books the first pickup slot of the courier's day.
+public action book_first_slot(postcode: Postcode) fails SlotTaken -> Pickup {
+    return attempt pickups.create(
+        PickupRequest {
+            postcode: postcode
+            slot: "am"
+        }
+    )
+}

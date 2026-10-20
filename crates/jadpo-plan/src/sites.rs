@@ -727,7 +727,10 @@ impl Decoder<'_> {
                 Callee::Function(key)
                 | Callee::Action(key)
                 | Callee::Fixture(key)
-                | Callee::LibraryFunction(key) => Decoded::Callable((self.callable)(key)),
+                | Callee::LibraryFunction(key)
+                | Callee::PackageAction { action: key, .. } => {
+                    Decoded::Callable((self.callable)(key))
+                }
                 // A test's run of a schedule calls the action it runs (area
                 // 13; chunk 6.2c).
                 Callee::Schedule { action, .. } => Decoded::Callable((self.callable)(action)),

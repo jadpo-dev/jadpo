@@ -184,6 +184,10 @@ pub struct Ctx<'p> {
     /// The record of the steps of the action its outermost boundary runs,
     /// while that is open (chunk 7.5b).
     record: Option<crate::steps::Record>,
+    /// The connections the package actions it is running were called
+    /// through, innermost last (area 11, "What package code may do";
+    /// chunk 7.6): a package action's own operations go through it.
+    through: Vec<String>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -244,6 +248,7 @@ impl<'p> Ctx<'p> {
             standalone_calls: false,
             resumable: None,
             record: None,
+            through: Vec::new(),
         }
     }
 
@@ -289,6 +294,22 @@ impl<'p> Ctx<'p> {
     /// start, which `clock.now` reads for every rerun (chunk 7.5b).
     pub(crate) fn set_clock(&mut self, clock: crate::Clock) {
         self.env.clock = clock;
+    }
+
+    /// A package action called through `connection` starts (chunk 7.6).
+    pub fn enter_package(&mut self, connection: &str) {
+        self.through.push(connection.to_string());
+    }
+
+    /// The package action [`Ctx::enter_package`] started has ended.
+    pub fn leave_package(&mut self) {
+        self.through.pop();
+    }
+
+    /// The connection the package action running was called through, which
+    /// its own operations go through; `None` outside one.
+    pub fn package_connection(&self) -> Option<&str> {
+        self.through.last().map(String::as_str)
     }
 
     /// Gives the invocation the id of the request it answers (chunk 7.2d).

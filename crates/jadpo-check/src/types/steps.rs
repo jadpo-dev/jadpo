@@ -76,36 +76,64 @@ enum Call {
 /// may be repeated, and whether its answer is large.
 struct Calls {
     operations: BTreeMap<(String, String), (Call, bool)>,
+    /// Each package's operations by its folder, for its own actions'
+    /// calls, which name no connection (chunk 7.6).
+    own: BTreeMap<(String, String), (Call, bool)>,
 }
 
 impl Calls {
     fn new(db: &dyn Db, project: Project) -> Calls {
         let operations = crate::providers::operations(db, project);
+        let call = |operation: &crate::providers::Operation| {
+            let call = match (operation.changes, operation.idempotent) {
+                (false, _) => Call::Reads,
+                (true, true) => Call::Safe,
+                (true, false) => Call::Unkeyed,
+            };
+            (call, operation.large_output)
+        };
         let mut out = BTreeMap::new();
         for connection in &crate::connections::package_connections(db, project).connections {
             for operation in operations.of(&connection.folder) {
-                let call = match (operation.changes, operation.idempotent) {
-                    (false, _) => Call::Reads,
-                    (true, true) => Call::Safe,
-                    (true, false) => Call::Unkeyed,
-                };
                 out.insert(
                     (connection.name.clone(), operation.full_name()),
-                    (call, operation.large_output),
+                    call(operation),
                 );
             }
         }
-        Calls { operations: out }
+        let own = operations
+            .list
+            .iter()
+            .map(|operation| {
+                (
+                    (operation.folder.clone(), operation.full_name()),
+                    call(operation),
+                )
+            })
+            .collect();
+        Calls {
+            operations: out,
+            own,
+        }
     }
 
     /// What the outside call at `node` is, and whether its answer is
     /// large; `None` for one that isn't known, which is reported where it
-    /// is made.
-    fn of(&self, node: &Node) -> Option<(Call, bool)> {
+    /// is made. `package` is the folder of the package whose action makes
+    /// it, if one.
+    fn of(&self, node: &Node, package: Option<&str>) -> Option<(Call, bool)> {
         let Node::Expr(Expr::Call { callee, .. }) = node else {
             return None;
         };
         match callee {
+            // A package action's own operation (chunk 7.6).
+            Callee::Provider {
+                connection,
+                operation,
+            } if connection == jadpo_graph::body::OWN_CONNECTION => self
+                .own
+                .get(&(package?.to_string(), operation.clone()))
+                .copied(),
             Callee::Provider {
                 connection,
                 operation,
@@ -193,6 +221,8 @@ struct Made {
 struct Walk<'a> {
     body: &'a Body,
     calls: &'a Calls,
+    /// The folder of the package whose action this is, if one.
+    package: Option<String>,
     /// What an action it calls makes.
     steps: &'a dyn Fn(&Key) -> Steps,
     /// How many `for` bodies the walk is inside.
@@ -222,6 +252,7 @@ impl<'a> Walk<'a> {
         Walk {
             body,
             calls,
+            package: None,
             steps,
             loops: 0,
             longest: 0,
@@ -326,7 +357,7 @@ impl<'a> Walk<'a> {
 
     /// The site's own outside call.
     fn call(&mut self, site: SiteId, node: &Node, way: &mut Way) {
-        let Some((call, large)) = self.calls.of(node) else {
+        let Some((call, large)) = self.calls.of(node, self.package.as_deref()) else {
             return;
         };
         let made = Made {
@@ -422,6 +453,14 @@ impl<'a> Walk<'a> {
     }
 }
 
+/// The folder of the package that owns `file`, if one.
+fn package_of(db: &dyn Db, project: Project, file: File) -> Option<String> {
+    jadpo_db::location(db, project, file)
+        .ownership
+        .package()
+        .map(|home| home.folder.clone())
+}
+
 /// Every action and fixture's body, by key, with its file.
 type AllBodies = BTreeMap<Key, (File, Arc<Body>)>;
 
@@ -429,6 +468,7 @@ type AllBodies = BTreeMap<Key, (File, Arc<Body>)>;
 /// calls first.
 struct Summaries<'a> {
     db: &'a dyn Db,
+    project: Project,
     bodies: AllBodies,
     calls: Calls,
     done: RefCell<BTreeMap<Key, Steps>>,
@@ -452,6 +492,7 @@ impl Summaries<'_> {
         let steps = {
             let callee = |callee: &Key| self.of(callee);
             let mut walk = Walk::new(body, &self.calls, &callee);
+            walk.package = package_of(self.db, self.project, *file);
             walk.run();
             walk.summary(names.as_ref())
         };
@@ -473,6 +514,7 @@ pub fn action_steps(db: &dyn Db, project: Project) -> BTreeMap<Key, Steps> {
     let keys: Vec<Key> = all.keys().cloned().collect();
     let summaries = Summaries {
         db,
+        project,
         bodies: all,
         calls: Calls::new(db, project),
         done: RefCell::new(BTreeMap::new()),
@@ -527,7 +569,17 @@ pub fn step_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     {
         let calls = Calls::new(db, project);
         for (key, body) in &own {
-            body_problems(db, project, &names, &calls, all, key, body, &mut out);
+            let package = package_of(db, project, file);
+            body_problems(
+                db,
+                project,
+                (&names, package),
+                &calls,
+                all,
+                key,
+                body,
+                &mut out,
+            );
         }
     }
     route_problems(db, project, file, all, &mut out);
@@ -540,7 +592,7 @@ pub fn step_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
 fn body_problems(
     db: &dyn Db,
     project: Project,
-    names: &Names<'_>,
+    (names, package): (&Names<'_>, Option<String>),
     calls: &Calls,
     all: &BTreeMap<Key, Steps>,
     key: &Key,
@@ -549,8 +601,10 @@ fn body_problems(
 ) {
     let callee = |callee: &Key| all.get(callee).cloned().unwrap_or_default();
     let mut walk = Walk::new(body, calls, &callee);
+    walk.package = package;
     walk.run();
-    let action = key.name();
+    // A package's action is named as the package writes it.
+    let action = key.name().rsplit('.').next().unwrap_or_default();
     let steps = all.get(key).cloned().unwrap_or_default();
     // A call through an action, named as it is made there.
     let made_name = |made: &Made, part: fn(&Steps) -> Option<String>| match &made.through {
@@ -1006,7 +1060,15 @@ pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::s
         };
         let mut text = String::new();
         let mut seen = BTreeSet::new();
-        shape(db, &bodies_by_key, &calls, key, &mut seen, &mut text);
+        shape(
+            db,
+            project,
+            &bodies_by_key,
+            &calls,
+            key,
+            &mut seen,
+            &mut text,
+        );
         let digest = blake3::hash(text.as_bytes()).to_hex().to_string();
         out.insert(
             key.clone(),
@@ -1025,6 +1087,7 @@ pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::s
 /// a `for` body in braces, and an action it calls in place.
 fn shape(
     db: &dyn Db,
+    project: Project,
     bodies: &AllBodies,
     calls: &Calls,
     key: &Key,
@@ -1038,8 +1101,11 @@ fn shape(
         return;
     }
     let names = Names::of(db, *file);
+    let package = package_of(db, project, *file);
     let mut walker = Shape {
         db,
+        project,
+        package: package.as_deref(),
         bodies,
         calls,
         body,
@@ -1053,6 +1119,8 @@ fn shape(
 
 struct Shape<'a, 'o> {
     db: &'a dyn Db,
+    project: Project,
+    package: Option<&'a str>,
     bodies: &'a AllBodies,
     calls: &'a Calls,
     body: &'a Body,
@@ -1118,7 +1186,7 @@ impl Shape<'_, '_> {
                 }
                 match does(node) {
                     Does::Calls => {
-                        if self.calls.of(node).is_some()
+                        if self.calls.of(node, self.package).is_some()
                             && let Some(names) = self.names
                         {
                             self.out.push_str(&names.name(body, id));
@@ -1129,6 +1197,7 @@ impl Shape<'_, '_> {
                         let callee = callee.clone();
                         shape(
                             self.db,
+                            self.project,
                             self.bodies,
                             self.calls,
                             &callee,
