@@ -797,14 +797,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   in area 12's "How a file's run is kept" and area 16's "Chosen in chunk
   6.4b": a file's run is kept where its actions write, and a CSV column
   no field reads stops the run.
-- [ ] **6.4b2 Exports and the rest of the file helpers** `opus · xhigh`,
-  after 6.4b: `json.read`'s file form (`items_at:`), the writers
+- [ ] **6.4b2 Exports** `opus · xhigh`, after 6.4b (split from 6.4b2
+  Exports and the rest of the file helpers on 2026-10-20): the writers
   (`csv.write`, `tsv.write`, `json_lines.write` and `json.write`'s file
   form) with `ExportSummary` and `CsvFormat`, each export's put after its
-  page commits; gzip read with `max_unpacked_size:`; and from 6.4, the
-  warning for a `from:` ordered by a field that can be updated (a
-  declinable error, area 1) and `estimated_total` from a query's count or
-  a file's size.
+  page commits.
+- [ ] **6.4b3 The rest of the file helpers** `opus · xhigh`, after
+  6.4b2: `json.read`'s file form (`items_at:`); gzip read with
+  `max_unpacked_size:`; and from 6.4, the warning for a `from:` ordered by
+  a field that can be updated (a declinable error, area 1, which every
+  batch example and test ordered by such a field then answers) and
+  `estimated_total` from a query's count or a file's size.
 - [x] **7.1 Packages: format, kinds, names and the lock** `opus · high`
   (split from 7.1 Packages and connections on 2026-10-20). Built:
   `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
