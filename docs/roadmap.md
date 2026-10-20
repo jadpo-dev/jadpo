@@ -846,11 +846,28 @@ The design is area 11 as revised on 2026-10-16, with its research in
   Also the bar's two items decided 2026-10-20 (area 11 questions 27 and
   28): examples in descriptions run as tests, and the changelog written
   from the surface with the author's why.
-- [ ] **7.1b3 Library packages' translations** `opus · high`, after
+- [x] **7.1b3 Library packages' translations** `opus · high`, after
   7.1b: a library package's `translations/` (area 10, "Jadpo's and
   packages' text"), `Postcodes.translations.<message>(...)`, the root
   file's wording grouped by package, and its messages in the surface and
-  the publishing bar.
+  the publishing bar. Built: a library package's `translations/` checked
+  as a domain's, each file against the locale it is named for;
+  `Postcodes.translations.<message>(...)` through the checker, the graph
+  and the interpreter; the root file's package groups checked against the
+  package's public messages, enums and failures, each supported locale
+  worded there or by the package, the app's wording first; their lines in
+  the root `sources.jadpo_record`, stale when the package rewords its
+  text; a package failure a route answers with worded for clients; `jadpo
+  translations missing`; messages and locales in the surface and `jadpo
+  package show`; and the bar's `wording` row and message descriptions.
+  Choices in area 10's "Chosen in chunk 7.1b3", one flagged for Richard
+  (a package has no default locale, so every language it ships must be
+  complete); `jadpo translations export`, `import` and `unused` don't take
+  a package's text yet.
+- [ ] **7.1b4 Package text in the translation commands** `opus · high`
+  (found in chunk 7.1b3): `jadpo translations export`, `import` and
+  `unused` taking in a library package's messages and the app's wording
+  of them, as `missing` already does.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,

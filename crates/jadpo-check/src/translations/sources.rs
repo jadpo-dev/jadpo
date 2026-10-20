@@ -433,10 +433,20 @@ fn root_standings(
             });
         }
     }
+    package_standings(db, project, plan, &files, &default_tag, out);
     out.list
         .sort_by(|a, b| (&a.tag, &a.member).cmp(&(&b.tag, &b.member)));
     for standing in &out.list {
         if standing.stale && !standing.in_progress {
+            if let Some((scope, key)) = standing.member.split_once('.')
+                && scope != GROUP
+            {
+                let kind = subjects(db, project, Name::new(db, scope.to_string()))
+                    .get(key)
+                    .map(|subject| subject.kind);
+                out.problems.push(stale(standing, kind));
+                continue;
+            }
             let kind = jadpo_text::message_named(
                 standing
                     .member
@@ -449,6 +459,96 @@ fn root_standings(
                 jadpo_text::Kind::Enum => Kind::Enum,
             });
             out.problems.push(stale(standing, kind));
+        }
+    }
+}
+
+/// The root folder's wording of library packages' text against its
+/// record, as `<package>.<member>` (`postcodes.postcode_hint`). A
+/// message's default wording is the application's own for the default
+/// locale if it words it, else the package's, so a package release that
+/// rewords its own text makes the app's translations of it stale.
+fn package_standings(
+    db: &dyn Db,
+    project: Project,
+    plan: &jadpo_std::LocalePlan,
+    files: &[&super::language::LanguageFile],
+    default_tag: &str,
+    out: &mut Standings,
+) {
+    let default_file = files.iter().find(|file| file.locale == Some(plan.default));
+    for scope in super::packages::scopes(db, project) {
+        let subjects = subjects(db, project, Name::new(db, scope.clone()));
+        let own: Vec<_> = language_files(db, project, &scope)
+            .into_iter()
+            .filter_map(|file| language_file(db, project, file).as_ref())
+            .collect();
+        let own_default = own.iter().find(|file| file.locale == Some(plan.default));
+        for file in files {
+            for group in file.groups.iter().filter(|group| group.name == scope) {
+                for member in &group.members {
+                    out.present
+                        .push((file.tag.clone(), format!("{scope}.{}", member.name)));
+                }
+            }
+        }
+        for file in files {
+            let Some(locale) = file.locale else { continue };
+            if locale == plan.default
+                || !plan.supports(locale)
+                || jadpo_std::LocalePlan::is_pseudo(locale)
+            {
+                continue;
+            }
+            let Some(group) = file.group(&scope) else {
+                continue;
+            };
+            for member in &group.members {
+                let known = subjects
+                    .get(&member.name)
+                    .is_some_and(|subject| subject.symbol.public && !subject.broken);
+                if !known || member.body == Body::Invalid {
+                    continue;
+                }
+                let app_default = default_file
+                    .and_then(|file| file.group(&scope))
+                    .and_then(|group| group.member(&member.name))
+                    .filter(|default| default.body != Body::Invalid);
+                let package_default = own_default
+                    .and_then(|file| file.member(&member.name))
+                    .filter(|default| default.body != Body::Invalid);
+                let (default_text, default_span) = match (app_default, package_default) {
+                    (Some(default), _) | (None, Some(default)) => {
+                        (canonical(&default.body), Some(default.key_span.clone()))
+                    }
+                    (None, None) => continue,
+                };
+                let name = format!("{scope}.{}", member.name);
+                let default_hash = hash(&default_text);
+                let recorded = out
+                    .record
+                    .iter()
+                    .find(|entry| entry.locale == file.tag && entry.member == name)
+                    .cloned();
+                let stale = recorded
+                    .as_ref()
+                    .is_some_and(|entry| entry.from != default_hash);
+                out.list.push(Standing {
+                    scope: ROOT.to_string(),
+                    locale,
+                    tag: file.tag.clone(),
+                    member: name,
+                    path: file.path.clone(),
+                    key_span: member.key_span.clone(),
+                    default_tag: default_tag.to_string(),
+                    default_span,
+                    default_hash,
+                    wording_hash: hash(&canonical(&member.body)),
+                    recorded,
+                    stale,
+                    in_progress: plan.in_progress.contains(&locale),
+                });
+            }
         }
     }
 }

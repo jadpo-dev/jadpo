@@ -42,6 +42,7 @@ mod manifest;
 mod migrate;
 mod operation_conditions;
 mod package_import;
+mod package_translations;
 mod packages;
 mod passkeys;
 mod policy;

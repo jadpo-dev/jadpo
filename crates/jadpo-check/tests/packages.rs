@@ -612,18 +612,3 @@ fn two_versions_of_a_package_wait_for_a_later_chunk() {
         "{found:#?}"
     );
 }
-
-#[test]
-fn a_library_package_s_translations_wait_for_a_later_chunk() {
-    let words = (
-        "packages/postcodes/v2/translations/postcode_hint.jadpo",
-        "/// Shown under a postcode field.\npublic type PostcodeHint = Message {}\n",
-    );
-    let found = installed(&with(&[words]));
-    assert!(
-        found.iter().any(|p| p.contains(
-            "toolchain.not_built_yet: A library package's translations aren't built yet"
-        )),
-        "{found:#?}"
-    );
-}
