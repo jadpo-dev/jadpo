@@ -1,8 +1,9 @@
 //! A provider's API for the package driver's tests (area 11, "Calling";
 //! chunk 7.2c): a localhost HTTP server on its own thread that answers
 //! each request with the next answer scripted for it, `200 {}` when none
-//! is, and keeps every request it got, so a test sees exactly what was
-//! sent. It never reaches a network.
+//! is, after the wait scripted with it (chunk 7.2c2), and keeps every
+//! request it got, so a test sees exactly what was sent. It never reaches
+//! a network.
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -39,7 +40,9 @@ impl Request {
 #[derive(Default)]
 struct State {
     requests: Vec<Request>,
-    answers: VecDeque<(u16, String)>,
+    /// Each answer's status, body and how long it waits first, in
+    /// milliseconds.
+    answers: VecDeque<(u16, String, u64)>,
 }
 
 pub struct FakeProvider {
@@ -83,11 +86,17 @@ impl FakeProvider {
     /// Answers the next request with `status` and `body`, after the
     /// answers scripted already.
     pub fn answer(&self, status: u16, body: &str) {
+        self.answer_after(0, status, body);
+    }
+
+    /// The same, answered only after `millis` milliseconds: longer than a
+    /// call's timeout, it is never answered in time.
+    pub fn answer_after(&self, millis: u64, status: u16, body: &str) {
         self.state
             .lock()
             .expect("state")
             .answers
-            .push_back((status, body.to_string()));
+            .push_back((status, body.to_string(), millis));
     }
 
     /// Every request so far.
@@ -142,7 +151,7 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
     if reader.read_exact(&mut body).is_err() {
         return;
     }
-    let (status, reply) = {
+    let (status, reply, wait) = {
         let mut state = state.lock().expect("state");
         state.requests.push(Request {
             method,
@@ -153,8 +162,11 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
         state
             .answers
             .pop_front()
-            .unwrap_or_else(|| (200, "{}".to_string()))
+            .unwrap_or_else(|| (200, "{}".to_string(), 0))
     };
+    if wait > 0 {
+        std::thread::sleep(Duration::from_millis(wait));
+    }
     let response = format!(
         "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
         reply.len()

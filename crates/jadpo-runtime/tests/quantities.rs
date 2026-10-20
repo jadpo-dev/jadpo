@@ -175,6 +175,7 @@ fn a_quantity_is_sent_and_stored_in_its_base_unit() {
         codecs: &codecs,
         validators: &validators,
         shapes: &[],
+        coder: None,
     };
     assert_eq!(
         table.write_value(CodecId(0), &literal("2.5kg")),

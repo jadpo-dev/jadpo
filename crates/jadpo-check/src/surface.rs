@@ -90,6 +90,10 @@ pub enum What {
         path: String,
         input: Option<String>,
         output: Option<String>,
+        /// The answer as sent and the package's function that decodes it,
+        /// as written (chunk 7.2c2): the surface shows both the wire and
+        /// the output, so a review sees where decoding ends.
+        wire_output: Option<(String, String)>,
         output_at: Option<String>,
         changes: bool,
         idempotent: bool,
@@ -199,6 +203,7 @@ impl Declaration {
                 path,
                 input,
                 output,
+                wire_output,
                 output_at,
                 changes,
                 idempotent,
@@ -212,6 +217,9 @@ impl Declaration {
                 }
                 if let Some(output) = output {
                     out.push(line(format!("output {output}")));
+                }
+                if let Some((wire, decode)) = wire_output {
+                    out.push(line(format!("wire_output {wire} decode {decode}")));
                 }
                 if let Some(at) = output_at {
                     out.push(line(format!("output_at {}", format::quote(at))));
@@ -823,6 +831,7 @@ fn operations(
             let mut method = String::new();
             let mut path = String::new();
             let (mut input, mut output, mut output_at) = (None, None, None);
+            let (mut wire, mut decode) = (None, None);
             let (mut changes, mut idempotent) = (false, false);
             let mut fails = Vec::new();
             let (mut how, mut docs) = (None, None);
@@ -841,6 +850,8 @@ fn operations(
                     Some("path") => path = unescape(&written),
                     Some("input") => input = Some(written),
                     Some("output") => output = Some(written),
+                    Some("wire_output") => wire = Some(written),
+                    Some("decode") => decode = Some(written),
                     Some("output_at") => output_at = Some(unescape(&written)),
                     Some("changes") => changes = written == "true",
                     Some("idempotent") => idempotent = written == "true",
@@ -878,6 +889,7 @@ fn operations(
                     path,
                     input,
                     output,
+                    wire_output: wire.zip(decode),
                     output_at,
                     changes,
                     idempotent,

@@ -78,7 +78,8 @@ async fn body(
                     }
                     Target::Provider => {
                         let called = machine.provider_call(at).unwrap_or_default();
-                        provider(program, ctx, called, args, at.0).await
+                        let site = machine.provider_site(at).cloned().unwrap_or_default();
+                        provider(program, ctx, called, &site, args, at.0).await
                     }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
@@ -373,6 +374,7 @@ async fn provider(
     program: &Program,
     ctx: &mut Ctx<'_>,
     (connection, operation): (&str, &str),
+    call: &jadpo_std::provider::CallSite,
     args: Vec<Value>,
     at: u32,
 ) -> Result<Value, Stop> {
@@ -395,10 +397,58 @@ async fn provider(
         })
         .collect();
     let input = args.into_iter().next();
-    match provider::call(ctx, &providers, (connection, operation), input, &settings).await {
+    // The package's own decoders and encoders run here, at the call's
+    // site (chunk 7.2c2).
+    let site = provider::Site {
+        call,
+        functions: program,
+        at,
+    };
+    match provider::call(
+        ctx,
+        &providers,
+        (connection, operation),
+        input,
+        &settings,
+        site,
+    )
+    .await
+    {
         Done::Value(value) => Ok(value),
         Done::Failed(failure) => Err(Stop::Failed(failure)),
         Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
+    }
+}
+
+/// A provider package's own function `function`, a field's decoder or
+/// encoder or an operation's whole-answer decoder (area 11, "Decoding";
+/// chunk 7.2c2), run on `args` from site `at` of the frame on top of
+/// `ctx`. It is pure, so it never pauses: what it gives, or how it ended
+/// without a value, its failure's code or its fault's classification.
+pub(crate) fn package_function(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    function: &str,
+    args: Vec<Value>,
+    at: u32,
+) -> Result<Value, String> {
+    let key = jadpo_graph::Key::from_text(function.to_string());
+    let Some(callee) = program.plan().id(&key) else {
+        return Err(format!("`{function}`, which the plan doesn't have"));
+    };
+    let mut machine = Machine::new(program);
+    let mut step = machine.start(ctx, callee, args, SiteId(at));
+    loop {
+        match step {
+            Step::Done(Ok(value)) => return Ok(value),
+            Step::Done(Err(Stop::Failed(failure))) => return Err(format!("`{}`", failure.code)),
+            Step::Done(Err(Stop::Fault(fault))) => {
+                return Err(format!("a fault, `{}`", fault.kind.classification()));
+            }
+            Step::Done(Err(_)) => return Err("a fault, `defect`".to_string()),
+            Step::Yield => step = machine.carry_on(ctx),
+            Step::Pause { .. } => return Err("a fault, `defect`".to_string()),
+        }
     }
 }
 

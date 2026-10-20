@@ -213,6 +213,15 @@ pub enum Given {
 /// [`call`], giving a provider's answer as it was sent where its driver
 /// answers so (chunk 7.2c).
 pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
+    let repeat = call.repeat;
+    answered(repeat, exchange(ctx, call).await?)
+}
+
+/// [`send`], giving the driver's answer as it classified it, for a caller
+/// that decides whether to send it again (a provider's call, chunk 7.2c2):
+/// refused inside an open transaction or with no driver, a replayed run's
+/// recorded answer, or the driver's.
+pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswered> {
     let now = ctx.now();
     if ctx.transaction_open() {
         ctx.capabilities_mut().refused(&call, now);
@@ -224,7 +233,7 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
                 let capabilities = ctx.capabilities_mut();
                 let place = capabilities.sent(&call, crate::capability::Source::Replayed, now);
                 capabilities.ended(place, &answer, Some(0));
-                answered(call.repeat, answer)
+                Ok(answer)
             }
             Err(recorded) => {
                 ctx.capabilities_mut().refused(&call, now);
@@ -245,21 +254,23 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
     let answer = driver.call(&call).await;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     ctx.capabilities_mut().ended(place, &answer, took);
-    answered(call.repeat, answer)
+    Ok(answer)
 }
 
 /// What `answer` gives a call that may be sent again as `repeat` says.
-fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
+pub(crate) fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
     let raised = |failure: Failure| Err(Unanswered::Failure(Box::new(failure)));
     match answer {
         Answer::Value(value) => Ok(Given::Value(value)),
         Answer::Wire(text) => Ok(Given::Wire(text)),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
-        Answer::Unavailable => raised(crate::unavailable()),
+        Answer::Unavailable | Answer::RetryAfter(_) => raised(crate::unavailable()),
         // Sent again under its key, or a call that changes nothing, it
         // acts once: a retry is safe.
-        Answer::Unknown if repeat != Repeat::Unkeyed => raised(crate::unavailable()),
-        Answer::Unknown => raised(crate::outcome_unknown()),
+        Answer::Unknown | Answer::TimedOut if repeat != Repeat::Unkeyed => {
+            raised(crate::unavailable())
+        }
+        Answer::Unknown | Answer::TimedOut => raised(crate::outcome_unknown()),
         Answer::Misconfigured => raised(crate::misconfigured()),
     }
 }

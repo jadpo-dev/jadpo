@@ -112,6 +112,14 @@ pub enum Answer {
     /// It may have acted: it went out and no answer came back (area 4's
     /// `outcome_unknown`).
     Unknown,
+    /// It went out and no answer came back within its timeout (chunk
+    /// 7.2c2): as [`Answer::Unknown`], but a call safe to send again may
+    /// map it at its site as `timed_out`.
+    TimedOut,
+    /// It surely did nothing, and the provider asked for it to be sent
+    /// again only after this many milliseconds, its `Retry-After` (chunk
+    /// 7.2c2): as [`Answer::Unavailable`] otherwise.
+    RetryAfter(u64),
     /// The connection's credential or settings were refused.
     Misconfigured,
 }
@@ -125,6 +133,8 @@ impl std::fmt::Debug for Answer {
             Answer::Failed(code) => f.debug_tuple("Failed").field(code).finish(),
             Answer::Unavailable => f.write_str("Unavailable"),
             Answer::Unknown => f.write_str("Unknown"),
+            Answer::TimedOut => f.write_str("TimedOut"),
+            Answer::RetryAfter(millis) => f.debug_tuple("RetryAfter").field(millis).finish(),
             Answer::Misconfigured => f.write_str("Misconfigured"),
         }
     }
@@ -180,8 +190,8 @@ impl Ended {
         match answer {
             Answer::Value(_) | Answer::Wire(_) => Ended::Answered,
             Answer::Failed(code) => Ended::Failed(code.clone()),
-            Answer::Unavailable => Ended::Unavailable,
-            Answer::Unknown => Ended::Unknown,
+            Answer::Unavailable | Answer::RetryAfter(_) => Ended::Unavailable,
+            Answer::Unknown | Answer::TimedOut => Ended::Unknown,
             Answer::Misconfigured => Ended::Misconfigured,
         }
     }

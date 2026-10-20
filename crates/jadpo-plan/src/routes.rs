@@ -519,6 +519,46 @@ impl<'t> Codecs<'t> {
         id
     }
 
+    /// The codec of field `key`: its type's, and for a provider package's
+    /// field that says how it is sent (area 11, "Decoding"; chunk 7.2c2),
+    /// that type's wrapped in how the provider sends it.
+    fn field_codec(&mut self, key: &Key) -> CodecId {
+        let ty = TypeRef::Field(key.clone());
+        let contract = self.codec(&ty);
+        let Some(coding) = self.types.field_coding(key).cloned() else {
+            return contract;
+        };
+        let coding = match coding {
+            jadpo_graph::FieldCoding::Encoding(name) => {
+                let Some(encoding) = jadpo_std::provider::WireEncoding::from_name(&name) else {
+                    return contract;
+                };
+                // An amount sent in minor units is in its type's one
+                // currency.
+                let currency = (encoding == jadpo_std::provider::WireEncoding::MinorUnits)
+                    .then(|| {
+                        let (_, rules) = self.types.chain(&ty)?;
+                        merge(&rules).currency.and_then(jadpo_std::money::code)
+                    })
+                    .flatten()
+                    .map(str::to_string);
+                jadpo_std::http::WireCoding::Encoding { encoding, currency }
+            }
+            jadpo_graph::FieldCoding::Functions {
+                decode,
+                encode,
+                wire,
+            } => jadpo_std::http::WireCoding::Functions {
+                decode: decode.as_str().to_string(),
+                encode: encode.as_str().to_string(),
+                wire: self.codec(&wire),
+            },
+        };
+        let id = CodecId(self.codecs.len() as u32);
+        self.codecs.push(Codec::Wired { contract, coding });
+        id
+    }
+
     /// The codec of `ty` as if it weren't nullable.
     fn made(&mut self, ty: &TypeRef) -> Codec {
         match self.what(ty) {
@@ -544,7 +584,7 @@ impl<'t> Codecs<'t> {
                     .unwrap_or_default();
                 let fields = keys
                     .into_iter()
-                    .map(|key| self.codec(&TypeRef::Field(Key::from_text(key))))
+                    .map(|key| self.field_codec(&Key::from_text(key)))
                     .collect();
                 // Its rules across its fields, checked once they are read
                 // (area 2, "Rules across fields").
@@ -605,7 +645,7 @@ impl<'t> Codecs<'t> {
                                     .unwrap_or_default();
                                 let codecs = keys
                                     .into_iter()
-                                    .map(|key| self.codec(&TypeRef::Field(Key::from_text(key))))
+                                    .map(|key| self.field_codec(&Key::from_text(key)))
                                     .collect();
                                 (shape, codecs)
                             })

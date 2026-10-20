@@ -30,7 +30,7 @@ impl Fetch for NativeFetch {
             match tokio::time::timeout(timeout, exchange).await {
                 Ok(Ok(answered)) => answered,
                 Ok(Err(_)) => Err(FetchError::NoAnswer("the exchange stopped".into())),
-                Err(_) => Err(FetchError::NoAnswer("no answer in time".into())),
+                Err(_) => Err(FetchError::TimedOut),
             }
         })
     }
@@ -174,6 +174,15 @@ fn send<S: Read + Write>(mut stream: S, request: &[u8]) -> Result<Vec<u8>, Fetch
             // A TLS peer that closes without notice has still sent what
             // it sent; parsing decides whether that is a whole answer.
             Err(_) if !raw.is_empty() => break,
+            // The socket's own timeout, the call's: no answer in time.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Err(FetchError::TimedOut);
+            }
             Err(error) => return Err(FetchError::NoAnswer(error.to_string())),
         }
     }
@@ -339,7 +348,7 @@ mod tests {
     }
 
     /// Nothing listening is a call that never left; a server that never
-    /// answers is one that may have acted.
+    /// answers is one that may have acted, and timed out.
     #[test]
     fn a_call_that_never_left_differs_from_one_never_answered() {
         let runtime = crate::Runtime::new().unwrap();
@@ -358,8 +367,9 @@ mod tests {
         let mut slow = request(format!("http://127.0.0.1:{port}"));
         slow.timeout_ms = 200;
         let unanswered = runtime.block_on(NativeFetch.fetch(&slow));
+        // No answer within its timeout is told apart (chunk 7.2c2).
         assert!(
-            matches!(unanswered, Err(FetchError::NoAnswer(_))),
+            matches!(unanswered, Err(FetchError::TimedOut)),
             "{unanswered:?}"
         );
         drop(silent);

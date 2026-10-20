@@ -118,6 +118,10 @@ pub enum Decoded {
     /// `from:`'s query's arguments, then each value `each:` and
     /// `finished:` capture, then `key:`.
     Batch { number: u32, sites: Vec<u32> },
+    /// A provider's operation (area 11, chunk 7.2c2): the fields of its
+    /// output its code reads, the only ones decoded, and whether its
+    /// `attempt` maps `timed_out:`.
+    Provider(jadpo_std::provider::CallSite),
     /// Something a later area builds, as written up to its arguments or
     /// block: `query open_todos`, `Todo.update`.
     Written(String),
@@ -169,6 +173,64 @@ pub(crate) struct WriteSite {
     pub name: u32,
     pub csv_format: Option<u32>,
     pub each: jadpo_std::batch::BatchRow,
+}
+
+/// What the provider call at `call` needs (area 11, chunk 7.2c2): the
+/// fields of its answer its code reads, decoded lazily, and whether its
+/// `attempt` maps `timed_out:`.
+///
+/// The fields read are known when the call's value, or its `attempt`'s, is
+/// a variable's, and every read of that variable is a field of it
+/// (`parcel.status`); any other use, returning it or passing it on, reads
+/// it whole.
+fn provider_site(types: &Types, body: &Body, call: SiteId) -> jadpo_std::provider::CallSite {
+    let attempt = body
+        .sites
+        .iter()
+        .enumerate()
+        .find_map(|(at, site)| match &site.node {
+            Node::Expr(Expr::Attempt {
+                inner: Some(inner),
+                arms,
+            }) if *inner == call => Some((SiteId(at as u32), arms)),
+            _ => None,
+        });
+    let timed_out = attempt.is_some_and(|(_, arms)| {
+        arms.iter()
+            .any(|arm| arm.named.as_deref() == Some("timed_out"))
+    });
+    let held = attempt.map_or(call, |(at, _)| at);
+    let local = body.sites.iter().find_map(|site| match &site.node {
+        Node::Stmt(jadpo_graph::body::Stmt::Var {
+            local: Some(local),
+            value: Some(value),
+        }) if *value == held => Some(*local),
+        _ => None,
+    });
+    let reads = local.and_then(|local| {
+        let uses: Vec<u32> = body
+            .sites
+            .iter()
+            .enumerate()
+            .filter(
+                |(_, site)| matches!(&site.node, Node::Expr(Expr::Local(used)) if *used == local),
+            )
+            .map(|(at, _)| at as u32)
+            .collect();
+        let mut fields: Vec<String> = Vec::new();
+        for used in uses {
+            let field = body.sites.iter().find_map(|site| match &site.node {
+                Node::Expr(Expr::Field { receiver, field }) if receiver.0 == used => Some(field),
+                _ => None,
+            })?;
+            let name = types.field_name(field).to_string();
+            if !fields.contains(&name) {
+                fields.push(name);
+            }
+        }
+        Some(fields)
+    });
+    jadpo_std::provider::CallSite { reads, timed_out }
 }
 
 /// The path from the inline parameter `item` to the value at `site`: the
@@ -718,6 +780,9 @@ impl Decoder<'_> {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
                 Callee::Batch(op) if op.starts() => self.batch(body, args, *op),
+                Callee::Provider { .. } => {
+                    Decoded::Provider(provider_site(self.types, body, SiteId(index)))
+                }
                 Callee::Std(_)
                 | Callee::Object(_)
                 | Callee::Variant(_)
@@ -725,7 +790,6 @@ impl Decoder<'_> {
                 | Callee::Session(_)
                 | Callee::Batch(_)
                 | Callee::Files { .. }
-                | Callee::Provider { .. }
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Unknown => Decoded::Nothing,

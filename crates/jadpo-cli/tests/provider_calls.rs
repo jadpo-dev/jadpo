@@ -595,7 +595,7 @@ fn keys_differ_by_caller_and_step_and_repeat_for_the_same_call() {
 /// `failed_when:` marks or a refusal, with the provider's kept as the
 /// cause; a code the call maps to nothing, or the operation doesn't
 /// declare, is a fault; a rejected credential is `misconfigured`; and a
-/// server's error on a keyed call is `unavailable`.
+/// server's error on a keyed call, every attempt, is `unavailable`.
 #[test]
 fn failures_are_mapped_by_their_codes_at_the_call() {
     let provider = FakeProvider::start();
@@ -606,7 +606,11 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
     provider.answer(409, r#"{"error": {"code": "slot_taken"}}"#);
     provider.answer(422, r#"{"error": {"code": "postcode_unserved"}}"#);
     provider.answer(401, r#"{"error": {"code": "unauthorised"}}"#);
-    provider.answer(503, "");
+    // A keyed call is sent again on a server's error while `retry:` lasts
+    // (chunk 7.2c2): three attempts by default.
+    for _ in 0..3 {
+        provider.answer(503, "");
+    }
     provider.answer(
         200,
         r#"{"ok": true, "data": {"id": "b-1", "collectAt": "soon", "window": "morning"}}"#,
