@@ -45,7 +45,13 @@
 //! [`SETTLED_KEPT_MS`] after they were emitted, with their delivery
 //! records and then the handled records of those deliveries, wherever
 //! each is ([`settle`]), and ended browser sessions, API tokens and
-//! service keys in the store each is in (area 8; chunk 6.10); then each of
+//! service keys in the store each is in (area 8; chunk 6.10). What an
+//! operator settled goes after [`RUNS_KEPT_MS`] (chunk 6.13): a delivery
+//! dismissed or cancelled that long after the operator's last action on
+//! it, with its handled records ([`settle_by_hand`]), and so its event,
+//! once no delivery of it is left that could run; and the operator's log
+//! rows that long after they were written, once their delivery or run is
+//! gone ([`OLD_DELIVERY_ACTIONS`], [`OLD_RUN_ACTIONS`]); then each of
 //! [`HOOKS`], where batch runs resume (chunk 6.4) and ended ones are
 //! deleted after 30 days (chunk 6.6a). The whole tick runs within the
 //! budget its host gives a tick (chunk 6.7): once that is spent it starts
@@ -73,10 +79,12 @@ use crate::ctx::System;
 use crate::outbox::{failure_json, micros};
 use crate::runner::{self, Deferred, Job};
 use crate::{
-    Clock, Ctx, Env, Executor, FaultKind, Frame, Host, LocalFuture, Outcome, SqlType, SqlValue,
-    StoreError,
+    Clock, Ctx, Database, Env, Executor, FaultKind, Frame, Host, LocalFuture, Outcome, SqlType,
+    SqlValue, StoreError,
 };
-/// How long a run record is kept after its run started.
+/// How long a run record is kept after its run started; and a delivery
+/// an operator dismissed or cancelled, and an operator's log row, after
+/// the operator acted (chunk 6.13).
 pub const RUNS_KEPT_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// How long an event every subscriber has had is kept after it was
 /// emitted, before the tick deletes it with its delivery records.
@@ -191,7 +199,9 @@ pub const EXPIRED_KEYS: &str = "DELETE FROM \"jadpo_idempotency_keys\" WHERE (\"
 /// records of those deliveries kept in this store, in the same statement,
 /// since with its delivery record gone nothing can repeat a delivery
 /// (chunk 6.10). An event with a delivery still to make, or that failed,
-/// stays for the sweep or an operator. A row for each event and each of
+/// stays for the sweep or an operator; one an operator dismissed or
+/// cancelled holds it until [`SETTLED_BY_HAND`] deletes that delivery,
+/// so the event is listed beside it while it is kept (chunk 6.13). A row for each event and each of
 /// its deliveries: the event's id, the delivery's (`NULL` for an event
 /// nothing subscribes to), and whether its handled record was here.
 pub const SETTLED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_outbox\" WHERE \"id\" IN (SELECT \"o\".\"id\" FROM \"jadpo_outbox\" AS \"o\" WHERE \"o\".\"emitted_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"outbox_id\" = \"o\".\"id\" AND \"d\".\"status\" <> 'succeeded') ORDER BY \"o\".\"emitted_at\" LIMIT $2) RETURNING \"id\"), \"their_deliveries\" AS (SELECT \"d\".\"id\", \"d\".\"outbox_id\" FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"outbox_id\" IN (SELECT \"id\" FROM \"gone\")), \"handled\" AS (DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" IN (SELECT \"id\" FROM \"their_deliveries\") RETURNING \"id\") SELECT \"g\".\"id\", \"v\".\"id\", \"h\".\"id\" IS NOT NULL FROM \"gone\" AS \"g\" LEFT JOIN \"their_deliveries\" AS \"v\" ON \"v\".\"outbox_id\" = \"g\".\"id\" LEFT JOIN \"handled\" AS \"h\" ON \"h\".\"id\" = \"v\".\"id\"";
@@ -201,6 +211,24 @@ pub const SETTLED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_outbox\" WHERE 
 /// with their event in the event's store (chunk 6.10).
 pub const HANDLED: &str =
     "DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" = ANY($1::uuid[]) RETURNING 1";
+
+/// Deliveries an operator dismissed or cancelled, with no action on them
+/// logged after `$1`, at most `$2` (chunk 6.13): neither state is ever
+/// left, so neither could run again. Their handled records kept in this
+/// store go in the same statement, as [`SETTLED`]'s do. A row for each:
+/// its id, and whether its handled record was here.
+pub const SETTLED_BY_HAND: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_deliveries\" WHERE \"id\" IN (SELECT \"d\".\"id\" FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"status\" IN ('dismissed', 'cancelled') AND NOT EXISTS (SELECT 1 FROM \"jadpo_operator_actions\" AS \"a\" WHERE \"a\".\"item\" = \"d\".\"id\" AND \"a\".\"acted_at\" > $1) LIMIT $2) AND \"status\" IN ('dismissed', 'cancelled') RETURNING \"id\"), \"handled\" AS (DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" IN (SELECT \"id\" FROM \"gone\") RETURNING \"id\") SELECT \"g\".\"id\", \"h\".\"id\" IS NOT NULL FROM \"gone\" AS \"g\" LEFT JOIN \"handled\" AS \"h\" ON \"h\".\"id\" = \"g\".\"id\"";
+
+/// An operator's log rows on deliveries, written at or before `$1`, whose
+/// delivery is gone, at most `$2` (chunk 6.13): a delivery still on
+/// record keeps the last thing done to it.
+pub const OLD_DELIVERY_ACTIONS: &str = "DELETE FROM \"jadpo_operator_actions\" WHERE \"id\" IN (SELECT \"a\".\"id\" FROM \"jadpo_operator_actions\" AS \"a\" WHERE \"a\".\"kind\" = 'delivery' AND \"a\".\"acted_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"id\" = \"a\".\"item\") LIMIT $2) RETURNING 1";
+
+/// An operator's log rows on schedules' runs, written at or before `$1`,
+/// whose run record is gone (a run asked for and cancelled never had
+/// one), at most `$2` (chunk 6.13): a dismissal is how a run is read as
+/// settled, so it stays while its run does.
+pub const OLD_RUN_ACTIONS: &str = "DELETE FROM \"jadpo_operator_actions\" WHERE \"id\" IN (SELECT \"a\".\"id\" FROM \"jadpo_operator_actions\" AS \"a\" WHERE \"a\".\"kind\" = 'schedule_run' AND \"a\".\"acted_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_schedule_runs\" AS \"r\" WHERE \"r\".\"id\" = \"a\".\"item\") LIMIT $2) RETURNING 1";
 
 /// Browser sessions and API tokens that ended at or before `$1`, at most
 /// `$2` (area 8; chunk 6.10): a lookup already ignores them.
@@ -315,6 +343,11 @@ pub struct Deleted {
     pub sessions: u64,
     /// Expired service keys.
     pub service_keys: u64,
+    /// Deliveries an operator dismissed or cancelled (chunk 6.13); those
+    /// deleted with their event are counted with it.
+    pub deliveries: u64,
+    /// An operator's log rows (chunk 6.13).
+    pub actions: u64,
 }
 
 /// Runs one tick at `now` on `host`, within the budget its host gives a
@@ -357,6 +390,17 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             Ok(count) => ticked.deleted.runs += count,
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
+        match delete(
+            host,
+            store,
+            OLD_RUN_ACTIONS,
+            now.saturating_sub(RUNS_KEPT_MS),
+        )
+        .await
+        {
+            Ok(count) => ticked.deleted.actions += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
+        }
     }
     for store in &plan.stores {
         if budget.spent() {
@@ -373,9 +417,19 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             Ok(count) => ticked.deleted.keys += count,
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
+        let kept = now.saturating_sub(RUNS_KEPT_MS);
+        if let Err(problem) =
+            settle_by_hand(host, &plan.stores, store, kept, &mut ticked.deleted).await
+        {
+            ticked.problems.push(problem);
+        }
         let before = now.saturating_sub(SETTLED_KEPT_MS);
         if let Err(problem) = settle(host, &plan.stores, store, before, &mut ticked.deleted).await {
             ticked.problems.push(problem);
+        }
+        match delete(host, store, OLD_DELIVERY_ACTIONS, kept).await {
+            Ok(count) => ticked.deleted.actions += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
         }
         if plan.sessions.as_ref() == Some(store) {
             match delete(host, store, ENDED_SESSIONS, now).await {
@@ -1024,15 +1078,7 @@ async fn settle(
     before: i64,
     deleted: &mut Deleted,
 ) -> Result<(), (String, StoreError)> {
-    let open = |name: &str| {
-        host.database(name).ok_or_else(|| {
-            (
-                name.to_string(),
-                StoreError::Fault(format!("no store called `{name}`")),
-            )
-        })
-    };
-    let database = open(store)?;
+    let database = open(host, store)?;
     for _ in 0..DELETE_BATCHES {
         let rows = database
             .query_once(SETTLED, &[micros(before), SqlValue::Int8(DELETE_BATCH)])
@@ -1052,21 +1098,88 @@ async fn settle(
             }
         }
         deleted.events += events.len() as u64;
-        for other in stores.iter().filter(|other| other.as_str() != store) {
-            let database = open(other)?;
-            for ids in elsewhere.chunks(DELETE_BATCH as usize) {
-                let gone = database
-                    .query_once(HANDLED, &[SqlValue::Array(SqlType::Uuid, ids.to_vec())])
-                    .await
-                    .map_err(|error| (other.clone(), error))?;
-                deleted.handled += gone.len() as u64;
-            }
-        }
+        deleted.handled += handled_elsewhere(host, stores, store, &elsewhere).await?;
         if (events.len() as i64) < DELETE_BATCH {
             break;
         }
     }
     Ok(())
+}
+
+/// Deletes in `store` the deliveries an operator dismissed or cancelled
+/// with no action on them logged after `before`, with the handled records
+/// this store kept of them ([`SETTLED_BY_HAND`]), then those of them in
+/// each other store of `stores` ([`HANDLED`]) (chunk 6.13). Their events
+/// stay for [`settle`], which takes each once no delivery of it is left
+/// that could run. [`DELETE_BATCH`] deliveries at a time, at most
+/// [`DELETE_BATCHES`] times; a store that fails stops it, named with why.
+async fn settle_by_hand(
+    host: &dyn Host,
+    stores: &[String],
+    store: &str,
+    before: i64,
+    deleted: &mut Deleted,
+) -> Result<(), (String, StoreError)> {
+    let database = open(host, store)?;
+    for _ in 0..DELETE_BATCHES {
+        let rows = database
+            .query_once(
+                SETTLED_BY_HAND,
+                &[micros(before), SqlValue::Int8(DELETE_BATCH)],
+            )
+            .await
+            .map_err(|error| (store.to_string(), error))?;
+        let mut elsewhere = Vec::new();
+        for row in &rows {
+            match row.as_slice() {
+                [SqlValue::Uuid(_), SqlValue::Bool(true)] => deleted.handled += 1,
+                [SqlValue::Uuid(id), _] => elsewhere.push(SqlValue::Uuid(*id)),
+                _ => continue,
+            }
+        }
+        deleted.deliveries += rows.len() as u64;
+        deleted.handled += handled_elsewhere(host, stores, store, &elsewhere).await?;
+        if (rows.len() as i64) < DELETE_BATCH {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Deletes the handled records of deliveries `ids`, whose records `store`
+/// has just deleted, in each other store of `stores` ([`HANDLED`]): how
+/// many there were.
+async fn handled_elsewhere(
+    host: &dyn Host,
+    stores: &[String],
+    store: &str,
+    ids: &[SqlValue],
+) -> Result<u64, (String, StoreError)> {
+    let mut gone = 0;
+    if ids.is_empty() {
+        return Ok(gone);
+    }
+    for other in stores.iter().filter(|other| other.as_str() != store) {
+        let database = open(host, other)?;
+        for ids in ids.chunks(DELETE_BATCH as usize) {
+            let rows = database
+                .query_once(HANDLED, &[SqlValue::Array(SqlType::Uuid, ids.to_vec())])
+                .await
+                .map_err(|error| (other.clone(), error))?;
+            gone += rows.len() as u64;
+        }
+    }
+    Ok(gone)
+}
+
+/// The store called `name`, or why not, named.
+fn open<'h>(host: &'h dyn Host, name: &str) -> Result<&'h dyn Database, (String, StoreError)> {
+    host.database(name).ok_or_else(|| {
+        (
+            name.to_string(),
+            StoreError::Fault(format!("no store called `{name}`")),
+        )
+    })
 }
 
 /// Runs `futures` together on this thread until every one has finished,
