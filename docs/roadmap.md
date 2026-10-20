@@ -819,6 +819,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   package add` from a path and a git repository with verification at
   install, `update` and `remove`, `link` and `unlink` with the linked
   checkout compiled and refused where production and CI build.
+  Also the bar's two items decided 2026-10-20 (area 11 questions 27 and
+  28): examples in descriptions run as tests, and the changelog written
+  from the surface with the author's why.
 - [ ] **7.1b3 Library packages' translations** `opus · high`, after
   7.1b: a library package's `translations/` (area 10, "Jadpo's and
   packages' text"), `Postcodes.translations.<message>(...)`, the root
