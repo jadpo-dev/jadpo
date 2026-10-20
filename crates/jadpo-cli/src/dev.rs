@@ -146,11 +146,11 @@ enum Event {
     },
     /// A delivery whose action reached steps under a record, as an attempt
     /// at it ended (chunk 7.5f).
-    Delivery(Delivered),
+    Delivery(StepsLine),
 }
 
 /// A delivery's attempt with steps, for its line (chunk 7.5f).
-struct Delivered {
+struct StepsLine {
     id: [u8; 16],
     subscriber: String,
     state: String,
@@ -170,13 +170,13 @@ impl jadpo_runtime::call_log::CallLog for DevCalls {
         self.log.seen(seen);
     }
 
-    fn delivered(&self, delivered: &jadpo_runtime::call_log::Delivered<'_>) {
+    fn attempt_ended(&self, attempt: &jadpo_runtime::call_log::DeliveryAttempt<'_>) {
         if let Ok(log) = self.shared.log.lock() {
-            let _ = log.send(Event::Delivery(Delivered {
-                id: delivered.delivery,
-                subscriber: delivered.subscriber.to_string(),
-                state: delivered.state.to_string(),
-                steps: delivered.steps.to_vec(),
+            let _ = log.send(Event::Delivery(StepsLine {
+                id: attempt.delivery,
+                subscriber: attempt.subscriber.to_string(),
+                state: attempt.state.to_string(),
+                steps: attempt.steps.to_vec(),
             }));
         }
     }
@@ -348,7 +348,7 @@ impl Out<'_> {
                     self.screen(Screen::new().with(Block::Alerts(vec![text])));
                 }
             }
-            Event::Delivery(delivered) => self.delivery(delivered),
+            Event::Delivery(line) => self.delivery(line),
         }
     }
 
@@ -356,19 +356,19 @@ impl Out<'_> {
     /// its id where a request has its request id, the subscriber, how the
     /// attempt left it as a symbol and a word in its colour, then each
     /// step, and the command that shows it when it needs an operator.
-    fn delivery(&mut self, delivered: &Delivered) {
-        let id = jadpo_runtime::deliveries::short(&delivered.id);
-        let (symbol, token, word) = delivery_state(&delivered.state);
+    fn delivery(&mut self, line: &StepsLine) {
+        let id = jadpo_runtime::deliveries::short(&line.id);
+        let (symbol, token, word) = attempt_state(&line.state);
         if self.json {
             let data = Json::object([
                 ("event", "delivery".into()),
                 (
                     "delivery",
-                    Json::from(jadpo_value::encoding::to_hex(&delivered.id)),
+                    Json::from(jadpo_value::encoding::to_hex(&line.id)),
                 ),
-                ("subscriber", Json::from(delivered.subscriber.as_str())),
-                ("state", Json::from(delivered.state.as_str())),
-                ("steps", steps_json(&delivered.steps)),
+                ("subscriber", Json::from(line.subscriber.as_str())),
+                ("state", Json::from(line.state.as_str())),
+                ("steps", steps_json(&line.steps)),
             ]);
             self.json(data, &[], &BTreeMap::new());
             return;
@@ -381,16 +381,16 @@ impl Out<'_> {
         } else {
             self.paint(token, word)
         };
-        let label = format!("subscriber {}", delivered.subscriber);
+        let label = format!("subscriber {}", line.subscriber);
         let mut text = format!("{id}  {label:<34} {state}\n");
         let paint = |token: Token, text: &str| self.paint(token, text);
-        for run in &delivered.steps {
+        for run in &line.steps {
             for shown in &run.steps {
                 text.push_str(&step_line(shown, &paint));
             }
         }
         if matches!(
-            delivered.state.as_str(),
+            line.state.as_str(),
             "failed" | "outcome_unknown" | "diverged"
         ) {
             let command = format!("jadpo deliveries show {id}");
@@ -655,7 +655,7 @@ fn steps_json(runs: &[jadpo_runtime::steps::RunSteps]) -> Json {
 
 /// How a delivery's line says the state an attempt left it in: its
 /// symbol, colour and word (chunk 7.5f).
-fn delivery_state(state: &str) -> (jadpo_term::Symbol, Token, &'static str) {
+fn attempt_state(state: &str) -> (jadpo_term::Symbol, Token, &'static str) {
     use jadpo_term::Symbol;
     match state {
         "succeeded" => (Symbol::Success, Token::Success, "succeeded"),
@@ -1790,12 +1790,12 @@ mod tests {
         }
     }
 
-    fn delivered(state: &str) -> Delivered {
+    fn attempt(state: &str) -> StepsLine {
         use jadpo_runtime::capability::Source;
         use jadpo_runtime::steps::{RunSteps, StepState};
         let mut id = [0u8; 16];
         id[12..].copy_from_slice(&[0x41, 0xd7, 0xe0, 0x9a]);
-        Delivered {
+        StepsLine {
             id,
             subscriber: "billing.start_subscription".into(),
             state: state.into(),
@@ -1841,19 +1841,19 @@ mod tests {
     #[test]
     fn a_delivery_with_steps_is_a_line_with_its_steps_and_what_to_do() {
         assert_eq!(
-            written(&Event::Delivery(delivered("diverged")), false),
+            written(&Event::Delivery(attempt("diverged")), false),
             "41d7e09a  subscriber billing.start_subscription ◆ diverged\n  └─ step 1 · pay.customers.create · replayed\n  └─ step 2 · pay.subscriptions.create · diverged\n  → jadpo deliveries show 41d7e09a\n"
         );
-        let succeeded = written(&Event::Delivery(delivered("succeeded")), false);
+        let succeeded = written(&Event::Delivery(attempt("succeeded")), false);
         assert!(
             succeeded.starts_with("41d7e09a  subscriber billing.start_subscription ✓ succeeded\n"),
             "{succeeded}"
         );
         assert!(!succeeded.contains("jadpo deliveries show"), "{succeeded}");
-        let retrying = written(&Event::Delivery(delivered("pending")), false);
+        let retrying = written(&Event::Delivery(attempt("pending")), false);
         assert!(retrying.contains("○ retrying\n"), "{retrying}");
 
-        let json = written(&Event::Delivery(delivered("diverged")), true);
+        let json = written(&Event::Delivery(attempt("diverged")), true);
         let document: serde_json::Value = serde_json::from_str(json.trim()).expect("JSON");
         assert_eq!(document["data"]["event"], "delivery");
         assert_eq!(document["data"]["state"], "diverged");

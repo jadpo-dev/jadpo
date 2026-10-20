@@ -468,7 +468,7 @@ pub(crate) async fn attempt_delivery(
             .events()
             .and_then(|events| events.plan.subscriber(&subscriber))
             .map_or(subscriber.as_str(), |plan| plan.name.as_str());
-        log.delivered(&crate::call_log::Delivered {
+        log.attempt_ended(&crate::call_log::DeliveryAttempt {
             delivery: id,
             subscriber: name,
             state,

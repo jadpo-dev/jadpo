@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
 use jadpo_host_native::Runtime;
-use jadpo_runtime::call_log::{CallLog, Delivered, Seen};
+use jadpo_runtime::call_log::{CallLog, DeliveryAttempt, Seen};
 use jadpo_runtime::capability::Source;
 use jadpo_runtime::runner::run_deferred;
 use jadpo_runtime::schedules::tick;
@@ -33,6 +33,16 @@ use crate::support::fake_provider::FakeProvider;
 
 const DAY: i64 = 24 * HOUR;
 
+/// The billing project, checked and migrated, with a test database;
+/// `None` when live tests are skipped.
+fn load(name: &str, sandbox: &str) -> Option<crate::step_records::Loaded> {
+    let loaded = crate::step_records::load(name, sandbox, false);
+    if !jadpo_test::live() {
+        return None;
+    }
+    loaded
+}
+
 /// What the development call log heard of each delivery with steps.
 #[derive(Default)]
 struct Heard(RefCell<Vec<(String, String, Vec<RunSteps>)>>);
@@ -40,11 +50,11 @@ struct Heard(RefCell<Vec<(String, String, Vec<RunSteps>)>>);
 impl CallLog for Heard {
     fn seen(&self, _: &Seen<'_>) {}
 
-    fn delivered(&self, delivered: &Delivered<'_>) {
+    fn attempt_ended(&self, attempt: &DeliveryAttempt<'_>) {
         self.0.borrow_mut().push((
-            delivered.subscriber.to_string(),
-            delivered.state.to_string(),
-            delivered.steps.to_vec(),
+            attempt.subscriber.to_string(),
+            attempt.state.to_string(),
+            attempt.steps.to_vec(),
         ));
     }
 }
@@ -89,7 +99,7 @@ fn operating(root: &Path, url: &str, at: i64, args: &[&str]) -> Output {
 #[test]
 fn a_deliverys_attempts_are_heard_with_what_became_of_each_step() {
     let provider = FakeProvider::start();
-    let Some(loaded) = crate::step_records::load("dev-delivery", &provider.url, false) else {
+    let Some(loaded) = load("dev-delivery", &provider.url) else {
         return;
     };
     let heard = Rc::new(Heard::default());
@@ -154,7 +164,7 @@ fn a_deliverys_attempts_are_heard_with_what_became_of_each_step() {
 fn a_routes_response_carries_what_became_of_each_step() {
     use jadpo_runtime::http::{Request, Worker, serve_request};
     let provider = FakeProvider::start();
-    let Some(loaded) = crate::step_records::load("dev-route", &provider.url, false) else {
+    let Some(loaded) = load("dev-route", &provider.url) else {
         return;
     };
     let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
@@ -249,7 +259,7 @@ fn a_routes_response_carries_what_became_of_each_step() {
 #[test]
 fn the_tick_raises_the_alert_on_unfinished_records_once() {
     let provider = FakeProvider::start();
-    let Some(loaded) = crate::step_records::load("dev-alert", &provider.url, false) else {
+    let Some(loaded) = load("dev-alert", &provider.url) else {
         return;
     };
     let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);

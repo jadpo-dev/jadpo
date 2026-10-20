@@ -52,7 +52,7 @@ impl std::fmt::Debug for Seen<'_> {
 /// calls, as an attempt at it ended (chunk 7.5f): what became of each step
 /// it reached, never a request, an answer or a key.
 #[derive(Clone, Copy, Debug)]
-pub struct Delivered<'a> {
+pub struct DeliveryAttempt<'a> {
     pub delivery: [u8; 16],
     /// The subscriber, as a log names it.
     pub subscriber: &'a str,
@@ -69,7 +69,7 @@ pub trait CallLog {
 
     /// Hears a delivery whose action reached steps under a record, as an
     /// attempt at it ends: `jadpo dev` prints its line (chunk 7.5f).
-    fn delivered(&self, delivered: &Delivered<'_>) {
-        let _ = delivered;
+    fn attempt_ended(&self, attempt: &DeliveryAttempt<'_>) {
+        let _ = attempt;
     }
 }
