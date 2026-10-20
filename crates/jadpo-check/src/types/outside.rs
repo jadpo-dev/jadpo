@@ -69,7 +69,10 @@ pub(super) fn does(node: &Node) -> Does<'_> {
     match node {
         Node::Expr(Expr::Write { .. }) => Does::Writes,
         Node::Expr(Expr::Call { callee, .. }) => match callee {
-            Callee::Provider { .. } | Callee::Files { .. } | Callee::Generate { .. } => Does::Calls,
+            Callee::Provider { .. }
+            | Callee::Files { .. }
+            | Callee::Generate { .. }
+            | Callee::Embed { .. } => Does::Calls,
             Callee::Action(key)
             | Callee::Fixture(key)
             | Callee::PackageAction { action: key, .. } => Does::Joins(key),

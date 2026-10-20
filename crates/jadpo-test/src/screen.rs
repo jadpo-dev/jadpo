@@ -41,7 +41,38 @@ pub fn screen(run: &Run) -> Screen {
             screen.push(Block::report(report(&result.test, failure, root)));
         }
     }
+    // What passed but should change: a recording of an older prompt.
+    if !run.alerts.is_empty() {
+        screen.push(Block::Alerts(
+            run.alerts
+                .iter()
+                .map(|alert| {
+                    let digest = |version: &str| {
+                        version
+                            .rsplit_once('@')
+                            .map_or(version, |(_, digest)| digest)
+                            .to_string()
+                    };
+                    format!(
+                        "`{}`'s recording `{}` was made from an older prompt ({}, now {}): its answer may no longer be what the model says",
+                        alert.prompt,
+                        alert.name,
+                        digest(&alert.recorded),
+                        digest(&alert.now)
+                    )
+                })
+                .collect(),
+        ));
+    }
     screen.push(footer(run));
+    if run.failed() == 0
+        && let Some(alert) = run.alerts.first()
+    {
+        screen.push(Block::Hint {
+            command: format!("jadpo ai show {}", alert.prompt),
+            reason: "shows what the prompt sends now".to_string(),
+        });
+    }
     screen
 }
 

@@ -510,6 +510,12 @@ impl Body<'_> {
             if head == jadpo_std::standard::ai::AI && member == "generate" {
                 return self.generate_call(call, callee, &written);
             }
+            // A model asked for embeddings (chunk 5.5v4).
+            if head == jadpo_std::standard::ai::AI
+                && matches!(member.as_str(), "embed" | "embed_all")
+            {
+                return self.embed_call(call, callee, &written, member == "embed_all");
+            }
             // `json.write`'s file form (area 19, "Data formats"; chunk
             // 6.4b2): given a store and named arguments, it starts a run
             // writing a JSON list, where given a value it gives its text.

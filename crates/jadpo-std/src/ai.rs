@@ -32,13 +32,15 @@ pub const DEFAULT_MODEL: &str = "default";
 /// the call's `timeout:`.
 pub const SENDS: u32 = 3;
 
-/// The keys `ai:` takes now.
-pub const KEYS: [&str; 2] = ["connection", "models"];
+/// The keys `ai:` takes now: `embedding_dimensions:` since chunk 5.5v4.
+pub const KEYS: [&str; 3] = ["connection", "models", "embedding_dimensions"];
+
+/// The keys of [`KEYS`] every `ai:` gives.
+pub const REQUIRED_KEYS: [&str; 2] = ["connection", "models"];
 
 /// The keys area 21 gives `ai:` that later chunks build, each with the
 /// chunk that does.
-pub const LATER_KEYS: [(&str, &str); 4] = [
-    ("embedding_dimensions", "5.5v4"),
+pub const LATER_KEYS: [(&str, &str); 3] = [
     ("limits", "5.5v5"),
     ("personal_data", "5.5v5"),
     ("keep_content", "5.5v5"),

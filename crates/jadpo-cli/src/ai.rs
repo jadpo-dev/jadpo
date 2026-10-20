@@ -7,8 +7,8 @@
 //!
 //! The screen: the prompt's fields (its type, file and version), one
 //! section per message in the order they are sent, then a footer counting
-//! the placeholders and the data blocks among them. `jadpo ai record` and
-//! `jadpo ai usage` come with the `ai` capability.
+//! the placeholders and the data blocks among them. `jadpo ai record`
+//! comes with roadmap chunk 5.5v4b and `jadpo ai usage` with 5.5v5.
 
 use std::path::PathBuf;
 
@@ -39,9 +39,9 @@ pub fn ai(call: &Call) -> Reply {
                     format!("`jadpo ai {later}` isn't built yet"),
                 )
                 .reason(if later == "record" {
-                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and comes with the `ai` capability."
+                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and roadmap chunk 5.5v4b builds it. Until then a recording is written by hand beside its prompt, in `recordings/<prompt>/<name>.json`."
                 } else {
-                    "`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and comes with the `ai` capability."
+                    "`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and roadmap chunk 5.5v5 builds it."
                 })
                 .next("Run `jadpo ai show <prompt>` to see what a prompt sends"),
             );

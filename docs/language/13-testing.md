@@ -136,7 +136,12 @@ is read as its operation's output through the package's decoders, a test
 of kind `recording` named `<resource>.<operation>'s recording decodes`.
 `jadpo test --kind recording` runs only those, and giving the recording's
 file runs it alone; one that doesn't decode is area 11's
-`test.recording_undecodable` or `test.round_trip_failed`.
+`test.recording_undecodable` or `test.round_trip_failed`. Each recording
+of a prompt's answer, `prompts/recordings/<prompt>/<name>.json`, is a test
+of the same kind, `<prompt>'s <name> recording decodes`, read through each
+type the prompt is asked for as (area 21, "Recorded answers"; chunk
+5.5v4); one made from an older version of its prompt passes, with an
+alert on the report.
 
 A test that calls actions to set up data and then makes a request is a route
 test. Calling an action is an ordinary call, with no `call` word. Area 1
@@ -740,7 +745,9 @@ the fake has responses, or fewer, the test fails and says so (question 7).
 > its output type, one of its failures by its code, or a condition.
 > `.requests` and the capabilities' fakes (`email.sent`) are not built
 > yet, but for the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`
-> and `ai.<prompt>.requests` are built (chunk 5.5v3; area 21, "Tests").
+> and `ai.<prompt>.requests` are built (chunk 5.5v3; area 21, "Tests"),
+> and `recorded("<name>")`, the fake's embeddings and `fakes: { ai.embed:
+> }` since chunk 5.5v4.
 > The choices are in area 11's "Chosen in chunk 7.2d". Since chunk
 > 7.6 a package's action runs its real code in a test, and `fakes:`
 > scripts the operations it calls, its package's own included.

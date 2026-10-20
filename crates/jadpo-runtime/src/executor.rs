@@ -129,6 +129,19 @@ pub trait Executor {
         None
     }
 
+    /// Reads the recording of a prompt's answer at `file` through each
+    /// type its prompt is asked for as (area 21, "Tests"; chunk 5.5v4):
+    /// what `jadpo test` runs for each. `None` when the program holds no
+    /// such recording.
+    fn prompt_recording(
+        &self,
+        ctx: &mut Ctx<'_>,
+        file: &str,
+    ) -> Option<Result<(), crate::prompt_recordings::Unread>> {
+        let _ = (ctx, file);
+        None
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

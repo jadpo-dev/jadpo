@@ -116,7 +116,7 @@ pub(crate) enum Kept {
 impl Kept {
     /// How a record keeps a condition: its word, and for `malformed` its
     /// problem's path and rule after it, each after a space.
-    fn word(&self) -> Option<String> {
+    pub(crate) fn word(&self) -> Option<String> {
         match self {
             Kept::Answer(_) => None,
             Kept::Condition(rule) => Some(rule.word().to_string()),
@@ -130,7 +130,7 @@ impl Kept {
     }
 
     /// A condition as [`Kept::word`] writes it.
-    fn from_word(word: &str) -> Option<Kept> {
+    pub(crate) fn from_word(word: &str) -> Option<Kept> {
         let mut parts = word.splitn(3, ' ');
         let rule = RuleKey::from_word(parts.next()?)?;
         match (rule, parts.next(), parts.next()) {
@@ -828,7 +828,7 @@ fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: 
 /// as the call's `timeout:` lasts: its last answer, or what the call
 /// gives instead. On a host with no clock, as a test's, it is sent again
 /// at once, at most [`jadpo_std::ai::SENDS`] times.
-async fn sent(
+pub(crate) async fn sent(
     ctx: &mut Ctx<'_>,
     made: Call,
     url: &str,

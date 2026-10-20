@@ -786,6 +786,8 @@ rules! {
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedules' database couldn't be read";
+    SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-dimensions-mismatch", "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,

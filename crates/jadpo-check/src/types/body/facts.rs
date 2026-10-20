@@ -115,6 +115,16 @@ pub(crate) enum Reach {
         timeout_ms: u64,
         attempts: u32,
     },
+    /// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` (area 21;
+    /// chunk 5.5v4): the model's name in `ai: { models: }` and the call's
+    /// `timeout:`. `V`, or `List<V>`, is the call's type.
+    Embed {
+        model: String,
+        timeout_ms: u64,
+        all: bool,
+        /// `V`'s `dimensions:`.
+        dimensions: u64,
+    },
     Unknown,
 }
 

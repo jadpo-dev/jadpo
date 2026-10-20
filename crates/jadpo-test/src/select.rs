@@ -89,12 +89,14 @@ pub(crate) fn resolve(options: &Options) -> Result<Target, Ran> {
             "Give a `.test.jadpo` file, a file and a line as `<file>:<line>`, or a folder",
         ));
     };
-    // A package's recording is checked as a test (chunk 7.2d2).
+    // A package's recording is checked as a test (chunk 7.2d2), and so
+    // is a prompt's, in its prompt's own folder of them (chunk 5.5v4).
     let recording = path.extension().and_then(|e| e.to_str()) == Some("json")
         && path
-            .parent()
-            .and_then(Path::file_name)
-            .is_some_and(|folder| folder == "recordings");
+            .ancestors()
+            .skip(1)
+            .take(2)
+            .any(|folder| folder.file_name().is_some_and(|name| name == "recordings"));
     if path.is_file() && path.extension().and_then(|e| e.to_str()) != Some("jadpo") && !recording {
         return Err(arguments(
             format!("`{as_written}` isn't a Jadpo file"),

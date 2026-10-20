@@ -34,6 +34,7 @@ mod not_value;
 pub mod package_code;
 pub mod packages;
 pub mod policy;
+pub mod prompt_recordings;
 pub mod prompts;
 pub mod providers;
 pub mod publishing;

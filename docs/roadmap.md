@@ -1570,13 +1570,38 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `ai` faked in `jadpo dev` with generated defaults, and `jadpo calls
   script` for a prompt. Done when a package fills `ai` in a test against
   a local server and `jadpo dev` fakes it.
-- [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
-  5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
-  and its check, the fake's seeded embeddings, `jadpo ai record` and
-  `recorded(...)`, every recording decoded on every build and a changed
-  prompt's recordings warned about. Done when the support example on area
-  21 runs end to end in a test: embed, nearest query, typed answer from a
-  recording.
+- [x] **5.5v4 Embeddings and recordings** `opus · high` (area 21; split
+  on 2026-10-20: `jadpo ai record` is 5.5v4b). Built: `ai.embed(text, as:
+  V)` and `ai.embed_all(texts, as: V)` as outside calls only an action
+  makes, of a `Text` or `Markdown` (or a list of up to 100), asking the
+  `embedding` model unless `model:` names another, with `timeout:` (15s)
+  and `timed_out`, `over_budget` and `too_long` each mapped to an
+  `unavailable` failure; `embedding_dimensions:` in `ai:` and
+  `semantic.ai_dimensions_mismatch` for a `V` of another length or none
+  given; the built-in driver's OpenAI embeddings request
+  (`jadpo_runtime::embed`), each vector read as `V`, another length
+  `misconfigured`, answers reused on a rerun and kept as steps; the fake's
+  embedding from the text's SHA-256 and the test's seed, and `fakes: {
+  ai.embed: }` scripting its failures; recordings of a prompt's answer,
+  `prompts/recordings/<prompt>/<name>.json` with `answer` (plain values
+  as placeholders) and `version`, `recorded("<name>")` in a test's
+  `fakes:`, every recording decoded by `jadpo test` as a `recording`
+  test (`test.recording_undecodable`), and one made from an older prompt
+  an alert on the report and in `data.alerts`. Tests in `ai_embed.rs`
+  (the checker's, and the CLI's: the fake, `jadpo dev` against an
+  OpenAI-compatible server started in the test, and the support desk end
+  to end in PostgreSQL: embed, nearest query, typed answer from a
+  recording). Choices in area 21's "Chosen in chunk 5.5v4".
+- [ ] **5.5v4b `jadpo ai record`** `opus · high` (area 21, "Tests"), after
+  5.5v4 (split from 5.5v4 on 2026-10-20): `jadpo ai record <prompt> --as
+  <name>`, designed with the CLI design language first, asking the
+  configured model with the prompt values of the last `jadpo dev` call or
+  a fixture, and keeping the answer as 5.5v4's recording (plain values as
+  placeholders, the prompt's version), refused for a live connection; the
+  stale recording's alert then naming it as the next step. Tested only
+  against an OpenAI-compatible server started in the test. Done when a
+  recording made by `jadpo ai record` answers a test through
+  `recorded(...)`.
 - [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
   21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
   per-day and per-caller limits counted in the main store, the cost
@@ -1593,7 +1618,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
-  after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
+  after 5.5v3b, 5.5v4b and 5.5v6: two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
   <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
 - [ ] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks

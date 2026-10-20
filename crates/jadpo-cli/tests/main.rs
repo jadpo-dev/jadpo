@@ -8,6 +8,7 @@ mod accept_language;
 mod across;
 mod aggregates;
 mod ai;
+mod ai_embed;
 mod ai_generate;
 mod ai_steps;
 mod backfills;
