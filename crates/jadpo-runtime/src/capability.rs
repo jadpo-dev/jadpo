@@ -691,8 +691,8 @@ mod tests {
         assert_eq!(fake.sent().len(), 1);
     }
 
-    /// An action that makes a call before its first read or write: then
-    /// one after it, by which time its transaction is open.
+    /// An action that makes a call before its first write: then one after
+    /// it, by which time its transaction is open.
     struct Calls {
         before: Option<Result<Value, Unanswered>>,
         after: Option<Result<Value, Unanswered>>,
@@ -717,7 +717,7 @@ mod tests {
 
     /// No call goes out while the action's transaction is open (area 6,
     /// "Outside calls hold no transaction"): one made after the action's
-    /// first read or write is refused with a fault naming it, and never
+    /// first write is refused with a fault naming it, and never
     /// reaches the driver; one made before goes out.
     #[test]
     fn a_call_inside_an_open_transaction_is_refused_before_it_goes_out() {
@@ -749,6 +749,49 @@ mod tests {
             FaultKind::CallInTransaction("mail.send".into()).classification(),
             "call_in_transaction"
         );
+    }
+
+    /// An action that reads, then makes a call: what it read is a
+    /// snapshot, closed before the call goes out (area 6, "Outside calls
+    /// hold no transaction"; chunk 7.4).
+    struct ReadsThenCalls {
+        called: Option<Result<Value, Unanswered>>,
+        open_after: bool,
+    }
+
+    impl<'p> ActionBody<'p> for ReadsThenCalls {
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                if ctx.read_transaction("main").await.is_err() {
+                    return Outcome::Value(Value::Unit);
+                }
+                self.called = Some(call(ctx, send("ada", Repeat::Unkeyed)).await);
+                self.open_after = ctx.transaction_open();
+                Outcome::Value(Value::Unit)
+            })
+        }
+
+        fn isolation(&self) -> Isolation {
+            Isolation::RepeatableRead
+        }
+    }
+
+    /// A call after the action has only read goes out, its snapshot
+    /// closed first, and no transaction is open when it is answered.
+    #[test]
+    fn a_call_after_only_reads_closes_the_snapshot_and_goes_out() {
+        let (fake, host) = mail();
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, env());
+        let mut body = ReadsThenCalls {
+            called: None,
+            open_after: true,
+        };
+        let outcome = crate::block_on(crate::action(&mut ctx, &mut body)).expect("nothing waits");
+        assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
+        assert_eq!(body.called, Some(Ok(Value::text("receipt-1"))));
+        assert!(!body.open_after, "the snapshot closed before the call");
+        assert_eq!(fake.sent().len(), 1);
     }
 
     /// A call whose run is dropped while it is out stays logged as in

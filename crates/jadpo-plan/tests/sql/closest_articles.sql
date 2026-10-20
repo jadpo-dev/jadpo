@@ -18,3 +18,7 @@ ORDER BY "jadpo_distance", "id"
 -- $3: literal Float8(4603579539098121011) as Float8
 -- columns: text, uuid, distance
 -- record Nearest: item = (ArticleExcerpt: title = column 0), distance = column 2
+-- row versions of help_article, by the id in column 1:
+--   SELECT "id", "xmin"::text
+--   FROM "help_article"
+--   WHERE "id" = ANY($1)

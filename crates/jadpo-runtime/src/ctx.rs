@@ -715,9 +715,10 @@ impl<'p> Ctx<'p> {
         self.boundary.is_some()
     }
 
-    /// Whether the running action's transaction is open: it has read or
-    /// written since its boundary opened. No outside call goes out then
-    /// (area 6, "Outside calls hold no transaction"; chunk 7.0c).
+    /// Whether the running action has a transaction open: it has read or
+    /// written since its boundary opened, or since an outside call closed
+    /// what it had only read. No outside call goes out then (area 6,
+    /// "Outside calls hold no transaction"; chunks 7.0c and 7.4).
     pub fn transaction_open(&self) -> bool {
         self.boundary
             .as_ref()
@@ -820,7 +821,67 @@ impl<'p> Ctx<'p> {
                 "a store operation outside an action".into(),
             ));
         };
-        boundary.transaction(&self.capabilities, store).await
+        boundary.transaction(&self.capabilities, store, true).await
+    }
+
+    /// [`Ctx::transaction`], for a statement that only reads: while the
+    /// action has only read, its transaction is a snapshot, which an
+    /// outside call closes before it goes out (area 6, "Outside calls
+    /// hold no transaction"; chunk 7.4).
+    pub async fn read_transaction(
+        &mut self,
+        store: &str,
+    ) -> Result<&mut dyn Transaction, StoreError> {
+        let Some(boundary) = &mut self.boundary else {
+            return Err(StoreError::Fault(
+                "a store operation outside an action".into(),
+            ));
+        };
+        boundary.transaction(&self.capabilities, store, false).await
+    }
+
+    /// Keeps `ids`, rows a read just loaded, while the running action has
+    /// only read, for the versions an outside call reads before it closes
+    /// the snapshot (chunk 7.4).
+    pub(crate) fn loaded(&mut self, versions: &jadpo_std::read::RowVersions, ids: Vec<SqlValue>) {
+        if let Some(boundary) = &mut self.boundary {
+            boundary.loaded(versions, ids);
+        }
+    }
+
+    /// Closes the running action's transaction when it has only read,
+    /// once the versions of the rows it loaded are read: what an outside
+    /// call does before it goes out, so no transaction is open while it is
+    /// out (area 6, "Outside calls hold no transaction"; chunk 7.4). A
+    /// transaction that has written stays open.
+    pub async fn close_snapshot(&mut self) -> Result<(), StoreError> {
+        match &mut self.boundary {
+            Some(boundary) => boundary.close_snapshot().await,
+            None => Ok(()),
+        }
+    }
+
+    /// Whether the running action loaded rows in a snapshot an outside
+    /// call closed (chunk 7.4).
+    pub(crate) fn loaded_before_call(&self) -> bool {
+        self.boundary
+            .as_ref()
+            .is_some_and(Boundary::loaded_before_call)
+    }
+
+    /// Holds the row `row` names, `id`, to the version a snapshot an
+    /// outside call closed loaded it at, before a write to it in `store`
+    /// (chunk 7.4): `ConcurrentChange` when it changed or went since.
+    pub(crate) async fn check_row(
+        &mut self,
+        store: &str,
+        row: &jadpo_std::write::RowCheck,
+        id: SqlValue,
+    ) -> Result<(), StoreError> {
+        let Some(boundary) = &mut self.boundary else {
+            return Ok(());
+        };
+        boundary.check(&self.capabilities, store, row, id).await
     }
 
     /// A new identity: a version 7 UUID (area 5), its first 48 bits the

@@ -489,6 +489,25 @@ pub struct Select {
     pub held: Vec<Option<FieldRules>>,
     pub record: Record,
     pub includes: Vec<IncludeRead>,
+    /// For a statement that reads an entity's `id`: how the rows it loads
+    /// are checked unchanged when a write follows an outside call (area 6,
+    /// "Outside calls hold no transaction"; chunk 7.4).
+    pub versions: Option<RowVersions>,
+}
+
+/// What a read keeps of the rows it loads while its action's transaction
+/// has only read, which an outside call closes as a snapshot (area 6,
+/// "Outside calls hold no transaction"; chunk 7.4): their entity's table,
+/// the column holding each row's `id`, and the statement reading their
+/// row versions in that snapshot before it closes, which a write after the
+/// call compares with ([`crate::write::RowCheck`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RowVersions {
+    pub table: String,
+    /// The column of the read's statement holding each row's `id`.
+    pub id: u32,
+    /// `SELECT "id", "xmin"::text FROM <table> WHERE "id" = ANY($1)`.
+    pub sql: String,
 }
 
 /// How many records an include gives each record it is included in.

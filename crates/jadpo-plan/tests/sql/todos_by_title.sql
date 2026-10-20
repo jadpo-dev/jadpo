@@ -14,3 +14,7 @@ LIMIT 21
 -- $5: cursor 2 as Uuid
 -- columns: uuid, text, enum TodoStatus, int
 -- record TodoView: id = column 0, title = column 1, status = column 2
+-- row versions of todo, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "todo"
+--   WHERE "id" = ANY($1)

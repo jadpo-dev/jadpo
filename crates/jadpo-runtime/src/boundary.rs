@@ -17,12 +17,20 @@
 //! fails, what it wrote and emitted is undone and the caller carries on,
 //! since the action is all-or-nothing whoever calls it (area 6).
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use jadpo_std::policy::Gate;
+use jadpo_std::read::RowVersions;
+use jadpo_std::write::RowCheck;
 
 use crate::ctx::{Capabilities, EmitRefused, Held, SessionEffect};
 use crate::{
-    Ctx, Event, Failure, Isolation, LocalFuture, Outcome, StoreError, Stored, Transaction,
+    Ctx, Event, Failure, Isolation, LocalFuture, Outcome, SqlType, SqlValue, StoreError, Stored,
+    Transaction,
 };
+
+/// A row by its entity's table and its `id`.
+type RowKey = (String, SqlValue);
 
 /// An action's boundary while its body runs: opened when the outermost
 /// action starts, joined by every action it calls (area 6). Only this
@@ -58,6 +66,24 @@ pub(crate) struct Boundary {
     /// Whether the body issued an API token or a service key, whose
     /// response is never kept for an idempotent repeat (area 8).
     issued: bool,
+    /// Whether its open transaction has run anything but reads. One that
+    /// has only read is a snapshot, which an outside call closes before
+    /// it goes out (area 6, "Outside calls hold no transaction"; chunk
+    /// 7.4); one that has written can't be closed, and a call is refused.
+    wrote: bool,
+    /// Counts the transactions it has begun and ended, so a savepoint
+    /// taken in one is never sought in another ([`Undo`]).
+    generation: u32,
+    /// The rows its open transaction loaded while it had only read, by
+    /// table: the statement reading their versions, and their ids.
+    loaded: BTreeMap<String, (String, Vec<SqlValue>)>,
+    /// The rows loaded in a snapshot an outside call closed, each with the
+    /// version it was loaded at (the first, when two snapshots loaded it):
+    /// what a write after the call holds it to.
+    versions: BTreeMap<RowKey, String>,
+    /// Of `versions`, the rows its open transaction checked and locked,
+    /// which stay as checked until it ends.
+    checked: BTreeSet<RowKey>,
 }
 
 impl Boundary {
@@ -73,32 +99,128 @@ impl Boundary {
     }
 
     /// Its transaction in `store`, begun at the first store operation at
-    /// its isolation level in the store `capabilities` give (area 6). An
-    /// action writes one store (area 5), so asking for a second is a
-    /// fault.
+    /// its isolation level in the store `capabilities` give (area 6), or
+    /// again after an outside call closed the last ([`Boundary::close_snapshot`]).
+    /// An action writes one store (area 5), so asking for a second is a
+    /// fault. `writes` when what runs in it may write: then an outside call
+    /// can't close it.
     pub(crate) async fn transaction(
         &mut self,
         capabilities: &Capabilities<'_>,
         store: &str,
+        writes: bool,
     ) -> Result<&mut dyn Transaction, StoreError> {
-        match &self.store {
-            Some(open) if open != store => {
-                return Err(StoreError::Fault(format!(
-                    "an action writes one store, and this one already uses `{open}`, not `{store}`"
-                )));
-            }
-            Some(_) => {}
-            None => {
-                let Some(database) = capabilities.database(store) else {
-                    return Err(StoreError::Fault(format!("no store called `{store}`")));
-                };
-                self.transaction = Some(database.begin_at(self.isolation).await?);
-                self.store = Some(store.to_string());
-            }
+        if let Some(open) = &self.store
+            && open != store
+        {
+            return Err(StoreError::Fault(format!(
+                "an action writes one store, and this one already uses `{open}`, not `{store}`"
+            )));
         }
+        if self.transaction.is_none() {
+            let Some(database) = capabilities.database(store) else {
+                return Err(StoreError::Fault(format!("no store called `{store}`")));
+            };
+            self.transaction = Some(database.begin_at(self.isolation).await?);
+            self.store = Some(store.to_string());
+            self.generation = self.generation.wrapping_add(1);
+            self.wrote = false;
+            self.loaded.clear();
+            self.checked.clear();
+        }
+        self.wrote |= writes;
         match &mut self.transaction {
             Some(transaction) => Ok(transaction.as_mut()),
             None => Err(StoreError::Fault("no transaction".into())),
+        }
+    }
+
+    /// Keeps `ids`, rows of `versions`' table its open transaction just
+    /// loaded, while it has only read: the rows whose versions an outside
+    /// call reads before it closes the transaction (chunk 7.4).
+    pub(crate) fn loaded(&mut self, versions: &RowVersions, ids: Vec<SqlValue>) {
+        if self.transaction.is_none() || self.wrote || ids.is_empty() {
+            return;
+        }
+        let (_, kept) = self
+            .loaded
+            .entry(versions.table.clone())
+            .or_insert_with(|| (versions.sql.clone(), Vec::new()));
+        kept.extend(ids);
+    }
+
+    /// Closes its open transaction when it has only read, before an
+    /// outside call goes out (area 6, "Outside calls hold no
+    /// transaction"; chunk 7.4): the snapshot reads the versions of the
+    /// rows it loaded, which a write after the call is held to, and rolls
+    /// back, having written nothing. A transaction that has written is
+    /// left open, and the call refused.
+    pub(crate) async fn close_snapshot(&mut self) -> Result<(), StoreError> {
+        if self.wrote {
+            return Ok(());
+        }
+        let Some(mut transaction) = self.transaction.take() else {
+            return Ok(());
+        };
+        self.generation = self.generation.wrapping_add(1);
+        let loaded = std::mem::take(&mut self.loaded);
+        for (table, (sql, mut ids)) in loaded {
+            ids.sort();
+            ids.dedup();
+            let rows = match transaction
+                .query(&sql, &[SqlValue::Array(SqlType::Uuid, ids)])
+                .await
+            {
+                Ok(rows) => rows,
+                Err(error) => {
+                    let _ = transaction.rollback().await;
+                    return Err(error);
+                }
+            };
+            for row in rows {
+                if let [id, SqlValue::Text(version)] = row.as_slice() {
+                    self.versions
+                        .entry((table.clone(), id.clone()))
+                        .or_insert_with(|| version.clone());
+                }
+            }
+        }
+        transaction.rollback().await
+    }
+
+    /// Whether it loaded rows in a snapshot an outside call closed.
+    pub(crate) fn loaded_before_call(&self) -> bool {
+        !self.versions.is_empty()
+    }
+
+    /// Holds the row `row` names, `id`, to the version a snapshot an
+    /// outside call closed loaded it at, before a write to it (chunk 7.4):
+    /// read and locked in its transaction in `store`, once in that
+    /// transaction. A row changed or gone since is a concurrent change.
+    pub(crate) async fn check(
+        &mut self,
+        capabilities: &Capabilities<'_>,
+        store: &str,
+        row: &RowCheck,
+        id: SqlValue,
+    ) -> Result<(), StoreError> {
+        let key = (row.table.clone(), id);
+        let Some(loaded) = self.versions.get(&key).cloned() else {
+            return Ok(());
+        };
+        if self.checked.contains(&key) {
+            return Ok(());
+        }
+        let transaction = self.transaction(capabilities, store, true).await?;
+        let rows = transaction
+            .query(&row.sql, std::slice::from_ref(&key.1))
+            .await?;
+        match rows.first().and_then(|found| found.first()) {
+            Some(SqlValue::Text(version)) if *version == loaded => {
+                self.checked.insert(key);
+                Ok(())
+            }
+            _ => Err(StoreError::ConcurrentChange),
         }
     }
 
@@ -534,6 +656,9 @@ async fn caught<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome
 /// same way ([`crate::runner::Batch`]).
 pub(crate) struct Undo {
     open: bool,
+    /// Which transaction was open: an outside call the call makes closes
+    /// a snapshot, and its savepoint with it (chunk 7.4).
+    generation: u32,
     emitted: usize,
     session: Option<SessionEffect>,
     issued: bool,
@@ -546,12 +671,14 @@ impl Undo {
         let undo = match ctx.boundary() {
             Some(boundary) => Undo {
                 open: boundary.transaction.is_some(),
+                generation: boundary.generation,
                 emitted: boundary.outbox.len(),
                 session: boundary.session.clone(),
                 issued: boundary.issued,
             },
             None => Undo {
                 open: false,
+                generation: 0,
                 emitted: 0,
                 session: None,
                 issued: false,
@@ -570,14 +697,23 @@ impl Undo {
     /// that faulted leaves nothing behind either (chunk 6.4).
     pub(crate) async fn settle(self, ctx: &mut Ctx<'_>, outcome: Outcome) -> Outcome {
         let failed = !matches!(outcome, Outcome::Value(_));
-        if self.open {
+        // An outside call the call made closed the snapshot its savepoint
+        // was taken in: whatever transaction is open now is the call's own
+        // (chunk 7.4).
+        let same = ctx
+            .boundary()
+            .is_some_and(|boundary| boundary.generation == self.generation);
+        if self.open && same {
             let mark = if failed { Mark::Return } else { Mark::Release };
             if let Some(Err(error)) = savepoint(ctx, mark).await {
                 return lost(ctx, error);
             }
         } else if failed && let Some(boundary) = ctx.boundary_mut() {
-            boundary.store = None;
+            if !self.open {
+                boundary.store = None;
+            }
             if let Some(transaction) = boundary.transaction.take() {
+                boundary.generation = boundary.generation.wrapping_add(1);
                 let _ = transaction.rollback().await;
             }
         }
@@ -626,16 +762,36 @@ mod tests {
     use jadpo_value::Value;
 
     use super::*;
-    use crate::{
-        Database, Env, Event, Fault, FaultKind, Host, Places, Row, SqlValue, Transaction, block_on,
-    };
+    use crate::{Database, Env, Event, Fault, FaultKind, Host, Places, Row, Transaction, block_on};
 
     /// A store that writes down what happens to it, and reports a
-    /// concurrent change at the first `changes` commits.
+    /// concurrent change at the first `changes` commits. Its one row,
+    /// [`ROW`], is at `version`: what [`VERSIONS`] reads and [`CHECK`]
+    /// finds, each written down too, as are savepoints once `savepoints`.
     #[derive(Default)]
     struct Log {
         lines: RefCell<Vec<String>>,
         changes: RefCell<u32>,
+        version: RefCell<String>,
+        savepoints: std::cell::Cell<bool>,
+    }
+
+    const ROW: [u8; 16] = [7; 16];
+
+    fn versions() -> RowVersions {
+        RowVersions {
+            table: "todo".into(),
+            id: 0,
+            sql: "VERSIONS".into(),
+        }
+    }
+
+    fn check() -> RowCheck {
+        RowCheck {
+            table: "todo".into(),
+            id: jadpo_std::write::WriteSource::Input(0),
+            sql: "CHECK".into(),
+        }
     }
 
     struct Tx(Rc<Log>);
@@ -643,10 +799,45 @@ mod tests {
     impl Transaction for Tx {
         fn query<'a>(
             &'a mut self,
-            _sql: &'a str,
+            sql: &'a str,
             _params: &'a [SqlValue],
         ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
-            Box::pin(async { Ok(Vec::new()) })
+            let log = Rc::clone(&self.0);
+            Box::pin(async move {
+                let version = SqlValue::Text(log.version.borrow().clone());
+                Ok(match sql {
+                    "VERSIONS" => {
+                        log.lines.borrow_mut().push("versions".into());
+                        vec![vec![SqlValue::Uuid(ROW), version]]
+                    }
+                    "CHECK" => {
+                        log.lines.borrow_mut().push("check".into());
+                        vec![vec![version]]
+                    }
+                    _ => Vec::new(),
+                })
+            })
+        }
+
+        fn savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+            if self.0.savepoints.get() {
+                self.0.lines.borrow_mut().push("savepoint".into());
+            }
+            Box::pin(async { Ok(()) })
+        }
+
+        fn release_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+            if self.0.savepoints.get() {
+                self.0.lines.borrow_mut().push("release".into());
+            }
+            Box::pin(async { Ok(()) })
+        }
+
+        fn rollback_to_savepoint(&mut self) -> LocalFuture<'_, Result<(), StoreError>> {
+            if self.0.savepoints.get() {
+                self.0.lines.borrow_mut().push("return".into());
+            }
+            Box::pin(async { Ok(()) })
         }
 
         fn execute<'a>(
@@ -853,7 +1044,7 @@ mod tests {
         }))
     }
 
-    fn run(host: &Recorded, body: &mut Write<'_>) -> Outcome {
+    fn run(host: &Recorded, body: &mut dyn for<'q> ActionBody<'q>) -> Outcome {
         let places = Places::new();
         let mut ctx = Ctx::new(&places, host, Env::default());
         let outcome = block_on(action(&mut ctx, body)).expect("nothing waits");
@@ -1066,6 +1257,158 @@ mod tests {
         };
         assert_eq!(ran(either.clone(), system), None);
         assert_eq!(ran(either, signed_in), None);
+    }
+
+    /// A body that reads a row, makes an outside call as the seam does
+    /// (closing what it has only read), then writes the row it loaded:
+    /// the first time, another request changes the row while the call is
+    /// out.
+    struct Called {
+        runs: u32,
+        changed_during_call: bool,
+        /// Whether a transaction was open while each call was out.
+        open_during_call: Vec<bool>,
+        /// The store's, whose row the other request changes.
+        log: Rc<Log>,
+    }
+
+    impl<'p> ActionBody<'p> for Called {
+        fn isolation(&self) -> Isolation {
+            Isolation::RepeatableRead
+        }
+
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                self.runs += 1;
+                if ctx.read_transaction("main").await.is_err() {
+                    return refused();
+                }
+                ctx.loaded(&versions(), vec![SqlValue::Uuid(ROW)]);
+                if ctx.close_snapshot().await.is_err() {
+                    return refused();
+                }
+                self.open_during_call.push(ctx.transaction_open());
+                if self.runs == 1 && self.changed_during_call {
+                    *self.log.version.borrow_mut() = "2".into();
+                }
+                match ctx.check_row("main", &check(), SqlValue::Uuid(ROW)).await {
+                    Ok(()) => {}
+                    Err(StoreError::ConcurrentChange) => {
+                        ctx.concurrent_change();
+                        return fault();
+                    }
+                    Err(_) => return refused(),
+                }
+                if ctx.transaction("main").await.is_err() {
+                    return refused();
+                }
+                ok()
+            })
+        }
+    }
+
+    /// No transaction is open while an outside call is out (area 6,
+    /// "Outside calls hold no transaction"; chunk 7.4): what the action
+    /// read is a snapshot, which reads its rows' versions and closes
+    /// before the call; the transaction after the call checks the row it
+    /// writes against the version loaded; and a change made while the call
+    /// was out runs the whole action again.
+    #[test]
+    fn reads_before_a_call_close_and_a_change_meanwhile_reruns_the_action() {
+        let host = Recorded::new(0);
+        *host.log.version.borrow_mut() = "1".into();
+        let mut body = Called {
+            runs: 0,
+            changed_during_call: false,
+            open_during_call: Vec::new(),
+            log: Rc::clone(&host.log),
+        };
+        assert_eq!(run(&host, &mut body), ok());
+        assert_eq!(body.open_during_call, [false]);
+        assert_eq!(
+            host.lines(),
+            ["begin", "versions", "rollback", "begin", "check", "commit"],
+            "a snapshot closed before the call, the write's transaction after it"
+        );
+
+        let host = Recorded::new(0);
+        *host.log.version.borrow_mut() = "1".into();
+        let mut body = Called {
+            runs: 0,
+            changed_during_call: true,
+            open_during_call: Vec::new(),
+            log: Rc::clone(&host.log),
+        };
+        assert_eq!(run(&host, &mut body), ok());
+        assert_eq!(body.runs, 2, "the change while the call was out reran it");
+        assert_eq!(body.open_during_call, [false, false]);
+        assert_eq!(
+            host.lines(),
+            [
+                "begin", "versions", "rollback", "begin", "check", "rollback", "begin", "versions",
+                "rollback", "begin", "check", "commit"
+            ]
+        );
+    }
+
+    /// A caller that read handles the failure of an action it calls that
+    /// made an outside call, then wrote and failed: the snapshot its
+    /// savepoint was in closed with the call, so the callee's transaction
+    /// is rolled back whole and the caller carries on.
+    #[test]
+    fn a_caught_call_that_closed_the_snapshot_rolls_its_own_transaction_back() {
+        struct Callee;
+        impl<'p> ActionBody<'p> for Callee {
+            fn isolation(&self) -> Isolation {
+                Isolation::RepeatableRead
+            }
+            fn caught(&self) -> bool {
+                true
+            }
+            fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+                Box::pin(async move {
+                    let _ = ctx.close_snapshot().await;
+                    let _ = ctx.transaction("main").await;
+                    refused()
+                })
+            }
+        }
+        struct Caller;
+        impl<'p> ActionBody<'p> for Caller {
+            fn isolation(&self) -> Isolation {
+                Isolation::RepeatableRead
+            }
+            fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+                Box::pin(async move {
+                    let _ = ctx.read_transaction("main").await;
+                    let outcome = action(ctx, &mut Callee).await;
+                    assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
+                    let _ = ctx.transaction("main").await;
+                    ok()
+                })
+            }
+        }
+        let host = Recorded::new(0);
+        host.log.savepoints.set(true);
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        assert_eq!(
+            block_on(action(&mut ctx, &mut Caller)).expect("nothing waits"),
+            ok()
+        );
+        assert_eq!(
+            host.lines(),
+            [
+                "begin",
+                "savepoint",
+                "rollback",
+                "begin",
+                "rollback",
+                "begin",
+                "commit"
+            ],
+            "the callee's transaction undone whole, never a savepoint it doesn't hold"
+        );
     }
 
     #[test]
