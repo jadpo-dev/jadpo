@@ -615,6 +615,15 @@ fn alert_text(alert: &Alert, now: i64) -> String {
                 )
             }
         }
+        AlertKind::ConnectionUnavailable {
+            connection,
+            since,
+            held,
+        } => format!(
+            "`{connection}` has been unavailable since {}: {} held",
+            clock(*since, now),
+            plural(*held, "delivery", "deliveries")
+        ),
     }
 }
 
@@ -2058,6 +2067,15 @@ pub(crate) fn dev_alert(alert: &Alert, now: i64) -> (String, Json) {
             since: at(*since),
             ever: *ever,
             every_ms: *every_ms,
+        },
+        AlertKind::ConnectionUnavailable {
+            connection,
+            since,
+            held,
+        } => AlertKind::ConnectionUnavailable {
+            connection: connection.clone(),
+            since: at(*since),
+            held: *held,
         },
     };
     let local = Alert {

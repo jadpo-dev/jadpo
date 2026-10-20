@@ -71,6 +71,7 @@
 
 pub mod batches;
 mod boundary;
+pub mod breaker;
 pub mod budget;
 pub mod call_log;
 pub mod capability;
