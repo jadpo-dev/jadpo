@@ -224,6 +224,14 @@ pub trait Capability {
         Vec::new()
     }
 
+    /// Whether it catches mail in place of sending it, so the message the
+    /// runtime rendered is handed to it whole, whatever connection it
+    /// stands in for, a mail package's included (area 13, "One fake per
+    /// capability"; chunk 7.3c).
+    fn catches_mail(&self) -> bool {
+        false
+    }
+
     /// Scripts the next answer to a call of `operation` through
     /// `connection` (area 13, `fakes:`; chunk 7.2d), scripted by the test
     /// at `from`: whether it takes scripts, as only a package's fake does.
@@ -430,6 +438,10 @@ impl Capability for Fake {
 
     fn source(&self) -> Source {
         Source::Fake
+    }
+
+    fn catches_mail(&self) -> bool {
+        true
     }
 
     /// Each message a `send` gave it.

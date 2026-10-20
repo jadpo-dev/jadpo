@@ -110,6 +110,9 @@ pub struct EmailFacts {
     pub fields: Vec<(String, Ty, Span)>,
     /// Its `File` fields, each an attachment.
     pub attachments: Vec<String>,
+    /// Each attachment with its `max_size:` in bytes, when it gives one,
+    /// and where it is written (chunk 7.3c).
+    pub attachment_sizes: Vec<(String, Option<u64>, Span)>,
 }
 
 impl EmailFacts {
@@ -299,6 +302,19 @@ fn literal_text(value: &ast::Expr) -> Option<String> {
     }
 }
 
+/// The connection `application { email: { connection: } }` names, as
+/// written, read from the syntax alone so that reading connections can
+/// ask it (chunk 7.3c).
+pub fn written_connection(db: &dyn Db, project: Project) -> Option<String> {
+    application(db, project)
+        .into_iter()
+        .filter(|(_, key, _)| name_text(key).as_deref() == Some("email"))
+        .flat_map(|(_, _, member)| tree::members(member.block()))
+        .find(|(key, _)| name_text(key).as_deref() == Some("connection"))
+        .and_then(|(_, member)| member.value())
+        .map(|value| tree::written(value.syntax()))
+}
+
 /// `application { email: display_name: }`.
 #[salsa::tracked(returns(ref))]
 pub fn settings(db: &dyn Db, project: Project) -> Settings {
@@ -352,8 +368,24 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                     let Some(value) = entry.value() else { continue };
                     if name == "connection" {
                         let written = tree::written(value.syntax());
+                        let package = connections.kind(&written) == Some(ConnectionKind::Package);
+                        let provides = package
+                            && crate::connections::package_connections(db, project)
+                                .connections
+                                .iter()
+                                .find(|known| known.name == written)
+                                .is_some_and(|known| {
+                                    let mappings = crate::mail::mappings(db, project);
+                                    mappings.of.contains_key(&known.folder)
+                                        || mappings.broken.contains(&known.folder)
+                                });
                         match connections.kind(&written) {
                             Some(ConnectionKind::Smtp) => out.connection = Some(written),
+                            // A mail package (chunk 7.3c): one whose
+                            // mapping doesn't read is reported there.
+                            Some(ConnectionKind::Package) if provides => {
+                                out.connection = Some(written);
+                            }
                             found => {
                                 let smtp: Vec<String> = connections
                                     .declared
@@ -363,7 +395,7 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                                     .collect();
                                 let what = match found {
                                     Some(ConnectionKind::Package) => format!(
-                                        "`{written}` is a package's connection, and a package that provides `email` comes in a later release"
+                                        "`{written}` is a connection to a package with no `provides/email.jadpo`"
                                     ),
                                     Some(_) => {
                                         format!("`{written}` is a connection that sends no email")
@@ -372,11 +404,11 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                                 };
                                 let reason = if smtp.is_empty() {
                                     format!(
-                                        "`email: {{ connection: }}` names a connection that provides `email`, one with `driver: Driver.smtp`; {what}, and `app.jadpo` declares none."
+                                        "`email: {{ connection: }}` names a connection that provides `email`: one with `driver: Driver.smtp`, or to a mail package that maps `send` in its `provides/email.jadpo`; {what}, and `app.jadpo` declares none with `driver: Driver.smtp`."
                                     )
                                 } else {
                                     format!(
-                                        "`email: {{ connection: }}` names a connection that provides `email`, one with `driver: Driver.smtp`; {what}. The application's are {}.",
+                                        "`email: {{ connection: }}` names a connection that provides `email`: one with `driver: Driver.smtp`, or to a mail package that maps `send` in its `provides/email.jadpo`; {what}. The application's with `driver: Driver.smtp` are {}.",
                                         crate::and_list(&smtp)
                                     )
                                 };
@@ -655,13 +687,41 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
                 (field.name.clone(), field.declared.clone(), span)
             })
             .collect();
-        let attachments = defs
+        let attachments: Vec<String> = defs
             .iter()
             .filter(|field| {
                 matches!(field.declared.strip_nullable(), Ty::Opaque(held, args)
                     if held == jadpo_std::files::FILE && args.is_empty())
             })
             .map(|field| field.name.clone())
+            .collect();
+        // Each attachment's `max_size:`, which a mail package's limit is
+        // checked against (chunk 7.3c); one that isn't a size counts as
+        // none.
+        let attachment_sizes: Vec<(String, Option<u64>, Span)> = attachments
+            .iter()
+            .map(|name: &String| {
+                let found = tree::members(decl.member_list())
+                    .into_iter()
+                    .find(|(field, _)| tree::name_text(field).as_deref() == Some(name.as_str()));
+                let span = fields
+                    .iter()
+                    .find(|(field, ..)| field == name)
+                    .map_or_else(|| name_span.clone(), |(_, _, span)| span.clone());
+                let size = found.and_then(|(_, member)| {
+                    let settings = match member.value() {
+                        Some(ast::Expr::RecordExpr(record)) => tree::members(record.member_list()),
+                        _ => Vec::new(),
+                    };
+                    settings
+                        .into_iter()
+                        .find(|(key, _)| tree::name_text(key).as_deref() == Some("max_size"))
+                        .and_then(|(_, setting)| setting.value())
+                        .and_then(|value| jadpo_std::files::size(&tree::written(value.syntax())))
+                        .filter(|bytes| *bytes > 0)
+                });
+                (name.clone(), size, span)
+            })
             .collect();
         let stem = format!("{}{}", folder_of(&symbol.path), to_snake(&symbol.name));
         let html = format!("{stem}.html");
@@ -713,6 +773,7 @@ pub fn analysis(db: &dyn Db, project: Project) -> Analysis {
             text,
             fields,
             attachments,
+            attachment_sizes,
         });
     }
     out.layout_html = exists(LAYOUT_HTML).then(|| LAYOUT_HTML.to_string());
@@ -876,6 +937,7 @@ pub fn email_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     }
     out.extend(unused_fields(db, project));
     out.extend(unused_partial_fields(db, project));
+    out.extend(crate::mail::attachment_problems(db, project));
     out.extend(include_cycles(db, project));
     out.extend(unsent(db, project));
     out

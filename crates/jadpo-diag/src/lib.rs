@@ -376,6 +376,8 @@ rules! {
         "03-logic.html#effect-function-persistence", "Function reads or writes stored data";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
+    EMAIL_ATTACHMENT_LIMIT: "email.attachment_limit", area 16, Error, Agent,
+        "16-built-in-services.html#email-attachment-limit", "Email's attachments may be larger than its mail package accepts";
     EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
         "16-built-in-services.html#email-connection-required", "Action emits an email but the application names no email connection";
     EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,

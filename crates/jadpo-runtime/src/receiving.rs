@@ -241,7 +241,7 @@ async fn retried(
 
 /// Runs nothing: a queue's package is called with no functions of its
 /// own (the checker keeps one with `decode:` out of a mapping).
-struct NoFunctions;
+pub(crate) struct NoFunctions;
 
 impl Functions for NoFunctions {
     fn function(

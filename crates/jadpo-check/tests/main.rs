@@ -54,6 +54,7 @@ mod locales;
 mod logic;
 mod lookup;
 mod magic_links;
+mod mail_packages;
 mod maths;
 mod money;
 mod named_collections;

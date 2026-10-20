@@ -12,7 +12,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::Key;
 use jadpo_std::email::{
     BuiltinEmail, EmailPlan, EmailsPlan, MAGIC_LINK_EMAIL, MAGIC_LINK_EMAIL_FIELDS,
-    MagicLinkEmailPlan, Sender, SmtpConnection, SmtpHost,
+    MagicLinkEmailPlan, MailInput, PackageEmail, Sender, SmtpConnection, SmtpHost,
 };
 use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
 use jadpo_std::translation::TranslationParam;
@@ -119,7 +119,25 @@ pub(crate) fn plan(
             })
         })
         .collect();
+    // A mail package's mapping (chunk 7.3c), each setting it reads by the
+    // number of the app's setting its connection gives.
+    let package = settings.connection.as_deref().and_then(|connection| {
+        let mapping = jadpo_check::mail::mapping_of(db, project, connection)?;
+        let given = &jadpo_check::connections::package_connections(db, project)
+            .connections
+            .iter()
+            .find(|known| known.name == connection)?
+            .settings;
+        Some(PackageEmail {
+            operation: mapping.operation.clone(),
+            input: mail_inputs(&mapping.input, given, setting)?,
+            receipt: mapping.receipt.clone(),
+            failures: mapping.failures.clone(),
+            attachments: mapping.attachments,
+        })
+    });
     let plan = EmailsPlan {
+        package,
         connection: settings.connection.clone(),
         from: settings.from.as_ref().and_then(|from| match from {
             jadpo_check::emails::Sender::Setting(name) => setting(name).map(Sender::Setting),
@@ -196,6 +214,45 @@ pub(crate) fn plan(
         })
         .collect();
     (plan, subscribers)
+}
+
+/// A mapping's input as the plan holds it: `settings.<name>` read from the
+/// app's setting the connection gives, or the value it writes.
+fn mail_inputs(
+    mapped: &[(String, jadpo_check::mail::Mapped)],
+    given: &[(String, jadpo_check::connections::Given)],
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> Option<Vec<(String, MailInput)>> {
+    use jadpo_check::connections::Given;
+    use jadpo_check::mail::Mapped;
+    mapped
+        .iter()
+        .map(|(name, value)| {
+            let input = match value {
+                Mapped::Message(part) => MailInput::Message(part.clone()),
+                Mapped::Item(part) => MailInput::Item(part.clone()),
+                Mapped::Text(text) => MailInput::Text(text.clone()),
+                Mapped::Int(n) => MailInput::Int(*n),
+                Mapped::Bool(flag) => MailInput::Bool(*flag),
+                Mapped::Object(fields) => MailInput::Object(mail_inputs(fields, given, setting)?),
+                Mapped::Each(fields) => MailInput::Each(mail_inputs(fields, given, setting)?),
+                Mapped::Setting(name) => {
+                    match given
+                        .iter()
+                        .find(|(known, _)| known == name)
+                        .map(|(_, g)| g)?
+                    {
+                        Given::Setting(config) => MailInput::Setting(setting(config)?),
+                        Given::Text(text) => MailInput::Text(text.clone()),
+                        Given::Int(n) => MailInput::Int(*n),
+                        Given::Bool(flag) => MailInput::Bool(*flag),
+                        Given::Other => return None,
+                    }
+                }
+            };
+            Some((name.clone(), input))
+        })
+        .collect()
 }
 
 /// The action `magic_link: { send: }` names, by its key, when it takes a

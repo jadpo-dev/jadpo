@@ -188,7 +188,17 @@ fn one<E: Executor>(
     // 13; chunk 7.2d): what the test's `fakes:` scripts, the generated
     // default otherwise.
     let fake = Rc::new(ProviderFake::new());
-    let connections = executor.provider_connections();
+    // The email connection's mail is caught whole, a mail package's
+    // included: the capability's fake stands in for every connection that
+    // fills it (area 13, "One fake per capability"; chunk 7.3c).
+    let mail = executor
+        .events()
+        .and_then(|events| events.plan.emails.connection.clone());
+    let connections: Vec<&str> = executor
+        .provider_connections()
+        .into_iter()
+        .filter(|connection| Some(*connection) != mail.as_deref())
+        .collect();
     // Only a test that calls an action, query or fixture, sends a request
     // through a route or runs a schedule can touch a store.
     if let (

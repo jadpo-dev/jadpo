@@ -1235,7 +1235,7 @@ fn folder_of(package: &str) -> String {
 
 /// The package declarations of a file that the first part of chunk 7.1
 /// doesn't run: a package's subscribers (chunk 7.6) and its capability
-/// mappings (chunk 7.3c). Its events are read since chunk 7.7, each a
+/// mappings but `receiving`'s (chunk 7.7c) and `email`'s (chunk 7.3c). Its events are read since chunk 7.7, each a
 /// webhook's event the app subscribes to, and its actions since chunk 7.6.
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
@@ -1247,6 +1247,10 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         Place::Folder(Folder::Subscribers) => "A package's subscribers",
         // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]).
         Place::Folder(Folder::Provides) if location.stem == "receiving" => return Vec::new(),
+        // `email`'s since chunk 7.3c ([`crate::mail`]).
+        Place::Folder(Folder::Provides) if location.stem == jadpo_std::email::NAMESPACE => {
+            return Vec::new();
+        }
         Place::Folder(Folder::Provides) => "A package's capability mappings",
         _ => return Vec::new(),
     };

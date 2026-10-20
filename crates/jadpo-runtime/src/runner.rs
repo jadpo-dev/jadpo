@@ -649,13 +649,39 @@ pub(crate) async fn attempt_delivery(
                         ctx.set_resumable(None);
                         return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                     }
-                    let call = Call::new(
-                        connection.clone(),
-                        jadpo_std::email::SEND,
-                        message,
-                        Repeat::Unkeyed,
-                    );
-                    send(ctx, call, budget, within).await
+                    // A mail package's operation, as its mapping builds
+                    // its input (chunk 7.3c), unless the host catches the
+                    // mail in its place, as a test's does.
+                    let caught = ctx
+                        .host()
+                        .capability(connection)
+                        .is_some_and(|driver| driver.catches_mail());
+                    match (&emails.package, caught) {
+                        (Some(package), false) => {
+                            let sending = crate::email::send_package(
+                                executor, ctx, connection, package, &message,
+                            );
+                            match within {
+                                Some(stop) => match race(sending, stop).await {
+                                    First::Left(outcome) => Ok(outcome),
+                                    First::Right(()) => Err(Cut::ShuttingDown),
+                                },
+                                None => match race(sending, budget.cut()).await {
+                                    First::Left(outcome) => Ok(outcome),
+                                    First::Right(cut) => Err(cut),
+                                },
+                            }
+                        }
+                        _ => {
+                            let call = Call::new(
+                                connection.clone(),
+                                jadpo_std::email::SEND,
+                                message,
+                                Repeat::Unkeyed,
+                            );
+                            send(ctx, call, budget, within).await
+                        }
+                    }
                 }
             }
         }

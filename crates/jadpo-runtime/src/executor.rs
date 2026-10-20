@@ -109,6 +109,13 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// What a provider call runs with outside an action's site: an email
+    /// sent through a mail package (area 16; chunk 7.3c). `None` for a
+    /// program with no provider packages.
+    fn package_calls(&self) -> Option<crate::provider::Providers<'_>> {
+        None
+    }
+
     /// Reads the recording at `file` of one of the app's own integrations
     /// as its operation's output, through the package's own decoders run
     /// at `ctx` (area 11, "Provenance and confirmation"; chunk 7.2d2):
