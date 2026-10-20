@@ -400,20 +400,32 @@ pub enum SignatureScheme {
     /// No signature: HTTP basic authentication with the secret as
     /// `user:password` (Postmark).
     Basic,
+    /// Twilio's `X-Twilio-Signature`: the Base64 of the HMAC-SHA1, under
+    /// the account's auth token, of the URL it requested followed by each
+    /// form member's name and value, sorted by name (chunk 7.7b). The body
+    /// is a form; no time is signed.
+    Twilio,
+    /// Slack's `X-Slack-Signature: v0=<hex>`: HMAC-SHA-256 of
+    /// `v0:<X-Slack-Request-Timestamp>:<body>` under the signing secret
+    /// (chunk 7.7b).
+    Slack,
+    /// AWS SNS: the message's own `Signature`, RSA over its listed members
+    /// with SHA-1 (`SignatureVersion` 1) or SHA-256 (2), by the
+    /// certificate at its `SigningCertURL` on one of AWS's SNS hosts,
+    /// fetched by the runtime; the secret is the topic's ARN, which the
+    /// message must come from (chunk 7.7b).
+    Sns,
 }
 
 impl SignatureScheme {
-    /// The schemes built so far, by their names after `SignatureScheme.`;
-    /// `twilio` and `sns` wait for chunk 7.7b.
-    pub const BUILT: [&'static str; 4] = ["stripe", "standard_webhooks", "hmac_sha256", "basic"];
-
-    /// Every scheme the language names, built or not.
-    pub const NAMED: [&'static str; 6] = [
+    /// Every scheme, by its name after `SignatureScheme.`.
+    pub const BUILT: [&'static str; 7] = [
         "stripe",
         "standard_webhooks",
         "hmac_sha256",
         "basic",
         "twilio",
+        "slack",
         "sns",
     ];
 
@@ -426,8 +438,57 @@ impl SignatureScheme {
                 header: header?.to_string(),
             },
             "basic" => SignatureScheme::Basic,
+            "twilio" => SignatureScheme::Twilio,
+            "slack" => SignatureScheme::Slack,
+            "sns" => SignatureScheme::Sns,
             _ => return None,
         })
+    }
+
+    /// Whether its webhooks' bodies are forms rather than JSON: Twilio's.
+    pub fn form_body(&self) -> bool {
+        matches!(self, SignatureScheme::Twilio)
+    }
+}
+
+/// How a provider checks an address before it sends to it (area 11,
+/// "Handshakes"; chunk 7.7b): built-in rules the runtime answers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum WebhookHandshake {
+    /// AWS SNS's `SubscriptionConfirmation`: signed as every SNS message
+    /// is, from the connection's topic, and confirmed by visiting its
+    /// `SubscribeURL` on AWS's SNS host.
+    Sns,
+    /// Slack's `url_verification`: signed, and answered with its
+    /// `challenge`.
+    Slack,
+    /// Microsoft Graph's validation: a `POST` with `validationToken` in
+    /// its query, unsigned, answered with the token as plain text.
+    MicrosoftGraph,
+}
+
+impl WebhookHandshake {
+    /// Every handshake, by its name after `WebhookHandshake.`.
+    pub const NAMED: [&'static str; 3] = ["sns", "slack", "microsoft_graph"];
+
+    pub fn from_name(name: &str) -> Option<WebhookHandshake> {
+        Some(match name {
+            "sns" => WebhookHandshake::Sns,
+            "slack" => WebhookHandshake::Slack,
+            "microsoft_graph" => WebhookHandshake::MicrosoftGraph,
+            _ => return None,
+        })
+    }
+
+    /// The scheme its provider signs with, when it needs one: SNS's
+    /// confirmation is signed as its messages are, Slack's challenge as
+    /// its events are.
+    pub fn scheme(self) -> Option<&'static str> {
+        match self {
+            WebhookHandshake::Sns => Some("sns"),
+            WebhookHandshake::Slack => Some("slack"),
+            WebhookHandshake::MicrosoftGraph => None,
+        }
     }
 }
 
@@ -442,6 +503,9 @@ pub struct WebhookPlan {
     /// prefix, then the connection's name.
     pub segments: Vec<String>,
     pub scheme: SignatureScheme,
+    /// The check its provider makes of the address first, if any (chunk
+    /// 7.7b).
+    pub handshake: Option<WebhookHandshake>,
     /// The number of the secret setting the signature is checked with.
     pub secret: u32,
     /// Where the provider's event id, its event type and the time the
@@ -466,6 +530,22 @@ pub struct WebhookEvent {
     pub key: String,
     /// Its number in the plan's JSON table: the body is read with its
     /// codec, and its payload kept with it.
+    pub number: u32,
+    /// The answer it waits for, when its package names a `reply:` (chunk
+    /// 7.7b): the event isn't kept in the outbox, its answering action
+    /// runs inside the request instead.
+    pub reply: Option<WebhookReply>,
+}
+
+/// How a webhook that needs a reply is answered (area 11, "Webhooks that
+/// need a reply"; chunk 7.7b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WebhookReply {
+    /// The identity key of the app's action the connection's `replies:`
+    /// names, which takes the event and returns the reply.
+    pub action: String,
+    /// The reply type's number in the plan's JSON table, which the package
+    /// encodes the reply with.
     pub number: u32,
 }
 

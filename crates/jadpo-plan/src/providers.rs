@@ -11,7 +11,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan,
-    PathPart, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan,
+    PathPart, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan, WebhookReply,
 };
 use jadpo_std::subscriber::Repeat;
 
@@ -144,6 +144,7 @@ pub(crate) fn plan(
             connection: route.connection.clone(),
             segments: route.segments.clone(),
             scheme,
+            handshake: route.handshake(),
             secret,
             event_id: route.event_id.clone(),
             event_type: route.event_type.clone(),
@@ -156,6 +157,14 @@ pub(crate) fn plan(
                     wire_name: event.wire_name.clone(),
                     key: event.key.as_str().to_string(),
                     number: number(TypeRef::Node(event.key.clone())),
+                    // Answered by the app's action, its reply encoded with
+                    // the package's type (chunk 7.7b).
+                    reply: event.reply.as_ref().and_then(|(reply, _, _)| {
+                        Some(WebhookReply {
+                            action: route.answering(&event.key)?.as_str().to_string(),
+                            number: number(TypeRef::Node(reply.clone())),
+                        })
+                    }),
                 })
                 .collect(),
         });

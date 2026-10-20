@@ -76,8 +76,8 @@ pub const HOST_KEYS: [&str; 2] = ["live", "sandbox"];
 
 /// The keys of `webhooks:` (area 11, "Receiving from outside"; chunk
 /// 7.7): how the provider signs them, the header one scheme reads, and
-/// where each event's id, type and time are in the body; `handshake:`
-/// waits for chunk 7.7b.
+/// where each event's id, type and time are in the body; and
+/// `handshake:`, how the provider checks an address first (chunk 7.7b).
 pub const WEBHOOK_KEYS: [&str; 6] = [
     "check",
     "header",
@@ -683,7 +683,8 @@ fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diag
 /// `webhooks:` (chunk 7.7): `check:` one of the built-in signature
 /// schemes, `header:` for the one that reads a header the provider names
 /// and only for it, `event_id:` and `event_type:` given, and each place in
-/// the body a dotted path.
+/// the body a dotted path; `handshake:` one of the built-in handshakes,
+/// signed as its provider's scheme signs it (chunk 7.7b).
 fn webhooks(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
     use jadpo_std::provider::SignatureScheme;
     let span = node_span(path, member.syntax());
@@ -735,17 +736,6 @@ fn webhooks(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
             let name = written.strip_prefix("SignatureScheme.").unwrap_or_default();
             if SignatureScheme::BUILT.contains(&name) {
                 Some(name.to_string())
-            } else if SignatureScheme::NAMED.contains(&name) {
-                out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("`SignatureScheme.{name}` isn't built yet"),
-                    )
-                    .at(value_span(inner), "declared, not built")
-                    .reason("The language names this signature scheme, but this compiler can't check it yet.")
-                    .next(format!("Use one of {} for now", crate::and_list(&schemes))),
-                );
-                None
             } else {
                 out.push(
                     Diagnostic::new(
@@ -837,12 +827,51 @@ fn webhooks(path: &str, member: &ast::Member, out: &mut Vec<Diagnostic>) {
         }
     }
     if let Some(inner) = find("handshake") {
-        out.push(
-            Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Webhook handshakes aren't built yet")
-                .at(value_span(inner), "declared, not built")
-                .reason("The language answers a provider's check of a webhook address with built-in rules, but this compiler can't run them yet.")
-                .next("Do without `handshake:` for now"),
-        );
+        use jadpo_std::provider::WebhookHandshake;
+        let written = inner
+            .value()
+            .map(|value| tree::written(value.syntax()))
+            .unwrap_or_default();
+        let name = written
+            .strip_prefix("WebhookHandshake.")
+            .unwrap_or_default();
+        let handshakes: Vec<String> = WebhookHandshake::NAMED
+            .iter()
+            .map(|name| format!("`WebhookHandshake.{name}`"))
+            .collect();
+        match WebhookHandshake::from_name(name) {
+            None => out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_PROVIDER_INVALID,
+                    format!("`{written}` isn't a webhook handshake"),
+                )
+                .at(value_span(inner), "not a handshake")
+                .reason(format!(
+                    "`handshake:` names how the provider checks an address before sending to it, one of the built-in rules the runtime answers: {}.",
+                    crate::or_list(&handshakes)
+                ))
+                .next("Name the provider's handshake, such as `WebhookHandshake.slack`"),
+            ),
+            // SNS's confirmation and Slack's challenge are signed as their
+            // provider's events are, and checked before they are answered.
+            Some(handshake) => {
+                if let (Some(needed), Some(scheme)) = (handshake.scheme(), scheme.as_deref())
+                    && needed != scheme
+                {
+                    out.push(
+                        Diagnostic::new(
+                            &rule::PACKAGE_PROVIDER_INVALID,
+                            format!("`WebhookHandshake.{name}` needs `SignatureScheme.{needed}`"),
+                        )
+                        .at(value_span(inner), "signed otherwise")
+                        .reason(format!(
+                            "The provider signs its handshake as it signs its webhooks, with `SignatureScheme.{needed}`, and the runtime checks that signature before it answers."
+                        ))
+                        .next(format!("Write `check: SignatureScheme.{needed}`")),
+                    );
+                }
+            }
+        }
     }
 }
 

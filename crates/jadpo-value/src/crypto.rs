@@ -341,6 +341,19 @@ pub fn signed_by(key: &[u8], parts: &[&[u8]], mac: &[u8]) -> bool {
     check.verify_slice(mac).is_ok()
 }
 
+/// Whether `mac` is the HMAC-SHA1 of `parts`, one after another, under
+/// `key`, compared in constant time: Twilio's webhook signature (area 11,
+/// "Receiving from outside"; chunk 7.7b), which still signs with SHA-1.
+pub fn signed_by_sha1(key: &[u8], parts: &[&[u8]], mac: &[u8]) -> bool {
+    let Ok(mut check) = <Hmac<sha1::Sha1> as KeyInit>::new_from_slice(key) else {
+        return false;
+    };
+    for part in parts {
+        check.update(part);
+    }
+    check.verify_slice(mac).is_ok()
+}
+
 /// Whether `given` and `expected` are the same bytes, compared in constant
 /// time for their length: a webhook's basic credential against the
 /// secret (chunk 7.7).

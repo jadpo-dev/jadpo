@@ -2060,7 +2060,8 @@ outbox and delivered to subscribers like any event, with the same retries.
   delivery may be out of order, which the app handles by ignoring an event
   older than what it stored (a recipe shows it). A webhook that needs a
   reply runs the connection's named action inside the request instead
-  (area 11).
+  (area 11; built in chunk 7.7b, the event never kept in the outbox and
+  its reply kept with its id for a repeat).
   Built in chunk 7.7 (area 11, "Chosen in chunk 7.7"): the event's id
   recorded in `jadpo_received_events` and its outbox row and deliveries
   written in one transaction in `events: { store: }` or the only store

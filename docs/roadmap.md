@@ -1353,13 +1353,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   transaction, a repeat answered and dropped, and the ids deleted by the
   tick after 30 days. Live tests in `webhooks.rs`. Choices in area 11's
   "Chosen in chunk 7.7".
-- [ ] **7.7b Webhook replies and handshakes** `opus · high`, after 7.7:
-  `reply:` on a package's event and the connection's `webhooks: {
-  replies: }`, the answering action run inside the request after the
-  signature check, a repeat given the stored reply; `handshake:`
-  (`WebhookHandshake.sns`, `.slack`, `.microsoft_graph`); and Twilio's
-  HMAC-SHA1 over a form body and SNS's certificates, which fetch the
-  signing certificate from AWS through an outbound guard.
+- [x] **7.7b Webhook replies and handshakes** `opus · high`, after 7.7.
+  Built: `reply:` on a package's event (an object of its own `types/`)
+  and the connection's `webhooks: { replies: }`, the answering action run
+  as the system inside the request after the signature check, its reply
+  kept with the event's id in `jadpo_received_events` so a repeat gets it,
+  and the event never kept for subscribers; `handshake:`
+  (`WebhookHandshake.sns`, `.slack`, `.microsoft_graph`); Twilio's
+  HMAC-SHA1 over a form body, Slack's scheme (`SignatureScheme.slack`),
+  and SNS's certificates, fetched only from AWS's SNS hosts through the
+  host's outbound guard (HTTPS, no redirect, no private address) and kept
+  a day, the connection's secret the topic's ARN. Live tests in
+  `webhook_replies.rs`, SNS's against a local certificate and server.
+  Choices in area 11's "Chosen in chunk 7.7b".
 - [ ] **7.7c Queues through `receiving`** `opus · high`, after 7.7: the
   `receiving` capability (`type_at:`, `id_at:`, `events:`, an app event's
   `wire_name:`), each message its event for the app's subscribers,

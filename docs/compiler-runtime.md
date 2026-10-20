@@ -2348,6 +2348,27 @@ and one read-committed transaction records the provider's id (`RECEIVE`,
 deletes ids received 30 days before (`OLD_RECEIVED`, the plan's
 `SchedulesPlan::received`). Live tests in `crates/jadpo-cli/tests/webhooks.rs`.
 
+**Webhook replies and handshakes** (chunk 7.7b; area 11, "Chosen in chunk
+7.7b"). `SignatureScheme` gains `twilio`, `slack` and `sns`, and
+`WebhookPlan` a `WebhookHandshake`; each `WebhookEvent` whose package
+event names a `reply:` carries a `WebhookReply`, the answering action's
+key (from `webhooks::WebhookModel::replies`, checked against the action's
+signature) and the reply type's number in the JSON table. The checker
+reads `reply:` as a setting of an `Event`, never a field
+(`types::shape::REPLY`). In the runtime, `webhooks::check` stays pure for
+every scheme but SNS's, whose `webhooks::sns::check` fetches the signing
+certificate through the host's `Outbound` (`Host::outbound`; natively
+`jadpo_host_native::fetch::Outward`: HTTPS only, public addresses only,
+no redirect) and keeps it per thread for a day, verified with
+`jadpo_value::certificate::rsa_signed`. `webhooks::handshake` answers
+Graph's validation before the signature, Slack's challenge and SNS's
+confirmation after it, and `webhooks::replies::answer` claims the id in
+`jadpo_received_events` (its `reply` column), runs the action as the
+system and keeps its reply. A test reaches a server on its own machine in
+AWS's place through `Outward::reaching`, built only with
+`jadpo-host-native`'s `test-outbound` feature, given to the harness with
+`Harness::outbound`.
+
 **Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
 6.4b"; area 12, "How a file's run is kept"). The `files` capability's
 first part is on the seam: `jadpo_runtime::files` sends a store's `put`

@@ -605,6 +605,29 @@ impl Reader<'_> {
             }
         };
         let key = crate::graph::declaration_key(self.lookup, &event)?;
+        // A webhook's event that needs a reply is answered by the action
+        // its connection names, inside the request, and never kept for a
+        // subscriber (area 11, "Webhooks that need a reply"; chunk 7.7b).
+        let answered = crate::webhooks::package_events(self.db, self.project)
+            .of
+            .values()
+            .flatten()
+            .any(|webhook| webhook.key == key && webhook.reply.is_some());
+        if answered {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SUBSCRIBER_EVENT_INVALID,
+                    format!(
+                        "`{}` is answered in the provider's request",
+                        tree::written(value.syntax())
+                    ),
+                )
+                .at(self.span(&value), "needs a reply")
+                .reason("A webhook event that names a `reply:` is answered inside the provider's request by the action its connection's `webhooks: { replies: }` names, and isn't kept in the outbox, so no subscriber receives it.")
+                .next("Do the work in the action `replies:` names, or emit an event of the app's own from it for subscribers"),
+            );
+            return None;
+        }
         Some((event, key))
     }
 

@@ -200,13 +200,16 @@ pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
 /// webhook's provider event id, under `webhook <connection>`, so a repeat
 /// is dropped. Committed with the event's outbox row, in the store webhook
 /// events are kept in, and deleted by the tick once a provider no longer
-/// sends it again.
+/// sends it again. A webhook that needs a reply keeps the reply its
+/// action gave, so a repeat is answered with it (chunk 7.7b): none while
+/// the action runs.
 pub const RECEIVED_EVENTS: SystemTable = SystemTable {
     table: "jadpo_received_events",
     columns: &[
         column("source", "text", false),
         column("event_id", "text", false),
         column("received_at", "timestamptz(3)", false),
+        column("reply", "text", true),
     ],
     primary_key: &["source", "event_id"],
     unique: &[],
