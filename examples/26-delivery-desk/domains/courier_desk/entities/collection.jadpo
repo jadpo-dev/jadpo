@@ -1,0 +1,17 @@
+use shared/providers/swift_couriers
+
+/// Parcels the courier collected from the desk.
+entity Collection {
+    id: Uuid
+    pickup_id: SwiftCouriers.PickupId
+    driver_name: SwiftCouriers.DriverName
+    parcel_count: Int {
+        min: 1
+    }
+    collected_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}

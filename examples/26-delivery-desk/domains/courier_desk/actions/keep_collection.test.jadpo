@@ -1,0 +1,14 @@
+use courier_desk/entities { Collection }
+use shared/providers/swift_couriers
+
+test "a collection the courier announces is kept" {
+    var kept: Collection = keep_collection(
+        SwiftCouriers.ParcelsCollected {
+            pickup_id: "swift-4471"
+            driver_name: "Ade"
+            parcel_count: 3
+            collected_at: "2026-10-21T09:12:00Z"
+        }
+    )
+    assert kept.parcel_count == 3
+}

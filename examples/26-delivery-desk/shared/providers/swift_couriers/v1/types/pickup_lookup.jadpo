@@ -1,0 +1,4 @@
+/// Which pickup to look up.
+type PickupLookup = Object {
+    id: PickupId
+}

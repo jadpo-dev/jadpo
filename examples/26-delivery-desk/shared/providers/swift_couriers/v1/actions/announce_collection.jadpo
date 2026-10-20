@@ -1,0 +1,18 @@
+// An action without `public` is the package's own: only its subscribers
+// run it, so it may emit the package's events. It calls its own API to say
+// more than the webhook did, and never touches the app's data.
+
+/// Looks up a collected pickup and announces what was collected.
+action announce_collection(event: PickupCollected) -> Unit {
+    var collected: CollectedPickup = collections.retrieve(
+        PickupLookup {
+            id: event.pickup_id
+        }
+    )
+    emit ParcelsCollected {
+        pickup_id: collected.id
+        driver_name: collected.driver_name
+        parcel_count: collected.parcel_count
+        collected_at: event.occurred_at
+    }
+}

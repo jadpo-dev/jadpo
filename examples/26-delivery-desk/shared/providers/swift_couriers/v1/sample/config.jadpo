@@ -1,0 +1,8 @@
+config {
+    /// Swift's API key.
+    couriers_api_key: Text {
+        secret: true
+    }
+    /// Swift's sandbox or its live API.
+    couriers_environment: ProviderEnvironment
+}

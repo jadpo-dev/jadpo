@@ -9,4 +9,8 @@ config {
     couriers_environment: ProviderEnvironment {
         default: ProviderEnvironment.sandbox
     }
+    /// The secret Swift Couriers signs its webhooks with.
+    couriers_webhook_secret: Text {
+        secret: true
+    }
 }

@@ -1,0 +1,12 @@
+// A resource without `public` is the package's own: its actions call it,
+// and the app can't.
+resource collections {
+    retrieve: {
+        method: HttpMethod.get
+        path: "/v1/pickups/{id}/collection"
+        input: PickupLookup
+        output: CollectedPickup
+        source: PackageSource.written
+        docs: "https://docs.swift-couriers.example/collections"
+    }
+}

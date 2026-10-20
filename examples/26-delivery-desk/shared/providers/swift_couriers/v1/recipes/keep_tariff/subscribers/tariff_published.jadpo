@@ -1,0 +1,10 @@
+// Subscribing to a poll's event is what starts the poll.
+
+use deliveries/actions { keep_tariff }
+use shared/providers/swift_couriers
+
+/// Keeps each change to Swift's prices.
+subscriber tariff_published {
+    on: SwiftCouriers.TariffPublished
+    run: keep_tariff(event)
+}

@@ -1,0 +1,16 @@
+// Copied from Swift's recipe with `jadpo package recipe swift_couriers
+// keep_tariff --into courier_desk`, then fitted: its `use` lines named the
+// recipe's sample domain, and now name this one. It is the desk's code now.
+
+use courier_desk/entities { CourierTariff }
+use shared/providers/swift_couriers
+
+/// Keeps a price list Swift published.
+action keep_tariff(event: SwiftCouriers.TariffPublished) -> CourierTariff {
+    return CourierTariff.create {
+        set: {
+            morning_pence: event.morning_pence
+            afternoon_pence: event.afternoon_pence
+        }
+    }
+}
