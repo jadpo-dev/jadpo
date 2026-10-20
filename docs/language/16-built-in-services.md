@@ -745,8 +745,9 @@ OpenTelemetry stays the transport; only what is sent changes.
 
 > Built in chunk 7.3: emails, their templates and the shared layout,
 > `email:`, sending after commit through the SMTP driver, attachments and
-> parking. A mail package as the connection, partials, `email.sent`, the
-> dev inbox and the health score come in chunk 7.3c.
+> parking. Built in chunk 7.3c: a mail package as the connection,
+> partials and `email.sent`. The dev inbox and the health score come in
+> chunk 7.3c2.
 
 Applications send a handful of messages: confirm your address, reset your
 password, an invoice. A message is a type, `type X = EmailMessage`, whose fields are
@@ -858,14 +859,14 @@ The `.html` template beside it:
 ```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.html
 <html dir="{{ locale.direction }}">
 <h1>{{ translations.accounts.welcome_heading(name: display_name) }}</h1>
-<a href="{{ sign_in_link }}">{{ translations.accounts.sign_in() }}</a>
+{{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
 </html>
 ```
 
 ```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.txt hidden
 {{ translations.accounts.welcome_heading(name: display_name) }}
 
-{{ translations.accounts.sign_in() }}: {{ sign_in_link }}
+{{ include button(label: translations.accounts.sign_in(), url: sign_in_link) }}
 ```
 
 An email has an `.html` template, a `.txt` one or both, named after its
@@ -887,9 +888,37 @@ list; and any call other than translations and formatting
 (`email.template_not_allowed`, which arithmetic and building values are
 too). A field no template reads and no wording of the subject writes is
 `email.field_unused`, a judgement call a `decline` line above the field
-answers. Partials (`{{ include button(...) }}`) are declared as
-`EmailPartial` types beside the emails (see "Chosen in chunk 7.3") and
-built in chunk 7.3c; until then they are refused.
+answers.
+
+**Partials** (decided 2026-10-20, built in chunk 7.3c) are the pieces
+several emails share, a button or a signature: a `type Name =
+EmailPartial { ... }` in `shared/emails/`, which every domain's emails may
+include, or in a domain's own `emails/`, which only its emails may, with
+its `.html` and `.txt` beside it as an email's are. A template includes
+one as `{{ include name(field: value, ...) }}`, giving each of its fields
+once by name; the partial is written in the locale of the template that
+includes it, which goes with it as its `locale`, and an HTML template
+includes its `.html`, a text one its `.txt`. Its templates follow the
+same strict rules, and may include other partials, but never lead back
+to themselves. A partial that doesn't exist, can't be reached, lacks the
+template it is included from or is given the wrong fields is
+`email.partial_invalid`.
+
+```jadpo check project=email-welcome file=shared/emails/button.jadpo
+/// A link set as a button, in every email that asks the reader to act.
+type Button = EmailPartial {
+    label: PresentationText
+    url: Url
+}
+```
+
+```jadpo check project=email-welcome file=shared/emails/button.html
+<a href="{{ url }}" style="display:inline-block;padding:12px 24px;background-color:#1f2937;color:#ffffff;text-decoration:none;">{{ label }}</a>
+```
+
+```jadpo check project=email-welcome file=shared/emails/button.txt hidden
+{{ label }}: {{ url }}
+```
 
 **Only text and numbers are written out**, in templates as in
 placeholders: `{{ value }}` takes `Text`, `PresentationText`, `Int` or
@@ -948,8 +977,10 @@ and its delivery record alone says it went.
 - **Attachments are part of the capability** (decided 2026-10-16): a
   `File` field on an `EmailMessage` is an attachment, read from its store
   at send time (built in chunk 7.3) and checked against the size limit the
-  mail package declares; a `max_size` above it is a compile error (chunk
-  7.3c, with mail packages). A provider that
+  mail package declares (built in chunk 7.3c): through a mail package each
+  `File` field gives `max_size:`, and an email whose fields' sizes add up
+  to more than the package's `limits: { attachments: }` is
+  `email.attachment_limit`. A provider that
   cannot send attachments stays an ordinary package but cannot be the
   `email:` connection.
 - **Everything provider-specific is the package's own** (design C, decided
@@ -972,14 +1003,34 @@ and its delivery record alone says it went.
   Mailgun take none) keep area 12's rule: a send whose outcome is unknown
   is parked for an operator, never resent blindly, since a duplicate
   receipt is not harmless; `jadpo deliveries` can resend in bulk.
-- Tests capture mail instead of sending it, and read it as `email.sent`.
-  Built in chunk 7.3: `jadpo test` catches every email, rendered whole
-  once its action commits, so a template that can't be rendered fails the
-  test; reading them as `email.sent` comes in chunk 7.3c. Until the dev
-  inbox, `jadpo dev` gives the email connection no driver, so an email's
-  delivery there fails as `misconfigured` and nothing leaves the machine.
+- Tests capture mail instead of sending it, and read it as `email.sent`
+  (built in chunks 7.3 and 7.3c): `jadpo test` catches every email,
+  rendered whole once its action commits, so a template that can't be
+  rendered fails the test, and a test reads what it sent so far as a
+  `List<SentEmail>`, each with its `to`, `from`, `subject`, `html` and
+  `text` (`none` without that template), every link in it (`links`) and
+  its attachments' file names (`attachments`). Only a test reads it
+  (`email.sent_context`), and the mail is caught whole whichever
+  connection `email:` names, a mail package's included. Until the dev
+  inbox (chunk 7.3c2), `jadpo dev` gives an SMTP connection no driver, so
+  an email's delivery there fails as `misconfigured`, and a mail
+  package's call is faked as any provider call is; nothing leaves the
+  machine.
+
+```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.test.jadpo
+use accounts/entities { User }
+
+test "signing up welcomes the new user, with a link to sign in" {
+    var user: User = sign_up("ada@notes.example", "Ada", Locale.en_gb)
+    assert user.display_name == "Ada"
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+    assert list.any(sent, item -> item.to == "ada@notes.example" and item.subject == "Welcome, Ada")
+    assert list.all(sent, item -> list.contains(item.links, "https://notes.example"))
+}
+```
 - **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13;
-  chunk 7.3c).
+  chunk 7.3c2).
   Nothing leaves the machine. A person opens it in the browser from the dev
   console (area 17): each mail rendered as HTML and as text, in its locale,
   with its links working (a magic link opens the frontend's page, which
@@ -991,7 +1042,7 @@ and its delivery record alone says it went.
   it. Phoenix's dev mailbox and Mailpit offer the browser half; the
   agent commands and the trace link are new.
 - **A mail health score: an early indication, not a guarantee** (Richard,
-  2026-10-13; chunk 7.3c). Every mail in the dev inbox, and `jadpo email show <id>`,
+  2026-10-13; chunk 7.3c2). Every mail in the dev inbox, and `jadpo email show <id>`,
   shows what Jadpo's own checks found and how to fix each: no plain-text
   part, image-only content, broken HTML, links that are not absolute HTTPS,
   link shorteners, an all-capitals subject, a missing unsubscribe header on
@@ -1844,6 +1895,83 @@ error: A template only reads its fields, translates and formats
 check failed: 1 error, 3 files
 ```
 
+### `email.partial_invalid`
+
+A template includes a partial by its name, giving each of its fields once
+by name, so what a shared piece needs is checked where it is used; a
+partial that doesn't exist, can't be reached from the template, lacks the
+template it is included from, is given the wrong fields or includes
+itself is refused:
+
+```jadpo check project=e-email-partial-invalid file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-partial-invalid file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-partial-invalid file=shared/emails/button.jadpo hidden
+/// A link set as a button.
+type Button = EmailPartial {
+    label: Text
+    url: Url
+}
+```
+
+```jadpo check project=e-email-partial-invalid file=shared/emails/button.html hidden
+<a href="{{ url }}">{{ label }}</a>
+```
+
+```jadpo check project=e-email-partial-invalid file=domains/accounts/emails/welcome_email.jadpo hidden
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: Text
+    notes_link: Url
+}
+```
+
+```jadpo check project=e-email-partial-invalid file=domains/accounts/emails/welcome_email.html expect=email.partial_invalid
+<p>Welcome, {{ name }}.</p>
+{{ include button(label: name, link: notes_link) }}
+```
+
+```text output
+error: `button` has no field `link`
+ --> domains/accounts/emails/welcome_email.html:2:32
+  |
+2 | {{ include button(label: name, link: notes_link) }}
+  |                                ^^^^ not one of its fields
+  reason: A partial is a `type Name = EmailPartial { ... }` in `shared/emails/` or the domain's own `emails/`, its `.html` and `.txt` beside it; a template includes it as `{{ include name(field: value, ...) }}`, giving each of its fields once by name, and its locale goes with it.
+  next: Remove `link:` (agent)
+  rule: email.partial_invalid
+  help: docs/language/16-built-in-services.html#email-partial-invalid
+
+check failed: 1 error, 4 files
+```
+
 ### `email.field_unused`
 
 An email's fields are what its templates and its subject read, so a
@@ -1928,12 +2056,164 @@ error: `connection: main` sends no email
   |
 3 |         connection: main
   |                     ^^^^ not an email connection
-  reason: `email: { connection: }` names a connection that provides `email`, one with `driver: Driver.smtp`; `main` is a connection that sends no email, and `app.jadpo` declares none.
+  reason: `email: { connection: }` names a connection that provides `email`: one with `driver: Driver.smtp`, or to a mail package that maps `send` in its `provides/email.jadpo`; `main` is a connection that sends no email, and `app.jadpo` declares none with `driver: Driver.smtp`.
   next: Declare a connection with `driver: Driver.smtp` in `connections:`, and name it here (agent)
   rule: email.settings_invalid
   help: docs/language/16-built-in-services.html#email-settings-invalid
 
 check failed: 1 error, 1 file
+```
+
+### `email.attachment_limit`
+
+Through a mail package, an email's `File` fields go as attachments to a
+provider that accepts so much in all, its `limits: { attachments: }`, so
+each field says the most it may hold and together they fit:
+
+```jadpo check project=e-email-attachment-limit file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        postbox: {
+            package: Postbox.v1
+            domains: []
+            credential: config.postbox_token
+            host: config.postbox_host
+        }
+    }
+    email: {
+        connection: postbox
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=config.jadpo hidden
+config {
+    postbox_host: Url
+    postbox_token: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/package.jadpo hidden
+/// Postbox: sends the app's email.
+package Postbox.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/provider.jadpo hidden
+/// Postbox's JSON API.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/resources/emails.jadpo hidden
+public resource emails {
+    send: {
+        method: HttpMethod.post
+        path: "/emails"
+        input: OutgoingEmail
+        changes: true
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/types/outgoing_email.jadpo hidden
+/// One email to send.
+public type OutgoingEmail = Object {
+    from: Text
+    to: Text
+    subject: Text
+    html: Text?
+    text: Text?
+    attachments: List<OutgoingAttachment>
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/types/outgoing_attachment.jadpo hidden
+/// One file sent with an email.
+public type OutgoingAttachment = Object {
+    filename: Text
+    content: Bytes
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=shared/providers/postbox/v1/provides/email.jadpo
+/// Sends each email through `emails.send`.
+provide email {
+    send: {
+        call: emails.send
+        input: {
+            from: message.from
+            to: message.to
+            subject: message.subject
+            html: message.html
+            text: message.text
+            attachments: {
+                each: message.attachments
+                as: {
+                    filename: item.name
+                    content: item.content
+                }
+            }
+        }
+    }
+    limits: {
+        attachments: 10mb
+    }
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=domains/billing/translations/en_gb.jadpo hidden
+translations {
+    invoice_email: "Your invoice, {name}"
+}
+```
+
+```jadpo check project=e-email-attachment-limit file=domains/billing/emails/invoice_email.txt hidden
+Hello {{ name }}, your invoice and our terms are attached.
+```
+
+```jadpo check project=e-email-attachment-limit file=domains/billing/emails/invoice_email.jadpo expect=email.attachment_limit
+/// Sends a customer their invoice and the terms it is under.
+type InvoiceEmail = EmailMessage {
+    name: Text
+    invoice: File {
+        max_size: 8mb
+    }
+    terms: File {
+        max_size: 4mb
+    }
+}
+```
+
+```text output
+error: `InvoiceEmail`'s attachments may be 12 MB, over the 10 MB `postbox` accepts
+ --> domains/billing/emails/invoice_email.jadpo:2:6
+  |
+2 | type InvoiceEmail = EmailMessage {
+  |      ^^^^^^^^^^^^ too large to send
+  reason: An email's `File` fields are sent as attachments, each at most its `max_size:`, and `postbox`'s package accepts 10 MB of them in all, so an email at its largest would be refused.
+  next: Lower the `max_size:` of `InvoiceEmail`'s `File` fields to 10 MB in all, or send the larger files as links (agent)
+  rule: email.attachment_limit
+  help: docs/language/16-built-in-services.html#email-attachment-limit
+
+check failed: 1 error, 10 files
 ```
 
 ### `email.connection_required`
@@ -2007,6 +2287,59 @@ error: `WelcomeEmail` is emitted, but nothing sends email
 check failed: 1 error, 5 files
 ```
 
+### `email.sent_context`
+
+`email.sent` is what a test sent, caught in place of sending it, so only
+a test reads it; outside a test an email goes out once its action
+commits, and nothing keeps it to read:
+
+```jadpo check project=e-email-sent-context file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-sent-context file=domains/accounts/actions/stop_after_sending.jadpo expect=email.sent_context
+/// Stops early once an email has gone out.
+action stop_after_sending() -> Unit {
+    if (list.count(email.sent) > 0) {
+        return
+    }
+}
+```
+
+```text output
+error: `email.sent` is read outside a test
+ --> domains/accounts/actions/stop_after_sending.jadpo:3:20
+  |
+3 |     if (list.count(email.sent) > 0) {
+  |                    ^^^^^^^^^^ not in a test
+  reason: `email.sent` lists the emails a test sent, which `jadpo test` catches in place of sending them; outside a test an email goes out once its action commits, and nothing keeps it to read.
+  next: Read `email.sent` in a test, after the action that sends the email (agent)
+  rule: email.sent_context
+  help: docs/language/16-built-in-services.html#email-sent-context
+
+check failed: 1 error, 2 files
+```
+
 ## Review
 
 ### Status
@@ -2017,10 +2350,10 @@ sending after commit through the SMTP driver, attachments and parking
 email at levels 1 to 3, worded by Jadpo or reworded by the app and wrapped
 in the app's layout ("Chosen in chunk 7.3b" below); in chunk 7.3b2: its
 levels 4 and 5, the app's own email filled with the link and the code
-and the app's own sending given them ("Chosen in chunk 7.3b2" below); a
-mail package as the connection,
-partials, `email.sent`, the dev inbox and the health score come with
-chunk 7.3c. Default rate limits came with routes (chunk
+and the app's own sending given them ("Chosen in chunk 7.3b2" below); in
+chunk 7.3c: a mail package as the connection, partials and `email.sent`
+("Chosen in chunk 7.3c" below); the dev inbox and the health score come
+with chunk 7.3c2. Default rate limits came with routes (chunk
 4.1); flags, the rest of files (multipart slots, and image variants and
 scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
@@ -2045,6 +2378,71 @@ the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
 `max_size:`, `types:` and `store:` as it is written come with the rest
 of the files capability.
+
+### Chosen in chunk 7.3c
+
+What "Email" leaves to the build of mail packages, partials and
+`email.sent`, each the most conservative reading:
+
+- **A partial's locale goes with it.** Every `EmailPartial` has
+  `locale:` before its own fields, as every email has `to:` and
+  `locale:`, given by the template that includes it and never by the
+  include (declaring it, or giving it, is refused). A template includes a
+  partial by its type's name in `lower_snake_case`, `{{ include
+  button(...) }}`, giving each field once by name; one that may be `none`
+  may be left out. Partials' names are unique in the app, as emails' are.
+- **Which partials a template reaches.** Those in `shared/emails/` and
+  those in its own domain's `emails/`; the shared layout reaches only the
+  shared ones. Another domain's partial is `email.partial_invalid`, its
+  `next:` saying to move it to `shared/emails/`.
+- **What an include writes.** An HTML template includes the partial's
+  `.html`, a text one its `.txt`, which must exist; what it writes goes
+  in as it is, its own values escaped already. A partial may include
+  others, never leading back to itself, at once or through others. A
+  partial's field none of its templates reads is `email.field_unused`; a
+  partial no template includes is not reported. An `EmailMessage` in
+  `shared/emails/` is `layout.wrong_folder`: an email is sent by a
+  domain.
+- **`email.sent` is a test's.** A `List<SentEmail>` of the mail caught
+  so far, in the order it was sent; `SentEmail` holds `to`, `from`,
+  `subject`, `html` and `text` (`Text?`), `links` (each `href` in the
+  HTML and each `http://` or `https://` address in the text, once each,
+  in order) and `attachments` (their file names). A local named `email`
+  is read before the namespace, since an address is often called that.
+  A test that reaches no store reads an empty list.
+- **One fake for every connection that fills `email`.** A test's host
+  catches the rendered message whole for the connection `email:` names,
+  a mail package's included, which its package's fake then doesn't
+  answer.
+- **A mail package's mapping.** `provides/email.jadpo` gives `send:`
+  (`call:`, `input:`, `receipt:`, `failures:`) and `limits: {
+  attachments: }`. Its `input:` keys are the operation's input fields'
+  names, their wire names coming from the types, as `provide receiving`'s
+  are (area 11's Postmark example writes the wire names). Every part of
+  the message is given somewhere, `from`, `to`, `subject`, `html`,
+  `text` and the attachments as `{ each: message.attachments  as: { } }`
+  with each one's `item.name` and `item.content` (its media type,
+  `item.content_type`, is optional); `html` and `text` go only to fields
+  that may be `none`, the content only to `Bytes`, sent in base64, and
+  the rest to text. `receipt:` is optional and names text in the answer,
+  which is read and kept nowhere yet. `failures:` maps the operation's
+  failure codes onto `EmailFailure.recipient_rejected` or
+  `.message_rejected`; a failure it doesn't map ends the delivery as the
+  package's own. `limits:` is required.
+- **Attachments within the limit.** Through a mail package each `File`
+  field of an email gives `max_size:`, and their sum is at most the
+  package's limit (`email.attachment_limit`); a send whose attachments
+  are larger still is refused as `message_rejected` before it goes out.
+  Through SMTP, which declares no limit, `max_size:` is optional.
+- **The connection.** `email:` may name a package connection whose
+  package has `provides/email.jadpo`; a connection only `email:` names
+  may list no `domains:`. The delivery calls the operation as any
+  provider call is made, with no key, so a server's error after the
+  message went out parks it as `outcome_unknown`.
+- **Resend is the second connection** (`packages/resend`), over Postmark,
+  whose credential header no `CredentialScheme` sends yet. Resend takes
+  40 MB an email after base64, so its limit is 30 MB of files; its
+  connection gives `host:`, `https://api.resend.com`.
 
 ### Chosen in chunk 7.3b2
 
@@ -2134,7 +2532,8 @@ conservative reading:
   `{{ locale.direction }}` is Jadpo's wording of `TextDirection`
   (`jadpo.text_direction`, `ltr` or `rtl` unless the root file rewords
   it), and `{{ app.display_name }}` is `application { display_name: }`,
-  plain text on one line. Partials are refused until chunk 7.3c.
+  plain text on one line. Partials are refused until chunk 7.3c (built
+  there).
 - **What is written out.** A value that may be `none` is refused; a
   number is written by `text.format` in the email's locale; an enum by its
   wording; `Html` as it is in an `.html` template, and refused in a `.txt`
@@ -2165,7 +2564,7 @@ conservative reading:
 - **Development and tests.** `jadpo test` gives the email connection a
   driver that catches each message and answers that it went, so every
   email is rendered and nothing leaves the machine; `jadpo dev` gives it
-  none until the dev inbox (chunk 7.3c).
+  none until the dev inbox (chunk 7.3c2).
 - **Where a partial is declared** (decided for Richard): `type Button
   = EmailPartial { label: PresentationText  url: Url }` in `shared/emails/`
   or a domain's `emails/`, its `.html` and `.txt` beside it as an email's
@@ -2390,7 +2789,7 @@ leave to the build of reading gzip, each the most conservative reading:
 | Translations format for mail (area 10 question 9, revised 2026-10-16: domain language files read as `translations.<domain>.<message>`); OpenTelemetry variables | 10 | Questions 10 and 11 |
 | The safe-HTML type that templates write out unescaped (`Html`, built in 5.5o); the money formatter | Standard library (chunk 5.4) | Question 11 |
 | Mail delivery and retries as an event; trace context through the outbox | 12 | Questions 10 and 11 |
-| `flags:` in tests and the both-values check; `email.sent`; an in-memory file store in tests | 13 | Questions 4, 7 and 11 |
+| `flags:` in tests and the both-values check; `email.sent` (built in chunk 7.3c); an in-memory file store in tests | 13 | Questions 4, 7 and 11 |
 | `jadpo flags` commands and source removal; the `syntax.expected_declaration` message | 14 | Question 2; Status |
 | File erasure and export; audit entries on erasure; field encryption | 15 | Questions 7, 8 and 9 |
 | Where threshold declarations live | 1 | Question 15 |
@@ -2700,3 +3099,6 @@ leave to the build of reading gzip, each the most conservative reading:
 | Outgoing webhooks' network | One runtime-owned network exception with fixed guards: HTTPS only, no private addresses, no redirects; listed once in the network report (Richard) | 2026-10-16 |
 | Settled for the build | `store.read` capped at the 10 MB whole-read limit, a larger `max_size` a compile error pointing at the format helpers or `batches.each`; `store.put` a keyed step in a multi-step action; variants read as `field.variants.<name>`; metrics `Counter`, `Measure` and `Gauge`, labels only enums and `Bool`; `telemetry.note(name: value)` with text, numbers, `Bool` or enums; `send:` default traces and metrics on, logs from `LogLevel.warn`; `documents: { layout: }` names the shared document layout; engine-backed `matches` queries take only equality on indexed fields (decided for Richard) | 2026-10-16 |
 | Email partials | `type Name = EmailPartial { fields }` in `shared/emails/` or a domain's `emails/`, with its `.html` and `.txt` beside it, called by field name (decided for Richard) | 2026-10-20 |
+| Partials as built (chunk 7.3c) | A partial's `locale` goes with it from the template that includes it; included by its name in snake case; a domain's partials only its own emails', shared ones everyone's; `.html` from HTML, `.txt` from text; nesting allowed, cycles refused (`email.partial_invalid`); no email in `shared/emails/` (decided for Richard) | 2026-10-20 |
+| `email.sent` (chunk 7.3c) | Only in tests (`email.sent_context`): a `List<SentEmail>` of `to`, `from`, `subject`, `html`, `text`, `links` and attachment names; mail through a mail package caught the same way (decided for Richard) | 2026-10-20 |
+| Mail package mapping (chunk 7.3c) | `provide email { send: { call: input: receipt: failures: } limits: { attachments: } }`, input keys the input's field names; every part of the message and the attachments given; unmapped failures stay the package's; `File` fields need `max_size:` through a package, their sum within the limit (`email.attachment_limit`); Resend the second connection (decided for Richard) | 2026-10-20 |

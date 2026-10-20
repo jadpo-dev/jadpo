@@ -589,7 +589,7 @@ walk (§2.5).
 | Node group | Kinds |
 |---|---|
 | Structure | domain, library, file, deployable |
-| Types | type (base `Object`, `Enum`, `Input`, `Output`, `Failure`, `Event`, `EmailMessage` or a scalar refinement), field, variant, constraint |
+| Types | type (base `Object`, `Enum`, `Input`, `Output`, `Failure`, `Event`, `EmailMessage`, `EmailPartial` or a scalar refinement), field, variant, constraint |
 | Data | entity, unique rule, index, reference, lifecycle (visible, transition, purge), cache, store placement, system table, personal mark, retention, person |
 | Behaviour | function, action, query, fixture, seed, test, site, branch |
 | Triggers | API, route group, route, schedule, subscriber, generated route (sign-in, webhooks, health, privacy) |
@@ -1650,6 +1650,27 @@ without an email connection. `email::message` fills the app's email from
 the minted link and code and renders it as any email; the runner gives a
 `send` action the `MagicLinkRequest` `magic_links::request_value` makes
 for each attempt (`runner::run_job` runs it as a subscriber's action).
+
+Built in chunk 7.3c: mail packages, partials and `email.sent` (area 16,
+"Chosen in chunk 7.3c"). `jadpo_check::mail` reads each package's
+`provides/email.jadpo` into a `Mapping` (`mail::mappings`) and checks
+each email's `File` fields' sizes against it
+(`mail::attachment_problems`); `emails::settings` takes a package's
+connection that has one, and the plan carries it as
+`EmailsPlan::package` (`PackageEmail`, its input as `MailInput`). The
+runner's email delivery calls `email::send_package`, which builds the
+operation's input as the provider's JSON, reads it with the input's
+codec and makes the call through `provider::call`, unless the host's
+driver for the connection `catches_mail()`, as a test's `Fake` does. A
+partial (`Base::EmailPartial`, `emails::PartialFacts`) has template
+callables keyed `email partial <name> html|text`; `{{ include }}` is
+checked by `Body::include` (`IncludeFact`) and lowered to a
+`Callee::Function` call given the including template's `locale` first,
+its output joined unescaped; `emails::include_cycles` refuses a cycle.
+`email.sent` is the generated namespace `email`'s member, checked by
+`Body::sent_emails` and lowered to `Expr::SentEmails`, which
+`Effect::SentEmails` answers from the email connection's
+`Capability::caught()` as `SentEmail` records (`email::sent_email`).
 
 Built in chunk 7.3b3: the app's own magic-link routes. `MagicLink::
 generate_routes` is read, and `Identity::magic_link_routes` is what the
