@@ -1,0 +1,13 @@
+<h1>{{ translations.lodging.confirmed_heading(name: guest_name) }}</h1>
+<p>{{ booked_room }}</p>
+<p>{{ translations.lodging.stay_line(nights: nights, arrives_on: text.format(arrives_on, format: TimeFormat.date_long)) }}</p>
+{{ if (breakfast) }}
+<p>{{ translations.lodging.breakfast_line() }}</p>
+{{ else }}
+<p>{{ translations.lodging.no_breakfast_line() }}</p>
+{{ end }}
+<ul>
+{{ for item in to_bring }}
+  <li>{{ item }}</li>
+{{ end }}
+</ul>

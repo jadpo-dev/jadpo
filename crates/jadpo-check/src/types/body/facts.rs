@@ -205,4 +205,6 @@ pub(crate) struct Facts {
     /// Each answer a test's `fakes:` scripts, by its expression (area 13;
     /// chunk 7.2d).
     pub fakes: BTreeMap<NodeKey, super::fakes::FakeFact>,
+    /// Each value an email template writes out, and how (area 16).
+    pub template_writes: BTreeMap<NodeKey, super::template::TemplateWrite>,
 }

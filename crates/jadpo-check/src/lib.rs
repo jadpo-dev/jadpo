@@ -18,6 +18,7 @@ pub mod connections;
 pub mod constants;
 pub mod data;
 pub mod declines;
+pub mod emails;
 pub mod events;
 mod failures;
 pub mod fixes;
@@ -225,6 +226,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
+        out.extend(emails::email_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(
             events::events_settings(db, project)

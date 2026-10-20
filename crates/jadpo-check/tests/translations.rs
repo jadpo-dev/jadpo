@@ -817,6 +817,7 @@ fn an_enum_nobody_words_needs_no_wording() {
 fn email_files() -> Vec<(&'static str, String)> {
     vec![
         ("domains/accounts/emails/welcome_email.jadpo", "/// Sent when someone signs up.\ntype WelcomeEmail = EmailMessage {\n    display_name: Text\n}\n".to_string()),
+        ("domains/accounts/emails/welcome_email.txt", "Hello, {{ display_name }}.\n".to_string()),
         (
             "domains/accounts/translations/en_gb.jadpo",
             "translations {\n    welcome_email: \"Welcome, {display_name}\"\n}\n".to_string(),
@@ -834,7 +835,7 @@ fn an_emails_member_is_its_subject_with_the_emails_fields_as_placeholders() {
     let borrowed: Vec<(&str, &str)> = owned.iter().map(|(p, t)| (*p, t.as_str())).collect();
     assert_eq!(rules(&borrowed), CLEAN);
     let mut bad = owned.clone();
-    bad[1].1 = "translations {\n    welcome_email: \"Welcome, {name}\"\n}\n".to_string();
+    bad[2].1 = "translations {\n    welcome_email: \"Welcome, {name}\"\n}\n".to_string();
     let borrowed: Vec<(&str, &str)> = bad.iter().map(|(p, t)| (*p, t.as_str())).collect();
     assert_eq!(rules(&borrowed), ["translation.placeholder_unknown"]);
 }

@@ -721,6 +721,10 @@ impl Executor for Program {
         self.plan().callable(callable)?.clock
     }
 
+    fn setting(&self, at: u32) -> Option<Value> {
+        Program::setting(self, at)
+    }
+
     fn batches(&self) -> Option<jadpo_runtime::batches::Batches<'_>> {
         let plans = self.plan().batches();
         (!plans.is_empty()).then(|| jadpo_runtime::batches::Batches {

@@ -1135,13 +1135,44 @@ The design is area 11 as revised on 2026-10-16, with its research in
   with an alert line per connection. Live tests in
   `circuit_breaker.rs` against a local server answering `503`. Choices
   in area 12's "When a provider keeps failing".
-- [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
-  Jadpo-rendered, attachments), the SMTP driver and a mail package as a
-  second connection proving the swap, `emails/` templates and the shared
-  layout, the dev inbox, the health score. Chunk 5.3b refuses a dotted
-  translation key (area 16's old `"welcome_email.subject"`) as
-  `translation.key_invalid`; under translations as messages (5.4c) an
-  email's subject is its own member in its domain's language files.
+- [x] **7.3 Email: templates and the capability over SMTP** `opus · high`
+  (split from 7.3 Email on 2026-10-20): every `EmailMessage`'s `to:` and
+  `locale:`; its `.html` and `.txt` templates in `emails/` under the strict
+  rules, checked by the body checker and run by the executor; the shared
+  layout; `email: { connection: from: }`; `emit` of an email delivered to
+  the capability after commit, rendered whole at send, attachments
+  included, an unknown outcome parked; and the SMTP driver, tested against
+  a local SMTP server. Built: an email's `.html` and `.txt` read as
+  records beside its type, checked as pure callables taking its fields
+  (`email.template_missing`, `template_not_allowed`,
+  `template_value_invalid`, declinable `field_unused`), translations and
+  `text.format` in its locale, `{{ locale.direction }}` from Jadpo's
+  `text_direction` wording, numbers formatted, enums worded, HTML
+  escaped unless `Html`; `shared/emails/layout.*` with `{{ content }}`,
+  `{{ subject }}` and `{{ app.display_name }}` from `application {
+  display_name: }`; `email:` and `Driver.smtp` connections
+  (`email.settings_invalid`, `email.connection_required`, area 11's
+  connection rules for `host:`, `port:` and `credential:`, the network
+  report's row); email subjects required in every complete locale; each
+  email type a subscriber of its own targeting `Target::Email`, the
+  runtime rendering it at send (`jadpo_runtime::email`) and sending it
+  unkeyed; the SMTP driver (`jadpo_drivers::smtp`, MIME and the seam's
+  classification) over the native host's `NativeRelay` (`STARTTLS` or TLS
+  on 465 through OpenSSL, in the clear only to this machine); `jadpo
+  test` catching every email. Live tests in `crates/jadpo-cli/tests/
+  emails.rs` against an SMTP server started in the test; example 27
+  teaches email. Choices in area 16's "Chosen in chunk 7.3", one flagged
+  for Richard: where a partial is declared; recommendation `type X =
+  EmailPartial { ... }` with its templates beside it.
+- [ ] **7.3c Email: the second connection, the dev inbox and the health
+  score** `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20): a
+  mail package as a second connection proving the swap (`provides/email.jadpo`'s
+  `provide email`, `limits: { attachments: }` checked against a `File`
+  field's `max_size`); partials (`{{ include }}`), once where a partial is
+  declared is decided; `email.sent` in tests; the dev inbox in `jadpo dev`
+  and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
+  score, `jadpo check`'s warnings about templates that would fail it, and
+  `jadpo email check-domain`.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
   generated endpoints (the email links to the frontend's `link:` path,

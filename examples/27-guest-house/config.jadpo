@@ -1,0 +1,18 @@
+config {
+    /// Who the guest house's emails are from.
+    bookings_address: Email {
+        default: "bookings@tygwyn.example"
+    }
+    /// The SMTP server the emails are handed to.
+    smtp_host: Hostname {
+        default: "localhost"
+    }
+    /// The password the server is signed in to with: a secret, given
+    /// only to the connection.
+    smtp_password: Text {
+        secret: true
+    }
+    smtp_username: Text {
+        default: "bookings"
+    }
+}

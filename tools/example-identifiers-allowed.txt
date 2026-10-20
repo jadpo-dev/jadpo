@@ -20,6 +20,12 @@ apply_discount
 price
 # A `RichTextBlock`'s `quote`, Portable Text's block quote (chunk 5.5o2)
 quote
+# Email's words (area 16, chunk 7.3): `application { display_name: }`, the
+# `recipient_rejected` failure (area 11's `EmailFailure`) and a MIME
+# part's `attachment`
+display_name
+recipient
+attachment
 # the records' names (chunk 5.5m2)
 tracking
 

@@ -1,6 +1,6 @@
 [package]
 name = "jadpo-drivers"
-description = "The runtime's capability drivers over a transport the host supplies: PostgreSQL first"
+description = "The runtime's capability drivers over a transport the host supplies: PostgreSQL, provider packages and SMTP"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,9 +17,14 @@ postgres = ["dep:tokio-postgres", "dep:bytes"]
 # The package driver (area 11, chunk 7.2c): JSON over HTTP through the
 # `Fetch` the host gives; the runtime makes and reads each request.
 package = []
+# The SMTP driver (area 16, chunk 7.3): a rendered email written as one
+# MIME message and handed over through the `Relay` the host gives.
+smtp = ["dep:jadpo-std", "dep:jadpo-value"]
 
 [dependencies]
 jadpo-runtime.workspace = true
+jadpo-std = { workspace = true, optional = true }
+jadpo-value = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-postgres = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }

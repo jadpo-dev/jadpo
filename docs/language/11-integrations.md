@@ -3218,8 +3218,9 @@ example and real output under "Errors".
 | A non-public type or failure reachable from a public declaration, in a package or a domain | By `jadpo check` | 7.1 |
 | A package's resource and action with the same name; a public action that emits; subscribing to a package's non-public event | By `jadpo check` | 7.1 |
 | A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1c; both `hosts:` and `runs:` 7.1 |
-| A capability's connection whose package does not provide it | By `jadpo check` | 7.3 |
-| A function call or expression in a `provide` mapping | By `jadpo check` | 7.3 |
+| A capability's connection whose package does not provide it | By `jadpo check` | 7.3c |
+| A function call or expression in a `provide` mapping | By `jadpo check` | 7.3c |
+| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
 | Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | Not yet on the roadmap |
@@ -6017,7 +6018,7 @@ side (below); the rest is still to build.
 | Generated fakes, `fakes:` in tests, provider calls faked in `jadpo dev` with `development: { sandbox: }`, `jadpo calls` | 7.2d |
 | Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
 | Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
-| The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3 |
+| The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
 | Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
@@ -6179,7 +6180,7 @@ What the pages leave to the build, each the most conservative reading:
   (`fails Postcodes.InvalidPostcode`), a type built from a value
   (`Postcodes.UkPostcode(text)`) and a public library's function
   (`Postcodes.uk.parse(text)`). A package's actions, subscribers and
-  events (chunk 7.6) and capability mappings (chunk 7.3) are
+  events (chunk 7.6) and capability mappings (chunk 7.3c) are
   `toolchain.not_built_yet` where they are declared (a library
   package's translations were too, until chunk 7.1b3); a resource's
   operations are read with provider calls (chunk 7.2c). Two versions of one
@@ -6232,7 +6233,7 @@ What the pages leave to the build, each the most conservative reading:
   function of a `public library`; each `public` type (`type Name =
   Base`), then each `public` failure; each folder in `recipes/`. A
   package's events, actions, polls and capability mappings join with their
-  chunks (7.6, 7.3); its public messages, `message
+  chunks (7.6, 7.3c); its public messages, `message
   translations.<message>` with their fields, after the functions, and a
   `locale` line in the package's entry for each language it words, since
   chunk 7.1b3 (area 10). A library itself has no

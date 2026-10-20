@@ -1,0 +1,39 @@
+// Sending is emitting. The email is kept in the outbox with the booking,
+// in the same transaction, and sent once that commits: a booking that
+// fails sends nothing. It is rendered whole as it is sent, its subject
+// worded in its locale and each template wrapped in the shared layout.
+// Its fields are prepared here, so the templates only show them: what to
+// bring is worded in the guest's language before it is sent.
+
+use lodging/entities { Booking }
+use lodging/types { StayRequest }
+use lodging/emails { BookingConfirmed }
+
+/// Books a stay, and confirms it to the guest once it is booked.
+action book_stay(input: StayRequest) -> Booking {
+    var booking: Booking = Booking.create {
+        set: {
+            guest_email: input.guest_email
+            guest_name: input.guest_name
+            booked_room: input.booked_room
+            arrives_on: input.arrives_on
+            nights: input.nights
+            breakfast: input.breakfast
+            guest_locale: input.guest_locale
+        }
+    }
+    emit BookingConfirmed {
+        to: booking.guest_email
+        locale: booking.guest_locale
+        guest_name: booking.guest_name
+        booked_room: booking.booked_room
+        arrives_on: booking.arrives_on
+        nights: booking.nights
+        breakfast: booking.breakfast
+        to_bring: [
+            translations.lodging.bring_boots(locale: booking.guest_locale),
+            translations.lodging.bring_torch(locale: booking.guest_locale)
+        ]
+    }
+    return booking
+}
