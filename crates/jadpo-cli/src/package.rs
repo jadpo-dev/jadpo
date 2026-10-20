@@ -3,8 +3,9 @@
 //! description, licence, version, kind and public surface, or one
 //! declaration in full, or its guide; `check` runs the publishing bar in a
 //! package's own repository and writes its `surface.jadpo_record`.
-//! Installing (`add`, `update`, `remove`, `link`, `unlink`) comes with
-//! chunk 7.1b2.
+//! `import` reads a provider's description into the app's own integration
+//! ([`crate::package_import`], chunk 7.2). Installing (`add`, `update`,
+//! `remove`, `link`, `unlink`) comes with chunk 7.1b2.
 //!
 //! `show` answers what the package is first, its facts on the grid, then a
 //! list per section and a footer counting them, and the one command that
@@ -68,6 +69,10 @@ pub const ACTIONS: &[Value] = &[
         name: "check",
         description: "Run the publishing bar and write surface.jadpo_record",
     },
+    Value {
+        name: "import",
+        description: "Read a provider's OpenAPI document into the app",
+    },
 ];
 
 /// What the language decides `jadpo package` does, not built yet, and the
@@ -79,7 +84,6 @@ const LATER: &[(&str, &str)] = &[
     ("link", "installing packages"),
     ("unlink", "installing packages"),
     ("new", "package repositories"),
-    ("import", "the OpenAPI importer"),
     ("record", "recordings"),
     ("conform", "capabilities"),
     ("publish", "the hosted registry"),
@@ -104,6 +108,7 @@ pub fn package(call: &Call) -> Reply {
         )),
         Some("show") => show(call),
         Some("check") => check(call),
+        Some("import") => crate::package_import::import(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()

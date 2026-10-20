@@ -76,6 +76,7 @@ mod schedule_checks;
 mod schedules;
 mod secrets;
 mod security_records;
+mod served_openapi;
 mod sets_maps;
 mod setting_move;
 mod signed;

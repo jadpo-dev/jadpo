@@ -6,6 +6,11 @@ GET /drop-points
     output FeatureCollection<Point, DropPointPin>
     status 200
 
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
 object DropPointPin
     id: Uuid
     name: Text { max_length: 80 }

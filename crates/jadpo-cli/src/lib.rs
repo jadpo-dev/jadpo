@@ -21,6 +21,7 @@ mod hq;
 mod local;
 mod migrate;
 mod package;
+mod package_import;
 mod records;
 mod routes;
 mod run;
