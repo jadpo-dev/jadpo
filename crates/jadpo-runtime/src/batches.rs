@@ -708,9 +708,13 @@ async fn step(
     // stops once the budget is spent (chunk 6.7).
     ctx.set_deadline(Some(budget.limit_ms()));
     let lease_until = crate::lease::until(budget, now);
+    // Each kind of page's future is boxed (chunk 6.4b3): a file's reads,
+    // its unpacking and a query's count make them large, and whatever
+    // runs a batch, the tick among them, would otherwise hold each inline
+    // and could run out of a thread's stack.
     let stepped = match (&plan.from, &plan.to) {
         (BatchFrom::Query(_), Some(write)) => {
-            export::page(
+            Box::pin(export::page(
                 executor,
                 &mut ctx,
                 batches,
@@ -719,11 +723,11 @@ async fn step(
                 start,
                 saved,
                 (now, lease_until),
-            )
+            ))
             .await
         }
         (BatchFrom::Query(_), None) => {
-            batch(
+            Box::pin(batch(
                 executor,
                 &mut ctx,
                 batches,
@@ -731,11 +735,11 @@ async fn step(
                 start,
                 saved,
                 (now, lease_until),
-            )
+            ))
             .await
         }
         (BatchFrom::File(rows), _) => {
-            file::page(
+            Box::pin(file::page(
                 executor,
                 &mut ctx,
                 batches,
@@ -745,7 +749,7 @@ async fn step(
                 saved,
                 opened,
                 (now, lease_until),
-            )
+            ))
             .await
         }
     };
