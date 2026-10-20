@@ -621,25 +621,51 @@ impl Reader<'_> {
             return None;
         }
         // An event every sign-in publishes (area 8, "Events"; chunk
-        // 7.3b4), which only the runtime emits, by magic links' sign-in.
+        // 7.3b4), which only the runtime emits, by magic links' sign-in,
+        // and a passkey's own (chunk 5.5z2), by passkeys'.
         if let Ty::Opaque(name, args) = &ty
             && args.is_empty()
             && let Some(key) = jadpo_std::http::sign_in_event_key(name)
         {
-            if crate::identity::identity(self.db, self.project)
-                .magic_link
-                .is_none()
-            {
+            let identity = crate::identity::identity(self.db, self.project);
+            let passkeys = jadpo_std::http::passkey_event(name);
+            let published = if passkeys {
+                identity.passkey.is_some()
+            } else {
+                identity.magic_link.is_some()
+            };
+            if !published {
+                let (label, way, declare) = if passkeys {
+                    (
+                        "no passkeys",
+                        format!(
+                            "as a person {}",
+                            if name == jadpo_std::http::PASSKEY_ADDED {
+                                "adds a passkey"
+                            } else {
+                                "removes a passkey"
+                            }
+                        ),
+                        ("passkey:", "`sign_in: { passkey: {} }`"),
+                    )
+                } else {
+                    (
+                        "no magic link",
+                        "as a person signs in with a magic link".to_string(),
+                        ("magic_link:", "`sign_in: { magic_link: { ... } }`"),
+                    )
+                };
                 self.out.push(
                     Diagnostic::new(
                         &rule::SUBSCRIBER_EVENT_INVALID,
                         format!("Nothing publishes `{name}`"),
                     )
-                    .at(self.span(&value), "no magic link")
+                    .at(self.span(&value), label)
                     .reason(format!(
-                        "`{name}` is published as a person signs in with a magic link, so an application whose `authentication {{ sign_in: }}` declares no `magic_link:` never publishes it."
+                        "`{name}` is published {way}, so an application whose `authentication {{ sign_in: }}` declares no `{}` never publishes it.",
+                        declare.0
                     ))
-                    .next("Declare `sign_in: { magic_link: { ... } }`, or remove this subscriber"),
+                    .next(format!("Declare {}, or remove this subscriber", declare.1)),
                 );
                 return None;
             }

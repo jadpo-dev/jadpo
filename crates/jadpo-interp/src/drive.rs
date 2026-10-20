@@ -283,6 +283,16 @@ async fn session(
         (SessionOp::MagicLinkRedeemCode, _) => {
             magic_links::redeem_code(program, ctx, plan, args, at).await
         }
+        // `test_passkeys`, which only a route test calls (chunk 5.5z2),
+        // through the generated passkey routes.
+        (SessionOp::TestPasskeyRegister, _) => {
+            jadpo_runtime::http::test_passkeys::register(&program.app(), program, ctx, args, at)
+                .await
+        }
+        (SessionOp::TestPasskeySignIn, _) => {
+            jadpo_runtime::http::test_passkeys::sign_in(&program.app(), program, ctx, args, at)
+                .await
+        }
         (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
         (SessionOp::End, []) => identity::end(ctx, plan, at).await,
         (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,

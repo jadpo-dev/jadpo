@@ -43,7 +43,7 @@ fn write(root: &Path, path: &str, text: &str) {
 
 /// The billing project, its provider at `sandbox`, which replays a failed
 /// answer under its key when `replays`.
-fn files(sandbox: &str, replays: bool) -> Vec<(&'static str, String)> {
+pub(crate) fn files(sandbox: &str, replays: bool) -> Vec<(&'static str, String)> {
     let replays = if replays {
         "        replays_failures: true\n"
     } else {
@@ -118,6 +118,7 @@ provider {{
         max_length: 255
         in_use: "key_in_use"
         reused: "key_reused"
+        new_key_on: "key_expired"
 {replays}    }}
     error_code: "error.code"
 }}
@@ -418,16 +419,16 @@ subscriber start_subscription {
 }
 
 /// When the test starts: 2026-10-20T09:00:00Z.
-const T0: i64 = 1_792_486_800_000;
-const SECOND: i64 = 1_000;
-const HOUR: i64 = 60 * 60 * SECOND;
+pub(crate) const T0: i64 = 1_792_486_800_000;
+pub(crate) const SECOND: i64 = 1_000;
+pub(crate) const HOUR: i64 = 60 * 60 * SECOND;
 /// How many times a call that may have acted is sent in one delivery
 /// attempt: the connection's default `retry:`, 3 attempts (area 11).
-const TRIES: usize = 3;
+pub(crate) const TRIES: usize = 3;
 /// The steps key, a `SigningKey` of more than 32 characters.
-const STEPS_KEY: &str = "a-signing-key-for-the-record-of-steps-long-enough";
+pub(crate) const STEPS_KEY: &str = "a-signing-key-for-the-record-of-steps-long-enough";
 
-fn jadpo(cwd: &Path, at: i64, args: &[&str]) -> Output {
+pub(crate) fn jadpo(cwd: &Path, at: i64, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let mut env = Environment::empty()
         .with_var("SOURCE_DATE_EPOCH", &(at / 1000).to_string())
@@ -438,16 +439,16 @@ fn jadpo(cwd: &Path, at: i64, args: &[&str]) -> Output {
     run(&args, &env.with_cwd(cwd))
 }
 
-struct Loaded {
-    program: Program,
+pub(crate) struct Loaded {
+    pub(crate) program: Program,
     _databases: jadpo_test::database::TestDatabases,
-    url: String,
-    _root: PathBuf,
+    pub(crate) url: String,
+    pub(crate) root: PathBuf,
 }
 
 /// The project, checked and migrated, with a test database for it; `None`
 /// when live tests are skipped.
-fn load(name: &str, sandbox: &str, replays: bool) -> Option<Loaded> {
+pub(crate) fn load(name: &str, sandbox: &str, replays: bool) -> Option<Loaded> {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("step-records-7.5b-{name}"));
     let _ = fs::remove_dir_all(&root);
     for (path, text) in files(sandbox, replays) {
@@ -497,14 +498,14 @@ fn load(name: &str, sandbox: &str, replays: bool) -> Option<Loaded> {
         program,
         _databases: databases,
         url,
-        _root: root,
+        root,
     })
 }
 
 /// The package driver, over the native host's HTTP, for `pay`, and a
 /// store of files that keeps nothing for `sheets`, which says what it
 /// was sent.
-fn faked(
+pub(crate) fn faked(
     harness: &Harness<jadpo_host_native::Postgres>,
 ) -> (Faked<&Harness<jadpo_host_native::Postgres>>, Rc<Fake>) {
     let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
@@ -520,7 +521,7 @@ fn faked(
 
 /// Runs action `name` with `args` on `host`, giving its value and the
 /// work it left for after its response.
-async fn call(
+pub(crate) async fn call(
     harness: &Harness<jadpo_host_native::Postgres>,
     host: &dyn Host,
     program: &Program,
@@ -535,7 +536,7 @@ async fn call(
     }
 }
 
-fn field<'v>(value: &'v Value, name: &str) -> &'v Value {
+pub(crate) fn field<'v>(value: &'v Value, name: &str) -> &'v Value {
     match value {
         Value::Record(record) => record.get(name).expect("the field"),
         other => panic!("not a record: {other:?}"),
@@ -544,7 +545,7 @@ fn field<'v>(value: &'v Value, name: &str) -> &'v Value {
 
 /// An offer of plan `code`, and a customer choosing it: the delivery to
 /// `start_subscription` it leaves.
-async fn chosen(
+pub(crate) async fn chosen(
     harness: &Harness<jadpo_host_native::Postgres>,
     host: &dyn Host,
     program: &Program,
@@ -563,7 +564,9 @@ async fn chosen(
 }
 
 /// The delivery's state and attempts, and its last failure as JSON text.
-async fn delivery(harness: &Harness<jadpo_host_native::Postgres>) -> (String, i32, String) {
+pub(crate) async fn delivery(
+    harness: &Harness<jadpo_host_native::Postgres>,
+) -> (String, i32, String) {
     let rows = harness
         .rows("SELECT \"status\", \"attempts\", COALESCE(\"last_failure\"::text, '') FROM \"jadpo_deliveries\"")
         .await;
@@ -582,7 +585,7 @@ async fn delivery(harness: &Harness<jadpo_host_native::Postgres>) -> (String, i3
 
 /// Each recorded step: its position, operation, fingerprint as JSON
 /// text, outcome, and its answer's bytes.
-async fn steps(
+pub(crate) async fn steps(
     harness: &Harness<jadpo_host_native::Postgres>,
 ) -> Vec<(i32, String, String, Option<String>, Option<Vec<u8>>)> {
     harness
@@ -609,7 +612,9 @@ async fn steps(
 }
 
 /// The record's state and problem, when one is kept.
-async fn record(harness: &Harness<jadpo_host_native::Postgres>) -> Option<(String, String)> {
+pub(crate) async fn record(
+    harness: &Harness<jadpo_host_native::Postgres>,
+) -> Option<(String, String)> {
     harness
         .rows("SELECT \"state\", COALESCE(\"problem\"::text, '') FROM \"jadpo_step_records\"")
         .await
@@ -622,7 +627,7 @@ async fn record(harness: &Harness<jadpo_host_native::Postgres>) -> Option<(Strin
 }
 
 /// The requests the provider was sent to `path`, with their keys.
-fn sent(provider: &FakeProvider, path: &str) -> Vec<Option<String>> {
+pub(crate) fn sent(provider: &FakeProvider, path: &str) -> Vec<Option<String>> {
     provider
         .requests()
         .iter()
@@ -631,10 +636,10 @@ fn sent(provider: &FakeProvider, path: &str) -> Vec<Option<String>> {
         .collect()
 }
 
-const CUSTOMERS: &str = "/v1/customers";
-const SUBSCRIPTIONS: &str = "/v1/subscriptions";
-const CUSTOMER: &str = r#"{"id": "cus_4821"}"#;
-const SUBSCRIPTION: &str = r#"{"id": "sub_9930"}"#;
+pub(crate) const CUSTOMERS: &str = "/v1/customers";
+pub(crate) const SUBSCRIPTIONS: &str = "/v1/subscriptions";
+pub(crate) const CUSTOMER: &str = r#"{"id": "cus_4821"}"#;
+pub(crate) const SUBSCRIPTION: &str = r#"{"id": "sub_9930"}"#;
 
 /// Steps 1 and 2 answered (the customer, the receipt kept), step 3
 /// unanswered after every try: the delivery is retried later, the answers
@@ -954,7 +959,7 @@ fn an_answer_past_a_megabyte_is_a_fault_naming_the_step() {
 }
 
 /// One statement on its own, from another connection.
-fn once(url: &str, sql: &str) {
+pub(crate) fn once(url: &str, sql: &str) {
     let runtime = Runtime::new().expect("a runtime");
     let store = jadpo_host_native::postgres(url).expect("a store");
     runtime

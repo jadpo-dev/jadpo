@@ -1764,8 +1764,9 @@ call inside `for` (area 3's
 call* is a provider's operation with `changes: true` or a store's `put`;
 each way through an `if` or a `match` counts on its own, a `return` ends
 its way, and an action called counts the changing calls of the longest
-way through it. The record and replay come with roadmap 7.5b, and the
-operator's items, the tests' crash points and the warning with 7.5c.
+way through it. The record and replay came with roadmap 7.5b, the
+operator's items with 7.5c, and the tests' crash points and the warning
+come with 7.5d.
 
 Built in chunk 7.5b, the record: an action whose longest way makes
 several changing calls, run by a subscriber's delivery or by a route
@@ -2368,6 +2369,33 @@ operator sees an item listing what took effect at each provider, step by
 step with its answer, and can retry it (with `--not-done`, under a new key
 generation) or abandon it. Nothing about it is quietly dropped; an item is
 kept 30 days, then only its step list.
+
+Built in chunk 7.5c. A delivery that `diverged` is listed by default
+beside those that failed or are in doubt, and `--state` takes
+`diverged`, `unfinished` and `abandoned`; a route's record whose client
+didn't retry within a day of its last run is an item of its own,
+`unfinished`, with the action as its target. `jadpo deliveries show <id>`
+lists an item and, when its action keeps a record, each step: its
+operation, `answered`, `failed`, `no answer` or `answer dropped`, when it
+was sent and its key's generation once replaced, never a request, an
+answer or a key; then the one thing to do, a decision for a step in
+doubt. `retry` takes a delivery that failed or diverged, its record's
+generation counted again from none as its attempts are; `retry --not-done`
+(and `resolve --not-done`) sends the last step again under its next key
+generation when it has no answer or failed, its answer cleared; `abandon`
+ends a delivery that failed, diverged or is in doubt, or a route's
+record, keeping its step list. A delivery with a record is abandoned, not
+dismissed or resolved as done, since its action's writes never committed.
+Each change is one statement with its log row when the record is in the
+delivery's store. The tick drops a record's answers 30 days after its
+last run, and deletes an abandoned record, and its delivery, 30 days
+after it was abandoned; a route's client retrying under an abandoned
+record's key is answered `500` and nothing is sent. The provider's
+`new_key_on:` answer sends a step again at once, once, under its next key
+generation, which the record keeps first. `jadpo runs unfinished --build
+<build id>` (area 14) lists the records and batch runs a new build
+changes. Live tests in `crates/jadpo-cli/tests/step_operators.rs`.
+Choices in the decisions table, "Operators, chosen in chunk 7.5c".
 
 **Batch runs and queue messages** show here as well: each batch run with
 its state, progress against the file's size, problems and an estimated
@@ -4626,7 +4654,9 @@ updated, declinable. Built in chunk 7.2b: the outbox's circuit breaker
 per connection ("When a provider keeps failing"), held deliveries in
 `jadpo deliveries`, and its alert. Built in chunk 7.5: what `jadpo check`
 keeps of several changing calls in one action, with the errors that name
-`step.` ("Several changing calls in one action").
+`step.` ("Several changing calls in one action"). Built in chunk 7.5c:
+unfinished records as operator items, `new_key_on:` and `jadpo runs
+unfinished` ("What an operator sees").
 
 Not yet:
 
@@ -4636,9 +4666,9 @@ Not yet:
   call a fake fails, is built (area 13, "Caches and events"; chunk 6.11).
 - `Retry-After`, polls, `receiving`, publishing outward, webhooks and a
   package's own events come with Phase 7; their errors are built with
-  them. Several changing calls' record and replay come with roadmap 7.5b,
-  and their operator items, the tests' crash points and the warning with
-  7.5c.
+  them. The tests' crash points, the fakes' `lost` and `in_use`, each
+  step's state in `jadpo dev` and `jadpo watch`, the warning, and the
+  metric and alert on unfinished records come with roadmap 7.5d.
 - On Cloudflare Workers, the cron tick, outbox delivery after commit, the
   `trigger:` adapter, a batch run carried on in a fresh invocation and
   the budgets: roadmap 8.2.
@@ -4901,6 +4931,7 @@ Not yet:
 | Topic | Decision | Date |
 |---|---|---|
 | Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise (decided for Richard, following grants) | 2026-10-20 |
+| Operators, chosen in chunk 7.5c | Each the conservative reading. A route's record becomes an item once a day has passed since its last run took it (area 11's 24 hours), whatever its own `window:`; before that it is its client's to retry, and an operator can only abandon it, since only its client holds the request. "Not done" acts on the record's last step when it has no answer or failed, clearing its answer and moving its key to the next generation, with its window counted from the operator's action; with nothing in doubt it is a plain retry, and on a delivery with no record it is `retry` (failed) or `resolve --not-done` (in doubt). A retry resets the record's generation to none with the delivery's attempts. A delivery with a record is refused `dismiss` and `resolve --done`, pointing at `abandon`; `abandon` on one without is refused. A record whose answers were dropped can't be retried, only abandoned. Answers are dropped 30 days after the record's last run; an abandoned record and its delivery go 30 days after the abandon. A route's client retrying under an abandoned record's key stops as a fault, answered `500`, sending nothing. `new_key_on:` sends again once per call; a second such answer is the operation's failure. `show` never shows a key: the CLI reads no setting it would be derived from. `jadpo runs unfinished` requires `--build`, refuses a build the checkout doesn't make (naming the one it does), lists a record whose build differs and whose action's step shape the build changes or no longer keeps, and a running batch run whose call the build changes or no longer has; it succeeds whatever it lists, as listing commands do (decided for Richard) | 2026-10-20 |
 | The record, chosen in chunk 7.5b | Each the conservative reading, where the pages left it open. A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for roadmap 7.5c's `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` comes with 7.5c's new key generation (decided for Richard) | 2026-10-20 |
 | Triggers | Carried from area 1: routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
 | Keyword and folders | Carried from area 1: `schedule` in `schedules/`; events in `events/`; subscribers in `subscribers/` | 2026-10-12 |

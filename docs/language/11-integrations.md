@@ -3095,9 +3095,9 @@ Built in chunk 7.5, what `jadpo check` keeps of these rules, with the
 errors under area 12's "Errors" (`step.context`, `step.large_output`,
 `step.store_required`, `step.too_many`, `step.unkeyed`) and area 3's
 `effect.call_in_loop`; an operation's `large_output:` is read. The record,
-replay and key windows come with roadmap 7.5b, and the operator's items,
-the fakes' `lost` and `in_use`, the tests' crash points and the warning
-with 7.5c.
+replay and key windows came with roadmap 7.5b and the operator's items
+with 7.5c; the fakes' `lost` and `in_use`, the tests' crash points and the
+warning come with 7.5d.
 
 Built in chunk 7.5b, the record, replay and key windows, as area 12's
 "Several changing calls in one action" says: a provider's `idempotency:`
@@ -3106,6 +3106,15 @@ an operation's `changes:` marks a step, and the provider call records,
 replays and keys each step through the capability seam
 (`effects::exchange` writes a step before it is sent). Choices in area
 12's decisions table, "The record, chosen in chunk 7.5b".
+
+Built in chunk 7.5c, the operator's side, as area 12's "What an operator
+sees" says: an unfinished record as an item (`jadpo deliveries show`,
+`retry --not-done` under the next key generation, `abandon`, a route's
+record once its client's key has lapsed), its answers dropped after 30
+days, and the package's `new_key_on:` answer sending a step again under
+its next key generation; `jadpo runs unfinished --build` (area 14).
+Choices in area 12's decisions table, "Operators, chosen in chunk
+7.5c".
 
 ## Receiving from outside
 

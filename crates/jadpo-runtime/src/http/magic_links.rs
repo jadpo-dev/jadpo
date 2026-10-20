@@ -806,41 +806,17 @@ impl Site<'_> {
             .database(ctx)
             .map_err(|_| crate::StoreError::Unavailable)?;
         let mut transaction = database.begin().await?;
-        let earlier = ctx.take_deferred();
+        if let Err(error) = transaction.execute(START, params).await {
+            let _ = transaction.rollback().await;
+            return Err(error);
+        }
         let event = SignInEvent::SignedIn {
             user: person.user,
             method: SignInMethod::MagicLink,
             first_time: person.first_time,
         };
-        let written = match transaction.execute(START, params).await {
-            Ok(_) => {
-                sign_in_events::write(
-                    ctx,
-                    self.executor,
-                    &self.plan.store,
-                    transaction.as_mut(),
-                    &[event],
-                )
-                .await
-            }
-            Err(error) => Err(error),
-        };
-        let kept = match written {
-            Ok(()) => transaction.commit().await,
-            Err(error) => {
-                let _ = transaction.rollback().await;
-                Err(error)
-            }
-        };
-        let mine = ctx.take_deferred();
-        for work in earlier {
-            ctx.defer(work);
-        }
-        kept?;
-        for work in mine {
-            ctx.defer(work);
-        }
-        Ok(())
+        sign_in_events::commit_with(ctx, self.executor, &self.plan.store, transaction, &[event])
+            .await
     }
 
     /// Keeps why the sign-in was refused for the request's log line, and
