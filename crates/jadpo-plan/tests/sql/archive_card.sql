@@ -22,3 +22,8 @@ RETURNING "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
 --     AND FALSE
 --   $1: Field { input: 0, field: "id" } as Uuid
 --   $2: Now as Timestamp
+-- loaded before a call: card row input 0.id held to its version first
+--   SELECT "xmin"::text
+--   FROM "card"
+--   WHERE "id" = $1
+--   FOR NO KEY UPDATE

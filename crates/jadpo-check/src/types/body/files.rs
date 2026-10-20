@@ -3,8 +3,8 @@
 //! names and gives the `File`, failing `storage_full` when the store has no
 //! room; `store.read(file)` gives a stored file's bytes whole, as
 //! `FileContents`, for passing on. Both leave the process, so only an
-//! action calls them, before its first read or write (area 6, "Outside
-//! calls hold no transaction"), which the runtime holds it to as it runs.
+//! action calls them, before its first write (area 6, "Outside calls hold
+//! no transaction"), which the runtime holds it to as it runs.
 //!
 //! `store.read` reads the whole file into memory, so a field whose
 //! `max_size:` is over 10 MB is refused where it is read

@@ -19,7 +19,7 @@ use jadpo_std::write::{PolicyRefusal, WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
 use crate::read::{Interrupt, JsonCodecs, defect, refused, stored_value, to_sql, uuid_text};
-use crate::{Ctx, Failure, FaultKind, SqlValue, StoreError};
+use crate::{Ctx, Failure, FaultKind, SqlType, SqlValue, StoreError};
 
 /// What a write did.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,6 +51,20 @@ pub(crate) async fn write(
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
     let params = params_of(ctx, &plan.params, json, inputs, site, now)?;
+    // A row the action loaded before an outside call is held to the
+    // version it was loaded at; one changed since is a concurrent change,
+    // which runs the action again (area 6, "Outside calls hold no
+    // transaction"; chunk 7.4).
+    if let Some(row) = plan.row.as_ref().filter(|_| ctx.loaded_before_call()) {
+        let id = source_value(ctx, &row.id, inputs, site, now)?;
+        let id = match to_sql(&id, SqlType::Uuid) {
+            Ok(id) => id,
+            Err(what) => return Err(defect(ctx, &what, site)),
+        };
+        if let Err(error) = ctx.check_row(&plan.store, row, id).await {
+            return Err(refused(ctx, error, site));
+        }
+    }
     let unpoliced = ctx.unpoliced();
     let sql = match (&plan.unpoliced, unpoliced) {
         (Some(sql), true) => sql,

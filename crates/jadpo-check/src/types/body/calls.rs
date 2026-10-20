@@ -438,6 +438,7 @@ impl Body<'_> {
                     operation: rest.join("."),
                     fails: Vec::new(),
                     checked: false,
+                    safe: true,
                 };
                 return (Ty::Error, CallKind::Effect(written), reach);
             }

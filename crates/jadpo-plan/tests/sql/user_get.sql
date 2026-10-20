@@ -8,3 +8,7 @@ WHERE "id" = $1
 -- columns: uuid, text, text, bool
 -- the caller may read a row: column 3
 -- record User: id = column 0, email = column 1, name = column 2
+-- row versions of user, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "user"
+--   WHERE "id" = ANY($1)

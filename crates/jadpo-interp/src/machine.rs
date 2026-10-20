@@ -556,6 +556,15 @@ impl<'p> Machine<'p> {
         jadpo_runtime::fakes::script(ctx, &providers, (connection, operation), given)
     }
 
+    /// What the provider call at `at` reads of its answer, and whether it
+    /// maps `timed_out:` (chunk 7.2c2).
+    pub fn provider_site(&self, at: SiteId) -> Option<&'p jadpo_std::provider::CallSite> {
+        match self.decoded(at)? {
+            Decoded::Provider(site) => Some(site),
+            _ => None,
+        }
+    }
+
     /// Whether `key` is a failure of the provider operation `operation` of
     /// `connection`: its package's, which its call maps.
     fn provider_failure(&self, connection: &str, operation: &str, key: &str) -> bool {
@@ -1541,9 +1550,12 @@ impl<'p> Machine<'p> {
                     // A provider's failure is mapped by its code (area 11,
                     // chunk 7.2c), with the provider's kept as the cause;
                     // one no arm maps is a fault, never passed on.
+                    // So is its `timed_out` where its `attempt` maps it
+                    // (chunk 7.2c2).
                     if let Stop::Failed(failure) = &stop
                         && let Some((connection, operation)) = self.provider_call(inner)
-                        && self.provider_failure(connection, operation, &failure.key)
+                        && (self.provider_failure(connection, operation, &failure.key)
+                            || failure.key == "runtime timed_out")
                     {
                         let code = failure.code.clone();
                         self.values.truncate(base);
@@ -2155,7 +2167,7 @@ impl<'p> Machine<'p> {
                 self.arguments(args, id);
             }
             // A store's put or read: an outside call, before the action's
-            // first read or write (area 16, chunk 6.4b).
+            // first write (area 16, chunk 6.4b; area 6, chunk 7.4).
             Callee::Files { op, .. } => {
                 self.tasks.push(Task::Invoke {
                     target: Target::Files(*op),
@@ -2166,7 +2178,7 @@ impl<'p> Machine<'p> {
                 self.arguments(args, id);
             }
             // A provider's operation: an outside call, before the action's
-            // first read or write (area 11, chunk 7.2c).
+            // first write (area 11, chunk 7.2c; area 6, chunk 7.4).
             Callee::Provider { .. } => {
                 self.tasks.push(Task::Invoke {
                     target: Target::Provider,

@@ -546,6 +546,8 @@ rules! {
         "11-integrations.html#package-version-needed", "Name written through a package held in two versions doesn't say which";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
         "11-integrations.html#package-version-unneeded", "Name written through a package held in one version carries a version";
+    PACKAGE_WIRE_INVALID: "package.wire_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-wire-invalid", "Field says how it is sent in a way it can't";
     PACKAGE_WIRE_NAME_INVALID: "package.wire_name_invalid", area 11, Error, Agent,
         "11-integrations.html#package-wire-name-invalid", "Wire name outside a provider package, or one the type already uses";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,

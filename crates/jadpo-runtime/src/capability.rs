@@ -112,6 +112,14 @@ pub enum Answer {
     /// It may have acted: it went out and no answer came back (area 4's
     /// `outcome_unknown`).
     Unknown,
+    /// It went out and no answer came back within its timeout (chunk
+    /// 7.2c2): as [`Answer::Unknown`], but a call safe to send again may
+    /// map it at its site as `timed_out`.
+    TimedOut,
+    /// It surely did nothing, and the provider asked for it to be sent
+    /// again only after this many milliseconds, its `Retry-After` (chunk
+    /// 7.2c2): as [`Answer::Unavailable`] otherwise.
+    RetryAfter(u64),
     /// The connection's credential or settings were refused.
     Misconfigured,
     /// A provider operation's generated default (area 11, "Tests and
@@ -130,6 +138,8 @@ impl std::fmt::Debug for Answer {
             Answer::Failed(code) => f.debug_tuple("Failed").field(code).finish(),
             Answer::Unavailable => f.write_str("Unavailable"),
             Answer::Unknown => f.write_str("Unknown"),
+            Answer::TimedOut => f.write_str("TimedOut"),
+            Answer::RetryAfter(millis) => f.debug_tuple("RetryAfter").field(millis).finish(),
             Answer::Misconfigured => f.write_str("Misconfigured"),
             Answer::Generated => f.write_str("Generated"),
         }
@@ -229,8 +239,8 @@ impl Ended {
         match answer {
             Answer::Value(_) | Answer::Wire(_) => Ended::Answered,
             Answer::Failed(code) => Ended::Failed(code.clone()),
-            Answer::Unavailable => Ended::Unavailable,
-            Answer::Unknown => Ended::Unknown,
+            Answer::Unavailable | Answer::RetryAfter(_) => Ended::Unavailable,
+            Answer::Unknown | Answer::TimedOut => Ended::Unknown,
             Answer::Misconfigured => Ended::Misconfigured,
             Answer::Generated => Ended::Answered,
         }
@@ -745,8 +755,8 @@ mod tests {
         assert_eq!(fake.sent().len(), 1);
     }
 
-    /// An action that makes a call before its first read or write: then
-    /// one after it, by which time its transaction is open.
+    /// An action that makes a call before its first write: then one after
+    /// it, by which time its transaction is open.
     struct Calls {
         before: Option<Result<Value, Unanswered>>,
         after: Option<Result<Value, Unanswered>>,
@@ -771,7 +781,7 @@ mod tests {
 
     /// No call goes out while the action's transaction is open (area 6,
     /// "Outside calls hold no transaction"): one made after the action's
-    /// first read or write is refused with a fault naming it, and never
+    /// first write is refused with a fault naming it, and never
     /// reaches the driver; one made before goes out.
     #[test]
     fn a_call_inside_an_open_transaction_is_refused_before_it_goes_out() {
@@ -803,6 +813,49 @@ mod tests {
             FaultKind::CallInTransaction("mail.send".into()).classification(),
             "call_in_transaction"
         );
+    }
+
+    /// An action that reads, then makes a call: what it read is a
+    /// snapshot, closed before the call goes out (area 6, "Outside calls
+    /// hold no transaction"; chunk 7.4).
+    struct ReadsThenCalls {
+        called: Option<Result<Value, Unanswered>>,
+        open_after: bool,
+    }
+
+    impl<'p> ActionBody<'p> for ReadsThenCalls {
+        fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
+            Box::pin(async move {
+                if ctx.read_transaction("main").await.is_err() {
+                    return Outcome::Value(Value::Unit);
+                }
+                self.called = Some(call(ctx, send("ada", Repeat::Unkeyed)).await);
+                self.open_after = ctx.transaction_open();
+                Outcome::Value(Value::Unit)
+            })
+        }
+
+        fn isolation(&self) -> Isolation {
+            Isolation::RepeatableRead
+        }
+    }
+
+    /// A call after the action has only read goes out, its snapshot
+    /// closed first, and no transaction is open when it is answered.
+    #[test]
+    fn a_call_after_only_reads_closes_the_snapshot_and_goes_out() {
+        let (fake, host) = mail();
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, env());
+        let mut body = ReadsThenCalls {
+            called: None,
+            open_after: true,
+        };
+        let outcome = crate::block_on(crate::action(&mut ctx, &mut body)).expect("nothing waits");
+        assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
+        assert_eq!(body.called, Some(Ok(Value::text("receipt-1"))));
+        assert!(!body.open_after, "the snapshot closed before the call");
+        assert_eq!(fake.sent().len(), 1);
     }
 
     /// A call whose run is dropped while it is out stays logged as in

@@ -385,6 +385,7 @@ pub fn decode(
         codecs: &plan.codecs,
         validators,
         shapes: &[],
+        coder: None,
     };
     // A zone or locale in any case, read as the codec spells it on the
     // wire: `europe/london` is `Europe/London`; a duration as source

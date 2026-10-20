@@ -183,8 +183,10 @@ pub enum Unanswered {
 }
 
 /// Sends `call` from `ctx`, the one way a call leaves the process (chunk
-/// 7.0c): its value, or why it gave none. Refused while the running
-/// action's transaction is open (area 6, "Outside calls hold no
+/// 7.0c): its value, or why it gave none. What the running action has
+/// only read is a snapshot, closed before the call goes out once the
+/// versions of the rows it loaded are read (chunk 7.4); refused while a
+/// transaction that has written is open (area 6, "Outside calls hold no
 /// transaction"); in a replayed run, answered from the recording without
 /// going out (area 17); otherwise sent through the driver the host gives
 /// for its connection, logged on the invocation as it goes out and again
@@ -217,7 +219,23 @@ pub enum Given {
 /// [`call`], giving a provider's answer as it was sent where its driver
 /// answers so (chunk 7.2c).
 pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
+    let repeat = call.repeat;
+    answered(repeat, exchange(ctx, call).await?)
+}
+
+/// [`send`], giving the driver's answer as it classified it, for a caller
+/// that decides whether to send it again (a provider's call, chunk 7.2c2):
+/// refused inside an open transaction or with no driver, a replayed run's
+/// recorded answer, or the driver's.
+pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswered> {
     let now = ctx.now();
+    // No transaction stays open while the call is out: one that has only
+    // read closes, and the next store operation begins another (area 6,
+    // "Outside calls hold no transaction"; chunk 7.4).
+    if ctx.close_snapshot().await.is_err() {
+        ctx.capabilities_mut().refused(&call, now);
+        return Err(Unanswered::Failure(Box::new(crate::unavailable())));
+    }
     if ctx.transaction_open() {
         ctx.capabilities_mut().refused(&call, now);
         return Err(Unanswered::Fault(FaultKind::CallInTransaction(call.name())));
@@ -228,7 +246,7 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
                 let capabilities = ctx.capabilities_mut();
                 let place = capabilities.sent(&call, crate::capability::Source::Replayed, now);
                 capabilities.ended(place, &answer, Some(0));
-                answered(call.repeat, answer)
+                Ok(answer)
             }
             Err(recorded) => {
                 ctx.capabilities_mut().refused(&call, now);
@@ -251,22 +269,24 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
     let answer = driver.call(&call).await;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     ctx.capabilities_mut().ended(place, &answer, took);
-    answered(call.repeat, answer)
+    Ok(answer)
 }
 
 /// What `answer` gives a call that may be sent again as `repeat` says.
-fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
+pub(crate) fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
     let raised = |failure: Failure| Err(Unanswered::Failure(Box::new(failure)));
     match answer {
         Answer::Value(value) => Ok(Given::Value(value)),
         Answer::Wire(text) => Ok(Given::Wire(text)),
         Answer::Generated => Ok(Given::Generated),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
-        Answer::Unavailable => raised(crate::unavailable()),
+        Answer::Unavailable | Answer::RetryAfter(_) => raised(crate::unavailable()),
         // Sent again under its key, or a call that changes nothing, it
         // acts once: a retry is safe.
-        Answer::Unknown if repeat != Repeat::Unkeyed => raised(crate::unavailable()),
-        Answer::Unknown => raised(crate::outcome_unknown()),
+        Answer::Unknown | Answer::TimedOut if repeat != Repeat::Unkeyed => {
+            raised(crate::unavailable())
+        }
+        Answer::Unknown | Answer::TimedOut => raised(crate::outcome_unknown()),
         Answer::Misconfigured => raised(crate::misconfigured()),
     }
 }

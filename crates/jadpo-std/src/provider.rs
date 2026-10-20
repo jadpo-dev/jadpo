@@ -3,7 +3,8 @@
 //! credential are read and how long a call waits, and each operation an
 //! application calls through it, how it is sent and how its answer is
 //! read. Both executors send a call from this through the capability seam
-//! (`jadpo_runtime::provider`).
+//! (`jadpo_runtime::provider`). Chunk 7.2c2 adds the built-in encodings
+//! ([`WireEncoding`]), a whole answer's decoder and `retry:`.
 
 use crate::HttpMethod;
 use crate::subscriber::Repeat;
@@ -11,6 +12,122 @@ use crate::subscriber::Repeat;
 /// What a call waits for its answer when its connection gives no
 /// `timeout:` (area 11, question 8).
 pub const DEFAULT_TIMEOUT_MS: u64 = 10_000;
+
+/// How often a call is tried, and for how long, when its connection gives
+/// no `retry:` (area 11, question 8).
+pub const DEFAULT_RETRY: RetryPlan = RetryPlan {
+    attempts: 3,
+    within_ms: 30_000,
+};
+
+/// The most a connection's `retry:` may try a call, and the longest it may
+/// keep trying: a call is part of an action a person or a delivery waits
+/// on (chunk 7.2c2).
+pub const MAX_ATTEMPTS: u32 = 10;
+pub const MAX_WITHIN_MS: u64 = 5 * 60 * 1000;
+
+/// The first wait before a call is sent again, doubled after each attempt;
+/// each wait is drawn evenly from zero to its ceiling (full jitter), and
+/// none goes past the end of `within:` (chunk 7.2c2).
+pub const RETRY_BASE_MS: u64 = 200;
+
+/// A connection's `retry:`: how many times a call that may be sent again is
+/// tried, the first included, and within how long of the first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RetryPlan {
+    pub attempts: u32,
+    pub within_ms: u64,
+}
+
+impl Default for RetryPlan {
+    fn default() -> RetryPlan {
+        DEFAULT_RETRY
+    }
+}
+
+/// The built-in encodings a provider package's field names with `wire:`
+/// (area 11, "Decoding"; chunk 7.2c2): a fixed list, extended by Jadpo
+/// releases. A field without one is sent as the contract writes its type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum WireEncoding {
+    /// An `Instant` as a whole number of seconds since 1970.
+    UnixSeconds,
+    /// An `Instant` as a whole number of milliseconds since 1970.
+    UnixMilliseconds,
+    /// An `Instant` as ISO 8601 text with any offset from UTC
+    /// (`2026-10-20T10:00:00+01:00`), written in UTC.
+    Iso8601,
+    /// A `CalendarDate` as `20/10/2026`.
+    DayMonthYear,
+    /// An `Int` or a `Decimal` as text: `"42"`, `"2.50"`.
+    Text,
+    /// An `Int` or a `Decimal` as a JSON number: `2.50`.
+    Number,
+    /// A list of single values as one text, joined by commas: `"a,b,c"`.
+    CommaSeparated,
+    /// `Text` as the Base64 of its UTF-8.
+    Base64,
+    /// Any value as its JSON, inside a string.
+    JsonText,
+    /// An amount of `Money` as a whole number of its currency's minor
+    /// units, its one currency fixed by its type's `currency:`.
+    MinorUnits,
+}
+
+impl WireEncoding {
+    pub const ALL: [WireEncoding; 10] = [
+        WireEncoding::UnixSeconds,
+        WireEncoding::UnixMilliseconds,
+        WireEncoding::Iso8601,
+        WireEncoding::DayMonthYear,
+        WireEncoding::Text,
+        WireEncoding::Number,
+        WireEncoding::CommaSeparated,
+        WireEncoding::Base64,
+        WireEncoding::JsonText,
+        WireEncoding::MinorUnits,
+    ];
+
+    /// Its name after `Wire.`: `unix_seconds`.
+    pub fn name(self) -> &'static str {
+        match self {
+            WireEncoding::UnixSeconds => "unix_seconds",
+            WireEncoding::UnixMilliseconds => "unix_milliseconds",
+            WireEncoding::Iso8601 => "iso_8601",
+            WireEncoding::DayMonthYear => "day_month_year",
+            WireEncoding::Text => "text",
+            WireEncoding::Number => "number",
+            WireEncoding::CommaSeparated => "comma_separated",
+            WireEncoding::Base64 => "base64",
+            WireEncoding::JsonText => "json_text",
+            WireEncoding::MinorUnits => "minor_units",
+        }
+    }
+
+    /// The encoding called `name` after `Wire.`.
+    pub fn from_name(name: &str) -> Option<WireEncoding> {
+        WireEncoding::ALL
+            .into_iter()
+            .find(|encoding| encoding.name() == name)
+    }
+
+    /// The values it holds, as a problem names them.
+    pub fn holds(self) -> &'static str {
+        match self {
+            WireEncoding::UnixSeconds | WireEncoding::UnixMilliseconds | WireEncoding::Iso8601 => {
+                "an `Instant`"
+            }
+            WireEncoding::DayMonthYear => "a `CalendarDate`",
+            WireEncoding::Text | WireEncoding::Number => "an `Int` or a `Decimal`",
+            WireEncoding::CommaSeparated => {
+                "a list of text, numbers or an enum's variants without data"
+            }
+            WireEncoding::Base64 => "`Text`",
+            WireEncoding::JsonText => "any value",
+            WireEncoding::MinorUnits => "`Money` in one currency, fixed by `currency:`",
+        }
+    }
+}
 
 /// Every connection to a provider package an application calls, and the
 /// operations it calls through them.
@@ -96,6 +213,8 @@ pub struct ConnectionPlan {
     pub credential: Option<(CredentialScheme, u32)>,
     /// How long a call waits for its answer, in milliseconds.
     pub timeout_ms: u64,
+    /// How a call that may be sent again is retried (chunk 7.2c2).
+    pub retry: RetryPlan,
     pub idempotency: Option<IdempotencyPlan>,
     /// Where a failed answer's code is, dotted from its root.
     pub error_code: Option<String>,
@@ -127,6 +246,10 @@ pub struct OperationPlan {
     /// Its output type's number in the plan's JSON table; `None` when it
     /// gives nothing.
     pub output: Option<u32>,
+    /// The answer as sent, `wire_output:`'s number in the plan's JSON
+    /// table, and the identity key of the package's function, `decode:`,
+    /// that turns it into the output (chunk 7.2c2).
+    pub decode: Option<(u32, String)>,
     /// Where the real object is in an envelope, dotted.
     pub output_at: Option<String>,
     /// A `200` answer that is really a failure: the place, dotted, and
@@ -139,4 +262,17 @@ pub struct OperationPlan {
     /// The identity keys of the package failures it answers with, whose
     /// codes the provider's error code is matched against.
     pub failures: Vec<String>,
+}
+
+/// What the call at one site needs besides its operation (chunk 7.2c2):
+/// the fields of its output its code reads, the only ones decoded, and
+/// whether its `attempt` maps `timed_out:`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct CallSite {
+    /// The output's fields read, by name; `None` when the whole value is
+    /// used (returned, passed on, or anything but a field read).
+    pub reads: Option<Vec<String>>,
+    /// Whether a timeout is the call's `timed_out` failure, which its
+    /// `attempt` maps, rather than the runtime's `unavailable`.
+    pub timed_out: bool,
 }

@@ -5,3 +5,7 @@ WHERE "id" = $1
 -- $1: argument 0 as Uuid
 -- columns: uuid, vector, vector
 -- record Paper: id = column 0, meaning = column 1, full_meaning = column 2
+-- row versions of paper, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "paper"
+--   WHERE "id" = ANY($1)

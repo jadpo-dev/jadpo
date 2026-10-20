@@ -8,3 +8,7 @@ WHERE "id" = $1
 -- columns: uuid, uuid, text, int, bool
 -- the caller may read a row: column 4
 -- record Project: id = column 0, owner_id = column 1, name = column 2, views = column 3
+-- row versions of project, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "project"
+--   WHERE "id" = ANY($1)

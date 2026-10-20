@@ -1127,6 +1127,7 @@ mod tests {
             codecs: &table,
             validators: &validators,
             shapes: &shapes,
+            coder: None,
         };
         let read = |token: &str| {
             verify_jwt_as(

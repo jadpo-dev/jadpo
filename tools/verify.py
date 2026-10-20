@@ -155,8 +155,10 @@ POSTGRES = [
     ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),
     # Writes, their conflicts and counters through `jadpo test`, and a
     # concurrent change forced from a second connection, rerunning the
-    # whole action (area 6).
-    ('live PostgreSQL: writes and concurrent changes', [('jadpo-cli', 'writes')], []),
+    # whole action (area 6); and no transaction open while a provider
+    # holds a call, a change made meanwhile rerunning it (chunk 7.4).
+    ('live PostgreSQL: writes and concurrent changes',
+     [('jadpo-cli', 'writes'), ('jadpo-cli', 'call_snapshots')], []),
     # Lifecycles through `jadpo test`: hidden records, transitions and
     # their guards; then purge through the runtime's entry point, with
     # cascades, restricted references and batches (area 5).

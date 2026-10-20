@@ -27,7 +27,7 @@ use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::read::MissingValue;
 use jadpo_std::read::{Field, Record, SqlType};
 use jadpo_std::write::{
-    Guard, Raises, Refusal, Returned, WriteOp, WriteParam, WritePlan, WriteSource,
+    Guard, Raises, Refusal, Returned, RowCheck, WriteOp, WriteParam, WritePlan, WriteSource,
 };
 
 use jadpo_sql::Bind;
@@ -145,6 +145,8 @@ impl Planner<'_> {
         let mut kept: Vec<String> = Vec::new();
         // Where each reference's value comes from, for a refusal's failure.
         let mut written_refs: Vec<(String, MissingValue)> = Vec::new();
+        // An update's or a delete's row, by where its `id` comes from.
+        let mut row: Option<RowCheck> = None;
         let sql = match op {
             WriteOp::Create => {
                 let given: Vec<(String, u32)> = set
@@ -278,6 +280,11 @@ impl Planner<'_> {
                         field: "id".to_string(),
                     }
                 };
+                row = Some(RowCheck {
+                    table: table.to_string(),
+                    id: id_source.clone(),
+                    sql: text::row_version(table),
+                });
                 let mut assignments: Vec<String> = Vec::new();
                 // Each field it changes, with its value once written, as
                 // SQL the `WHERE` can test.
@@ -753,6 +760,7 @@ impl Planner<'_> {
                 refusals,
                 missing,
                 kept_in_tenant: !kept.is_empty(),
+                row,
             },
             inputs: writing.inputs,
         })

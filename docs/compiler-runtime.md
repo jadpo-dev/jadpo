@@ -1001,10 +1001,11 @@ and a test's settings), the frames and the assertion being recorded stay
 on `Ctx`. Its public methods are unchanged.
 
 The runtime, not the executor, owns the action boundary: it opens the
-transaction at the first store operation, runs the body (a closure either
-executor supplies), reruns it on a concurrent change within the budget
-(area 6), commits, then leaves the outbox for the runner (since chunk
-6.1a; §2.6) and clears caches. Limits
+transaction at the first store operation (and again after an outside call
+closed what the action had only read, since chunk 7.4; §2.6), runs the
+body (a closure either executor supplies), reruns it on a concurrent
+change within the budget (area 6), commits, then leaves the outbox for
+the runner (since chunk 6.1a; §2.6) and clears caches. Limits
 (recursion depth, events per action, event size, chain depth) are runtime
 constants. Only control flow and value representation differ between the
 executors, so divergence can only come from those.
@@ -2061,7 +2062,7 @@ doubles the async signatures and lets bugs hide on one target.
 | HTTP | Router from the route table, input decoding, body limit, deadline, health, idempotency keys, failure envelope, `request_id` | fetch event |
 | Identity | Sessions, CSRF, API tokens, service keys, OIDC sign-in, revocation delay | same |
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
-| Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |
+| Transactions | Read committed or repeatable read by what the action does, a snapshot closed before each outside call and row versions checked after it (chunk 7.4), rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2) | Cloudflare cron |
@@ -2099,9 +2100,10 @@ review; area 16, "Chosen in chunk 7.0c"). Every call that leaves the
 process goes through `jadpo_runtime::effects::call(ctx, call)`, which
 both executors call: a `capability::Call` (its connection, operation,
 input, and `Repeat`: `Safe`, `Keyed` or `Unkeyed`) is refused with
-`FaultKind::CallInTransaction` while the action's transaction is open
-(`Ctx::transaction_open`; area 6's snapshot closed before a call is
-chunk 7.4's); in a replayed run it is answered from the recording
+`FaultKind::CallInTransaction` while a transaction that has written is
+open (`Ctx::transaction_open`), having first closed one that has only
+read (chunk 7.4, "Snapshots before calls" below); in a replayed run it
+is answered from the recording
 (`capability::Recording`, the random bytes and each call's answer, which
 `Ctx::record_run`, `recorded_run` and `replay_run` keep and give back),
 a call the recording doesn't have next refused; otherwise it is sent
@@ -2137,6 +2139,35 @@ and the work it is given kept), which replaced twenty hand-written hosts
 in nineteen of `crates/jadpo-cli/tests`' files; the live tests of
 `capability_deliveries.rs` prove the seam with a test capability, the
 `mail` connection's fake.
+
+**Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
+transaction"). The seam closes what the running action has only read
+before a call goes out (`Ctx::close_snapshot`), so no transaction is
+open while any call is out. The boundary keeps whether its transaction
+has run anything but reads: reads (`read::read`, a gate's roles, a
+batch's status, the token lists) take it through
+`Ctx::read_transaction`, everything else through `Ctx::transaction`,
+which marks it as written. A plan's `Select` that reads an entity's `id`
+carries `RowVersions` (its table, the `id` column and
+`jadpo_sql::statement::row_versions`), and each read in a transaction
+that has only read keeps the ids it loaded (`Ctx::loaded`); closing it
+reads their `xmin` by table, one statement each, keeps each row's first
+version on the boundary, and rolls back. The next store operation begins
+a new transaction at the same level in the same store, counted by a
+generation `boundary::Undo` compares, so a caught action whose call
+closed the snapshot its savepoint was in has its own transaction rolled
+back whole instead. Every update and delete plan carries a `RowCheck`
+(its table, where its `id` comes from, and `row_version`'s statement,
+`FOR NO KEY UPDATE`): before the write, a row loaded before a call is
+read and locked in the new transaction, once per transaction
+(`Ctx::check_row`), and another version, or none, is
+`StoreError::ConcurrentChange`, which reruns the action within
+`RERUN_ATTEMPTS`; the rerun takes the same steps, so a keyed call
+repeats under its key. A reference's refusal planned as `Raises::Gone`
+is a concurrent change too once rows were loaded before a call. The SQL
+goldens show both statements. Batches' items still run inside their
+page's transaction, which has written, so their calls are refused until
+chunk 7.4b.
 
 **Provider calls** (chunk 7.2c; area 11, "Chosen in chunk 7.2c"). A
 provider operation's call is `Callee::Provider` (its connection and

@@ -118,6 +118,35 @@ pub enum Codec {
     /// "FeatureCollection", "features": [...]}`, each feature read and
     /// written by `feature`.
     FeatureCollection { feature: CodecId },
+    /// A provider package's field that names its encoding on the wire
+    /// (area 11, "Decoding"; chunk 7.2c2): read and written as `coding`
+    /// says on a provider's wire, and as `contract` everywhere else, so a
+    /// value the app writes with `json.write` or answers a route with is
+    /// the contract's.
+    Wired {
+        contract: CodecId,
+        coding: WireCoding,
+    },
+}
+
+/// How a provider package's field is sent ([`Codec::Wired`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum WireCoding {
+    /// One of the built-in encodings its `wire:` names; `currency` is the
+    /// code of the one currency a `Wire.minor_units` amount is in.
+    Encoding {
+        encoding: crate::provider::WireEncoding,
+        currency: Option<String>,
+    },
+    /// Its own `decode:` and `encode:`, the package's functions by
+    /// identity key, run by the executor at the call's site: the value on
+    /// the wire is read and written with `wire`, the codec of the type
+    /// `decode:` takes.
+    Functions {
+        decode: String,
+        encode: String,
+        wire: CodecId,
+    },
 }
 
 /// One variant of an enum codec.

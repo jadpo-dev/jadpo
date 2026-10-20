@@ -1535,10 +1535,12 @@ reading:
 - **No call inside an open transaction.** A call made once the action
   has read or written, while its transaction is open, is refused before
   it goes out, with a fault naming the call and saying to make it before
-  the action's first read or write. Closing a read snapshot before the
-  call instead, and the checker proving it, are chunk 7.4's. A batch's
-  items run inside their batch's transaction, so an item's call is
-  refused the same way until then.
+  the action's first read or write. Since chunk 7.4 what the action has
+  only read is a snapshot the call closes instead, and only a call after
+  a write is refused (area 6, "Outside calls hold no transaction"). The
+  checker proving the order, and a batch's items' calls, which still run
+  inside their batch's transaction and are refused the same way, are
+  chunk 7.4b's.
 - **Fakes wrap the host.** A fake is a host wrapper giving a scripted
   driver in some connections' place, everything else the host's own: a
   test runs on it, and `jadpo dev`'s host gives a package's fake the same
@@ -1564,7 +1566,7 @@ capability's first part, each the most conservative reading:
   and the three on a field that isn't a `File` are
   `type.unknown_setting`.
 - **`store.put(bytes, type)`** is called only in an action, before its
-  first read or write, as every outside call is. Its key is made from
+  first write, as every outside call is. Its key is made from
   the invocation's randomness, so a replay keeps it; it goes out as a
   keyed call, since writing the same key again writes the same immutable
   object. A store with no room answers `storage_full`, the call's one
