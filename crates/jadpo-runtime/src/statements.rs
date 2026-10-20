@@ -359,7 +359,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ("steps::OPEN", crate::steps::OPEN.to_string()),
         ("steps::SEND", crate::steps::SEND.to_string()),
         ("steps::STEPS", crate::steps::STEPS.to_string()),
-        ("unfinished::ABANDON", crate::unfinished::ABANDON.to_string()),
+        (
+            "unfinished::ABANDON",
+            crate::unfinished::ABANDON.to_string(),
+        ),
         (
             "unfinished::ABANDON_REQUEST",
             crate::unfinished::ABANDON_REQUEST.to_string(),

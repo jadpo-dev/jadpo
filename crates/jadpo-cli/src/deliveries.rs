@@ -42,11 +42,11 @@ use jadpo_check::schedules::ScheduleModel;
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_runtime::breaker::Unavailable;
 use jadpo_runtime::deliveries::{
-    self as runtime, ABANDONED, Action, CANCELLED, DISMISSED, DIVERGED, Done, FAILED, HELD,
-    Holds, Item, Kind, NEEDS_AN_OPERATOR, OUTCOME_UNKNOWN, PENDING, RUNNING, UNFINISHED,
+    self as runtime, ABANDONED, Action, CANCELLED, DISMISSED, DIVERGED, Done, FAILED, HELD, Holds,
+    Item, Kind, NEEDS_AN_OPERATOR, OUTCOME_UNKNOWN, PENDING, RUNNING, UNFINISHED,
 };
-use jadpo_runtime::unfinished::{self, Record};
 use jadpo_runtime::schedules::watch::Declared;
+use jadpo_runtime::unfinished::{self, Record};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table, Token};
 
 use crate::run::{Call, Reply, quoted};
@@ -1216,7 +1216,12 @@ fn record_of(
 
 /// `deliveries.wrong_state` for an action a record of steps rules out, or
 /// that needs one (chunk 7.5c), with what applies instead.
-fn record_rules_out(item: &Item, action: Action, record: Option<&Record>, id: &str) -> Option<Diagnostic> {
+fn record_rules_out(
+    item: &Item,
+    action: Action,
+    record: Option<&Record>,
+    id: &str,
+) -> Option<Diagnostic> {
     let refused = |message: String, reason: String, next: String| {
         Some(
             Diagnostic::new(&rule::DELIVERIES_WRONG_STATE, message)
@@ -1241,7 +1246,7 @@ fn record_rules_out(item: &Item, action: Action, record: Option<&Record>, id: &s
                     }
                 ),
                 format!(
-                    "Its action, `{}`, keeps a record of {} ({} answered) and never committed its writes. Abandoning it ends it for good and keeps that list 30 days, for tidying up at the provider by hand.",
+                    "Its action, `{}`, keeps a record of {} ({} answered) and never committed its writes. Abandoning it ends it for good and keeps that list 30 days, for setting right at the provider by hand.",
                     bare(&record.action),
                     plural(record.steps.len() as u64, "step", "steps"),
                     answered
@@ -1278,11 +1283,10 @@ fn record_rules_out(item: &Item, action: Action, record: Option<&Record>, id: &s
 fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Action) -> Reply {
     let now = now(call);
     let command = action_command(action);
-    let (databases, store, url, item) =
-        match locate(call, project, written, suffix, command, now) {
-            Ok(found) => found,
-            Err(reply) => return reply,
-        };
+    let (databases, store, url, item) = match locate(call, project, written, suffix, command, now) {
+        Ok(found) => found,
+        Err(reply) => return reply,
+    };
     let id = runtime::short(&item.id);
     if !action.fits(&item) {
         return Reply::failed(wrong_state(project, &item, action, &id));
@@ -1291,9 +1295,12 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
         Ok(record) => record,
         Err(reply) => return reply,
     };
-    if let Some(refused) =
-        record_rules_out(&item, action, record.as_ref().map(|(_, _, record)| record), &id)
-    {
+    if let Some(refused) = record_rules_out(
+        &item,
+        action,
+        record.as_ref().map(|(_, _, record)| record),
+        &id,
+    ) {
         return Reply::failed(refused);
     }
     // "Not done" with no record is what it was before records: a retry of
@@ -1348,9 +1355,9 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
                 not_done: sends_again.as_ref().map(|step| step.position),
             })
         }
-        (Action::Abandon, Some((_, _, record))) => Some(unfinished::Change::Abandon {
-            record: record.id,
-        }),
+        (Action::Abandon, Some((_, _, record))) => {
+            Some(unfinished::Change::Abandon { record: record.id })
+        }
         _ => None,
     };
     // A record kept in another store than its delivery's is changed
@@ -1373,7 +1380,7 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
     let done = with_database(&store, &url, |database| {
         let item = item.clone();
         let operator = operator.clone();
-        let together = if alone.is_some() { None } else { change };
+        let same_store = if alone.is_some() { None } else { change };
         Box::pin(async move {
             let host = jadpo_host_native::NativeHost::new();
             match (item.kind, action) {
@@ -1382,7 +1389,7 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
                 }
                 (Kind::Delivery, _) => {
                     runtime::act_on_delivery_and_record(
-                        database, &host, &item, action, &operator, now, together,
+                        database, &host, &item, action, &operator, now, same_store,
                     )
                     .await
                 }
@@ -1423,9 +1430,7 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
                 .map(|(_, _, record)| bare(&record.action))
                 .unwrap_or_else(|| bare(&item.target))
         ),
-        (Kind::Delivery, Action::RetryNotDone | Action::ResolveNotDone)
-            if record.is_some() =>
-        {
+        (Kind::Delivery, Action::RetryNotDone | Action::ResolveNotDone) if record.is_some() => {
             match &sends_again {
                 Some(step) => format!(
                     "Queued `{id}` for retry: step {}, `{}`, goes again under a new key on the app's next tick",
@@ -1483,7 +1488,7 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
     if action == Action::Abandon {
         screen.push(Block::hint(
             format!("jadpo deliveries show {id}"),
-            "lists what took effect, to tidy up at the provider",
+            "lists what took effect, to set right at the provider",
         ));
     }
     Reply::screen(
@@ -1523,8 +1528,7 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
 /// key was replaced, never its request or its answer; then what to do.
 fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
     let now = now(call);
-    let (databases, store, url, item) = match locate(call, project, written, suffix, "show", now)
-    {
+    let (databases, store, url, item) = match locate(call, project, written, suffix, "show", now) {
         Ok(found) => found,
         Err(reply) => return reply,
     };
@@ -1589,7 +1593,7 @@ fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
                 Some(_) => Cell::state(Symbol::Skipped, "answer dropped"),
                 None => Cell::state(Symbol::Decision, "no answer"),
             };
-            let mut sent = clock(step.sent_at, now);
+            let mut sent = clock(step.dispatched, now);
             if step.key_generation > 0 {
                 sent.push_str(&format!(" · key {}", step.key_generation + 1));
             }
@@ -1645,11 +1649,11 @@ fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
             };
             let next = if item.kind == Kind::Request {
                 format!(
-                    "Its client can still retry under the same key; otherwise run `jadpo deliveries abandon {id}` and tidy up what took effect"
+                    "Its client can still retry under the same key; otherwise run `jadpo deliveries abandon {id}` and set right what took effect"
                 )
             } else {
                 format!(
-                    "If it didn't, run `jadpo deliveries retry {id} --not-done`; if it did, run `jadpo deliveries abandon {id}` and tidy up what took effect"
+                    "If it didn't, run `jadpo deliveries retry {id} --not-done`; if it did, run `jadpo deliveries abandon {id}` and set right what took effect"
                 )
             };
             screen.push(Block::Decision {
@@ -1697,10 +1701,9 @@ fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
                     format!("jadpo deliveries resolve {id} --done"),
                     "once the provider shows it happened",
                 )),
-                (PENDING, _) if item.kind == Kind::Delivery => Some((
-                    format!("jadpo deliveries cancel {id}"),
-                    "stops it running",
-                )),
+                (PENDING, _) if item.kind == Kind::Delivery => {
+                    Some((format!("jadpo deliveries cancel {id}"), "stops it running"))
+                }
                 _ => None,
             };
             if let Some((command, reason)) = hint {
@@ -1710,10 +1713,7 @@ fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
     }
     let data = Json::object([
         ("item", item_json(project, &store, &item)),
-        (
-            "record",
-            record.as_ref().map_or(Json::Null, |record| record_json(record)),
-        ),
+        ("record", record.as_ref().map_or(Json::Null, record_json)),
     ]);
     Reply::screen(screen, data)
 }
@@ -1743,7 +1743,7 @@ fn record_json(record: &Record) -> Json {
                         step.outcome.as_deref().map_or(Json::Null, Json::from),
                     ),
                     ("answerKept", Json::from(step.kept)),
-                    ("sentAt", instant(Some(step.sent_at))),
+                    ("dispatchedAt", instant(Some(step.dispatched))),
                     ("answeredAt", instant(step.answered_at)),
                     ("keyGeneration", Json::from(i64::from(step.key_generation))),
                 ])

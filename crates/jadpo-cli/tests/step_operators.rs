@@ -22,11 +22,21 @@ use jadpo_test::host::Harness;
 
 use crate::step_records::{
     CUSTOMER, CUSTOMERS, HOUR, SECOND, SUBSCRIPTION, SUBSCRIPTIONS, T0, TRIES, chosen, delivery,
-    faked, jadpo, load, record, sent, steps,
+    faked, jadpo, record, sent, steps,
 };
 use crate::support::fake_provider::FakeProvider;
 
 const DAY: i64 = 24 * HOUR;
+
+/// The billing project, checked and migrated, with a test database;
+/// `None` when live tests are skipped.
+fn load(name: &str, sandbox: &str, replays: bool) -> Option<crate::step_records::Loaded> {
+    let loaded = crate::step_records::load(name, sandbox, replays);
+    if !jadpo_test::live() {
+        return None;
+    }
+    loaded
+}
 
 /// `jadpo <args>` against `url` as the operator `sam` at `at`, as a
 /// terminal with colour off shows it, bold taken out.
@@ -112,7 +122,11 @@ fn a_step_in_doubt_goes_again_under_a_new_key_once_the_operator_says_not_done() 
         let listed = operating(root, url, late, &["deliveries"]);
         assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
         assert!(listed.stdout.contains(&id), "{}", listed.stdout);
-        assert!(listed.stdout.contains("◆ outcome unknown"), "{}", listed.stdout);
+        assert!(
+            listed.stdout.contains("◆ outcome unknown"),
+            "{}",
+            listed.stdout
+        );
         assert!(
             listed
                 .stdout
@@ -161,7 +175,11 @@ fn a_step_in_doubt_goes_again_under_a_new_key_once_the_operator_says_not_done() 
         // Done would leave the action's writes undone: abandon it instead.
         let done = operating(root, url, late, &["deliveries", "resolve", &id, "--done"]);
         assert_eq!(done.code, 1, "{}{}", done.stdout, done.stderr);
-        assert!(done.stderr.contains("rule      deliveries.wrong_state"), "{}", done.stderr);
+        assert!(
+            done.stderr.contains("rule      deliveries.wrong_state"),
+            "{}",
+            done.stderr
+        );
         assert!(
             done.stderr
                 .contains(&format!("`jadpo deliveries abandon {id}`")),
@@ -236,7 +254,9 @@ fn a_step_that_failed_goes_again_under_a_new_key_with_not_done() {
         let dismissed = operating(root, url, at, &["deliveries", "dismiss", &id]);
         assert_eq!(dismissed.code, 1, "{}", dismissed.stderr);
         assert!(
-            dismissed.stderr.contains("so it is abandoned, not dismissed"),
+            dismissed
+                .stderr
+                .contains("so it is abandoned, not dismissed"),
             "{}",
             dismissed.stderr
         );
@@ -244,7 +264,11 @@ fn a_step_that_failed_goes_again_under_a_new_key_with_not_done() {
         let retried = operating(root, url, at, &["deliveries", "retry", &id, "--not-done"]);
         assert_eq!(retried.code, 0, "{}{}", retried.stdout, retried.stderr);
         assert_eq!(rt.block_on(generations(&harness)), [0, 0, 1]);
-        assert_eq!(rt.block_on(steps(&harness))[2].3, None, "its answer cleared");
+        assert_eq!(
+            rt.block_on(steps(&harness))[2].3,
+            None,
+            "its answer cleared"
+        );
         provider.answer(200, SUBSCRIPTION);
         harness.set_now(at + SECOND);
         rt.block_on(tick(program, &host, at + SECOND));
@@ -302,14 +326,16 @@ fn a_diverged_delivery_is_listed_and_retried_once_fixed() {
 
         let shown = operating(root, url, at, &["deliveries", "show", &id]);
         assert!(
-            shown
-                .stdout
-                .contains("  differs   step 3 of `subscribe`, `pay.subscriptions.create`: `plan` differs\n"),
+            shown.stdout.contains(
+                "  differs   step 3 of `subscribe`, `pay.subscriptions.create`: `plan` differs\n"
+            ),
             "{}",
             shown.stdout
         );
         assert!(
-            shown.stdout.contains(&format!("→ jadpo deliveries retry {id}")),
+            shown
+                .stdout
+                .contains(&format!("→ jadpo deliveries retry {id}")),
             "{}",
             shown.stdout
         );
@@ -348,7 +374,11 @@ fn an_abandoned_delivery_keeps_its_step_list_for_thirty_days() {
         let id = rt.block_on(delivery_id(&harness));
         let at = T0 + HOUR;
         let abandoned = operating(root, url, at, &["deliveries", "abandon", &id]);
-        assert_eq!(abandoned.code, 0, "{}{}", abandoned.stdout, abandoned.stderr);
+        assert_eq!(
+            abandoned.code, 0,
+            "{}{}",
+            abandoned.stdout, abandoned.stderr
+        );
         assert!(
             abandoned.stdout.contains(&format!(
                 "✓ Abandoned `{id}`: `subscribe` won't finish, and its steps are listed until 2026-11-19"
@@ -356,10 +386,16 @@ fn an_abandoned_delivery_keeps_its_step_list_for_thirty_days() {
             "{}",
             abandoned.stdout
         );
-        assert!(abandoned.stdout.contains("logged  sam · role"), "{}", abandoned.stdout);
+        assert!(
+            abandoned.stdout.contains("logged  sam · role"),
+            "{}",
+            abandoned.stdout
+        );
         assert_eq!(rt.block_on(delivery(&harness)).0, "abandoned");
         assert_eq!(
-            rt.block_on(record(&harness)).map(|(state, _)| state).as_deref(),
+            rt.block_on(record(&harness))
+                .map(|(state, _)| state)
+                .as_deref(),
             Some("abandoned")
         );
         let again = operating(root, url, at, &["deliveries", "retry", &id]);
@@ -367,9 +403,17 @@ fn an_abandoned_delivery_keeps_its_step_list_for_thirty_days() {
         let listed = operating(root, url, at, &["deliveries", "--state", "abandoned"]);
         assert!(listed.stdout.contains(&id), "{}", listed.stdout);
         let shown = operating(root, url, at, &["deliveries", "show", &id]);
-        assert!(shown.stdout.contains("pay.subscriptions.create"), "{}", shown.stdout);
+        assert!(
+            shown.stdout.contains("pay.subscriptions.create"),
+            "{}",
+            shown.stdout
+        );
         assert!(shown.stdout.contains("✗ failed"), "{}", shown.stdout);
-        assert!(shown.stdout.contains("listed until 2026-11-19"), "{}", shown.stdout);
+        assert!(
+            shown.stdout.contains("listed until 2026-11-19"),
+            "{}",
+            shown.stdout
+        );
 
         let kept = at + 29 * DAY;
         harness.set_now(kept);
@@ -473,15 +517,24 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
         assert_eq!(first.status, 503);
 
         let early = operating(root, url, T0 + HOUR, &["deliveries"]);
-        assert_eq!(early.stdout, "✓ Nothing needs an operator\n", "the client's to retry");
+        assert_eq!(
+            early.stdout, "✓ Nothing needs an operator\n",
+            "the client's to retry"
+        );
 
         let day = T0 + 25 * HOUR;
         let listed = operating(root, url, day, &["deliveries"]);
         assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
-        assert!(listed.stdout.contains("request → subscribe_now"), "{}", listed.stdout);
+        assert!(
+            listed.stdout.contains("request → subscribe_now"),
+            "{}",
+            listed.stdout
+        );
         assert!(listed.stdout.contains("◆ unfinished"), "{}", listed.stdout);
         nothing_secret(&listed.stdout);
-        let rows = rt.block_on(harness.rows("SELECT replace(\"id\"::text, '-', '') FROM \"jadpo_step_records\""));
+        let rows = rt.block_on(
+            harness.rows("SELECT replace(\"id\"::text, '-', '') FROM \"jadpo_step_records\""),
+        );
         let [row] = rows.as_slice() else {
             panic!("one record: {rows:?}");
         };
@@ -492,7 +545,9 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
         let shown = operating(root, url, day, &["deliveries", "show", &id]);
         assert_eq!(shown.code, 0, "{}{}", shown.stdout, shown.stderr);
         assert!(
-            shown.stdout.contains("Its client can still retry under the same key"),
+            shown
+                .stdout
+                .contains("Its client can still retry under the same key"),
             "{}",
             shown.stdout
         );
@@ -500,7 +555,9 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
         let retried = operating(root, url, day, &["deliveries", "retry", &id]);
         assert_eq!(retried.code, 1, "{}", retried.stderr);
         assert!(
-            retried.stderr.contains("is a route's steps, which only its client can retry"),
+            retried
+                .stderr
+                .contains("is a route's steps, which only its client can retry"),
             "{}",
             retried.stderr
         );
@@ -519,7 +576,11 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
         assert!(shown.stdout.contains("answer dropped"), "{}", shown.stdout);
 
         let abandoned = operating(root, url, month, &["deliveries", "abandon", &id]);
-        assert_eq!(abandoned.code, 0, "{}{}", abandoned.stdout, abandoned.stderr);
+        assert_eq!(
+            abandoned.code, 0,
+            "{}{}",
+            abandoned.stdout, abandoned.stderr
+        );
         assert!(
             abandoned
                 .stdout
@@ -529,7 +590,12 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
         );
         let before = provider.requests().len();
         let again = rt.block_on(serve_request(&app, program, &host, &worker, &request));
-        assert_eq!(again.status, 500, "{}", String::from_utf8_lossy(&again.body));
+        assert_eq!(
+            again.status,
+            500,
+            "{}",
+            String::from_utf8_lossy(&again.body)
+        );
         assert_eq!(provider.requests().len(), before, "nothing sent");
 
         let gone = month + 31 * DAY;
@@ -566,16 +632,25 @@ fn runs_unfinished_lists_what_a_new_build_changes() {
         let at = T0 + HOUR;
         let id = rt.block_on(delivery_id(&harness));
 
-        let wrong = operating(root, url, at, &["runs", "unfinished", "--build", "0123abcd"]);
+        let wrong = operating(
+            root,
+            url,
+            at,
+            &["runs", "unfinished", "--build", "0123abcd"],
+        );
         assert_eq!(wrong.code, 2, "{}{}", wrong.stdout, wrong.stderr);
         assert!(
-            wrong
-                .stderr
-                .contains(&format!("The checkout makes build `{build}`, not `0123abcd`")),
+            wrong.stderr.contains(&format!(
+                "The checkout makes build `{build}`, not `0123abcd`"
+            )),
             "{}",
             wrong.stderr
         );
-        assert!(wrong.stderr.contains("rule      cli.runs_arguments"), "{}", wrong.stderr);
+        assert!(
+            wrong.stderr.contains("rule      cli.runs_arguments"),
+            "{}",
+            wrong.stderr
+        );
 
         let same = operating(root, url, at, &["runs", "unfinished", "--build", &build]);
         assert_eq!(same.code, 0, "{}{}", same.stdout, same.stderr);
@@ -584,13 +659,28 @@ fn runs_unfinished_lists_what_a_new_build_changes() {
             "✓ The build changes no unfinished run  1 unfinished run resumes\n"
         );
 
-        rt.block_on(harness.rows("UPDATE \"jadpo_step_records\" SET \"build\" = 'older', \"shape\" = 'older'"));
+        rt.block_on(
+            harness
+                .rows("UPDATE \"jadpo_step_records\" SET \"build\" = 'older', \"shape\" = 'older'"),
+        );
         let changed = operating(root, url, at, &["runs", "unfinished", "--build", &build]);
         assert_eq!(changed.code, 0, "{}{}", changed.stdout, changed.stderr);
         assert!(changed.stdout.contains(&id), "{}", changed.stdout);
-        assert!(changed.stdout.contains("steps of subscribe"), "{}", changed.stdout);
-        assert!(changed.stdout.contains("◆ stops as diverged"), "{}", changed.stdout);
-        assert!(changed.stdout.contains("✗ 1 run changes  1 unfinished"), "{}", changed.stdout);
+        assert!(
+            changed.stdout.contains("steps of subscribe"),
+            "{}",
+            changed.stdout
+        );
+        assert!(
+            changed.stdout.contains("◆ stops as diverged"),
+            "{}",
+            changed.stdout
+        );
+        assert!(
+            changed.stdout.contains("✗ 1 run changes  1 unfinished"),
+            "{}",
+            changed.stdout
+        );
         assert!(
             changed
                 .stdout
@@ -604,11 +694,22 @@ fn runs_unfinished_lists_what_a_new_build_changes() {
             at,
             &["runs", "unfinished", "--build", &build, "--json"],
         );
-        assert!(json.stdout.contains("\"will\":\"diverge\"") || json.stdout.contains("\"will\": \"diverge\""), "{}", json.stdout);
+        assert!(
+            json.stdout.contains("\"will\":\"diverge\"")
+                || json.stdout.contains("\"will\": \"diverge\""),
+            "{}",
+            json.stdout
+        );
 
-        rt.block_on(harness.rows("UPDATE \"jadpo_step_records\" SET \"action\" = 'action billing.gone'"));
+        rt.block_on(
+            harness.rows("UPDATE \"jadpo_step_records\" SET \"action\" = 'action billing.gone'"),
+        );
         let gone = operating(root, url, at, &["runs", "unfinished", "--build", &build]);
-        assert!(gone.stdout.contains("✗ sends its steps again"), "{}", gone.stdout);
+        assert!(
+            gone.stdout.contains("✗ sends its steps again"),
+            "{}",
+            gone.stdout
+        );
     }
 }
 
@@ -620,7 +721,11 @@ fn mistakes_on_the_command_line_are_refused() {
     // The project is written whether or not live tests run.
     let _ = load("op-arguments", &provider.url, false);
     for (args, headline, rule) in [
-        (&["runs"][..], "`jadpo runs` needs `unfinished`", "cli.runs_arguments"),
+        (
+            &["runs"][..],
+            "`jadpo runs` needs `unfinished`",
+            "cli.runs_arguments",
+        ),
         (
             &["runs", "unfinshed"],
             "`unfinshed` isn't something `jadpo runs` does",

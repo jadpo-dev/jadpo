@@ -10,7 +10,7 @@
 //! (its operation, whether it was answered, when, and how many times its
 //! key was replaced); `retry --not-done` sends the step in doubt again
 //! under its next key generation; `abandon` ends it, keeping the step
-//! list for tidying up by hand.
+//! list for setting right by hand.
 //!
 //! - **What is read.** Never a request or an answer: a step's operation,
 //!   its outcome (`answered`, `failed`, or none while in doubt) and its
@@ -104,7 +104,7 @@ pub struct Step {
     /// `new_key_on:`, or an operator's "not done".
     pub key_generation: u32,
     /// When it was last sent, in milliseconds since the epoch.
-    pub sent_at: i64,
+    pub dispatched: i64,
     /// `answered` or `failed`; `None` while in doubt.
     pub outcome: Option<String>,
     /// Whether its answer is still kept: dropped after 30 days.
@@ -177,7 +177,7 @@ fn text(value: Option<&SqlValue>) -> Option<String> {
 }
 
 /// A delivery's id from its record's key, 32 hex digits.
-fn delivery_id(key: &str) -> Option<[u8; 16]> {
+fn delivery_of_key(key: &str) -> Option<[u8; 16]> {
     let bytes = jadpo_value::encoding::from_hex(key)?;
     bytes.try_into().ok()
 }
@@ -194,7 +194,7 @@ async fn read(
             continue;
         };
         let delivery = match (row.get(1), text(row.get(2))) {
-            (Some(SqlValue::Bool(true)), Some(key)) => delivery_id(&key),
+            (Some(SqlValue::Bool(true)), Some(key)) => delivery_of_key(&key),
             _ => None,
         };
         let (Some(action), Some(state)) = (text(row.get(3)), text(row.get(7))) else {
@@ -216,7 +216,7 @@ async fn read(
                         Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(0),
                         _ => 0,
                     },
-                    sent_at: millis(step.get(3))?,
+                    dispatched: millis(step.get(3))?,
                     outcome: text(step.get(4)),
                     kept: matches!(step.get(5), Some(SqlValue::Bool(true))),
                     answered_at: millis(step.get(6)),
@@ -271,7 +271,10 @@ pub async fn unfinished(database: &dyn Database) -> Result<Vec<Record>, StoreErr
 pub enum Change {
     /// Ready for the delivery's retry; with a step, that step sent again
     /// under its next key ("not done").
-    Retry { record: [u8; 16], not_done: Option<u32> },
+    Retry {
+        record: [u8; 16],
+        not_done: Option<u32>,
+    },
     /// Abandoned with its delivery.
     Abandon { record: [u8; 16] },
 }
@@ -297,11 +300,7 @@ pub async fn change_alone(
             database
                 .query_once(
                     RETRY,
-                    &[
-                        SqlValue::Uuid(record),
-                        micros(now),
-                        position(not_done),
-                    ],
+                    &[SqlValue::Uuid(record), micros(now), position(not_done)],
                 )
                 .await?
         }
@@ -362,7 +361,7 @@ mod tests {
             position: 1,
             operation: "pay.customers.create".into(),
             key_generation: 0,
-            sent_at: 0,
+            dispatched: 0,
             outcome: outcome.map(str::to_string),
             kept,
             answered_at: None,
@@ -388,9 +387,15 @@ mod tests {
     fn the_step_in_doubt_is_the_last_unless_it_was_answered() {
         let mut steps = vec![step(Some("answered"), true), step(None, false)];
         steps[1].position = 2;
-        assert_eq!(record(steps.clone()).in_doubt().map(|s| s.position), Some(2));
+        assert_eq!(
+            record(steps.clone()).in_doubt().map(|s| s.position),
+            Some(2)
+        );
         steps[1].outcome = Some("failed".into());
-        assert_eq!(record(steps.clone()).in_doubt().map(|s| s.position), Some(2));
+        assert_eq!(
+            record(steps.clone()).in_doubt().map(|s| s.position),
+            Some(2)
+        );
         steps[1].outcome = Some("answered".into());
         assert_eq!(record(steps).in_doubt(), None);
     }
@@ -405,7 +410,10 @@ mod tests {
     #[test]
     fn a_deliverys_record_key_reads_back_as_its_id() {
         let id = [0xab; 16];
-        assert_eq!(delivery_id(&jadpo_value::encoding::to_hex(&id)), Some(id));
-        assert_eq!(delivery_id("k-ada-gold"), None);
+        assert_eq!(
+            delivery_of_key(&jadpo_value::encoding::to_hex(&id)),
+            Some(id)
+        );
+        assert_eq!(delivery_of_key("k-ada-gold"), None);
     }
 }

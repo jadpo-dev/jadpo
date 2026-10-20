@@ -618,9 +618,7 @@ pub async fn act_on_delivery_and_record(
     record: Option<crate::unfinished::Change>,
 ) -> Result<Done, StoreError> {
     let (to, due, fresh) = match action {
-        Action::Retry | Action::ResolveNotDone | Action::RetryNotDone => {
-            (PENDING, Some(now), true)
-        }
+        Action::Retry | Action::ResolveNotDone | Action::RetryNotDone => (PENDING, Some(now), true),
         Action::Dismiss => (DISMISSED, None, false),
         Action::Cancel => (CANCELLED, None, false),
         Action::ResolveDone => (SUCCEEDED, None, false),

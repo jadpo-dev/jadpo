@@ -1006,7 +1006,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--not-done",
                 value: None,
-                description: "It didn't happen: retry it, a step under a new key",
+                description: "It didn't happen: send it again",
                 values: &[],
             },
             Flag {
@@ -1065,7 +1065,7 @@ pub static COMMANDS: &[Command] = &[
         name: "runs",
         synonyms: &[],
         group: "Production",
-        summary: "List unfinished runs a new build changes",
+        summary: "Check runs before a deploy",
         description: "Run against production before a deploy (area 12, \"Deploys\"): `unfinished` \
                       lists the unfinished runs of actions with several changing calls, and the \
                       batch runs still going, that the build named by --build changes, so they can \
@@ -1087,7 +1087,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--build",
                 value: Some("build id"),
-                description: "The build about to be deployed, which the checkout makes",
+                description: "The build being deployed, the checkout's",
                 values: &[],
             },
             Flag {

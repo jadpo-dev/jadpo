@@ -156,7 +156,9 @@ pub struct Unfinished {
 }
 
 /// Every run of one store still going, oldest first (chunk 7.5c).
-pub async fn unfinished(database: &dyn crate::Database) -> Result<Vec<Unfinished>, crate::StoreError> {
+pub async fn unfinished(
+    database: &dyn crate::Database,
+) -> Result<Vec<Unfinished>, crate::StoreError> {
     let rows = database.query_once(UNFINISHED, &[]).await?;
     Ok(rows
         .iter()

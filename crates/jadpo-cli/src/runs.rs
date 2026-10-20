@@ -319,7 +319,10 @@ fn unfinished(call: &Call) -> Reply {
     screen.push(Block::Table(table));
     let mut facts = vec![Fact::plain(format!("{total} unfinished"))];
     if resume > 0 {
-        facts.push(Fact::plain(format!("{resume} {}", if resume == 1 { "resumes" } else { "resume" })));
+        facts.push(Fact::plain(format!(
+            "{resume} {}",
+            if resume == 1 { "resumes" } else { "resume" }
+        )));
     }
     screen.push(
         Block::summary(

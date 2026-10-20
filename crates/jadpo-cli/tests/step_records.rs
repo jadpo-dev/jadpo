@@ -564,7 +564,9 @@ pub(crate) async fn chosen(
 }
 
 /// The delivery's state and attempts, and its last failure as JSON text.
-pub(crate) async fn delivery(harness: &Harness<jadpo_host_native::Postgres>) -> (String, i32, String) {
+pub(crate) async fn delivery(
+    harness: &Harness<jadpo_host_native::Postgres>,
+) -> (String, i32, String) {
     let rows = harness
         .rows("SELECT \"status\", \"attempts\", COALESCE(\"last_failure\"::text, '') FROM \"jadpo_deliveries\"")
         .await;
@@ -610,7 +612,9 @@ pub(crate) async fn steps(
 }
 
 /// The record's state and problem, when one is kept.
-pub(crate) async fn record(harness: &Harness<jadpo_host_native::Postgres>) -> Option<(String, String)> {
+pub(crate) async fn record(
+    harness: &Harness<jadpo_host_native::Postgres>,
+) -> Option<(String, String)> {
     harness
         .rows("SELECT \"state\", COALESCE(\"problem\"::text, '') FROM \"jadpo_step_records\"")
         .await
