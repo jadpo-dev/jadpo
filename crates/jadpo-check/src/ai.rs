@@ -8,10 +8,11 @@
 //! - [`settings`]: `application { ai: { connection: models: } }`, the
 //!   connection every `ai` call goes through and each model it names, a
 //!   `ModelId` setting, `default` among them, and `embedding_dimensions:`,
-//!   the length of every embedding (chunk 5.5v4). The keys later chunks
-//!   build (`limits:`, `personal_data:`, `keep_content:`) are
-//!   `toolchain.not_built_yet`. A package's connection fills `ai` through
-//!   its `provides/ai.jadpo` (chunks 5.5v3b and 5.5v7,
+//!   the length of every embedding (chunk 5.5v4), `limits:` (chunk 5.5v5)
+//!   and `personal_data: { allowed: }`, the personal-data categories the
+//!   model may be sent (chunk 5.5v5b, [`crate::ai_personal`]).
+//!   `keep_content:` is `toolchain.not_built_yet`. A package's connection
+//!   fills `ai` through its `provides/ai.jadpo` (chunks 5.5v3b and 5.5v7,
 //!   [`crate::ai_mapping`]); `prices:` sets a model's price over its
 //!   package's (chunk 5.5v7).
 //! - [`schema`]: the JSON Schema a model is asked to answer a type in,
@@ -78,6 +79,9 @@ pub struct AiSettings {
     pub embedding_dimensions: Option<(u64, Span)>,
     /// `limits:` (chunk 5.5v5).
     pub limits: crate::ai_limits::LimitsRead,
+    /// `personal_data: { allowed: }` (chunk 5.5v5b): the personal-data
+    /// categories the model may be sent, none when it is left out.
+    pub allowed: Vec<String>,
     /// `prices:`, the prices it sets for its models (chunk 5.5v7).
     pub prices: Vec<crate::ai_limits::PriceRead>,
     pub problems: Vec<Diagnostic>,
@@ -366,6 +370,11 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     || node_span(&found.path, entry.syntax()),
                     |value| node_span(&found.path, value.syntax()),
                 );
+                if word == jadpo_std::ai::PERSONAL_DATA {
+                    out.allowed =
+                        crate::ai_personal::read_allowed(&found.path, &entry, &mut out.problems);
+                    continue;
+                }
                 if word == "connection" {
                     let written = entry
                         .value()

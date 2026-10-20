@@ -1369,6 +1369,10 @@ impl Decls<'_> {
             if field.is_some_and(|field| field.later)
                 && LATER_FIELD_SETTINGS.contains(&key.as_str())
             {
+                // Read for what reaches a model (area 21; chunk 5.5v5b).
+                if let Some(problem) = crate::ai_personal::mark_problem(&key, &value, value_span) {
+                    self.out.push(problem);
+                }
                 continue;
             }
             if let Some(field) = field
@@ -2656,9 +2660,11 @@ struct FieldCtx {
 }
 
 /// Settings later areas give an entity's or event's fields: data (area 5),
-/// policy (area 9), personal data (area 15) and a `File` field's store,
-/// size and types (area 16). They are checked when those areas are built.
-const LATER_FIELD_SETTINGS: [&str; 12] = [
+/// policy (area 9), personal data (area 15, and area 21's `to_models:`)
+/// and a `File` field's store, size and types (area 16). They are checked
+/// when those areas are built; `personal:` and `to_models:` are read since
+/// chunk 5.5v5b.
+const LATER_FIELD_SETTINGS: [&str; 13] = [
     "erase",
     "generated",
     "immutable",
@@ -2669,6 +2675,7 @@ const LATER_FIELD_SETTINGS: [&str; 12] = [
     "retention",
     "role",
     "store",
+    "to_models",
     "types",
     "unique",
 ];

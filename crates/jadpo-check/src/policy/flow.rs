@@ -25,6 +25,11 @@
 //!   caller, on every path: set from the request, it could only ever
 //!   succeed for the caller anyway.
 //!
+//! The walk runs again, in its own mode, for what reaches a model (area
+//! 21, "Personal data sent to a model"; chunk 5.5v5b): each prompt's
+//! placeholders and each embedded text followed back to the fields they
+//! were read or built from ([`models`]).
+//!
 //! The walk follows copies (assignments, fields, objects, lists, `match`,
 //! the collection operations, and what a write sets, into the record it
 //! gives back) and what decides a value: whatever an `if`, a `match` or a
@@ -59,6 +64,7 @@ use jadpo_std::http::PrincipalKind;
 use jadpo_std::read::Cardinality;
 use jadpo_std::write::WriteOp;
 
+mod models;
 mod stores;
 mod tenants;
 
@@ -112,6 +118,14 @@ enum Src {
     /// field keeps it, and a record stays whole, so nothing it holds is
     /// lost. Never inside [`Src::Decided`] or itself.
     Deep(Box<Src>),
+    /// A value of `ty`, a type that is personal data in `category`
+    /// whatever holds it (area 19), anywhere inside: only the walk for
+    /// what reaches a model makes these ([`models`]).
+    Typed { ty: String, category: String },
+    /// `host`'s field `field`, marked personal data or kept from models,
+    /// read from a value the walk can't follow to a record: only the walk
+    /// for what reaches a model makes these ([`models`]).
+    Marked { host: String, field: String },
 }
 
 /// Which record a [`Src::Record`] or [`Src::Field`] is, when the body
@@ -467,6 +481,11 @@ struct Summary {
     /// with nothing of its parameters: what `batches.status` gives
     /// anywhere is held to these, every batch's together (chunk 6.6b).
     batches: Vec<Src>,
+    /// The parts of its parameters that reach a model, each with the
+    /// prompt they reach (or `ai.embed`'s text), checked where it is
+    /// called against what is passed (chunk 5.5v5b): only the walk for
+    /// what reaches a model fills it.
+    prompted: BTreeSet<(usize, Vec<String>, String)>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -480,6 +499,7 @@ static NOTHING: Summary = Summary {
     emits: Vec::new(),
     fails: Vec::new(),
     batches: Vec::new(),
+    prompted: BTreeSet::new(),
 };
 
 impl Summary {
@@ -507,6 +527,7 @@ impl Summary {
                 self.batches.push(src.clone());
             }
         }
+        self.prompted.extend(other.prompted.iter().cloned());
         self
     }
 
@@ -551,6 +572,14 @@ impl Summary {
                     out
                 }),
             batches: self.batches,
+            prompted: self
+                .prompted
+                .into_iter()
+                .map(|(at, mut path, sink)| {
+                    path.truncate(DEPTH);
+                    (at, path, sink)
+                })
+                .collect(),
         }
     }
 }
@@ -562,9 +591,40 @@ impl Summary {
 /// last ([`summary_round`]) until it stops changing.
 #[salsa::tracked(returns(ref), cycle_fn = summary_round, cycle_initial = summary_start)]
 fn flow_summary<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db>) -> Summary {
-    walked(db, project, callable)
+    walked(db, project, callable, false)
         .map(|(summary, _)| summary)
         .unwrap_or_default()
+}
+
+/// [`flow_summary`] in the walk for what reaches a model ([`models`]):
+/// its own query, with its own cycles, since what it follows differs.
+#[salsa::tracked(returns(ref), cycle_fn = model_summary_round, cycle_initial = model_summary_start)]
+fn model_summary<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db>) -> Summary {
+    walked(db, project, callable, true)
+        .map(|(summary, _)| summary)
+        .unwrap_or_default()
+}
+
+/// A model summary in a cycle starts empty, as [`summary_start`].
+fn model_summary_start<'db>(
+    _db: &'db dyn Db,
+    _id: salsa::Id,
+    _project: Project,
+    _callable: Callable<'db>,
+) -> Summary {
+    Summary::default()
+}
+
+/// Each round keeps what the last found, as [`summary_round`].
+fn model_summary_round<'db>(
+    _db: &'db dyn Db,
+    _cycle: &salsa::Cycle,
+    last: &Summary,
+    value: Summary,
+    _project: Project,
+    _callable: Callable<'db>,
+) -> Summary {
+    last.clone().join(&value).widened()
 }
 
 /// A summary in a cycle starts empty.
@@ -664,10 +724,36 @@ pub fn flow_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
         if resolve(db, project, key) != Some(callable) {
             continue;
         }
-        if let Some((_, problems)) = walked(db, project, callable) {
+        if let Some((_, problems)) = walked(db, project, callable, false) {
             out.extend(problems);
         }
     }
+    out.dedup();
+    out
+}
+
+/// What reaches a model from the actions and functions in `file` that
+/// `ai: { personal_data: }` doesn't allow (area 21, "Personal data sent
+/// to a model"; chunk 5.5v5b): the walk again, in [`models`]' mode.
+#[salsa::tracked(returns(ref))]
+pub fn model_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    if !crate::ai::settings(db, project).written || !super::policy_clean(db, project) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for callable in callables_of(db, file) {
+        let Some(key) = body_facts(db, project, callable).key_of(&[Kind::Action, Kind::Function])
+        else {
+            continue;
+        };
+        if resolve(db, project, key) != Some(callable) {
+            continue;
+        }
+        if let Some((_, problems)) = walked(db, project, callable, true) {
+            out.extend(problems);
+        }
+    }
+    out.extend(models::subscriber_problems(db, project, file));
     out.dedup();
     out
 }
@@ -681,6 +767,32 @@ pub fn flow_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
 /// held, followed along chains of events until nothing more is found.
 #[salsa::tracked(returns(ref))]
 fn payloads(db: &dyn Db, project: Project) -> BTreeMap<Key, Prov> {
+    gathered(db, project, false)
+}
+
+/// [`payloads`] as the walk for what reaches a model follows them.
+#[salsa::tracked(returns(ref))]
+fn model_payloads(db: &dyn Db, project: Project) -> BTreeMap<Key, Prov> {
+    gathered(db, project, true)
+}
+
+/// The summary of `callable`, in the walk for what reaches a model when
+/// `personal`.
+fn summary_of<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    callable: Callable<'db>,
+    personal: bool,
+) -> &'db Summary {
+    if personal {
+        model_summary(db, project, callable)
+    } else {
+        flow_summary(db, project, callable)
+    }
+}
+
+/// What every `emit` of each event puts in it ([`payloads`]).
+fn gathered(db: &dyn Db, project: Project, personal: bool) -> BTreeMap<Key, Prov> {
     let mut out: BTreeMap<Key, Prov> = BTreeMap::new();
     for &file in project.files(db) {
         for callable in callables_of(db, file) {
@@ -690,7 +802,7 @@ fn payloads(db: &dyn Db, project: Project) -> BTreeMap<Key, Prov> {
             if resolve(db, project, key) != Some(callable) {
                 continue;
             }
-            for (event, prov) in &flow_summary(db, project, callable).emits {
+            for (event, prov) in &summary_of(db, project, callable, personal).emits {
                 out.entry(event.clone())
                     .or_default()
                     .union(&prov.unpassed());
@@ -713,7 +825,7 @@ fn payloads(db: &dyn Db, project: Project) -> BTreeMap<Key, Prov> {
                 .iter()
                 .map(|path| payload.at(path))
                 .collect();
-            for (event, prov) in &flow_summary(db, project, callable).emits {
+            for (event, prov) in &summary_of(db, project, callable, personal).emits {
                 let prov = prov.substitute(&provs).unpassed();
                 let entry = out.entry(event.clone()).or_default();
                 let before = entry.clone();
@@ -744,6 +856,7 @@ pub fn subscriber_store_problems(db: &dyn Db, project: Project, file: File) -> V
         prover: Prover::new(db, project),
         lookup: Lookup::new(db, project),
         entities: Entities::new(db, project),
+        personal: false,
     };
     let payloads = payloads(db, project);
     let body = Body::default();
@@ -779,6 +892,7 @@ fn walked<'db>(
     db: &'db dyn Db,
     project: Project,
     callable: Callable<'db>,
+    personal: bool,
 ) -> Option<(Summary, Vec<Diagnostic>)> {
     let checked = typed_body(db, project, callable);
     let key = checked.key.as_ref()?;
@@ -791,6 +905,7 @@ fn walked<'db>(
         prover: Prover::new(db, project),
         lookup: Lookup::new(db, project),
         entities: Entities::new(db, project),
+        personal,
     };
     Some(flow.walk(
         callable.file(db).path(db).clone(),
@@ -806,13 +921,16 @@ struct Flow<'a> {
     prover: Prover<'a>,
     lookup: Lookup<'a>,
     entities: Entities<'a>,
+    /// The walk for what reaches a model ([`models`]): its problems are
+    /// those alone, and it follows what the policy walk needn't.
+    personal: bool,
 }
 
 impl<'a> Flow<'a> {
     /// The summary of the action or function `key`.
     fn summary(&self, key: &Key) -> &'a Summary {
         match resolve(self.db, self.project, key) {
-            Some(callable) => flow_summary(self.db, self.project, callable),
+            Some(callable) => summary_of(self.db, self.project, callable, self.personal),
             None => &NOTHING,
         }
     }
@@ -828,6 +946,7 @@ impl<'a> Flow<'a> {
     ) -> (Summary, Vec<Diagnostic>) {
         let listed = kind == Kind::Action;
         let mut walk = Walk::blank(body, path, name.clone());
+        walk.personal = self.personal;
         walk.line = listed
             .then(|| self.prover.policies.root().action(&name).cloned())
             .flatten();
@@ -861,6 +980,7 @@ impl<'a> Flow<'a> {
         walk.sends.clear();
         walk.stores.clear();
         walk.emits.clear();
+        walk.prompted.clear();
         walk.pc.clear();
         walk.found.clear();
         walk.block(self, &body.block);
@@ -890,8 +1010,14 @@ impl<'a> Flow<'a> {
             emits,
             fails,
             batches: walk.batches,
+            prompted: walk.prompted,
         };
-        (summary, walk.problems)
+        let problems = if self.personal {
+            walk.exposures
+        } else {
+            walk.problems
+        };
+        (summary, problems)
     }
 }
 
@@ -1014,6 +1140,14 @@ struct Walk<'b> {
     /// walk, as `failing` is, since an `emit` before the create is kept
     /// only if it succeeds.
     tenant_ids: Vec<Src>,
+    /// The walk for what reaches a model ([`Flow::personal`]).
+    personal: bool,
+    /// The parts of its parameters that reach a model ([`Summary::prompted`]).
+    prompted: BTreeSet<(usize, Vec<String>, String)>,
+    /// What reaches a model that `ai:` doesn't allow ([`models`]).
+    exposures: Vec<Diagnostic>,
+    /// Where each value is and what it holds, once reported.
+    exposed: BTreeSet<(u32, u32, String)>,
 }
 
 /// A batch's run, while its calls are checked (chunk 6.4d): it works as
@@ -1071,6 +1205,10 @@ impl<'b> Walk<'b> {
             summary: false,
             batches: Vec::new(),
             tenant_ids: Vec::new(),
+            personal: false,
+            prompted: BTreeSet::new(),
+            exposures: Vec::new(),
+            exposed: BTreeSet::new(),
         }
     }
 
@@ -1419,6 +1557,14 @@ impl Walk<'_> {
     }
 
     fn eval(&mut self, flow: &Flow<'_>, site: SiteId) -> Prov {
+        let mut prov = self.eval_node(flow, site);
+        if self.personal {
+            self.typed(flow, site, &mut prov);
+        }
+        prov
+    }
+
+    fn eval_node(&mut self, flow: &Flow<'_>, site: SiteId) -> Prov {
         let node = self.body.site(site).node.clone();
         let Node::Expr(expr) = node else {
             self.statement(flow, site);
@@ -1450,7 +1596,14 @@ impl Walk<'_> {
                 out
             }
             Expr::Local(id) => self.locals.get(id.0 as usize).cloned().unwrap_or_default(),
-            Expr::Field { receiver, field } => self.eval(flow, receiver).field(&field_name(&field)),
+            Expr::Field { receiver, field } => {
+                let held = self.eval(flow, receiver);
+                let mut out = held.field(&field_name(&field));
+                if self.personal {
+                    self.marked(flow, receiver, &held, &field_name(&field), &mut out);
+                }
+                out
+            }
             Expr::Call { callee, args, .. } => self.call(flow, site, &callee, &args),
             Expr::Build { callee, fields, .. } => {
                 let mut out = Prov::default();
@@ -1460,6 +1613,12 @@ impl Walk<'_> {
                     let prov = self.with_pc(prov);
                     given.push((field_name(key), *value, prov.clone()));
                     out.fields.entry(field_name(key)).or_default().union(&prov);
+                }
+                if let Callee::Object(key) = &callee
+                    && self.personal
+                    && self.report
+                {
+                    self.prompt_built(flow, key.name(), &given);
                 }
                 if let Callee::Object(key) = &callee
                     && self.report
@@ -1819,6 +1978,13 @@ impl Walk<'_> {
             };
             given.union(&prov);
             provs.push(prov);
+        }
+        if self.personal
+            && self.report
+            && let Callee::Embed { .. } = callee
+            && let (Some(Some(text)), Some(prov)) = (args.first(), provs.first())
+        {
+            self.embedded(flow, *text, prov);
         }
         let all = || {
             let mut out = Prov::default();
@@ -2291,6 +2457,9 @@ impl Walk<'_> {
                 }
             }
         }
+        if self.personal {
+            self.passed_to_model(flow, key.name(), &summary.prompted, args, provs);
+        }
         for store in &summary.stores {
             self.passed_store(flow, site, key.name(), store, args, provs);
         }
@@ -2319,8 +2488,10 @@ impl Walk<'_> {
             return Prov::default();
         };
         // A map layer is proved where it is declared, as an `Output` is
-        // (chunk 5.5u8).
-        if model.geometry.is_some() || is_output(&flow.lookup, &model.element.ty) {
+        // (chunk 5.5u8); what reaches a model is followed through both.
+        if !flow.personal
+            && (model.geometry.is_some() || is_output(&flow.lookup, &model.element.ty))
+        {
             return Prov::default();
         }
         let reached = self.gated(flow.prover.read(&model.entity));
@@ -2841,7 +3012,12 @@ fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> 
                     }
                 }
             }
-            Src::Caller(_) | Src::Param(..) | Src::Decided(_) | Src::Deep(_) => {}
+            Src::Caller(_)
+            | Src::Param(..)
+            | Src::Decided(_)
+            | Src::Deep(_)
+            | Src::Typed { .. }
+            | Src::Marked { .. } => {}
         }
     }
     out

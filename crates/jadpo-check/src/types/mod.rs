@@ -54,8 +54,8 @@ pub use outside::{Outside, call_order_problems, outside_calls};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules, show as show_number};
 pub use shape::{
-    COPY_LINES, DECODE, ENCODE, FieldsBase, REPLY, Shape, WIRE, WIRE_NAME, is_wire_name,
-    looks_like_type, type_shapes, variant_block,
+    COPY_LINES, DECODE, ENCODE, FieldsBase, Line, REPLY, Shape, ShapeKind, WIRE, WIRE_NAME,
+    is_wire_name, looks_like_type, type_shapes, variant_block,
 };
 pub use signatures::{Callables, Sig, callables};
 pub use steps::{

@@ -810,10 +810,14 @@ rules! {
         "21-ai.html#semantic-ai-budget-missing", "Application's `ai:` sets no daily limit";
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
         "21-ai.html#semantic-ai-dimensions-mismatch", "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
+    SEMANTIC_AI_FIELD_REFUSED: "semantic.ai_field_refused", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-field-refused", "A field marked `to_models: false` reaches a prompt or an embedded text";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,
         "21-ai.html#semantic-ai-output-type", "Type a model is asked to answer as is one no model's answer can be";
+    SEMANTIC_AI_PERSONAL_DATA_NOT_ALLOWED: "semantic.ai_personal_data_not_allowed", area 21, Error, Human,
+        "21-ai.html#semantic-ai-personal-data-not-allowed", "Personal data reaches a model in a category `ai: { personal_data: { allowed: } }` doesn't list";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
         "08-identity.html#semantic-auth-method-duplicate", "Sign-in method is declared twice";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,
