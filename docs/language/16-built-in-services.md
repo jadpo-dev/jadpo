@@ -887,8 +887,9 @@ list; and any call other than translations and formatting
 (`email.template_not_allowed`, which arithmetic and building values are
 too). A field no template reads and no wording of the subject writes is
 `email.field_unused`, a judgement call a `decline` line above the field
-answers. Partials (`{{ include button(...) }}`) wait for where a partial
-is declared to be decided (chunk 7.3c), and are refused until then.
+answers. Partials (`{{ include button(...) }}`) are declared as
+`EmailPartial` types beside the emails (see "Chosen in chunk 7.3") and
+built in chunk 7.3c; until then they are refused.
 
 **Only text and numbers are written out**, in templates as in
 placeholders: `{{ value }}` takes `Text`, `PresentationText`, `Int` or
@@ -2096,11 +2097,10 @@ conservative reading:
   driver that catches each message and answers that it went, so every
   email is rendered and nothing leaves the machine; `jadpo dev` gives it
   none until the dev inbox (chunk 7.3c).
-- **Flagged for Richard.** Where a partial is declared, which `{{ include
-  button(...) }}` needs, is not on the page. Recommendation: `type Button
+- **Where a partial is declared** (decided for Richard): `type Button
   = EmailPartial { label: PresentationText  url: Url }` in `shared/emails/`
   or a domain's `emails/`, its `.html` and `.txt` beside it as an email's
-  are, called with its fields by name.
+  are, called with its fields by name. Built in chunk 7.3c.
 
 ### Chosen in chunk 7.0c
 
@@ -2630,3 +2630,4 @@ leave to the build of reading gzip, each the most conservative reading:
 | Audit entries outward | A built-in `AuditEntryRecorded` event, emitted only when something listens, through `publishing`; the database stays the record of truth (Richard) | 2026-10-16 |
 | Outgoing webhooks' network | One runtime-owned network exception with fixed guards: HTTPS only, no private addresses, no redirects; listed once in the network report (Richard) | 2026-10-16 |
 | Settled for the build | `store.read` capped at the 10 MB whole-read limit, a larger `max_size` a compile error pointing at the format helpers or `batches.each`; `store.put` a keyed step in a multi-step action; variants read as `field.variants.<name>`; metrics `Counter`, `Measure` and `Gauge`, labels only enums and `Bool`; `telemetry.note(name: value)` with text, numbers, `Bool` or enums; `send:` default traces and metrics on, logs from `LogLevel.warn`; `documents: { layout: }` names the shared document layout; engine-backed `matches` queries take only equality on indexed fields (decided for Richard) | 2026-10-16 |
+| Email partials | `type Name = EmailPartial { fields }` in `shared/emails/` or a domain's `emails/`, with its `.html` and `.txt` beside it, called by field name (decided for Richard) | 2026-10-20 |
