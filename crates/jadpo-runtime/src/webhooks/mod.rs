@@ -731,6 +731,26 @@ pub(crate) async fn keep(
     payload: String,
 ) -> Result<Option<Vec<Delivery>>, StoreError> {
     let now = ctx.now();
+    let claim = vec![
+        SqlValue::Text(kept.source.clone()),
+        SqlValue::Text(id.to_string()),
+        crate::outbox::micros(now),
+    ];
+    keep_claimed(executor, kept, ctx, (RECEIVE, claim), value, payload).await
+}
+
+/// [`keep`], the event claimed first by `claim`, a statement that returns
+/// a row when the event is to be kept and none when it isn't: a webhook's
+/// id recorded, or a poll's answer seen to change (chunk 7.6c).
+pub(crate) async fn keep_claimed(
+    executor: &dyn Executor,
+    kept: &Kept<'_>,
+    ctx: &mut Ctx<'_>,
+    (claim, params): (&str, Vec<SqlValue>),
+    value: Value,
+    payload: String,
+) -> Result<Option<Vec<Delivery>>, StoreError> {
+    let now = ctx.now();
     let trace = ctx.trace();
     let subscribers: Vec<String> = executor
         .events()
@@ -774,16 +794,7 @@ pub(crate) async fn keep(
         .database(kept.store)
         .ok_or_else(|| StoreError::Fault(format!("no store called `{}`", kept.store)))?;
     let mut transaction = database.begin_at(Isolation::ReadCommitted).await?;
-    let first = transaction
-        .query(
-            RECEIVE,
-            &[
-                SqlValue::Text(kept.source.clone()),
-                SqlValue::Text(id.to_string()),
-                crate::outbox::micros(now),
-            ],
-        )
-        .await;
+    let first = transaction.query(claim, &params).await;
     match first {
         Ok(rows) if rows.is_empty() => {
             transaction.rollback().await?;

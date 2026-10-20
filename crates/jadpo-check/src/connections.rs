@@ -94,6 +94,12 @@ pub struct Reach {
     /// service its requests are signed for and the prefix its operations
     /// are named under.
     pub aws: Option<AwsReach>,
+    /// The names of its `polls:`, as written, when it gives the key (chunk
+    /// 7.6c); [`crate::polls`] reads and checks each.
+    pub polls: Option<Vec<String>>,
+    /// `max_concurrent:`, how many of its calls go out at once per app
+    /// instance, when it is a whole number of at least 1 (chunk 7.6c).
+    pub max_concurrent: Option<u32>,
 }
 
 /// A provider's `aws:` (chunk 7.7c), as written; [`crate::packages`]
@@ -159,6 +165,8 @@ pub struct Idempotency {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PackageConnection {
     pub name: String,
+    /// Where its name is written: a path and its span.
+    pub name_at: (String, u32, u32),
     /// The package's name and version, `AcmeCouriers.v1`.
     pub package: String,
     /// Its folder, `shared/providers/acme_couriers/v1`.
@@ -195,6 +203,11 @@ pub struct PackageConnection {
     /// Each setting of its package the connection gives, by name (chunk
     /// 7.7c).
     pub settings: Vec<(String, Given)>,
+    /// `polls: { <name>: <interval> }` (chunk 7.6c): each of its package's
+    /// polls called at another interval, in milliseconds.
+    pub polls: Vec<(String, u64)>,
+    /// `max_concurrent:`, lowering its package's (chunk 7.6c).
+    pub max_concurrent: Option<u32>,
     pub reach: Reach,
 }
 
@@ -488,6 +501,15 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                 });
             }
             Some("error_code") => reach.error_code = text_of(&member),
+            Some("polls") => {
+                reach.polls = Some(
+                    tree::members(member.block())
+                        .iter()
+                        .filter_map(|(name, _)| name_text(name))
+                        .collect(),
+                );
+            }
+            Some("max_concurrent") => reach.max_concurrent = whole(&member),
             Some("aws") => {
                 let mut aws = AwsReach::default();
                 for (key, inner) in tree::members(member.block()) {
@@ -593,6 +615,17 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
         }
     }
     Some(reach)
+}
+
+/// A member's whole number of at least 1, as `max_concurrent:` takes.
+pub(crate) fn whole(member: &ast::Member) -> Option<u32> {
+    match member.value().as_ref().map(Const::from_expr) {
+        Some(Const::Number {
+            value,
+            decimal: false,
+        }) if value.scale == 0 => u32::try_from(value.mantissa).ok().filter(|n| *n >= 1),
+        _ => None,
+    }
 }
 
 /// A string member's text, its escapes decoded.
@@ -742,6 +775,11 @@ impl Reader<'_> {
         let before = out.len();
         let mut read = PackageConnection {
             name: self.connection.to_string(),
+            name_at: (
+                self.name_span.path.clone(),
+                self.name_span.start,
+                self.name_span.end,
+            ),
             package: package.clone(),
             folder: home.folder.clone(),
             domains: Vec::new(),
@@ -755,6 +793,8 @@ impl Reader<'_> {
             webhook_replies: Vec::new(),
             key_id: None,
             settings: Vec::new(),
+            polls: Vec::new(),
+            max_concurrent: None,
             reach: reach.clone(),
         };
         let mut given: BTreeSet<String> = BTreeSet::new();
@@ -770,6 +810,17 @@ impl Reader<'_> {
                 "timeout" => read.timeout_ms = self.timeout(member, out),
                 "development" => read.sandbox = self.development(member, out),
                 "retry" => read.retry = self.retry(member, out),
+                "max_concurrent" => read.max_concurrent = self.max_concurrent(member, reach, out),
+                "polls" => match &reach.polls {
+                    Some(names) => read.polls = self.polls(member, names, out),
+                    None => out.push(
+                        self.not_taken(key_span, "polls", &package)
+                            .reason(format!(
+                                "`polls:` changes how often the package's polls run, and `{package}`'s `provider.jadpo` declares none."
+                            ))
+                            .next("Remove `polls:`"),
+                    ),
+                },
                 "webhooks" => match &reach.webhooks {
                     Some(_) => {
                         (read.webhook_secret, read.webhook_replies) = self.webhooks(member, out);
@@ -1544,6 +1595,113 @@ impl Reader<'_> {
 
     /// `timeout: 5s`: how long a call waits for its answer, a duration
     /// written out (chunk 7.2c).
+    /// `max_concurrent: 2` (chunk 7.6c): a whole number of at least 1,
+    /// and no more than its package's, which it may only lower.
+    fn max_concurrent(
+        &self,
+        member: &ast::Member,
+        reach: &Reach,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<u32> {
+        let given = whole(member).filter(|n| reach.max_concurrent.is_none_or(|most| *n <= most));
+        if given.is_none() {
+            let range = match reach.max_concurrent {
+                Some(most) => format!("from 1 to {most}"),
+                None => "of at least 1".to_string(),
+            };
+            out.push(
+                self.invalid(
+                    format!(
+                        "`{}`'s `max_concurrent:` must be a whole number {range}",
+                        self.connection
+                    ),
+                    self.value_span(member),
+                    &format!("not {range}"),
+                )
+                .reason(match reach.max_concurrent {
+                    Some(most) => format!(
+                        "`max_concurrent:` caps how many calls through the connection go out at once per app instance; its package allows {most}, and a connection may only lower that."
+                    ),
+                    None => "`max_concurrent:` caps how many calls through the connection go out at once per app instance, a whole number such as `2`; further calls wait.".to_string(),
+                })
+                .next(match reach.max_concurrent {
+                    Some(most) => format!("Write a number from 1 to {most}, or remove `max_concurrent:` to allow {most}"),
+                    None => "Write a whole number such as `max_concurrent: 2`, or remove it".to_string(),
+                }),
+            );
+        }
+        given
+    }
+
+    /// `polls: { latest: 6h }` (chunk 7.6c): each one of the package's
+    /// polls, `names`, given a duration of at least a minute.
+    fn polls(
+        &self,
+        member: &ast::Member,
+        names: &[String],
+        out: &mut Vec<Diagnostic>,
+    ) -> Vec<(String, u64)> {
+        let mut read = Vec::new();
+        let Some(block) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `polls:` holds no block", self.connection),
+                    self.value_span(member),
+                    "not a block",
+                )
+                .reason("`polls:` gives each of the package's polls the connection runs at another interval, by its name: `polls: { latest: 6h }`.")
+                .next("Write `polls: { <poll>: <interval> }`, or remove it"),
+            );
+            return read;
+        };
+        let known: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+        for (key, entry) in tree::members(Some(block)) {
+            let name = name_text(&key).unwrap_or_default();
+            let key_span = node_span(self.path, key.syntax());
+            if !names.contains(&name) {
+                let near = nearest(&name, names.iter().map(String::as_str));
+                let problem = Diagnostic::new(
+                    &rule::CONNECTION_KEY_INVALID,
+                    format!("`{}`'s `polls:` has no poll `{name}`", self.connection),
+                )
+                .at(key_span.clone(), "no such poll")
+                .reason(format!(
+                    "`polls:` changes how often the package's polls run, each by its name in the package's `provider.jadpo`: {}.",
+                    crate::and_list(&known)
+                ));
+                out.push(match near {
+                    Some(near) => problem
+                        .next(format!("Use `{near}` instead of `{name}`"))
+                        .edit(key_span, near),
+                    None => problem.next(format!("Remove `{name}:`")),
+                });
+                continue;
+            }
+            let millis = match entry.value().as_ref().map(Const::from_expr) {
+                Some(Const::Duration(text)) => jadpo_std::Dur::parse(&text)
+                    .and_then(|dur| u64::try_from(dur.millis).ok())
+                    .filter(|millis| *millis >= crate::polls::LEAST_EVERY_MS),
+                _ => None,
+            };
+            match millis {
+                Some(millis) => read.push((name, millis)),
+                None => out.push(
+                    self.invalid(
+                        format!(
+                            "`{}`'s `polls: {{ {name}: }}` must be a duration of at least a minute",
+                            self.connection
+                        ),
+                        self.value_span(&entry),
+                        "not a minute or more",
+                    )
+                    .reason("A poll is called by the app's tick, once a minute at most, so it runs at most once a minute: its interval is a duration such as `6h`.")
+                    .next(format!("Write `{name}: 1m` or longer, or remove it for the package's own interval")),
+                ),
+            }
+        }
+        read
+    }
+
     fn timeout(&self, member: &ast::Member, out: &mut Vec<Diagnostic>) -> Option<u64> {
         let span = self.value_span(member);
         let given = match member.value().as_ref().map(Const::from_expr) {

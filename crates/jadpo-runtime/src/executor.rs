@@ -79,6 +79,13 @@ pub trait Executor {
         None
     }
 
+    /// The program's polls and how a call through their connections is
+    /// made (area 11, "Polls"; chunk 7.6c). `None` for a program that
+    /// runs none.
+    fn polls(&self) -> Option<crate::polls::Polls<'_>> {
+        None
+    }
+
     /// The program's schedules, where their state is kept, and the stores
     /// the tick sweeps (area 12, chunk 6.2). `None` for a program the tick
     /// has nothing to do for.

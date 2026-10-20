@@ -802,6 +802,14 @@ impl Executor for Program {
         })
     }
 
+    fn polls(&self) -> Option<jadpo_runtime::polls::Polls<'_>> {
+        let polls = &self.plan().providers().polls;
+        (!polls.is_empty()).then(|| jadpo_runtime::polls::Polls {
+            polls,
+            providers: self.providers(),
+        })
+    }
+
     fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
         Some(self.plan().schedules())
     }

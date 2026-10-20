@@ -1474,14 +1474,21 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
   `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
   `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
-- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
-  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
-  connection's `polls: { <name>: <interval> }`, run only while something
-  subscribes to the poll's event, what it last saw kept as runtime state
-  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
-  lowered by a connection, capping calls at once per app instance
-  (further calls wait, waiting deliveries retry later). Both keys are
-  accepted without effect today; they are checked and run here.
+- [x] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20). Built: `polls:` in `provider.jadpo`
+  (`call:` an operation that takes and changes nothing, `every:` a
+  minute or more, `emits:` a public event of the package's own made from
+  the answer's fields) and the connection's `polls: { <name>: <interval>
+  }`, each connection's poll run by the tick only while the app
+  subscribes to its event, claimed by one instance, what it last saw kept
+  in `jadpo_polls` beside the outbox and its event kept with the new
+  digest in one transaction only when the answer changed, a failed call
+  tried again a minute later; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, a slot per call attempt per app instance
+  (further calls wait, a delivery that would wait given back to the
+  outbox uncounted). Tests in `crates/jadpo-check/tests/package_polls.rs`,
+  live ones in `crates/jadpo-cli/tests/package_polls.rs`. Choices in
+  area 11's "Chosen in chunk 7.6c".
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's

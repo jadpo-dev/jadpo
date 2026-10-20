@@ -673,7 +673,7 @@ pub async fn call(
     let mut made = made.with_request(request);
     made.step = step;
     let mut step = step;
-    let mut answer = match retried(ctx, &made, plan.retry).await {
+    let mut answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
         Ok(answer) => answer,
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -710,7 +710,7 @@ pub async fn call(
         }
         step = next;
         made.step = next;
-        answer = match retried(ctx, &made, plan.retry).await {
+        answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
             Ok(answer) => answer,
             Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
             Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -895,13 +895,27 @@ pub fn timed_out() -> Failure {
 /// acted only when it changes nothing or takes its package's key, which it
 /// sends again unchanged. Each attempt is logged as the call it is. On a
 /// host with no timer, as a test's, it is sent again at once, as many
-/// times as `retry:` allows. The last attempt's answer.
-async fn retried(ctx: &mut Ctx<'_>, made: &Call, retry: RetryPlan) -> Result<Answer, Unanswered> {
+/// times as `retry:` allows. Under its connection's `max_concurrent:`,
+/// each attempt waits for one of the connection's slots and gives it back
+/// once answered (chunk 7.6c), so no slot is held while it waits to be
+/// sent again. The last attempt's answer.
+async fn retried(
+    ctx: &mut Ctx<'_>,
+    made: &Call,
+    retry: RetryPlan,
+    max_concurrent: Option<u32>,
+) -> Result<Answer, Unanswered> {
     let host = ctx.host();
     let began = host.monotonic_ms();
     let mut attempt = 1;
     loop {
-        let answer = crate::effects::exchange(ctx, made.clone()).await?;
+        let slot = match max_concurrent {
+            Some(limit) => Some(host.slots().take(&made.connection, limit).await),
+            None => None,
+        };
+        let answer = crate::effects::exchange(ctx, made.clone()).await;
+        drop(slot);
+        let answer = answer?;
         let asked = match &answer {
             Answer::Unavailable => None,
             Answer::RetryAfter(millis) => Some(*millis),

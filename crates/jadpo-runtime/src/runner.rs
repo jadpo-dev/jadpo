@@ -572,21 +572,25 @@ pub(crate) async fn attempt_delivery(
             FAILED,
         ));
     }
+    // Given back to run later, its attempt not counted, while a connection
+    // it calls out through has every slot out (area 11, `max_concurrent:`;
+    // chunk 7.6c): it waits in the outbox rather than in the worker.
+    let through = subscriber.calls_through();
+    if through
+        .iter()
+        .any(|connection| host.slots().full(connection))
+    {
+        let later = now.saturating_add(crate::slots::WAIT_MS);
+        crate::lease::release(database, &lease, later).await;
+        return None;
+    }
     // Held, its attempt given back, while a provider it calls out to is
     // unavailable and isn't due a probe (chunk 7.2b).
-    let watch = match crate::breaker::gate(
-        database,
-        &subscriber.calls_through(),
-        delivery.id,
-        attempt,
-        budget,
-        now,
-    )
-    .await
-    {
-        crate::breaker::Gate::Held => return None,
-        crate::breaker::Gate::Run(watch) => watch,
-    };
+    let watch =
+        match crate::breaker::gate(database, &through, delivery.id, attempt, budget, now).await {
+            crate::breaker::Gate::Held => return None,
+            crate::breaker::Gate::Run(watch) => watch,
+        };
     // What the run sends outside is logged from here (chunk 7.0c).
     let mark = ctx.capabilities().calls().len();
     // A provider call's key is derived from the delivery's id, which every
