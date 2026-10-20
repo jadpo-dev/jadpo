@@ -273,3 +273,204 @@ fn files_in(folder: &Path, prefix: &str, out: &mut Vec<String>) {
         }
     }
 }
+
+// --- recipes compiled in the package's `sample/` app (chunk 7.6b) ----------
+
+/// The folder a package keeps the app its recipes compile in.
+const SAMPLE: &str = "sample";
+
+/// How the package's recipes compiled in its `sample/` app, for the
+/// publishing bar's `recipes` row (area 11, "What publishing requires",
+/// item 4): whether each did, the row's detail, the problems found, each
+/// at its place in the package's folder, and the texts they are shown
+/// over.
+pub(crate) struct InSample {
+    pub passed: bool,
+    pub detail: String,
+    pub problems: Vec<jadpo_diag::Diagnostic>,
+    pub sources: std::collections::BTreeMap<String, String>,
+}
+
+/// Compiles each recipe of the package in `folder`, `compiled` there,
+/// copied on its own into the one domain of the package's `sample/` app
+/// as `jadpo package recipe` copies it, with the package placed as the
+/// sample's own integration, as `jadpo package check` places it. A
+/// recipe's migrations and records are the app's to write once copied,
+/// so they aren't asked for. `None` when the package ships no recipes.
+pub(crate) fn in_sample(folder: &Path, compiled: &crate::package::Compiled) -> Option<InSample> {
+    let recipes = folders_in(&folder.join(RECIPES));
+    if recipes.is_empty() {
+        return None;
+    }
+    let sample = folder.join(SAMPLE);
+    let domains = folders_in(&sample.join(DOMAINS));
+    let domain = match (
+        sample.join(jadpo_db::PROJECT_FILE).is_file(),
+        domains.as_slice(),
+    ) {
+        (true, [only]) => only.clone(),
+        (false, _) => return Some(sample_missing(compiled, "no sample/ app", None)),
+        (true, _) => {
+            return Some(sample_missing(
+                compiled,
+                &format!("sample/ has {}", plural(domains.len(), "domain", "domains")),
+                Some(domains.len()),
+            ));
+        }
+    };
+    let mut sample_files = Vec::new();
+    files_in(&sample, "", &mut sample_files);
+    let mut package_files = Vec::new();
+    files_in(folder, "", &mut package_files);
+    package_files.retain(|file| {
+        !file.starts_with(&format!("{RECIPES}/"))
+            && !file.starts_with(&format!("{SAMPLE}/"))
+            && !file.starts_with("build/")
+    });
+    let mut out = InSample {
+        passed: true,
+        detail: String::new(),
+        problems: Vec::new(),
+        sources: std::collections::BTreeMap::new(),
+    };
+    let mut failing: Vec<String> = Vec::new();
+    for recipe in &recipes {
+        let mut recipe_files = Vec::new();
+        files_in(&folder.join(RECIPES).join(recipe), "", &mut recipe_files);
+        let into = format!("{DOMAINS}/{domain}");
+        let Ok(scratch) = crate::package::Scratch::new() else {
+            failing.push(recipe.clone());
+            continue;
+        };
+        let copied = (|| -> std::io::Result<()> {
+            let copy = |from: PathBuf, to: PathBuf| -> std::io::Result<()> {
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(from, to).map(|_| ())
+            };
+            for file in &sample_files {
+                copy(sample.join(file), scratch.0.join(file))?;
+            }
+            for file in &package_files {
+                copy(
+                    folder.join(file),
+                    scratch.0.join(&compiled.mount).join(file),
+                )?;
+            }
+            for file in &recipe_files {
+                copy(
+                    folder.join(RECIPES).join(recipe).join(file),
+                    scratch.0.join(&into).join(file),
+                )?;
+            }
+            Ok(())
+        })();
+        if copied.is_err() {
+            failing.push(recipe.clone());
+            continue;
+        }
+        let loaded = jadpo_db::load(&scratch.0);
+        // Each place in the scratch app, as the package's folder names it.
+        let mount = format!("{}/", compiled.mount);
+        let recipe_at = format!("{into}/");
+        let place = |path: &str| -> String {
+            if let Some(rest) = path.strip_prefix(&mount) {
+                rest.to_string()
+            } else if let Some(rest) = path.strip_prefix(&recipe_at)
+                && recipe_files.iter().any(|file| file == rest)
+            {
+                format!("{RECIPES}/{recipe}/{rest}")
+            } else {
+                format!("{SAMPLE}/{path}")
+            }
+        };
+        let problems: Vec<jadpo_diag::Diagnostic> = jadpo_check::check(&loaded.db, loaded.project)
+            .into_iter()
+            .filter(|d| {
+                d.rule.id != jadpo_diag::rule::PACKAGE_RESERVED_NAME.id
+                    && !d.rule.id.starts_with("migration.")
+                    && !d.rule.id.starts_with("record.")
+            })
+            .map(|mut d| {
+                if let Some(label) = &mut d.primary {
+                    label.span.path = place(&label.span.path);
+                }
+                for label in &mut d.secondary {
+                    label.span.path = place(&label.span.path);
+                }
+                d
+            })
+            .collect();
+        if problems.is_empty() {
+            continue;
+        }
+        failing.push(recipe.clone());
+        for (path, text) in jadpo_db::source_texts(&loaded.db, loaded.project) {
+            out.sources.insert(place(&path), text);
+        }
+        // A problem of the sample's own, found with each recipe, is shown
+        // once.
+        for problem in problems {
+            let seen = out.problems.iter().any(|known| {
+                known.rule.id == problem.rule.id
+                    && known.message == problem.message
+                    && known.primary.as_ref().map(|label| &label.span)
+                        == problem.primary.as_ref().map(|label| &label.span)
+            });
+            if !seen {
+                out.problems.push(problem);
+            }
+        }
+    }
+    out.passed = failing.is_empty();
+    out.detail = match failing.as_slice() {
+        [] => format!(
+            "{} in sample/",
+            plural(recipes.len(), "recipe compiles", "recipes compile")
+        ),
+        [one] if recipes.len() == 1 => format!("{one} doesn't compile"),
+        _ => format!("{} of {} don't compile", failing.len(), recipes.len()),
+    };
+    Some(out)
+}
+
+/// `publish.sample_missing`: the package's recipes have no sample app
+/// with one domain to compile in; `domains` is how many it has, when it
+/// has an app.
+fn sample_missing(
+    compiled: &crate::package::Compiled,
+    detail: &str,
+    domains: Option<usize>,
+) -> InSample {
+    let package = &compiled.package;
+    let (message, reason) = match domains {
+        None => (
+            format!("`{package}`'s recipes have no sample app to compile in"),
+            format!(
+                "Each recipe is compiled before it is published, copied into the one domain of the app in the package's `{SAMPLE}/` folder as `jadpo package recipe` copies it into an app's, so a recipe that no longer fits the package is caught there; this package has no `{SAMPLE}/{}`.",
+                jadpo_db::PROJECT_FILE
+            ),
+        ),
+        Some(count) => (
+            format!("`{package}`'s sample app has no one domain for its recipes"),
+            format!(
+                "Each recipe is compiled before it is published, copied into the one domain of the app in the package's `{SAMPLE}/` folder as `jadpo package recipe` copies it into an app's; `{SAMPLE}/{DOMAINS}/` holds {}.",
+                plural(count, "domain", "domains")
+            ),
+        ),
+    };
+    InSample {
+        passed: false,
+        detail: detail.to_string(),
+        problems: vec![
+            jadpo_diag::Diagnostic::new(&jadpo_diag::rule::PUBLISH_SAMPLE_MISSING, message)
+                .reason(reason)
+                .next(format!(
+                    "Write a small app in `{SAMPLE}/`, its `{}` connecting to `{package}` and one domain under `{SAMPLE}/{DOMAINS}/` that the connection lists",
+                    jadpo_db::PROJECT_FILE
+                )),
+        ],
+        sources: std::collections::BTreeMap::new(),
+    }
+}

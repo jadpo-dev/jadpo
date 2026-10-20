@@ -538,6 +538,7 @@ pub async fn take(
         store: &queue.store,
         source: queue.source(),
         event: &event.key,
+        connection: None,
     };
     match keep(executor, &kept, ctx, &id, value, payload).await {
         Ok(Some(deliveries)) => Taken::Kept(deliveries),

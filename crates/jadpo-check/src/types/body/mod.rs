@@ -1442,13 +1442,18 @@ impl Body<'_> {
             }
             Stmt::EmitStmt(emit) => {
                 // A package's action emits only about the outside world,
-                // run by its own subscribers (area 11; chunk 7.6).
+                // run by its own subscribers (area 11; chunks 7.6, 7.6b).
                 if let Ownership::Package(home) = self.ownership
                     && self.context == Context::Action
                 {
                     let folder = home.folder.clone();
-                    self.package_emits(&folder, emit);
-                    return true;
+                    if !self.package_emits(&folder, emit) {
+                        // Refused, its values still read.
+                        if let Some(expr) = emit.expr() {
+                            self.infer(&expr);
+                        }
+                        return true;
+                    }
                 }
                 if let Some(expr) = emit.expr() {
                     let before = self.out.len();

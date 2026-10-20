@@ -31,6 +31,11 @@ pub struct SchedulesPlan {
     /// "Receiving from outside"; chunk 7.7); `None` when nothing is
     /// received.
     pub received: Option<String>,
+    /// The stores the records of actions with several changing calls are
+    /// kept in (`jadpo_step_records`), whose answers the tick drops and
+    /// whose abandoned records it deletes after 30 days (area 12; chunk
+    /// 7.5c).
+    pub steps: Vec<String>,
     /// The store queue messages are parked in for an operator
     /// (`jadpo_parked_messages`), whose dismissed ones the tick deletes,
     /// beside the queues' events (chunk 7.7c); `None` when the app

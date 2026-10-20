@@ -1398,17 +1398,32 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `in_use` and `reused`, an older generation writing nothing, an answer
   past 1 MB, area 6's rerun, a route's client retry, and a recorded step
   never reached. Choices in area 12's "The record, chosen in chunk 7.5b".
-- [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
-  high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
-  as an operator item (`jadpo deliveries show`, `retry --not-done` under
-  the next key generation, `abandon`, a route's key lapsing), kept 30
-  days, with 7.5b's `diverged` deliveries listed and retried, and the
-  provider's `new_key_on:` sending under the next key generation; `jadpo runs unfinished
-  --build`; fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
-  crash at each step boundary; each step's state in `jadpo dev` and
-  `jadpo watch`; the late-failure warning (a declinable error) and the
-  deadline sum; the personal-data report's entry, and the metric and
-  alert.
+- [x] **7.5c Multi-step calls: operators** `opus · high`, after 7.5b
+  (split from 7.5 on 2026-10-20, and again into this and 7.5d): an
+  unfinished record as an operator item (`jadpo deliveries show`, `retry
+  --not-done` under the next key generation, `abandon`, a route's key
+  lapsing), kept 30 days, with 7.5b's `diverged` deliveries listed and
+  retried, and the provider's `new_key_on:` sending under the next key
+  generation; `jadpo runs unfinished --build`. Built: the runtime's
+  `unfinished` module reads a record's steps (never a request, answer or
+  key) and changes it beside its delivery, in one statement with the log
+  row in the same store; `deliveries` gains `diverged`, `unfinished` (a
+  route's record a day after its last run) and `abandoned`, the actions
+  `retry_not_done` and `abandon`, and a retry resetting the record's
+  generation; the tick drops answers after 30 days and deletes abandoned
+  records and deliveries 30 days on; an abandoned record refuses a rerun;
+  `steps::new_key` and the provider call's resend on `new_key_on:`;
+  `jadpo deliveries show` and `abandon`, `retry --not-done`, and the
+  `jadpo runs unfinished` command (`cli.runs_arguments`,
+  `runs.unavailable`). Live tests in `step_operators.rs`. Choices in area
+  12's "Operators, chosen in chunk 7.5c".
+- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
+  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
+  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
+  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
+  warning (a declinable error) and the deadline sum; the metric and alert
+  on unfinished records; the personal-data report's entry, with the report
+  itself if it isn't built by then.
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1428,18 +1443,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/package_actions.rs` and `package_recipes.rs`;
   example 26 calls a package action. Choices in area 11's "Chosen in
   chunk 7.6".
-- [ ] **7.6b Package subscribers, polls and `max_concurrent:`** `opus ·
-  high`, after 7.6 (split from 7.6 on 2026-10-20): package subscribers on
-  their own webhooks (non-public events included), running a non-public
-  package action that enriches the event through the connection the
-  webhook came in on and emits the package's own declared events through
-  the app's outbox; `polls:` in `provider.jadpo` and the connection's
-  `polls: { <name>: <interval> }`, run only while something subscribes to
-  the poll's event, what it last saw kept as runtime state and only
-  changes emitted; `max_concurrent:` in `provider.jadpo`, lowered by a
-  connection, capping calls at once per app instance (further calls wait,
-  waiting deliveries retry later); and recipes compiled against the
-  package's `sample/` app by `jadpo package check`.
+- [x] **7.6b Package subscribers and recipes in `sample/`** `opus ·
+  high`, after 7.6 (split from 7.6 on 2026-10-20, and again on
+  2026-10-20: polls and `max_concurrent:` are 7.6c). Built: a package's
+  subscribers on its own webhooks' events, public or not
+  (`subscriber.event_invalid` for any other), each heard once per
+  connection receiving them (`subscriber AcmePay.renewal payments`) and
+  running one of the package's actions with its operations going through
+  that connection; a package action without `public` emitting the
+  package's own events, declared without `wire_name:`, kept in the
+  outbox where the webhooks are and delivered to the app's subscribers
+  of its public ones (`package.action_invalid` for emitting a webhook's
+  event); and `jadpo package check`'s `recipes` row, each recipe compiled
+  in the one domain of the package's `sample/` app, shown at its own path
+  (`publish.sample_missing` without such an app). Tests in
+  `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
+  `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
+  `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
+- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
+  connection's `polls: { <name>: <interval> }`, run only while something
+  subscribes to the poll's event, what it last saw kept as runtime state
+  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, capping calls at once per app instance
+  (further calls wait, waiting deliveries retry later). Both keys are
+  accepted without effect today; they are checked and run here.
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's
