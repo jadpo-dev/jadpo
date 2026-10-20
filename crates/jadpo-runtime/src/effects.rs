@@ -350,7 +350,7 @@ fn emit(
     };
     let subscribers = effects
         .events
-        .subscribers_of(event)
+        .hearing(event, None)
         .map(|subscriber| subscriber.key.clone())
         .collect();
     let event = Event {

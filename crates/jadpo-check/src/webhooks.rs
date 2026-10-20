@@ -261,7 +261,9 @@ pub struct PackageEvents {
 
 /// The events of every provider package that declares `webhooks:`, read
 /// from its `events/`: each an `Event` with a text `wire_name:`, no two
-/// alike, and `occurred_at: Instant`, which the runtime fills.
+/// alike, and `occurred_at: Instant`, which the runtime fills. An event
+/// without `wire_name:` that one of the package's actions emits is the
+/// package's own, not a webhook's (chunk 7.6b).
 #[salsa::tracked(returns(ref))]
 pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
     let mut out = PackageEvents::default();
@@ -304,6 +306,15 @@ pub fn package_events(db: &dyn Db, project: Project) -> PackageEvents {
             let wire = tree::members(decl.member_list())
                 .into_iter()
                 .find(|(key, _)| name_text(key).as_deref() == Some(crate::types::WIRE_NAME));
+            // An event the package's own action emits, without
+            // `wire_name:`, is the package's own, not one its provider
+            // sends (chunk 7.6b).
+            let own = crate::package_code::emitted(db, project)
+                .get(&home.folder)
+                .is_some_and(|names| names.contains(&name));
+            if wire.is_none() && own {
+                continue;
+            }
             let wire_name = match &wire {
                 None => {
                     out.problems.push(

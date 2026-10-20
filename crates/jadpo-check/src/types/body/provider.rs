@@ -435,24 +435,17 @@ impl Body<'_> {
     }
 
     /// `emit` in a package's action: never in a `public` one, which the
-    /// app calls, since a package emits only about the outside world; one
-    /// without `public` is run by the package's own subscribers, which
-    /// come with chunk 7.6b.
-    pub(super) fn package_emits(&mut self, folder: &str, emit: &ast::EmitStmt) {
+    /// app calls, since a package emits only about the outside world, and
+    /// never one of the events its webhooks bring, which only its provider
+    /// sends; one without `public` is run by the package's own
+    /// subscribers (chunk 7.6b). Whether the `emit` is checked on as any
+    /// action's is.
+    pub(super) fn package_emits(&mut self, folder: &str, emit: &ast::EmitStmt) -> bool {
         let action = self.action.clone().unwrap_or_default();
         let bare = action.rsplit('.').next().unwrap_or_default().to_string();
         let public = crate::package_code::action(self.db, self.project, folder, &bare)
             .is_some_and(|found| found.public);
-        let event = emit
-            .expr()
-            .map(|expr| match &expr {
-                Expr::RecordExpr(record) => record
-                    .expr()
-                    .map(|head| crate::tree::written(head.syntax()))
-                    .unwrap_or_default(),
-                other => crate::tree::written(other.syntax()),
-            })
-            .unwrap_or_default();
+        let event = crate::package_code::emitted_name(emit).unwrap_or_default();
         let span = self.span(emit);
         if public {
             self.out.push(
@@ -466,17 +459,31 @@ impl Body<'_> {
                     "Remove the `emit` and let the app's action emit its own event, or take `public` off `{bare}` and run it from one of the package's subscribers"
                 )),
             );
-        } else {
+            return false;
+        }
+        let webhook = crate::webhooks::package_events(self.db, self.project)
+            .of
+            .get(folder)
+            .is_some_and(|events| events.iter().any(|known| known.name == event));
+        if webhook {
+            let provider = match self.ownership {
+                Ownership::Package(home) => format!("`{}`", home.versioned()),
+                _ => "its provider".to_string(),
+            };
             self.out.push(
                 Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    "A package's action that emits isn't built yet",
+                    &rule::PACKAGE_ACTION_INVALID,
+                    format!("`{bare}` emits `{event}`, which {provider}'s webhooks bring"),
                 )
-                .at(span, "declared, not built")
-                .reason("The language runs a package's emitting action from the package's own subscribers, which this compiler can't run yet.")
-                .next(format!("Do without the `emit` in `{bare}` for now")),
+                .at(span, "a webhook's event")
+                .reason("An event with `wire_name:` is one the provider sends, received through a connection's webhook and checked by its signature; a package's action emits its own events, declared without `wire_name:`, for what it makes of them.")
+                .next(format!(
+                    "Declare an event of the package's own for what `{bare}` found, without `wire_name:`, and emit that"
+                )),
             );
+            return false;
         }
+        true
     }
 
     /// A package's action calling one of its package's actions: refused,

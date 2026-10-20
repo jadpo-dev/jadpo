@@ -26,6 +26,19 @@ impl EventsPlan {
             .filter(move |subscriber| subscriber.event == event)
     }
 
+    /// The subscribers given an event of type `event` that came in on
+    /// `connection`'s webhook, or, with `None`, one an action emitted
+    /// (chunk 7.6b): a package's own subscribers hear only their own
+    /// connection's webhooks.
+    pub fn hearing<'a>(
+        &'a self,
+        event: &'a str,
+        connection: Option<&'a str>,
+    ) -> impl Iterator<Item = &'a SubscriberPlan> {
+        self.subscribers_of(event)
+            .filter(move |subscriber| subscriber.hears(connection))
+    }
+
     /// The subscriber whose identity key is `key`.
     pub fn subscriber(&self, key: &str) -> Option<&SubscriberPlan> {
         self.subscribers
@@ -63,12 +76,28 @@ pub struct SubscriberPlan {
     /// their circuit breakers is open (area 12, question 18; chunk 7.2b).
     /// In name order.
     pub connections: Vec<String>,
+    /// For a package's own subscriber (area 11, "What package code may
+    /// do"; chunk 7.6b), the connection whose webhooks it listens to,
+    /// which its package's action calls its API through: it is given only
+    /// the events that came in on that connection, and a package
+    /// connected twice has one for each. `None` for the app's own.
+    pub through: Option<String>,
     /// Where it is written, for logs.
     pub file: String,
     pub line: u32,
 }
 
 impl SubscriberPlan {
+    /// Whether it is given an event that came in on `connection`'s
+    /// webhook, or, with `None`, one an action emitted: a package's own
+    /// subscriber only the first, from its own connection.
+    pub fn hears(&self, connection: Option<&str>) -> bool {
+        match &self.through {
+            Some(through) => Some(through.as_str()) == connection,
+            None => true,
+        }
+    }
+
     /// The connections a delivery to it calls out through: its action's,
     /// or the capability's it hands the event to.
     pub fn calls_through(&self) -> Vec<String> {

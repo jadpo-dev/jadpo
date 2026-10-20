@@ -1165,9 +1165,9 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's subscribers (chunk 7.6) and its capability
-/// mappings (chunk 7.3c). Its events are read since chunk 7.7, each a
-/// webhook's event the app subscribes to, and its actions since chunk 7.6.
+/// doesn't run: a package's capability mappings (chunk 7.3c). Its events
+/// are read since chunk 7.7, each a webhook's event the app subscribes
+/// to, its actions since chunk 7.6, and its subscribers since chunk 7.6b.
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -1175,7 +1175,6 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let what = match location.place {
-        Place::Folder(Folder::Subscribers) => "A package's subscribers",
         Place::Folder(Folder::Provides) => "A package's capability mappings",
         _ => return Vec::new(),
     };

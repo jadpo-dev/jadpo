@@ -721,7 +721,7 @@ async fn keep(
         .map(|events| {
             events
                 .plan
-                .subscribers_of(&event.key)
+                .hearing(&event.key, Some(&plan.connection))
                 .map(|subscriber| subscriber.key.clone())
                 .collect()
         })
