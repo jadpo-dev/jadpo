@@ -2202,6 +2202,36 @@ require `Idempotency-Key`, or a run's `each:` or `finished:`; and
 the key (`resumable_runs`), runs with no store for its record. The
 record itself is roadmap 7.5b's.
 
+**The record of several changing calls** (chunk 7.5b; area 12, "Several
+changing calls in one action"). `jadpo_check::types::record_plans` plans
+a `jadpo_std::steps::RecordPlan` (its store and a digest of its step
+shape) for each action `resumable_runs` names whose longest way makes
+several changing calls, on its `CallablePlan::record`, with the plan's
+`steps_key` (the `SigningKey` setting `application { steps: {
+encryption_key: } }` names, read by `steps_settings`) and `build_id`;
+the schema puts `jadpo_std::system::STEP_TABLES` in that store.
+`ActionBody::record` gives the runtime a `steps::Spec`, and an outermost
+boundary opens the record (`steps::open`) only when its runner set
+`Ctx::set_resumable` with its generation: the runner's delivery attempt,
+or a route's claim under a required `Idempotency-Key`. Opening takes the
+record over for that generation, loads its steps (answers opened with a
+ring `KeyRing::derived` from the steps key) and fixes the invocation's
+clock at the record's first start; each rerun of the body rewinds it
+(`steps::rewind`). A provider call and a store's `put` ask
+`steps::step` with their operation and each top-level field of the
+request: untracked, a recorded answer to replay (logged as
+`Source::Replayed`), or a place to send at, whose row
+`effects::exchange` writes (`steps::sending`) before the driver is
+asked; the answer is kept sealed after (`steps::answered`), the
+provider's `reused:` code and a request that differs are
+`FaultKind::Diverged`, and a step in doubt goes again under its key only
+within the provider's `window:` less its margin. A body that ends before
+replaying every recorded step diverges (`steps::finished`), and
+`boundary::seal` deletes the record in the commit transaction. Every
+record write is one statement that takes the record over only from an
+equal or older generation (`steps::SEND`, `ANSWER`, `DIVERGE`,
+`DELETE`). The runner holds a diverged delivery as `outbox::DIVERGED`.
+
 **A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
 kept"). The plan marks a `BatchCall` whose action makes outside calls
 (`calls`, from `outside_calls`), and the runner runs each of its items

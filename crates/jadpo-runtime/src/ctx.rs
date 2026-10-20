@@ -176,6 +176,14 @@ pub struct Ctx<'p> {
     /// Whether its keyed provider calls count their steps outside an
     /// action: only `jadpo package record`'s one call (chunk 7.2d2).
     standalone_calls: bool,
+    /// The generation of the runner that runs it where its key survives a
+    /// retry: a delivery's attempt, a route's claim (area 12, "One runner
+    /// per record"; chunk 7.5b). `None` for anything else, which keeps no
+    /// record of its steps.
+    resumable: Option<i64>,
+    /// The record of the steps of the action its outermost boundary runs,
+    /// while that is open (chunk 7.5b).
+    record: Option<crate::steps::Record>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -234,7 +242,53 @@ impl<'p> Ctx<'p> {
             steps: 0,
             request_id: None,
             standalone_calls: false,
+            resumable: None,
+            record: None,
         }
+    }
+
+    /// Runs what follows where its key survives a retry, for the runner
+    /// whose generation is `generation` (a delivery's attempt, a route's
+    /// claim), or with `None` where it doesn't: an action with several
+    /// changing calls keeps a record of its steps only there (area 12;
+    /// chunk 7.5b).
+    pub fn set_resumable(&mut self, generation: Option<i64>) {
+        self.resumable = generation;
+    }
+
+    /// The generation of the runner that runs it where its key survives a
+    /// retry.
+    pub fn resumable(&self) -> Option<i64> {
+        self.resumable
+    }
+
+    /// The record of the running action's steps, while one is kept.
+    pub(crate) fn steps_record(&self) -> Option<&crate::steps::Record> {
+        self.record.as_ref()
+    }
+
+    pub(crate) fn steps_record_mut(&mut self) -> Option<&mut crate::steps::Record> {
+        self.record.as_mut()
+    }
+
+    pub(crate) fn set_steps_record(&mut self, record: Option<crate::steps::Record>) {
+        self.record = record;
+    }
+
+    pub(crate) fn take_steps_record(&mut self) -> Option<crate::steps::Record> {
+        self.record.take()
+    }
+
+    /// Where the running action's record has got to: the step it reached
+    /// last, with that step's key generation (chunk 7.5b).
+    pub(crate) fn steps_at(&self) -> Option<crate::steps::StepAt> {
+        self.record.as_ref().and_then(crate::steps::Record::reached)
+    }
+
+    /// Stops the invocation's clock at `clock`: a record's first run's
+    /// start, which `clock.now` reads for every rerun (chunk 7.5b).
+    pub(crate) fn set_clock(&mut self, clock: crate::Clock) {
+        self.env.clock = clock;
     }
 
     /// Gives the invocation the id of the request it answers (chunk 7.2d).

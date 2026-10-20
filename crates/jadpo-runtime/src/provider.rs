@@ -513,7 +513,11 @@ pub async fn call(
         input.clone().unwrap_or(Value::Unit),
         op.repeat,
     );
-    let request = match request(
+    let Made {
+        mut request,
+        fields,
+        keying,
+    } = match request(
         ctx,
         providers,
         (plan, op, at),
@@ -521,7 +525,7 @@ pub async fn call(
         settings,
         site,
     ) {
-        Ok(request) => request,
+        Ok(made) => made,
         Err(Unready::Misconfigured) => {
             let now = ctx.now();
             ctx.capabilities_mut().refused(&made, now);
@@ -529,6 +533,37 @@ pub async fn call(
         }
         Err(Unready::Fault(kind)) => return Done::Fault(kind),
     };
+    // A step of an action with several changing calls (area 12; chunk
+    // 7.5b): given its recorded answer back, or sent at its place.
+    let stepped = crate::steps::step(
+        ctx,
+        crate::steps::Proposed {
+            operation: &name,
+            fields,
+            repeat: op.repeat,
+            changes: op.changes,
+            window_ms: plan
+                .idempotency
+                .as_ref()
+                .and_then(|idempotency| idempotency.window_ms),
+        },
+    )
+    .await;
+    let step = match stepped {
+        Ok(crate::steps::Stepped::Untracked) => None,
+        Ok(crate::steps::Stepped::Send(at)) => Some(at),
+        Ok(crate::steps::Stepped::Replay(answered)) => {
+            return replayed(ctx, providers, op, &name, made, answered, site);
+        }
+        Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
+        Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
+        Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
+    };
+    if let Some(keying) = &keying
+        && let Some(header) = keying.header(providers, plan, step.map_or(0, |at| at.key_generation))
+    {
+        request.headers.push(header);
+    }
     // What the development call log shows of the request (chunk 7.2d).
     let shown = ctx.host().call_log().map(|_| {
         (
@@ -537,13 +572,31 @@ pub async fn call(
             request.body.clone(),
         )
     });
-    let made = made.with_request(request);
+    let mut made = made.with_request(request);
+    made.step = step;
     let answer = match retried(ctx, &made, plan.retry).await {
         Ok(answer) => answer,
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
     };
+    // A fake's generated default or recording, made as the provider
+    // would send it, is an answer as sent from here: a step keeps it as it
+    // keeps any other.
+    let answer = match answer {
+        Answer::Generated => Answer::Wire(crate::fakes::default_answer(ctx, providers, op)),
+        Answer::Recorded => Answer::Wire(recorded_answer(ctx, providers, op)),
+        other => other,
+    };
+    if let Some(at) = step
+        && let Err(unanswered) = keep(ctx, plan, op, at, &answer).await
+    {
+        return match unanswered {
+            Unanswered::Failed(code) => failed(providers, op, &name, &code),
+            Unanswered::Failure(failure) => Done::Failed(failure),
+            Unanswered::Fault(kind) => Done::Fault(kind),
+        };
+    }
     let mut sent: Option<Rc<str>> = None;
     // No answer in time from a call safe to send again is the site's
     // `timed_out`, which its `attempt` maps (chunk 7.2c2).
@@ -599,6 +652,74 @@ pub async fn call(
         });
     }
     done
+}
+
+/// Keeps what step `at`, a call of `op` through `plan`, was answered
+/// (chunk 7.5b): an answer as sent, or one of its own failures, which a
+/// rerun gives back; nothing for an answer that may not be the last, so
+/// the step stays in doubt and is sent again under its key. A provider
+/// that says the key came with a different request stops the action as
+/// `diverged`; one that replays a failed answer under its key parks a
+/// server's error as `outcome_unknown`, since sending it again only
+/// repeats it.
+async fn keep(
+    ctx: &mut Ctx<'_>,
+    plan: &ConnectionPlan,
+    op: &OperationPlan,
+    at: crate::steps::StepAt,
+    answer: &Answer,
+) -> Result<(), Unanswered> {
+    use crate::steps::Answered;
+    let idempotency = plan.idempotency.as_ref();
+    match answer {
+        Answer::Wire(text) => crate::steps::answered(ctx, at, Answered::Wire(text.clone())).await,
+        Answer::Failed(code)
+            if idempotency.and_then(|idempotency| idempotency.reused.as_deref())
+                == Some(code.as_str()) =>
+        {
+            Err(crate::steps::reused(ctx, at).await)
+        }
+        Answer::Failed(code) => {
+            crate::steps::answered(ctx, at, Answered::Failed(code.clone())).await
+        }
+        Answer::Unknown
+            if op.repeat == Repeat::Keyed
+                && idempotency.is_some_and(|idempotency| idempotency.replays_failures) =>
+        {
+            Err(Unanswered::Failure(Box::new(crate::outcome_unknown())))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// What step `answered`, a call of `op` its record answered before, gives
+/// its site without being sent (chunk 7.5b): logged as replayed, then
+/// decoded with the current package as any answer is, or raised as the
+/// failure it was.
+fn replayed(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    op: &OperationPlan,
+    name: &str,
+    made: Call,
+    answered: crate::steps::Answered,
+    site: Site<'_>,
+) -> Done {
+    use crate::steps::Answered;
+    let now = ctx.now();
+    let answer = match &answered {
+        Answered::Wire(text) => Answer::Wire(text.clone()),
+        Answered::Failed(code) => Answer::Failed(code.clone()),
+        Answered::Done => Answer::Value(Value::Unit),
+    };
+    let capabilities = ctx.capabilities_mut();
+    let place = capabilities.sent(&made, crate::capability::Source::Replayed, now);
+    capabilities.ended(place, &answer, Some(0));
+    match answered {
+        Answered::Wire(text) => decode(ctx, providers, op, name, &text, site),
+        Answered::Failed(code) => failed(providers, op, name, &code),
+        Answered::Done => Done::Value(Value::Unit),
+    }
 }
 
 /// Operation `op`'s recording with its placeholders filled, as its
@@ -688,7 +809,7 @@ fn request(
     input: Option<&Value>,
     settings: &[(u32, Value)],
     site: Site<'_>,
-) -> Result<Request, Unready> {
+) -> Result<Made, Unready> {
     let setting = |number: u32| {
         settings
             .iter()
@@ -760,6 +881,15 @@ fn request(
         }
         _ => serde_json::Map::new(),
     };
+    // Each top-level field as written, for the fingerprint a step of an
+    // action with several changing calls keeps (chunk 7.5b).
+    let fields: Vec<(String, Vec<u8>)> = members
+        .iter()
+        .map(|(name, value)| {
+            let text = json_text(value, &numbers, &mut vec![name.clone()]);
+            (name.clone(), text.into_bytes())
+        })
+        .collect();
     let mut url = base.trim_end_matches('/').to_string();
     for part in &op.path {
         match part {
@@ -850,6 +980,7 @@ fn request(
         in_use: None,
         reused: None,
     };
+    let mut keying = None;
     if let Some(idempotency) = &plan.idempotency {
         reading.in_use = idempotency.in_use.clone();
         reading.reused = idempotency.reused.clone();
@@ -860,29 +991,69 @@ fn request(
                         .into(),
                 )));
             };
-            let derived = key(
-                &KeyParts {
-                    application: providers.application,
-                    environment: &environment,
-                    connection: &plan.name,
-                    scope: &call_key.scope,
-                    action: &call_key.key,
-                    step,
-                    generation: 0,
-                },
-                idempotency.max_length,
-            );
-            headers.push((idempotency.header.clone(), derived));
+            keying = Some(Keying {
+                environment,
+                scope: call_key.scope,
+                action: call_key.key,
+                step,
+            });
         }
     }
-    Ok(Request {
-        method: op.method,
-        url,
-        headers,
-        body,
-        timeout_ms: plan.timeout_ms,
-        reading,
+    Ok(Made {
+        request: Request {
+            method: op.method,
+            url,
+            headers,
+            body,
+            timeout_ms: plan.timeout_ms,
+            reading,
+        },
+        fields,
+        keying,
     })
+}
+
+/// A request as made, before its key: what its fingerprint is made of and
+/// what its key is derived from.
+struct Made {
+    request: Request,
+    fields: Vec<(String, Vec<u8>)>,
+    keying: Option<Keying>,
+}
+
+/// What a keyed call's key is derived from besides the application, the
+/// connection and the generation ([`key`]).
+struct Keying {
+    environment: String,
+    scope: String,
+    action: String,
+    step: u32,
+}
+
+impl Keying {
+    /// The header the key goes in and the key, at key generation
+    /// `generation`.
+    fn header(
+        &self,
+        providers: &Providers<'_>,
+        plan: &ConnectionPlan,
+        generation: u32,
+    ) -> Option<(String, String)> {
+        let idempotency = plan.idempotency.as_ref()?;
+        let derived = key(
+            &KeyParts {
+                application: providers.application,
+                environment: &self.environment,
+                connection: &plan.name,
+                scope: &self.scope,
+                action: &self.action,
+                step: self.step,
+                generation,
+            },
+            idempotency.max_length,
+        );
+        Some((idempotency.header.clone(), derived))
+    }
 }
 
 /// The input's member `name` as text in a path: a string as it is, a

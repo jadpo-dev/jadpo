@@ -293,6 +293,16 @@ pub struct IdempotencyPlan {
     pub in_use: Option<String>,
     /// The provider's code for a key sent with a different request.
     pub reused: Option<String>,
+    /// How long the provider keeps a key, in milliseconds (`window:`): a
+    /// step in doubt is sent again under its key only within it (area 11,
+    /// "Keys and windows"; chunk 7.5b).
+    pub window_ms: Option<u64>,
+    /// The provider's code for "the first attempt failed and the key can't
+    /// be used again" (`new_key_on:`): sent again under the next key.
+    pub new_key_on: Option<String>,
+    /// Whether the provider replays a failed answer under the same key
+    /// (`replays_failures: true`), so a `5xx` it answered parks the step.
+    pub replays_failures: bool,
 }
 
 /// One connection to a provider package.
@@ -354,6 +364,10 @@ pub struct OperationPlan {
     /// marked idempotent without a key, keyed when it takes its package's
     /// key, unkeyed otherwise.
     pub repeat: Repeat,
+    /// Whether it changes something (`changes: true`): a step of an action
+    /// with several changing calls from the first such call on (chunk
+    /// 7.5b).
+    pub changes: bool,
     /// The identity keys of the package failures it answers with, whose
     /// codes the provider's error code is matched against.
     pub failures: Vec<String>,

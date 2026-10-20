@@ -1240,6 +1240,12 @@ that holds an entity, since any of them can be written:
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
 another store (area 12, "Delivery: at least once, safe to repeat").
+The record of an action with several changing calls (`jadpo_step_records`:
+each run's key, action, build, step shape, first start, the generation
+of the runner holding it and whether it diverged; and `jadpo_steps`: each
+step's operation, its request's fingerprint, when it was sent and its
+sealed answer; area 12, built in chunk 7.5b) goes in the store such an
+action writes, or `events: { store: }`'s, only where one is kept.
 
 Browser sessions and API tokens (`jadpo_sessions`: each one's user, the
 verifiers of its token and a browser session's CSRF token, and when it

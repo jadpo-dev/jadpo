@@ -115,6 +115,19 @@ impl KeyRing {
         }
     }
 
+    /// The ring of keys derived from this one's for one use, named by
+    /// `label`: each key the HMAC-SHA-256 of the label under it, 32 bytes,
+    /// so a `SigningKey` of any length can encrypt, and one setting's key
+    /// never serves two uses as itself (chunk 7.5b: a record's answers and
+    /// its requests' fingerprints, under `application { steps: { encryption_key: } }`).
+    pub fn derived(&self, label: &str) -> Result<KeyRing, Fault> {
+        let derive = |key: &[u8]| hmac_sha256(key, &[label.as_bytes()]).map(|mac| mac.to_vec());
+        Ok(KeyRing {
+            current: derive(&self.current)?,
+            previous: self.previous.as_deref().map(derive).transpose()?,
+        })
+    }
+
     /// The current key and then the previous one.
     fn each(&self) -> impl Iterator<Item = &[u8]> {
         std::iter::once(self.current.as_slice()).chain(self.previous.as_deref())
@@ -505,6 +518,38 @@ mod tests {
 
     fn ring(current: &str, previous: Option<&str>) -> KeyRing {
         KeyRing::from_key_text(current, previous).expect("keys")
+    }
+
+    /// A `SigningKey` of any length gives a ring of 32-byte keys for one
+    /// use: what it seals opens under the same label, after the key is
+    /// rotated too, and never under another label (chunk 7.5b).
+    #[test]
+    fn a_signing_key_derives_a_ring_that_encrypts_and_rotates() {
+        let old = KeyRing::from_signing_text("an old signing key of thirty-two characters", None);
+        let sealed_with = old.derived("jadpo step answers v1").expect("derived");
+        let sealed = encrypt(b"answer", &sealed_with, "step 1", &mut seeded(3)).expect("sealed");
+        let rotated = KeyRing::from_signing_text(
+            "a new signing key, thirty-two characters long",
+            Some("an old signing key of thirty-two characters"),
+        );
+        let opened = decrypt(
+            &sealed,
+            &rotated.derived("jadpo step answers v1").expect("derived"),
+            "step 1",
+        );
+        assert_eq!(opened.as_deref(), Ok(&b"answer"[..]));
+        assert!(
+            decrypt(
+                &sealed,
+                &rotated.derived("another use").expect("derived"),
+                "step 1"
+            )
+            .is_err()
+        );
+        assert!(
+            decrypt(&sealed, &old, "step 1").is_err(),
+            "the setting's own key isn't the derived one"
+        );
     }
 
     // --- known answers ---------------------------------------------------

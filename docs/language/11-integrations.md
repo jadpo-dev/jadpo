@@ -2673,6 +2673,14 @@ replay and key windows come with roadmap 7.5b, and the operator's items,
 the fakes' `lost` and `in_use`, the tests' crash points and the warning
 with 7.5c.
 
+Built in chunk 7.5b, the record, replay and key windows, as area 12's
+"Several changing calls in one action" says: a provider's `idempotency:`
+`window:`, `replays_failures:` and `new_key_on:` are read into the plan,
+an operation's `changes:` marks a step, and the provider call records,
+replays and keys each step through the capability seam
+(`effects::exchange` writes a step before it is sent). Choices in area
+12's decisions table, "The record, chosen in chunk 7.5b".
+
 ## Receiving from outside
 
 Decided 2026-10-16 (Richard), extending question 11.

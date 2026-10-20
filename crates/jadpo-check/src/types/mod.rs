@@ -57,7 +57,10 @@ pub use shape::{
     type_shapes, variant_block,
 };
 pub use signatures::{Callables, Sig, callables};
-pub use steps::{MOST_STEPS, Steps, action_steps, resumable_runs, step_problems};
+pub use steps::{
+    MOST_STEPS, Steps, StepsRead, action_steps, first_several, record_plans, record_store,
+    resumable_runs, step_problems, steps_settings,
+};
 pub use stores::{
     Reach as StoreReach, batch_store_problems, batch_stores, file_run_problems, file_run_stores,
     store_problems, store_reaches, unkept_responses, used_stores, written_stores,

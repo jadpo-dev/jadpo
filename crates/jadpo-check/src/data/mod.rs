@@ -2631,6 +2631,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             }
         }
     }
+    // The record of an action with several changing calls lives in the
+    // store it writes, beside its outbox (area 12; chunk 7.5b).
+    for plan in crate::types::record_plans(db, project).values() {
+        if let Some(found) = schema.stores.get_mut(&plan.store) {
+            for system in jadpo_std::system::STEP_TABLES {
+                found
+                    .tables
+                    .insert(system.table.to_string(), columns::system_table(system));
+            }
+        }
+    }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).
     if let Some(store) = crate::identity::identity(db, project).sessions_store()

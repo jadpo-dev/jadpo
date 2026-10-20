@@ -72,6 +72,11 @@ pub const OUTCOME_UNKNOWN: &str = "outcome_unknown";
 /// `running`, with its unkeyed call on its way out (chunk 7.0c): never
 /// claimed again, and parked once its lease has passed.
 pub const SENDING: &str = "sending";
+/// Held for an operator: a rerun of its action, which makes several
+/// changing calls, no longer matches the record of its steps (area 12,
+/// "A rerun replays"; chunk 7.5b). Never claimed again by itself; an
+/// operator's retry, once a fix is deployed, finishes it.
+pub const DIVERGED: &str = "diverged";
 
 /// The outbox rows of one commit: their ids, event keys and payloads
 /// unnested, then the time, the trace context, the encoding and the
@@ -431,6 +436,16 @@ pub(crate) fn parked_json(cause: Option<&str>) -> SqlValue {
     SqlValue::Json(serde_json::Value::Object(object).to_string())
 }
 
+/// What a delivery record keeps of an attempt held as `diverged`: that,
+/// and what differed, the step, its operation and the fields, never a
+/// value (chunk 7.5b).
+pub(crate) fn diverged_json(problem: &str) -> SqlValue {
+    let mut object = serde_json::Map::new();
+    object.insert("code".into(), DIVERGED.into());
+    object.insert("problem".into(), problem.into());
+    SqlValue::Json(serde_json::Value::Object(object).to_string())
+}
+
 /// What happens to a delivery after an attempt (area 12, "Retries and
 /// giving up").
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -455,6 +470,12 @@ pub enum After {
     /// was otherwise.
     Park {
         cause: String,
+    },
+    /// Held for an operator, never tried again by itself: a rerun of an
+    /// action with several changing calls no longer matches its record
+    /// (chunk 7.5b), with what differed.
+    Diverge {
+        problem: String,
     },
 }
 
@@ -495,6 +516,9 @@ pub fn after(outcome: &crate::Outcome) -> After {
             }
         }
         Outcome::Fault(fault) => match &fault.kind {
+            FaultKind::Diverged(problem) => After::Diverge {
+                problem: problem.clone(),
+            },
             FaultKind::Store(_) | FaultKind::DeadlineExceeded => After::Retry {
                 code: fault.kind.classification().to_string(),
                 kind: None,

@@ -446,7 +446,8 @@ pub(crate) async fn attempt_delivery(
     within: Option<&mut crate::LocalFuture<'_, ()>>,
 ) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
-        self, After, CHAIN_LIMIT, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED, failure_json, micros,
+        self, After, CHAIN_LIMIT, DIVERGED, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED,
+        failure_json, micros,
     };
     if ctx.in_action() {
         return Some((
@@ -684,6 +685,10 @@ pub(crate) async fn attempt_delivery(
                 store,
                 id: delivery.id,
             }));
+            // Its key survives a retry, so an action with several changing
+            // calls keeps a record of its steps, held by this attempt
+            // (area 12, "One runner per record"; chunk 7.5b).
+            ctx.set_resumable(Some(i64::from(attempt)));
             let ran = match within {
                 // A route stopping its wait gives the delivery back, as the
                 // host shutting down does.
@@ -692,6 +697,7 @@ pub(crate) async fn attempt_delivery(
                     .map_err(|()| Cut::ShuttingDown),
                 None => within_budget(executor, ctx, budget, job).await,
             };
+            ctx.set_resumable(None);
             let background = ctx.background_mut();
             background.set_handled(None);
             background.set_trace(trace);
@@ -748,6 +754,10 @@ pub(crate) async fn attempt_delivery(
             )
             .await;
             OUTCOME_UNKNOWN
+        }
+        After::Diverge { problem } => {
+            settle(DIVERGED, None, Some(outbox::diverged_json(&problem))).await;
+            DIVERGED
         }
     };
     Some((outcome, state))

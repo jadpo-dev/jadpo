@@ -135,13 +135,71 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
     let (Some(media), Value::Variant(variant)) = (media_type(file_type), file_type) else {
         return Done::Fault(FaultKind::Defect("a put given no file type".into()));
     };
-    let Some(id) = ctx.new_id() else {
-        return Done::Fault(FaultKind::Defect(
-            "a file's key with no randomness to make it".into(),
-        ));
+    let size = i64::try_from(held.len()).unwrap_or(i64::MAX);
+    // In an action with several changing calls a `put` is a step like a
+    // provider's call (area 12; chunk 7.5b): its object's key is derived
+    // from its place, so a rerun writes the same object rather than a
+    // second one, and an answered one is given back without being sent.
+    let operation = format!("{connection}.{PUT}");
+    let stepped = crate::steps::step(
+        ctx,
+        crate::steps::Proposed {
+            operation: &operation,
+            fields: vec![
+                ("type".to_string(), media.as_bytes().to_vec()),
+                ("bytes".to_string(), held.to_vec()),
+            ],
+            // Sent again, it writes the same object under the same key.
+            repeat: Repeat::Safe,
+            changes: true,
+            window_ms: None,
+        },
+    )
+    .await;
+    let step = match stepped {
+        Ok(crate::steps::Stepped::Untracked) => None,
+        Ok(crate::steps::Stepped::Send(at)) => Some(at),
+        Ok(crate::steps::Stepped::Replay(answered)) => {
+            let at = ctx.steps_at();
+            let key = at
+                .and_then(|at| crate::steps::object_id(ctx, at))
+                .map(|id| key_for(&id));
+            return match (answered, key) {
+                (crate::steps::Answered::Failed(code), _) if code == STORAGE_FULL => {
+                    Done::Broke(RuleKey::StorageFull)
+                }
+                (crate::steps::Answered::Done, Some(key)) => {
+                    let input = Value::record("FilePut", Vec::new());
+                    let made = Call::new(connection, PUT, input, Repeat::Keyed);
+                    let now = ctx.now();
+                    let capabilities = ctx.capabilities_mut();
+                    let place = capabilities.sent(&made, crate::capability::Source::Replayed, now);
+                    capabilities.ended(
+                        place,
+                        &crate::capability::Answer::Value(Value::Unit),
+                        Some(0),
+                    );
+                    Done::Value(file_value(connection, &key, None, size, &variant.name))
+                }
+                _ => Done::Fault(FaultKind::Defect(format!(
+                    "`{operation}`'s recorded answer isn't one a store gives"
+                ))),
+            };
+        }
+        Err(refused) => return unanswered(refused, &format!("`{operation}`")),
+    };
+    let id = match step.and_then(|at| crate::steps::object_id(ctx, at)) {
+        Some(id) => id,
+        None => {
+            let Some(id) = ctx.new_id() else {
+                return Done::Fault(FaultKind::Defect(
+                    "a file's key with no randomness to make it".into(),
+                ));
+            };
+            id
+        }
     };
     let key = key_for(&id);
-    let size = i64::try_from(held.len()).unwrap_or(i64::MAX);
     let input = Value::record(
         "FilePut",
         vec![
@@ -150,7 +208,19 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
             (Rc::from("bytes"), bytes.clone()),
         ],
     );
-    let sent = call(ctx, Call::new(connection, PUT, input, Repeat::Keyed)).await;
+    let mut made = Call::new(connection, PUT, input, Repeat::Keyed);
+    made.step = step;
+    let sent = call(ctx, made).await;
+    let kept = match (&sent, step) {
+        (Ok(_), Some(at)) => crate::steps::answered(ctx, at, crate::steps::Answered::Done).await,
+        (Err(Unanswered::Failed(code)), Some(at)) if code == STORAGE_FULL => {
+            crate::steps::answered(ctx, at, crate::steps::Answered::Failed(code.clone())).await
+        }
+        _ => Ok(()),
+    };
+    if let Err(refused) = kept {
+        return unanswered(refused, &format!("`{operation}`"));
+    }
     match sent {
         Ok(_) => Done::Value(file_value(connection, &key, None, size, &variant.name)),
         Err(Unanswered::Failed(code)) if code == STORAGE_FULL => Done::Broke(RuleKey::StorageFull),
