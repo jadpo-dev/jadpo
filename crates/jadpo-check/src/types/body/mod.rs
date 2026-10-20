@@ -23,6 +23,7 @@ mod batches;
 mod calls;
 mod contract;
 mod currency;
+mod exports;
 mod expr;
 pub(crate) mod facts;
 mod failing;

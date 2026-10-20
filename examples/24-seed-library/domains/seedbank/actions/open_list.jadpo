@@ -1,0 +1,12 @@
+use seedbank/entities { ShelfList }
+
+/// Opens a shelf list, before anything is written.
+action open_list() -> ShelfList {
+    return ShelfList.create {
+        set: {
+            printout: none
+            list_walk: none
+            packets_listed: none
+        }
+    }
+}

@@ -407,17 +407,17 @@ impl Body<'_> {
             {
                 return self.batch_call(op, call, callee, &written);
             }
-            // A file helper's read (area 19, "Data formats"; chunk 6.4b);
-            // its `write` comes with roadmap 6.4b2.
-            if member == "read"
-                && let Some(format) = jadpo_std::batch::RowFormat::from_namespace(&head)
-            {
-                return self.batch_call(
-                    jadpo_std::batch::BatchOp::Read(format),
-                    call,
-                    callee,
-                    &written,
-                );
+            // A file helper's read (area 19, "Data formats"; chunk 6.4b)
+            // or write (chunk 6.4b2).
+            if let Some(format) = jadpo_std::batch::RowFormat::from_namespace(&head) {
+                let op = match member.as_str() {
+                    "read" => Some(jadpo_std::batch::BatchOp::Read(format)),
+                    "write" => Some(jadpo_std::batch::BatchOp::Write(format)),
+                    _ => None,
+                };
+                if let Some(op) = op {
+                    return self.batch_call(op, call, callee, &written);
+                }
             }
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);
@@ -433,6 +433,20 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if names.namespace(&head) == Some(Namespace::Standard) {
+            // `json.write`'s file form (area 19, "Data formats"; chunk
+            // 6.4b2): given a store and named arguments, it starts a run
+            // writing a JSON list, where given a value it gives its text.
+            if head == jadpo_std::batch::RowFormat::Json.namespace()
+                && member == "write"
+                && Self::writes_a_file(call)
+            {
+                return self.batch_call(
+                    jadpo_std::batch::BatchOp::Write(jadpo_std::batch::RowFormat::Json),
+                    call,
+                    callee,
+                    &written,
+                );
+            }
             if let Some(targets) = jadpo_std::moved_namespace(&head)
                 && let [member] = rest.as_slice()
             {

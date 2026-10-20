@@ -1150,6 +1150,9 @@ pub const FILE_TYPES: &[(&str, &str)] = &[
     ("csv", "text/csv"),
     ("tsv", "text/tab-separated-values"),
     ("json", "application/json"),
+    // A JSON Lines file, as `json_lines.write` writes one (chunk 6.4b2):
+    // the media type jsonlines.org names.
+    ("json_lines", "application/jsonl"),
 ];
 
 /// `Weekday`'s variants, each its own code.

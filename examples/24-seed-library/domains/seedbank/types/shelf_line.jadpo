@@ -1,0 +1,18 @@
+// A row written to a file is an `Output`: its fields are the file's
+// columns, in the order it declares them, each named by its `column:` or
+// its own name.
+
+use seedbank/types { Season, VarietyName }
+
+/// One packet's line on the shelf list the volunteers print.
+type ShelfLine = Output {
+    variety: VarietyName {
+        column: "Variety"
+    }
+    saved_in: Season {
+        column: "Saved in"
+    }
+    on_loan: Bool {
+        column: "On loan"
+    }
+}

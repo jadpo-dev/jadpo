@@ -901,6 +901,20 @@ impl Lower<'_> {
                     if matches!(op, jadpo_std::batch::BatchOp::Read(_)) && slot == Some(1) {
                         continue;
                     }
+                    // A writer's store is a connection, which lowers to its
+                    // name (chunk 6.4b2), as `text.format`'s `standard`
+                    // does.
+                    if matches!(op, jadpo_std::batch::BatchOp::Write(_))
+                        && slot == Some(0)
+                        && let Some(Expr::NameRef(name)) = arg.expr()
+                    {
+                        let store = self
+                            .connection_name(call, &tree::name_ref_text(&name).unwrap_or_default());
+                        if let Some(place) = args.get_mut(0) {
+                            *place = Some(store);
+                        }
+                        continue;
+                    }
                     let lowered = arg.expr().map(|value| self.expr(&value));
                     if let Some(slot) = slot
                         && let Some(place) = args.get_mut(slot)
@@ -969,6 +983,19 @@ impl Lower<'_> {
         });
         let ty = self.ty(&ty);
         self.fill(id, call.syntax(), ty, typed::Node::Expr(zero));
+        SiteId(id as u32)
+    }
+
+    /// A writer's store, the connection's name as text (chunk 6.4b2).
+    fn connection_name(&mut self, call: &ast::CallExpr, name: &str) -> SiteId {
+        let id = self.alloc();
+        let ty = self.ty(&Ty::Prim(Prim::Text));
+        self.fill(
+            id,
+            call.syntax(),
+            ty,
+            typed::Node::Expr(typed::Expr::Literal(Literal::Text(name.to_string()))),
+        );
         SiteId(id as u32)
     }
 

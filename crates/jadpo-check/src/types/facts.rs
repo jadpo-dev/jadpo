@@ -159,27 +159,39 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
     })
 }
 
-/// The batch a `batches.each` call starts, and the sites inside it that
+/// Where a call starting a run has `from:`, `each:` and `finished:`
+/// among its arguments: `batches.each`'s first; a file helper's read has
+/// its file and `as:` in place of `from:` (chunk 6.4b), and its write its
+/// store, `name:` and `format:` before it (chunk 6.4b2).
+pub fn run_places(op: BatchOp) -> (Option<usize>, usize, usize) {
+    match op {
+        BatchOp::Read(_) => (None, 2, 3),
+        BatchOp::Write(_) => (Some(3), 4, 5),
+        _ => (Some(0), 1, 2),
+    }
+}
+
+/// The batch a call starting a run starts, and the sites inside it that
 /// are the run's rather than the action's: `from:`'s query call, and the
 /// action `each:` and `finished:` each call.
-fn batch_of(body: &Body, args: &[Option<SiteId>], file: bool) -> (BatchFact, Vec<SiteId>) {
+fn batch_of(body: &Body, args: &[Option<SiteId>], op: BatchOp) -> (BatchFact, Vec<SiteId>) {
     let node = |site: Option<SiteId>| site.map(|site| (site, &body.site(site).node));
     let mut skip = Vec::new();
+    let file = matches!(op, BatchOp::Read(_));
     let mut fact = BatchFact {
         query: None,
         file,
         each: None,
         finished: None,
     };
-    // A file helper's `each:` and `finished:` follow its file and `as:`.
-    let calls = if file { 2 } else { 1 };
+    let (from, calls, _) = run_places(op);
     if let Some((
         site,
         Node::Expr(Expr::Call {
             callee: Callee::Query(query),
             ..
         }),
-    )) = node(args.first().copied().flatten())
+    )) = node(from.and_then(|at| args.get(at).copied().flatten()))
     {
         fact.query = Some(query.name().to_string());
         skip.push(site);
@@ -217,12 +229,13 @@ fn facts_of(body: &Body) -> Vec<(Fact, SiteId)> {
     let mut skip: BTreeSet<SiteId> = BTreeSet::new();
     for (at, site) in body.sites.iter().enumerate() {
         if let Node::Expr(Expr::Call {
-            callee: Callee::Batch(op @ (BatchOp::Each | BatchOp::Read(_))),
+            callee: Callee::Batch(op),
             args,
             ..
         }) = &site.node
+            && op.starts()
         {
-            let (fact, inside) = batch_of(body, args, matches!(op, BatchOp::Read(_)));
+            let (fact, inside) = batch_of(body, args, *op);
             skip.extend(inside);
             batches.push((SiteId(at as u32), fact));
         }

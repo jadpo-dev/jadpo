@@ -29,11 +29,14 @@
 //!
 //! What a run reads is the plan's ([`BatchPlan`]): the same for the
 //! interpreter and compiled code, which give it through
-//! [`crate::Executor::batches`]. A file helper's run (`csv.read` and the
+//! [`crate::Executor::batches`]. A file helper's read (`csv.read` and the
 //! others; chunk 6.4b) walks a stored file's rows instead of a query's
 //! pages, each page read from the file before its transaction opens
-//! ([`file`]).
+//! ([`file`]); its write (`csv.write` and the others; chunk 6.4b2) walks a
+//! query's pages into a stored file, each page's rows put in the store
+//! once the page's transaction has closed ([`export`]).
 
+pub(crate) mod export;
 pub(crate) mod file;
 
 pub use file::MAX_ROW_BYTES;
@@ -694,8 +697,21 @@ async fn step(
     // stops once the budget is spent (chunk 6.7).
     ctx.set_deadline(Some(budget.limit_ms()));
     let lease_until = crate::lease::until(budget, now);
-    let stepped = match &plan.from {
-        BatchFrom::Query(_) => {
+    let stepped = match (&plan.from, &plan.to) {
+        (BatchFrom::Query(_), Some(write)) => {
+            export::page(
+                executor,
+                &mut ctx,
+                batches,
+                plan,
+                write,
+                start,
+                saved,
+                (now, lease_until),
+            )
+            .await
+        }
+        (BatchFrom::Query(_), None) => {
             batch(
                 executor,
                 &mut ctx,
@@ -707,7 +723,7 @@ async fn step(
             )
             .await
         }
-        BatchFrom::File(rows) => {
+        (BatchFrom::File(rows), _) => {
             file::page(
                 executor,
                 &mut ctx,
@@ -807,82 +823,39 @@ async fn batch(
         }
     };
     if held.read_all {
-        return finished(executor, open, plan, &id, values, &held, now).await;
+        return finished(executor, open, plan, &id, values, &held, now, None).await;
     }
-    // The page after the position that committed, as the system.
-    let Some(query) = plan.from.query() else {
+    let Some(each) = plan.each.action() else {
         open.rollback().await;
-        return Step::Ended(Ran::Paused("a file's run read as a query's".into()));
+        return Step::Ended(Ran::Failed("a run with no action to call".into()));
     };
-    let mut args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
-    if let Some(page) = &query.page
-        && let jadpo_std::read::Source::Arg { index, path } = &page.after
-    {
-        let cursor = held.position.as_deref().map_or(Value::None, Value::text);
-        if let Some(arg) = args.get_mut(*index as usize) {
-            *arg = with_at(arg, path, cursor);
-        }
-    }
-    let read = crate::store(
-        open.ctx(),
-        StoreOp::Read(query),
-        batches.failures,
-        batches.json,
-        &args,
-        Frame::ENTRY,
-    )
-    .await;
-    let page = match read {
-        Stored::Value(page) => page,
-        _ if open.changed() => {
-            open.rollback().await;
-            return Step::Changed;
-        }
-        Stored::Failed(failure) if failure.code == "unavailable" => {
-            open.rollback().await;
-            return Step::Ended(Ran::Paused("its store couldn't be reached".into()));
-        }
-        Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
-            // A cursor its query no longer takes: a deploy changed the
-            // query's order.
-            let why = format!(
-                "its query refused the page it had reached (`{}`)",
-                failure.code
-            );
-            let ended = end_in(&mut open, &id, BatchState::Failed, Some(&why), now).await;
-            return finish(open, ended, Ran::Failed(why)).await;
-        }
-        Stored::Fault(fault) => {
-            open.rollback().await;
-            return Step::Ended(Ran::Paused(format!(
-                "reading its page faulted with `{}`",
-                fault.kind.classification()
-            )));
-        }
-    };
-    let (items, next) = match &page {
-        Value::Record(record) => (
-            match record.get("items") {
-                Some(Value::List(items)) => items.to_vec(),
-                _ => Vec::new(),
-            },
-            match record.get("next") {
-                Some(Value::Text(cursor)) => Some(cursor.to_string()),
-                _ => None,
-            },
-        ),
-        _ => (Vec::new(), None),
-    };
+    // The page after the position that committed, as the system.
+    let (items, next) =
+        match read_page(&mut open, batches, plan, values, held.position.as_deref()).await {
+            Ok(page) => page,
+            Err(Unread::Changed) => {
+                open.rollback().await;
+                return Step::Changed;
+            }
+            Err(Unread::Paused(why)) => {
+                open.rollback().await;
+                return Step::Ended(Ran::Paused(why));
+            }
+            Err(Unread::Refused(why)) => {
+                let ended = end_in(&mut open, &id, BatchState::Failed, Some(&why), now).await;
+                return finish(open, ended, Ran::Failed(why)).await;
+            }
+        };
     let calls: Vec<Vec<Value>> = items
         .iter()
-        .map(|item| arguments(&plan.each.args, item, values))
+        .map(|item| arguments(&each.args, item, values))
         .collect();
     let mut problems: Vec<(i64, String)> = Vec::new();
     let mut paused: Option<String> = None;
     let base = held.done;
     open.items(
         executor,
-        plan.each.callable,
+        each.callable,
         calls,
         &mut |at, outcome| match problem(&outcome) {
             Item::Done => ControlFlow::Continue(()),
@@ -953,6 +926,83 @@ async fn batch(
     }
 }
 
+/// Why a run's next page wasn't read.
+enum Unread {
+    /// A concurrent change met it: the batch runs again.
+    Changed,
+    /// Something passing: the run waits.
+    Paused(String),
+    /// Its query refused the page it had reached: the run can't go on.
+    Refused(String),
+}
+
+/// The items of the page of `from:` after `position`, the cursor that
+/// committed, and the cursor of the page after it, read in `open`'s
+/// transaction as the system.
+async fn read_page(
+    open: &mut Batch<'_, '_>,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    values: &[Value],
+    position: Option<&str>,
+) -> Result<(Vec<Value>, Option<String>), Unread> {
+    let Some(query) = plan.from.query() else {
+        return Err(Unread::Paused("a file's run read as a query's".into()));
+    };
+    let mut args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
+    if let Some(page) = &query.page
+        && let jadpo_std::read::Source::Arg { index, path } = &page.after
+    {
+        let cursor = position.map_or(Value::None, Value::text);
+        if let Some(arg) = args.get_mut(*index as usize) {
+            *arg = with_at(arg, path, cursor);
+        }
+    }
+    let read = crate::store(
+        open.ctx(),
+        StoreOp::Read(query),
+        batches.failures,
+        batches.json,
+        &args,
+        Frame::ENTRY,
+    )
+    .await;
+    let page = match read {
+        Stored::Value(page) => page,
+        _ if open.changed() => return Err(Unread::Changed),
+        Stored::Failed(failure) if failure.code == "unavailable" => {
+            return Err(Unread::Paused("its store couldn't be reached".into()));
+        }
+        // A cursor its query no longer takes: a deploy changed the
+        // query's order.
+        Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
+            return Err(Unread::Refused(format!(
+                "its query refused the page it had reached (`{}`)",
+                failure.code
+            )));
+        }
+        Stored::Fault(fault) => {
+            return Err(Unread::Paused(format!(
+                "reading its page faulted with `{}`",
+                fault.kind.classification()
+            )));
+        }
+    };
+    Ok(match &page {
+        Value::Record(record) => (
+            match record.get("items") {
+                Some(Value::List(items)) => items.to_vec(),
+                _ => Vec::new(),
+            },
+            match record.get("next") {
+                Some(Value::Text(cursor)) => Some(cursor.to_string()),
+                _ => None,
+            },
+        ),
+        _ => (Vec::new(), None),
+    })
+}
+
 /// A statement of the run's own the store refused: nothing of the batch
 /// is kept.
 async fn abandoned(open: Batch<'_, '_>, error: StoreError) -> Step {
@@ -966,8 +1016,10 @@ async fn abandoned(open: Batch<'_, '_>, error: StoreError) -> Step {
 }
 
 /// `finished:`, once every page is read, in a transaction of its own:
-/// its action given the run's summary, then the run finished. One that
-/// fails is undone, and the run is failed with its code.
+/// its action given the run's summary, an `ExportSummary` holding `file`
+/// for a write, then the run finished. One that fails is undone, and the
+/// run is failed with its code.
+#[allow(clippy::too_many_arguments)]
 async fn finished(
     executor: &dyn Executor,
     mut open: Batch<'_, '_>,
@@ -976,6 +1028,7 @@ async fn finished(
     values: &[Value],
     held: &Held,
     now: i64,
+    file: Option<Value>,
 ) -> Step {
     let mut failure: Option<String> = None;
     if let Some(call) = &plan.finished {
@@ -986,7 +1039,7 @@ async fn finished(
             Ok(rows) => rows,
             Err(error) => return abandoned(open, error).await,
         };
-        let summary = summary(held, &rows);
+        let summary = summary(held, &rows, file);
         let args = arguments(&call.args, &summary, values);
         let mut paused: Option<String> = None;
         open.items(executor, call.callable, vec![args], &mut |_, outcome| {
@@ -1023,8 +1076,8 @@ async fn finished(
 }
 
 /// The `ImportSummary` `finished:` receives: the counts and each problem,
-/// in row order.
-fn summary(held: &Held, rows: &[Row]) -> Value {
+/// in row order; or with the `file` a write wrote, the `ExportSummary`.
+fn summary(held: &Held, rows: &[Row], file: Option<Value>) -> Value {
     let problems: Vec<Value> = rows
         .iter()
         .filter_map(|row| match row.as_slice() {
@@ -1043,14 +1096,19 @@ fn summary(held: &Held, rows: &[Row]) -> Value {
             _ => None,
         })
         .collect();
-    Value::record(
-        jadpo_std::batch::IMPORT_SUMMARY,
-        vec![
-            (Rc::from("items"), Value::Int(held.done)),
-            (Rc::from("items_with_problems"), Value::Int(held.problems)),
-            (Rc::from("problems"), Value::list(problems)),
-        ],
-    )
+    let mut fields = vec![
+        (Rc::from("items"), Value::Int(held.done)),
+        (Rc::from("items_with_problems"), Value::Int(held.problems)),
+        (Rc::from("problems"), Value::list(problems)),
+    ];
+    let name = match file {
+        Some(file) => {
+            fields.push((Rc::from("file"), file));
+            jadpo_std::batch::EXPORT_SUMMARY
+        }
+        None => jadpo_std::batch::IMPORT_SUMMARY,
+    };
+    Value::record(name, fields)
 }
 
 /// Writes the run's end in the batch's transaction.

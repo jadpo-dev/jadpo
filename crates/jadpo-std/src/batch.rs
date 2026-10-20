@@ -6,10 +6,10 @@
 //!
 //! What is decided once here, for the compiler and the runtime alike: the
 //! built-in types a program reads (area 2, "The batch types' fields"),
-//! the operations of the `batches` namespace, the system tables a run is
-//! kept in (area 5, "System tables"), and [`BatchPlan`], what the plan
-//! says of each `batches.each` call, as plain data the runtime runs
-//! without a compiler crate.
+//! the operations of the `batches` namespace and the file helpers, the
+//! system tables a run is kept in (area 5, "System tables"), and
+//! [`BatchPlan`], what the plan says of each call starting a run, as
+//! plain data the runtime runs without a compiler crate.
 
 use crate::Builtin;
 use crate::Isolation;
@@ -25,17 +25,25 @@ pub const BATCH_PROGRESS: &str = "BatchProgress";
 /// One item that failed, without its value.
 pub const ROW_PROBLEM: &str = "RowProblem";
 
-/// What `finished:` receives after `batches.each`.
+/// What `finished:` receives after `batches.each` or a file helper's
+/// read.
 pub const IMPORT_SUMMARY: &str = "ImportSummary";
 
+/// What `finished:` receives after a file helper's write (chunk 6.4b2):
+/// the counts and problems an `ImportSummary` holds, and the stored
+/// `File`.
+pub const EXPORT_SUMMARY: &str = "ExportSummary";
+
 /// A batch type's field: a value built on a built-in type, one or `none`,
-/// a standard enum's variant, or a list of another batch type.
+/// a standard enum's variant, a list of another batch type, or another
+/// object only the runtime builds (an `ExportSummary`'s `File`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Part {
     Of(Builtin),
     Optional(Builtin),
     Enum(&'static str),
     List(&'static str),
+    Kept(&'static str),
 }
 
 /// `BatchRun`'s fields (area 2).
@@ -65,6 +73,15 @@ pub const IMPORT_SUMMARY_FIELDS: [(&str, Part); 3] = [
     ("problems", Part::List(ROW_PROBLEM)),
 ];
 
+/// `ExportSummary`'s fields (area 2): an `ImportSummary`'s, then the file
+/// written.
+pub const EXPORT_SUMMARY_FIELDS: [(&str, Part); 4] = [
+    ("items", Part::Of(Builtin::Int)),
+    ("items_with_problems", Part::Of(Builtin::Int)),
+    ("problems", Part::List(ROW_PROBLEM)),
+    ("file", Part::Kept(crate::files::FILE)),
+];
+
 /// The fields of a batch type, in declared order, by its name. Only the
 /// runtime builds one; a program reads its fields, and keeps a `BatchRun`
 /// in an entity field.
@@ -74,12 +91,19 @@ pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
         BATCH_PROGRESS => Some(&BATCH_PROGRESS_FIELDS),
         ROW_PROBLEM => Some(&ROW_PROBLEM_FIELDS),
         IMPORT_SUMMARY => Some(&IMPORT_SUMMARY_FIELDS),
+        EXPORT_SUMMARY => Some(&EXPORT_SUMMARY_FIELDS),
         _ => None,
     }
 }
 
 /// The batch types, in the order area 2 lists them.
-pub const OBJECTS: [&str; 4] = [BATCH_RUN, BATCH_PROGRESS, ROW_PROBLEM, IMPORT_SUMMARY];
+pub const OBJECTS: [&str; 5] = [
+    BATCH_RUN,
+    BATCH_PROGRESS,
+    ROW_PROBLEM,
+    IMPORT_SUMMARY,
+    EXPORT_SUMMARY,
+];
 
 /// The objects only the runtime builds and an entity field or a run keeps
 /// as their JSON: the batch types and a stored `File` (chunk 6.4b), each
@@ -88,8 +112,8 @@ pub fn kept_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
     object_fields(name).or_else(|| crate::files::object_fields(name))
 }
 
-/// The format a file helper reads rows in (area 19, "Data formats"),
-/// named by its namespace.
+/// The format a file helper reads or writes rows in (area 19, "Data
+/// formats"), named by its namespace.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RowFormat {
     /// `csv`: comma-separated cells under a header row (RFC 4180).
@@ -98,17 +122,27 @@ pub enum RowFormat {
     Tsv,
     /// `json_lines`: one JSON value a line.
     JsonLines,
+    /// `json`'s file form: one JSON list, an item a row. Only written so
+    /// far (chunk 6.4b2); `json.read`'s file form comes with roadmap
+    /// 6.4b3.
+    Json,
 }
 
 impl RowFormat {
-    pub const ALL: [RowFormat; 3] = [RowFormat::Csv, RowFormat::Tsv, RowFormat::JsonLines];
+    pub const ALL: [RowFormat; 4] = [
+        RowFormat::Csv,
+        RowFormat::Tsv,
+        RowFormat::JsonLines,
+        RowFormat::Json,
+    ];
 
-    /// Its namespace: `csv`, `tsv`, `json_lines`.
+    /// Its namespace: `csv`, `tsv`, `json_lines`, `json`.
     pub fn namespace(self) -> &'static str {
         match self {
             RowFormat::Csv => "csv",
             RowFormat::Tsv => "tsv",
             RowFormat::JsonLines => "json_lines",
+            RowFormat::Json => "json",
         }
     }
 
@@ -123,7 +157,17 @@ impl RowFormat {
         match self {
             RowFormat::Csv => Some(b','),
             RowFormat::Tsv => Some(b'\t'),
-            RowFormat::JsonLines => None,
+            RowFormat::JsonLines | RowFormat::Json => None,
+        }
+    }
+
+    /// The `FileType` variant a file written in it has (area 16).
+    pub fn file_type(self) -> &'static str {
+        match self {
+            RowFormat::Csv => "csv",
+            RowFormat::Tsv => "tsv",
+            RowFormat::JsonLines => "json_lines",
+            RowFormat::Json => "json",
         }
     }
 }
@@ -142,6 +186,11 @@ pub enum BatchOp {
     /// `json_lines`'s (area 19, "Data formats"; chunk 6.4b): starts a run
     /// over a stored file's rows once the calling action commits.
     Read(RowFormat),
+    /// `csv.write(store, name:, format:, from:, each:, finished:, key:)`,
+    /// and `tsv`'s, `json_lines`'s and `json`'s file form (area 19, "Data
+    /// formats"; chunk 6.4b2): starts a run writing a query's pages into a
+    /// stored file once the calling action commits.
+    Write(RowFormat),
 }
 
 impl BatchOp {
@@ -156,12 +205,13 @@ impl BatchOp {
             BatchOp::Status => "status",
             BatchOp::Cancel => "cancel",
             BatchOp::Read(_) => "read",
+            BatchOp::Write(_) => "write",
         }
     }
 
     /// Whether it starts a run: `batches.each`, or a file helper's.
     pub fn starts(self) -> bool {
-        matches!(self, BatchOp::Each | BatchOp::Read(_))
+        matches!(self, BatchOp::Each | BatchOp::Read(_) | BatchOp::Write(_))
     }
 
     pub fn from_name(name: &str) -> Option<BatchOp> {
@@ -175,6 +225,7 @@ impl BatchOp {
             BatchOp::Each => &EACH_PARAMS,
             BatchOp::Status | BatchOp::Cancel => &["run"],
             BatchOp::Read(_) => &READ_PARAMS,
+            BatchOp::Write(_) => &WRITE_PARAMS,
         }
     }
 }
@@ -188,6 +239,13 @@ pub const EACH_PARAMS: [&str; 4] = ["from", "each", "finished", "key"];
 /// `batches.each`'s.
 pub const READ_PARAMS: [&str; 5] = ["file", "as", "each", "finished", "key"];
 
+/// A file helper's parameters when it writes (area 19, "Data formats";
+/// chunk 6.4b2), in the order its call is lowered: the store of files it
+/// writes to (a connection, which lowers to its name), the file's `name:`,
+/// `format:` (a `CsvFormat`, CSV's and TSV's only), then `from:`, `each:`
+/// (an inline function giving the item's row), `finished:` and `key:`.
+pub const WRITE_PARAMS: [&str; 7] = ["store", "name", "format", "from", "each", "finished", "key"];
+
 /// The runs, one row each, in the store the run's items write (area 12,
 /// "How a run goes").
 pub const RUNS: &str = crate::system::BATCH_RUNS.table;
@@ -199,9 +257,9 @@ pub const PROBLEMS: &str = crate::system::BATCH_PROBLEMS.table;
 /// in hand.
 pub const CANCELS: &str = crate::system::BATCH_CANCELS.table;
 
-/// What the plan says of one `batches.each` call: what the runtime needs
-/// to start its run, walk `from:` a page at a time and run `each:` per
-/// item and `finished:` once.
+/// What the plan says of one call starting a run: what the runtime needs
+/// to start it, walk `from:` a page at a time, run `each:` per item, write
+/// what a writer writes, and run `finished:` once.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BatchPlan {
     /// Which call it is, kept with each run, by identity keys that
@@ -224,13 +282,17 @@ pub struct BatchPlan {
     pub from: BatchFrom,
     /// The JSON table's number of each value saved with the run, in
     /// order: `from:`'s arguments (or the file a file helper reads)
-    /// first, then what `each:` and `finished:` capture.
+    /// first, then a writer's `name:` and `format:`, then what `each:` and
+    /// `finished:` capture.
     pub captured: Vec<u32>,
     /// How many of `captured` are `from:`'s arguments, in its query's
     /// parameter order, or the file: one.
     pub from_args: usize,
-    pub each: BatchCall,
+    pub each: BatchEach,
     pub finished: Option<BatchCall>,
+    /// What a file helper's write writes each item's row into (chunk
+    /// 6.4b2): `None` for a run that writes no file.
+    pub to: Option<FileWrite>,
     /// The JSON table's number of `key:`'s type, when the call has one.
     pub key: Option<u32>,
     /// The tenant the run is limited to (area 12, "A batch's tenant";
@@ -286,6 +348,66 @@ pub enum BatchTenant {
     Saved { captured: Vec<u32>, key: bool },
 }
 
+/// What `each:` is: an action called per item, or a writer's row.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BatchEach {
+    /// `batches.each`'s and a read's: an action, in the item's batch's
+    /// transaction.
+    Action(BatchCall),
+    /// A writer's (chunk 6.4b2): a pure expression giving the item's row.
+    Row(BatchRow),
+}
+
+impl BatchEach {
+    /// The action it calls, when it calls one.
+    pub fn action(&self) -> Option<&BatchCall> {
+        match self {
+            BatchEach::Action(call) => Some(call),
+            BatchEach::Row(_) => None,
+        }
+    }
+}
+
+/// A writer's `each:`, `item -> <expression>` (chunk 6.4b2): the inline
+/// function's body, in the body of the action that started the run, run
+/// once per item with the item given to its parameter and each local of
+/// the action it reads given the value the run saved for it. An inline
+/// function is pure and can't fail (`attempt` only starts a statement), so
+/// what stops it is a fault.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BatchRow {
+    /// The callable whose body holds it: the action starting the run.
+    pub callable: u32,
+    /// The site of the inline function's body in that callable's body.
+    pub body: u32,
+    /// The local its parameter is.
+    pub item: u32,
+    /// Each local of the action it reads, with the place in
+    /// [`BatchPlan::captured`] of the value saved for it.
+    pub locals: Vec<(u32, u32)>,
+}
+
+/// Where a writer writes (chunk 6.4b2): each page's rows put as a piece
+/// of the file once the page's transaction has closed, the pieces joined
+/// into one file once every page is written.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FileWrite {
+    pub format: RowFormat,
+    /// The `files` connection it writes to.
+    pub store: String,
+    /// The JSON table's number of the row type, an `Output`, whose codec
+    /// writes each row.
+    pub row: u32,
+    /// For CSV and TSV, each of the row type's fields' column, in its
+    /// fields' order: its `column:`, else its name, the header's cells.
+    pub columns: Vec<String>,
+    /// The place in [`BatchPlan::captured`] of `name:`'s value.
+    pub name: u32,
+    /// For CSV and TSV, the place in [`BatchPlan::captured`] of
+    /// `format:`'s `CsvFormat`.
+    pub csv_format: Option<u32>,
+}
+
 /// An action `each:` or `finished:` calls, by number, with its
 /// arguments.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -323,8 +445,18 @@ mod tests {
         for format in RowFormat::ALL {
             assert_eq!(RowFormat::from_namespace(format.namespace()), Some(format));
             assert_eq!(BatchOp::Read(format).params(), READ_PARAMS);
-            assert!(BatchOp::Read(format).starts());
+            assert_eq!(BatchOp::Write(format).params(), WRITE_PARAMS);
+            assert!(BatchOp::Read(format).starts() && BatchOp::Write(format).starts());
+            assert!(
+                crate::FILE_TYPES
+                    .iter()
+                    .any(|(name, _)| *name == format.file_type())
+            );
         }
+        assert_eq!(
+            object_fields(EXPORT_SUMMARY).map(|fields| fields.len()),
+            Some(4)
+        );
         assert!(kept_fields(crate::files::FILE).is_some());
         assert!(kept_fields(BATCH_RUN).is_some());
         assert_eq!(BatchOp::Each.params(), EACH_PARAMS);

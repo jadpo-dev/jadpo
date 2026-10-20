@@ -145,8 +145,26 @@ pub(crate) struct BatchSite {
     /// For a file helper's read (chunk 6.4b): its format and the JSON
     /// table's number of the row type, each row read as one.
     pub file: Option<(jadpo_std::batch::RowFormat, u32, TypeRef)>,
+    /// For a file helper's write (chunk 6.4b2): what it writes, and where.
+    pub write: Option<WriteSite>,
     /// The action or fixture starting it, by name.
     pub starter: String,
+}
+
+/// A file helper's write as its site decodes it (chunk 6.4b2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WriteSite {
+    pub format: jadpo_std::batch::RowFormat,
+    /// The `files` connection it writes to.
+    pub store: String,
+    /// The JSON table's number of the row type, and the type, whose
+    /// fields' columns the plan reads.
+    pub row: u32,
+    pub row_ty: TypeRef,
+    /// The places in `captured` of `name:` and `format:`.
+    pub name: u32,
+    pub csv_format: Option<u32>,
+    pub each: jadpo_std::batch::BatchRow,
 }
 
 /// The path from the inline parameter `item` to the value at `site`: the
@@ -248,15 +266,26 @@ impl Decoder<'_> {
     }
 
     /// `batches.each(from:, each:, finished:, key:)`, or a file helper's
-    /// read (`csv.read(file, as:, each:, finished:, key:)`, chunk 6.4b):
-    /// what its run saves and calls, added to the program's batches.
+    /// read (`csv.read(file, as:, each:, finished:, key:)`, chunk 6.4b) or
+    /// write (`csv.write(store, name:, format:, from:, each:, finished:,
+    /// key:)`, chunk 6.4b2): what its run saves and calls, added to the
+    /// program's batches.
     fn batch(
         &mut self,
         body: &Body,
         args: &[Option<SiteId>],
-        read: Option<jadpo_std::batch::RowFormat>,
+        op: jadpo_std::batch::BatchOp,
     ) -> Decoded {
-        use jadpo_std::batch::{BatchArg, BatchCall};
+        use jadpo_std::batch::{BatchArg, BatchCall, BatchOp};
+        let read = match op {
+            BatchOp::Read(format) => Some(format),
+            _ => None,
+        };
+        let write = match op {
+            BatchOp::Write(format) => Some(format),
+            _ => None,
+        };
+        let (from_at, each_at, finished_at) = jadpo_check::types::run_places(op);
         let node = |site: Option<SiteId>| site.map(|site| (site, body.site(site)));
         let mut sites: Vec<u32> = Vec::new();
         let mut captured: Vec<u32> = Vec::new();
@@ -264,7 +293,7 @@ impl Decoder<'_> {
         let mut shape = String::new();
         let mut query = None;
         let mut query_key: Option<Key> = None;
-        if let Some((_, from)) = node(args.first().copied().flatten())
+        if let Some((_, from)) = node(from_at.and_then(|at| args.get(at).copied().flatten()))
             && let Node::Expr(Expr::Call {
                 callee: Callee::Query(key),
                 args: given,
@@ -298,9 +327,41 @@ impl Decoder<'_> {
             }
         }
         let from_args = captured.len();
+        // A writer's store, and its `name:` and `format:`, saved next.
+        let mut written_to: Option<(String, u32, Option<u32>)> = None;
+        if let Some(format) = write {
+            let store = match node(args.first().copied().flatten()) {
+                Some((_, site)) => match &site.node {
+                    Node::Expr(Expr::Literal(jadpo_std::Literal::Text(name))) => name.clone(),
+                    _ => String::new(),
+                },
+                None => String::new(),
+            };
+            shape.push_str(&format!("{}.write {store}", format.namespace()));
+            let mut places: Vec<Option<u32>> = Vec::new();
+            for at in [1, 2] {
+                let Some((site, held)) = node(args.get(at).copied().flatten()) else {
+                    places.push(None);
+                    continue;
+                };
+                shape.push_str(&format!(" {}", held.ty.canonical()));
+                match self.json_type(held.ty.clone()) {
+                    Decoded::Json(number) => {
+                        places.push(Some(captured.len() as u32));
+                        captured.push(number);
+                        saved_types.push(held.ty.clone());
+                        sites.push(site.0);
+                    }
+                    _ => places.push(None),
+                }
+            }
+            if let Some(Some(name)) = places.first().copied() {
+                written_to = Some((store, name, places.get(1).copied().flatten()));
+            }
+        }
         // Where `each:` and the rest sit: after a file helper's file and
-        // `as:`.
-        let calls = if read.is_some() { 2 } else { 1 };
+        // `as:`, or a writer's store, `name:` and `format:`.
+        let calls = each_at;
         let called = |at: Option<SiteId>,
                       word: &str,
                       this: &mut Decoder<'_>,
@@ -357,7 +418,7 @@ impl Decoder<'_> {
             ))
         };
         // A file helper's row type: what `each:`'s item is.
-        let row = read.and_then(|format| {
+        let row_read = read.and_then(|format| {
             let (_, inline) = node(args.get(calls).copied().flatten())?;
             let Node::Expr(Expr::Inline { params, .. }) = &inline.node else {
                 return None;
@@ -370,17 +431,79 @@ impl Decoder<'_> {
                 _ => None,
             }
         });
-        let each = called(
-            args.get(calls).copied().flatten(),
-            "each",
-            self,
-            &mut sites,
-            &mut captured,
-            &mut saved_types,
-            &mut shape,
-        );
+        // A writer's row: the inline function's body in this callable's
+        // body, each local of it the body reads saved with the run.
+        let row = match (write, node(args.get(each_at).copied().flatten())) {
+            (
+                Some(format),
+                Some((
+                    _,
+                    Site {
+                        node:
+                            Node::Expr(Expr::Inline {
+                                params,
+                                body: Some(inner),
+                            }),
+                        ..
+                    },
+                )),
+            ) => {
+                let row_ty = body.site(*inner).ty.clone();
+                shape.push_str(&format!(" each {}(", row_ty.canonical()));
+                let mut locals = Vec::new();
+                let mut whole = true;
+                for (local, at) in
+                    body.outer_reads(args.get(each_at).copied().flatten().unwrap_or(*inner))
+                {
+                    let ty = body.site(at).ty.clone();
+                    shape.push_str(&format!("{},", ty.canonical()));
+                    match self.json_type(ty.clone()) {
+                        Decoded::Json(number) => {
+                            locals.push((local.0, captured.len() as u32));
+                            captured.push(number);
+                            saved_types.push(ty);
+                            sites.push(at.0);
+                        }
+                        _ => whole = false,
+                    }
+                }
+                shape.push(')');
+                let number = match self.json_type(row_ty.clone()) {
+                    Decoded::Json(number) => Some(number),
+                    _ => None,
+                };
+                match (number, params.first(), (self.callable)(self.starter), whole) {
+                    (Some(number), Some(item), Some(callable), true) => Some((
+                        format,
+                        number,
+                        row_ty,
+                        jadpo_std::batch::BatchRow {
+                            callable,
+                            body: inner.0,
+                            item: item.0,
+                            locals,
+                        },
+                    )),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let each = if write.is_some() {
+            None
+        } else {
+            called(
+                args.get(calls).copied().flatten(),
+                "each",
+                self,
+                &mut sites,
+                &mut captured,
+                &mut saved_types,
+                &mut shape,
+            )
+        };
         let finished = called(
-            args.get(calls + 1).copied().flatten(),
+            args.get(finished_at).copied().flatten(),
             "finished",
             self,
             &mut sites,
@@ -389,8 +512,8 @@ impl Decoder<'_> {
             &mut shape,
         );
         let key_type =
-            node(args.get(calls + 2).copied().flatten()).map(|(_, site)| site.ty.clone());
-        let key = match node(args.get(calls + 2).copied().flatten()) {
+            node(args.get(finished_at + 1).copied().flatten()).map(|(_, site)| site.ty.clone());
+        let key = match node(args.get(finished_at + 1).copied().flatten()) {
             Some((at, site)) => {
                 shape.push_str(&format!(" key {}", site.ty.canonical()));
                 sites.push(at.0);
@@ -410,7 +533,7 @@ impl Decoder<'_> {
         if let Some(query) = query_key {
             name.push_str(&format!(" from {}", query.as_str()));
         }
-        if let Some((format, _, row)) = &row {
+        if let Some((format, _, row)) = &row_read {
             name.push_str(&format!(
                 " reads {} {}",
                 format.namespace(),
@@ -420,6 +543,27 @@ impl Decoder<'_> {
         if let Some((action, _)) = &each {
             name.push_str(&format!(" each {}", action.as_str()));
         }
+        if let Some((format, _, row_ty, _)) = &row {
+            name.push_str(&format!(
+                " writes {} {}",
+                format.namespace(),
+                row_ty.canonical()
+            ));
+        }
+        let write = match (row, written_to) {
+            (Some((format, row, row_ty, each)), Some((store, name, csv_format))) => {
+                Some(WriteSite {
+                    format,
+                    store,
+                    row,
+                    row_ty,
+                    name,
+                    csv_format,
+                    each,
+                })
+            }
+            _ => None,
+        };
         let alike = self
             .batches
             .iter()
@@ -440,7 +584,8 @@ impl Decoder<'_> {
             key_type,
             from_args,
             key,
-            file: row,
+            file: row_read,
+            write,
             starter: self.starter.name().to_string(),
         });
         Decoded::Batch { number, sites }
@@ -539,10 +684,7 @@ impl Decoder<'_> {
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
-                Callee::Batch(jadpo_std::batch::BatchOp::Each) => self.batch(body, args, None),
-                Callee::Batch(jadpo_std::batch::BatchOp::Read(format)) => {
-                    self.batch(body, args, Some(*format))
-                }
+                Callee::Batch(op) if op.starts() => self.batch(body, args, *op),
                 Callee::Std(_)
                 | Callee::Object(_)
                 | Callee::Variant(_)
