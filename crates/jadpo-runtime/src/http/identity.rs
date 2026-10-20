@@ -1414,6 +1414,7 @@ mod tests {
             signing_keys: Vec::new(),
             origin: None,
             passkeys: None,
+            magic_links: None,
         }
     }
 

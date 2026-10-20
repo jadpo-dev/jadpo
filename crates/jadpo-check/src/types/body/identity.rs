@@ -23,6 +23,28 @@ pub(super) fn caller_kind(ty: &Ty) -> Option<PrincipalKind> {
     }
 }
 
+/// The fields of the built-in `FirstSignIn` (area 8, "A person the app
+/// has not seen"), which the runtime gives `on_first_sign_in:`'s action:
+/// the way in, the address and whether it was proved, the provider's or
+/// token's subject and the name a provider's profile gives.
+pub(crate) fn first_sign_in_fields(ty: &Ty) -> Option<Vec<(&'static str, Ty)>> {
+    match ty.strip_nullable() {
+        Ty::Opaque(name, args) if name == jadpo_std::http::FIRST_SIGN_IN && args.is_empty() => {
+            Some(vec![
+                (
+                    "method",
+                    Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
+                ),
+                ("address", Ty::Prim(Prim::Email).nullable()),
+                ("address_verified", Ty::Prim(Prim::Bool)),
+                ("subject", Ty::Prim(Prim::Text).nullable()),
+                ("name", Ty::Prim(Prim::Text).nullable()),
+            ])
+        }
+        _ => None,
+    }
+}
+
 impl Body<'_> {
     /// `caller.<field>` for a caller of kind `kind`; `None` when `receiver`
     /// isn't a caller.

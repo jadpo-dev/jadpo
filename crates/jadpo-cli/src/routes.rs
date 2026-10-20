@@ -74,6 +74,34 @@ pub fn routes(call: &Call) -> Reply {
             lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
         }
     }
+    // The magic-link routes, in the same API (area 8, "Magic links").
+    if let Some(magic) = jadpo_check::identity::identity(db, project).magic_links()
+        && let Some(api) = jadpo_check::routes::served::sign_in_api(db, project)
+    {
+        let api_tokens = jadpo_check::identity::identity(db, project)
+            .built(jadpo_std::AuthenticationMethod::ApiToken);
+        for step in jadpo_std::http::MagicLinkStep::ALL {
+            if step == jadpo_std::http::MagicLinkStep::Redeem && !api_tokens {
+                continue;
+            }
+            let path: String = step
+                .segments(&magic.path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            lines.push(Line {
+                api: api.clone(),
+                method: step.method().word().to_string(),
+                path,
+                runs: format!("generated {}", step.label()),
+                authentication: "none",
+                file: String::new(),
+                line: 0,
+                place: "generated".to_string(),
+            });
+        }
+        lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    }
     if jadpo_check::identity::identity(db, project).exchanges() {
         for api in &apis.apis {
             let methods = jadpo_check::routes::apis::accepted_methods(db, project, &api.name);

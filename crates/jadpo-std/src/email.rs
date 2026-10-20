@@ -101,6 +101,62 @@ pub struct EmailPlan {
     pub subject: Option<TranslationEntry>,
     /// Its `File` fields, each an attachment, in order.
     pub attachments: Vec<String>,
+    /// For one of Jadpo's own emails (area 16, "Built-in emails"), how
+    /// Jadpo writes it; `None` for the application's.
+    pub builtin: Option<BuiltinEmail>,
+}
+
+/// The identity key Jadpo's own magic-link email's outbox rows name, and
+/// the name its delivery's subscriber is known by (area 16, "Built-in
+/// emails"; chunk 7.3b).
+pub const MAGIC_LINK_EMAIL: &str = "jadpo.MagicLinkEmail";
+
+/// The fields of the magic-link email's outbox payload, in order: the
+/// address it goes to, its locale, and the sign-in request whose link and
+/// code it carries, which are made as it is sent and kept only as
+/// verifiers, so the outbox never holds them.
+pub const MAGIC_LINK_EMAIL_FIELDS: [&str; 3] = ["to", "locale", "request"];
+
+/// One of Jadpo's own emails, which it writes itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BuiltinEmail {
+    /// The magic-link email (area 8, "Magic links"), at level 1: Jadpo's
+    /// HTML and text in its own wording, which the application may
+    /// reword (level 2), wrapped in the application's layout (level 3).
+    MagicLink(MagicLinkEmailPlan),
+}
+
+/// How Jadpo writes and sends its magic-link email.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagicLinkEmailPlan {
+    /// The store `jadpo_sign_in_requests` is in: the user entity's.
+    pub store: String,
+    /// The setting the browser session's `origin:` reads, which the link
+    /// starts with.
+    pub origin: u32,
+    /// The frontend path the link opens.
+    pub link: String,
+    /// How long the link and the code work, in milliseconds.
+    pub expires_after_ms: i64,
+    /// `application { display_name: }`, which Jadpo's wording names the
+    /// application by.
+    pub app_name: String,
+    /// Jadpo's messages the email is written with, by key
+    /// (`jadpo.magic_link_heading`), each given its fields by name and
+    /// then `app_name`.
+    pub messages: Vec<TranslationEntry>,
+    /// The locales its wording falls back through: the application's, or
+    /// `en_gb` alone when it declares none.
+    pub locales: LocalePlan,
+}
+
+impl MagicLinkEmailPlan {
+    /// The message called `key`, without its `jadpo.`.
+    pub fn message(&self, key: &str) -> Option<&TranslationEntry> {
+        self.messages
+            .iter()
+            .find(|entry| entry.key.strip_prefix("jadpo.") == Some(key))
+    }
 }
 
 /// A connection with `driver: Driver.smtp` (area 11's settings, chosen in

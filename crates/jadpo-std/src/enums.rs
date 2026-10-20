@@ -424,6 +424,20 @@ std_enum! {
 }
 
 std_enum! {
+    /// The ways a person signs in that `sign_in:` and `authentication { }`
+    /// declare (area 8, "A person the app has not seen"): what
+    /// `FirstSignIn.method` says. A provider's value comes with providers.
+    SignInMethod: "SignInMethod" {
+        /// A magic link or its code.
+        MagicLink: "magic_link",
+        /// A passkey.
+        Passkey: "passkey",
+        /// A token from another provider (`external_token:`).
+        ExternalToken: "external_token",
+    }
+}
+
+std_enum! {
     /// The callers a grant can name besides a user field and a membership
     /// role (area 9, "Anyone signed in, or anyone").
     Access: "Access" {
@@ -638,6 +652,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
             AuthenticationStrength::NAME,
             AuthenticationStrength::NAMES.to_vec(),
         ),
+        (SignInMethod::NAME, SignInMethod::NAMES.to_vec()),
         (
             ClientAddressSource::NAME,
             ClientAddressSource::NAMES.to_vec(),
@@ -705,6 +720,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         RouteAuthentication::NAME => position(RouteAuthentication::NAMES),
         AuthenticationMethod::NAME => position(AuthenticationMethod::NAMES),
         AuthenticationStrength::NAME => position(AuthenticationStrength::NAMES),
+        SignInMethod::NAME => position(SignInMethod::NAMES),
         ClientAddressSource::NAME => position(ClientAddressSource::NAMES),
         Access::NAME => position(Access::NAMES),
         Tenancy::NAME => position(Tenancy::NAMES),
