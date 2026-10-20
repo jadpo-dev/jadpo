@@ -561,6 +561,14 @@ pub fn number_of(value: &Value) -> Option<u32> {
     }
 }
 
+/// The open stream `value`, an `AiStream` an `ai.stream` call gave on
+/// `ctx`, taken to be read: what `jadpo package conform` reads a stream's
+/// pieces from (chunk 5.5v7b), as a route sends them.
+pub fn take_opened(ctx: &mut Ctx<'_>, value: &Value) -> Option<EventStream> {
+    let events = ctx.take_stream(number_of(value)?)?;
+    Some(EventStream::new(events, ""))
+}
+
 /// A route's stream, taken from the invocation once its action has
 /// committed: what the response carries for the host to send, with the
 /// request's id its error event names.

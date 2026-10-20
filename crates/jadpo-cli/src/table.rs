@@ -769,19 +769,19 @@ pub static COMMANDS: &[Command] = &[
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show, check, import, record, add, update, remove, link, unlink or recipe",
+                description: "What to do: show, check, import, record, conform, add, update, remove, link, unlink or recipe",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection; for recipe, the package",
+                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection; for conform and recipe, the package",
                 required: false,
                 values: Values::Path,
             },
             Argument {
                 name: "declaration",
-                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, as <resource>.<operation>; for recipe, the recipe",
+                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, as <resource>.<operation>; for conform, the capability, ai; for recipe, the recipe",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -803,6 +803,12 @@ pub static COMMANDS: &[Command] = &[
                 name: "--input",
                 value: Some("json"),
                 description: "For record: the operation's input as JSON",
+                values: &[],
+            },
+            Flag {
+                name: "--live",
+                value: None,
+                description: "For conform: run it against the real API",
                 values: &[],
             },
             Flag {

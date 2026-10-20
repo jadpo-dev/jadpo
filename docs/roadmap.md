@@ -1805,15 +1805,27 @@ The design is area 11 as revised on 2026-10-16, with its research in
   dev` against a server started in the test, faked in `jadpo test`, their
   recordings recorded again and decoded) and `ai_budgets.rs` (a price
   the app sets). Choices in area 21's "Chosen in chunk 5.5v7".
-- [ ] **5.5v7b `jadpo package conform <package> ai`** `opus · high`
+- [x] **5.5v7b `jadpo package conform <package> ai`** `opus · high`
   (area 21, "How a provider fills it"; area 11, "Proving a package
-  works"), after 5.5v7 (split from 5.5v7 on 2026-10-20): the capability's
-  conformance suite (a typed answer, a refusal, a cut-off, a stream, an
-  embedding of the declared length, usage reported), designed with the CLI
-  design language first, run by default against the package's recordings
-  and a local fake, and refused against the real API without an explicit
-  live flag and a set credential. **Needs Richard** for the API keys the
-  live conformance run uses; that run is left to him.
+  works"), after 5.5v7 (split from 5.5v7 on 2026-10-20). Built: the `ai`
+  suite's six cases (a typed answer, each refusal mark, a cut-off at
+  `max_output: 16`, a stream, an embedding of 256 dimensions, skipped for
+  a package that maps no `embed:`, and the usage read), compiled as a
+  scratch app holding the package as installed with `ai:` through it;
+  by default against a local fake on the loopback address answering from
+  the package's recordings, marked where its mapping reads them; `--live`
+  against the provider's API through the app's own connection, refused
+  (`conform.refused`) without one, without its credential or address set,
+  or without `ai:` through it, the refusal skipped live; a failed case
+  `conform.failed`; the screen after the publishing bar's. Tests in
+  `crates/jadpo-cli/tests/package_conform.rs`: both first-party packages
+  conform against their recordings (Anthropic skipping its embedding),
+  nothing goes to the connection's address without `--live`, the live
+  run's refusals, and a recording missing a mark failing its cases.
+  Choices in area 21's "Chosen in chunk 5.5v7b". **Needs Richard:** the
+  live run, `jadpo package conform openai ai --live` and `jadpo package
+  conform anthropic ai --live` in an app connected to each with his keys,
+  was not made here.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
