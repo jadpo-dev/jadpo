@@ -10,14 +10,31 @@
 //! both label an ordered loaf, so which label stays depends on the order
 //! they run in.
 //!
+//! A fake failing a subscriber, on chunk 7.0c's fakes: a notice board's
+//! `relay_note` pointed at a test capability, the `mail` connection's
+//! `send`, as a provider's will be, whose fake refuses it. A test's
+//! context retries it once `clock.advance` reaches its retry and ends the
+//! test when it fails for good. No source can write that fake yet: a
+//! test's `fakes:` comes with chunk 7.2's generated fakes.
+//!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
+use jadpo_host_native::Runtime;
+use jadpo_interp::Program;
+use jadpo_runtime::capability::{Answer, Capability, Fake, Faked, Repeat, Scripted};
+use jadpo_runtime::outbox::Events;
+use jadpo_runtime::test_steps::{Undelivered, after_step};
+use jadpo_runtime::{Clock, Ctx, Env, Executor, Frame, LocalFuture, Outcome, Places, SqlValue};
+use jadpo_std::subscriber::{EventsPlan, Target};
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
+use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
@@ -164,6 +181,284 @@ fn a_subscriber_that_fails_for_good_fails_the_test() {
         assert!(cold.stdout.contains(line), "{line}\n{}", cold.stdout);
     }
 }
+
+/// When the fake's test starts: 2026-10-20T06:00:00Z.
+const T0: i64 = 1_792_476_000_000;
+
+/// The notice board, migrated and its records written, checked, and its
+/// program and a database of its own, when live tests run.
+struct Board {
+    _root: PathBuf,
+    program: Program,
+    _databases: jadpo_test::database::TestDatabases,
+    url: String,
+}
+
+fn board() -> Option<Board> {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-events-6.11-board");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in BOARD {
+        write(&root, path, text);
+    }
+    for args in [
+        &["migrate", "new", "initial"][..],
+        &["records", "update"],
+        &["check"],
+    ] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
+    if !jadpo_test::live() {
+        return None;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    Some(Board {
+        _root: root,
+        program,
+        _databases: databases,
+        url,
+    })
+}
+
+/// The board's program with `relay_note` handing its event to the `mail`
+/// connection's `send`, which no source can write yet.
+struct Stand<'a> {
+    program: &'a Program,
+    events: EventsPlan,
+}
+
+impl<'a> Stand<'a> {
+    fn new(program: &'a Program) -> Stand<'a> {
+        let mut events = program.events().expect("subscribers").plan.clone();
+        let subscriber = events
+            .subscribers
+            .iter_mut()
+            .find(|subscriber| subscriber.key.ends_with("relay_note"))
+            .expect("relay_note");
+        subscriber.target = Target::Capability {
+            connection: "mail".into(),
+            operation: "send".into(),
+            repeat: Repeat::Keyed,
+        };
+        subscriber.store = None;
+        Stand { program, events }
+    }
+}
+
+impl Executor for Stand<'_> {
+    fn places(&self) -> &Places {
+        self.program.places()
+    }
+
+    fn callable(&self, key: &str) -> Option<u32> {
+        Executor::callable(self.program, key)
+    }
+
+    fn events(&self) -> Option<Events<'_>> {
+        let events = self.program.events()?;
+        Some(Events {
+            plan: &self.events,
+            ..events
+        })
+    }
+
+    fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
+        self.program.schedules()
+    }
+
+    fn run<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        callable: u32,
+        args: Vec<Value>,
+    ) -> LocalFuture<'a, Outcome> {
+        self.program.run(ctx, callable, args)
+    }
+}
+
+#[test]
+fn a_fake_failing_a_subscriber_is_retried_as_the_clock_moves_then_fails_the_test() {
+    let Some(board) = board() else {
+        return;
+    };
+    let stand = Stand::new(&board.program);
+    let post = board.program.plan().find("post_note").expect("post_note");
+    let fake = Rc::new(Fake::new());
+    // A test's host: no clock and no randomness of its own.
+    let harness = Harness::postgres(&board.url);
+    let host = Faked::new(&harness).with("mail", Rc::clone(&fake) as Rc<dyn Capability>);
+    let state = |words: &'static str| {
+        let sql = format!(
+            "SELECT \"d\".\"status\", \"d\".\"attempts\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" JOIN \"note\" AS \"n\" ON \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' WHERE \"n\".\"words\" = '{words}'"
+        );
+        let harness = &harness;
+        async move {
+            match harness.rows(&sql).await.as_slice() {
+                [row] => match row.as_slice() {
+                    [SqlValue::Text(status), SqlValue::Int4(attempts)] => {
+                        (status.clone(), *attempts)
+                    }
+                    other => panic!("not a delivery: {other:?}"),
+                },
+                other => panic!("one delivery: {other:?}"),
+            }
+        }
+    };
+    Runtime::new().expect("runtime").block_on(async {
+        let env = Env {
+            seed: Some(1),
+            clock: Clock::fixed(T0),
+        };
+        let mut ctx = Ctx::new(stand.places(), &host, env);
+        ctx.deliver_between_steps(1);
+
+        // Refused as worth trying again: it waits its backoff, and the
+        // test's clock reaching it sends it again.
+        fake.script("send", Scripted::Answer(Answer::Unavailable));
+        let posted = stand.run(&mut ctx, post, vec![Value::text("hello")]).await;
+        assert!(matches!(posted, Outcome::Value(_)), "{posted:?}");
+        assert!(
+            after_step(&stand, &mut ctx, false, Frame::ENTRY)
+                .await
+                .is_ok()
+        );
+        assert_eq!(fake.sent().len(), 1);
+        assert_eq!(state("hello").await, ("pending".to_string(), 1));
+        assert!(ctx.advance_clock(29_000));
+        assert!(
+            after_step(&stand, &mut ctx, true, Frame::ENTRY)
+                .await
+                .is_ok()
+        );
+        assert_eq!(fake.sent().len(), 1, "not due yet");
+        assert!(ctx.advance_clock(1_000));
+        assert!(
+            after_step(&stand, &mut ctx, true, Frame::ENTRY)
+                .await
+                .is_ok()
+        );
+        assert_eq!(fake.sent().len(), 2, "sent again once due");
+        assert_eq!(state("hello").await, ("succeeded".to_string(), 2));
+        assert_eq!(ctx.undelivered(), None);
+
+        // Refused for good: the test ends, naming the delivery.
+        fake.script(
+            "send",
+            Scripted::Answer(Answer::Failed("recipient_rejected".into())),
+        );
+        let posted = stand.run(&mut ctx, post, vec![Value::text("bounce")]).await;
+        assert!(matches!(posted, Outcome::Value(_)), "{posted:?}");
+        let ended = after_step(&stand, &mut ctx, false, Frame::ENTRY).await;
+        assert!(ended.is_err(), "{ended:?}");
+        assert_eq!(state("bounce").await, ("failed".to_string(), 1));
+        assert_eq!(
+            ctx.undelivered(),
+            Some(&Undelivered {
+                event: "NotePosted".into(),
+                subscriber: "relay_note".into(),
+                attempt: 1,
+                attempts: 3,
+            })
+        );
+    });
+}
+
+const BOARD: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"application {
+    events: {
+        store: main
+    }
+}
+"#,
+    ),
+    (
+        "domains/board/types/words.jadpo",
+        r#"type Words = Text {
+    min_length: 1
+    max_length: 200
+}
+"#,
+    ),
+    (
+        "domains/board/entities/note.jadpo",
+        r#"use board/types { Words }
+
+entity Note {
+    id: Uuid
+    words: Words
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+"#,
+    ),
+    (
+        "domains/board/events/note_posted.jadpo",
+        r#"use board/entities { Note }
+
+/// A note was posted.
+type NotePosted = Event {
+    note_id: Note.id
+}
+"#,
+    ),
+    (
+        "domains/board/actions/post_note.jadpo",
+        r#"use board/entities { Note }
+use board/events { NotePosted }
+use board/types { Words }
+
+action post_note(words: Words) -> Note {
+    var note: Note = Note.create {
+        set: {
+            words: words
+        }
+    }
+    emit NotePosted {
+        note_id: note.id
+    }
+    return note
+}
+"#,
+    ),
+    (
+        "domains/board/actions/relay.jadpo",
+        r#"use board/entities { Note, NoteNotFound }
+
+action relay(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.get(note_id)
+    assert note.id == note_id
+}
+"#,
+    ),
+    (
+        "domains/board/subscribers/relay_note.jadpo",
+        r#"use board/actions { relay }
+use board/events { NotePosted }
+
+/// Passes each posted note on.
+subscriber relay_note {
+    on: NotePosted
+    run: relay(event.note_id)
+    retry: {
+        attempts: 3
+        within: 1d
+    }
+}
+"#,
+    ),
+];
 
 const FILES: &[(&str, &str)] = &[
     ("app.jadpo", "application {}\n"),

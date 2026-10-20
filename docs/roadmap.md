@@ -721,7 +721,9 @@ chunks below, taken before Phase 7, in this order.
   is due, each drawn in an order the printed seed and the test's key
   decide; a retry waiting its full backoff for `clock.advance`; a
   delivery that fails for good ending the test as
-  `test.subscriber_failed`; examples 23 and 25 reading what their
+  `test.subscriber_failed`, a fake failing a subscriber's call (7.0c's
+  `Faked`) retried and given up the same way, a test's `fakes:` coming
+  with 7.2's generated fakes; examples 23 and 25 reading what their
   subscribers did.
 - [ ] **6.12 `jadpo deliveries`** `opus · high` (area 14, question 13;
   area 12, "What an operator sees"): list, retry, dismiss, cancel and
@@ -754,17 +756,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   each a struct of its own, the boundary's state in `boundary.rs`, and
   every field private, reached through methods. Choices in
   compiler-runtime.md §2.5.
-- [ ] **7.0c The capability seam** `opus · xhigh`, after 7.0b: a seam that
-  logs each outside call on its invocation, feeding recordings, `jadpo
-  calls` and an `outcome_unknown` result; fakes as `Host` wrappers and one
-  shared test host; a delivery that targets an action or a capability;
-  no capability call inside an open transaction. 6.4b, 7.1, 7.3 and
-  5.5v3 build on it.
-- [ ] **6.11b A fake failing a subscriber** `opus · high` (area 13,
-  "Caches and events"; area 12, question 15), after 7.0c, from chunk
-  6.11: a test's fake answering a subscriber's provider call with a
-  failure, so the test sees the delivery retried at the next
-  `clock.advance` and given up after its last attempt, on 7.0c's fakes.
+- [x] **7.0c The capability seam** `opus · xhigh`. Built:
+  `jadpo_runtime::effects::call`, the one way a call leaves the process,
+  through one driver trait, `capability::Capability`, which
+  `Host::capability(connection)` gives: refused while the action's
+  transaction is open (`call_in_transaction`), logged on its invocation
+  without its values (`capability::Logged`, on `Response::calls` for
+  7.2's `jadpo calls`), and recorded and replayed beside the random bytes
+  (`Ctx::record_run`); fakes as host wrappers (`capability::Faked`,
+  `Fake`) and one shared test host, `jadpo_test::host::Harness`, now under
+  nineteen of `crates/jadpo-cli/tests`' files; a subscriber's `Target`, an
+  action or a capability's operation, and a delivery whose unkeyed call
+  may have acted parked as `outcome_unknown` (its driver said so, it was
+  cut off or its worker lost while the call was out, or its action would
+  be retried after one), proved live with a test capability. A batch's
+  items still run inside its transaction, so an item's call is refused
+  until 7.4. Choices in area 16 and compiler-runtime.md §2.6.
 - [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
   moved after 7.0c from Phase 6, since it needs a minimal `files`
   capability on that seam: a store's `put` and `read` of a `File` with a

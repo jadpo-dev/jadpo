@@ -14,7 +14,9 @@
 //! replaced delivering a committed action's events in the request; since
 //! chunk 6.7 it gives each invocation of background work its budget
 //! ([`Host::budget_ms`]), says when it is shutting down
-//! ([`Host::stopping`]), and runs work handed on ([`Host::hand_on`]).
+//! ([`Host::stopping`]), and runs work handed on ([`Host::hand_on`]); since
+//! chunk 7.0c it gives the driver of each outside capability a connection
+//! fills ([`Host::capability`]), which only the capability seam calls.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -265,6 +267,18 @@ pub trait Passkeys {
 
 /// The platform: the capabilities one invocation runs against.
 pub trait Host {
+    /// The driver of the outside capability connection `connection` fills
+    /// (area 11; chunk 7.0c): sending an email, putting a file, a
+    /// provider's operation. Only the capability seam calls it
+    /// ([`crate::effects::call`]), which logs, records and guards every
+    /// call. `None` when the host has none by that name, as every host
+    /// until a capability's driver is built; a test gives fakes in their
+    /// place ([`crate::capability::Faked`]).
+    fn capability(&self, connection: &str) -> Option<&dyn crate::capability::Capability> {
+        let _ = connection;
+        None
+    }
+
     /// The passkey ceremonies (area 8, "Passkeys"): `None` on a host that
     /// carries no WebAuthn implementation, whose passkey routes answer
     /// `authentication_misconfigured`.
@@ -392,6 +406,72 @@ pub trait Host {
     ) -> LocalFuture<'a, crate::Allowed> {
         let _ = (key, limit, now);
         Box::pin(async { crate::Allowed::Yes })
+    }
+}
+
+/// A host borrowed is the host: what a wrapper such as
+/// [`crate::capability::Faked`] holds when it doesn't own the host it
+/// wraps.
+impl<H: Host + ?Sized> Host for &H {
+    fn capability(&self, connection: &str) -> Option<&dyn crate::capability::Capability> {
+        (**self).capability(connection)
+    }
+
+    fn passkeys(&self) -> Option<&dyn Passkeys> {
+        (**self).passkeys()
+    }
+
+    fn database(&self, store: &str) -> Option<&dyn Database> {
+        (**self).database(store)
+    }
+
+    fn defer(&self, work: LocalFuture<'static, ()>) {
+        (**self).defer(work);
+    }
+
+    fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
+        (**self).budget_ms(invocation)
+    }
+
+    fn stopping(&self) -> LocalFuture<'_, ()> {
+        (**self).stopping()
+    }
+
+    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+        (**self).hand_on(work);
+    }
+
+    fn variable(&self, name: &str) -> Option<String> {
+        (**self).variable(name)
+    }
+
+    fn random(&self, bytes: &mut [u8]) -> bool {
+        (**self).random(bytes)
+    }
+
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        (**self).sleep(millis)
+    }
+
+    fn yield_now(&self) -> LocalFuture<'_, ()> {
+        (**self).yield_now()
+    }
+
+    fn monotonic_ms(&self) -> Option<u64> {
+        (**self).monotonic_ms()
+    }
+
+    fn now_ms(&self) -> Option<i64> {
+        (**self).now_ms()
+    }
+
+    fn rate_limit<'a>(
+        &'a self,
+        key: &'a str,
+        limit: jadpo_std::http::RateLimit,
+        now: i64,
+    ) -> LocalFuture<'a, crate::Allowed> {
+        (**self).rate_limit(key, limit, now)
     }
 }
 

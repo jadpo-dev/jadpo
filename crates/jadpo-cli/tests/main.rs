@@ -14,6 +14,7 @@ mod batch_limits;
 mod batch_tenants;
 mod batches;
 mod binary;
+mod capability_deliveries;
 mod check;
 mod cli;
 mod client_address;

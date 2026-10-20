@@ -37,7 +37,8 @@
 //! - [`effects`]: the one entry point for operations with effects
 //!   (chunk 7.0b): `clock.now`, `random`, `crypto` with its key,
 //!   `json.read` and `json.write` with the plan's codec, and `emit`, which
-//!   both executors call.
+//!   both executors call; and since chunk 7.0c every call that leaves the
+//!   process ([`effects::call`]), through the [`capability`] seam.
 //! - [`runner`]: the runner (chunk 6.1a), which drives an executor for
 //!   work no request waits on, as the system ([`System`]): deferred until
 //!   after a response, while a route waits for it, or once per item of a
@@ -67,6 +68,7 @@
 pub mod batches;
 mod boundary;
 pub mod budget;
+pub mod capability;
 pub mod config;
 mod ctx;
 pub mod effects;
@@ -96,7 +98,9 @@ mod store;
 pub mod test_steps;
 mod write;
 
-pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, commit_held, unavailable};
+pub use boundary::{
+    ActionBody, RERUN_ATTEMPTS, action, commit_held, misconfigured, outcome_unknown, unavailable,
+};
 pub use ctx::{Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, System};
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};

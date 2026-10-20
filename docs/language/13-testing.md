@@ -1066,9 +1066,11 @@ What each step emits is delivered as area 12, question 15 decides
 - A batch run a step starts is left as it was started; batches in tests
   come with question 18's.
 
-A fake failing a subscriber, to test its retries against a provider,
-follows with 7.0c's fakes (roadmap 6.11b). A subscriber's own failure
-worth retrying tests them already. Here placing an order emits
+A fake failing a subscriber's call to a provider is retried and given
+up the same way: proved on chunk 7.0c's fakes, with the test's host
+wrapped in one; a test scripts it with `fakes:` once roadmap 7.2
+generates them. A subscriber's own failure worth retrying tests its
+retries already. Here placing an order emits
 `OrderPlaced`, and `cook_placed` cooks it once a chef is on shift:
 
 ```jadpo check project=events-in-tests file=app.jadpo hidden
@@ -2117,7 +2119,7 @@ with when it comes.
 | Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
-| Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"). A fake failing a subscriber comes with 7.0c's fakes (roadmap 6.11b). |
+| Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"). A fake failing a subscriber's call is retried and given up the same way on 7.0c's fakes; a test writes one with `fakes:` once 7.2 generates them. |
 | Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
 | Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2), `email.sent` with email (7.3). Capability fakes, crash points for several changing calls, grants, documents and batches come with those features (areas 12 and 16). |
