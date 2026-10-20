@@ -699,6 +699,15 @@ impl Executor for Program {
         self.plan().file_stores()
     }
 
+    fn provider_connections(&self) -> Vec<&str> {
+        self.plan()
+            .providers()
+            .connections
+            .iter()
+            .map(|connection| connection.name.as_str())
+            .collect()
+    }
+
     fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
         let purges = self.plan().purges();
         let at = purges.iter().position(|plan| plan.entity == entity)?;

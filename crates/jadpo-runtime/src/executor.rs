@@ -80,6 +80,12 @@ pub trait Executor {
         &[]
     }
 
+    /// The program's connections to provider packages (area 11; chunk
+    /// 7.2d): what a test's host gives a package's fake for.
+    fn provider_connections(&self) -> Vec<&str> {
+        Vec::new()
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

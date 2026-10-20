@@ -1920,6 +1920,10 @@ fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String) {
                 info.subject
             ),
         ),
+        jadpo_test::Detail::Fake(info) => (
+            "its fakes don't match its calls".to_string(),
+            format!("Run as a test of the package, {}.", info.subject()),
+        ),
     }
 }
 

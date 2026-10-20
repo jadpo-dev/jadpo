@@ -170,6 +170,9 @@ pub struct Ctx<'p> {
     /// How many keyed provider calls its actions have made: each call's
     /// step, which its key is derived from (chunk 7.2c).
     steps: u32,
+    /// The id of the request being answered, which the development call
+    /// log files each provider call under (chunk 7.2d).
+    request_id: Option<String>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -226,7 +229,18 @@ impl<'p> Ctx<'p> {
             capabilities: Capabilities::new(host, env.seed),
             call_key: None,
             steps: 0,
+            request_id: None,
         }
+    }
+
+    /// Gives the invocation the id of the request it answers (chunk 7.2d).
+    pub fn set_request_id(&mut self, id: impl Into<String>) {
+        self.request_id = Some(id.into());
+    }
+
+    /// The id of the request it answers, when it answers one.
+    pub fn request_id(&self) -> Option<&str> {
+        self.request_id.as_deref()
     }
 
     /// Gives the invocation the scope and key its provider calls' keys are

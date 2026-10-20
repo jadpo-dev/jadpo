@@ -114,6 +114,11 @@ pub enum Answer {
     Unknown,
     /// The connection's credential or settings were refused.
     Misconfigured,
+    /// A provider operation's generated default (area 11, "Tests and
+    /// fakes"; chunk 7.2d): what a package's fake answers a call nothing
+    /// scripted, made by the call's site from the operation's output type,
+    /// as the provider would send it, and read back as any answer is.
+    Generated,
 }
 
 impl std::fmt::Debug for Answer {
@@ -126,6 +131,7 @@ impl std::fmt::Debug for Answer {
             Answer::Unavailable => f.write_str("Unavailable"),
             Answer::Unknown => f.write_str("Unknown"),
             Answer::Misconfigured => f.write_str("Misconfigured"),
+            Answer::Generated => f.write_str("Generated"),
         }
     }
 }
@@ -136,12 +142,34 @@ impl std::fmt::Debug for Answer {
 pub enum Source {
     /// The connection's own driver.
     Live,
-    /// A fake in its place (area 13); chunk 7.2 tells a recording's, a
-    /// generated default and a scripted answer apart.
+    /// A fake in its place (area 13).
     Fake,
     /// A recorded run's answer, given back without the call going out
     /// (area 17, "Replaying a production request").
     Replayed,
+    /// A package's fake, answering as a test's `fakes:` or `jadpo calls
+    /// script` scripted it (chunk 7.2d).
+    Scripted,
+    /// A package's fake, answering with the operation's generated default
+    /// (chunk 7.2d).
+    Generated,
+    /// The provider's sandbox, which `jadpo dev` lets the call through to
+    /// (area 11, "Provider calls in development"; chunk 7.2d).
+    Sandbox,
+}
+
+impl Source {
+    /// How the call log names it (area 17).
+    pub fn word(self) -> &'static str {
+        match self {
+            Source::Live => "live",
+            Source::Fake => "fake",
+            Source::Replayed => "replayed",
+            Source::Scripted => "scripted",
+            Source::Generated => "generated",
+            Source::Sandbox => "sandbox",
+        }
+    }
 }
 
 /// The driver of a capability a connection fills: the one trait the seam
@@ -154,6 +182,27 @@ pub trait Capability {
     /// Where its answers come from.
     fn source(&self) -> Source {
         Source::Live
+    }
+
+    /// Where its answer to `call` comes from, asked as it goes out: a
+    /// package's fake tells a scripted answer from a generated one.
+    fn source_of(&self, call: &Call) -> Source {
+        let _ = call;
+        self.source()
+    }
+
+    /// Scripts the next answer to a call of `operation` through
+    /// `connection` (area 13, `fakes:`; chunk 7.2d), scripted by the test
+    /// at `from`: whether it takes scripts, as only a package's fake does.
+    fn script(
+        &self,
+        connection: &str,
+        operation: &str,
+        answer: Answer,
+        from: crate::Frame,
+    ) -> bool {
+        let _ = (connection, operation, answer, from);
+        false
     }
 }
 
@@ -183,6 +232,7 @@ impl Ended {
             Answer::Unavailable => Ended::Unavailable,
             Answer::Unknown => Ended::Unknown,
             Answer::Misconfigured => Ended::Misconfigured,
+            Answer::Generated => Ended::Answered,
         }
     }
 }
@@ -393,6 +443,10 @@ impl<H: Host> Host for Faked<H> {
             Some((_, fake)) => Some(fake.as_ref()),
             None => self.host.capability(connection),
         }
+    }
+
+    fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
+        self.host.call_log()
     }
 
     fn passkeys(&self) -> Option<&dyn Passkeys> {

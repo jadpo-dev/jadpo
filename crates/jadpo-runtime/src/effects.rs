@@ -193,8 +193,9 @@ pub enum Unanswered {
 pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
     match send(ctx, call).await? {
         Given::Value(value) => Ok(value),
-        // Only a provider's operation is answered as it was sent.
-        Given::Wire(_) => Err(Unanswered::Fault(FaultKind::Defect(
+        // Only a provider's operation is answered as it was sent, or with
+        // its generated default.
+        Given::Wire(_) | Given::Generated => Err(Unanswered::Fault(FaultKind::Defect(
             "an answer as sent where a capability's value was expected".into(),
         ))),
     }
@@ -208,6 +209,9 @@ pub enum Given {
     /// A provider's answer as it was sent, for its site to decode (area
     /// 11, "Decoding"; chunk 7.2c).
     Wire(std::rc::Rc<str>),
+    /// A provider operation's generated default, for its site to make
+    /// from the operation's output type (chunk 7.2d).
+    Generated,
 }
 
 /// [`call`], giving a provider's answer as it was sent where its driver
@@ -241,7 +245,9 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
         return Err(Unanswered::Failure(Box::new(crate::misconfigured())));
     };
     let began = host.monotonic_ms();
-    let place = ctx.capabilities_mut().sent(&call, driver.source(), now);
+    let place = ctx
+        .capabilities_mut()
+        .sent(&call, driver.source_of(&call), now);
     let answer = driver.call(&call).await;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     ctx.capabilities_mut().ended(place, &answer, took);
@@ -254,6 +260,7 @@ fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswered> {
     match answer {
         Answer::Value(value) => Ok(Given::Value(value)),
         Answer::Wire(text) => Ok(Given::Wire(text)),
+        Answer::Generated => Ok(Given::Generated),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
         Answer::Unavailable => raised(crate::unavailable()),
         // Sent again under its key, or a call that changes nothing, it

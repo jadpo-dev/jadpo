@@ -110,6 +110,8 @@ rules! {
         "14-tooling.html#command-errors", "AI command has invalid arguments";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Api command has invalid arguments";
+    CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Calls command has invalid arguments";
     CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Check command has invalid arguments";
     CLI_COMPLETIONS_ARGUMENTS: "cli.completions_arguments", area 14, Error, Agent,
@@ -762,6 +764,8 @@ rules! {
         "08-identity.html#semantic-auth-setting-unknown", "Sign-in setting is not one the method takes";
     SEMANTIC_DUPLICATE_DECLARATION: "semantic.duplicate_declaration", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-duplicate-declaration", "Name is declared more than once";
+    SEMANTIC_FAKE_INVALID: "semantic.fake_invalid", area 13, Error, Agent,
+        "13-testing.html#semantic-fake-invalid", "Test's fakes script something no provider operation answers";
     SEMANTIC_MISSING_RETURN: "semantic.missing_return", area 3, Error, Agent,
         "03-logic.html#semantic-missing-return", "Callable can end without returning its result";
     SEMANTIC_MULTIPLE_APPLICATIONS: "semantic.multiple_applications", area 8, Error, Agent,
@@ -944,6 +948,10 @@ rules! {
         "13-testing.html#test-assertion-failed", "Test assertion does not hold";
     TEST_FAILED: "test.failed", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Test run failed";
+    TEST_FAKE_EXHAUSTED: "test.fake_exhausted", area 13, Error, Agent,
+        "13-testing.html#test-fake-exhausted", "Test called a faked operation more times than its fakes script";
+    TEST_FAKE_UNUSED: "test.fake_unused", area 13, Error, Agent,
+        "13-testing.html#test-fake-unused", "Test left a faked operation's scripted answers unused";
     TEST_FAULT: "test.fault", area 13, Error, Agent,
         "13-testing.html#test-fault", "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,

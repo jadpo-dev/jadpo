@@ -726,6 +726,7 @@ impl Decoder<'_> {
                 | Callee::Batch(_)
                 | Callee::Files { .. }
                 | Callee::Provider { .. }
+                | Callee::Fake { .. }
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Unknown => Decoded::Nothing,

@@ -51,6 +51,7 @@ mod packages;
 mod passkeys;
 mod policy;
 mod provider_calls;
+mod provider_fakes;
 mod purge_schedule;
 mod queries;
 mod records;

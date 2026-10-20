@@ -124,6 +124,11 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
             groups.push(items);
         }
         Detail::Fault(info) => groups.push(fault_items(info, root)),
+        Detail::Fake(info) => groups.push(vec![
+            Item::Field(Field::new("fake", vec![Text::Prose(info.subject())])),
+            Item::Field(Field::new("reason", vec![Text::Prose(info.reason())])),
+            Item::Field(Field::new("next", vec![Text::Prose(info.next())])),
+        ]),
     }
     if joined && groups.len() > 1 {
         let rest = groups.remove(1);

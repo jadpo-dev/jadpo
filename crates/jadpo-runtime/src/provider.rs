@@ -378,14 +378,54 @@ pub async fn call(
         }
         Err(Unready::Fault(kind)) => return Done::Fault(kind),
     };
+    // What the development call log shows of the request (chunk 7.2d).
+    let shown = ctx.host().call_log().map(|_| {
+        (
+            request.method.word(),
+            request.url.clone(),
+            request.body.clone(),
+        )
+    });
     let sent = crate::effects::send(ctx, made.with_request(request)).await;
-    match sent {
+    let mut answer: Option<Rc<str>> = None;
+    let done = match sent {
         Ok(Given::Value(value)) => Done::Value(value),
-        Ok(Given::Wire(text)) => decode(providers, op, &name, &text),
+        Ok(Given::Wire(text)) => {
+            let done = decode(providers, op, &name, &text);
+            answer = Some(text);
+            done
+        }
+        // A package's fake answering with the operation's generated
+        // default, made as the provider would send it and read back as
+        // any answer is (area 11, "Tests and fakes"; chunk 7.2d).
+        Ok(Given::Generated) => {
+            let text = crate::fakes::default_answer(ctx, providers, op);
+            let done = decode(providers, op, &name, &text);
+            answer = Some(text);
+            done
+        }
         Err(Unanswered::Failed(code)) => failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => Done::Fault(kind),
+    };
+    if let (Some((method, url, body)), Some(log)) = (shown, ctx.host().call_log())
+        && let Some(logged) = ctx.capabilities().calls().last()
+    {
+        log.seen(&crate::call_log::Seen {
+            connection,
+            operation,
+            request_id: ctx.request_id(),
+            at: logged.at,
+            source: logged.source,
+            took_ms: logged.took_ms,
+            method,
+            url: &url,
+            body: body.as_deref(),
+            answer: answer.as_deref(),
+            ended: &logged.ended,
+        });
     }
+    done
 }
 
 /// Why a request couldn't be made.

@@ -249,6 +249,12 @@ impl Validator {
         jadpo_std::standard::ai::holding(&items, dimensions, metric)
     }
 
+    /// Its rules, most specific first: what a provider's fake reads to
+    /// make a default that keeps them (area 11, "Tests and fakes").
+    pub fn rules(&self) -> impl Iterator<Item = &Rules> {
+        self.rules.iter().map(|(rules, _)| rules)
+    }
+
     /// Checks `value` against the built-in type and every rule.
     pub fn check(&self, value: &Value) -> Result<(), Invalid> {
         if let (Some(builtin), Value::Text(text) | Value::Uuid(text)) = (self.builtin, value) {
