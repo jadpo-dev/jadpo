@@ -1469,6 +1469,8 @@ connections, `File` fields, `store.put`, `store.read` with its
 whole-read cap and its two errors, the disk driver `jadpo dev` keeps
 files with and the in-memory store a test's are in, which the file
 helpers' reads walk (area 19, "Data formats"; "Chosen in chunk 6.4b"
+below). Built in chunk 6.4b2: the pieces the file helpers' writes put,
+joined into one file or dropped by the store ("Chosen in chunk 6.4b2"
 below). Upload slots, downloads, deleting and erasing a file's bytes,
 the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
