@@ -151,9 +151,7 @@ fn scripted_answers_are_taken_in_order() {
 fn a_scripted_answer_writes_a_package_enum_through_its_name() {
     let root = desk(
         "enum",
-        &format!(
-            "use app {{ couriers }}\nuse shared/providers/acme_couriers\n\ntest \"a booking keeps its windows\" {{\n    fakes: {{\n        couriers.bookings.create: [AcmeCouriers.Booking {{\n            id: \"b-18\"\n            collect_at: \"2026-10-20T09:00:00Z\"\n            windows: [AcmeCouriers.Window.morning, AcmeCouriers.Window.afternoon]\n            note: none\n        }}]\n    }}\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.windows == [AcmeCouriers.Window.morning, AcmeCouriers.Window.afternoon]\n    assert booking.windows != [AcmeCouriers.Window.afternoon]\n}}\n"
-        ),
+        "use app { couriers }\nuse shared/providers/acme_couriers\n\ntest \"a booking keeps its windows\" {\n    fakes: {\n        couriers.bookings.create: [AcmeCouriers.Booking {\n            id: \"b-18\"\n            collect_at: \"2026-10-20T09:00:00Z\"\n            windows: [AcmeCouriers.Window.morning, AcmeCouriers.Window.afternoon]\n            note: none\n        }]\n    }\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.windows == [AcmeCouriers.Window.morning, AcmeCouriers.Window.afternoon]\n    assert booking.windows != [AcmeCouriers.Window.afternoon]\n}\n",
     );
     let output = jadpo(&root, &["test", ".", "--seed", "1"]);
     assert_eq!(
