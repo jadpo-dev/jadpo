@@ -232,6 +232,8 @@ and `shared/providers/`.
 | `hosts:` | `live:` and `sandbox:`; the same host twice when the sandbox is a test credential; a host may hold one placeholder filled from a setting (`"https://{project_ref}.supabase.co"`) |
 | `runs:` | A container Jadpo runs instead of a fixed host: `image:` pinned by digest, `port:` it listens on inside the container, `asks:` the outbound hosts it needs (see "Services") |
 | `credential:` | The scheme (`CredentialScheme.bearer`, a named header, basic, AWS signing), which decides the shape of credential the app gives |
+| `credential_header:` | For `CredentialScheme.header`, the named header the credential goes in alone (`"x-api-key"`); required for it and only for it (chunk 5.5v7) |
+| `headers:` | The fixed headers every request carries, each `"Name: value"` (`["anthropic-version: 2023-06-01"]`), never one the driver writes itself (chunk 5.5v7) |
 | `oauth:` | The provider's authorize, token and revoke addresses, for a connection whose credential is an `OAuthGrant` (see "Acting for each user") |
 | `idempotency:` | `header:` (where the key goes), `window:` (how long the provider keeps a key; required), `max_length:`, the provider's error codes `in_use:` (the key's first request is still running), `reused:` (the key came with a different request) and `new_key_on:` (the first attempt failed and the key cannot be used again), and `replays_failures: true` (default false) for a provider that replays a failed answer under the same key. Left out when the API takes no key |
 | `error_code:` | Where the provider's error code is in a failed response |
@@ -8317,7 +8319,9 @@ Provider calls, each choice the most conservative reading:
   provider faked (chunk 7.2d). A connection's protocol other than
   `Protocol.json_http`, and a credential scheme other than
   `CredentialScheme.bearer` or `.basic`, is `toolchain.not_built_yet` at
-  the call. A `basic` credential is the setting's `user:password`.
+  the call (`Protocol.aws_json` and `.aws_sigv4` came with chunk 7.7c,
+  and `CredentialScheme.header` with chunk 5.5v7, area 21's "Chosen in
+  chunk 5.5v7"). A `basic` credential is the setting's `user:password`.
 - **Its failures are conditions of the call.** An operation that lists
   failures needs `attempt` or `match`. `attempt`'s arms are keyed by the
   failures' codes and name the app's failure of the same kind
