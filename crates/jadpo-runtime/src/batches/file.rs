@@ -1,6 +1,7 @@
 //! A file helper's run (area 12, "Batches"; area 19, "Data formats";
-//! chunk 6.4b): `csv.read`, `tsv.read` or `json_lines.read`, walking a
-//! stored `File`'s rows a batch at a time.
+//! chunk 6.4b): `csv.read`, `tsv.read`, `json_lines.read` or `json.read`'s
+//! file form (chunk 6.4b3), walking a stored `File`'s rows a batch at a
+//! time.
 //!
 //! An item's action runs inside its batch's transaction, and no outside
 //! call goes out while a transaction is open (chunk 7.0c), so each page's
@@ -10,15 +11,29 @@
 //! position, run the rows' items and commit their writes with the problems
 //! and the position after the last row read. A runner reads the file's
 //! opening once per invocation ([`Opened`]): its encoding and, for CSV and
-//! TSV, its header, held to the row type's fields.
+//! TSV, its header, held to the row type's fields, and for JSON the way to
+//! its list of items.
+//!
+//! A gzip file is read only when the helper is given `max_unpacked_size:`
+//! (chunk 6.4b3): it is unpacked as it is read ([`Source`]), its position
+//! counted in its unpacked text, and a runner that picks a run up unpacks
+//! it again from its start. Its text is never read past the size the
+//! helper allows: the run stops at the row that would.
 //!
 //! A row that can't be read as the row type is a problem with its row (as
-//! a spreadsheet numbers it, the header row 1, or for JSON Lines its line)
-//! and its column (the header's, or the JSON field's path), never its
-//! value; so is a row whose action fails. What can't be read on from
-//! stops the run, before or at the place it is: a missing or unknown
-//! column, a quote that never closes, text that isn't text, a gzip file,
-//! a row past [`MAX_ROW_BYTES`]. The rows before it are done.
+//! a spreadsheet numbers it, the header row 1, for JSON Lines its line,
+//! and for JSON its place in the list) and its column (the header's, or
+//! the JSON field's path), never its value; so is a row whose action
+//! fails. What can't be read on from stops the run, before or at the place
+//! it is: a missing or unknown column, a quote that never closes, text that
+//! isn't text, a JSON document with no list where `items_at:` says or that
+//! isn't JSON, a gzip file read without `max_unpacked_size:`, one unpacking
+//! past it, damaged or cut short, a row past [`MAX_ROW_BYTES`]. The rows
+//! before it are done.
+//!
+//! Each page keeps the total the run estimates (chunk 6.4b3): the items
+//! done so far scaled by the file's size over how far into it they end,
+//! for a gzip file the size it is unpacking to at the rate it has so far.
 
 use std::ops::ControlFlow;
 
@@ -29,11 +44,13 @@ use jadpo_value::Value;
 
 use super::{
     ADVANCE, Batches, Item, LOCK, PROBLEM, Ran, Saved, Step, abandoned, arguments, at, batch,
-    end_in, finish, problem,
+    end_in, finish, problem, total,
 };
 use crate::effects::Unanswered;
 use crate::files::{Stored, WINDOW, read, stored};
-use crate::rows::{Encoding, OPENING_BYTES, Opening, Record, Stop, opening, records};
+use crate::rows::gzip::{GzipFault, Unpacker};
+use crate::rows::json::{Walked, Walker};
+use crate::rows::{Encoding, OPENING_BYTES, Opening, Record, RowFault, Stop, opening, records};
 use crate::runner::Batch;
 use crate::{Ctx, Executor, SqlValue, StoreError};
 
@@ -77,7 +94,7 @@ impl Position {
 /// What a runner learnt of a run's file as it opened it, kept for each
 /// page it runs in its invocation.
 pub(crate) struct Opened {
-    file: Stored,
+    source: Source,
     encoding: Encoding,
     /// Where the first row begins.
     first: Position,
@@ -88,6 +105,206 @@ pub(crate) struct Opened {
     fields: Vec<String>,
     names: Vec<String>,
     codec: CodecId,
+    /// For JSON, a walk through the document standing just inside its list
+    /// of items, which each page starts a copy of from its position.
+    walker: Option<Walker>,
+}
+
+/// How many unpacked bytes a gzip file's reading makes at a time.
+const UNPACKED_CHUNK: usize = 1 << 16;
+
+/// Where a file's text comes from: its stored bytes, or, for a gzip file,
+/// what they unpack to (chunk 6.4b3).
+pub(crate) enum Source {
+    Plain(Stored),
+    Gzip(Box<Unpacking>),
+}
+
+/// A gzip file being unpacked as a run reads it: its compressed bytes read
+/// from the store a window at a time and unpacked into the text a page
+/// asks for, never past `limit`.
+pub(crate) struct Unpacking {
+    file: Stored,
+    limit: u64,
+    unpacker: Unpacker,
+    /// The compressed bytes read and not yet used, and where the store is read
+    /// from next.
+    compressed: Vec<u8>,
+    read_to: u64,
+    /// The unpacked text held, its first byte at `held_at`.
+    held: Vec<u8>,
+    held_at: u64,
+    /// Every member is unpacked.
+    done: bool,
+}
+
+impl Unpacking {
+    fn new(file: Stored, limit: u64) -> Unpacking {
+        Unpacking {
+            file,
+            limit,
+            unpacker: Unpacker::new(),
+            compressed: Vec::new(),
+            read_to: 0,
+            held: Vec::new(),
+            held_at: 0,
+            done: false,
+        }
+    }
+
+    /// How much text it has unpacked.
+    fn produced(&self) -> u64 {
+        self.held_at + self.held.len() as u64
+    }
+
+    /// How many compressed bytes it has used.
+    fn used(&self) -> u64 {
+        self.read_to.saturating_sub(self.compressed.len() as u64)
+    }
+
+    fn too_large(&self) -> Halt {
+        Halt::Fail(format!(
+            "its file unpacks to more than {}, its `max_unpacked_size:`",
+            jadpo_std::files::shown_size(self.limit)
+        ))
+    }
+
+    /// Up to `most` bytes of text from `at`, and whether the text ends
+    /// with them.
+    async fn read(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        at: u64,
+        most: u64,
+    ) -> Result<(Vec<u8>, bool), Halt> {
+        // What was let go is unpacked again from the start.
+        if at < self.held_at {
+            *self = Unpacking::new(self.file.clone(), self.limit);
+        }
+        loop {
+            let produced = self.produced();
+            if at < produced {
+                if at >= self.limit {
+                    return Err(self.too_large());
+                }
+                let before = usize::try_from(at - self.held_at).unwrap_or(usize::MAX);
+                self.held.drain(..before.min(self.held.len()));
+                self.held_at = at;
+                let n = most.min(self.held.len() as u64).min(self.limit - at);
+                let bytes = self
+                    .held
+                    .get(..usize::try_from(n).unwrap_or(0))
+                    .unwrap_or_default()
+                    .to_vec();
+                return Ok((bytes, self.done && at + n == produced));
+            }
+            if self.done {
+                return Ok((Vec::new(), true));
+            }
+            if produced > self.limit {
+                return Err(self.too_large());
+            }
+            self.more(ctx).await?;
+        }
+    }
+
+    /// Unpacks some more, reading compressed bytes from the store as it needs.
+    async fn more(&mut self, ctx: &mut Ctx<'_>) -> Result<(), Halt> {
+        loop {
+            let ends = self.read_to >= self.file.size;
+            let before = self.held.len();
+            let unpacked = self
+                .unpacker
+                .unpack(&self.compressed, ends, &mut self.held, UNPACKED_CHUNK)
+                .map_err(|fault| {
+                    Halt::Fail(match fault {
+                        GzipFault::Damaged => "its gzip file is damaged".to_string(),
+                        GzipFault::Cut => "its gzip file ends before its data does".to_string(),
+                    })
+                })?;
+            self.compressed
+                .drain(..unpacked.used.min(self.compressed.len()));
+            if unpacked.done {
+                self.done = true;
+                return Ok(());
+            }
+            if self.held.len() > before || unpacked.used > 0 && !self.compressed.is_empty() {
+                return Ok(());
+            }
+            if ends {
+                return Err(Halt::Fail("its gzip file ends before its data does".into()));
+            }
+            let more = read(
+                ctx,
+                &self.file,
+                self.read_to,
+                (self.file.size - self.read_to).min(WINDOW),
+            )
+            .await
+            .map_err(|refused| halted(refused, &self.file.store))?;
+            if more.is_empty() {
+                return Err(Halt::Fail("its file is shorter than its size".into()));
+            }
+            self.read_to += more.len() as u64;
+            self.compressed.extend_from_slice(&more);
+        }
+    }
+}
+
+impl Source {
+    /// Up to `most` bytes of the file's text from `at`, and whether the
+    /// text ends with them; never none unless it has ended.
+    async fn read(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        at: u64,
+        most: u64,
+    ) -> Result<(Vec<u8>, bool), Halt> {
+        match self {
+            Source::Plain(file) => {
+                if at >= file.size {
+                    return Ok((Vec::new(), true));
+                }
+                let more = read(ctx, file, at, (file.size - at).min(most))
+                    .await
+                    .map_err(|refused| halted(refused, &file.store))?;
+                if more.is_empty() {
+                    return Err(Halt::Fail("its file is shorter than its size".into()));
+                }
+                let ends = at + more.len() as u64 >= file.size;
+                Ok((more, ends))
+            }
+            Source::Gzip(unpacking) => unpacking.read(ctx, at, most).await,
+        }
+    }
+
+    /// How large the file's text is, or for a gzip file is likely to be,
+    /// in bytes: what a run's estimate scales by.
+    fn text_size(&self) -> Option<u64> {
+        match self {
+            Source::Plain(file) => Some(file.size),
+            Source::Gzip(unpacking) => {
+                let used = unpacking.used();
+                (used > 0).then(|| {
+                    let size = u128::from(unpacking.file.size) * u128::from(unpacking.produced())
+                        / u128::from(used);
+                    u64::try_from(size).unwrap_or(u64::MAX)
+                })
+            }
+        }
+    }
+}
+
+/// The total a file's run estimates once `done` items end `at` bytes into
+/// its text: the items scaled by the text's size, never fewer than done.
+fn estimated(source: &Source, done: i64, at: u64) -> Option<i64> {
+    let size = source.text_size()?;
+    if at == 0 || done <= 0 {
+        return None;
+    }
+    let done_wide = u128::try_from(done).ok()?;
+    let projected = (done_wide * u128::from(size) + u128::from(at) / 2) / u128::from(at);
+    Some(i64::try_from(projected).unwrap_or(i64::MAX).max(done))
 }
 
 /// A row read as the row type, or its problem's column and rule.
@@ -121,28 +338,24 @@ fn halted(refused: Unanswered, store: &str) -> Halt {
 }
 
 /// The rows from `from` (beginning on `line`) up to `most`, read from
-/// `file` in windows until they are whole or the file ends.
+/// `source` in windows until they are whole or the file ends.
 async fn window(
     ctx: &mut Ctx<'_>,
-    file: &Stored,
+    source: &mut Source,
     (from, line): (u64, u64),
     encoding: Encoding,
     delimiter: Option<u8>,
     most: usize,
 ) -> Result<(Vec<Record>, Stop), Halt> {
     let mut held: Vec<u8> = Vec::new();
+    let mut ends = false;
     loop {
-        let reached = from + held.len() as u64;
-        if reached < file.size {
-            let more = read(ctx, file, reached, (file.size - reached).min(WINDOW))
-                .await
-                .map_err(|refused| halted(refused, &file.store))?;
-            if more.is_empty() {
-                return Err(Halt::Fail("its file is shorter than its size".into()));
-            }
+        if !ends {
+            let reached = from + held.len() as u64;
+            let (more, last) = source.read(ctx, reached, WINDOW).await?;
+            ends = last;
             held.extend_from_slice(&more);
         }
-        let ends = from + held.len() as u64 >= file.size;
         let (rows, stop) = records(&held, from, line, encoding, delimiter, ends, most);
         if stop != Stop::More {
             return Ok((rows, stop));
@@ -156,6 +369,36 @@ async fn window(
                 )));
             }
             return Ok((rows, Stop::Full));
+        }
+    }
+}
+
+/// A JSON document's items, up to `most`, as `walker` walks the text from
+/// its place on, reading windows of it until it stops.
+async fn walked(
+    ctx: &mut Ctx<'_>,
+    source: &mut Source,
+    walker: &mut Walker,
+    most: usize,
+) -> Result<(Vec<crate::rows::json::Item>, Walked), Halt> {
+    let mut items = Vec::new();
+    // What was read past the walker's place, a character a window cut
+    // among it.
+    let mut pending: Vec<u8> = Vec::new();
+    let mut ends = false;
+    loop {
+        if !ends {
+            let (at, _) = walker.place();
+            let (more, last) = source.read(ctx, at + pending.len() as u64, WINDOW).await?;
+            ends = last;
+            pending.extend_from_slice(&more);
+        }
+        let (used, walk) = walker.walk(&pending, ends, most, &mut items);
+        pending.drain(..used.min(pending.len()));
+        match walk {
+            Walked::More if !ends => {}
+            Walked::More => return Ok((items, Walked::Fault(RowFault::Ended))),
+            other => return Ok((items, other)),
         }
     }
 }
@@ -178,14 +421,34 @@ async fn open(
             .await
             .map_err(|refused| halted(refused, &file.store))?
     };
-    let (encoding, start) = match opening(&first) {
-        Opening::Gzip => {
+    // A gzip file is unpacked as it is read, up to `max_unpacked_size:`.
+    let (mut source, first) = match (opening(&first), rows.max_unpacked) {
+        (Opening::Gzip, None) => {
             return Err(Halt::Fail(format!(
                 "its file is gzip, which `{}.read` reads only when given `max_unpacked_size:`",
                 rows.format.namespace()
             )));
         }
-        Opening::Text { encoding, start } => (encoding, start.min(file.size)),
+        (Opening::Gzip, Some(limit)) => {
+            let mut source = Source::Gzip(Box::new(Unpacking::new(file, limit)));
+            let mut first: Vec<u8> = Vec::new();
+            loop {
+                let (more, ends) = source
+                    .read(ctx, first.len() as u64, OPENING_BYTES - first.len() as u64)
+                    .await?;
+                first.extend_from_slice(&more);
+                if ends || first.len() as u64 >= OPENING_BYTES {
+                    break;
+                }
+            }
+            (source, first)
+        }
+        (Opening::Text { .. }, _) => (Source::Plain(file), first),
+    };
+    // What a gzip file unpacks to is text, never gzip again.
+    let (encoding, start) = match opening(&first) {
+        Opening::Gzip => (Encoding::Utf8, 0),
+        Opening::Text { encoding, start } => (encoding, start.min(first.len() as u64)),
     };
     let codec = batches
         .json
@@ -203,9 +466,31 @@ async fn open(
         .enumerate()
         .map(|(slot, name)| rows.columns.get(slot).unwrap_or(name).clone())
         .collect();
+    // JSON: the walk to its list of items, whose first item is row 1.
+    if rows.format == RowFormat::Json {
+        let longest = usize::try_from(MAX_ROW_BYTES).unwrap_or(usize::MAX);
+        let mut walker = Walker::new(&rows.items_at, encoding, start, longest);
+        let (_, walk) = walked(ctx, &mut source, &mut walker, usize::MAX).await?;
+        match walk {
+            Walked::Opened => {}
+            Walked::Fault(fault) => return Err(Halt::Fail(fault.why())),
+            _ => return Err(Halt::Fail(RowFault::Ended.why())),
+        }
+        let (at, line) = walker.place();
+        return Ok(Opened {
+            source,
+            encoding,
+            first: Position { at, row: 1, line },
+            columns: Vec::new(),
+            fields,
+            names,
+            codec,
+            walker: Some(walker),
+        });
+    }
     let Some(delimiter) = rows.format.delimiter() else {
         return Ok(Opened {
-            file,
+            source,
             encoding,
             first: Position {
                 at: start,
@@ -216,9 +501,10 @@ async fn open(
             fields,
             names,
             codec,
+            walker: None,
         });
     };
-    let (header, stop) = window(ctx, &file, (start, 1), encoding, Some(delimiter), 1).await?;
+    let (header, stop) = window(ctx, &mut source, (start, 1), encoding, Some(delimiter), 1).await?;
     if let (None, Stop::Fault(fault)) = (header.first(), &stop) {
         return Err(Halt::Fail(fault.why()));
     }
@@ -264,13 +550,14 @@ async fn open(
         }
     }
     Ok(Opened {
-        file,
+        source,
         encoding,
         first: after,
         columns,
         fields,
         names,
         codec,
+        walker: None,
     })
 }
 
@@ -280,13 +567,7 @@ fn decode(batches: Batches<'_>, opened: &Opened, format: RowFormat, record: &Rec
     let codecs = &batches.json.codecs;
     if format == RowFormat::JsonLines {
         let line = record.cells.first().map_or("", String::as_str);
-        return match codecs.read_value(opened.codec, &Value::text(line)) {
-            Ok(value) => Ok(value),
-            Err(jadpo_value::json::Unread::Malformed) => {
-                Err((String::new(), "malformed".to_string()))
-            }
-            Err(jadpo_value::json::Unread::Mismatch(problem)) => Err((problem.field, problem.rule)),
-        };
+        return decode_json(batches, opened.codec, line);
     }
     if record.cells.len() > opened.columns.len() {
         return Err((String::new(), "unknown_field".to_string()));
@@ -308,6 +589,119 @@ fn decode(batches: Batches<'_>, opened: &Opened, format: RowFormat, record: &Rec
             .cloned()
             .unwrap_or_default();
         (column, problem.rule)
+    })
+}
+
+/// One JSON value, a JSON Lines line or an item of a JSON list, read as
+/// the row type: its value, or its problem's field path and rule.
+fn decode_json(batches: Batches<'_>, codec: CodecId, text: &str) -> Decoded {
+    match batches.json.codecs.read_value(codec, &Value::text(text)) {
+        Ok(value) => Ok(value),
+        Err(jadpo_value::json::Unread::Malformed) => Err((String::new(), "malformed".to_string())),
+        Err(jadpo_value::json::Unread::Mismatch(problem)) => Err((problem.field, problem.rule)),
+    }
+}
+
+/// A page's rows, each its number and its value or its problem; the
+/// position after them; whether every row is read; and why it stopped
+/// short, when the file can't be read on from there.
+struct Read {
+    items: Vec<(i64, Decoded)>,
+    next: Position,
+    read_all: bool,
+    fault: Option<String>,
+}
+
+/// The rows of a CSV, TSV or JSON Lines file from `from`, at most `most`.
+async fn read_records(
+    ctx: &mut Ctx<'_>,
+    batches: Batches<'_>,
+    opened: &mut Opened,
+    format: RowFormat,
+    from: Position,
+    most: usize,
+) -> Result<Read, Halt> {
+    let (read, stop) = window(
+        ctx,
+        &mut opened.source,
+        (from.at, from.line),
+        opened.encoding,
+        format.delimiter(),
+        most,
+    )
+    .await?;
+    let mut items: Vec<(i64, Decoded)> = Vec::new();
+    for (place, record) in read.iter().enumerate() {
+        if record.blank {
+            continue;
+        }
+        let row = match format {
+            RowFormat::JsonLines => i64::try_from(record.line).unwrap_or(i64::MAX),
+            _ => from.row + place as i64,
+        };
+        items.push((row, decode(batches, opened, format, record)));
+    }
+    let next = match read.last() {
+        Some(last) => Position {
+            at: last.next,
+            row: from.row + read.len() as i64,
+            line: last.next_line,
+        },
+        None => from,
+    };
+    Ok(Read {
+        items,
+        next,
+        read_all: matches!(stop, Stop::End),
+        fault: match stop {
+            Stop::Fault(fault) => Some(fault.why()),
+            _ => None,
+        },
+    })
+}
+
+/// The items of a JSON file's list from `from`, at most `most`, each row
+/// its place in the list: walked from a copy of the walk that opened it,
+/// set to the position, and on to the document's end once the list
+/// closes (chunk 6.4b3).
+async fn read_items(
+    ctx: &mut Ctx<'_>,
+    batches: Batches<'_>,
+    opened: &mut Opened,
+    from: Position,
+    most: usize,
+) -> Result<Read, Halt> {
+    let Some(opening) = &opened.walker else {
+        return Err(Halt::Fail("its list wasn't found as it was opened".into()));
+    };
+    let mut walker = opening.at_item(from.at, from.line, from.row > 1);
+    let (found, walk) = walked(ctx, &mut opened.source, &mut walker, most).await?;
+    let items: Vec<(i64, Decoded)> = found
+        .iter()
+        .enumerate()
+        .map(|(place, item)| {
+            (
+                from.row + place as i64,
+                decode_json(batches, opened.codec, &item.text),
+            )
+        })
+        .collect();
+    let next = match found.last() {
+        Some(last) => Position {
+            at: last.next,
+            row: from.row + found.len() as i64,
+            line: last.next_line,
+        },
+        None => from,
+    };
+    Ok(Read {
+        items,
+        next,
+        read_all: walk == Walked::End,
+        fault: match walk {
+            Walked::Fault(fault) => Some(fault.why()),
+            _ => None,
+        },
     })
 }
 
@@ -375,7 +769,7 @@ pub(super) async fn page(
             Err(Halt::Pause(why)) => return Step::Ended(Ran::Paused(why)),
         }
     }
-    let Some(opened) = opened.as_ref() else {
+    let Some(opened) = opened.as_mut() else {
         return Step::Ended(Ran::Paused("its file couldn't be opened".into()));
     };
     let from = match &position {
@@ -386,44 +780,25 @@ pub(super) async fn page(
         None => opened.first,
     };
     let most = usize::try_from(ctx.host().rows_per_batch().max(1)).unwrap_or(1);
-    let read = window(
-        ctx,
-        &opened.file,
-        (from.at, from.line),
-        opened.encoding,
-        rows.format.delimiter(),
-        most,
-    )
-    .await;
-    let (read, stop) = match read {
+    let read = match rows.format {
+        RowFormat::Json => read_items(ctx, batches, opened, from, most).await,
+        format => read_records(ctx, batches, opened, format, from, most).await,
+    };
+    let Read {
+        items,
+        next,
+        read_all,
+        fault,
+    } = match read {
         Ok(read) => read,
         Err(Halt::Fail(why)) => return failed(ctx, start, &why).await,
         Err(Halt::Pause(why)) => return Step::Ended(Ran::Paused(why)),
     };
-    if let (true, Stop::Fault(fault)) = (read.is_empty(), &stop) {
-        return failed(ctx, start, &fault.why()).await;
+    // A fault with no row before it ends the run here; with rows before
+    // it, they are done first, and the next page meets it.
+    if let (true, Some(why)) = (next == from, &fault) {
+        return failed(ctx, start, why).await;
     }
-    // Each row's number, and its value or its problem.
-    let mut items: Vec<(i64, Decoded)> = Vec::new();
-    for (place, record) in read.iter().enumerate() {
-        if record.blank {
-            continue;
-        }
-        let row = match rows.format {
-            RowFormat::JsonLines => i64::try_from(record.line).unwrap_or(i64::MAX),
-            _ => from.row + place as i64,
-        };
-        items.push((row, decode(batches, opened, rows.format, record)));
-    }
-    let next = match read.last() {
-        Some(last) => Position {
-            at: last.next,
-            row: from.row + read.len() as i64,
-            line: last.next_line,
-        },
-        None => from,
-    };
-    let read_all = matches!(stop, Stop::End);
     // The batch's transaction, now that nothing more goes out.
     let mut open = match Batch::open(ctx, &plan.store, plan.isolation, saved.system).await {
         Ok(open) => open,
@@ -546,6 +921,13 @@ pub(super) async fn page(
             return abandoned(open, error).await;
         }
     }
+    // The total it estimates from how far into its file its items end.
+    let done = done + items.len() as i64;
+    let likely_total = if read_all {
+        Some(done)
+    } else {
+        estimated(&opened.source, done, next.at)
+    };
     let advanced = transaction
         .execute(
             ADVANCE,
@@ -553,10 +935,11 @@ pub(super) async fn page(
                 id.clone(),
                 SqlValue::Text(next.text()),
                 SqlValue::Bool(read_all),
-                SqlValue::Int8(done + items.len() as i64),
+                SqlValue::Int8(done),
                 SqlValue::Int8(had + problems.len() as i64),
                 at(lease_until),
                 at(now),
+                total(likely_total),
             ],
         )
         .await;

@@ -699,6 +699,8 @@ impl Plan {
                         format: *format,
                         row: *row,
                         columns: row_columns(db, project, ty),
+                        items_at: site.items_at.clone(),
+                        max_unpacked: site.max_unpacked,
                     }),
                     run_stores.get(&site.starter).cloned().flatten()?,
                 ),

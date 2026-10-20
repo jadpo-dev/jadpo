@@ -927,6 +927,30 @@ pub trait TypeView {
                     [host, rest @ ..] if self.field(host, rest).is_some() => {
                         Ty::Field(self.canonical(host), rest.to_vec())
                     }
+                    // A package held in two versions, its type written
+                    // through its name and version, `Postcodes.v3.UkPostcode`
+                    // (chunk 7.1c2); a version written while one is held
+                    // is resolution's to report, and reads as the package.
+                    [package, version, name, rest @ ..]
+                        if !stub
+                            && jadpo_db::is_version_label(version)
+                            && (self.def(&format!("{package}.{version}.{name}")).is_some()
+                                || self.def(&format!("{package}.{name}")).is_some()) =>
+                    {
+                        let versioned = format!("{package}.{version}.{name}");
+                        let joined = if self.def(&versioned).is_some() {
+                            versioned
+                        } else {
+                            format!("{package}.{name}")
+                        };
+                        if rest.is_empty() {
+                            self.resolve_name(&joined, args, stub)
+                        } else if self.field(&joined, rest).is_some() {
+                            Ty::Field(joined, rest.to_vec())
+                        } else {
+                            Ty::Error
+                        }
+                    }
                     // A package's type written through it,
                     // `Postcodes.UkPostcode`, or one of its fields (area
                     // 11): the tables know it by both names.

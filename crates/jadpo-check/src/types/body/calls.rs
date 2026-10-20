@@ -25,7 +25,7 @@ use crate::tree::{self, dotted};
 /// The name a package's member is written with, after the package's own:
 /// `uk` in `Postcodes.uk`; any other name as it is.
 fn package_member(head: &str) -> &str {
-    match head.split_once('.') {
+    match head.rsplit_once('.') {
         Some((package, member)) if starts_upper(package) => member,
         _ => head,
     }
@@ -40,6 +40,24 @@ pub(super) fn plural(n: usize, word: &str) -> String {
 }
 
 impl Body<'_> {
+    /// How `head.rest[0]...` reaches a package (chunk 7.1c2): `Some(Some(via))`
+    /// when `rest[0]` is a version to take into the package's name,
+    /// `Postcodes.v3` (or one written needlessly, which reads as the
+    /// package itself), `Some(None)` when a version is missing while two
+    /// are held, and `None` when the name needs nothing.
+    pub(super) fn through_version(&self, head: &str, rest: &[String]) -> Option<Option<String>> {
+        let versions = self.symbols.versions(head);
+        let next = rest.first()?;
+        if !versions.is_empty() {
+            let via = format!("{head}.{next}");
+            return Some(versions.contains(&via).then_some(via));
+        }
+        let needless = rest.len() > 1
+            && jadpo_db::is_version_label(next)
+            && self.symbols.declared(&format!("{head}.{next}")).is_empty();
+        needless.then(|| Some(head.to_string()))
+    }
+
     /// A call; `expected` is the type its position requires, which fixes a
     /// standard-library operation's type variables that its arguments
     /// don't.
@@ -216,6 +234,25 @@ impl Body<'_> {
         // `Postcodes.uk.parse(...)` calls its library `Postcodes.uk`, and
         // `Postcodes.UkPostcode(...)` builds its type.
         if !rest.is_empty() && self.symbols.is_package(&head) && !self.is_local(&head) {
+            // A package held in two versions is written through its name
+            // and version, `Postcodes.v3.uk.parse(...)`; one without its
+            // version, or with one while a single version is held, is
+            // resolution's to report (chunk 7.1c2).
+            match self.through_version(&head, &rest) {
+                Some(Some(via)) => {
+                    head = via;
+                    rest.remove(0);
+                }
+                Some(None) => {
+                    self.args_only(call);
+                    return (Ty::Error, CallKind::Other, Reach::Unknown);
+                }
+                None => {}
+            }
+            if rest.is_empty() {
+                self.args_only(call);
+                return (Ty::Error, CallKind::Other, Reach::Unknown);
+            }
             // A library package's message (area 10, "Jadpo's and packages'
             // text"): `Postcodes.translations.<message>(...)`.
             if rest[0] == crate::translations::TRANSLATIONS {
@@ -466,6 +503,21 @@ impl Body<'_> {
             {
                 return self.batch_call(
                     jadpo_std::batch::BatchOp::Write(jadpo_std::batch::RowFormat::Json),
+                    call,
+                    callee,
+                    &written,
+                );
+            }
+            // `json.read`'s file form (chunk 6.4b3): given `each:` (or
+            // what only the file form takes), it starts a run over a
+            // stored file's list, where given text and `as:` it reads one
+            // document.
+            if head == jadpo_std::batch::RowFormat::Json.namespace()
+                && member == "read"
+                && Self::reads_a_file(call)
+            {
+                return self.batch_call(
+                    jadpo_std::batch::BatchOp::Read(jadpo_std::batch::RowFormat::Json),
                     call,
                     callee,
                     &written,

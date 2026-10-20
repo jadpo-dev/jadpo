@@ -372,9 +372,12 @@ async fn drive(
                     .map(|(outcome, _)| outcome)
             }
             // A batch run makes a context per batch, and hands itself on
-            // once the budget is spent (chunk 6.7).
+            // once the budget is spent (chunk 6.7). Its future is boxed,
+            // so a runner, and the tick that runs one, never holds it
+            // inline.
             Piece::Batch(start) => {
-                let (ran, more) = crate::batches::run_within(executor, host, budget, &start).await;
+                let (ran, more) =
+                    Box::pin(crate::batches::run_within(executor, host, budget, &start)).await;
                 split(more, &mut queue);
                 Some(match ran {
                     crate::batches::Ran::Failed(why) => Outcome::Fault(Box::new(crate::Fault {

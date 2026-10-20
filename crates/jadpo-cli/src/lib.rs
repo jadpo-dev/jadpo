@@ -22,6 +22,7 @@ mod install;
 mod local;
 mod migrate;
 mod package;
+mod package_cache;
 mod package_import;
 mod records;
 mod routes;

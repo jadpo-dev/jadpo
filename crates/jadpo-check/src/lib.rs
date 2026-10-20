@@ -107,7 +107,15 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.push(empty_project(files.len()));
         }
         out.extend(domain_problems(db, project).iter().cloned());
+        // An installed package's file this compiler already checked with no
+        // problem at the package's digest isn't checked again (the package
+        // cache, chunk 7.1c2): a package's code sees only its own names, so
+        // its check doesn't depend on the app.
+        let cached = project.checked(db);
         for &file in files {
+            if cached.contains(file.path(db)) {
+                continue;
+            }
             out.extend(layout_problems(db, project, file).iter().cloned());
             out.extend(
                 packages::unbuilt_problems(db, project, file)

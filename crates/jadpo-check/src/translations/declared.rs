@@ -152,7 +152,7 @@ pub fn bare_name(symbol: &Symbol) -> &str {
     match &symbol.ownership {
         Ownership::Package(home) => symbol
             .name
-            .strip_prefix(home.code.as_str())
+            .strip_prefix(home.through.as_str())
             .and_then(|rest| rest.strip_prefix('.'))
             .unwrap_or(&symbol.name),
         _ => &symbol.name,
@@ -164,7 +164,7 @@ pub fn bare_name(symbol: &Symbol) -> &str {
 /// `Postcodes.InvalidPostcode`.
 pub fn known_name(symbol: &Symbol) -> String {
     match &symbol.ownership {
-        Ownership::Package(home) => format!("{}.{}", home.code, bare_name(symbol)),
+        Ownership::Package(home) => format!("{}.{}", home.through, bare_name(symbol)),
         _ => symbol.name.clone(),
     }
 }

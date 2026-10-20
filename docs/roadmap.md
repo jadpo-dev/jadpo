@@ -820,12 +820,25 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `file_exports.rs`; example 24 writes a shelf list. Choices in area 12's
   "How an export's run is kept", area 16's "Chosen in chunk 6.4b2" and
   area 19's "How a row is written".
-- [ ] **6.4b3 The rest of the file helpers** `opus · xhigh`, after
-  6.4b2: `json.read`'s file form (`items_at:`); gzip read with
-  `max_unpacked_size:`; and from 6.4, the warning for a `from:` ordered by
-  a field that can be updated (a declinable error, area 1, which every
-  batch example and test ordered by such a field then answers) and
-  `estimated_total` from a query's count or a file's size.
+- [x] **6.4b3 The rest of the file helpers** `opus · xhigh`, after
+  6.4b2. Built: `json.read`'s file form, given `each:`, walking the list
+  `items_at:` names (member names between dots, written out; left out
+  when the document is the list) a window at a time, holding only the
+  item in hand, each item a row by its place in the list and the rest of
+  the document held to JSON's structure; `max_unpacked_size:` on every
+  reader, a gzip file (every member, each header and trailer checked)
+  unpacked as it is read and the run stopped at the row that would pass
+  it, a resumed run unpacking from the start; `type.batch_order_updatable`
+  for a `from:` ordered by a field that isn't `id`, `immutable: true` or
+  generated on create, declinable on the action; and `estimated_total`
+  from the query's count as its first page reads it, or a file run's
+  items scaled by how far into its file they end, the items done once
+  finished (`jadpo_batch_runs.estimated_total`). Example 25 walks plots
+  by `id`; the tests that walk by a code or a title mark it `immutable:
+  true`. Live tests in `file_imports.rs` and `batches.rs`. Choices in
+  area 12's "How a run is kept" and "How a file's run is kept", area
+  16's "Chosen in chunk 6.4b3" and area 19's "How a JSON file's list is
+  read".
 - [x] **7.1 Packages: format, kinds, names and the lock** `opus · high`
   (split from 7.1 Packages and connections on 2026-10-20). Built:
   `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -933,11 +946,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   hosts giving the disk driver only for the plan's stores of files, so a
   package's connection has no driver until 7.2c. Choices in area 11's
   "Chosen in chunk 7.1c" (area 10 notes the settings).
-- [ ] **7.1c2 Lazy loading and two versions side by side** `opus · high`,
+- [x] **7.1c2 Lazy loading and two versions side by side** `opus · high`,
   after 7.1c and 7.1d (both touch how names through a package resolve):
   lazy loading of a package's resources by file name with the check
   cached per digest, and two versions of one package side by side, names
-  carrying the version (`Postcodes.v3.UkPostcode`).
+  carrying the version (`Postcodes.v3.UkPostcode`). Built: an installed
+  provider's `resources/<resource>.jadpo` compiled only once the app
+  writes `<connection>.<resource>`, still counted in the digest; `jadpo
+  check` keeping each installed package's clean files in
+  `~/.cache/jadpo/packages/<digest>/<compiler>` and skipping them after;
+  two versions of one package side by side in the checker, the graph and
+  the interpreter, each locked, connected by version and named by version
+  in the `jadpo package` commands, with `package.version_needed` and
+  `package.version_unneeded`; and a connection named like a domain or
+  library refused (question 17). Choices in area 11's "Chosen in chunk
+  7.1c2", one flagged for Richard: two versions of a package with
+  translations wait, recommendation the version joins the wording's key.
 - [x] **7.2 Served OpenAPI and the importer** `opus · high` (split from
   7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
   every API's OpenAPI document, and each API serving it at
@@ -960,6 +984,11 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
   field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
   the importer lists each; recommendation `wire_name:`.
+- [ ] **7.1c3 Wording two versions of a package** `opus · high` (area 11,
+  decided 2026-10-20): two versions of a library package with
+  `translations/` held side by side, the app wording each under
+  `<package>_v<n>: { }`, in the root file, the record, the translation
+  commands and the publishing bar.
 - [x] **7.2c Provider calls** `opus · high`, after 7.2 and 7.1c (split
   from 7.2c Wire, decoding and provider calls on 2026-10-20): a provider
   operation called through its connection over 7.0c's seam by the package

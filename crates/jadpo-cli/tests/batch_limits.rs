@@ -69,7 +69,9 @@ const FILES: &[(&str, &str)] = &[
 
 entity Item {
     id: Uuid
-    code: Code
+    code: Code {
+        immutable: true
+    }
     touches: Int
 
     policy: {

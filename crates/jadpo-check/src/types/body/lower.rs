@@ -915,6 +915,19 @@ impl Lower<'_> {
                     if matches!(op, jadpo_std::batch::BatchOp::Read(_)) && slot == Some(1) {
                         continue;
                     }
+                    // Its `max_unpacked_size:` is a size, which lowers to
+                    // the text it is written as, for the plan to read
+                    // (chunk 6.4b3), as `items_at:`'s text does.
+                    if matches!(op, jadpo_std::batch::BatchOp::Read(_))
+                        && slot == Some(jadpo_std::batch::MAX_UNPACKED_SIZE)
+                        && let Some(value) = arg.expr()
+                    {
+                        let size = self.connection_name(call, &tree::written(value.syntax()));
+                        if let Some(place) = args.get_mut(jadpo_std::batch::MAX_UNPACKED_SIZE) {
+                            *place = Some(size);
+                        }
+                        continue;
+                    }
                     // A writer's store is a connection, which lowers to its
                     // name (chunk 6.4b2), as `text.format`'s `standard`
                     // does.

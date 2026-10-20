@@ -259,7 +259,7 @@ pub fn public_reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<D
                 continue;
             };
             let whose = match &location.ownership {
-                Ownership::Package(home) => format!("package `{}`", home.code),
+                Ownership::Package(home) => format!("package `{}`", home.through),
                 Ownership::Domain(domain) => format!("domain `{domain}`"),
                 _ => continue,
             };

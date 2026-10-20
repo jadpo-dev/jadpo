@@ -598,19 +598,177 @@ fn a_package_s_code_sees_only_its_own_names() {
     );
 }
 
+/// `Postcodes.v3` beside `Postcodes.v2`: the same files under the next
+/// major version, as an upgrade copies them in.
+fn version_three() -> Vec<(String, String)> {
+    library()
+        .into_iter()
+        .map(|(path, text)| {
+            (
+                path.replace("packages/postcodes/v2/", "packages/postcodes/v3/"),
+                text.replace("Postcodes.v2", "Postcodes.v3"),
+            )
+        })
+        .collect()
+}
+
+/// The problems of `files` with both versions installed and locked.
+fn both_installed(files: &[(&str, &str)]) -> Vec<String> {
+    let three = version_three();
+    let mut all: Vec<(&str, &str)> = files.to_vec();
+    all.extend(three.iter().map(|(p, t)| (p.as_str(), t.as_str())));
+    let held = |prefix: &str, extra: &[(&str, &str)]| -> String {
+        let bytes: Vec<(&str, &[u8])> = all
+            .iter()
+            .chain(extra.iter())
+            .filter_map(|(path, text)| Some((path.strip_prefix(prefix)?, text.as_bytes())))
+            .collect();
+        package_digest(&bytes)
+    };
+    let lock = write_lock(&[
+        Locked {
+            package: "Postcodes.v2".to_string(),
+            source: Source::Path {
+                version: "2.1.0".to_string(),
+                path: "../postcodes".to_string(),
+                digest: held("packages/postcodes/v2/", &[GUIDE]),
+            },
+        },
+        Locked {
+            package: "Postcodes.v3".to_string(),
+            source: Source::Path {
+                version: "3.0.0".to_string(),
+                path: "../postcodes-3".to_string(),
+                digest: held("packages/postcodes/v3/", &[]),
+            },
+        },
+    ]);
+    problems(&all, &[GUIDE, ("jadpo.lock", &lock)])
+}
+
+/// Two actions while callers move across: one still on `Postcodes.v2`,
+/// one moved to `Postcodes.v3`.
+const MOVING: (&str, &str) = (
+    "domains/addresses/actions/read_postcode.jadpo",
+    "use packages/postcodes
+
+/// Reads a customer's postcode with the version it was written for.
+action read_postcode(
+    written: Postcodes.v2.WrittenPostcode
+) fails Postcodes.v2.InvalidPostcode -> Postcodes.v2.UkPostcode {
+    return attempt Postcodes.v2.uk.parse(written)
+}
+",
+);
+
+const MOVED: (&str, &str) = (
+    "domains/addresses/actions/read_new_postcode.jadpo",
+    "use packages/postcodes
+
+/// Reads a customer's postcode with the next version.
+action read_new_postcode(
+    written: Postcodes.v3.WrittenPostcode
+) fails Postcodes.v3.InvalidPostcode -> Postcodes.v3.UkPostcode {
+    var postcode: Postcodes.v3.UkPostcode = attempt Postcodes.v3.uk.parse(written)
+    return postcode
+}
+",
+);
+
 #[test]
-fn two_versions_of_a_package_wait_for_a_later_chunk() {
-    let other = (
-        "packages/postcodes/v3/package.jadpo",
-        "/// UK postcodes.\npackage Postcodes.v3 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+fn two_versions_sit_side_by_side_with_names_carrying_the_version() {
+    assert_eq!(
+        both_installed(&with(&[MOVING, MOVED])),
+        Vec::<String>::new()
     );
-    let found = installed(&with(&[other]));
+}
+
+#[test]
+fn a_name_without_its_version_is_refused_while_two_are_held() {
+    let found = both_installed(&with(&[SAVE]));
     assert!(
-        found.iter().any(|p| p.contains(
-            "toolchain.not_built_yet: Two versions of package `Postcodes` side by side aren't built yet"
+        found.iter().any(|p| p.starts_with(
+            "domains/addresses/actions/read_postcode.jadpo package.version_needed: `Postcodes` is held in two versions"
         )),
         "{found:#?}"
     );
+    assert!(
+        found.iter().all(|p| p.contains("package.version_needed")),
+        "only the missing versions are reported: {found:#?}"
+    );
+}
+
+#[test]
+fn a_version_is_refused_while_one_is_held() {
+    let versioned = (
+        "domains/addresses/actions/read_postcode.jadpo",
+        "use packages/postcodes
+
+/// Reads a customer's postcode.
+action read_postcode(
+    written: Postcodes.WrittenPostcode
+) fails Postcodes.InvalidPostcode -> Postcodes.v2.UkPostcode {
+    return attempt Postcodes.uk.parse(written)
+}
+",
+    );
+    let found = installed(&with(&[versioned]));
+    assert_eq!(
+        found,
+        vec![
+            "domains/addresses/actions/read_postcode.jadpo package.version_unneeded: `Postcodes` is held in one version, so its names don't carry it"
+                .to_string()
+        ]
+    );
+}
+
+#[test]
+fn a_package_s_own_code_is_bare_beside_another_version() {
+    // Each version's code still writes its own names bare.
+    let found = both_installed(&with(&[]));
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn an_installed_package_and_the_app_s_own_still_never_share_a_name() {
+    let own = (
+        "shared/providers/postcodes/v3/package.jadpo",
+        "/// The app's own postcodes.\npackage Postcodes.v3 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n",
+    );
+    let found = installed(&with(&[own]));
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("package.name_taken: Package `Postcodes`'s name is already taken")),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn the_graph_knows_each_version_s_declarations_apart() {
+    let three = version_three();
+    let mut all: Vec<(&str, &str)> = with(&[MOVING, MOVED]);
+    all.extend(three.iter().map(|(p, t)| (p.as_str(), t.as_str())));
+    let db = Database::default();
+    let project = project_with_records(&db, Layout::Project, &all, &[GUIDE]);
+    let graph = jadpo_check::graph::graph(&db, project);
+    let keys: Vec<String> = graph
+        .nodes()
+        .iter()
+        .map(|node| node.key.to_string())
+        .filter(|key| key.contains("Postcodes"))
+        .collect();
+    for expected in [
+        "function Postcodes.v2.uk.parse",
+        "function Postcodes.v3.uk.parse",
+        "type Postcodes.v2.UkPostcode",
+        "type Postcodes.v3.UkPostcode",
+    ] {
+        assert!(
+            keys.iter().any(|key| key == expected),
+            "{expected}: {keys:#?}"
+        );
+    }
 }
 
 /// The app's own declarations of every kind, named as the package's are,
@@ -879,5 +1037,95 @@ action read_zip(
     assert_eq!(
         problems(&files, &[GUIDE, ("jadpo.lock", &lock)]),
         Vec::<String>::new()
+    );
+}
+
+/// An app whose one connection is called `name`.
+fn connected_as(name: &str) -> String {
+    format!(
+        "application {{
+    connections: {{
+        {name}: {{
+            driver: Driver.postgres
+            url: config.database_url
+        }}
+    }}
+}}
+"
+    )
+}
+
+#[test]
+fn a_connection_is_never_named_like_a_domain_or_a_library() {
+    // Area 11, question 17: connections share one namespace with domains
+    // and libraries (chunk 7.1c2).
+    let config = (
+        "config.jadpo",
+        "config {\n    database_url: Text {\n        secret: true\n    }\n}\n",
+    );
+    let domain = (
+        "domains/billing/actions/bill.jadpo",
+        "/// Bills.\naction bill() -> Unit {}\n",
+    );
+    let app = connected_as("billing");
+    let found = problems(&[("app.jadpo", &app), config, domain], &[]);
+    assert!(
+        found.iter().any(|p| p
+            == "app.jadpo semantic.duplicate_declaration: Connection `billing` is named like domain `billing`"),
+        "{found:#?}"
+    );
+    let library = (
+        "shared/libraries/rounding.jadpo",
+        "/// Rounding.\nlibrary rounding {\n    /// Keeps it.\n    function keep(value: Int) -> Int {\n        return value\n    }\n}\n",
+    );
+    let app = connected_as("rounding");
+    let found = problems(&[("app.jadpo", &app), config, library], &[]);
+    assert!(
+        found.iter().any(|p| p
+            == "app.jadpo semantic.duplicate_declaration: Connection `rounding` is named like library `rounding` in `shared/libraries/rounding.jadpo`"),
+        "{found:#?}"
+    );
+    let app = connected_as("main");
+    let found = problems(&[("app.jadpo", &app), config, domain], &[]);
+    assert!(
+        !found.iter().any(|p| p.contains("Connection `main`")),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn two_versions_with_translations_wait_for_a_later_chunk() {
+    // The app words a package's messages under its folder's name, which
+    // two versions would share (chunk 7.1c2, flagged for Richard).
+    let hint = (
+        "packages/postcodes/v3/translations/postcode_hint.jadpo",
+        "/// Shown under a postcode field.\npublic type PostcodeHint = Message {}\n",
+    );
+    let found = both_installed(&with(&[hint]));
+    assert!(
+        found.iter().any(|p| p.starts_with(
+            "packages/postcodes/v3/translations/postcode_hint.jadpo toolchain.not_built_yet: Two versions of package `Postcodes` with translations side by side aren't built yet"
+        )),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_package_and_its_version_alone_is_not_called() {
+    let call = (
+        "domains/addresses/actions/read_postcode.jadpo",
+        "use packages/postcodes
+
+/// Reads a customer's postcode.
+action read_postcode(written: Postcodes.v3.WrittenPostcode) -> Postcodes.v3.UkPostcode {
+    return Postcodes.v3(written)
+}
+",
+    );
+    let found = both_installed(&with(&[call]));
+    assert!(
+        found.iter().any(|p| p
+            .contains("semantic.not_callable: `Postcodes.v3` is a package and can't be called")),
+        "{found:#?}"
     );
 }

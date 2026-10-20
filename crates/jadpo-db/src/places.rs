@@ -37,7 +37,7 @@ impl Ownership {
     pub fn scope(&self) -> Option<&str> {
         match self {
             Ownership::Domain(name) => Some(name),
-            Ownership::Package(home) => Some(&home.code),
+            Ownership::Package(home) => Some(&home.through),
             _ => None,
         }
     }
@@ -67,6 +67,11 @@ pub struct PackageHome {
     /// Installed in `packages/`, rather than the app's own in
     /// `shared/providers/`.
     pub installed: bool,
+    /// The name the app writes its declarations through: `Postcodes`, or
+    /// `Postcodes.v3` while the project holds two versions of it side by
+    /// side (area 11, "Where packages live"; chunk 7.1c2). The path alone
+    /// gives `code`; [`crate::location`] knows the other versions.
+    pub through: String,
 }
 
 impl PackageHome {
@@ -128,6 +133,7 @@ pub fn package_at(path: &str) -> Option<(PackageHome, Vec<&str>)> {
             version: version.to_string(),
             code: to_upper_camel(name),
             installed,
+            through: to_upper_camel(name),
         },
         rest.to_vec(),
     ))
