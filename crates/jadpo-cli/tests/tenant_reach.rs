@@ -1,5 +1,5 @@
 //! The tenant background work names, against live PostgreSQL (area 9,
-//! "Background work"; area 12, "Chosen in chunk 6.6c"): an event's
+//! "Background work"; area 12, "Background work and tenants"): an event's
 //! subscribers and a batch's run work as the system within the tenant a
 //! value names, so that value comes from a record of the tenant the action
 //! read under its caller's policy, and a caller who isn't a member there

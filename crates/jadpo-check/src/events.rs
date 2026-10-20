@@ -91,7 +91,7 @@ pub enum Tenant {
     /// The tenant whose id the event's field holds.
     Field(String),
     /// The event carries no single field holding the tenant's id: its
-    /// subscribers reach no tenant's records (chosen in chunk 6.1b).
+    /// subscribers reach no tenant's records (area 12, "Background work and tenants").
     None,
 }
 
