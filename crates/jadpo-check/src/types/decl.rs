@@ -502,6 +502,13 @@ impl Decls<'_> {
         if jadpo_std::standard_type(name).is_some() {
             return;
         }
+        // In a package, only its public types: its own shapes are what it
+        // decodes from before a value leaves (area 19, question 1; chunk
+        // 7.1b).
+        let in_package = jadpo_db::package_at(self.path).is_some();
+        if in_package && decl.visibility().is_none() {
+            return;
+        }
         let Some(found) = standard_match(self.table, name, None) else {
             return;
         };
@@ -584,6 +591,34 @@ impl Decls<'_> {
                 crate::or_list(others)
             )
         };
+        let (reason, next) = if in_package {
+            // A package's public type is converted at the edge, in the
+            // package, from whatever the provider sends (area 19).
+            let edge = if standard == "Point" {
+                " with `geo.from_lat_lng` or `geo.from_lng_lat` where the provider sends a pair"
+            } else {
+                " where the provider sends another shape"
+            };
+            (
+                format!(
+                    "`{name}` has only {}, which is the standard {}. Packages that each declare their own disagree on order and on names, and an app has to convert between them.",
+                    crate::and_list(&named),
+                    crate::or_list(&all)
+                ),
+                format!(
+                    "Use `{standard}` in the package's public types, converting at the edge{edge}"
+                ),
+            )
+        } else {
+            (
+                format!(
+                    "`{name}` has only {}{made_of}, which is the standard {}. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
+                    crate::and_list(&named),
+                    crate::or_list(&all)
+                ),
+                next,
+            )
+        };
         self.out.push(
             Diagnostic::new(
                 &rule::TYPE_STANDARD_EXISTS,
@@ -593,11 +628,7 @@ impl Decls<'_> {
                 ),
             )
             .at(self.span(written.syntax()), crate::and_list(&meanings))
-            .reason(format!(
-                "`{name}` has only {}{made_of}, which is the standard {}. Declarations of one shape under different names disagree on names and meaning, and every package and application has to convert between them; the standard type has one construction, one wire shape and one storage shape.",
-                crate::and_list(&named),
-                crate::or_list(&all)
-            ))
+            .reason(reason)
             .next(next),
         );
     }
