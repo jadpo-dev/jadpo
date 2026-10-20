@@ -173,10 +173,10 @@ impl Types {
         self.typed_shape(name, &fields)
     }
 
-    /// The shape of a batch type (area 12, chunk 6.4), each field typed
-    /// by its part.
+    /// The shape of a batch type (area 12, chunk 6.4), or a stored `File`
+    /// (chunk 6.4b), each field typed by its part.
     pub(crate) fn batch_shape(&mut self, name: &str) -> ShapeId {
-        let fields: Vec<(&str, TypeRef)> = jadpo_std::batch::object_fields(name)
+        let fields: Vec<(&str, TypeRef)> = jadpo_std::batch::kept_fields(name)
             .unwrap_or_default()
             .iter()
             .map(|(field, part)| (*field, batch_part(*part)))

@@ -142,6 +142,11 @@ pub(crate) struct BatchSite {
     pub key_type: Option<TypeRef>,
     pub from_args: usize,
     pub key: Option<u32>,
+    /// For a file helper's read (chunk 6.4b): its format and the JSON
+    /// table's number of the row type, each row read as one.
+    pub file: Option<(jadpo_std::batch::RowFormat, u32, TypeRef)>,
+    /// The action or fixture starting it, by name.
+    pub starter: String,
 }
 
 /// The path from the inline parameter `item` to the value at `site`: the
@@ -242,9 +247,15 @@ impl Decoder<'_> {
         Decoded::Json(at as u32)
     }
 
-    /// `batches.each(from:, each:, finished:, key:)`: what its run saves
-    /// and calls, added to the program's batches.
-    fn batch(&mut self, body: &Body, args: &[Option<SiteId>]) -> Decoded {
+    /// `batches.each(from:, each:, finished:, key:)`, or a file helper's
+    /// read (`csv.read(file, as:, each:, finished:, key:)`, chunk 6.4b):
+    /// what its run saves and calls, added to the program's batches.
+    fn batch(
+        &mut self,
+        body: &Body,
+        args: &[Option<SiteId>],
+        read: Option<jadpo_std::batch::RowFormat>,
+    ) -> Decoded {
         use jadpo_std::batch::{BatchArg, BatchCall};
         let node = |site: Option<SiteId>| site.map(|site| (site, body.site(site)));
         let mut sites: Vec<u32> = Vec::new();
@@ -274,7 +285,22 @@ impl Decoder<'_> {
             }
             shape.push(')');
         }
+        // A file helper's file, saved with the run first.
+        if let Some(format) = read
+            && let Some((at, file)) = node(args.first().copied().flatten())
+        {
+            let ty = file.ty.clone();
+            shape.push_str(&format!("{}.read {},", format.namespace(), ty.canonical()));
+            if let Decoded::Json(number) = self.json_type(ty.clone()) {
+                captured.push(number);
+                saved_types.push(ty);
+                sites.push(at.0);
+            }
+        }
         let from_args = captured.len();
+        // Where `each:` and the rest sit: after a file helper's file and
+        // `as:`.
+        let calls = if read.is_some() { 2 } else { 1 };
         let called = |at: Option<SiteId>,
                       word: &str,
                       this: &mut Decoder<'_>,
@@ -330,8 +356,22 @@ impl Decoder<'_> {
                 },
             ))
         };
+        // A file helper's row type: what `each:`'s item is.
+        let row = read.and_then(|format| {
+            let (_, inline) = node(args.get(calls).copied().flatten())?;
+            let Node::Expr(Expr::Inline { params, .. }) = &inline.node else {
+                return None;
+            };
+            let local = body.locals.get(params.first()?.0 as usize)?;
+            let ty = local.ty.clone();
+            shape.push_str(&format!(" as {}", ty.canonical()));
+            match self.json_type(ty.clone()) {
+                Decoded::Json(number) => Some((format, number, ty)),
+                _ => None,
+            }
+        });
         let each = called(
-            args.get(1).copied().flatten(),
+            args.get(calls).copied().flatten(),
             "each",
             self,
             &mut sites,
@@ -340,7 +380,7 @@ impl Decoder<'_> {
             &mut shape,
         );
         let finished = called(
-            args.get(2).copied().flatten(),
+            args.get(calls + 1).copied().flatten(),
             "finished",
             self,
             &mut sites,
@@ -348,8 +388,9 @@ impl Decoder<'_> {
             &mut saved_types,
             &mut shape,
         );
-        let key_type = node(args.get(3).copied().flatten()).map(|(_, site)| site.ty.clone());
-        let key = match node(args.get(3).copied().flatten()) {
+        let key_type =
+            node(args.get(calls + 2).copied().flatten()).map(|(_, site)| site.ty.clone());
+        let key = match node(args.get(calls + 2).copied().flatten()) {
             Some((at, site)) => {
                 shape.push_str(&format!(" key {}", site.ty.canonical()));
                 sites.push(at.0);
@@ -368,6 +409,13 @@ impl Decoder<'_> {
         let mut name = self.starter.as_str().to_string();
         if let Some(query) = query_key {
             name.push_str(&format!(" from {}", query.as_str()));
+        }
+        if let Some((format, _, row)) = &row {
+            name.push_str(&format!(
+                " reads {} {}",
+                format.namespace(),
+                row.canonical()
+            ));
         }
         if let Some((action, _)) = &each {
             name.push_str(&format!(" each {}", action.as_str()));
@@ -392,6 +440,8 @@ impl Decoder<'_> {
             key_type,
             from_args,
             key,
+            file: row,
+            starter: self.starter.name().to_string(),
         });
         Decoded::Batch { number, sites }
     }
@@ -489,13 +539,17 @@ impl Decoder<'_> {
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
-                Callee::Batch(jadpo_std::batch::BatchOp::Each) => self.batch(body, args),
+                Callee::Batch(jadpo_std::batch::BatchOp::Each) => self.batch(body, args, None),
+                Callee::Batch(jadpo_std::batch::BatchOp::Read(format)) => {
+                    self.batch(body, args, Some(*format))
+                }
                 Callee::Std(_)
                 | Callee::Object(_)
                 | Callee::Variant(_)
                 | Callee::Caller(_)
                 | Callee::Session(_)
                 | Callee::Batch(_)
+                | Callee::Files { .. }
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Unknown => Decoded::Nothing,

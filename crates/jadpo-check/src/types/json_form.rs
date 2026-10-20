@@ -143,6 +143,17 @@ pub(crate) fn no_json_form(
                                 .to_string(),
                         )
                     }),
+                // A stored file, kept in an entity field or saved with a
+                // run, is its type's JSON on the server (area 16, chunk
+                // 6.4b): a request sends a `FileUpload`, and an output a
+                // signed link, which come with uploads.
+                None if name == jadpo_std::files::FILE => (used != JsonUse::Store).then(|| {
+                    (
+                        found.to_string(),
+                        "a stored file's, which the runtime keeps; a request sends a `FileUpload` and an output a signed link, which come with uploads"
+                            .to_string(),
+                    )
+                }),
                 None => Some((
                     found.to_string(),
                     "a built-in type that crosses no boundary as JSON".to_string(),

@@ -106,16 +106,25 @@ pub fn batch_grant_problems(db: &dyn Db, project: Project, file: File) -> Vec<Di
         let body = &checked.body;
         for site in &body.sites {
             let Node::Expr(Expr::Call {
-                callee: Callee::Batch(BatchOp::Each),
+                callee: Callee::Batch(op @ (BatchOp::Each | BatchOp::Read(_))),
                 args,
                 ..
             }) = &site.node
             else {
                 continue;
             };
-            for (place, arg) in args.iter().enumerate().take(3) {
-                let Some((at, name, query)) = arg.and_then(|arg| run_call(body, arg, place == 0))
-                else {
+            // A file helper's read (chunk 6.4b) walks no query: its
+            // `each:` and `finished:` follow its file and `as:`.
+            let places: &[usize] = match op {
+                BatchOp::Read(_) => &[2, 3],
+                _ => &[0, 1, 2],
+            };
+            for &place in places {
+                let Some(arg) = args.get(place).copied().flatten() else {
+                    continue;
+                };
+                let query = matches!(op, BatchOp::Each) && place == 0;
+                let Some((at, name, query)) = run_call(body, arg, query) else {
                     continue;
                 };
                 let found = if query {

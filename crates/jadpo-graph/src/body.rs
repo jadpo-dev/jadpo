@@ -472,6 +472,13 @@ pub enum Callee {
     /// whose values that don't read the item are saved with it) and
     /// `key:`, in that order.
     Batch(jadpo_std::batch::BatchOp),
+    /// `store.put(bytes, type)` or `store.read(file)` in an action (area
+    /// 16, "Files"; chunk 6.4b): an outside call through the `files`
+    /// connection named.
+    Files {
+        connection: String,
+        op: jadpo_std::files::FilesOp,
+    },
     /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
     /// the test's clock moved on.
     AdvanceClock,
@@ -510,6 +517,7 @@ impl Callee {
             | Callee::Caller(_)
             | Callee::Session(_)
             | Callee::Batch(_)
+            | Callee::Files { .. }
             | Callee::AdvanceClock
             | Callee::Translation(_)
             | Callee::Prompt(_)

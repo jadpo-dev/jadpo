@@ -12,10 +12,11 @@
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
 # The batch types are what `batches` gives and `finished:` receives (area
 # 12), their fields in `jadpo-std`'s `batch`; `BatchState` is an enum
-# there.
+# there. `File` is a stored file and `FileContents` what `store.read`
+# gives (area 16), in `jadpo-std`'s `files`.
 [types]
 Page Nearest
-File Principal Response Access
+File FileContents Principal Response Access
 IssuedToken IssuedKey DecodeProblem
 BatchRun BatchProgress RowProblem ImportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
@@ -32,7 +33,10 @@ collection:
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until
-# its area is built (areas 8, 10 and 13). `clock.now` is the time the
+# its area is built (areas 8, 10 and 13). The file helpers' namespaces
+# (`csv`, `tsv`, `json_lines`; area 19, "Data formats") start batch runs
+# over a stored file (area 12), so the compiler fills them as it does
+# `batches`. `clock.now` is the time the
 # operation started, which only actions read (area 10). `config.<name>` is a
 # setting of the project's own `config { }`, and `translations.<domain>.<message>`
 # a message or enum a domain's `translations/` folder words, so neither's
@@ -44,6 +48,9 @@ config:
 translations:
 sessions:
 batches:
+csv:
+tsv:
+json_lines:
 oauth:
 prompts: render
 
