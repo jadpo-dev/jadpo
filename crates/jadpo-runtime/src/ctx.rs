@@ -176,6 +176,10 @@ pub struct Ctx<'p> {
     /// Whether its keyed provider calls count their steps outside an
     /// action: only `jadpo package record`'s one call (chunk 7.2d2).
     standalone_calls: bool,
+    /// The connections the package actions it is running were called
+    /// through, innermost last (area 11, "What package code may do";
+    /// chunk 7.6): a package action's own operations go through it.
+    through: Vec<String>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -234,7 +238,24 @@ impl<'p> Ctx<'p> {
             steps: 0,
             request_id: None,
             standalone_calls: false,
+            through: Vec::new(),
         }
+    }
+
+    /// A package action called through `connection` starts (chunk 7.6).
+    pub fn enter_package(&mut self, connection: &str) {
+        self.through.push(connection.to_string());
+    }
+
+    /// The package action [`Ctx::enter_package`] started has ended.
+    pub fn leave_package(&mut self) {
+        self.through.pop();
+    }
+
+    /// The connection the package action running was called through, which
+    /// its own operations go through; `None` outside one.
+    pub fn package_connection(&self) -> Option<&str> {
+        self.through.last().map(String::as_str)
     }
 
     /// Gives the invocation the id of the request it answers (chunk 7.2d).

@@ -49,6 +49,7 @@ mod lsp;
 mod manifest;
 mod migrate;
 mod operation_conditions;
+mod package_actions;
 mod package_import;
 mod package_translation_versions;
 mod package_translations;

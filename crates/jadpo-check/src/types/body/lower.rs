@@ -461,6 +461,7 @@ impl Lower<'_> {
                     | Callee::Batch(_)
                     | Callee::Files { .. }
                     | Callee::Provider { .. }
+                    | Callee::PackageAction { .. }
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -1073,7 +1074,7 @@ impl Lower<'_> {
                 // A provider's operation's arms name its package failures'
                 // codes (area 11, chunk 7.2c), never the language's rules.
                 let provider = matches!(attempt.expr(), Some(Expr::CallExpr(call))
-                    if matches!(self.facts.reaches.get(&node_key(call.syntax())), Some(Reach::Provider { .. })));
+                    if matches!(self.facts.reaches.get(&node_key(call.syntax())), Some(Reach::Provider { own: false, .. })));
                 let across = across || provider;
                 // The arms follow the call, so their sites do too.
                 let mapped = self.facts.mapped.get(&key).cloned().unwrap_or_default();
@@ -1314,6 +1315,17 @@ impl Lower<'_> {
             Reach::Files(connection, op) => Callee::Files {
                 connection: connection.clone(),
                 op: *op,
+            },
+            Reach::Provider {
+                connection,
+                action: Some(action),
+                ..
+            } => match self.type_key(action) {
+                Some(key) => Callee::PackageAction {
+                    connection: connection.clone(),
+                    action: key,
+                },
+                None => Callee::Unknown,
             },
             Reach::Provider {
                 connection,

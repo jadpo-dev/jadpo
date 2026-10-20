@@ -77,6 +77,15 @@ pub(crate) enum Reach {
         /// Whether it may be sent again as it is, so its `attempt` may map
         /// `timed_out:` (area 11, "Calling"; chunk 7.2c2).
         safe: bool,
+        /// A package's action calling its own operation (chunk 7.6), with
+        /// no connection of its own: the one its action was called
+        /// through. Its failures are the package's own, passed on as a
+        /// library function's are.
+        own: bool,
+        /// The package action the app calls through the connection,
+        /// `stripe.start_subscription(input)`, by the name the checker's
+        /// tables know it by (chunk 7.6); `None` for an operation.
+        action: Option<String>,
     },
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,

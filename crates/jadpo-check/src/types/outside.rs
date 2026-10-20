@@ -70,7 +70,9 @@ pub(super) fn does(node: &Node) -> Does<'_> {
         Node::Expr(Expr::Write { .. }) => Does::Writes,
         Node::Expr(Expr::Call { callee, .. }) => match callee {
             Callee::Provider { .. } | Callee::Files { .. } => Does::Calls,
-            Callee::Action(key) | Callee::Fixture(key) => Does::Joins(key),
+            Callee::Action(key)
+            | Callee::Fixture(key)
+            | Callee::PackageAction { action: key, .. } => Does::Joins(key),
             // An entity's other operations are writes, built or not.
             Callee::Entity { operation, .. } if operation != "get" => Does::Writes,
             Callee::Session(op) if !op.reads_only() => Does::Writes,

@@ -54,6 +54,8 @@ impl Body<'_> {
                     fails: Vec::new(),
                     checked: false,
                     safe: true,
+                    own: false,
+                    action: None,
                 },
             )
         };
@@ -87,6 +89,14 @@ impl Body<'_> {
             );
             return failed(self);
         }
+        // A package's action, `connection.action(input)` (chunk 7.6).
+        if let [name] = rest
+            && let Some(action) =
+                crate::package_code::action(self.db, self.project, &connection.folder, name)
+        {
+            let action = action.clone();
+            return self.package_action_call(connection, &action, call, callee, written);
+        }
         let operations = crate::providers::operations(self.db, self.project);
         let found = match rest {
             [resource, name] => operations.find(&connection.folder, resource, name),
@@ -98,25 +108,41 @@ impl Body<'_> {
             if crate::providers::has_problems(self.db, self.project, &connection.folder) {
                 return reported(self);
             }
-            let known: Vec<String> = operations
+            let mut known: Vec<String> = operations
                 .of(&connection.folder)
                 .filter(|operation| operation.public)
                 .map(crate::providers::Operation::full_name)
                 .collect();
+            let actions: Vec<String> = crate::package_code::actions(self.db, self.project)
+                .iter()
+                .filter(|action| action.folder == connection.folder && action.public)
+                .map(|action| action.name.clone())
+                .collect();
+            let what = if actions.is_empty() {
+                "operation"
+            } else {
+                "operation or action"
+            };
+            known.extend(actions.iter().cloned());
             let asked = rest.join(".");
             let near = nearest(&asked, known.iter().map(String::as_str));
             let mut problem = Diagnostic::new(
                 &rule::SEMANTIC_UNKNOWN_CALLEE,
                 format!(
-                    "`{}` has no operation `{asked}`",
+                    "`{}` has no {what} `{asked}`",
                     connection.name
                 ),
             )
-            .at(span.clone(), "no such operation")
+            .at(span.clone(), format!("no such {what}"))
             .reason(format!(
-                "A connection to `{}` calls its package's public operations as `{}.<resource>.<operation>(...)`{}.",
+                "A connection to `{}` calls its package's public operations as `{}.<resource>.<operation>(...)`{}{}.",
                 connection.package,
                 connection.name,
+                if actions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" and its public actions as `{}.<action>(...)`", connection.name)
+                },
                 if known.is_empty() {
                     ", and it has none".to_string()
                 } else {
@@ -163,6 +189,278 @@ impl Body<'_> {
             );
             return failed(self);
         }
+        if !self.may_reach(connection, span, written) {
+            return failed(self);
+        }
+        if !self.operation_input(&operation, call, written) {
+            return failed(self);
+        }
+        let result = match &operation.output {
+            Ty::Prim(Prim::Unit) => Ty::Prim(Prim::Unit),
+            other => other.clone(),
+        };
+        (
+            result,
+            CallKind::Effect(written.to_string()),
+            Reach::Provider {
+                connection: connection.name.clone(),
+                operation: operation.full_name(),
+                fails: operation.failures.clone(),
+                checked: true,
+                safe: operation.safe_to_repeat(),
+                own: false,
+                action: None,
+            },
+        )
+    }
+
+    /// Whether `call` gives `operation` its input: one value of the
+    /// package's type, without a name, or nothing when it takes none. The
+    /// value is checked against it.
+    fn operation_input(
+        &mut self,
+        operation: &crate::providers::Operation,
+        call: &ast::CallExpr,
+        written: &str,
+    ) -> bool {
+        let args = Self::arguments(call);
+        let takes = operation.input.is_some() as usize;
+        if args.len() != takes || args.iter().any(|arg| arg.name().is_some()) {
+            let at = self.arg_list_span(call);
+            let what = match &operation.input {
+                Some((_, input)) => format!("one `{input}`"),
+                None => "nothing".to_string(),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes {what}"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(format!(
+                    "A provider's operation takes its input as one value of the package's type, without a name{}.",
+                    if takes == 0 { ", and this one takes none" } else { "" }
+                ))
+                .next(match &operation.input {
+                    Some((_, input)) => format!("Build a `{input} {{ ... }}` and pass it: `{written}(request)`"),
+                    None => format!("Write `{written}()`"),
+                }),
+            );
+            self.args_only(call);
+            return false;
+        }
+        if let (Some((ty, _)), Some(value)) =
+            (&operation.input, args.first().and_then(ast::Arg::expr))
+        {
+            self.check(&value, ty);
+        }
+        true
+    }
+
+    /// `resource.operation(input)` in a provider package's own code (area
+    /// 11, "What package code may do"; chunk 7.6): its operation, public
+    /// or not, called by a package action through whichever connection
+    /// the app called that action through. Its failures are the
+    /// package's own, so they pass on to the action's `fails` as a
+    /// library function's do.
+    pub(super) fn own_operation_call(
+        &mut self,
+        folder: &str,
+        resource: &str,
+        rest: &[String],
+        call: &ast::CallExpr,
+        callee: &Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        let span = self.span(callee);
+        if self.context.is_pure() || self.context == Context::Test {
+            let who = super::capital(self.context.with_a());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::EFFECT_FUNCTION_PERSISTENCE,
+                    format!("{who} can't call `{written}`"),
+                )
+                .at(span, "the provider's operation")
+                .reason(format!(
+                    "`{written}` calls the provider's API, outside the program; in a package only an action calls it, and a test reaches it through the app's actions with the provider faked."
+                ))
+                .next(format!("Call `{written}` in one of the package's actions")),
+            );
+            return failed(self);
+        }
+        let operations = crate::providers::operations(self.db, self.project);
+        let found = match rest {
+            [name] => operations.find(folder, resource, name),
+            _ => None,
+        };
+        let Some(operation) = found.cloned() else {
+            if crate::providers::has_problems(self.db, self.project, folder) {
+                self.args_only(call);
+                return (
+                    Ty::Error,
+                    CallKind::Effect(written.to_string()),
+                    Reach::Provider {
+                        connection: String::new(),
+                        operation: format!("{resource}.{}", rest.join(".")),
+                        fails: Vec::new(),
+                        checked: false,
+                        safe: true,
+                        own: true,
+                        action: None,
+                    },
+                );
+            }
+            let known: Vec<String> = operations
+                .of(folder)
+                .filter(|operation| operation.resource == resource)
+                .map(|operation| operation.name.clone())
+                .collect();
+            let asked = rest.join(".");
+            let near = nearest(&asked, known.iter().map(String::as_str));
+            let mut problem = Diagnostic::new(
+                &rule::SEMANTIC_UNKNOWN_CALLEE,
+                format!("Resource `{resource}` has no operation `{asked}`"),
+            )
+            .at(span.clone(), "no such operation")
+            .reason(format!(
+                "A package's action calls its own operations as `<resource>.<operation>(...)`; `{resource}` has {}.",
+                if known.is_empty() {
+                    "none".to_string()
+                } else {
+                    crate::and_list(&known.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>())
+                }
+            ));
+            problem = match near {
+                Some(near) => problem
+                    .next(format!("Call `{resource}.{near}` instead"))
+                    .edit(span, format!("{resource}.{near}")),
+                None => problem.next(format!("Add `{asked}` to resource `{resource}`")),
+            };
+            self.out.push(problem);
+            return failed(self);
+        };
+        if !self.operation_input(&operation, call, written) {
+            return (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            );
+        }
+        (
+            operation.output.clone(),
+            CallKind::Effect(written.to_string()),
+            Reach::Provider {
+                connection: String::new(),
+                operation: operation.full_name(),
+                fails: operation.failures.clone(),
+                checked: true,
+                safe: operation.safe_to_repeat(),
+                own: true,
+                action: None,
+            },
+        )
+    }
+
+    /// `connection.action(...)`: a provider package's action called
+    /// through its connection (area 11, "What package code may do"; chunk
+    /// 7.6), only a `public` one, from an action of a listed domain. Its
+    /// package failures are mapped at the call as an operation's are.
+    fn package_action_call(
+        &mut self,
+        connection: &crate::connections::PackageConnection,
+        action: &crate::package_code::PackageAction,
+        call: &ast::CallExpr,
+        callee: &Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let failed = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Unknown,
+            )
+        };
+        let span = self.span(callee);
+        if !action.public {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_NOT_PUBLIC,
+                    format!(
+                        "`{}`'s action `{}` isn't public",
+                        connection.package, action.name
+                    ),
+                )
+                .at(span, "not part of the package's API")
+                .reason(
+                    "A connection calls a package's public actions; one without `public` is run only by the package's own subscribers and polls, and may change between versions."
+                )
+                .next(format!(
+                    "Mark `action {}` `public` in the package, or call what it offers instead",
+                    action.name
+                )),
+            );
+            return failed(self);
+        }
+        if !self.may_reach(connection, span, written) {
+            return failed(self);
+        }
+        let Some(sig) = self.calls.signature(&action.canonical).cloned() else {
+            return failed(self);
+        };
+        self.args(&sig, call, written);
+        (
+            sig.result.clone(),
+            CallKind::Effect(written.to_string()),
+            Reach::Provider {
+                connection: connection.name.clone(),
+                operation: action.name.clone(),
+                fails: sig.fails.clone(),
+                checked: true,
+                // Its calls are several, or may be: one that gets no answer
+                // in time may have acted.
+                safe: false,
+                own: false,
+                action: Some(action.canonical.clone()),
+            },
+        )
+    }
+
+    /// A package's action calling one of its package's actions: refused,
+    /// since what a package action does in order is one way through it
+    /// (chunk 7.6).
+    pub(super) fn package_calls_action(&mut self, span: Span, called: &str) {
+        let caller = self.action.clone().unwrap_or_default();
+        self.out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_ACTION_INVALID,
+                format!("`{caller}` calls the package's action `{called}`"),
+            )
+            .at(span, "another action")
+            .reason("A package's action calls only its own API: its operations, in any order, and its pure functions. The steps it makes are one way through it, which a retry replays in order.")
+            .next(format!(
+                "Make `{called}`'s calls here, or move what both share to a function"
+            )),
+        );
+    }
+
+    /// Whether this action may call through `connection`: it is in a
+    /// domain the connection lists, and the package driver sends what the
+    /// package needs.
+    fn may_reach(
+        &mut self,
+        connection: &crate::connections::PackageConnection,
+        span: Span,
+        written: &str,
+    ) -> bool {
         // Only the domains the connection lists call it (area 11, question
         // 18): a new caller is a one-line change a reviewer sees.
         let caller = match self.ownership {
@@ -202,7 +500,7 @@ impl Body<'_> {
                     ))
                     .next(next),
             );
-            return failed(self);
+            return false;
         }
         // The package driver sends JSON over HTTP with a bearer token or
         // basic credentials (chunk 7.2c); the other protocols and schemes
@@ -229,53 +527,9 @@ impl Body<'_> {
                 ))
                 .next(format!("Do without `{written}` for now")),
             );
-            return failed(self);
+            return false;
         }
-        let args = Self::arguments(call);
-        let takes = operation.input.is_some() as usize;
-        if args.len() != takes || args.iter().any(|arg| arg.name().is_some()) {
-            let at = self.arg_list_span(call);
-            let what = match &operation.input {
-                Some((_, input)) => format!("one `{input}`"),
-                None => "nothing".to_string(),
-            };
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TYPE_ARGUMENT_COUNT,
-                    format!("`{written}` takes {what}"),
-                )
-                .at(at, format!("{} given", args.len()))
-                .reason(format!(
-                    "A provider's operation takes its input as one value of the package's type, without a name{}.",
-                    if takes == 0 { ", and this one takes none" } else { "" }
-                ))
-                .next(match &operation.input {
-                    Some((_, input)) => format!("Build a `{input} {{ ... }}` and pass it: `{written}(request)`"),
-                    None => format!("Write `{written}()`"),
-                }),
-            );
-            return failed(self);
-        }
-        if let (Some((ty, _)), Some(value)) =
-            (&operation.input, args.first().and_then(ast::Arg::expr))
-        {
-            self.check(&value, ty);
-        }
-        let result = match &operation.output {
-            Ty::Prim(Prim::Unit) => Ty::Prim(Prim::Unit),
-            other => other.clone(),
-        };
-        (
-            result,
-            CallKind::Effect(written.to_string()),
-            Reach::Provider {
-                connection: connection.name.clone(),
-                operation: operation.full_name(),
-                fails: operation.failures.clone(),
-                checked: true,
-                safe: operation.safe_to_repeat(),
-            },
-        )
+        true
     }
 
     /// An `attempt`'s arms on a provider's operation (area 11, "Calling"):

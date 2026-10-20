@@ -915,6 +915,7 @@ fn body_features(
                             jadpo_std::files::FilesOp::Read => "call files read",
                         },
                         Callee::Provider { .. } => "call provider operation",
+                        Callee::PackageAction { .. } => "call package action",
                         Callee::Fake { .. } => "script a provider's fake",
                         Callee::AdvanceClock => "advance the test clock",
                         Callee::Schedule { .. } => "run a schedule in a test",

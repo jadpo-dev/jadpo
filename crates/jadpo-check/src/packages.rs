@@ -956,8 +956,8 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's actions, subscribers and events (chunk 7.6)
-/// and its capability mappings (chunk 7.3).
+/// doesn't run: a package's subscribers and events (chunk 7.6b) and its
+/// capability mappings (chunk 7.3c); its actions came with chunk 7.6.
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -965,7 +965,6 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let what = match location.place {
-        Place::Folder(Folder::Actions) => "A package's actions",
         Place::Folder(Folder::Subscribers) => "A package's subscribers",
         Place::Folder(Folder::Events) => "A package's events",
         Place::Folder(Folder::Provides) => "A package's capability mappings",
