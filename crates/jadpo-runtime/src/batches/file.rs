@@ -779,7 +779,13 @@ pub(super) async fn page(
         },
         None => opened.first,
     };
-    let most = usize::try_from(ctx.host().rows_per_batch().max(1)).unwrap_or(1);
+    // A row whose action makes outside calls is a batch of its own (chunk
+    // 7.4b).
+    let calls = super::calling::calls(plan.each.action());
+    let most = match calls {
+        true => 1,
+        false => usize::try_from(ctx.host().rows_per_batch().max(1)).unwrap_or(1),
+    };
     let read = match rows.format {
         RowFormat::Json => read_items(ctx, batches, opened, from, most).await,
         format => read_records(ctx, batches, opened, format, from, most).await,
@@ -798,6 +804,37 @@ pub(super) async fn page(
     // it, they are done first, and the next page meets it.
     if let (true, Some(why)) = (next == from, &fault) {
         return failed(ctx, start, why).await;
+    }
+    // Its row's action, its calls keyed from where the row begins, then its
+    // writes and the run's next position, unless a cancel was asked for:
+    // then, as a row that can't be read, the batch below.
+    if calls
+        && let (Some(each), [(row, Ok(item))]) = (plan.each.action(), items.as_slice())
+        && !super::calling::cancelled(ctx, plan, &id).await
+    {
+        let args = arguments(&each.args, item, saved.values);
+        let likely = |done: i64| match read_all {
+            true => Some(done),
+            false => estimated(&opened.source, done, next.at),
+        };
+        return super::calling::row(
+            executor,
+            ctx,
+            plan,
+            start,
+            saved,
+            each,
+            args,
+            (&from.text(), *row),
+            position,
+            super::calling::Next {
+                position: Some(next.text()),
+                read_all,
+                total: super::calling::Total::From(&likely),
+            },
+            (now, lease_until),
+        )
+        .await;
     }
     // The batch's transaction, now that nothing more goes out.
     let mut open = match Batch::open(ctx, &plan.store, plan.isolation, saved.system).await {

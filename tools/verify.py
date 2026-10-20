@@ -178,8 +178,9 @@ POSTGRES = [
     ('live PostgreSQL: policy', [('jadpo-cli', 'policy'), ('jadpo-cli', 'system')], []),
     # Batch runs: pages committed with their position, problems, a crash
     # resumed, `key:`, a cancel and a deploy that changed the call (area
-    # 12, chunk 6.4).
-    ('live PostgreSQL: batches', [('jadpo-cli', 'batches')], []),
+    # 12, chunk 6.4); and items whose action makes outside calls, each a
+    # batch of its own, keyed calls repeated after a crash (chunk 7.4b).
+    ('live PostgreSQL: batches', [('jadpo-cli', 'batches'), ('jadpo-cli', 'batch_calls')], []),
     # The runtime's request path counted in round trips (chunk 4.10),
     # and signed sessions: no read to sign in while a signed part
     # lasts, the delay's bound on revocation, key rotation, the key

@@ -307,7 +307,8 @@ replaces, a `DELETE`). An operation of a connection whose credential is
 an OAuth grant also names the scope it needs, `scope: "calendar.events"`.
 
 Inside the package, names are bare. An app names them through the package:
-`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16). A failure's
+`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16), and an
+enum's values the same way, `AcmeCouriers.Window.morning`. A failure's
 code (`slot_taken`, from its name) is the provider's error code, read from
 the place `error_code:` names.
 
@@ -1641,7 +1642,11 @@ public type SlotTaken = Failure {
   version it was loaded at (area 6, "Outside calls hold no transaction").
   A call after the action's first write is still the fault
   `call_in_transaction`, sent to nobody, and a change made while the call
-  is out runs the action again, the call repeated under its key.
+  is out runs the action again, the call repeated under its key. Since
+  chunk 7.4b `jadpo check` refuses a write placed before a later call
+  (area 6's `data.write_before_call`), so checked code never meets the
+  fault, and an item of a batch whose `each:` action calls is a batch of
+  its own (area 12, "How a run is kept").
 
 Built in chunk 7.2c2 and checked by this checkout's `jadpo`: a
 connection's `retry:`, and `timed_out:` mapped at the call of an
@@ -6961,6 +6966,24 @@ Recordings, each choice the most conservative reading:
   again leaves the file as it was. An operation with no `output:` is
   `toolchain.not_built_yet`: writing the type from the answer comes with
   chunk 7.2e.
+
+### Chosen in chunk 7.1e
+
+Enum values through a package's name, each the most conservative reading:
+
+- **One path for every name through a package.** An enum's value is
+  written through its package as its type is, `AcmeCouriers.Window.morning`,
+  and through the package and its version while two are held,
+  `Postcodes.v3.Round.morning`; the version is missing or needless exactly
+  as for a type (`package.version_needed`, `package.version_unneeded`), and
+  the type must be one the package makes public. The same holds wherever a
+  value is written: in a body, a constant, a test's `fakes:`, a variant
+  built with its fields (`Postcodes.v3.Round.shared { ... }`, which before
+  this chunk took no version) and a `match` arm's pattern, whose names
+  resolution now checks as a value's; a pattern resolution refuses leaves
+  its arm's case unknown, so the `match` isn't also reported as not
+  covering it. The enum written alone, `Postcodes.Round`, is
+  `type.not_a_value` naming the enum, not the package.
 
 ### Consistency with the rest of the language
 
