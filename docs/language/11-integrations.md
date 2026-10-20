@@ -3462,7 +3462,7 @@ conservative reading:
   `minItems`, `maxItems`). A field not `required`, or `nullable`, is `?`.
   An object or enumeration inside another is a type of its own,
   `<Parent><Field>`; a constrained item of a list is a refined type,
-  `<Parent><Field>Item`. A schema named as a built-in type is
+  `<Parent><Field>Element`. A schema named as a built-in type is
   `<Name>Type`, and listed. `oneOf` and `anyOf` of several shapes, and an
   object of any fields, are left out and listed. Shape and name
   detection come with chunk 7.2e.

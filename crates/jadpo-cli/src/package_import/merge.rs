@@ -64,7 +64,8 @@ pub fn merge(existing: &str, imported: &str) -> Option<Merged> {
                 None => {
                     inserted.push_str(&member.text);
                     inserted.push('\n');
-                    out.added.push(format!("{}.{}", shown(&new.key), member.key));
+                    out.added
+                        .push(format!("{}.{}", shown(&new.key), member.key));
                 }
                 // What was read is always the description's.
                 Some(known) if new.key == "provider" && member.key == "imported" => {
@@ -91,7 +92,7 @@ pub fn merge(existing: &str, imported: &str) -> Option<Merged> {
         }
     }
     let mut text = existing.to_string();
-    edits.sort_by(|a, b| b.0.cmp(&a.0));
+    edits.sort_by_key(|edit| std::cmp::Reverse(edit.0));
     for (start, end, insert) in edits {
         text.replace_range(start..end, &insert);
     }
@@ -113,7 +114,9 @@ fn imported_text(text: &str, member: &Member) -> String {
 
 /// `type TodoView` as `TodoView`, `resource todos` as `todos`.
 fn shown(key: &str) -> String {
-    key.split_once(' ').map_or(key, |(_, name)| name).to_string()
+    key.split_once(' ')
+        .map_or(key, |(_, name)| name)
+        .to_string()
 }
 
 fn declarations(text: &str) -> Option<Vec<Declared>> {
@@ -203,7 +206,9 @@ fn members(text: &str, list: &ast::MemberList) -> Vec<Member> {
 
 /// Where a member list's closing `}` starts.
 fn close_of(list: &SyntaxNode) -> Option<usize> {
-    list.last_token()
+    list.children_with_tokens()
+        .filter_map(|element| element.into_token())
+        .last()
         .filter(|token| token.kind() == SyntaxKind::R_BRACE)
         .map(|token| usize::from(token.text_range().start()))
 }
@@ -230,7 +235,11 @@ mod tests {
         let existing = "provider {\n    protocol: Protocol.json_http\n    credential: CredentialScheme.basic\n    imported: {\n        file: \"a.json\"\n        digest: \"sha256:1\"\n    }\n}\n";
         let imported = "provider {\n    protocol: Protocol.json_http\n    credential: CredentialScheme.bearer\n    imported: {\n        file: \"a.json\"\n        digest: \"sha256:2\"\n    }\n}\n";
         let merged = merge(existing, imported).expect("both read");
-        assert!(merged.text.contains("CredentialScheme.basic"), "{}", merged.text);
+        assert!(
+            merged.text.contains("CredentialScheme.basic"),
+            "{}",
+            merged.text
+        );
         assert!(merged.text.contains("sha256:2"), "{}", merged.text);
         assert!(merged.added.is_empty());
     }

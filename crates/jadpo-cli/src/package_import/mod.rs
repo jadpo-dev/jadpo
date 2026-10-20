@@ -102,7 +102,7 @@ fn import(call: &Call) -> Reply {
         Err(error) => {
             return Reply::failed(
                 Diagnostic::new(
-                    &rule::CLI_PACKAGE_IMPORT_UNREADABLE,
+                    &rule::CLI_PACKAGE_UNREADABLE,
                     format!("`{file}` can't be read"),
                 )
                 .reason(format!("Reading it failed: {error}."))
@@ -116,7 +116,7 @@ fn import(call: &Call) -> Reply {
             let yaml = !bytes.trim_ascii_start().starts_with(b"{");
             return Reply::failed(
                 Diagnostic::new(
-                    &rule::CLI_PACKAGE_IMPORT_UNREADABLE,
+                    &rule::CLI_PACKAGE_UNREADABLE,
                     format!("`{file}` isn't JSON"),
                 )
                 .reason(if yaml {
@@ -141,8 +141,8 @@ fn import(call: &Call) -> Reply {
                         &rule::CLI_PACKAGE_ARGUMENTS,
                         format!("`{written}` isn't a package's name and version"),
                     )
-                    .reason("A package is named in `UpperCamelCase` with its version: `AcmeCouriers.v1`, `Stripe.v2024_06_20`.")
-                    .next("Give `--as` a name and version, such as `--as AcmeCouriers.v1`"),
+                    .reason("A package is named in `UpperCamelCase` with its version: `Tidepool.v1`, `Stripe.v2024_06_20`.")
+                    .next("Give `--as` a name and version, such as `--as Tidepool.v1`"),
                 );
             }
         },
@@ -155,10 +155,12 @@ fn import(call: &Call) -> Reply {
         Err(openapi::Invalid(why)) => {
             return Reply::failed(
                 Diagnostic::new(
-                    &rule::CLI_PACKAGE_IMPORT_INVALID,
+                    &rule::CLI_PACKAGE_NOT_OPENAPI,
                     format!("`{file}` isn't an OpenAPI document the importer reads"),
                 )
-                .reason(format!("The importer reads OpenAPI 3.0 and 3.1, and {why}."))
+                .reason(format!(
+                    "The importer reads OpenAPI 3.0 and 3.1, and {why}."
+                ))
                 .next("Give the provider's OpenAPI 3 document"),
             );
         }
@@ -209,7 +211,15 @@ fn import(call: &Call) -> Reply {
             next: "Left as it is, since it doesn't read as Jadpo: fix it, then import again to merge into it".to_string(),
         });
     }
-    report(&package, &shown_file, &folder, &written, &added, &kept, &findings)
+    report(
+        &package,
+        &shown_file,
+        &folder,
+        &written,
+        &added,
+        &kept,
+        &findings,
+    )
 }
 
 fn report(
@@ -306,10 +316,7 @@ fn report(
         if !grouped.contains_key(finding.next.as_str()) {
             order.push(&finding.next);
         }
-        grouped
-            .entry(&finding.next)
-            .or_default()
-            .push(&finding.at);
+        grouped.entry(&finding.next).or_default().push(&finding.at);
     }
     if !order.is_empty() {
         let mut lines = Vec::new();
@@ -329,13 +336,18 @@ fn report(
             lines,
         });
     }
-    let count = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    let count =
+        |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
     let mut facts = vec![
         Fact::plain(count(operations, "operation", "operations")),
         Fact::plain(count(package.types.len(), "type", "types")),
     ];
     if !package.failures.is_empty() {
-        facts.push(Fact::plain(count(package.failures.len(), "failure", "failures")));
+        facts.push(Fact::plain(count(
+            package.failures.len(),
+            "failure",
+            "failures",
+        )));
     }
     if !findings.is_empty() {
         facts.push(Fact::plain(format!("{} to check", findings.len())));
@@ -345,9 +357,15 @@ fn report(
         if first { "imported" } else { "merged" },
         facts,
     ));
-    screen.push(Block::hint("jadpo check", "checks the package with the app"));
+    screen.push(Block::hint(
+        "jadpo check",
+        "checks the package with the app",
+    ));
     let data = Json::object([
-        ("package", Json::from(format!("{}.{}", package.name, package.version))),
+        (
+            "package",
+            Json::from(format!("{}.{}", package.name, package.version)),
+        ),
         ("folder", Json::from(folder)),
         ("exact", Json::from(package.exact)),
         (
@@ -376,7 +394,7 @@ fn report(
                 Json::object([
                     ("at", Json::from(finding.at.as_str())),
                     ("next", Json::from(finding.next.as_str())),
-                    ("owner", Json::from("agent")),
+                    ("decides", Json::from("agent")),
                 ])
             })),
         ),
@@ -384,19 +402,17 @@ fn report(
     Reply::screen(screen, data)
 }
 
-/// `AcmeCouriers.v1` as its name and version.
+/// `Tidepool.v1` as its name and version.
 fn named(written: &str) -> Option<(String, String)> {
     let (name, version) = written.split_once('.')?;
     let name_ok = name.starts_with(|c: char| c.is_ascii_uppercase())
         && name.chars().all(|c| c.is_ascii_alphanumeric());
-    let version_ok = version
-        .strip_prefix('v')
-        .is_some_and(|rest| {
-            !rest.is_empty()
-                && rest
-                    .split('_')
-                    .all(|group| !group.is_empty() && group.chars().all(|c| c.is_ascii_digit()))
-        });
+    let version_ok = version.strip_prefix('v').is_some_and(|rest| {
+        !rest.is_empty()
+            && rest
+                .split('_')
+                .all(|group| !group.is_empty() && group.chars().all(|c| c.is_ascii_digit()))
+    });
     (name_ok && version_ok).then(|| (name.to_string(), version.to_string()))
 }
 
@@ -513,7 +529,10 @@ mod tests {
     #[test]
     fn a_documents_version_gives_the_packages() {
         let document = |version: &str| serde_json::json!({ "info": { "title": "acme couriers", "version": version } });
-        assert_eq!(derived(&document("1.4.2")), ("AcmeCouriers".to_string(), "v1".to_string()));
+        assert_eq!(
+            derived(&document("1.4.2")),
+            ("AcmeCouriers".to_string(), "v1".to_string())
+        );
         assert_eq!(derived(&document("2024-06-20")).1, "v2024_06_20");
         assert_eq!(derived(&document("v3")).1, "v3");
         assert_eq!(derived(&document("6a2987f054a4")).1, "v1");

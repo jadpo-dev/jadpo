@@ -393,14 +393,18 @@ pub(crate) fn table(
             let Some(api) = out.apis.iter().position(|api| api.name == served.api) else {
                 continue;
             };
-            let Some((_, document)) = documents.iter().find(|(name, _)| *name == served.api)
-            else {
+            let Some((_, document)) = documents.iter().find(|(name, _)| *name == served.api) else {
                 continue;
             };
             out.routes.push(RoutePlan {
                 key: format!("route GET {}", served.path()),
                 method: jadpo_std::HttpMethod::Get,
-                segments: served.segments.iter().cloned().map(Segment::Fixed).collect(),
+                segments: served
+                    .segments
+                    .iter()
+                    .cloned()
+                    .map(Segment::Fixed)
+                    .collect(),
                 api: api as u32,
                 input: None,
                 output: None,

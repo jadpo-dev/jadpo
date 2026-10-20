@@ -726,17 +726,17 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Import a provider's document under a name of your own",
-                command: "jadpo package import openapi acme.openapi.json --as AcmeCouriers.v1",
+                command: "jadpo package import openapi tidepool.json --as Tidepool.v1",
             },
             Example {
                 description: "List what the import leaves to check, as data for tools",
-                command: "jadpo package import openapi acme.openapi.json --json",
+                command: "jadpo package import openapi tidepool.json --json",
             },
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
         raises: &[
-            &rule::CLI_PACKAGE_IMPORT_INVALID,
-            &rule::CLI_PACKAGE_IMPORT_UNREADABLE,
+            &rule::CLI_PACKAGE_NOT_OPENAPI,
+            &rule::CLI_PACKAGE_UNREADABLE,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,

@@ -7,7 +7,8 @@ use jadpo_graph::json::Value;
 
 use crate::support;
 
-const APP: &str = "application {\n    apis: {\n        main: {\n            prefix: /v1\n        }\n    }\n}\n";
+const APP: &str =
+    "application {\n    apis: {\n        main: {\n            prefix: /v1\n        }\n    }\n}\n";
 
 const FILES: &[(&str, &str)] = &[
     (
@@ -132,8 +133,7 @@ fn with_app(app: &str) -> Vec<(&str, &str)> {
 fn document(app: &str) -> Value {
     let db = Database::default();
     let project = support::project(&db, Layout::Project, &with_app(app));
-    jadpo_check::routes::openapi::document(&db, project, "main", "todos", "1")
-        .expect("a document")
+    jadpo_check::routes::openapi::document(&db, project, "main", "todos", "1").expect("a document")
 }
 
 fn at<'v>(value: &'v Value, path: &[&str]) -> Option<&'v Value> {
@@ -226,7 +226,10 @@ fn the_document_carries_the_x_jadpo_fields() {
         Some(&Value::Array(vec![Value::from("V1Todos")]))
     );
     let idempotency = create.get("x-jadpo-idempotency").expect("idempotency");
-    assert_eq!(idempotency.get("header"), Some(&Value::from("Idempotency-Key")));
+    assert_eq!(
+        idempotency.get("header"),
+        Some(&Value::from("Idempotency-Key"))
+    );
     assert_eq!(idempotency.get("required"), Some(&Value::Bool(false)));
     assert_eq!(idempotency.get("keeps"), Some(&Value::from("response")));
     assert_eq!(idempotency.get("window"), Some(&Value::from("1d")));
@@ -245,18 +248,31 @@ fn the_document_carries_the_x_jadpo_fields() {
         .and_then(|first| first.get("schema"))
         .and_then(|schema| schema.get("x-jadpo-constraints"));
     assert_eq!(placeholder, Some(&Value::from("Uuid")));
-    let failure = at(&document, &["components", "schemas", "TodoNotFound", "x-jadpo-failure"])
-        .expect("the failure's code and kind");
+    let failure = at(
+        &document,
+        &["components", "schemas", "TodoNotFound", "x-jadpo-failure"],
+    )
+    .expect("the failure's code and kind");
     assert_eq!(failure.get("code"), Some(&Value::from("todo_not_found")));
     assert_eq!(failure.get("kind"), Some(&Value::from("not_found")));
     assert_eq!(
         at(
             &document,
-            &["components", "schemas", "CreateTodo", "properties", "title", "x-jadpo-constraints"]
+            &[
+                "components",
+                "schemas",
+                "CreateTodo",
+                "properties",
+                "title",
+                "x-jadpo-constraints"
+            ]
         ),
         Some(&Value::from("Text { min_length: 1, max_length: 200 }"))
     );
-    let tags = document.get("tags").and_then(Value::as_array).expect("tags");
+    let tags = document
+        .get("tags")
+        .and_then(Value::as_array)
+        .expect("tags");
     assert_eq!(tags.len(), 1);
     assert_eq!(tags[0].get("name"), Some(&Value::from("V1Todos")));
     assert_eq!(
@@ -267,7 +283,10 @@ fn the_document_carries_the_x_jadpo_fields() {
 
 #[test]
 fn an_api_that_signs_callers_in_needs_one_to_read_its_document() {
-    let config = ("config.jadpo", "config {\n    session_signing_key: SigningKey\n}\n");
+    let config = (
+        "config.jadpo",
+        "config {\n    session_signing_key: SigningKey\n}\n",
+    );
     let app = r#"use planning/entities { Todo }
 
 application {

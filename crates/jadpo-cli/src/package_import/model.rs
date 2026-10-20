@@ -145,7 +145,10 @@ impl Package {
         out.insert(jadpo_db::PACKAGE_INDEX.to_string(), self.index());
         out.insert(jadpo_db::PROVIDER_FILE.to_string(), self.provider_file());
         for (name, resource) in &self.resources {
-            out.insert(format!("resources/{name}.jadpo"), resource_file(name, resource));
+            out.insert(
+                format!("resources/{name}.jadpo"),
+                resource_file(name, resource),
+            );
         }
         for (name, ty) in &self.types {
             out.insert(format!("types/{}.jadpo", snake(name)), type_file(name, ty));
@@ -173,7 +176,10 @@ impl Package {
         let mut out = doc(Some(&provider.description), "");
         out.push_str("provider {\n    protocol: Protocol.json_http\n");
         if let Some(live) = &provider.live {
-            out.push_str(&format!("    hosts: {{\n        live: {}\n    }}\n", quote(live)));
+            out.push_str(&format!(
+                "    hosts: {{\n        live: {}\n    }}\n",
+                quote(live)
+            ));
         }
         if let Some(credential) = provider.credential {
             out.push_str(&format!("    credential: CredentialScheme.{credential}\n"));
@@ -216,7 +222,10 @@ fn resource_file(name: &str, resource: &Resource) -> String {
         first = false;
         out.push_str(&doc(operation.doc.as_deref(), "    "));
         out.push_str(&format!("    {operation_name}: {{\n"));
-        out.push_str(&format!("        method: HttpMethod.{}\n", operation.method));
+        out.push_str(&format!(
+            "        method: HttpMethod.{}\n",
+            operation.method
+        ));
         out.push_str(&format!("        path: {}\n", quote(&operation.path)));
         if let Some(input) = &operation.input {
             out.push_str(&format!("        input: {input}\n"));
@@ -242,7 +251,10 @@ fn resource_file(name: &str, resource: &Resource) -> String {
 
 fn type_file(name: &str, ty: &TypeDecl) -> String {
     match ty {
-        TypeDecl::Object { doc: written, fields } => {
+        TypeDecl::Object {
+            doc: written,
+            fields,
+        } => {
             let mut out = doc(written.as_deref(), "");
             out.push_str(&format!("public type {name} = Object {{\n"));
             for field in fields {

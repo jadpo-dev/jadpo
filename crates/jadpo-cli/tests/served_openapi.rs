@@ -143,7 +143,12 @@ fn the_api_answers_with_its_own_document() {
     );
     // Like any route that takes no input, it refuses a query string.
     let refused = get(&root, "/v1/openapi.json", Some("all=1"));
-    assert_eq!(refused.status, 422, "{}", String::from_utf8_lossy(&refused.body));
+    assert_eq!(
+        refused.status,
+        422,
+        "{}",
+        String::from_utf8_lossy(&refused.body)
+    );
 }
 
 #[test]

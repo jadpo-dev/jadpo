@@ -41,8 +41,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 use super::model::{
-    Field, Finding, FailureDecl, Idempotency, Operation, Package, Provider, Resource, Ty,
-    TypeDecl, camel, snake,
+    FailureDecl, Field, Finding, Idempotency, Operation, Package, Provider, Resource, Ty, TypeDecl,
+    camel, snake,
 };
 use super::notation::{self, Written};
 
@@ -65,7 +65,9 @@ pub fn read(
     let declared = document
         .get("openapi")
         .and_then(Value::as_str)
-        .ok_or_else(|| Invalid("it has no `openapi` version, so it isn't an OpenAPI document".to_string()))?;
+        .ok_or_else(|| {
+            Invalid("it has no `openapi` version, so it isn't an OpenAPI document".to_string())
+        })?;
     if !declared.starts_with("3.") {
         return Err(Invalid(format!(
             "it is OpenAPI {declared}, and the importer reads OpenAPI 3.0 and 3.1"
@@ -412,8 +414,10 @@ impl Reader<'_> {
     }
 
     fn schema(&self, name: &str) -> Option<&Value> {
-        self.document
-            .pointer(&format!("/components/schemas/{}", name.replace('~', "~0").replace('/', "~1")))
+        self.document.pointer(&format!(
+            "/components/schemas/{}",
+            name.replace('~', "~0").replace('/', "~1")
+        ))
     }
 
     /// What `$ref` names, resolved through `components`.
@@ -604,10 +608,10 @@ impl Reader<'_> {
     /// Jadpo form. `at` names it for findings, and `synthesised` is the
     /// name an object inside it would get.
     fn ty(&mut self, schema: &Value, at: &str, synthesised: &str) -> Option<Ty> {
-        if let Some(text) = schema.get("x-jadpo-constraints").and_then(Value::as_str) {
-            if let Some(written) = notation::parse(text) {
-                return Some(self.written(&written, synthesised));
-            }
+        if let Some(text) = schema.get("x-jadpo-constraints").and_then(Value::as_str)
+            && let Some(written) = notation::parse(text)
+        {
+            return Some(self.written(&written, synthesised));
         }
         if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
             let Some(schema_name) = reference.strip_prefix("#/components/schemas/") else {
@@ -674,7 +678,7 @@ impl Reader<'_> {
             },
             Some("array") => {
                 let items = schema.get("items").unwrap_or(&Value::Null);
-                let item = self.item(items, at, &format!("{synthesised}Item"))?;
+                let item = self.item(items, at, &format!("{synthesised}Element"))?;
                 let mut rules = Vec::new();
                 if let Some(min) = schema.get("minItems").and_then(Value::as_u64) {
                     rules.push(("min_length".to_string(), min.to_string()));
@@ -697,7 +701,9 @@ impl Reader<'_> {
                 return self.inline(schema, at, synthesised, optional);
             }
             Some("object") => match schema.get("additionalProperties") {
-                Some(value) if value.is_object() && value.as_object().is_some_and(|o| !o.is_empty()) => {
+                Some(value)
+                    if value.is_object() && value.as_object().is_some_and(|o| !o.is_empty()) =>
+                {
                     let item = self.item(value, at, &format!("{synthesised}Value"))?;
                     Ty {
                         text: format!("Map<Text, {item}>"),
@@ -744,11 +750,21 @@ impl Reader<'_> {
                 rules: ty.rules,
             },
         );
-        Some(if ty.optional { format!("{name}?") } else { name })
+        Some(if ty.optional {
+            format!("{name}?")
+        } else {
+            name
+        })
     }
 
     /// An object inside another: a type of its own.
-    fn inline(&mut self, schema: &Value, at: &str, synthesised: &str, optional: bool) -> Option<Ty> {
+    fn inline(
+        &mut self,
+        schema: &Value,
+        at: &str,
+        synthesised: &str,
+        optional: bool,
+    ) -> Option<Ty> {
         let name = self.unique(synthesised.to_string());
         let fields = self.fields(&name, schema);
         if fields.is_empty() {
@@ -763,7 +779,8 @@ impl Reader<'_> {
             .get("description")
             .and_then(Value::as_str)
             .map(str::to_string);
-        self.types.insert(name.clone(), TypeDecl::Object { doc, fields });
+        self.types
+            .insert(name.clone(), TypeDecl::Object { doc, fields });
         Some(Ty {
             text: name,
             optional,
@@ -874,7 +891,7 @@ impl Reader<'_> {
                     let suffix = match (written.name.as_str(), i) {
                         ("Map", 0) => "Key",
                         ("Map", _) => "Value",
-                        _ => "Item",
+                        _ => "Element",
                     };
                     let inner = self.written(arg, &format!("{synthesised}{suffix}"));
                     if inner.rules.is_empty() {
@@ -893,7 +910,11 @@ impl Reader<'_> {
                                 rules: inner.rules,
                             },
                         );
-                        if inner.optional { format!("{name}?") } else { name }
+                        if inner.optional {
+                            format!("{name}?")
+                        } else {
+                            name
+                        }
                     }
                 })
                 .collect();
@@ -929,11 +950,13 @@ impl Reader<'_> {
         // Its placeholders and query parameters, the operation's own over
         // its path's.
         let mut parameters: BTreeMap<(String, String), Value> = BTreeMap::new();
-        for parameter in read
-            .shared
-            .iter()
-            .chain(operation.get("parameters").and_then(Value::as_array).into_iter().flatten())
-        {
+        for parameter in read.shared.iter().chain(
+            operation
+                .get("parameters")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten(),
+        ) {
             let parameter = self.resolve(parameter).clone();
             let (Some(place), Some(wire)) = (
                 parameter.get("in").and_then(Value::as_str),
@@ -1019,7 +1042,8 @@ impl Reader<'_> {
                     }
                 }
                 None => {
-                    let kinds: Vec<&String> = content.map(|c| c.keys().collect()).unwrap_or_default();
+                    let kinds: Vec<&String> =
+                        content.map(|c| c.keys().collect()).unwrap_or_default();
                     self.find(
                         at.clone(),
                         format!(
@@ -1039,13 +1063,8 @@ impl Reader<'_> {
             None if fields.is_empty() => None,
             None => {
                 let name = self.unique(input_name);
-                self.types.insert(
-                    name.clone(),
-                    TypeDecl::Object {
-                        doc: None,
-                        fields,
-                    },
-                );
+                self.types
+                    .insert(name.clone(), TypeDecl::Object { doc: None, fields });
                 Some(name)
             }
         };
@@ -1123,10 +1142,10 @@ impl Reader<'_> {
                     else {
                         continue;
                     };
-                    if let Some(name) = self.failure(schema_name) {
-                        if !failures.contains(&name) {
-                            failures.push(name);
-                        }
+                    if let Some(name) = self.failure(schema_name)
+                        && !failures.contains(&name)
+                    {
+                        failures.push(name);
                     }
                 }
             }
@@ -1202,7 +1221,10 @@ impl Reader<'_> {
         });
         let basic = schemes.is_some_and(|schemes| {
             schemes.values().any(|scheme| {
-                scheme.get("scheme").and_then(Value::as_str).is_some_and(|scheme| scheme.eq_ignore_ascii_case("basic"))
+                scheme
+                    .get("scheme")
+                    .and_then(Value::as_str)
+                    .is_some_and(|scheme| scheme.eq_ignore_ascii_case("basic"))
             })
         });
         provider.credential = if bearer {

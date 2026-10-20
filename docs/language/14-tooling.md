@@ -868,8 +868,8 @@ each command is built.
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.lsp_arguments` | `lsp` | Language-server command has invalid arguments |
 | `cli.package_arguments` | `package` | Package command has invalid arguments |
-| `cli.package_import_invalid` | `package import` | Description to import is not an OpenAPI 3 document |
-| `cli.package_import_unreadable` | `package import` | Description to import could not be read as JSON |
+| `cli.package_not_openapi` | `package import` | Description to import is not an OpenAPI 3 document |
+| `cli.package_unreadable` | `package import` | Description to import could not be read as JSON |
 | `cli.presentation_arguments` | any command | Terminal presentation option is invalid |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.routes_arguments` | `routes` | Routes command has invalid arguments |

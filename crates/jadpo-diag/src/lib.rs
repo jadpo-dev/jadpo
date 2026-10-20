@@ -140,9 +140,9 @@ rules! {
         "14-tooling.html#command-errors", "Migrate command has invalid arguments";
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package command has invalid arguments";
-    CLI_PACKAGE_IMPORT_INVALID: "cli.package_import_invalid", area 14, Error, Agent,
+    CLI_PACKAGE_NOT_OPENAPI: "cli.package_not_openapi", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Description to import is not an OpenAPI 3 document";
-    CLI_PACKAGE_IMPORT_UNREADABLE: "cli.package_import_unreadable", area 14, Error, Agent,
+    CLI_PACKAGE_UNREADABLE: "cli.package_unreadable", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Description to import could not be read as JSON";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";

@@ -279,7 +279,10 @@ fn a_jadpo_applications_document_imports_exactly() {
     let document = orders_document(&dir);
     let root = caller(&dir);
     fs::copy(&document, root.join("orders.openapi.json")).expect("copy");
-    let imported = jadpo(&root, &["package", "import", "openapi", "orders.openapi.json"]);
+    let imported = jadpo(
+        &root,
+        &["package", "import", "openapi", "orders.openapi.json"],
+    );
     assert_eq!(imported.code, 0, "{}{}", imported.stdout, imported.stderr);
     assert_eq!(
         imported.stdout,
@@ -361,11 +364,24 @@ public resource v1_memos {
     );
     // The runtime's own routes, the served document among them, aren't
     // the package's.
-    assert!(!root.join(format!("{folder}/types/exchanged_token.jadpo")).exists());
+    assert!(
+        !root
+            .join(format!("{folder}/types/exchanged_token.jadpo"))
+            .exists()
+    );
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     // Importing the same document again changes nothing.
-    let again = jadpo(&root, &["package", "import", "openapi", "orders.openapi.json", "--json"]);
+    let again = jadpo(
+        &root,
+        &[
+            "package",
+            "import",
+            "openapi",
+            "orders.openapi.json",
+            "--json",
+        ],
+    );
     assert_eq!(again.code, 0, "{}", again.stdout);
     let report = json(&again);
     assert!(
@@ -384,7 +400,10 @@ fn another_providers_document_maps_its_formats_and_lists_what_to_check() {
     let dir = tempdir::Dir::new("import-mapped");
     let root = caller(&dir);
     write(&root, "acme.json", COURIERS);
-    let imported = jadpo(&root, &["package", "import", "openapi", "acme.json", "--json"]);
+    let imported = jadpo(
+        &root,
+        &["package", "import", "openapi", "acme.json", "--json"],
+    );
     assert_eq!(imported.code, 0, "{}", imported.stdout);
     let report = json(&imported);
     assert_eq!(report["data"]["package"], "AcmeCouriers.v1");
@@ -400,15 +419,15 @@ public type Booking = Object {
     id: Uuid
     parcel: BookingParcel?
     status: BookingStatus
-    tags: List<BookingTagsItem>?
+    tags: List<BookingTagsElement>?
     tracking_url: Url?
     type_value: Text?
 }
 "
     );
     assert_eq!(
-        read(&root, &format!("{folder}/types/booking_tags_item.jadpo")),
-        "public type BookingTagsItem = Text {\n    max_length: 20\n}\n"
+        read(&root, &format!("{folder}/types/booking_tags_element.jadpo")),
+        "public type BookingTagsElement = Text {\n    max_length: 20\n}\n"
     );
     assert_eq!(
         read(&root, &format!("{folder}/types/create_booking.jadpo")),
@@ -420,7 +439,12 @@ public type Booking = Object {
         "{provider}"
     );
     let resource = read(&root, &format!("{folder}/resources/bookings.jadpo"));
-    for name in ["    create: {", "    get: {", "    list: {", "    print_label: {"] {
+    for name in [
+        "    create: {",
+        "    get: {",
+        "    list: {",
+        "    print_label: {",
+    ] {
         assert!(resource.contains(name), "{name} in {resource}");
     }
     // What isn't reached isn't imported.
@@ -429,7 +453,13 @@ public type Booking = Object {
         .as_array()
         .expect("findings")
         .iter()
-        .map(|finding| format!("{}: {}", finding["at"].as_str().unwrap_or(""), finding["next"].as_str().unwrap_or("")))
+        .map(|finding| {
+            format!(
+                "{}: {}",
+                finding["at"].as_str().unwrap_or(""),
+                finding["next"].as_str().unwrap_or("")
+            )
+        })
         .collect();
     for expected in [
         "Booking.collect_at: The provider names it `collectAt`",
@@ -452,7 +482,7 @@ public type Booking = Object {
             .as_array()
             .expect("findings")
             .iter()
-            .all(|finding| finding["owner"] == "agent")
+            .all(|finding| finding["decides"] == "agent")
     );
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}", checked.stdout);
@@ -487,15 +517,26 @@ fn importing_again_keeps_corrections_and_adds_what_is_new() {
     let again = jadpo(&root, &["package", "import", "openapi", "acme.json"]);
     assert_eq!(again.code, 0, "{}", again.stdout);
     assert!(
-        again.stdout.starts_with("Merged acme.json into shared/providers/acme_couriers/v1\n"),
+        again
+            .stdout
+            .starts_with("Merged acme.json into shared/providers/acme_couriers/v1\n"),
         "{}",
         again.stdout
     );
-    assert!(again.stdout.contains("  + bookings.get_proof\n"), "{}", again.stdout);
-    assert!(again.stdout.contains("  + Booking.note\n"), "{}", again.stdout);
+    assert!(
+        again.stdout.contains("  + bookings.get_proof\n"),
+        "{}",
+        again.stdout
+    );
+    assert!(
+        again.stdout.contains("  + Booking.note\n"),
+        "{}",
+        again.stdout
+    );
     let merged = read(&root, &resource);
     assert!(
-        merged.contains("        output: Booking\n        changes: true\n        idempotent: true\n"),
+        merged
+            .contains("        output: Booking\n        changes: true\n        idempotent: true\n"),
         "{merged}"
     );
     assert!(merged.contains("    get_proof: {"), "{merged}");
@@ -504,7 +545,10 @@ fn importing_again_keeps_corrections_and_adds_what_is_new() {
     let digest = {
         use sha2::Digest;
         let bytes = sha2::Sha256::digest(newer.as_bytes());
-        bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+        bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
     };
     assert!(provider.contains(&format!("sha256:{digest}")), "{provider}");
     let checked = jadpo(&root, &["check"]);
@@ -516,14 +560,43 @@ fn what_the_importer_cant_read_is_refused() {
     let dir = tempdir::Dir::new("import-refused");
     let root = caller(&dir);
     write(&root, "spec.yaml", "openapi: 3.1.0\n");
-    write(&root, "swagger.json", "{ \"swagger\": \"2.0\", \"paths\": {} }");
+    write(
+        &root,
+        "swagger.json",
+        "{ \"swagger\": \"2.0\", \"paths\": {} }",
+    );
     let cases: [(&[&str], &str); 7] = [
-        (&["package", "import", "openapi", "missing.json"], "cli.package_import_unreadable"),
-        (&["package", "import", "openapi", "spec.yaml"], "cli.package_import_unreadable"),
-        (&["package", "import", "openapi", "swagger.json"], "cli.package_import_invalid"),
-        (&["package", "import", "openapi", "swagger.json", "--as", "orders"], "cli.package_arguments"),
-        (&["package", "import", "smithy", "s3.json"], "toolchain.not_built_yet"),
-        (&["package", "import", "raml", "s3.json"], "cli.package_arguments"),
+        (
+            &["package", "import", "openapi", "missing.json"],
+            "cli.package_unreadable",
+        ),
+        (
+            &["package", "import", "openapi", "spec.yaml"],
+            "cli.package_unreadable",
+        ),
+        (
+            &["package", "import", "openapi", "swagger.json"],
+            "cli.package_not_openapi",
+        ),
+        (
+            &[
+                "package",
+                "import",
+                "openapi",
+                "swagger.json",
+                "--as",
+                "orders",
+            ],
+            "cli.package_arguments",
+        ),
+        (
+            &["package", "import", "smithy", "s3.json"],
+            "toolchain.not_built_yet",
+        ),
+        (
+            &["package", "import", "raml", "s3.json"],
+            "cli.package_arguments",
+        ),
         (&["package", "publish"], "cli.package_arguments"),
     ];
     for (args, rule) in cases {
