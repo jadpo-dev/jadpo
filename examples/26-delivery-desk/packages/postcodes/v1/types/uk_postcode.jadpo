@@ -1,0 +1,9 @@
+// Inside a package its names are bare, and its files need no `use` lines:
+// a package sees only its own declarations and the built-ins. `public`
+// marks what the apps that install it may use.
+
+/// A UK postcode in standard form, such as "SW1A 1AA".
+public type UkPostcode = Text {
+    min_length: 5
+    max_length: 8
+}

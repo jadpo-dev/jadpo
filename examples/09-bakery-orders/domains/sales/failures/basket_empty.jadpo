@@ -1,5 +1,5 @@
 /// A basket with nothing in it can't be priced.
-type BasketEmpty = Failure {
+public type BasketEmpty = Failure {
     kind: FailureKind.rejected
     message: "The basket is empty."
 }

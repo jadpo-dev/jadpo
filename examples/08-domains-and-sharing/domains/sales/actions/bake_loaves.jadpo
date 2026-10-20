@@ -17,7 +17,7 @@ use pantry/failures { FlourShort }
 use pantry
 
 /// How many loaves a bake makes.
-type LoafCount = Int {
+public type LoafCount = Int {
     min: 1
     max: 100
 }

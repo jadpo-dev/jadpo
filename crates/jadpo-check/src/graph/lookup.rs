@@ -164,9 +164,11 @@ impl Names<'_> {
                     .as_ref()
                     .and_then(tree::name_text);
                 Some(Found::Node(match library {
-                    Some(library) => {
-                        library_function_key(self.resolver.symbols.registry(), &library, text)
-                    }
+                    Some(library) => library_function_key(
+                        self.resolver.symbols.registry(),
+                        &self.resolver.symbols.canonical(&library),
+                        text,
+                    ),
                     None => declaration_key(self.resolver.symbols, text)?,
                 }))
             }

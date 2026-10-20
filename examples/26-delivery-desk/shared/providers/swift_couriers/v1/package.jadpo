@@ -1,0 +1,10 @@
+// The app's own integration lives in `shared/providers/`, in exactly the
+// package format, so an official package can replace it later by changing
+// the folder, the lock and the `use` lines. It needs no lock line: it is
+// the app's own code.
+
+/// Swift Couriers' pickup API, written from its documentation.
+package SwiftCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}

@@ -281,12 +281,18 @@ enum Need {
     Domain(String),
     /// A connection declared in `app.jadpo` (area 11).
     Connection(String),
+    /// A package, by its name in code, for names written through it
+    /// (area 11).
+    Package(String),
 }
 
 /// Where a `use` line's path points.
 enum Target {
     Domain(String),
     Folder(String),
+    /// `use packages/postcodes` or `use shared/providers/acme_couriers`:
+    /// a package, by its name in code.
+    Package(String),
 }
 
 /// The file being checked, and how to read names from where it is.
@@ -627,8 +633,11 @@ impl Here<'_> {
         let name = written.name.as_str();
         match written.role {
             Role::Type => {
-                if self.std.is_type(name) || self.table.is_package(name) {
+                if self.std.is_type(name) {
                     return None;
+                }
+                if self.table.is_package(name) {
+                    return self.package_needed(name);
                 }
                 // A name the file declares itself is its own, even when
                 // another declaration of it is reported as a duplicate.
@@ -684,13 +693,20 @@ impl Here<'_> {
             .filter_map(|(_, need)| match need {
                 Need::Name(symbol) => Some(symbol.name.as_str()),
                 Need::Connection(name) => Some(name.as_str()),
-                Need::Domain(_) => None,
+                Need::Domain(_) | Need::Package(_) => None,
             })
             .collect();
         let used_domains: BTreeSet<&str> = needs
             .iter()
             .filter_map(|(_, need)| match need {
                 Need::Domain(domain) => Some(domain.as_str()),
+                _ => None,
+            })
+            .collect();
+        let used_packages: BTreeSet<&str> = needs
+            .iter()
+            .filter_map(|(_, need)| match need {
+                Need::Package(package) => Some(package.as_str()),
                 _ => None,
             })
             .collect();
@@ -717,6 +733,7 @@ impl Here<'_> {
         let mut out = Vec::new();
         let mut imported: BTreeMap<String, (u32, u32)> = BTreeMap::new();
         let mut domains: BTreeMap<String, usize> = BTreeMap::new();
+        let mut packages: BTreeMap<String, usize> = BTreeMap::new();
         let mut folders: BTreeMap<String, usize> = BTreeMap::new();
         for (index, line) in self.lines.iter().enumerate() {
             let target = match self.target(line) {
@@ -732,6 +749,14 @@ impl Here<'_> {
                 }
             };
             match target {
+                Target::Package(package) => {
+                    if let Some(&first) = packages.get(&package) {
+                        out.push(self.duplicate_line(index, first));
+                    } else if !used_packages.contains(package.as_str()) && !unresolved {
+                        out.push(self.unused_package(index, &package));
+                    }
+                    packages.entry(package).or_insert(index);
+                }
                 Target::Domain(domain) => {
                     if let Some(&first) = domains.get(&domain) {
                         out.push(self.duplicate_line(index, first));
@@ -797,6 +822,11 @@ impl Here<'_> {
                         out.push(self.missing_domain(written, domain));
                     }
                 }
+                Need::Package(package) => {
+                    if !packages.contains_key(package) {
+                        out.push(self.missing_package(written, package));
+                    }
+                }
             }
         }
         out
@@ -826,6 +856,9 @@ impl Here<'_> {
             (Some(near), Some((_, s, e))) => Box::new(problem.edit(self.span(*s, *e), near)),
             _ => problem,
         };
+        if let Some(target) = self.package_target(line, &parts, &span) {
+            return target;
+        }
         match (parts.len(), line.names.is_some()) {
             (1, false) if domain => Ok(Target::Domain(first.to_string())),
             (1, true) if roots.contains(&first) => Ok(Target::Folder(first.to_string())),
@@ -851,11 +884,11 @@ impl Here<'_> {
                 }
             }
             (2, true) if domain => {
-                if Folder::from_name(parts[1]).is_some() {
+                if Folder::from_name(parts[1]).is_some_and(|f| Folder::DOMAIN.contains(&f)) {
                     return Ok(Target::Folder(folder));
                 }
-                let near = nearest(parts[1], Folder::ALL.iter().map(|f| f.name()));
-                let folders: Vec<String> = Folder::ALL
+                let near = nearest(parts[1], Folder::DOMAIN.iter().map(|f| f.name()));
+                let folders: Vec<String> = Folder::DOMAIN
                     .iter()
                     .map(|folder| format!("`{}`", folder.name()))
                     .collect();
@@ -1101,6 +1134,128 @@ impl Here<'_> {
             format!("Remove `{name}` from this line")
         })
         .edit(self.span_of(&self.remove_entry(index, entry)), "")
+    }
+
+    /// What a name written through package `name` needs: the package's
+    /// `use` line, unless the file is the package's own code, which writes
+    /// its names bare.
+    fn package_needed(&self, name: &str) -> Option<Need> {
+        if self
+            .location
+            .ownership
+            .package()
+            .is_some_and(|home| home.code == name)
+        {
+            return None;
+        }
+        Some(Need::Package(name.to_string()))
+    }
+
+    /// The package `name`'s `use` path: where it is installed, or the
+    /// app's own integration.
+    fn package_path(&self, name: &str) -> String {
+        self.table
+            .all()
+            .homes
+            .get(name)
+            .and_then(|homes| homes.first())
+            .map_or_else(
+                || format!("{}/{}", jadpo_db::PACKAGES, crate::case::to_snake(name)),
+                |home| home.use_path(),
+            )
+    }
+
+    /// A `use` line naming a package, `use packages/postcodes` or `use
+    /// shared/providers/acme_couriers`: the package, or why it names none.
+    /// `None` for a line that doesn't start like one.
+    #[allow(clippy::type_complexity)]
+    fn package_target(
+        &self,
+        line: &UseLine,
+        parts: &[&str],
+        span: &Span,
+    ) -> Option<Result<Target, Box<Diagnostic>>> {
+        let (installed, name) = match parts {
+            [jadpo_db::PACKAGES, rest @ ..] => (true, rest),
+            ["shared", jadpo_db::PROVIDERS, rest @ ..] => (false, rest),
+            _ => return None,
+        };
+        let folder = line.folder();
+        let homes = &self.table.all().homes;
+        let found = match name {
+            [name] if line.names.is_none() => homes
+                .values()
+                .flatten()
+                .find(|home| home.name == *name && home.installed == installed),
+            _ => None,
+        };
+        if let Some(home) = found {
+            return Some(Ok(Target::Package(home.code.clone())));
+        }
+        let shape = match (name, line.names.is_some()) {
+            ([_], false) => None,
+            _ => Some(format!(
+                "A package comes in whole, by its folder's name, `use {}`: what it offers is then written through its name, `<Package>.<name>`.",
+                if installed {
+                    "packages/<name>"
+                } else {
+                    "shared/providers/<name>"
+                }
+            )),
+        };
+        let reason = shape.unwrap_or_else(|| {
+            let held: Vec<String> = homes
+                .values()
+                .flatten()
+                .filter(|home| home.installed == installed)
+                .map(|home| format!("`{}`", home.use_path()))
+                .collect();
+            let listed = match held.len() {
+                0 => String::new(),
+                _ => format!(" This project has {}.", crate::and_list(&held)),
+            };
+            if installed {
+                format!("`packages/` holds the installed packages, and none is in `{folder}/`.{listed}")
+            } else {
+                format!("`shared/providers/` holds the app's own integrations, and none is in `{folder}/`.{listed}")
+            }
+        });
+        Some(Err(Box::new(
+            Diagnostic::new(&rule::IMPORT_UNKNOWN, format!("`{folder}` isn't a package"))
+                .at(span.clone(), "not a package")
+                .reason(reason)
+                .next("Name a package the project holds, or install it with `jadpo package add`"),
+        )))
+    }
+
+    fn missing_package(&self, written: &Written, package: &str) -> Diagnostic {
+        let path = self.package_path(package);
+        let (at, insert) = self.add(&path, None);
+        Diagnostic::new(&rule::IMPORT_MISSING, format!("`{package}` isn't imported"))
+            .at(self.span(written.start, written.end), "not imported")
+            .reason(format!(
+                "A package's names are written through it, and the package comes in on a `use` line of its own, which says where it is: `use {path}`."
+            ))
+            .next(format!(
+                "Add `use {path}`, or run `jadpo fmt`, which adds every missing import"
+            ))
+            .edit(self.span(at.0, at.1), insert)
+    }
+
+    fn unused_package(&self, index: usize, package: &str) -> Diagnostic {
+        let line = &self.lines[index];
+        let (start, end) = line.path_span();
+        Diagnostic::new(
+            &rule::IMPORT_UNUSED,
+            format!("`{}` is imported but not used", line.folder()),
+        )
+        .at(self.span(start, end), "nothing written through it")
+        .reason(format!(
+            "`use {}` brings in package `{package}` for names such as `{package}.<name>`, and this file writes none.",
+            line.folder()
+        ))
+        .next("Remove this line")
+        .edit(self.span_of(&self.whole_line(index)), "")
     }
 
     fn unused_domain(&self, index: usize, domain: &str) -> Diagnostic {
@@ -1538,7 +1693,7 @@ mod tests {
 
     #[test]
     fn the_formatter_sorts_by_the_layouts_folders_and_root_files() {
-        let folders: Vec<&str> = Folder::ALL.iter().map(|folder| folder.name()).collect();
+        let folders: Vec<&str> = Folder::DOMAIN.iter().map(|folder| folder.name()).collect();
         assert_eq!(folders, jadpo_fmt::FOLDERS);
         let roots: Vec<&str> = RootFile::ALL
             .iter()

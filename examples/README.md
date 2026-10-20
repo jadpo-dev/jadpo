@@ -98,6 +98,10 @@ README saying what it teaches, how to run it and what to try next.
 25. [25-allotment-rents/](25-allotment-rents/README.md): schedules, and
     background work in an application with tenants: a schedule reaching
     every tenant, a subscriber and a batch reaching one.
+26. [26-delivery-desk/](26-delivery-desk/README.md): packages: an
+    installed library package locked by its digest and used through its
+    name, and the app's own integration with a provider's API in the
+    package format.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

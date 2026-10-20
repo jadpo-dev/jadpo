@@ -1,0 +1,11 @@
+// The app brings a package in whole with `use packages/<name>`, and writes
+// what it offers through its name: a type, a failure, a library's function.
+
+use packages/postcodes
+
+/// Reads the postcode a customer typed for their delivery.
+action check_postcode(
+    entered: Postcodes.EnteredPostcode
+) fails Postcodes.InvalidPostcode -> Postcodes.UkPostcode {
+    return attempt Postcodes.uk.tidy(entered)
+}

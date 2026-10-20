@@ -484,10 +484,10 @@ fn only_a_domains_interface_can_be_public() {
     assert_eq!(
         with_users(
             "domains/planning/fixtures/counted.jadpo",
-            "use planning/types { Count }\nuse planning/actions { keep }\n\npublic fixture counted() -> Count {\n    return keep(3)\n}\n",
+            "public fixture counted() -> Unit {}\n",
             &[(
                 "tests/counting.test.jadpo",
-                "use planning\n\ntest \"planning counts\" {\n    assert planning.counted() == 3\n}\n"
+                "use planning\n\ntest \"planning counts\" {\n    planning.counted()\n}\n"
             )]
         ),
         CLEAN

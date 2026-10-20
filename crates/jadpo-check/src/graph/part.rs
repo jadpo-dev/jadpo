@@ -47,6 +47,7 @@ pub fn file_part(db: &dyn Db, project: Project, file: File) -> FilePart {
             .ownership
             .domain()
             .map(str::to_string),
+        ownership: location(db, project, file).ownership.clone(),
         resolver: Resolver {
             symbols: &lookup,
             table: &lookup,
@@ -86,6 +87,9 @@ struct Part<'a> {
     path: &'a String,
     lines: LineIndex,
     domain: Option<String>,
+    /// Who owns the file: a domain, or a package whose declarations' keys
+    /// carry its name (area 11).
+    ownership: jadpo_db::Ownership,
     resolver: Resolver<'a>,
     lookup: &'a Lookup<'a>,
     items: &'a [Item],
@@ -96,9 +100,10 @@ impl Part<'_> {
     /// The key of this file's declaration `name` of `item`, which carries
     /// the file's domain for a function or type (area 18).
     fn item_key(&self, kind: Kind, item: &jadpo_db::ItemKind, name: &str) -> Key {
-        let ownership = match &self.domain {
-            Some(domain) => jadpo_db::Ownership::Domain(domain.clone()),
-            None => jadpo_db::Ownership::Root,
+        let ownership = match (&self.ownership, &self.domain) {
+            (jadpo_db::Ownership::Package(_), _) => self.ownership.clone(),
+            (_, Some(domain)) => jadpo_db::Ownership::Domain(domain.clone()),
+            (_, None) => jadpo_db::Ownership::Root,
         };
         item_key(self.lookup.registry(), kind, item, name, &ownership)
     }
@@ -350,7 +355,9 @@ impl Part<'_> {
     }
 
     fn library(&mut self, decl: &ast::LibraryDecl, item: &Item) {
-        let key = self.lookup.registry().key(Kind::Library, &item.name, None);
+        // A package's library is known through its package (area 11).
+        let library = self.lookup.canonical_name(&item.name);
+        let key = self.lookup.registry().key(Kind::Library, &library, None);
         let mut node = self.node(
             key.clone(),
             Kind::Library,
@@ -364,13 +371,13 @@ impl Part<'_> {
             .zip(item.functions.iter())
         {
             if member.kind == jadpo_db::ItemKind::Constant {
-                let Some(child) = super::constant_key(self.lookup, Some(&item.name), &member.name)
+                let Some(child) = super::constant_key(self.lookup, Some(&library), &member.name)
                 else {
                     continue;
                 };
                 self.constant(
                     child,
-                    format!("{}.{}", item.name, member.name),
+                    format!("{library}.{}", member.name),
                     function.syntax(),
                     item,
                     Some(member),
@@ -378,11 +385,11 @@ impl Part<'_> {
                 );
                 continue;
             }
-            let child = library_function_key(self.lookup.registry(), &item.name, &member.name);
+            let child = library_function_key(self.lookup.registry(), &library, &member.name);
             let mut node = self.node(
                 child.clone(),
                 Kind::Function,
-                format!("{}.{}", item.name, member.name),
+                format!("{library}.{}", member.name),
                 function.syntax().clone(),
             );
             node.parent = Some(key.clone());
