@@ -1,0 +1,8 @@
+use shared/providers/swift_couriers
+
+/// Sent to the desk each time the courier collects.
+type CollectionReceipt = EmailMessage {
+    driver_name: SwiftCouriers.DriverName
+    parcel_count: Int
+    pickup_id: SwiftCouriers.PickupId
+}

@@ -1,0 +1,4 @@
+translations {
+    collection_receipt: "Swift collected {parcel_count} parcels"
+    pickup_slot_gone: "That pickup slot has gone; choose another."
+}
