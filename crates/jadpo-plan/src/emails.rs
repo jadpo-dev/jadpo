@@ -190,6 +190,7 @@ pub(crate) fn plan(
                 tenant: TenantFrom::Nowhere,
                 store,
                 connections,
+                through: None,
                 file,
                 line: 1,
             })

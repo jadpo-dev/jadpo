@@ -2468,8 +2468,9 @@ answer passed to the next, and the app calling it through its connection
 and mapping its failure at the call. A package action's changing calls
 are steps of the action that calls it (area 12, "Several changing calls
 in one action"); the record of those steps comes with roadmap 7.5b. Its
-subscribers and the events they emit, polls and `max_concurrent:` come
-with roadmap 7.6b. The choices are in "Chosen in chunk 7.6".
+subscribers and the events they emit came with chunk 7.6b (below); polls
+and `max_concurrent:` come with roadmap 7.6c. The choices are in "Chosen
+in chunk 7.6".
 
 ```jadpo check project=p76-actions file=app.jadpo hidden
 application {
@@ -2651,6 +2652,193 @@ action subscribe(tier: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayRep
 }
 ```
 
+Built in chunk 7.6b, with its choices under "Chosen in chunk 7.6b": a
+package's subscriber on an event its webhooks bring, kept to the package,
+running the package's action that looks the subscription up through the
+connection the webhook came in on and emits the package's own public
+event, which the app's subscriber keeps. The event the action emits gives
+no `wire_name:`: that marks one the provider sends.
+
+```jadpo check project=p76b-subscribers file=app.jadpo hidden
+application {
+    connections: {
+        payments: {
+            package: AcmePay.v1
+            domains: [billing]
+            credential: config.payments_key
+            environment: config.payments_environment
+            webhooks: {
+                secret: config.payments_webhook_secret
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=config.jadpo hidden
+config {
+    payments_environment: ProviderEnvironment
+    payments_key: Text {
+        secret: true
+    }
+    payments_webhook_secret: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's API, which signs its webhooks as Stripe does.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.stripe
+        event_id: "id"
+        event_type: "type"
+        occurred_at: "created"
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/types/reference.jadpo hidden
+/// Acme Pay's reference for a record.
+public type Reference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/types/subscription_asked.jadpo hidden
+/// Which subscription to look up.
+type SubscriptionAsked = Object {
+    id: Reference
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/types/subscription.jadpo hidden
+/// A subscription, as Acme Pay keeps it.
+type Subscription = Object {
+    id: Reference
+    tier: Reference
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/resources/subscriptions.jadpo hidden
+resource subscriptions {
+    retrieve: {
+        method: HttpMethod.post
+        path: "/v1/subscriptions/lookup"
+        input: SubscriptionAsked
+        output: Subscription
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/events/invoice_paid.jadpo
+/// An invoice was paid: all Acme Pay's webhook says, kept to the package.
+type InvoicePaid = Event {
+    wire_name: "invoice.paid"
+    occurred_at: Instant
+    subscription: Reference
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/events/subscription_renewed.jadpo
+/// A subscription was renewed, with its tier: the package's own event.
+public type SubscriptionRenewed = Event {
+    subscription: Reference
+    tier: Reference
+    paid_at: Instant
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/actions/announce_renewal.jadpo
+/// Looks up the subscription an invoice paid for, and announces it.
+action announce_renewal(event: InvoicePaid) -> Unit {
+    var renewed_subscription: Subscription = subscriptions.retrieve(
+        SubscriptionAsked {
+            id: event.subscription
+        }
+    )
+    emit SubscriptionRenewed {
+        subscription: renewed_subscription.id
+        tier: renewed_subscription.tier
+        paid_at: event.occurred_at
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=shared/providers/acme_pay/v1/subscribers/renewal.jadpo
+/// Turns a paid invoice into a renewal.
+subscriber renewal {
+    on: InvoicePaid
+    run: announce_renewal(event)
+}
+```
+
+```jadpo check project=p76b-subscribers file=domains/billing/entities/renewal.jadpo hidden
+use shared/providers/acme_pay
+
+/// A subscription renewed at Acme Pay.
+entity Renewal {
+    id: Uuid
+    subscription: AcmePay.Reference
+    tier: AcmePay.Reference
+    paid_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=domains/billing/actions/record_renewal.jadpo hidden
+use billing/entities { Renewal }
+use shared/providers/acme_pay
+
+/// Keeps a renewal Acme Pay announced.
+action record_renewal(event: AcmePay.SubscriptionRenewed) -> Renewal {
+    return Renewal.create {
+        set: {
+            subscription: event.subscription
+            tier: event.tier
+            paid_at: event.paid_at
+        }
+    }
+}
+```
+
+```jadpo check project=p76b-subscribers file=domains/billing/subscribers/renewed.jadpo migrate=initial
+use billing/actions { record_renewal }
+use shared/providers/acme_pay
+
+/// Keeps each renewal Acme Pay announces.
+subscriber renewed {
+    on: AcmePay.SubscriptionRenewed
+    run: record_renewal(event)
+}
+```
+
+A signed `invoice.paid` reaches `renewal` once, its lookup sent through
+`payments` with that connection's credential, and the renewal it emits
+reaches `renewed` through the app's outbox, as
+`crates/jadpo-cli/tests/package_subscribers.rs` shows against live
+PostgreSQL.
+
 ### Polls
 
 **Polling turns an API without webhooks into events.** `polls:` in
@@ -2756,6 +2944,15 @@ entities) that `jadpo package recipe <package> <recipe> --into <domain>`
 copies into a domain, after which they are the app's own code. Each is
 compiled and tested against the package's `sample/` app at publish and
 listed in the surface. Library packages may ship recipes too.
+
+> **Built (chunk 7.6b)**, with its choices under "Chosen in chunk 7.6b":
+> `jadpo package check`'s `recipes` row compiles each recipe on its own,
+> copied into the one domain of the package's `sample/` app as `jadpo
+> package recipe` copies it, the package placed as the sample's own
+> integration; a recipe that doesn't compile is shown at its own path,
+> `recipes/<recipe>/...`, and a package with recipes and no such sample
+> is `publish.sample_missing`. Running a recipe's tests in `sample/`
+> waits for a recipe that has some.
 
 ## Several changing calls in one action
 
@@ -5542,6 +5739,36 @@ error: Example of `uk.tidy` failed
   help: docs/language/14-tooling.html#command-errors
 ```
 
+### `publish.sample_missing`
+
+Each recipe is compiled in the package's `sample/` app before it is
+published, so a package that ships recipes ships a sample app with one
+domain to copy them into (chunk 7.6b):
+
+```text
+$ jadpo package check
+error: `Couriers.v1`'s recipes have no sample app to compile in
+  reason: Each recipe is compiled before it is published, copied into the one domain of the app in the package's `sample/` folder as `jadpo package recipe` copies it into an app's, so a recipe that no longer fits the package is caught there; this package has no `sample/app.jadpo`.
+  next: Write a small app in `sample/`, its `app.jadpo` connecting to `Couriers.v1` and one domain under `sample/domains/` that the connection lists (agent)
+  rule: publish.sample_missing
+  help: docs/language/14-tooling.html#command-errors
+```
+
+A recipe that doesn't compile there is shown at its own path,
+`recipes/<recipe>/<file>`, and the bar's row names it:
+
+```text
+Publishing bar
+  compiles      passed                        no errors
+  described     passed                        every public declaration
+  examples      passed                        no functions to show
+  tests         passed                        no tests
+  recipes       failed                        track_parcels doesn't compile
+  version       passed                        1.0.0, the first release
+  changelog     passed                        1.0.0 says why
+  licence       passed                        mit, from Jadpo 1.0
+```
+
 ### `publish.changelog_missing`
 
 `jadpo package check` writes the new version's list of changes into
@@ -7019,7 +7246,8 @@ side (below); the rest is still to build.
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
-| Package subscribers on their own webhooks and the events they emit, polls, `max_concurrent:`, recipes compiled against `sample/` at publish | 7.6b |
+| Package subscribers on their own webhooks and the events they emit, recipes compiled against `sample/` at publish | 7.6b |
+| Polls and `max_concurrent:` | 7.6c |
 | Package's services; several changing calls in one action; receiving (webhooks as events built in 7.7, replies and handshakes in 7.7b, queues through a package in 7.7c, the Cloudflare Queues driver in 7.7c2, deployed with Phase 8); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
@@ -8202,7 +8430,8 @@ replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
   request_too_large`. It is counted
   against its address's rate limit, whatever credential it carries. A
   non-public package event is kept and reaches no subscriber, subscribing
-  to one being `package.not_public`; package subscribers come with 7.6.
+  to one being `package.not_public`; the package's own subscribers hear
+  it since chunk 7.6b.
 
 ### Chosen in chunk 7.7c2
 
@@ -8476,7 +8705,8 @@ the most conservative reading:
   `compiles` row shows, so it can't be published.
 - **Emitting.** `emit` in a `public` package action is
   `package.action_invalid`; in one without `public`, which only the
-  package's subscribers run, it is `toolchain.not_built_yet` until 7.6b.
+  package's subscribers run, it was `toolchain.not_built_yet` until 7.6b,
+  which built it (under "Chosen in chunk 7.6b").
 - **A resource and an action of one name** is `package.action_invalid`
   at the action.
 - **The surface.** Each `public` action is an entry after the
@@ -8506,6 +8736,58 @@ recipe copied: Couriers.v1, track_parcels, 2 files
 
 next: jadpo check  shows what to fit to the app
 ```
+
+### Chosen in chunk 7.6b
+
+Package subscribers, the events they emit and recipes compiled in
+`sample/` (the first part of chunk 7.6b, split on 2026-10-20: polls and
+`max_concurrent:` are 7.6c), each the most conservative reading:
+
+- **What a package's subscriber hears.** A subscriber in a package's
+  `subscribers/` listens with `on:` for an event its webhooks bring: one
+  of the package's events with `wire_name:`, its provider declaring
+  `webhooks:`, public or not. Any other event, the package's own events
+  among them, is `subscriber.event_invalid`, so what a package makes of a
+  webhook is for the app's subscribers. Its `run:` calls one of the
+  package's own actions with the event or its fields
+  (`subscriber.run_invalid` otherwise); `retry:` is as any subscriber's.
+- **Through the connection it came in on.** A package's subscriber hears
+  each connection that gives its package `webhooks: { secret: }`, and
+  only the events that came in on that connection: one delivery each,
+  named `subscriber <Package>.<name> <connection>` (`subscriber
+  AcmePay.renewal payments`), so a package connected twice runs its
+  subscriber once per webhook, through the connection the webhook named.
+  Its action's operations go through that connection, with its
+  credential, host, timeout and fake; its changing calls are the
+  delivery's steps, keyed by the delivery, as a subscriber's action's
+  are; and a delivery is held while that connection's circuit breaker is
+  open.
+- **What a package's action emits.** An action without `public`, which
+  only the package's subscribers run, emits the package's own events. An
+  event a package's action emits and that gives no `wire_name:` is the
+  package's own, and needs neither `wire_name:` nor `occurred_at`;
+  `wire_name:` marks an event the provider sends, and emitting one is
+  `package.action_invalid`, since only a signed webhook brings it. An
+  event with neither `wire_name:` nor an action emitting it is still
+  `package.wire_name_invalid` in a package that receives webhooks. What
+  it emits is kept where the package's webhooks are, `events: { store:
+  }` or the only store of the app's records, and reaches the app's
+  subscribers of its public events; a package's subscriber never hears
+  it, and one without `public` reaches no one.
+- **Recipes in `sample/`.** `jadpo package check` compiles each recipe on
+  its own, copied into the one domain of the package's `sample/` app
+  (its `app.jadpo` and `domains/`), with the package placed as the
+  sample's own integration, as the bar places it for its own compile, so a
+  recipe names the package as an app's own integration does; the
+  migrations and records a recipe would need aren't asked for, since an
+  app writes its own once it copies the recipe. The `recipes` row reads
+  `1 recipe compiles in sample/`, or which didn't; a recipe's problem is
+  shown at `recipes/<recipe>/<file>` and a problem of the sample's own at
+  `sample/<file>`, once. A package with recipes and no `sample/app.jadpo`,
+  or a sample with no domain or several, is `publish.sample_missing`.
+  The row isn't shown for a package with no recipes, and waits when the
+  package has errors. A recipe's own tests run in `sample/` once a recipe
+  has some.
 
 ### Chosen in chunk 7.1e
 
@@ -9063,6 +9345,7 @@ packages and extension points, as each note says; 26 was decided then.
 | What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |
 | Where a type is marked reviewed (chunk 7.2e2) | An imported provider package lists the types an agent has gone through in `provider.jadpo`'s `imported:`, `reviewed: [Charge, Shop]`, each one of its own types once; the review covers the types the app's calls reach, worked out on every check, for the app's own integrations only, and stops nothing (decided by the building session) | 2026-10-20 |
 | Webhook replies and handshakes (chunk 7.7b) | `SignatureScheme.slack` joins the built-in schemes, since no named one checks Slack; an SNS connection's `secret:` is its topic's ARN, a message from any other topic refused before its certificate is fetched; SNS's certificate fetched only from AWS's SNS hosts over HTTPS through the host's guard (no redirect, no private address) and kept a day; an SNS message refused once signed 30 days ago, as long as a received id is kept; Microsoft Graph's validation the one request answered unsigned; a reply kept after its action commits, not in its transaction (decided by the building session; details under "Chosen in chunk 7.7b") | 2026-10-20 |
+| Package subscribers and recipes in `sample/` (chunk 7.6b) | A package's subscriber hears only its webhooks' events, once per connection receiving them and through that connection; an event a package's action emits without `wire_name:` is the package's own, and emitting a webhook's event is refused; recipes compile one at a time in the one domain of `sample/`, the package placed as its own integration, migrations and records left to the app (decided by the building session, conservatively; details under "Chosen in chunk 7.6b") | 2026-10-20 |
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |

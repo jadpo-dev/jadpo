@@ -2107,6 +2107,11 @@ outbox and delivered to subscribers like any event, with the same retries.
   subscribers, and subscribing to one is a compile error. A package emits
   only about the outside world, never as a side effect of the app calling
   it: the app's action emits its own event there, where a reviewer sees it.
+  Built in chunk 7.6b (area 11, "Chosen in chunk 7.6b"): a package's
+  subscriber hears its webhooks' events once per connection receiving
+  them, its action calling the API through that connection, and what the
+  action emits is kept in the outbox where the webhooks are and delivered
+  to the app's subscribers of its public events.
 - **Polls.** `polls:` in a package's `provider.jadpo` names an operation, a
   default interval and the event emitted when the answer changes, turning
   an API without webhooks into events. The runtime runs a poll only while
