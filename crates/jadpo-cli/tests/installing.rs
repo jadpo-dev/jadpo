@@ -463,3 +463,229 @@ fn copy(from: &Path, to: &Path) {
         std::fs::copy(from, to).expect("copy");
     }
 }
+
+/// Output written from another thread, read as it grows.
+#[derive(Clone, Default)]
+struct Shared(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Shared {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("shared").extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Shared {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("shared")).into_owned()
+    }
+}
+
+/// An app with `Postcodes.v2` installed and linked to a checkout beside
+/// it, `<dir>/postcodes-dev`, and an action and its test reading through
+/// the package: `<dir>/shop`.
+fn linked_app(name: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
+    let dir = tempdir::Dir::new(name);
+    let app = dir.path().join("shop");
+    let checkout = dir.path().join("postcodes-dev");
+    write(&app, "app.jadpo", "application {}\n");
+    for (path, text) in super::packages::package_files() {
+        write(&app, &format!("packages/postcodes/v2/{path}"), text);
+        write(&checkout, path, text);
+    }
+    write(&app, "domains/intake/actions/check_postcode.jadpo", USES);
+    write(
+        &app,
+        "domains/intake/actions/check_postcode.test.jadpo",
+        "use packages/postcodes
+
+test \"a typed postcode is read in upper case\" {
+    var postcode: Postcodes.UkPostcode = attempt check_postcode(\"sw1a 1aa\")
+    assert postcode == \"SW1A 1AA\"
+}
+",
+    );
+    write(&app, "jadpo.lock", &linked_lock());
+    (dir, app, checkout)
+}
+
+fn linked_lock() -> String {
+    jadpo_db::write_lock(&[jadpo_db::Locked {
+        package: "Postcodes.v2".to_string(),
+        source: Source::Link {
+            path: "../postcodes-dev".to_string(),
+        },
+    }])
+}
+
+/// The lock line `jadpo package add` writes for the installed copy.
+fn installed_lock() -> String {
+    let held: Vec<(&str, &[u8])> = super::packages::package_files()
+        .iter()
+        .map(|(path, text)| (*path, text.as_bytes()))
+        .collect();
+    jadpo_db::write_lock(&[jadpo_db::Locked {
+        package: "Postcodes.v2".to_string(),
+        source: Source::Path {
+            version: "2.1.0".to_string(),
+            path: "../postcodes".to_string(),
+            digest: jadpo_db::package_digest(&held),
+        },
+    }])
+}
+
+/// The tests a watch step ran, and how many fail now.
+fn watched(event: &jadpo_test::watch::Event) -> (Vec<String>, usize) {
+    let names = match &event.ran {
+        Some(jadpo_test::Ran::Done(run)) => run
+            .results
+            .iter()
+            .map(|result| result.test.name.clone())
+            .collect(),
+        other => panic!("expected a run, got {other:?}"),
+    };
+    (names, event.failing)
+}
+
+#[test]
+fn test_watch_reads_a_linked_checkout_as_it_changes() {
+    use jadpo_test::watch::{Edit, EditKind, Watch};
+    let (_dir, app, checkout) = linked_app("install-watch-7.1d");
+    let options = jadpo_test::Options {
+        cwd: app.clone(),
+        seed: Some(1),
+        ..jadpo_test::Options::default()
+    };
+    let (mut watch, first) = Watch::start(options).expect("starts");
+    assert_eq!(
+        watched(&first),
+        (
+            vec!["a typed postcode is read in upper case".to_string()],
+            0
+        )
+    );
+    // A save in the checkout reaches the app's test, at the package's path.
+    let library = "packages/postcodes/v2/libraries/uk.jadpo";
+    let text = std::fs::read_to_string(checkout.join("libraries/uk.jadpo")).expect("read");
+    write(
+        &checkout,
+        "libraries/uk.jadpo",
+        &text.replace("text.upper(written)", "text.lower(written)"),
+    );
+    let event = watch
+        .apply(vec![Edit::new(library, EditKind::Saved)])
+        .expect("a change");
+    assert_eq!(
+        watched(&event),
+        (
+            vec!["a typed postcode is read in upper case".to_string()],
+            1
+        )
+    );
+    // A mistake in the checkout is shown there.
+    let lower = std::fs::read_to_string(checkout.join("libraries/uk.jadpo")).expect("read");
+    write(
+        &checkout,
+        "libraries/uk.jadpo",
+        &lower.replace("text.lower(written)", "text.lowr(written)"),
+    );
+    let event = watch
+        .apply(vec![Edit::new(library, EditKind::Saved)])
+        .expect("a change");
+    match &event.ran {
+        Some(jadpo_test::Ran::Refused { diagnostics, .. }) => assert_eq!(
+            diagnostics
+                .iter()
+                .filter_map(|d| d.primary.as_ref())
+                .map(|label| label.span.path.as_str())
+                .collect::<Vec<_>>(),
+            ["../postcodes-dev/libraries/uk.jadpo"]
+        ),
+        other => panic!("expected the errors, got {other:?}"),
+    }
+    write(&checkout, "libraries/uk.jadpo", &lower);
+    // Unlinked, the installed copy is read again.
+    write(&app, "jadpo.lock", &installed_lock());
+    let event = watch
+        .apply(vec![
+            Edit::new("jadpo.lock", EditKind::Saved),
+            Edit::new(library, EditKind::Saved),
+        ])
+        .expect("a change");
+    assert_eq!(
+        watched(&event),
+        (
+            vec!["a typed postcode is read in upper case".to_string()],
+            0
+        )
+    );
+    // And linked again, the checkout.
+    write(&app, "jadpo.lock", &linked_lock());
+    let event = watch
+        .apply(vec![Edit::new("jadpo.lock", EditKind::Saved)])
+        .expect("a change");
+    assert_eq!(
+        watched(&event),
+        (
+            vec!["a typed postcode is read in upper case".to_string()],
+            1
+        )
+    );
+}
+
+#[test]
+fn dev_watches_a_linked_checkout() {
+    let (_dir, app, checkout) = linked_app("install-dev-7.1d");
+    let out = Shared::default();
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let args = jadpo_cli::dev::DevArgs {
+        cwd: app.clone(),
+        port: 0,
+        url: None,
+        no_run: true,
+        json: false,
+        choice: jadpo_term::ColorChoice::Never,
+    };
+    let session = {
+        let mut out = out.clone();
+        let stop = std::sync::Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let mut err = Shared::default();
+            jadpo_cli::dev::serve_to(&args, &Environment::empty(), &mut out, &mut err, &|| {
+                stop.load(std::sync::atomic::Ordering::SeqCst)
+            })
+        })
+    };
+    let wait_for = |what: &str| {
+        let started = std::time::Instant::now();
+        while !out.text().contains(what) {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(60),
+                "no `{what}` in:\n{}",
+                out.text()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    wait_for("serving nothing");
+    // A mistake saved in the checkout is checked at once.
+    let text = std::fs::read_to_string(checkout.join("libraries/uk.jadpo")).expect("read");
+    write(
+        &checkout,
+        "libraries/uk.jadpo",
+        &text.replace("text.upper(written)", "text.uppr(written)"),
+    );
+    wait_for("saved packages/postcodes/v2/libraries/uk.jadpo");
+    wait_for("errors");
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(session.join().expect("the session"), 0);
+    let shown = out.text();
+    assert!(
+        shown.contains("../postcodes-dev/libraries/uk.jadpo"),
+        "the problem shows at the checkout's path:\n{shown}"
+    );
+}

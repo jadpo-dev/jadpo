@@ -900,12 +900,21 @@ The design is area 11 as revised on 2026-10-16, with its research in
   members wording package text nothing calls, the package no longer has
   or keeps private, or no package owns. Choices in area 10, "Chosen in
   chunk 7.1b4".
-- [ ] **7.1d Package names kept to their package** `opus · high` (found
+- [x] **7.1d Package names kept to their package** `opus · high` (found
   in chunk 7.1b2): a library function in an installed package clashing
   with an app action of the same name (`Postcodes.uk.tidy` against an
   app's `tidy` gives `semantic.duplicate_declaration`), though a
   package's names are scoped to it; and `jadpo dev` and `jadpo test
   --watch` watching a linked checkout, not only reading it at start.
+  Built: a package's declarations unique only within it, never clashing
+  with the app's (types, failures, events, actions, queries, libraries)
+  or another package's, each name reaching the right one in the checker,
+  the graph and the interpreter; the shared watcher reading the lock at
+  every look and watching a linked checkout at the package's paths, with
+  5.13b's half-written-file guard, `test --watch` reading a relinked
+  folder again; and a linked package's problems shown in its checkout by
+  `jadpo test` and `dev` as by `check`. Choices in area 11's "Chosen in
+  chunk 7.1d".
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,

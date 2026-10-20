@@ -810,3 +810,65 @@ fn check_needs_a_package() {
         refused.stderr
     );
 }
+
+#[test]
+fn a_packages_names_run_apart_from_the_apps() {
+    // The app declares `parse`, `UkPostcode` and `InvalidPostcode` as the
+    // package does; each test reads the one it names (chunk 7.1d).
+    let (_dir, root) = app("package-namesakes");
+    write(
+        &root,
+        "shared/types/uk_postcode.jadpo",
+        "type UkPostcode = Text {\n    max_length: 3\n}\n",
+    );
+    write(
+        &root,
+        "shared/failures/invalid_postcode.jadpo",
+        "type InvalidPostcode = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+    );
+    write(
+        &root,
+        "domains/intake/actions/parse.jadpo",
+        "use shared/types { UkPostcode }
+use shared/failures { InvalidPostcode }
+
+/// Reads a short code, the app's own way.
+action parse(written: UkPostcode) fails InvalidPostcode -> UkPostcode {
+    if (written == \"x\") {
+        reject InvalidPostcode
+    }
+    return \"app\"
+}
+",
+    );
+    write(
+        &root,
+        "domains/intake/actions/parse.test.jadpo",
+        "use packages/postcodes
+use shared/types { UkPostcode }
+use shared/failures { InvalidPostcode }
+
+test \"the app's parse is its own\" {
+    var mine: UkPostcode = attempt parse(\"abc\")
+    assert mine == \"app\"
+    assert parse(\"x\") fails InvalidPostcode
+}
+
+test \"the package's parse is the package's\" {
+    var theirs: Postcodes.UkPostcode = attempt Postcodes.uk.parse(\"sw1a 1aa\")
+    assert theirs == \"SW1A 1AA\"
+    assert Postcodes.uk.parse(\"x\") fails Postcodes.InvalidPostcode
+}
+",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let tested = jadpo(&root, &["test"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(
+        tested.stdout.contains("2 passed"),
+        "{}{}",
+        tested.stdout,
+        tested.stderr
+    );
+}

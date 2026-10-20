@@ -762,12 +762,14 @@ pub(crate) fn prepare(
         permissions.as_ref(),
         &surfaces,
     );
-    let blocking: Vec<Diagnostic> = diagnostics
+    let mut blocking: Vec<Diagnostic> = diagnostics
         .into_iter()
         .filter(jadpo_check::blocks_running)
         .collect();
     if !blocking.is_empty() {
-        let sources = jadpo_db::source_texts(db, project);
+        // A linked package's problems show in its checkout (area 11).
+        let mut sources = jadpo_db::source_texts(db, project);
+        jadpo_db::show_in_checkouts(&loaded.links, &mut blocking, &mut sources);
         return Err((blocking, sources));
     }
     let set = jadpo_check::data::migrations::migrations(db, project);

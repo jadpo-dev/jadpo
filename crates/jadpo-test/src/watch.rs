@@ -239,10 +239,13 @@ impl Watch {
             return false;
         }
         let db = &self.loaded.db;
+        // A change to the lock can link or unlink a package, which reads
+        // its whole folder again from elsewhere.
         let before = (
             self.loaded.file(path).map(|file| file.text(db).clone()),
             self.loaded.project.other_files(db).clone(),
             self.loaded.unreadable.clone(),
+            self.loaded.links.clone(),
         );
         self.loaded.refresh(path);
         let db = &self.loaded.db;
@@ -250,6 +253,7 @@ impl Watch {
             self.loaded.file(path).map(|file| file.text(db).clone()),
             self.loaded.project.other_files(db).clone(),
             self.loaded.unreadable.clone(),
+            self.loaded.links.clone(),
         );
         before != after
     }

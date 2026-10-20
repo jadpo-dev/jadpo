@@ -1338,7 +1338,7 @@ pub fn link(call: &Call) -> Reply {
         .collect();
     diagnostics.extend(jadpo_check::check(&loaded.db, loaded.project));
     let mut sources = jadpo_db::source_texts(&loaded.db, loaded.project);
-    crate::package::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
+    jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
     let mut screen = Screen::new();
     for d in &diagnostics {
         screen.push(Block::diagnostic_from(d, &sources, None));
