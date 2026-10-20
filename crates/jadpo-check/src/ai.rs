@@ -74,6 +74,8 @@ pub struct AiSettings {
     /// `embedding_dimensions:`, where it reads, and where it is written
     /// (chunk 5.5v4): the length every vector `ai.embed` gives has.
     pub embedding_dimensions: Option<(u64, Span)>,
+    /// `limits:` (chunk 5.5v5).
+    pub limits: crate::ai_limits::LimitsRead,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -228,6 +230,11 @@ fn url(
 }
 
 /// `config.<name>` as the name it reads.
+pub(crate) fn reads_setting(value: &ast::Expr) -> Option<String> {
+    reads(value)
+}
+
+/// `config.<name>` as the name it reads.
 fn reads(value: &ast::Expr) -> Option<String> {
     let (first, rest) = tree::dotted(value)?;
     if tree::name_ref_text(&first).as_deref() != Some("config") || rest.len() != 1 {
@@ -288,18 +295,19 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                         )
                         .at(key_span, "decided, not built")
                         .reason(format!(
-                            "Area 21 decides `{word}:`, and roadmap chunk {chunk} builds it; this compiler can't keep to it yet, so an application that gives it couldn't run as written."
+                            "Area 21 decides `{word}:`, and it comes with {chunk}; this compiler can't keep to it yet, so an application that gives it couldn't run as written."
                         ))
                         .next(format!("Leave `{word}:` out for now")),
                     );
                     continue;
                 }
-                if !jadpo_std::ai::KEYS.contains(&word.as_str()) {
+                if !jadpo_std::ai::KEYS.contains(&word.as_str()) && word != jadpo_std::ai::LIMITS {
                     let near = nearest(
                         &word,
                         jadpo_std::ai::KEYS
                             .iter()
                             .copied()
+                            .chain([jadpo_std::ai::LIMITS])
                             .chain(jadpo_std::ai::LATER_KEYS.iter().map(|(key, _)| *key)),
                     );
                     let mut problem = invalid(
@@ -315,6 +323,17 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                         None => problem.next(format!("Remove `{word}:`")),
                     };
                     out.problems.push(problem);
+                    continue;
+                }
+                if word == jadpo_std::ai::LIMITS && given.insert(word.clone()) {
+                    out.limits = crate::ai_limits::read(
+                        db,
+                        project,
+                        &found.path,
+                        head.clone(),
+                        Some((key_span, &entry)),
+                        &mut out.problems,
+                    );
                     continue;
                 }
                 if !given.insert(word.clone()) {
@@ -485,6 +504,16 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     );
                 }
                 out.models = read;
+            }
+            if !given.contains(jadpo_std::ai::LIMITS) {
+                out.limits = crate::ai_limits::read(
+                    db,
+                    project,
+                    &found.path,
+                    head.clone(),
+                    None,
+                    &mut out.problems,
+                );
             }
             for needed in jadpo_std::ai::REQUIRED_KEYS {
                 if !given.contains(needed) {

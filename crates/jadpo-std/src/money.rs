@@ -248,6 +248,27 @@ pub fn exponent_of(code: &str) -> u32 {
         .map_or(2, |(_, exponent)| *exponent)
 }
 
+/// Whether `raw` is an amount's canonical text, `GBP 10.50`: an active
+/// currency's code, one space, and the amount in major units with exactly
+/// the currency's places, as `jadpo_value::money::read` reads it; what a
+/// `Money` setting's `default:` is checked against (chunk 5.5v5).
+pub fn is_amount_text(raw: &str) -> bool {
+    let Some((code, amount)) = raw.split_once(' ') else {
+        return false;
+    };
+    let Some(exponent) = ordinal_of_code(code).and_then(exponent) else {
+        return false;
+    };
+    let digits = amount.strip_prefix('-').unwrap_or(amount);
+    let (whole, places) = digits.split_once('.').unwrap_or((digits, ""));
+    let plain = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    !whole.is_empty()
+        && plain(whole)
+        && plain(places)
+        && places.len() == exponent as usize
+        && (exponent == 0 || digits.contains('.'))
+}
+
 /// The exponent of the currency at `ordinal` among `Currency`'s variants.
 pub fn exponent(ordinal: u32) -> Option<u32> {
     CURRENCIES

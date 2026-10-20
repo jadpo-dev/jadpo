@@ -50,7 +50,7 @@ fn desk(name: &str) -> PathBuf {
     write(
         &root,
         "app.jadpo",
-        "application {\n    connections: {\n        local_model: {\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }\n    }\n    ai: {\n        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n    }\n}\n",
+        "application {\n    connections: {\n        local_model: {\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }\n    }\n    ai: {\n        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n    }\n}\n",
     );
     write(
         &root,
@@ -97,8 +97,11 @@ fn desk(name: &str) -> PathBuf {
         "domains/support/routes/answers.jadpo",
         "use support/actions { stream_answer }\nuse support/types { Asked }\n\n/// Customers' questions.\nroutes Answers {\n    prefix: /answers\n\n    /// Streams the assistant's reply as it is written.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: AiStream\n        run: stream_answer(input)\n    }\n}\n",
     );
-    let updated = jadpo(&root, &["api", "update"]);
-    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    // The counts of what its calls use are kept in `main` (chunk 5.5v5).
+    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
     root
 }
 

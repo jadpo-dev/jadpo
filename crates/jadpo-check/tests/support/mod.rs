@@ -98,6 +98,29 @@ pub fn project_with_records(
     Project::new(db, inputs, Vec::new(), layout, Default::default(), records)
 }
 
+/// [`project_with_records`] with the migration that creates its stores'
+/// tables, as `jadpo migrate new` would write it: for a project whose
+/// only table is a system table, the counts `ai: { limits: }` keeps
+/// (chunk 5.5v5).
+pub fn project_with_migrated_records(
+    db: &Database,
+    layout: Layout,
+    files: &[(&str, &str)],
+    records: &[(&str, &str)],
+) -> Project {
+    let scratch = Database::default();
+    let scratched = project_with_records(&scratch, layout, files, records);
+    let migrated = migration(&scratch, scratched);
+    let mut all: Vec<(&str, &str)> = records.to_vec();
+    for record in &migrated {
+        all.push((
+            record.path.as_str(),
+            record.text.as_deref().unwrap_or_default(),
+        ));
+    }
+    project_with_records(db, layout, files, &all)
+}
+
 /// A project of `files`, created in the order given and listed in path
 /// order, as `jadpo_db::load` lists them: only the order the inputs were
 /// made in differs.

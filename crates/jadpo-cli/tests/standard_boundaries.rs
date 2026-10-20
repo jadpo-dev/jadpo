@@ -691,6 +691,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "makes sample values for the proof probes",
     ),
     (
+        "crates/jadpo-runtime/src/ai_budget.rs",
+        "counts what `ai` calls use: the day's cost limit read from its `Money` setting's value, and the day a price holds from (chunk 5.5v5)",
+    ),
+    (
+        "crates/jadpo-cli/src/ai_usage.rs",
+        "shows the day `jadpo ai usage` counts are for (chunk 5.5v5)",
+    ),
+    (
         "crates/jadpo-runtime/src/read.rs",
         "turns a row's column into a value by the column kind the plan chose",
     ),

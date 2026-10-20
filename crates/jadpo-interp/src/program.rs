@@ -565,6 +565,16 @@ impl Program {
     ) -> Option<jadpo_runtime::ai::Done> {
         let site = self.generate_site_of(prompt)?;
         let ai = self.ai()?;
+        // The developer's own one call, outside any running app, which no
+        // store counts against the app's limits (chunk 5.5v5).
+        let unlimited = jadpo_std::ai::AiPlan {
+            limits: None,
+            ..ai.plan.clone()
+        };
+        let ai = jadpo_runtime::ai::Ai {
+            plan: &unlimited,
+            ..ai
+        };
         let settings: Vec<(u32, Value)> = jadpo_runtime::ai::settings_read(&ai, site)
             .into_iter()
             .filter_map(|number| Some((number, self.setting(number)?)))
