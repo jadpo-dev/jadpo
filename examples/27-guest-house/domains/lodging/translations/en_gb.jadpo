@@ -10,9 +10,9 @@ translations {
     confirmed_heading: "Welcome, {name}"
     no_breakfast_line: "The café in the village opens at 9."
     room_kind: {
-        double: "A double room"
-        family: "A family room"
-        twin: "A twin room"
+        double_room: "A double room"
+        family_room: "A family room"
+        twin_room: "A twin room"
     }
     stay_line: "Nights: {nights}, from {arrives_on}."
 }

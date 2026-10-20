@@ -12,6 +12,18 @@
               "position": 4,
               "type": "date"
             },
+            "booked_room": {
+              "allows": {
+                "values": [
+                  "double_room",
+                  "family_room",
+                  "twin_room"
+                ]
+              },
+              "field": "booked_room",
+              "position": 3,
+              "type": "text"
+            },
             "breakfast": {
               "allows": {},
               "field": "breakfast",
@@ -24,22 +36,7 @@
               "position": 1,
               "type": "text"
             },
-            "guest_name": {
-              "allows": {
-                "max_length": 80,
-                "min_length": 1
-              },
-              "field": "guest_name",
-              "position": 2,
-              "type": "text"
-            },
-            "id": {
-              "allows": {},
-              "field": "id",
-              "position": 0,
-              "type": "uuid"
-            },
-            "language": {
+            "guest_locale": {
               "allows": {
                 "values": [
                   "af",
@@ -578,9 +575,24 @@
                   "zu-ZA"
                 ]
               },
-              "field": "language",
+              "field": "guest_locale",
               "position": 7,
               "type": "text"
+            },
+            "guest_name": {
+              "allows": {
+                "max_length": 80,
+                "min_length": 1
+              },
+              "field": "guest_name",
+              "position": 2,
+              "type": "text"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
             },
             "nights": {
               "allows": {
@@ -590,18 +602,6 @@
               "field": "nights",
               "position": 5,
               "type": "smallint"
-            },
-            "room": {
-              "allows": {
-                "values": [
-                  "double",
-                  "family",
-                  "twin"
-                ]
-              },
-              "field": "room",
-              "position": 3,
-              "type": "text"
             }
           },
           "entity": "Booking",

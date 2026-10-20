@@ -113,13 +113,13 @@ impl std::fmt::Debug for Envelope {
 
 /// Where in the exchange a server refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Stage {
+pub enum Phase {
     /// Signing in, `AUTH`.
     SignIn,
     /// The sender, `MAIL FROM`.
     Sender,
     /// A recipient, `RCPT TO`.
-    Recipient,
+    Rcpt,
     /// The message, after its end went out.
     Message,
 }
@@ -135,8 +135,8 @@ pub enum RelayError {
     /// been accepted.
     NoAnswer(String),
     /// The server refused for good, with its `5xx` reply's code, at
-    /// `stage`.
-    Refused { stage: Stage, code: u16 },
+    /// `phase`.
+    Refused { phase: Phase, code: u16 },
     /// The host won't send it this way: a server that offers no TLS and
     /// isn't on this machine, or no TLS where it was asked for.
     Insecure(String),
@@ -191,11 +191,11 @@ impl<R: Relay> Capability for Smtp<R> {
                 Err(RelayError::NotSent(_)) => Answer::Unavailable,
                 Err(RelayError::NoAnswer(_)) => Answer::Unknown,
                 Err(RelayError::Refused {
-                    stage: Stage::Recipient,
+                    phase: Phase::Rcpt,
                     ..
                 }) => Answer::Failed(RECIPIENT_REJECTED.to_string()),
                 Err(RelayError::Refused {
-                    stage: Stage::Message,
+                    phase: Phase::Message,
                     ..
                 }) => Answer::Failed(MESSAGE_REJECTED.to_string()),
                 Err(RelayError::Refused { .. } | RelayError::Insecure(_)) => Answer::Misconfigured,
@@ -649,7 +649,7 @@ mod tests {
         assert_eq!(
             answered(
                 Err(RelayError::Refused {
-                    stage: Stage::Recipient,
+                    phase: Phase::Rcpt,
                     code: 550
                 }),
                 input()
@@ -659,7 +659,7 @@ mod tests {
         assert_eq!(
             answered(
                 Err(RelayError::Refused {
-                    stage: Stage::Message,
+                    phase: Phase::Message,
                     code: 554
                 }),
                 input()
@@ -669,7 +669,7 @@ mod tests {
         assert_eq!(
             answered(
                 Err(RelayError::Refused {
-                    stage: Stage::SignIn,
+                    phase: Phase::SignIn,
                     code: 535
                 }),
                 input()

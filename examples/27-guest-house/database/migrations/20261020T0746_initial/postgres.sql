@@ -1,15 +1,15 @@
--- 20261020T0743_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T0746_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "booking" (
     "id" uuid NOT NULL,
     "guest_email" text NOT NULL,
     "guest_name" text NOT NULL,
-    "room" text NOT NULL,
+    "booked_room" text NOT NULL,
     "arrives_on" date NOT NULL,
     "nights" smallint NOT NULL,
     "breakfast" boolean NOT NULL,
-    "language" text NOT NULL,
+    "guest_locale" text NOT NULL,
     CONSTRAINT "booking_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "jadpo_circuit_breakers" (

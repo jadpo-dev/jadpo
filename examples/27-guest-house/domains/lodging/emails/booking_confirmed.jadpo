@@ -7,12 +7,12 @@
 // that doesn't exist or a value that can't be written out is a compile
 // error.
 
-use stays/types { GuestName, NightCount, RoomKind }
+use lodging/types { GuestName, NightCount, RoomKind }
 
 /// Sent to a guest once their booking is made.
 type BookingConfirmed = EmailMessage {
     guest_name: GuestName
-    room: RoomKind
+    booked_room: RoomKind
     arrives_on: CalendarDate
     nights: NightCount
     breakfast: Bool

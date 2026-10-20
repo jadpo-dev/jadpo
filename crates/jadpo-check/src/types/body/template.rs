@@ -264,11 +264,11 @@ impl Body<'_> {
         let Some(Expr::NameRef(receiver)) = field.expr() else {
             return None;
         };
-        let owner = tree::name_ref_text(&receiver)?;
+        let head = tree::name_ref_text(&receiver)?;
         let member = field
             .name_ref()
             .and_then(|name| tree::name_ref_text(&name))?;
-        match (owner.as_str(), member.as_str()) {
+        match (head.as_str(), member.as_str()) {
             ("app", "display_name") if !self.is_local("app") => {
                 let settings = crate::emails::settings(self.db, self.project);
                 let Some(name) = settings.display_name.clone() else {
@@ -278,7 +278,7 @@ impl Body<'_> {
                             "`app.display_name` is written, but the application has no `display_name:`",
                         )
                         .at(self.span(expr), "no name to write")
-                        .reason("`{{ app.display_name }}` writes `application { display_name: }`, the application's name as people read it, which `app.jadpo` doesn't give.")
+                        .reason("`{{ app.display_name }}` writes `application { display_name: }`, the application's name as its readers see it, which `app.jadpo` doesn't give.")
                         .next("Add `display_name: \"<the application's name>\"` to `application { }` in `app.jadpo`"),
                     );
                     return Some(TemplateWrite::Text);

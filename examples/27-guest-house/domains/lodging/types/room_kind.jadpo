@@ -1,6 +1,6 @@
 /// The rooms the guest house lets.
 type RoomKind = Enum {
-    double
-    twin
-    family
+    double_room
+    twin_room
+    family_room
 }

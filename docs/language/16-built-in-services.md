@@ -912,12 +912,12 @@ use accounts/types { DisplayName }
 use accounts/emails { WelcomeEmail }
 
 /// Signs someone up, and welcomes them once it is done.
-action sign_up(email: Email, display_name: DisplayName, language: Locale) -> User {
+action sign_up(email: Email, display_name: DisplayName, chosen_locale: Locale) -> User {
     var user: User = User.create {
         set: {
             email: email
             display_name: display_name
-            locale: language
+            locale: chosen_locale
         }
     }
     emit WelcomeEmail {

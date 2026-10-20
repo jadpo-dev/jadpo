@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use jadpo_drivers::smtp::{Envelope, Relay, RelayError, Server, Stage, base64, dot_stuffed};
+use jadpo_drivers::smtp::{Envelope, Relay, RelayError, Server, Phase, base64, dot_stuffed};
 use jadpo_runtime::LocalFuture;
 
 /// The port a server speaks TLS on from the start.
@@ -107,11 +107,11 @@ impl Reply {
         self.code / 100 == class
     }
 
-    /// What a refusal at `stage` is: for now, or for good.
-    fn refused(&self, stage: Stage) -> RelayError {
+    /// What a refusal at `phase` is: for now, or for good.
+    fn refused(&self, phase: Phase) -> RelayError {
         if self.is(5) {
             RelayError::Refused {
-                stage,
+                phase,
                 code: self.code,
             }
         } else {
@@ -171,8 +171,8 @@ impl Talk {
         }
     }
 
-    /// A command's reply, which must be in `class`, or why not, at `stage`.
-    fn command(&mut self, line: &str, class: u16, stage: Stage) -> Result<Reply, RelayError> {
+    /// A command's reply, which must be in `class`, or why not, at `phase`.
+    fn command(&mut self, line: &str, class: u16, phase: Phase) -> Result<Reply, RelayError> {
         self.send(line)?;
         let reply = self
             .reply()
@@ -180,7 +180,7 @@ impl Talk {
         if reply.is(class) {
             Ok(reply)
         } else {
-            Err(reply.refused(stage))
+            Err(reply.refused(phase))
         }
     }
 }
@@ -249,28 +249,28 @@ fn exchange(
         )
     };
     let mut talk = Talk { link };
-    let greeting = talk
+    let opening = talk
         .reply()
         .map_err(|error| RelayError::NotSent(error.to_string()))?;
-    if !greeting.is(2) {
+    if !opening.is(2) {
         return Err(RelayError::NotSent(format!(
             "the server answered {}",
-            greeting.code
+            opening.code
         )));
     }
-    let hello = talk.command(&format!("EHLO {me}"), 2, Stage::Sender)?;
+    let ehlo = talk.command(&format!("EHLO {me}"), 2, Phase::Sender)?;
     if !secure {
-        let offers_tls = hello
+        let offers_tls = ehlo
             .lines
             .iter()
             .any(|line| line.eq_ignore_ascii_case("STARTTLS"));
         if offers_tls {
-            talk.command("STARTTLS", 2, Stage::Sender)?;
+            talk.command("STARTTLS", 2, Phase::Sender)?;
             talk = Talk {
                 link: tls(bare, stream)?,
             };
             secure = true;
-            talk.command(&format!("EHLO {me}"), 2, Stage::Sender)?;
+            talk.command(&format!("EHLO {me}"), 2, Phase::Sender)?;
         } else if !server.is_local() {
             let _ = talk.send("QUIT");
             return Err(RelayError::Insecure(format!(
@@ -286,13 +286,13 @@ fn exchange(
             ));
         }
         let plain = base64(format!("\0{username}\0{password}").as_bytes());
-        talk.command(&format!("AUTH PLAIN {plain}"), 2, Stage::SignIn)?;
+        talk.command(&format!("AUTH PLAIN {plain}"), 2, Phase::SignIn)?;
     }
-    talk.command(&format!("MAIL FROM:<{}>", envelope.from), 2, Stage::Sender)?;
+    talk.command(&format!("MAIL FROM:<{}>", envelope.from), 2, Phase::Sender)?;
     for to in &envelope.to {
-        talk.command(&format!("RCPT TO:<{to}>"), 2, Stage::Recipient)?;
+        talk.command(&format!("RCPT TO:<{to}>"), 2, Phase::Rcpt)?;
     }
-    talk.command("DATA", 3, Stage::Message)?;
+    talk.command("DATA", 3, Phase::Message)?;
     let data = dot_stuffed(&envelope.data);
     // Once the message's end may have left, a lost answer may be a
     // message accepted.
@@ -305,7 +305,7 @@ fn exchange(
         .reply()
         .map_err(|error| RelayError::NoAnswer(error.to_string()))?;
     if !accepted.is(2) {
-        return Err(accepted.refused(Stage::Message));
+        return Err(accepted.refused(Phase::Message));
     }
     let _ = talk.send("QUIT");
     Ok(())

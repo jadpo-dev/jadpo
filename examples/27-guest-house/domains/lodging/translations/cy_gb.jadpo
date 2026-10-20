@@ -6,9 +6,9 @@ translations {
     confirmed_heading: "Croeso, {name}"
     no_breakfast_line: "Mae'r caffi yn y pentref yn agor am 9."
     room_kind: {
-        double: "Ystafell ddwbl"
-        family: "Ystafell deulu"
-        twin: "Ystafell â dau wely"
+        double_room: "Ystafell ddwbl"
+        family_room: "Ystafell deulu"
+        twin_room: "Ystafell â dau wely"
     }
     stay_line: "Nosweithiau: {nights}, o {arrives_on}."
 }

@@ -57,7 +57,7 @@ pub struct Settings {
     /// The connection `email: { connection: }` names, when it sends email.
     pub connection: Option<String>,
     pub from: Option<Sender>,
-    /// `display_name:`, the application's name as people read it.
+    /// `display_name:`, the application's name as its readers see it.
     pub display_name: Option<String>,
     /// Whether `email:` is written at all.
     pub written: bool,
@@ -234,8 +234,8 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                     }
                     _ => out.problems.push(
                         settings_invalid("`display_name:` must be the application's name, written out", span, "not a name")
-                            .reason("`display_name:` is the application's name as people read it, in emails' layouts and Jadpo's own wording: plain text on one line, written in `app.jadpo`.")
-                            .next("Write `display_name: \"Acme\"`, the name people know the application by"),
+                            .reason("`display_name:` is the application's name as its readers see it, in emails' layouts and Jadpo's own wording: plain text on one line, written in `app.jadpo`.")
+                            .next("Write `display_name: \"Acme\"`, the name its readers know it by"),
                     ),
                 }
             }
@@ -308,7 +308,7 @@ pub fn settings(db: &dyn Db, project: Project) -> Settings {
                     // `from:`: an `Email` setting, or an address written
                     // out on one line.
                     let headline = "`from:` must be the address every email is from";
-                    let reason = "`from:` is the address every email is from: an `Email` setting, `config.<name>`, or an address written out, `\"hello@acme.test\"`.";
+                    let reason = "`from:` is the address every email is from: an `Email` setting, `config.<name>`, or an address written out, `\"sender@example.test\"`.";
                     match (reads(&value), literal_text(&value)) {
                         (Some(field), _) => match config(db, project).setting(&field) {
                             Some(setting) if lookup.base_prim(&setting.ty) == Some(Prim::Email) => {

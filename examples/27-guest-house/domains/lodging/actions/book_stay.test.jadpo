@@ -2,19 +2,19 @@
 // rendered whole once the booking commits, before the test's next line,
 // and a template that couldn't be rendered would fail the test.
 
-use stays/entities { Booking }
-use stays/types { RoomKind, StayRequest }
+use lodging/entities { Booking }
+use lodging/types { RoomKind, StayRequest }
 
 test "booking a stay keeps it, and confirms it in the guest's language" {
     var booked: Booking = book_stay(
         StayRequest {
             guest_email: "megan@example.cymru"
             guest_name: "Megan"
-            room: RoomKind.double
+            booked_room: RoomKind.double_room
             arrives_on: "2026-11-02"
             nights: 3
             breakfast: true
-            language: Locale.cy_gb
+            guest_locale: Locale.cy_gb
         }
     )
     assert booked.guest_name == "Megan"

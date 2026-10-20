@@ -1,4 +1,4 @@
-use stays/types { GuestName }
+use lodging/types { GuestName }
 
 /// The welcome at the top of a booking's email.
 type ConfirmedHeading = Message {
