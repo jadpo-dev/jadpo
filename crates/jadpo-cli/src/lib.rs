@@ -9,6 +9,7 @@ mod commands;
 mod completion;
 pub mod config;
 mod declines;
+mod deliveries;
 mod derived;
 pub mod dev;
 mod exchange;

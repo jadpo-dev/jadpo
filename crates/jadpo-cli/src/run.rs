@@ -329,6 +329,8 @@ pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
         (Some("migrate"), Some("apply")) => "Applying migrations",
         // Against a deployment it waits for the app's tick (chunk 6.2d).
         (Some("schedules"), Some("run")) => "Running the schedule",
+        // A schedule's run retried waits for the app's tick (chunk 6.12).
+        (Some("deliveries"), Some("retry" | "resolve")) => "Acting on it",
         _ => "",
     };
     if quiet || doing.is_empty() {

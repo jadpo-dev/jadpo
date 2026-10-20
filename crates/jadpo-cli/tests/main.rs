@@ -22,6 +22,7 @@ mod config;
 mod crate_graph;
 mod declines;
 mod decode_problems;
+mod deliveries;
 mod delivery_limits;
 mod events;
 mod field_rules_on_read;

@@ -84,6 +84,9 @@ pub enum Values {
     Query,
     /// The name of one of the project's schedules.
     Schedule,
+    /// A delivery's or schedule run's id, which nothing completes: they
+    /// are in a database, not the project (chunk 6.12).
+    Id,
 }
 
 #[derive(Debug)]
@@ -793,6 +796,106 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::schedules,
+    },
+    Command {
+        name: "deliveries",
+        synonyms: &["delivery"],
+        group: "Production",
+        summary: "Retry, dismiss or cancel deliveries",
+        description: "Lists the deliveries of events to subscribers, and the schedules' runs, that need \
+                      an operator (area 12): those that failed, and those whose outcome is unknown, \
+                      newest first, 20 a page; --state lists those pending, running, dismissed or \
+                      cancelled instead. `retry` sends a failed delivery again on the app's next \
+                      tick, with a fresh retry budget, or asks the app's tick to run a schedule whose \
+                      latest run failed and waits for it. `dismiss` sets a failed one aside, `cancel` \
+                      stops a pending one, and `resolve` settles one whose outcome is unknown, once \
+                      the provider shows whether it happened: --not-done retries it. Each action is \
+                      logged in the database with who did it, and runs none of the app's code. An id \
+                      is the last 8 hex digits the list shows, or more. The databases are the ones \
+                      the stores' connections' settings give, or a running jadpo dev's, or the one \
+                      --url names (with --store when there are several). Times are in UTC.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list, retry, dismiss, cancel or resolve",
+                required: false,
+                values: Values::Fixed(crate::deliveries::ACTIONS),
+            },
+            Argument {
+                name: "id",
+                description: "The delivery's or schedule run's id, as the list shows it",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--state",
+                value: Some("state"),
+                description: "List those in this state instead",
+                values: crate::deliveries::STATES,
+            },
+            Flag {
+                name: "--page",
+                value: Some("n"),
+                description: "Which page of the list, from 1, newest first",
+                values: &[],
+            },
+            Flag {
+                name: "--done",
+                value: None,
+                description: "Resolve as done: the outside call happened",
+                values: &[],
+            },
+            Flag {
+                name: "--not-done",
+                value: None,
+                description: "Resolve it as not done, which retries it",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the deliveries are in",
+                values: &[],
+            },
+            Flag {
+                name: "--store",
+                value: Some("name"),
+                description: "The store --url's database is",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See what failed or is in doubt",
+                command: "jadpo deliveries",
+            },
+            Example {
+                description: "Deliver a failed delivery again, once the cause is fixed",
+                command: "jadpo deliveries retry 4fa2c09e",
+            },
+            Example {
+                description: "Settle one whose outside call happened",
+                command: "jadpo deliveries resolve 9b0d44a1 --done",
+            },
+            Example {
+                description: "See what is waiting to run",
+                command: "jadpo deliveries --state pending",
+            },
+        ],
+        arguments_rule: &rule::CLI_DELIVERIES_ARGUMENTS,
+        raises: &[
+            &rule::DELIVERIES_NOT_FOUND,
+            &rule::DELIVERIES_UNAVAILABLE,
+            &rule::DELIVERIES_WRONG_STATE,
+            &rule::SCHEDULES_LEASE_HELD,
+            &rule::SCHEDULES_NO_TICK,
+            &rule::SCHEDULES_RUN_FAILED,
+            &rule::SCHEDULES_UNAVAILABLE,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::deliveries,
     },
     Command {
         name: "why",

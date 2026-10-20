@@ -120,6 +120,8 @@ rules! {
         "14-tooling.html#command-errors", "Configuration entry requires an interactive terminal";
     CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Declines command has invalid arguments";
+    CLI_DELIVERIES_ARGUMENTS: "cli.deliveries_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Deliveries command has invalid arguments";
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Dev command has invalid arguments";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
@@ -336,6 +338,12 @@ rules! {
         "01-project-layout-and-modules.html#decline-not-declinable", "Decline names a rule that can't be declined";
     DECLINE_UNUSED: "decline.unused", area 1, Error, Agent,
         "01-project-layout-and-modules.html#decline-unused", "Decline's rule no longer fires on its declaration";
+    DELIVERIES_NOT_FOUND: "deliveries.not_found", area 14, Error, Human,
+        "14-tooling.html#command-errors", "No delivery or schedule run has the id given";
+    DELIVERIES_UNAVAILABLE: "deliveries.unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Deliveries' database couldn't be read";
+    DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Delivery or schedule run isn't in a state the action applies to";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
