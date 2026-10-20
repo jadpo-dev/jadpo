@@ -137,8 +137,7 @@ pub fn check(call: &Call) -> Reply {
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written),
-        reviews,
+        (layout, written, reviews),
         elapsed,
     )
 }
@@ -153,8 +152,7 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written): (Layout, Vec<String>),
-    reviews: &[jadpo_check::review::ProviderReview],
+    (layout, written, reviews): (Layout, Vec<String>, &[jadpo_check::review::ProviderReview]),
     elapsed: Duration,
 ) -> Reply {
     let errors = diagnostics.len();
