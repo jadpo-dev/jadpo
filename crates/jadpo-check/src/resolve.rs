@@ -1251,7 +1251,7 @@ impl Names<'_> {
         {
             let at = self.span(&names[1]);
             let dot = Span::new(self.path, self.span(first).end, at.end);
-            out.push(version_unneeded(&code, version, member(2).as_deref(), dot));
+            out.push(version_unneeded(&code, member(2).as_deref(), dot));
             return Some(Through::Package(via, 2));
         }
         Some(Through::Package(via, 1))
@@ -2067,7 +2067,7 @@ fn version_needed(
 
 /// `package.version_unneeded`: a version written through a package the
 /// project holds in one version (chunk 7.1c2).
-fn version_unneeded(code: &str, version: &str, member: Option<&str>, span: Span) -> Diagnostic {
+fn version_unneeded(code: &str, member: Option<&str>, span: Span) -> Diagnostic {
     let bare = format!("{code}.{}", member.unwrap_or("<name>"));
     Diagnostic::new(
         &rule::PACKAGE_VERSION_UNNEEDED,
@@ -2075,7 +2075,7 @@ fn version_unneeded(code: &str, version: &str, member: Option<&str>, span: Span)
     )
     .at(span.clone(), "not needed")
     .reason(format!(
-        "A name carries its package's version only while two versions sit side by side; with one held, `{bare}` is the one way to write it, and `.{version}` would have to change when the next version arrives and leaves."
+        "A name carries its package's version only while two versions sit side by side, to say which one it means; with one version of `{code}` held, `{bare}` is the one way to write it."
     ))
     .next(format!("Write `{bare}`"))
     .edit(span, "")

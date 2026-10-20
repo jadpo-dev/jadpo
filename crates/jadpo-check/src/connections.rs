@@ -182,10 +182,13 @@ fn name_clashes(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                             && symbol.ownership.package().is_none()
                     })
                 });
-                let what = if table.domains.contains(&connection) {
-                    format!("domain `{connection}`")
+                let (what, label) = if table.domains.contains(&connection) {
+                    (format!("domain `{connection}`"), "already a domain")
                 } else if let Some(library) = library {
-                    format!("library `{connection}` in `{}`", library.path)
+                    (
+                        format!("library `{connection}` in `{}`", library.path),
+                        "already a library",
+                    )
                 } else {
                     continue;
                 };
@@ -194,7 +197,7 @@ fn name_clashes(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                         &rule::SEMANTIC_DUPLICATE_DECLARATION,
                         format!("Connection `{connection}` is named like {what}"),
                     )
-                    .at(node_span(&found.path, name.syntax()), "named like a domain or library")
+                    .at(node_span(&found.path, name.syntax()), label)
                     .reason(format!(
                         "Connections share one namespace with domains and libraries, so `{connection}.<name>` means one thing; it is already the {what}."
                     ))
