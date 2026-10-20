@@ -175,6 +175,62 @@ pub enum Stepped {
     Send(StepAt),
 }
 
+/// What became of one step in a run, as a developer sees it in `jadpo
+/// dev` (chunk 7.5f): never its request, its answer or its key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StepState {
+    /// Answered on an earlier run, given back without being sent.
+    Replayed,
+    /// Sent, and its answer kept.
+    Answered,
+    /// Sent, and answered with one of its operation's failures, by its
+    /// code, which the record keeps.
+    Failed(String),
+    /// Sent, with no answer kept: sent again under its key on the next
+    /// attempt.
+    InDoubt,
+    /// Its operation or request differs from the record: never sent.
+    Diverged,
+    /// In doubt and not to be sent again (no key, or past its provider's
+    /// window): parked as `outcome_unknown`.
+    OutcomeUnknown,
+}
+
+impl StepState {
+    /// How `--json` names it.
+    pub fn word(&self) -> &'static str {
+        match self {
+            StepState::Replayed => "replayed",
+            StepState::Answered => "answered",
+            StepState::Failed(_) => "failed",
+            StepState::InDoubt => "in_doubt",
+            StepState::Diverged => "diverged",
+            StepState::OutcomeUnknown => "outcome_unknown",
+        }
+    }
+}
+
+/// One step a run reached: its place, its operation, what became of it
+/// and, when it was sent or given back, where its answer came from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Shown {
+    /// From 1.
+    pub position: u32,
+    /// `pay.payments.create`, `sheets.put`.
+    pub operation: String,
+    pub state: StepState,
+    pub source: Option<crate::capability::Source>,
+}
+
+/// The steps one run of an action with several changing calls reached,
+/// in order, as its record closed (chunk 7.5f).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunSteps {
+    /// The action's name: `subscribe`.
+    pub action: String,
+    pub steps: Vec<Shown>,
+}
+
 /// One step of a record.
 #[derive(Clone)]
 struct Kept {
@@ -214,6 +270,12 @@ pub(crate) struct Record {
     at: u32,
     /// The clock the invocation had before the record fixed it.
     clock: Clock,
+    /// What became of each step this run reached, by position (chunk
+    /// 7.5f).
+    shown: BTreeMap<u32, (String, StepState)>,
+    /// Where the invocation's call log stood as it opened, so the calls
+    /// its steps made are found after it.
+    calls_from: usize,
 }
 
 impl std::fmt::Debug for Record {
@@ -233,6 +295,15 @@ impl Record {
         self.action
             .split_once(' ')
             .map_or(self.action.as_str(), |(_, name)| name)
+    }
+
+    /// Notes what became of step `position`, `operation`. A step given
+    /// back on area 6's rerun keeps what this invocation saw of it first.
+    fn note(&mut self, position: u32, operation: &str, state: StepState) {
+        if state == StepState::Replayed && self.shown.contains_key(&position) {
+            return;
+        }
+        self.shown.insert(position, (operation.to_string(), state));
     }
 
     /// The step this run reached last, when it has reached one.
@@ -442,6 +513,8 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
         steps,
         at: 0,
         clock,
+        shown: BTreeMap::new(),
+        calls_from: ctx.capabilities().calls().len(),
     }));
     Ok(true)
 }
@@ -458,10 +531,37 @@ pub(crate) fn rewind(ctx: &mut Ctx<'_>) {
 
 /// Closes the record as the outermost boundary closes, giving the
 /// invocation its own clock back.
+/// What became of each step it reached is kept on the invocation, with
+/// where each one's answer came from (chunk 7.5f).
 pub(crate) fn close(ctx: &mut Ctx<'_>) {
-    if let Some(record) = ctx.take_steps_record() {
-        ctx.set_clock(record.clock);
+    let Some(record) = ctx.take_steps_record() else {
+        return;
+    };
+    ctx.set_clock(record.clock);
+    if record.shown.is_empty() {
+        return;
     }
+    let calls = ctx
+        .capabilities()
+        .calls()
+        .get(record.calls_from..)
+        .unwrap_or(&[]);
+    let steps = record
+        .shown
+        .iter()
+        .map(|(position, (operation, state))| Shown {
+            position: *position,
+            operation: operation.clone(),
+            state: state.clone(),
+            source: calls
+                .iter()
+                .rev()
+                .find(|call| call.step == Some(*position))
+                .map(|call| call.source),
+        })
+        .collect();
+    let action = record.name().to_string();
+    ctx.push_steps(RunSteps { action, steps });
 }
 
 /// What `proposed`, the running action's next outside call, is to its
@@ -552,26 +652,28 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
         key_generation: kept.key_generation,
     };
     if let Some(answer) = kept.answer {
+        record.note(position, &kept.operation, StepState::Replayed);
         return Ok(Stepped::Replay(answer));
     }
     // In doubt: sent again under its key while its provider keeps it,
     // less the margin; never with no key.
-    match proposed.repeat {
-        Repeat::Unkeyed => Err(Unanswered::Failure(Box::new(crate::outcome_unknown()))),
+    let parked = match proposed.repeat {
+        Repeat::Unkeyed => true,
         Repeat::Keyed => {
             let window = proposed.window_ms.unwrap_or(0);
             let until = kept.first_sent.saturating_add(
                 i64::try_from(window - window_margin_ms(window)).unwrap_or(i64::MAX),
             );
-            if now >= until {
-                Err(Unanswered::Failure(Box::new(crate::outcome_unknown())))
-            } else {
-                Ok(Stepped::Send(at))
-            }
+            now >= until
         }
         // Safe to send again as it is, whenever.
-        Repeat::Safe => Ok(Stepped::Send(at)),
+        Repeat::Safe => false,
+    };
+    if parked {
+        record.note(position, &kept.operation, StepState::OutcomeUnknown);
+        return Err(Unanswered::Failure(Box::new(crate::outcome_unknown())));
     }
+    Ok(Stepped::Send(at))
 }
 
 /// Writes step `at` before it goes out, once: the record itself before
@@ -582,6 +684,7 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
 /// the record.
 pub(crate) async fn sending(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
     written(ctx, at).await?;
+    going_out(ctx, at);
     // A step reached, which `jadpo test` may crash before (chunk 7.5d).
     let named = ctx.steps_record().and_then(|record| {
         let kept = record.steps.get((at.position as usize).checked_sub(1)?)?;
@@ -661,6 +764,19 @@ async fn written(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
     Ok(())
 }
 
+/// Notes step `at` as going out with no answer kept yet: in doubt until
+/// [`answered`] keeps one (chunk 7.5f).
+fn going_out(ctx: &mut Ctx<'_>, at: StepAt) {
+    if let Some(record) = ctx.steps_record_mut()
+        && let Some(operation) = record
+            .steps
+            .get(at.position as usize - 1)
+            .map(|kept| kept.operation.clone())
+    {
+        record.note(at.position, &operation, StepState::InDoubt);
+    }
+}
+
 /// Keeps step `at`'s answer, sealed, once it comes: a rerun gives it back
 /// rather than sending the step again. An answer past 1 MB is a fault
 /// naming the step; `unavailable` when the store can't keep it or a newer
@@ -729,10 +845,15 @@ pub async fn answered(ctx: &mut Ctx<'_>, at: StepAt, answer: Answered) -> Result
         Ok(rows) if !rows.is_empty() => {}
         _ => return Err(Unanswered::Failure(Box::new(crate::unavailable()))),
     }
-    if let Some(record) = ctx.steps_record_mut()
-        && let Some(kept) = record.steps.get_mut(at.position as usize - 1)
-    {
-        kept.answer = Some(answer);
+    let state = match &answer {
+        Answered::Failed(code) => StepState::Failed(code.clone()),
+        Answered::Wire(_) | Answered::Done => StepState::Answered,
+    };
+    if let Some(record) = ctx.steps_record_mut() {
+        if let Some(kept) = record.steps.get_mut(at.position as usize - 1) {
+            kept.answer = Some(answer);
+        }
+        record.note(at.position, &operation, state);
     }
     // Its answer kept, which `jadpo test` may crash after (chunk 7.5d).
     if crate::crashes::due(ctx, crate::crashes::Boundary::AfterAnswer) {
@@ -952,6 +1073,9 @@ pub fn object_id(ctx: &Ctx<'_>, at: StepAt) -> Option<[u8; 16]> {
 /// gives the fault that stops the action before anything more is sent.
 async fn diverge(ctx: &mut Ctx<'_>, problem: Diverged) -> Unanswered {
     let now = wall(ctx);
+    if let Some(record) = ctx.steps_record_mut() {
+        record.note(problem.position, &problem.operation, StepState::Diverged);
+    }
     let Some(record) = ctx.steps_record() else {
         return Unanswered::Fault(FaultKind::Diverged(problem.text("")));
     };

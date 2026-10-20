@@ -127,6 +127,8 @@ struct Line {
     calls: Vec<jadpo_runtime::capability::Logged>,
     /// Why a sign-in it answered was refused (chunk 7.3b4).
     refused: Option<jadpo_runtime::SignInRefused>,
+    /// The steps its action reached under a record (chunk 7.5f).
+    steps: Vec<jadpo_runtime::steps::RunSteps>,
 }
 
 /// What the session prints, as it happens: a request answered, a
@@ -142,6 +144,42 @@ enum Event {
         alert: jadpo_runtime::schedules::watch::Alert,
         now: i64,
     },
+    /// A delivery whose action reached steps under a record, as an attempt
+    /// at it ended (chunk 7.5f).
+    Delivery(StepsLine),
+}
+
+/// A delivery's attempt with steps, for its line (chunk 7.5f).
+struct StepsLine {
+    id: [u8; 16],
+    subscriber: String,
+    state: String,
+    steps: Vec<jadpo_runtime::steps::RunSteps>,
+}
+
+/// `jadpo dev`'s call log: each call kept in the log file, and each
+/// delivery whose action reached steps under a record sent to the screen
+/// (chunk 7.5f).
+struct DevCalls {
+    log: crate::dev_calls::DevLog,
+    shared: Arc<Shared>,
+}
+
+impl jadpo_runtime::call_log::CallLog for DevCalls {
+    fn seen(&self, seen: &jadpo_runtime::call_log::Seen<'_>) {
+        self.log.seen(seen);
+    }
+
+    fn attempt_ended(&self, attempt: &jadpo_runtime::call_log::DeliveryAttempt<'_>) {
+        if let Ok(log) = self.shared.log.lock() {
+            let _ = log.send(Event::Delivery(StepsLine {
+                id: attempt.delivery,
+                subscriber: attempt.subscriber.to_string(),
+                state: attempt.state.to_string(),
+                steps: attempt.steps.to_vec(),
+            }));
+        }
+    }
 }
 
 /// What every worker reads: the version being served and where its
@@ -225,6 +263,7 @@ impl Observer for Lines {
             }),
             calls: response.calls.clone(),
             refused: response.refused.clone(),
+            steps: response.steps.clone(),
         })]);
     }
 
@@ -309,7 +348,69 @@ impl Out<'_> {
                     self.screen(Screen::new().with(Block::Alerts(vec![text])));
                 }
             }
+            Event::Delivery(line) => self.delivery(line),
         }
+    }
+
+    /// A delivery whose action reached steps under a record (chunk 7.5f):
+    /// its id where a request has its request id, the subscriber, how the
+    /// attempt left it as a symbol and a word in its colour, then each
+    /// step, and the command that shows it when it needs an operator.
+    fn delivery(&mut self, line: &StepsLine) {
+        let id = jadpo_runtime::deliveries::short(&line.id);
+        let (symbol, token, word) = attempt_state(&line.state);
+        if self.json {
+            let data = Json::object([
+                ("event", "delivery".into()),
+                (
+                    "delivery",
+                    Json::from(jadpo_value::encoding::to_hex(&line.id)),
+                ),
+                ("subscriber", Json::from(line.subscriber.as_str())),
+                ("state", Json::from(line.state.as_str())),
+                ("steps", steps_json(&line.steps)),
+            ]);
+            self.json(data, &[], &BTreeMap::new());
+            return;
+        }
+        let state = if self.style.mode == jadpo_term::Mode::Rich {
+            self.paint(
+                token,
+                &format!("{} {word}", symbol.text(self.style.symbols)),
+            )
+        } else {
+            self.paint(token, word)
+        };
+        let label = format!("subscriber {}", line.subscriber);
+        let mut text = format!("{id}  {label:<34} {state}\n");
+        let paint = |token: Token, text: &str| self.paint(token, text);
+        for run in &line.steps {
+            for shown in &run.steps {
+                text.push_str(&step_line(shown, &paint));
+            }
+        }
+        if matches!(
+            line.state.as_str(),
+            "failed" | "outcome_unknown" | "diverged"
+        ) {
+            let command = format!("jadpo deliveries show {id}");
+            text.push_str(&if self.style.mode == jadpo_term::Mode::Rich {
+                format!(
+                    "  {}\n",
+                    self.paint(
+                        Token::Accent,
+                        &format!(
+                            "{} {command}",
+                            jadpo_term::Symbol::Next.text(self.style.symbols)
+                        )
+                    )
+                )
+            } else {
+                format!("  next: {command}\n")
+            });
+        }
+        let _ = self.out.write_all(text.as_bytes());
+        let _ = self.out.flush();
     }
 
     /// A schedule's run: its trace's id where a request has its request
@@ -375,6 +476,7 @@ impl Out<'_> {
                     "address",
                     line.address.as_deref().map_or(Json::Null, Json::from),
                 ),
+                ("steps", steps_json(&line.steps)),
                 (
                     "calls",
                     Json::array(line.calls.iter().map(|call| {
@@ -431,8 +533,8 @@ impl Out<'_> {
         });
         let mut text = format!("{short_id}  {request:<34} {status}{code}   {time}{address}\n");
         // Each call it made, as a muted line of its trace (chunk 7.2d),
-        // only a failed one in its colour.
-        for call in &line.calls {
+        // only a failed one in its colour; a step's call as its step, below.
+        for call in line.calls.iter().filter(|call| call.step.is_none()) {
             let ended = ended_word(&call.ended);
             let word = match &call.ended {
                 jadpo_runtime::capability::Ended::Answered => self.paint(Token::Muted, &ended),
@@ -451,6 +553,13 @@ impl Out<'_> {
                 ),
                 word
             ));
+        }
+        // Each step its action reached under a record, with what became of
+        // it (chunk 7.5f).
+        for run in &line.steps {
+            for shown in &run.steps {
+                text.push_str(&step_line(shown, &|token, text| self.paint(token, text)));
+            }
         }
         // Why a sign-in was refused, which the person was never told
         // (area 8, "Events"): a muted line of its trace, the reason in
@@ -491,6 +600,72 @@ fn refusal_line(
         paint(Token::Muted, "└─ sign-in refused ·"),
         paint(Token::Warning, refused.reason),
     )
+}
+
+/// A step under its request or delivery (chunk 7.5f): `└─ step 2 ·
+/// pay.subscriptions.create · generated · in doubt`, muted but for what
+/// went wrong, in its colour. Its place, operation, where its answer came
+/// from and what became of it; never its request, answer or key.
+fn step_line(shown: &jadpo_runtime::steps::Shown, paint: &dyn Fn(Token, &str) -> String) -> String {
+    use jadpo_runtime::capability::Source;
+    use jadpo_runtime::steps::StepState;
+    let mut trace = format!("└─ step {} · {} ·", shown.position, shown.operation);
+    if let Some(source) = shown.source.filter(|source| *source != Source::Replayed)
+        && shown.state != StepState::Replayed
+    {
+        trace.push_str(&format!(" {} ·", source.word()));
+    }
+    let word = match &shown.state {
+        StepState::Replayed => paint(Token::Muted, "replayed"),
+        StepState::Answered => paint(Token::Muted, "answered"),
+        StepState::Failed(code) => paint(Token::Failure, code),
+        StepState::InDoubt => paint(Token::Warning, "in doubt"),
+        StepState::Diverged => paint(Token::Decision, "diverged"),
+        StepState::OutcomeUnknown => paint(Token::Decision, "outcome unknown"),
+    };
+    format!("  {} {word}\n", paint(Token::Muted, &trace))
+}
+
+/// The steps runs reached, as `--json` gives them (chunk 7.5f).
+fn steps_json(runs: &[jadpo_runtime::steps::RunSteps]) -> Json {
+    Json::array(runs.iter().flat_map(|run| {
+        run.steps.iter().map(|shown| {
+            Json::object([
+                ("action", Json::from(run.action.as_str())),
+                ("step", Json::from(shown.position as usize)),
+                ("operation", Json::from(shown.operation.as_str())),
+                ("state", Json::from(shown.state.word())),
+                (
+                    "code",
+                    match &shown.state {
+                        jadpo_runtime::steps::StepState::Failed(code) => Json::from(code.as_str()),
+                        _ => Json::Null,
+                    },
+                ),
+                (
+                    "source",
+                    shown
+                        .source
+                        .map_or(Json::Null, |source| Json::from(source.word())),
+                ),
+            ])
+        })
+    }))
+}
+
+/// How a delivery's line says the state an attempt left it in: its
+/// symbol, colour and word (chunk 7.5f).
+fn attempt_state(state: &str) -> (jadpo_term::Symbol, Token, &'static str) {
+    use jadpo_term::Symbol;
+    match state {
+        "succeeded" => (Symbol::Success, Token::Success, "succeeded"),
+        "failed" => (Symbol::Failure, Token::Failure, "failed"),
+        "outcome_unknown" => (Symbol::Decision, Token::Decision, "outcome unknown"),
+        "diverged" => (Symbol::Decision, Token::Decision, "diverged"),
+        // Tried again after a wait, or given back to run again at once.
+        "pending" => (Symbol::Pending, Token::Warning, "retrying"),
+        _ => (Symbol::Pending, Token::Muted, "pending"),
+    }
 }
 
 /// How a call ended, as a request line says it.
@@ -698,7 +873,10 @@ pub fn serve_to(
                         .any(|known| known.name == connection)
                 },
             )
-            .with_call_log(Rc::new(crate::dev_calls::DevLog(Arc::clone(&make_log))));
+            .with_call_log(Rc::new(DevCalls {
+                log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
+                shared: Arc::clone(&make_shared),
+            }));
         // The model `ai:` names, through the built-in driver, a server on
         // this machine with no key at all (area 21; chunk 5.5v3).
         let models = Arc::clone(&make_shared);
@@ -1536,6 +1714,203 @@ mod tests {
         assert_eq!(
             refusal_line(&refused, &plain),
             "  └─ sign-in refused · code_invalid\n"
+        );
+    }
+
+    fn shown(
+        position: u32,
+        operation: &str,
+        state: jadpo_runtime::steps::StepState,
+        source: Option<jadpo_runtime::capability::Source>,
+    ) -> jadpo_runtime::steps::Shown {
+        jadpo_runtime::steps::Shown {
+            position,
+            operation: operation.to_string(),
+            state,
+            source,
+        }
+    }
+
+    /// Each step a run reached is a line of its trace: its place, its
+    /// operation, where its answer came from and what became of it; a
+    /// step given back from the record says only that (chunk 7.5f).
+    #[test]
+    fn a_step_shows_its_place_operation_source_and_state() {
+        use jadpo_runtime::capability::Source;
+        use jadpo_runtime::steps::StepState;
+        let plain = |_: Token, text: &str| text.to_string();
+        let cases = [
+            (
+                shown(
+                    1,
+                    "pay.customers.create",
+                    StepState::Replayed,
+                    Some(Source::Replayed),
+                ),
+                "  └─ step 1 · pay.customers.create · replayed\n",
+            ),
+            (
+                shown(2, "sheets.put", StepState::Answered, Some(Source::Live)),
+                "  └─ step 2 · sheets.put · live · answered\n",
+            ),
+            (
+                shown(
+                    3,
+                    "pay.subscriptions.create",
+                    StepState::InDoubt,
+                    Some(Source::Generated),
+                ),
+                "  └─ step 3 · pay.subscriptions.create · generated · in doubt\n",
+            ),
+            (
+                shown(
+                    3,
+                    "pay.subscriptions.create",
+                    StepState::Failed("card_declined".into()),
+                    Some(Source::Scripted),
+                ),
+                "  └─ step 3 · pay.subscriptions.create · scripted · card_declined\n",
+            ),
+            (
+                shown(2, "sheets.put", StepState::Diverged, None),
+                "  └─ step 2 · sheets.put · diverged\n",
+            ),
+            (
+                shown(
+                    3,
+                    "pay.subscriptions.create",
+                    StepState::OutcomeUnknown,
+                    None,
+                ),
+                "  └─ step 3 · pay.subscriptions.create · outcome unknown\n",
+            ),
+        ];
+        for (step, line) in cases {
+            assert_eq!(step_line(&step, &plain), line);
+        }
+    }
+
+    fn attempt(state: &str) -> StepsLine {
+        use jadpo_runtime::capability::Source;
+        use jadpo_runtime::steps::{RunSteps, StepState};
+        let mut id = [0u8; 16];
+        id[12..].copy_from_slice(&[0x41, 0xd7, 0xe0, 0x9a]);
+        StepsLine {
+            id,
+            subscriber: "billing.start_subscription".into(),
+            state: state.into(),
+            steps: vec![RunSteps {
+                action: "subscribe".into(),
+                steps: vec![
+                    shown(
+                        1,
+                        "pay.customers.create",
+                        StepState::Replayed,
+                        Some(Source::Replayed),
+                    ),
+                    shown(2, "pay.subscriptions.create", StepState::Diverged, None),
+                ],
+            }],
+        }
+    }
+
+    /// Writes `event` as a terminal with colour off shows it, or as
+    /// `--json`.
+    fn written(event: &Event, json: bool) -> String {
+        let env = Environment::empty()
+            .with_terminals(true, true, true)
+            .with_var("TERM", "xterm-256color")
+            .with_var("NO_COLOR", "1");
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        {
+            let mut screen = Out {
+                out: &mut out,
+                err: &mut err,
+                style: Style::detect(&env, json, ColorChoice::Auto, Stream::Stdout),
+                err_style: Style::detect(&env, json, ColorChoice::Auto, Stream::Stderr),
+                json,
+            };
+            screen.event(event);
+        }
+        String::from_utf8(out).expect("text")
+    }
+
+    /// A delivery whose action reached steps is a line of its own, as a
+    /// schedule's run is, with each step under it and, when it needs an
+    /// operator, the command that shows it (chunk 7.5f).
+    #[test]
+    fn a_delivery_with_steps_is_a_line_with_its_steps_and_what_to_do() {
+        assert_eq!(
+            written(&Event::Delivery(attempt("diverged")), false),
+            "41d7e09a  subscriber billing.start_subscription ◆ diverged\n  └─ step 1 · pay.customers.create · replayed\n  └─ step 2 · pay.subscriptions.create · diverged\n  → jadpo deliveries show 41d7e09a\n"
+        );
+        let succeeded = written(&Event::Delivery(attempt("succeeded")), false);
+        assert!(
+            succeeded.starts_with("41d7e09a  subscriber billing.start_subscription ✓ succeeded\n"),
+            "{succeeded}"
+        );
+        assert!(!succeeded.contains("jadpo deliveries show"), "{succeeded}");
+        let retrying = written(&Event::Delivery(attempt("pending")), false);
+        assert!(retrying.contains("○ retrying\n"), "{retrying}");
+
+        let json = written(&Event::Delivery(attempt("diverged")), true);
+        let document: serde_json::Value = serde_json::from_str(json.trim()).expect("JSON");
+        assert_eq!(document["data"]["event"], "delivery");
+        assert_eq!(document["data"]["state"], "diverged");
+        assert_eq!(
+            document["data"]["delivery"],
+            "00000000000000000000000041d7e09a"
+        );
+        assert_eq!(
+            document["data"]["steps"],
+            serde_json::json!([
+                { "action": "subscribe", "step": 1, "operation": "pay.customers.create", "state": "replayed", "code": null, "source": "replayed" },
+                { "action": "subscribe", "step": 2, "operation": "pay.subscriptions.create", "state": "diverged", "code": null, "source": null },
+            ])
+        );
+    }
+
+    /// A request whose action kept a record shows its steps in place of
+    /// their calls; its other calls stay as they were (chunk 7.5f).
+    #[test]
+    fn a_requests_steps_show_in_place_of_their_calls() {
+        use jadpo_runtime::capability::{Ended, Logged, Repeat, Source};
+        use jadpo_runtime::steps::{RunSteps, StepState};
+        let call = |operation: &str, step: Option<u32>| Logged {
+            connection: "pay".into(),
+            operation: operation.into(),
+            repeat: Repeat::Keyed,
+            source: Source::Generated,
+            at: 0,
+            took_ms: None,
+            ended: Ended::Answered,
+            step,
+        };
+        let line = Line {
+            id: "9c1f0a2b-0000".into(),
+            method: "POST".into(),
+            path: "/partners/subscriptions".into(),
+            status: 204,
+            code: None,
+            route: None,
+            millis: 38,
+            address: None,
+            fault: None,
+            calls: vec![call("plans.get", None), call("customers.create", Some(1))],
+            refused: None,
+            steps: vec![RunSteps {
+                action: "subscribe_now".into(),
+                steps: vec![shown(
+                    1,
+                    "pay.customers.create",
+                    StepState::Answered,
+                    Some(Source::Generated),
+                )],
+            }],
+        };
+        assert_eq!(
+            written(&Event::Request(line), false),
+            "9c1f0a2b  POST /partners/subs…               204   38 ms\n  └─ pay.plans.get · generated · answered\n  └─ step 1 · pay.customers.create · generated · answered\n"
         );
     }
 }

@@ -1242,7 +1242,8 @@ subscriber writes, committing with its writes, and refers to no table in
 another store (area 12, "Delivery: at least once, safe to repeat").
 The record of an action with several changing calls (`jadpo_step_records`:
 each run's key, action, build, step shape, first start, the generation
-of the runner holding it and whether it diverged; and `jadpo_steps`: each
+of the runner holding it, whether it diverged and when the alert on
+unfinished records was raised for it, chunk 7.5f; and `jadpo_steps`: each
 step's operation, its request's fingerprint, when it was sent and its
 sealed answer; area 12, built in chunk 7.5b) goes in the store such an
 action writes, or `events: { store: }`'s, only where one is kept.

@@ -48,6 +48,7 @@ mod quantities;
 mod ranges;
 mod request;
 mod standard_rules;
+mod stream;
 pub(crate) mod template;
 mod temporal;
 mod text;
@@ -127,6 +128,10 @@ pub struct Checked {
     /// type its answer is decoded into (area 21; chunk 5.5v3): what a
     /// test's `fakes: { ai.<prompt>: }` scripts a value of.
     pub generates: Vec<(String, Ty)>,
+    /// Each prompt it streams with `ai.stream` (area 21; chunk 5.5v6):
+    /// what a test's `fakes: { ai.<prompt>: }` may script text and
+    /// `partial(...)` for.
+    pub streams: Vec<String>,
     /// How many `ai.embed` and `ai.embed_all` calls it makes (chunk 5.5v4).
     pub embeds: u32,
     /// For a function, action or library function: its name
@@ -331,6 +336,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         deferred,
         undeclared: checker.undeclared,
         generates: std::mem::take(&mut checker.generates),
+        streams: std::mem::take(&mut checker.streams),
         embeds: checker.embeds,
         set: checker.set,
         key,
@@ -590,6 +596,8 @@ struct Body<'a> {
     undeclared: bool,
     /// See [`Checked::generates`].
     generates: Vec<(String, Ty)>,
+    /// See [`Checked::streams`].
+    streams: Vec<String>,
     /// See [`Checked::embeds`].
     embeds: u32,
     /// What resolving the body's names finds (area 1), kept apart from
@@ -661,6 +669,7 @@ impl<'a> Body<'a> {
             deferred: Vec::new(),
             undeclared: false,
             generates: Vec::new(),
+            streams: Vec::new(),
             embeds: 0,
             resolved: Vec::new(),
             loops: 0,

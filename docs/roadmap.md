@@ -1465,13 +1465,29 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the one check chunk 5.5v6's streaming routes rely on. Example 26's
   route waits 20 seconds. Choices in area 12's "The late-failure warning
   and the deadline sum, chosen in chunk 7.5e".
-- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+- [x] **7.5f Multi-step calls: development and the metric** `opus ·
   high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
   `jadpo dev`'s request lines and timeline; the metric and the no-setup
   alert on unfinished records (their number and the oldest's age). Each
   step's state in `jadpo watch` comes with `jadpo watch` (after the first
   build, item 6), and the records' entry in the personal-data report with
-  the report itself (area 15, after the first build, item 1).
+  the report itself (area 15, after the first build, item 1). Built: the
+  runtime's `steps` module notes what became of each step a run reached
+  (`StepState`: replayed, answered, failed by its code, in doubt,
+  diverged, outcome unknown) and keeps it on the invocation as the record
+  closes (`RunSteps`), a response carrying its own and each call logged
+  with its step (`Logged::step`); a delivery's attempt with steps is
+  handed to the development call log (`CallLog::delivered`); `jadpo dev`
+  shows each step under its request's line in place of its call, and a
+  delivery with steps as a line of its own with `jadpo deliveries show`
+  when it needs an operator, both in `--json`. The `unfinished` module's
+  `Metric` (records not abandoned, the oldest's start) is carried by the
+  tick for each store, which raises `unfinished_steps` once a record has
+  been unfinished a day, once until none is (`jadpo_step_records.
+  alerted_at`); `jadpo deliveries` shows it and its `--json` the metric.
+  Until area 17's timelines, a request's line and its trace are its
+  timeline. Live tests in `step_development.rs`. Choices in area 12's
+  "Development and the metric, chosen in chunk 7.5f".
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1684,19 +1700,41 @@ The design is area 11 as revised on 2026-10-16, with its research in
   fields, `to_models: false`, and the prompts in the personal-data report.
   Done when a test exhausts each limit and is refused `over_budget`, and
   a marked field reaching a prompt unlisted fails to compile.
-- [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
+- [x] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, the stream fake, and the
-  check that a route's deadline leaves room for the `timeout:` of each
-  `ai` call it reaches (left from 5.5v3). Done
+  an `AiStream`, the final and error events, the stream fake. The check
+  that a route's deadline leaves room for the `timeout:` of each `ai` call
+  it reaches (left from 5.5v3) moved to chunk 7.5e, which builds one
+  deadline sum over every outside call a route reaches; an `ai.stream`
+  call counts its `timeout:` once. Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
+  Built: `ai.stream(prompt)` with `model:`, `max_output:` and `timeout:`,
+  only in an action, giving an `AiStream`, its four conditions before the
+  first piece mapped as `generate`'s; OpenAI's streamed chat completion
+  read piece by piece (`jadpo_runtime::stream`), the open answer kept on
+  the invocation and given back on a rerun; a route with `output:
+  AiStream` answering `text/event-stream` once its action commits:
+  `piece` events, then `done`, or `error` (`unavailable`) for anything
+  after the first piece, ended by the call's `timeout:` or the route's
+  deadline; no `id:` or `retry:`; only `.ok` and no `settle:`
+  (`route.stream_invalid`); never kept for a repeat; OpenAPI's
+  `text/event-stream` with `x-jadpo-stream` and the record's `output
+  AiStream (server-sent events)`; a route test's `response.pieces`; the
+  fake's text cut into pieces of three words and `partial("...",
+  <condition>)`; natively, each event sent as it is read and the
+  provider's connection closed when the client goes away. Tests in
+  `ai_stream.rs` (the checker's, and the CLI's: the route tests, and
+  `jadpo dev` streaming from a server started in the test). Choices in
+  area 7's "Streaming a model's answer" and area 21's "Chosen in chunk
+  5.5v6".
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
   after 5.5v3b, 5.5v4b and 5.5v6: a package's `provide ai { embed: }`
   (`toolchain.not_built_yet` since 5.5v3b; 5.5v4 built `ai.embed` through
   the built-in driver alone), and two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
-  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+  <package> ai`, and a package's `provide ai { stream: }` mapping (5.5v6
+  streams through the built-in driver only). **Needs Richard** for the API keys the live conformance run uses.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for

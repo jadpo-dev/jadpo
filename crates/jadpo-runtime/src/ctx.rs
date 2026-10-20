@@ -240,6 +240,13 @@ pub struct Ctx<'p> {
     /// request it sent, given back to an action run again after a
     /// concurrent change (area 21; chunk 5.5v3).
     reused: Vec<crate::ai::Reused>,
+    /// The steps each record it ran reached, as the record closed: what
+    /// `jadpo dev` shows under a request or a delivery (chunk 7.5f).
+    shown: Vec<crate::steps::RunSteps>,
+    /// Each `ai.stream` call's answer, open and waiting to be sent by the
+    /// route its action answers, by the step it took and the request it
+    /// sent (area 21; chunk 5.5v6): what an `AiStream` value names.
+    streams: Vec<crate::stream::OpenStream>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -305,6 +312,8 @@ impl<'p> Ctx<'p> {
             through: Vec::new(),
             crashes: crate::crashes::Crashes::default(),
             reused: Vec::new(),
+            shown: Vec::new(),
+            streams: Vec::new(),
         }
     }
 
@@ -452,6 +461,28 @@ impl<'p> Ctx<'p> {
         self.reused.push(reused);
     }
 
+    /// The open stream an `ai.stream` call at step `step` gave when it
+    /// sent the request digested as `digest`, on an earlier run of its
+    /// action (chunk 5.5v6): its number, while it is still open.
+    pub(crate) fn reused_stream(&self, step: u32, digest: &[u8; 32]) -> Option<u32> {
+        self.streams
+            .iter()
+            .position(|slot| slot.open() && slot.step == Some(step) && slot.digest == *digest)
+            .and_then(|at| u32::try_from(at).ok())
+    }
+
+    /// Keeps an open stream for the route its action answers, and gives
+    /// its number.
+    pub(crate) fn keep_stream(&mut self, slot: crate::stream::OpenStream) -> u32 {
+        self.streams.push(slot);
+        u32::try_from(self.streams.len() - 1).unwrap_or(u32::MAX)
+    }
+
+    /// The open stream numbered `number`, taken to be sent.
+    pub(crate) fn take_stream(&mut self, number: u32) -> Option<Box<dyn crate::stream::Events>> {
+        self.streams.get_mut(number as usize)?.take()
+    }
+
     /// How many keyed calls it has made.
     pub(crate) fn steps(&self) -> u32 {
         self.steps
@@ -487,6 +518,26 @@ impl<'p> Ctx<'p> {
     /// for `jadpo calls`.
     pub fn take_calls(&mut self) -> Vec<crate::capability::Logged> {
         self.capabilities.take_calls()
+    }
+
+    /// Keeps the steps a record's run reached as it closes (chunk 7.5f).
+    pub(crate) fn push_steps(&mut self, steps: crate::steps::RunSteps) {
+        self.shown.push(steps);
+    }
+
+    /// How many records' steps it has kept so far.
+    pub(crate) fn steps_kept(&self) -> usize {
+        self.shown.len()
+    }
+
+    /// Takes the steps the records it ran reached from the `from`th on,
+    /// leaving those before: what a response, or a delivery's line in
+    /// `jadpo dev`, shows (chunk 7.5f).
+    pub fn take_steps(&mut self, from: usize) -> Vec<crate::steps::RunSteps> {
+        if from >= self.shown.len() {
+            return Vec::new();
+        }
+        self.shown.split_off(from)
     }
 
     /// The trace context of the work under way, when it has one.

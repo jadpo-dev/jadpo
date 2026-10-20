@@ -346,6 +346,9 @@ pub async fn generate(
                 },
                 crate::steps::Answered::Done => return defect("a recorded answer with nothing"),
             };
+            // Logged as the step it is (chunk 7.5f).
+            let mut made = made;
+            made.step = ctx.steps_at();
             return replayed(ctx, ai, site, &asked, made, kept);
         }
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -810,7 +813,7 @@ struct Asked {
 pub const CONTEXT_LENGTH_EXCEEDED: &str = "context_length_exceeded";
 
 /// Each message's role and text.
-fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
+pub(crate) fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
     let Value::List(items) = rendered else {
         return None;
     };
@@ -1050,18 +1053,18 @@ pub fn strict(schema: &serde_json::Value) -> serde_json::Value {
 
 /// What a chat completion says.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Reply {
-    content: Option<String>,
+pub(crate) struct Reply {
+    pub(crate) content: Option<String>,
     /// The model declined: a refusal it gave, or its answer stopped by the
     /// provider's filter.
-    refused: bool,
+    pub(crate) refused: bool,
     /// Its answer was cut off at the most tokens it was allowed.
-    cut_off: bool,
+    pub(crate) cut_off: bool,
 }
 
 /// A chat completion's first choice, as OpenAI's API answers one; `None`
 /// for anything else.
-fn reply_of(text: &str) -> Option<Reply> {
+pub(crate) fn reply_of(text: &str) -> Option<Reply> {
     let json: serde_json::Value = serde_json::from_str(text).ok()?;
     let choice = json.get("choices")?.as_array()?.first()?;
     let message = choice.get("message")?;
@@ -1263,7 +1266,7 @@ pub(crate) async fn sent(
 /// Keeps one attempt in `jadpo dev`'s call log, its request and answer in
 /// full (area 21, "Prompts and answers in logs": in development, in
 /// full).
-fn log(
+pub(crate) fn log(
     ctx: &Ctx<'_>,
     call: &Call,
     (url, body, values): (&str, &str, Option<&str>),
@@ -1304,6 +1307,9 @@ pub enum Script {
     Content(String),
     /// One of `ai.generate`'s five conditions.
     Condition(RuleKey),
+    /// `partial("...", <condition>)`: a stream that sends the text, then
+    /// stops with the condition (chunk 5.5v6).
+    Partial(String, RuleKey),
 }
 
 /// A value of `site`'s type, written as `json`, as the model sends it:
@@ -1339,6 +1345,13 @@ pub fn scripted(script: Script) -> Answer {
         }
         Script::Condition(RuleKey::TooLong) => Answer::Failed(CONTEXT_LENGTH_EXCEEDED.to_string()),
         Script::Condition(_) => Answer::TimedOut,
+        // A stream's text and how it stops: the provider's own finish for
+        // a cut-off or a refusal, none for an answer out of time.
+        Script::Partial(text, rule) => Answer::Wire(completion(
+            Some(&text),
+            None,
+            crate::stream::finish_of(rule),
+        )),
     }
 }
 
@@ -1412,6 +1425,12 @@ impl Capability for AiFake {
 
     fn source(&self) -> Source {
         Source::Generated
+    }
+
+    /// A stream's answer: the next scripted one, cut into pieces of a few
+    /// words, as an OpenAI-compatible server streams it (chunk 5.5v6).
+    fn stream<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, crate::stream::Streamed> {
+        Box::pin(async move { crate::stream::faked(&call.operation, self.call(call).await) })
     }
 
     fn source_of(&self, call: &Call) -> Source {
