@@ -1465,13 +1465,29 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the one check chunk 5.5v6's streaming routes rely on. Example 26's
   route waits 20 seconds. Choices in area 12's "The late-failure warning
   and the deadline sum, chosen in chunk 7.5e".
-- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+- [x] **7.5f Multi-step calls: development and the metric** `opus ·
   high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
   `jadpo dev`'s request lines and timeline; the metric and the no-setup
   alert on unfinished records (their number and the oldest's age). Each
   step's state in `jadpo watch` comes with `jadpo watch` (after the first
   build, item 6), and the records' entry in the personal-data report with
-  the report itself (area 15, after the first build, item 1).
+  the report itself (area 15, after the first build, item 1). Built: the
+  runtime's `steps` module notes what became of each step a run reached
+  (`StepState`: replayed, answered, failed by its code, in doubt,
+  diverged, outcome unknown) and keeps it on the invocation as the record
+  closes (`RunSteps`), a response carrying its own and each call logged
+  with its step (`Logged::step`); a delivery's attempt with steps is
+  handed to the development call log (`CallLog::delivered`); `jadpo dev`
+  shows each step under its request's line in place of its call, and a
+  delivery with steps as a line of its own with `jadpo deliveries show`
+  when it needs an operator, both in `--json`. The `unfinished` module's
+  `Metric` (records not abandoned, the oldest's start) is carried by the
+  tick for each store, which raises `unfinished_steps` once a record has
+  been unfinished a day, once until none is (`jadpo_step_records.
+  alerted_at`); `jadpo deliveries` shows it and its `--json` the metric.
+  Until area 17's timelines, a request's line and its trace are its
+  timeline. Live tests in `step_development.rs`. Choices in area 12's
+  "Development and the metric, chosen in chunk 7.5f".
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1750,13 +1766,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
   the token test compares instants as instants, and the open-transaction
   count of the call tests leaves out the server's autovacuum workers.
-- [ ] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
-  7.5e): `ai.stream`'s `timeout:` counted once in the route-deadline sum
-  (`Calls::time` in `jadpo-check`'s `steps.rs`), now that 5.5v6 has
-  landed; and in a package's own action, a `match` on its own
-  operation's outcome reporting both `failure.outcome_missing_arm` for
-  `AcmePay.CardDeclined` and `failure.outcome_unknown_arm` for the bare
-  `CardDeclined` — one name for a package's failure inside its own code.
+- [x] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
+  7.5e): new default timeouts (Richard, 2026-10-20, option A), since at
+  the old ones the route-deadline sum refused almost every route that
+  calls out: a provider connection's `timeout:` 3s (3 attempts, 9s, inside
+  a route's 10s default deadline) and `ai.generate`'s 25s (2 attempts,
+  50s, so a route that asks a model writes `deadline:` up to 60s), the
+  `deadline:` and `timeout:` lines 7.5e added for the old ones removed;
+  `ai.stream`'s `timeout:` counted once in the sum (`Calls::time`); and a
+  package's failure has one name inside its own code, so a `match` on its
+  own operation's outcome takes the bare `CardDeclined`. Also under the
+  decision: `ai.embed` and `ai.embed_all` counted once in the sum, their
+  default `timeout:` 5s, so a search route embedding its query fits the
+  10s default.
+- [ ] **7.7f The docs renderer's loop** `opus · high` (found in chunk
+  5.5v5): `tools/language_docs.py` run without `--check` loops forever on
+  the indented sub-list near line 2097 of area 1's page; the gate's
+  `--check` doesn't render, so nothing caught it.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

@@ -5,8 +5,9 @@
 //! both executors embed, and read a recording, the same way.
 
 /// What `timeout:` is when an `ai.embed` call leaves it out, in
-/// milliseconds: 15 seconds.
-pub const DEFAULT_TIMEOUT_MS: u64 = 15_000;
+/// milliseconds: 5 seconds, so a route embedding a query fits its
+/// 10-second default deadline (Richard, 2026-10-20).
+pub const DEFAULT_TIMEOUT_MS: u64 = 5_000;
 
 /// The model an embedding call asks when it names none: `embedding`.
 pub const DEFAULT_MODEL: &str = "embedding";

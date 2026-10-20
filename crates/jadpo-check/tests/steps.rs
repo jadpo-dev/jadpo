@@ -1039,21 +1039,45 @@ fn partners_route(deadline: &str) -> String {
     )
 }
 
-/// Each outside call can wait its `timeout:` on each of its attempts (10s
-/// and 3 by default), and a route's deadline covers every call on the
-/// longest way through its action.
+/// The project's files, the connection's `timeout:` and attempts set by
+/// `settings`, written as its members are.
+fn timed_files(settings: &str, keep: &str, more: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut files = files(true, keep, more);
+    files[0].1 = files[0].1.replace(
+        "            environment: config.pay_environment\n",
+        &format!("            environment: config.pay_environment\n{settings}"),
+    );
+    files
+}
+
+/// The deadline diagnostics `files` give.
+fn past_deadline(files: &[(String, String)]) -> Vec<jadpo_diag::Diagnostic> {
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    jadpo_check::check(&db, project)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.rule.id == "route.calls_past_deadline")
+        .collect()
+}
+
+/// Each outside call can wait its `timeout:` on each of its attempts (3s
+/// and 3 by default, Richard 2026-10-20), and a route's deadline covers
+/// every call on the longest way through its action.
 #[test]
 fn a_routes_calls_are_summed_against_its_deadline() {
     let declined = subscribe().replace(
         "action keep(",
         "decline step.late_failure: \"Acme Pay declines a card at the first call, never later\"\naction keep(",
     );
-    // Three calls of 10s, each tried 3 times: 90s, past the 10s default
-    // and past the most a route may wait.
+    // Three calls of 3s, each tried 3 times: 27s, past the 10s default.
     assert_eq!(
         late_problems(&declined, &[PARTNERS]),
         [
-            "domains/billing/routes/partners_plans.jadpo route.calls_past_deadline: `POST /partners/plans` runs `keep`, whose outside calls can take 90s, longer than its 10s deadline"
+            "domains/billing/routes/partners_plans.jadpo route.calls_past_deadline: `POST /partners/plans` runs `keep`, whose outside calls can take 27s, longer than its 10s deadline"
         ]
     );
     let [diagnostic] = found(&declined, &[PARTNERS], "route.calls_past_deadline")
@@ -1066,35 +1090,38 @@ fn a_routes_calls_are_summed_against_its_deadline() {
     assert_eq!(
         diagnostic.next.as_ref().map(|next| next.text.as_str()),
         Some(
-            "Lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber, since a route's deadline is at most 60s"
-        )
-    );
-    // One call, through an action: 30s.
-    let one = "/// Opens the customer.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {\n    var customer: AcmePay.PayReply = attempt open_customer(plan)\n    assert customer.id == plan\n}\n";
-    let route = partners_route("");
-    assert_eq!(
-        late_problems(one, &[(PARTNERS.0, &route), POLICY]),
-        [
-            "domains/billing/routes/partners_plans.jadpo route.calls_past_deadline: `POST /partners/plans` runs `keep`, whose outside calls can take 30s, longer than its 10s deadline"
-        ]
-    );
-    let [diagnostic] = found(
-        one,
-        &[(PARTNERS.0, &route), POLICY],
-        "route.calls_past_deadline",
-    )
-    .try_into()
-    .expect("one");
-    assert_eq!(
-        diagnostic.next.as_ref().map(|next| next.text.as_str()),
-        Some(
-            "Give the route `deadline: 30s`, lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber"
+            "Give the route `deadline: 27s`, lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber"
         )
     );
     // A deadline that leaves room for them.
     let room = partners_route("        deadline: 30s\n");
     assert_eq!(
-        late_problems(one, &[(PARTNERS.0, &room), POLICY]),
+        late_problems(&declined, &[(PARTNERS.0, &room)]),
+        Vec::<String>::new()
+    );
+    // Calls of 10s: 90s, past the most a route may wait.
+    let [diagnostic] = past_deadline(&timed_files(
+        "            timeout: 10s\n",
+        &declined,
+        &[PARTNERS],
+    ))
+    .try_into()
+    .expect("one");
+    assert_eq!(
+        diagnostic.message,
+        "`POST /partners/plans` runs `keep`, whose outside calls can take 90s, longer than its 10s deadline"
+    );
+    assert_eq!(
+        diagnostic.next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber, since a route's deadline is at most 60s"
+        )
+    );
+    // One call, through an action, fits the default deadline: 9s.
+    let one = "/// Opens the customer.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {\n    var customer: AcmePay.PayReply = attempt open_customer(plan)\n    assert customer.id == plan\n}\n";
+    let route = partners_route("");
+    assert_eq!(
+        late_problems(one, &[(PARTNERS.0, &route), POLICY]),
         Vec::<String>::new()
     );
 }
@@ -1110,25 +1137,29 @@ fn the_longest_way_counts_with_its_connections_settings() {
             .replacen("    var", "        var", 1),
         keyed("customer", "customers.create", "plan"),
     );
-    let route = partners_route("        deadline: 30s\n");
+    // Each way makes one call of 9s; both together would be 18s.
     assert_eq!(
-        late_problems(&either, &[(PARTNERS.0, &route), POLICY]),
+        late_problems(&either, &[PARTNERS, POLICY]),
         Vec::<String>::new()
     );
-    // 4s, twice, is 8s: within the default 10s.
-    let files = files(true, &either, &[PARTNERS, POLICY]);
-    let mut files: Vec<(String, String)> = files;
-    files[0].1 = files[0].1.replace(
-        "            environment: config.pay_environment\n",
-        "            environment: config.pay_environment\n            timeout: 4s\n            retry: {\n                attempts: 2\n            }\n",
+    // 4s, three times, is 12s: past the default 10s.
+    let messages = |settings: &str| -> Vec<String> {
+        past_deadline(&timed_files(settings, &either, &[PARTNERS, POLICY]))
+            .into_iter()
+            .map(|diagnostic| diagnostic.message)
+            .collect()
+    };
+    assert_eq!(
+        messages("            timeout: 4s\n"),
+        [
+            "`POST /partners/plans` runs `keep`, whose outside calls can take 12s, longer than its 10s deadline"
+        ]
     );
-    let files: Vec<(&str, &str)> = files
-        .iter()
-        .map(|(path, text)| (path.as_str(), text.as_str()))
-        .collect();
-    let found: Vec<String> = support::problems(Layout::Project, &files)
-        .into_iter()
-        .filter(|problem| problem.contains(" route.calls_past_deadline:"))
-        .collect();
-    assert_eq!(found, Vec::<String>::new());
+    // 4s, twice, is 8s: within it.
+    assert_eq!(
+        messages(
+            "            timeout: 4s\n            retry: {\n                attempts: 2\n            }\n"
+        ),
+        Vec::<String>::new()
+    );
 }

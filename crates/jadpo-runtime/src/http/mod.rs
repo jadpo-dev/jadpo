@@ -125,6 +125,10 @@ pub struct Response {
     /// seam logged them, without their values (chunk 7.0c): what `jadpo
     /// calls` lists by request (chunk 7.2); never sent.
     pub calls: Vec<crate::capability::Logged>,
+    /// The steps its action reached, when it keeps a record of several
+    /// changing calls: what `jadpo dev` shows under its line (chunk
+    /// 7.5f); never sent.
+    pub steps: Vec<crate::steps::RunSteps>,
     /// Why a sign-in was refused, for the host's log line (area 8,
     /// "Events"; chunk 7.3b4); never sent.
     pub refused: Option<crate::ctx::SignInRefused>,
@@ -315,6 +319,7 @@ pub async fn serve_request(
         answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await;
     response.deferred = ctx.take_deferred();
     response.calls = ctx.take_calls();
+    response.steps = ctx.take_steps(0);
     response
 }
 
@@ -1508,6 +1513,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         client: None,
         deferred: Vec::new(),
         calls: Vec::new(),
+        steps: Vec::new(),
         refused: None,
         stream: None,
     }

@@ -233,6 +233,7 @@ impl<'p> Capabilities<'p> {
             at,
             took_ms: None,
             ended: Ended::InFlight,
+            step: call.step.map(|at| at.position),
         });
         self.calls.len() - 1
     }

@@ -366,3 +366,57 @@ fn a_domain_that_embeds_asks_the_model() {
     let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[]);
     assert_eq!(*jadpo_check::ai::asking_domains(&db, project), ["support"]);
 }
+
+/// An embedding's `timeout:` counts once in its route's deadline sum, as
+/// every outside call's does (area 11's `route.calls_past_deadline`;
+/// chunk 7.7e): 5s by default, so a search route embedding its query fits
+/// the route's default 10s.
+#[test]
+fn an_embedding_counts_against_its_routes_deadline() {
+    let search = |call: &str, options: &str| {
+        format!(
+            "use support/failures {{ AssistantUnavailable }}\nuse support/types {{ CustomerQuestion, QuestionMeaning }}\n\n/// Finds questions like this one.\naction find_similar(question: CustomerQuestion) fails AssistantUnavailable -> Unit {{\n    var meanings: {gives} = attempt ai.{call}({text}, as: QuestionMeaning{options}) {{\n{ARMS}    }}\n    assert meanings == meanings\n}}\n",
+            gives = if call == "embed" {
+                "QuestionMeaning"
+            } else {
+                "List<QuestionMeaning>"
+            },
+            text = if call == "embed" {
+                "question"
+            } else {
+                "[question]"
+            },
+        )
+    };
+    let route = "use support/actions { find_similar }\nuse support/types { CustomerAsk }\n\n/// Where customers search past questions.\nroutes Similar {\n    prefix: /similar\n\n    /// Finds questions like a customer's.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: CustomerAsk\n        status: SuccessStatus.no_content\n        run: find_similar(input.question)\n    }\n}\n";
+    let ask = "use support/types { CustomerQuestion }\n\n/// A customer's question, as the page sends it.\ntype CustomerAsk = Input {\n    question: CustomerQuestion\n}\n";
+    let policy = "use support\n\npolicy {\n    actions: {\n        support.find_similar: [Access.public]\n    }\n}\n";
+    let found = |call: &str, options: &str| -> Vec<String> {
+        problems(&[
+            (
+                "domains/support/actions/find_similar.jadpo",
+                &search(call, options),
+            ),
+            ("domains/support/routes/similar.jadpo", route),
+            ("domains/support/types/customer_ask.jadpo", ask),
+            ("policy.jadpo", policy),
+        ])
+        .into_iter()
+        .filter(|problem| problem.contains(" route.calls_past_deadline: "))
+        .collect()
+    };
+    assert_eq!(found("embed", ""), NONE);
+    assert_eq!(found("embed_all", ""), NONE);
+    assert_eq!(
+        found("embed", ", timeout: 15s"),
+        [
+            "domains/support/routes/similar.jadpo route.calls_past_deadline: `POST /similar` runs `find_similar`, whose outside calls can take 15s, longer than its 10s deadline"
+        ]
+    );
+    assert_eq!(
+        found("embed_all", ", timeout: 12s"),
+        [
+            "domains/support/routes/similar.jadpo route.calls_past_deadline: `POST /similar` runs `find_similar`, whose outside calls can take 12s, longer than its 10s deadline"
+        ]
+    );
+}
