@@ -154,6 +154,8 @@ rules! {
         "14-tooling.html#command-errors", "Records command has invalid arguments";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Routes command has invalid arguments";
+    CLI_RUNS_ARGUMENTS: "cli.runs_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Runs command has invalid arguments";
     CLI_SCHEDULES_ARGUMENTS: "cli.schedules_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Schedules command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
@@ -756,6 +758,8 @@ rules! {
         "07-http.html#route-settle-invalid", "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
+    RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Unfinished runs' database couldn't be read";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#schedule-every-invalid", "Schedule's `every:` isn't a whole number of seconds, minutes, hours or days";
     SCHEDULE_ITEM_INVALID: "schedule.item_invalid", area 12, Error, Agent,

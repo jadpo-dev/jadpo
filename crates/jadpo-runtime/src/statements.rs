@@ -34,6 +34,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             "batches::UNKEPT_CANCELS",
             crate::batches::UNKEPT_CANCELS.to_string(),
         ),
+        (
+            "batches::UNFINISHED",
+            crate::batches::UNFINISHED.to_string(),
+        ),
         ("batches::WAITING", crate::batches::WAITING.to_string()),
         ("breaker::FAILED", crate::breaker::FAILED.to_string()),
         ("breaker::HOLD", crate::breaker::HOLD.to_string()),

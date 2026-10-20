@@ -31,6 +31,7 @@ mod package_record;
 mod records;
 mod routes;
 mod run;
+mod runs;
 mod schedules;
 mod share;
 mod sql;

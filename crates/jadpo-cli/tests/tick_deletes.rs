@@ -582,8 +582,9 @@ async fn operate(host: &Stores, id: &str, action: Action, now: i64) {
     let holds = Holds {
         deliveries: true,
         runs: false,
+        steps: false,
     };
-    let found = find(&host.main, holds, id)
+    let found = find(&host.main, holds, id, now)
         .await
         .expect("the store answers");
     let [item] = found.as_slice() else {

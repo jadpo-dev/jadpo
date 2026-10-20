@@ -1062,6 +1062,56 @@ pub static COMMANDS: &[Command] = &[
         run: commands::deliveries,
     },
     Command {
+        name: "runs",
+        synonyms: &[],
+        group: "Production",
+        summary: "List unfinished runs a new build changes",
+        description: "Run against production before a deploy (area 12, \"Deploys\"): `unfinished` \
+                      lists the unfinished runs of actions with several changing calls, and the \
+                      batch runs still going, that the build named by --build changes, so they can \
+                      be let finish first. The build is the checkout's, which must make the build \
+                      named. A record whose action's steps the build changes stops as diverged when \
+                      it runs again, one whose action no longer keeps steps would send them again, \
+                      and a batch run whose call the build changes fails; the others resume. It \
+                      reads no request, answer or key, and none of the app's settings beyond its \
+                      connections' addresses. The databases are the ones the stores' connections' \
+                      settings give, or a running jadpo dev's, or the one --url names (with --store \
+                      when there are several). Times are in UTC.",
+        arguments: &[Argument {
+            name: "action",
+            description: "What to list: unfinished",
+            required: true,
+            values: Values::Fixed(crate::runs::ACTIONS),
+        }],
+        flags: &[
+            Flag {
+                name: "--build",
+                value: Some("build id"),
+                description: "The build about to be deployed, which the checkout makes",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the runs are in",
+                values: &[],
+            },
+            Flag {
+                name: "--store",
+                value: Some("name"),
+                description: "The store --url's database is",
+                values: &[],
+            },
+        ],
+        examples: &[Example {
+            description: "See what a deploy would change, before deploying",
+            command: "jadpo runs unfinished --build 3f9a1c2e0b7d4e5f8a6b9c0d1e2f3a4b",
+        }],
+        arguments_rule: &rule::CLI_RUNS_ARGUMENTS,
+        raises: &[&rule::RUNS_UNAVAILABLE, &rule::TOOLCHAIN_PROJECT_NOT_FOUND],
+        run: commands::runs,
+    },
+    Command {
         name: "calls",
         synonyms: &[],
         group: "Look things up",

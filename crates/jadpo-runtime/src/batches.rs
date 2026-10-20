@@ -140,6 +140,43 @@ impl crate::lease::Leased for Leased {
     }
 }
 
+/// Every run still going, oldest first: its id, call, shape digest and
+/// start, which `jadpo runs unfinished` compares with a new build (chunk
+/// 7.5c).
+pub const UNFINISHED: &str = "SELECT \"id\", \"batch\", \"shape\", \"started_at\" FROM \"jadpo_batch_runs\" WHERE \"state\" = 'running' ORDER BY \"started_at\", \"id\"";
+
+/// A run still going, as [`UNFINISHED`] reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unfinished {
+    pub id: [u8; 16],
+    /// Which call it is, by its stable name.
+    pub batch: String,
+    pub shape: String,
+    pub started_at: i64,
+}
+
+/// Every run of one store still going, oldest first (chunk 7.5c).
+pub async fn unfinished(database: &dyn crate::Database) -> Result<Vec<Unfinished>, crate::StoreError> {
+    let rows = database.query_once(UNFINISHED, &[]).await?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| match row.as_slice() {
+            [
+                SqlValue::Uuid(id),
+                SqlValue::Text(batch),
+                SqlValue::Text(shape),
+                SqlValue::Timestamp(started),
+            ] => Some(Unfinished {
+                id: *id,
+                batch: batch.clone(),
+                shape: shape.clone(),
+                started_at: started.div_euclid(1000),
+            }),
+            _ => None,
+        })
+        .collect())
+}
+
 pub(crate) const STATUS: &str = "SELECT \"items_done\", \"problems\", \"state\", \"estimated_total\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
 
 pub(crate) const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
@@ -354,7 +391,7 @@ fn key_value(plan: &BatchPlan, key: &[Value]) -> Value {
 
 /// What a run's `shape` column keeps: a digest of the plan's shape, so a
 /// deploy that changes what the call saves or calls is found.
-fn shape_digest(plan: &BatchPlan) -> String {
+pub fn shape_digest(plan: &BatchPlan) -> String {
     blake3::hash(plan.shape.as_bytes()).to_hex().to_string()
 }
 

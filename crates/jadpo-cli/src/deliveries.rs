@@ -874,6 +874,26 @@ fn list(call: &Call, project: &Project) -> Reply {
             .collect(),
         Some(_) => Vec::new(),
     };
+    // The first delivery in doubt whose action keeps a record of steps is
+    // settled by `show`, not `resolve --done` (chunk 7.5c).
+    let stepped = match shown
+        .iter()
+        .find(|item| item.state == OUTCOME_UNKNOWN && item.kind == Kind::Delivery)
+    {
+        Some(item) => {
+            let home = stores.get(&item.id).cloned().unwrap_or_default();
+            let url = databases
+                .iter()
+                .find(|(store, _, _)| *store == home)
+                .map(|(_, _, url)| url.clone())
+                .unwrap_or_default();
+            match record_of(&databases, &home, &url, item) {
+                Ok(record) => record.is_some(),
+                Err(reply) => return reply,
+            }
+        }
+        None => false,
+    };
     Reply::screen(
         list_screen(
             project,
@@ -881,9 +901,8 @@ fn list(call: &Call, project: &Project) -> Reply {
             &shown,
             &counts,
             &alerts,
-            total,
-            page,
-            pages,
+            (total, page, pages),
+            stepped,
             now,
         ),
         data,
@@ -933,9 +952,8 @@ fn list_screen(
     shown: &[Item],
     counts: &BTreeMap<String, u64>,
     alerts: &[String],
-    total: u64,
-    page: u64,
-    pages: u64,
+    (total, page, pages): (u64, u64, u64),
+    stepped: bool,
     now: i64,
 ) -> Screen {
     let count = |state: &str| counts.get(state).copied().unwrap_or(0);
@@ -1075,13 +1093,20 @@ fn list_screen(
             .iter()
             .find(|item| item.state == OUTCOME_UNKNOWN)
             .map(|item| {
-                (
-                    format!(
-                        "jadpo deliveries resolve {} --done",
-                        runtime::short(&item.id)
-                    ),
-                    "once the provider shows it happened",
-                )
+                if stepped && item.kind == Kind::Delivery {
+                    (
+                        format!("jadpo deliveries show {}", runtime::short(&item.id)),
+                        "lists its steps, and which may have taken effect",
+                    )
+                } else {
+                    (
+                        format!(
+                            "jadpo deliveries resolve {} --done",
+                            runtime::short(&item.id)
+                        ),
+                        "once the provider shows it happened",
+                    )
+                }
             })
     });
     if let Some((command, reason)) = hint {
@@ -1592,6 +1617,15 @@ fn show(call: &Call, project: &Project, written: &str, suffix: &str) -> Reply {
             "steps recorded",
         )));
         facts.push(Fact::plain(format!("{answered} answered")));
+        if record.state == ABANDONED {
+            let until = jadpo_std::format_instant(
+                record.taken_at.saturating_add(unfinished::ANSWERS_KEPT_MS),
+            );
+            facts.push(Fact::plain(format!(
+                "listed until {}",
+                until.get(..10).unwrap_or_default()
+            )));
+        }
     }
     let doubt = record.as_ref().and_then(Record::in_doubt);
     let dropped = record.as_ref().is_some_and(Record::dropped);
