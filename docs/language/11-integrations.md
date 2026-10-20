@@ -305,7 +305,8 @@ replaces, a `DELETE`). An operation of a connection whose credential is
 an OAuth grant also names the scope it needs, `scope: "calendar.events"`.
 
 Inside the package, names are bare. An app names them through the package:
-`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16). A failure's
+`AcmeCouriers.Booking`, `AcmeCouriers.SlotTaken` (question 16), and an
+enum's values the same way, `AcmeCouriers.Window.morning`. A failure's
 code (`slot_taken`, from its name) is the provider's error code, read from
 the place `error_code:` names.
 
@@ -6601,6 +6602,24 @@ Fakes and the development call log, each the most conservative reading:
   calls (files) are not, and a delivery's or a schedule's call has no
   request. Each request's line in `jadpo dev` lists its calls, and its
   `--json` event gives them.
+
+### Chosen in chunk 7.1e
+
+Enum values through a package's name, each the most conservative reading:
+
+- **One path for every name through a package.** An enum's value is
+  written through its package as its type is, `AcmeCouriers.Window.morning`,
+  and through the package and its version while two are held,
+  `Postcodes.v3.Round.morning`; the version is missing or needless exactly
+  as for a type (`package.version_needed`, `package.version_unneeded`), and
+  the type must be one the package makes public. The same holds wherever a
+  value is written: in a body, a constant, a test's `fakes:`, a variant
+  built with its fields (`Postcodes.v3.Round.shared { ... }`, which before
+  this chunk took no version) and a `match` arm's pattern, whose names
+  resolution now checks as a value's; a pattern resolution refuses leaves
+  its arm's case unknown, so the `match` isn't also reported as not
+  covering it. The enum written alone, `Postcodes.Round`, is
+  `type.not_a_value` naming the enum, not the package.
 
 ### Consistency with the rest of the language
 

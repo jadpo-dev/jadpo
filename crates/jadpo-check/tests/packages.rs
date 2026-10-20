@@ -1194,10 +1194,7 @@ action round_for() -> Postcodes.Round {
     );
     let found = installed(&with(&[ROUND, wrong]));
     assert_eq!(found.len(), 1, "{found:#?}");
-    assert!(
-        found[0].contains("type.unknown_enum_variant"),
-        "{found:#?}"
-    );
+    assert!(found[0].contains("type.unknown_enum_variant"), "{found:#?}");
 }
 
 /// The app's enum values with both versions held: the package's enum in
@@ -1234,7 +1231,10 @@ fn a_package_s_enum_value_without_its_version_is_refused_while_two_are_held() {
 fn a_package_s_variant_pattern_or_block_without_its_version_is_refused_once() {
     let found = rounds_in_both(|text| {
         text.replace("Postcodes.", "Postcodes.v3.")
-            .replace("Postcodes.v3.Round.morning ->", "Postcodes.Round.morning ->")
+            .replace(
+                "Postcodes.v3.Round.morning ->",
+                "Postcodes.Round.morning ->",
+            )
             .replace("Postcodes.v3.Round.shared {", "Postcodes.Round.shared {")
     });
     assert_eq!(
