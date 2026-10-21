@@ -570,12 +570,9 @@ fn a_created_record_reads_back_and_failures_come_in_the_envelope() {
     let head = dev.send("HEAD", &format!("/todos/{todo_id}"), &[], "");
     assert_eq!((head.status, head.body.as_str()), (200, ""));
 
-    // Each request is a line of `--json`, with its id.
-    let lines = dev.out.text();
-    assert!(
-        lines.contains(&format!("\"requestId\":\"{id}\"")),
-        "{lines}"
-    );
+    // Each request is a line of `--json`, with its id, written as `jadpo
+    // dev` next looks between saves.
+    wait_for(&dev, &format!("\"requestId\":\"{id}\""));
 }
 
 #[test]

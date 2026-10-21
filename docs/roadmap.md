@@ -2191,13 +2191,26 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   `Run::Webhook` entry in it rather than answered before routing, and no
   allocation per request for paths, labels or failure lookups, counted by
   a test's allocator.
-- [ ] **8.1l Native accept and one rate-limit count** `opus · xhigh`,
-  after 8.1d: decided in §2.5 first, the native listener accepting
-  asynchronously and handing connections to its workers round-robin, and
-  the rate limits counted once per caller and address across the worker
-  threads, in the same bounded memory (today each thread counts its own,
-  so a client reaching several gets several allowances); §2.6's
-  "Single-threaded by design" rewritten for it.
+- [x] **8.1l Native accept and one rate-limit count** `opus · xhigh`,
+  after 8.1d. Built: the native acceptor a thread of its own awaiting the
+  listener on a current-thread runtime and handing each connection to the
+  workers in turn, passing over one whose thread has ended
+  (`jadpo_host_native::http`), in place of a polled listener hashing the
+  peer's address; one `jadpo_runtime::RateLimits` per server, which
+  `http::WorkerThread::host` gives each worker's `NativeHost`, so a caller
+  or an address has one allowance a window across the workers: 16 MB in
+  all, in up to 16 shards behind a lock each, a key's shard by a hash
+  keyed per process, the counter whose window started longest ago dropped
+  first; a stopping server handing out what the system had accepted,
+  closing the listener, and letting each connection give the answer it
+  owes (one that has sent nothing yet a second for its first request)
+  before its background work drains. Proved by one client's connections
+  reaching four workers in turn, 120 of its 125 requests answered across
+  them, a burst of 100 answered in full a quarter per worker, and a stop
+  that answers a request in flight and one on a connection accepted
+  before it, closes an idle one at once and accepts nothing more. §2.5's
+  "Native accept and one rate-limit count"; §2.6's "Single-threaded by
+  design" rewritten for it.
 - [ ] **8.1m A pooled HTTP client** `opus · xhigh`, after 8.1l:
   `NativeFetch` replaced by a pooled, cancellable hyper client with one
   rustls connector per worker: connections kept per host, a call's
