@@ -114,6 +114,9 @@ impl<H: Served> Served for jadpo_runtime::capability::Faked<H> {
 pub struct AppHandler {
     serving: Serving,
     host: Rc<dyn Served>,
+    /// Whether the server's own timer ticks it: not when another
+    /// scheduler runs the deployable's `tick` command (chunk 8.2g).
+    timed: bool,
 }
 
 impl std::fmt::Debug for AppHandler {
@@ -132,7 +135,16 @@ impl AppHandler {
         AppHandler {
             serving: Serving::new(Rc::clone(&host) as Rc<dyn jadpo_runtime::Host>, program),
             host,
+            timed: true,
         }
+    }
+
+    /// Leaves its ticks to another scheduler, which runs the deployable's
+    /// `tick` command (`ScheduleTrigger.external`, area 12, question 16;
+    /// chunk 8.2g): the server's own timer never ticks it.
+    pub fn untimed(mut self) -> AppHandler {
+        self.timed = false;
+        self
     }
 
     /// Tells `observer` about each request answered and each tick.
@@ -154,6 +166,9 @@ impl Handler for AppHandler {
     /// Counted as the host's background work, so stopping waits for it to
     /// give back what it holds (chunk 6.7).
     fn tick(&self) -> Option<LocalFuture<'static, ()>> {
+        if !self.timed {
+            return None;
+        }
         let tick = self.serving.tick();
         Some(self.host.native().track(Box::pin(async move {
             let _ = tick.await;
@@ -520,9 +535,12 @@ async fn ticker(handler: Rc<dyn Handler>, draining: Rc<Cell<bool>>) {
         if draining.get() {
             return;
         }
-        if let Some(work) = handler.tick() {
-            tokio::task::spawn_local(work);
-        }
+        // A handler with nothing to tick, or whose ticks another
+        // scheduler starts, never will.
+        let Some(work) = handler.tick() else {
+            return;
+        };
+        tokio::task::spawn_local(work);
     }
 }
 

@@ -908,14 +908,31 @@ reaches in chunk 8.1o3.
   reading, lets its background work give back what it holds, and ends
   with code 0; a second ends it at once. A start that fails ends with
   code 1.
+- **One tick** (chunk 8.2g; area 12, question 16). The binary takes one
+  command: none, or `serve`, serves as above; `<deployable> tick` reads
+  its settings, builds its drivers and compares its stores' migrations
+  as serving does, but waits for no database (one it can't reach ends
+  it with code 1, `store_unreachable`), runs one tick of the runtime's
+  and ends: code 0, or 1 when the tick couldn't work in a store. It is
+  what another scheduler runs when `schedules: { trigger:
+  ScheduleTrigger.external }` says the server's own timer never ticks
+  (area 12, "The tick"); the first SIGTERM or ctrl-c drains it, giving
+  back what it holds. Anything else ends with code 2,
+  `command_unknown`, without repeating what was given. `jadpo build`
+  gives such a deployable a `tick` line, the command and how often to
+  run it (`build/target/app/app tick · each minute`), and `--json` its
+  `tick` (`command`, `every_ms`).
 - **What it logs.** One JSON object a line on standard output, its keys
   sorted, each with the stamp's fields (`build`, `commit`, `modified`,
   `compiler`, `deployable`, `target`): `runtime.startup_failed` with
   every problem that stopped the start (`problems`, each with a
   `problem` code, the setting, variable or store it is about, and a
   `message`), `runtime.waiting` while a database can't be reached,
-  `runtime.started` with the address and workers and each connection
-  whose driver wasn't built (`unbuilt`), `operation.failed` for a fault
+  `runtime.started` with the address, workers, `trigger` (`native` or
+  `external`) and each connection whose driver wasn't built (`unbuilt`),
+  `runtime.ticked` after a `tick` (`ran`, each schedule it ran or
+  skipped by name with its outcome, `deliveries`, `received`, `polled`,
+  `deleted`, `alerts`, `problems`, `unbuilt` and `ms`), `operation.failed` for a fault
   behind a 500 with its classification, route, `request_id` and `.jadpo`
   frames (areas 4 and 17), and `runtime.stopped`. The rest of a
   deployable's log comes with area 16's telemetry.
