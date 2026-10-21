@@ -771,6 +771,10 @@ const NEWSROOM: &[(&str, &str)] = &[
         "app.jadpo",
         r#"application {
     connections: {
+        limits: {
+            driver: Driver.cloudflare_rate_limits
+            namespace: 1001
+        }
         main: {
             driver: Driver.postgres
             url: config.database_url
@@ -782,6 +786,9 @@ const NEWSROOM: &[(&str, &str)] = &[
     }
     events: {
         store: main
+    }
+    rate_limits: {
+        store: limits
     }
     ai: {
         connection: local_model
@@ -1479,6 +1486,23 @@ fn a_worker_streams_answers_and_hands_on_what_one_invocation_leaves() {
         serde_json::json!([
             { "binding": "JADPO_HAND_ON", "service": "desk", "entrypoint": "JadpoHandOn" }
         ]),
+        "{wrangler}"
+    );
+    // Beside its database's Hyperdrive binding, the minute's cron and its
+    // rate-limiting bindings.
+    assert_eq!(
+        wrangler["hyperdrive"][0]["binding"], "DATABASE_URL",
+        "{wrangler}"
+    );
+    assert_eq!(
+        wrangler["triggers"]["crons"],
+        serde_json::json!(["* * * * *"]),
+        "{wrangler}"
+    );
+    assert!(
+        wrangler["ratelimits"]
+            .as_array()
+            .is_some_and(|limits| !limits.is_empty()),
         "{wrangler}"
     );
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
