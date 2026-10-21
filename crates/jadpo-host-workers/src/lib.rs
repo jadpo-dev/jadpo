@@ -29,6 +29,11 @@
 //!   `ReadableStream` and `hand_on` taking on work handed on (chunk 8.2h);
 //!   and [`wasm_bindgen`], re-exported so that crate exports them through
 //!   this one's.
+//! - `testing`, with the `testing` feature: a test Worker's handler, which
+//!   runs one test of compiled programs built with the runtime's `testing`
+//!   feature by its key, so `jadpo-test` compares route tests run inside
+//!   workerd with the interpreter's (chunk 8.2e). No deployable turns it
+//!   on.
 //!
 //! The crate builds for wasm32-unknown-unknown, which is what it is for,
 //! and natively, where its bindings compile but are never called, so the
@@ -54,6 +59,8 @@ mod fetch;
 mod js;
 mod passkeys;
 mod streamed;
+#[cfg(feature = "testing")]
+pub mod testing;
 mod timer;
 mod transport;
 

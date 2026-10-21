@@ -7,6 +7,8 @@ build/
 __pycache__/
 *.py[cod]
 node_modules/
+# The lock the tests that install workerd into tools/workers/ take.
+tools/workers/.install.lock
 .env
 .env.*
 !.env.example

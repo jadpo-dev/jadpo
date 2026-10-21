@@ -73,3 +73,47 @@ pub fn build(build: &Build<'_>) -> Result<PathBuf, Failed> {
     }
     Ok(binary)
 }
+
+/// One build of a WebAssembly module: a `cdylib` package of a workspace
+/// the caller wrote, built for `wasm32-unknown-unknown` (a test Worker,
+/// chunk 8.2e).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Module<'a> {
+    /// The workspace's folder, holding its `Cargo.toml` and `Cargo.lock`.
+    pub workspace: &'a Path,
+    /// The package whose library is the module.
+    pub package: &'a str,
+    /// Where cargo keeps what it builds.
+    pub target: &'a Path,
+}
+
+/// Builds `build`'s module in the dev profile, offline, without debug
+/// information, which binding the module leaves out anyway: its path.
+pub fn build_module(build: &Module<'_>) -> Result<PathBuf, Failed> {
+    let output = Command::new(cargo())
+        .current_dir(build.workspace)
+        .args([
+            "build",
+            "--offline",
+            "--quiet",
+            "--target",
+            crate::deployable::WASM,
+            "--package",
+            build.package,
+            "--lib",
+        ])
+        .env("CARGO_TARGET_DIR", build.target)
+        .env("CARGO_PROFILE_DEV_DEBUG", "0")
+        .output()
+        .map_err(|error| Failed::Start(error.to_string()))?;
+    if !output.status.success() {
+        let mut shown = String::from_utf8_lossy(&output.stderr).into_owned();
+        shown.push_str(&String::from_utf8_lossy(&output.stdout));
+        return Err(Failed::Refused(shown));
+    }
+    Ok(build
+        .target
+        .join(crate::deployable::WASM)
+        .join("debug")
+        .join(format!("{}.wasm", build.package.replace('-', "_"))))
+}

@@ -12,17 +12,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use jadpo_interp::{CallError, Prepared, Program, STACK_BYTES};
-use jadpo_runtime::ai::AiFake;
-use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::config::Mode;
 use jadpo_runtime::crashes::{Boundary, Reached};
-use jadpo_runtime::fakes::ProviderFake;
 use jadpo_runtime::record::{Entry, Record};
-use jadpo_runtime::runner::{Deferred, run_deferred};
-use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Host, Outcome, Sources, block_on};
+use jadpo_runtime::{Ctx, Executor, Host, Outcome, Sources, block_on, test_run};
 
 use crate::database::{TestDatabases, TestHost};
-use crate::env::{TestDatabase, TestEnv};
+use crate::env::TestEnv;
 use crate::outcome::CrashPoint;
 use crate::outcome::{self, TestFailure};
 use crate::{Rerun, Test, TestKind, TestRecord};
@@ -326,20 +322,6 @@ fn tested<E: Executor>(
             rerun,
         )));
     };
-    let mut env = TestEnv::new(&test.key);
-    if let Some(start) = executor.plan().test_clock(callable) {
-        env.env.clock = jadpo_runtime::Clock::fixed(start);
-    }
-    let places = executor.places();
-    // Every provider package's connection is answered by its fake (area
-    // 13; chunk 7.2d): what the test's `fakes:` scripts, the generated
-    // default otherwise.
-    let fake = Rc::new(ProviderFake::new());
-    let connections = faked_connections(executor);
-    // Every model asked answers through the `ai` fake (area 21, "Tests"):
-    // nothing reaches a model from a test.
-    let ai = Rc::new(AiFake::new());
-    let models = executor.plan().ai_connection();
     // Only a test that calls an action, query or fixture, sends a request
     // through a route or runs a schedule can touch a store.
     if let (
@@ -356,7 +338,6 @@ fn tested<E: Executor>(
             databases,
             runtime,
             callable,
-            env: &env,
             batches,
         };
         let first = stored.run(None, kept);
@@ -367,74 +348,99 @@ fn tested<E: Executor>(
         // again with a crash at each boundary of each step it reached, and
         // must pass every time, its fake's effects those of the run
         // without one (area 13; chunk 7.5d).
-        for (at, step) in first.reached.iter().enumerate() {
-            for boundary in Boundary::ALL {
-                let ran = stored.run(Some((at + 1, boundary)), None);
-                if !ran.crashed {
-                    continue;
-                }
-                let point = CrashPoint {
-                    step: step.clone(),
-                    boundary,
-                };
-                if let Some(mut failure) = ran.failure {
-                    failure.crash = Some(point);
-                    return Some(failure);
-                }
-                if ran.effects != first.effects {
-                    return Some(Box::new(outcome::effects_differ(
-                        sources,
-                        test,
-                        point,
-                        &first.effects,
-                        &ran.effects,
-                        rerun,
-                    )));
-                }
+        return match crash_runs(&first.reached, &first.effects, |at, boundary| {
+            let ran = stored.run(Some((at, boundary)), None);
+            CrashRun {
+                failure: ran.failure,
+                effects: ran.effects,
+                crashed: ran.crashed,
             }
-        }
-        return None;
+        }) {
+            None => None,
+            Some(Crashed::Failed(point, mut failure)) => {
+                failure.crash = Some(point);
+                Some(failure)
+            }
+            Some(Crashed::Acted(point, effects)) => Some(Box::new(outcome::effects_differ(
+                sources,
+                test,
+                point,
+                &first.effects,
+                &effects,
+                rerun,
+            ))),
+        };
     }
-    let host = env.host();
+    let places = executor.places();
     let record = recording(kept.as_deref());
-    let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);
-    let mut ctx = Ctx::of(executor, &host, env.env);
-    ctx.set_settings(executor.plan().test_settings(callable));
-    let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
-    let outcome = ran.unwrap_or_else(|_| {
-        Outcome::Fault(ctx.fault(
-            FaultKind::Defect("a wait nothing would end".into()),
-            Frame::ENTRY,
-        ))
-    });
+    let host = TestEnv::new(&test.key).host();
+    let once = test_run::Once {
+        key: &test.key,
+        callable,
+        order: None,
+        crash: None,
+        batches: false,
+        record: record.clone(),
+    };
+    let ran = block_on(test_run::once(executor, &host, once))
+        .unwrap_or_else(|_| test_run::stalled(places, record.as_deref()));
     if let (Some(record), Some(kept)) = (&record, kept) {
-        record.push(Entry::Outcome(jadpo_runtime::record::outcome(
-            &outcome, places,
-        )));
         kept.entries = record.entries();
     }
-    let failure = match outcome {
+    let failure = match &ran.outcome {
         Outcome::Value(_) => None,
         other => Some(Box::new(outcome::failure(
-            places, sources, test, &other, rerun, None,
+            places, sources, test, other, rerun, None,
         ))),
     };
-    drop(ctx);
-    outcome::fakes_used(places, sources, test, &usage(&fake, &ai), failure, rerun)
+    outcome::fakes_used(places, sources, test, &ran.usage, failure, rerun)
 }
 
-/// The provider connections a test's package fake answers: every one but
-/// the email connection, whose mail the test's host catches whole, a mail
-/// package's included, in every run, crash runs too: the capability's
-/// fake stands in for every connection that fills it (area 13, "One fake
-/// per capability"; chunk 7.3c).
-fn faked_connections<E: Executor>(executor: &E) -> Vec<&str> {
-    let plan = executor.plan();
-    let mail = plan.mail_connection();
-    plan.provider_connections()
-        .into_iter()
-        .filter(|connection| Some(*connection) != mail)
-        .collect()
+/// What a run with a crash gave (chunk 7.5d): how it failed, if it did,
+/// its fake's effects, and whether the crash it was asked for happened.
+pub(crate) struct CrashRun<F> {
+    pub failure: Option<F>,
+    pub effects: Vec<(String, usize)>,
+    pub crashed: bool,
+}
+
+/// The first run with a crash that fails a test: one that failed, or one
+/// whose fake's effects aren't those of the run without one.
+pub(crate) enum Crashed<F> {
+    Failed(CrashPoint, F),
+    Acted(CrashPoint, Vec<(String, usize)>),
+}
+
+/// Runs a test again, through `run`, with a crash at each boundary of each
+/// step in `reached`, the steps its run without one reached, whose fake's
+/// effects were `first` (area 13, "Provider calls and capabilities in
+/// tests"; chunk 7.5d): the first run that crashed and failed or acted
+/// otherwise, if one did. A run whose crash never happened says nothing.
+/// The same whichever executor runs the test and wherever (chunk 8.2e).
+pub(crate) fn crash_runs<F>(
+    reached: &[Reached],
+    first: &[(String, usize)],
+    mut run: impl FnMut(usize, Boundary) -> CrashRun<F>,
+) -> Option<Crashed<F>> {
+    for (at, step) in reached.iter().enumerate() {
+        for boundary in Boundary::ALL {
+            let ran = run(at + 1, boundary);
+            if !ran.crashed {
+                continue;
+            }
+            let point = CrashPoint {
+                step: step.clone(),
+                boundary,
+            };
+            if let Some(failure) = ran.failure {
+                return Some(Crashed::Failed(point, failure));
+            }
+            if ran.effects != first {
+                return Some(Crashed::Acted(point, ran.effects));
+            }
+        }
+    }
+    None
 }
 
 /// What a test with a database runs with, once for the run without a
@@ -447,7 +453,6 @@ struct Stored<'s, E> {
     databases: &'s TestDatabases,
     runtime: &'s jadpo_host_native::Runtime,
     callable: u32,
-    env: &'s TestEnv,
     /// Each batch run the test started run to its end once it has ended.
     batches: bool,
 }
@@ -464,72 +469,38 @@ struct Ran {
 }
 
 impl<E: Executor> Stored<'_, E> {
-    /// Runs the test on its own copy of the database, with its own fake,
-    /// crashing at `crash` (the step, from 1, and the boundary) when given,
-    /// keeping what it did and the rows it left in `kept` when given.
+    /// Runs the test on its own copy of the database, with its own fakes
+    /// ([`test_run::once`]), crashing at `crash` (the step, from 1, and the
+    /// boundary) when given, keeping what it did and the rows it left in
+    /// `kept` when given.
     fn run(&self, crash: Option<(usize, Boundary)>, kept: Option<&mut Kept>) -> Ran {
         let (executor, test) = (self.executor, self.test);
         let places = executor.places();
-        let fake = Rc::new(ProviderFake::new());
-        let connections = faked_connections(executor);
-        let ai = Rc::new(AiFake::new());
-        let models = executor.plan().ai_connection();
-        let mut env = self.env.clone();
-        env.database = TestDatabase::Copied {
-            stores: self.databases.stores(),
-        };
         let record = recording(kept.as_deref());
         let host = TestHost::new(self.databases)
             .with_record(record.clone())
-            .with_file_stores(executor.plan().file_stores())
-            .with_mail(executor.plan().mail_connection().map(str::to_string));
-        let (outcome, undelivered, reached, crashed) = {
-            let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);
-            let mut ctx = Ctx::of(executor, &host, env.env);
-            ctx.set_settings(executor.plan().test_settings(self.callable));
-            // What each step emits is delivered before the next statement,
-            // in an order the run's seed decides (chunk 6.11).
-            ctx.deliver_between_steps(crate::env::delivery_order(self.rerun.seed, &test.key));
-            match crash {
-                Some((at, boundary)) => ctx.crash_at(at, boundary),
-                None => ctx.track_steps(),
-            }
-            let outcome = self
-                .runtime
-                .block_on(executor.run(&mut ctx, self.callable, Vec::new()));
-            if let Some(record) = &record {
-                record.push(Entry::Outcome(jadpo_runtime::record::outcome(
-                    &outcome, places,
-                )));
-            }
-            if self.batches {
-                let started: Vec<Deferred> = ctx
-                    .take_deferred()
-                    .into_iter()
-                    .filter(|work| matches!(work, Deferred::Batch(_)))
-                    .collect();
-                if !started.is_empty() {
-                    let clocked = crate::host::AtClock::new(&host, ctx.now());
-                    self.runtime
-                        .block_on(run_deferred(executor, &clocked, started));
-                }
-            }
-            (
-                outcome,
-                ctx.undelivered().cloned(),
-                ctx.steps_reached().to_vec(),
-                ctx.crashed(),
-            )
-        };
-        let failure = match outcome {
+            .with_caught(test_run::Caught::of(executor.plan()));
+        let ran = self.runtime.block_on(test_run::once(
+            executor,
+            &host,
+            test_run::Once {
+                key: &test.key,
+                callable: self.callable,
+                order: Some(self.rerun.seed),
+                crash,
+                batches: self.batches,
+                record: record.clone(),
+            },
+        ));
+        let failure = match &ran.outcome {
             Outcome::Value(_) => None,
             other => Some(Box::new(outcome::failure(
                 places,
                 self.sources,
                 test,
-                &other,
+                other,
                 self.rerun,
-                undelivered.as_ref(),
+                ran.undelivered.as_ref(),
             ))),
         };
         // A crash sends its step again, and a fake keeping no key for it
@@ -538,14 +509,7 @@ impl<E: Executor> Stored<'_, E> {
         // often each scripted operation was called is judged on the run
         // without a crash only (chunk 7.9a).
         let failure = if crash.is_none() {
-            outcome::fakes_used(
-                places,
-                self.sources,
-                test,
-                &usage(&fake, &ai),
-                failure,
-                self.rerun,
-            )
+            outcome::fakes_used(places, self.sources, test, &ran.usage, failure, self.rerun)
         } else {
             failure
         };
@@ -559,46 +523,11 @@ impl<E: Executor> Stored<'_, E> {
                 failure.kept = databases;
                 failure
             }),
-            reached,
-            effects: fake.effects(),
-            crashed,
+            reached: ran.reached,
+            effects: ran.effects,
+            crashed: ran.crashed,
         }
     }
-}
-
-/// `host` with `fake` in each of `connections`' place, and `ai` in the
-/// place of the connection `ai:` names, `models`.
-fn faked<H: Host>(
-    host: H,
-    connections: &[&str],
-    fake: &Rc<ProviderFake>,
-    models: Option<&str>,
-    ai: &Rc<AiFake>,
-) -> Faked<H> {
-    // The `ai` fake first, so it answers a package's connection that
-    // fills `ai` too (chunk 5.5v3b).
-    let faked = match models {
-        Some(models) => Faked::new(host).with(models, Rc::clone(ai) as Rc<dyn Capability>),
-        None => Faked::new(host),
-    };
-    connections.iter().fold(faked, |faked, connection| {
-        faked.with(connection, Rc::clone(fake) as Rc<dyn Capability>)
-    })
-}
-
-/// `host`, keeping each outside call in `record` when there is one.
-fn recorded<H: Host>(host: Faked<H>, record: &Option<Rc<Record>>) -> Faked<H> {
-    match record {
-        Some(record) => host.with_record(Rc::clone(record)),
-        None => host,
-    }
-}
-
-/// How each scripted operation and prompt was used.
-fn usage(fake: &ProviderFake, ai: &AiFake) -> Vec<jadpo_runtime::fakes::Usage> {
-    let mut used = fake.usage();
-    used.extend(ai.usage());
-    used
 }
 
 #[cfg(test)]
@@ -607,7 +536,7 @@ mod tests {
     use std::time::Duration;
 
     use jadpo_interp::Value;
-    use jadpo_runtime::{Fault, LocalFuture, Places};
+    use jadpo_runtime::{Fault, FaultKind, LocalFuture, Places};
 
     use super::*;
     use crate::TestKind;

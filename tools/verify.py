@@ -221,6 +221,10 @@ POSTGRES = [
 # teaching example 23 built by `jadpo build` in release, its build kept in
 # target/jadpo-compiled/deployable/ too, then started against the run's
 # server, refusing to start out of date, serving and draining on SIGTERM.
+# And route tests on workerd (chunk 8.2e): area 7's todos and teaching
+# example 23 built for wasm32 as a test Worker, in target/jadpo-compiled/
+# workerd/, and each route test run inside it with the interpreter's
+# records, workerd installed into tools/workers/ by `npm ci` the first time.
 COMPILED = ('compiled code: the corpus interpreted and compiled with the same records, and a deployable',
             [('jadpo-cli', 'compiled'), ('jadpo-cli', 'deployable')], [])
 COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
