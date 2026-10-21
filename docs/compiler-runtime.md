@@ -3706,9 +3706,13 @@ four-core runner with sixty other steps: the step took 628 s there and
 the job 13 min 20 s (chunk 8.1i's pull request). So CI runs it as a job
 of its own, `compiled`, whose budget is its timeout: 12 minutes from
 start to end, about twice what it took with no cargo cache at all, 5 min
-41 s (119 s building `jadpo-cli`'s tests, 170 s for the step, all 258
-projects and 525 tests compared, the 28 teaching examples' 334 tests
-passing both ways); the `tests` job beside it took 8 min 11 s. Locally,
+31 s and 5 min 41 s in two runs (110 to 119 s building `jadpo-cli`'s
+tests, 170 to 174 s for the step, all 258 projects and 525 tests
+compared, the 28 teaching examples' 334 tests passing both ways); the
+`tests` job beside it took 8 min 11 s and 8 min 23 s. The projects the
+step writes into `target/tmp/` are removed before the cache is saved,
+since the cache action takes their `tests` folders for cargo's own and
+fails on each. Locally,
 `python3 tools/verify.py` still runs every group, this one among them,
 since a chunk that breaks compiled code costs less to find before its
 pull request than after; there the step took 149 s of a 197 s gate (load

@@ -2250,10 +2250,11 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   harness needs; the gate's differential step its group of its own,
   `compiled`, which CI runs as a job of its own against its own
   PostgreSQL container, its cache keeping the harness's registry crates,
-  with a budget of 12 minutes (5 min 41 s with no cache at all, every
-  one of 258 projects and 525 tests giving the same records both ways
-  and all 28 teaching examples' 334 tests passing; the `tests` job 8 min
-  11 s, from 13 min 20 s); a run of that group alone building only the
+  with a budget of 12 minutes (5 min 31 s and 5 min 41 s with no cache
+  at all, every one of 258 projects and 525 tests giving the same records
+  both ways and all 28 teaching examples' 334 tests passing; the `tests`
+  job 8 min 11 s and 8 min 23 s, from 13 min 20 s); a run of that group
+  alone building only the
   tests it runs. Locally the full gate still runs it; `--profile quick`
   doesn't. §2.5's "Compiled code" and §2.7's "The differential run".
 - [x] **8.1k The route trie** `opus · high`, after 8.1a. Built (§2.5,
