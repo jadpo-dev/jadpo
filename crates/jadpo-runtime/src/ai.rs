@@ -41,7 +41,9 @@
 //! Prompts and answers appear in no error's text; only `jadpo dev`'s call
 //! log keeps them, in full, as area 21 allows.
 
+#[cfg(feature = "testing")]
 use std::cell::RefCell;
+#[cfg(feature = "testing")]
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -54,13 +56,17 @@ use jadpo_std::{HttpMethod, RuleKey};
 use jadpo_value::Value;
 use jadpo_value::json::{Problem, Unread};
 
-use crate::capability::{Answer, Call, Capability, Source};
+#[cfg(feature = "testing")]
+use crate::LocalFuture;
+#[cfg(feature = "testing")]
+use crate::capability::Capability;
+use crate::capability::{Answer, Call, Source};
 use crate::effects::Unanswered;
-use crate::fakes::Usage;
 use crate::outside::{Asking, Comes, Form, Rerun, Retry, Sending};
+#[cfg(feature = "testing")]
 use crate::places::Frame;
 use crate::provider::{Providers, Reading, Request};
-use crate::{Ctx, Failure, FaultKind, JsonCodecs, LocalFuture};
+use crate::{Ctx, Failure, FaultKind, JsonCodecs};
 
 /// What a program asks models with: its `ai:`, its prompts, and the
 /// codecs its prompts' fields and its answers' types are written and read
@@ -111,7 +117,7 @@ pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
         AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
-            read.extend(package_reads(ai, &package.operation, &package.input));
+            read.extend(package_reads(ai, package.called, &package.input));
         }
     }
     read.sort_unstable();
@@ -119,15 +125,15 @@ pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
     read
 }
 
-/// The settings a package's operation `operation` reads when `ai` calls
-/// it, its credential's and address's among them, and those its mapped
-/// `input` reads.
-pub(crate) fn package_reads(ai: &Ai<'_>, operation: &str, input: &[(String, AiInput)]) -> Vec<u32> {
+/// The settings the package's operation numbered `called` reads when
+/// `ai` calls it, its credential's and address's among them, and those
+/// its mapped `input` reads.
+pub(crate) fn package_reads(ai: &Ai<'_>, called: u32, input: &[(String, AiInput)]) -> Vec<u32> {
     let mut read = Vec::new();
-    if let Some((plan, _)) = ai
+    if let Some((plan, _, _)) = ai
         .providers
         .as_ref()
-        .and_then(|providers| providers.operation(&ai.plan.connection, operation))
+        .and_then(|providers| providers.numbered(called))
     {
         read.extend(crate::provider::settings_read(plan));
     }
@@ -425,7 +431,7 @@ async fn generated(
             Via::Package { package, providers }
         }
     };
-    let first = match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
+    let first = match prepared(ctx, &via, &asked, &messages, site, settings) {
         Ok(request) => request,
         Err(crate::provider::Unready::Misconfigured) => return misconfigured(ctx),
         Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
@@ -472,7 +478,7 @@ async fn generated(
     let values = ctx
         .host()
         .call_log()
-        .and_then(|_| crate::prompt_recordings::values_written(ai, site, &prompt));
+        .and_then(|_| prompt_values(ai, site, &prompt));
     let logged: crate::outside::Log<'_> =
         &|ctx, call, answer| log(ctx, call, values.as_deref(), answer);
     let max_concurrent = max_concurrent_of(ai);
@@ -521,7 +527,7 @@ async fn generated(
     for attempt in 1..=attempts {
         let request = match first.take() {
             Some(request) => request,
-            None => match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
+            None => match prepared(ctx, &via, &asked, &messages, site, settings) {
                 Ok(request) => request,
                 Err(crate::provider::Unready::Misconfigured) => {
                     let done = misconfigured(ctx);
@@ -585,6 +591,7 @@ async fn generated(
         // send it.
         let faked = !matches!(source, Source::Live | Source::Sandbox);
         let (answer, faked) = match answer {
+            #[cfg(feature = "testing")]
             Answer::Generated => (Answer::Wire(generated_answer(ctx, ai, site, &asked)), true),
             other => (other, faked),
         };
@@ -659,7 +666,17 @@ async fn generated(
                 )
                 .await;
             }
-            Answer::Value(_) | Answer::Generated | Answer::Recorded => {
+            Answer::Value(_) => {
+                return crate::ai_budget::debited(
+                    ctx,
+                    taken,
+                    used,
+                    defect("an answer to `ai.generate` that isn't a chat completion"),
+                )
+                .await;
+            }
+            #[cfg(feature = "testing")]
+            Answer::Generated | Answer::Recorded => {
                 return crate::ai_budget::debited(
                     ctx,
                     taken,
@@ -757,7 +774,6 @@ pub fn model_name(model: &str) -> &str {
 /// The request one attempt sends, with `messages`.
 fn prepared(
     ctx: &mut Ctx<'_>,
-    ai: &Ai<'_>,
     via: &Via<'_>,
     asked: &Asked,
     messages: &[(String, String)],
@@ -798,7 +814,7 @@ fn prepared(
     package_request(
         ctx,
         providers,
-        (ai.plan.connection.as_str(), &package.operation),
+        package.called,
         &json,
         settings,
         added,
@@ -806,25 +822,26 @@ fn prepared(
     )
 }
 
-/// The request a package's operation `operation` of `connection` sends
-/// with `json`, its input as the mapping made it, and `added` written
-/// where it says; `asking` names the prompt or operation it is made for,
-/// in a fault.
+/// The request the package's operation numbered `called` sends with
+/// `json`, its input as the mapping made it, and `added` written where it
+/// says; `asking` names the prompt or operation it is made for, in a
+/// fault.
 pub(crate) fn package_request(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
-    (connection, operation): (&str, &str),
+    called: u32,
     json: &serde_json::Value,
     settings: &[(u32, Value)],
     added: Option<(&str, serde_json::Value)>,
     asking: &str,
 ) -> Result<Request, crate::provider::Unready> {
     use crate::provider::Unready;
-    let Some((_, op)) = providers.operation(connection, operation) else {
+    let Some((_, op, connection)) = providers.numbered(called) else {
         return Err(Unready::Fault(FaultKind::Defect(format!(
-            "`{connection}.{operation}`, which the plan doesn't have"
+            "the operation `{asking}` calls, which the plan doesn't have"
         ))));
     };
+    let operation = op.name.as_str();
     let input = match op.input {
         Some(number) => {
             let text = json.to_string();
@@ -854,7 +871,7 @@ pub(crate) fn package_request(
     crate::provider::request_adding(
         ctx,
         providers,
-        (connection, operation),
+        called,
         input.as_ref(),
         settings,
         crate::provider::Site {
@@ -982,7 +999,7 @@ fn package_reply(
     package: &PackageAi,
     text: &str,
 ) -> Result<Reply, Done> {
-    let Some((_, op)) = providers.operation(connection, &package.operation) else {
+    let Some((_, op, _)) = providers.numbered(package.called) else {
         return Err(Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{}`, which the plan doesn't have",
             package.operation
@@ -1556,9 +1573,23 @@ fn strip_fence(content: &str) -> &str {
     }
 }
 
+/// A prompt's values as a development log keeps them, which `jadpo ai
+/// record` reads (chunk 5.5v4b): none without the `testing` feature,
+/// whose recordings they are kept for.
+fn prompt_values(ai: &Ai<'_>, site: &GenerateSite, prompt: &Value) -> Option<String> {
+    #[cfg(feature = "testing")]
+    return crate::prompt_recordings::values_written(ai, site, prompt);
+    #[cfg(not(feature = "testing"))]
+    {
+        let _ = (ai, site, prompt);
+        None
+    }
+}
+
 /// A fake's generated default, as a chat completion: a value of the
 /// call's type that keeps its rules, made as a provider's generated
 /// default is (area 13; chunk 7.2d), and wrapped as the call asks.
+#[cfg(feature = "testing")]
 fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: &Asked) -> Rc<str> {
     let Some(codec) = ai.json.codec_of(site.answer) else {
         return completion(None, None, "stop");
@@ -1619,215 +1650,10 @@ pub(crate) fn log(ctx: &Ctx<'_>, call: &Call, values: Option<&str>, answer: &Ans
 
 // --- the fake -------------------------------------------------------------------
 
-/// One answer a test's `fakes: { ai.<prompt>: }` scripts (area 21,
-/// "Tests").
-#[derive(Clone, Debug, PartialEq)]
-pub enum Script {
-    /// The model's text: a value of the call's type written as JSON, or
-    /// `raw(...)`'s text.
-    Content(String),
-    /// One of `ai.generate`'s five conditions.
-    Condition(RuleKey),
-    /// `partial("...", <condition>)`: a stream that sends the text, then
-    /// stops with the condition (chunk 5.5v6).
-    Partial(String, RuleKey),
-}
-
-/// A value of `site`'s type, written as `json`, as the model sends it:
-/// a text answer as its text, one in a strict mode that isn't an object as
-/// the member `value` of one, and anything else as it is.
-pub fn as_sent(ai: &Ai<'_>, site: &GenerateSite, json: &str) -> String {
-    if site.schema.is_none() {
-        return match serde_json::from_str::<serde_json::Value>(json) {
-            Ok(serde_json::Value::String(text)) => text,
-            _ => json.to_string(),
-        };
-    }
-    if ai.plan.schema == SchemaMode::StrictSubset && !site.object {
-        return format!("{{\"{}\":{json}}}", jadpo_std::ai::WRAPPED);
-    }
-    json.to_string()
-}
-
-/// The answer a scripted one is, as a chat completion or as the driver
-/// classifies what an OpenAI-compatible server answers.
-pub fn scripted(script: Script) -> Answer {
-    match script {
-        Script::Content(text) => Answer::Wire(completion(Some(&text), None, "stop")),
-        Script::Condition(RuleKey::Refused) => Answer::Wire(completion(
-            None,
-            Some("The model declined to answer."),
-            "stop",
-        )),
-        // An answer with no text, which no type decodes from.
-        Script::Condition(RuleKey::Malformed) => Answer::Wire(completion(None, None, "stop")),
-        Script::Condition(RuleKey::OverBudget) => {
-            Answer::Wire(completion(Some(""), None, "length"))
-        }
-        Script::Condition(RuleKey::TooLong) => Answer::Failed(CONTEXT_LENGTH_EXCEEDED.to_string()),
-        Script::Condition(_) => Answer::TimedOut,
-        // A stream's text and how it stops: the provider's own finish for
-        // a cut-off or a refusal, none for an answer out of time.
-        Script::Partial(text, rule) => Answer::Wire(completion(
-            Some(&text),
-            None,
-            crate::stream::finish_of(rule),
-        )),
-    }
-}
-
-/// One prompt's script.
-#[derive(Debug)]
-struct Scripts {
-    prompt: String,
-    from: Frame,
-    answers: VecDeque<Answer>,
-    scripted: usize,
-    called: usize,
-}
-
-/// The `ai` fake (area 21, "Tests"): every `ai` call in `jadpo test`
-/// answers through it, whatever the connection. Each attempt of a call of
-/// a scripted prompt takes the prompt's next answer; any other is answered
-/// with a generated value of the call's type. It keeps the prompt values
-/// each call asked with, for `ai.<prompt>.requests`.
-#[derive(Debug, Default)]
-pub struct AiFake {
-    scripts: RefCell<Vec<Scripts>>,
-    /// Each call's prompt value, by its prompt, in order.
-    requests: RefCell<Vec<(String, Value)>>,
-}
-
-impl AiFake {
-    pub fn new() -> AiFake {
-        AiFake::default()
-    }
-
-    /// How each scripted prompt was used, in the order first scripted:
-    /// named `ai.<prompt>`, as the test's `fakes:` writes it.
-    pub fn usage(&self) -> Vec<Usage> {
-        self.scripts
-            .borrow()
-            .iter()
-            .map(|script| Usage {
-                operation: format!("{}.{}", jadpo_std::standard::ai::AI, script.prompt),
-                from: script.from,
-                scripted: script.scripted,
-                called: script.called,
-            })
-            .collect()
-    }
-}
-
-impl Capability for AiFake {
-    fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
-        if call.attempt <= 1 {
-            self.requests
-                .borrow_mut()
-                .push((call.operation.clone(), call.input.clone()));
-        }
-        let answer = {
-            let mut scripts = self.scripts.borrow_mut();
-            match scripts
-                .iter_mut()
-                .find(|script| script.prompt == call.operation)
-            {
-                Some(script) => {
-                    script.called += 1;
-                    // Past its script, a generated value: the test fails
-                    // as `test.fake_exhausted` once it ends.
-                    script.answers.pop_front().unwrap_or(Answer::Generated)
-                }
-                None => Answer::Generated,
-            }
-        };
-        Box::pin(async move { answer })
-    }
-
-    fn source(&self) -> Source {
-        Source::Generated
-    }
-
-    /// A stream's answer: the next scripted one, cut into pieces of a few
-    /// words, as an OpenAI-compatible server streams it (chunk 5.5v6).
-    fn stream<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, crate::stream::Streamed> {
-        Box::pin(async move { crate::stream::faked(&call.operation, self.call(call).await) })
-    }
-
-    fn source_of(&self, call: &Call) -> Source {
-        let scripted = self
-            .scripts
-            .borrow()
-            .iter()
-            .any(|script| script.prompt == call.operation && !script.answers.is_empty());
-        if scripted {
-            Source::Scripted
-        } else {
-            Source::Generated
-        }
-    }
-
-    fn script(&self, _connection: &str, operation: &str, answer: Answer, from: Frame) -> bool {
-        let mut scripts = self.scripts.borrow_mut();
-        match scripts.iter_mut().find(|script| script.prompt == operation) {
-            Some(script) => {
-                script.answers.push_back(answer);
-                script.scripted += 1;
-            }
-            None => scripts.push(Scripts {
-                prompt: operation.to_string(),
-                from,
-                answers: VecDeque::from([answer]),
-                scripted: 1,
-                called: 0,
-            }),
-        }
-        true
-    }
-
-    fn requests(&self, _connection: &str, operation: &str) -> Vec<Value> {
-        self.requests
-            .borrow()
-            .iter()
-            .filter(|(prompt, _)| prompt == operation)
-            .map(|(_, value)| value.clone())
-            .collect()
-    }
-}
-
-/// Gives the `ai` fake the next answer to prompt `prompt` (area 21,
-/// "Tests"), scripted by the test at the current frame of `ctx`.
-pub fn script(
-    ctx: &mut Ctx<'_>,
-    ai: &Ai<'_>,
-    prompt: &str,
-    given: Script,
-) -> Result<(), &'static str> {
-    let Some(from) = ctx.frames().first().copied() else {
-        return Err("a scripted answer outside a test");
-    };
-    let answer = scripted(given);
-    let scripted = ctx
-        .host()
-        .capability(&ai.plan.connection)
-        .is_some_and(|fake| fake.script(&ai.plan.connection, prompt, answer, from));
-    if scripted {
-        Ok(())
-    } else {
-        Err("a test's `fakes:` on a host with no `ai` fake")
-    }
-}
-
-/// The prompt values the code asked prompt `prompt` with, as the `ai`
-/// fake kept them (`ai.<prompt>.requests`).
-pub fn requests(ctx: &Ctx<'_>, ai: &Ai<'_>, prompt: &str) -> Value {
-    let sent = ctx
-        .host()
-        .capability(&ai.plan.connection)
-        .map(|fake| fake.requests(&ai.plan.connection, prompt))
-        .unwrap_or_default();
-    Value::list(sent)
-}
+#[cfg(feature = "testing")]
+mod fake;
+#[cfg(feature = "testing")]
+pub use fake::{AiFake, Script, as_sent, requests, script, scripted};
 
 #[cfg(test)]
 mod tests {

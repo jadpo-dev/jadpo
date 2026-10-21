@@ -292,7 +292,7 @@ fn lifecycles_hide_records_and_run_transitions() {
 async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
     // Each invocation its own seed, so each makes new identities.
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     match program.run(&mut ctx, id, args).await {
         Outcome::Value(value) => value,
         other => panic!("{action}: expected a value, got {other:?}"),

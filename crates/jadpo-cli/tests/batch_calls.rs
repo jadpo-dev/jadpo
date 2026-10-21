@@ -643,7 +643,7 @@ fn call(
     args: Vec<Value>,
 ) -> (Outcome, Vec<Deferred>) {
     let id = program.plan().find(name).expect("the action");
-    let mut ctx = harness.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program, host);
     let outcome = runtime.block_on(program.run(&mut ctx, id, args));
     (outcome, ctx.take_deferred())
 }

@@ -211,8 +211,13 @@ pub enum AiDriver {
 /// output; its `stream:` and `embed:`, where it maps them.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackageAi {
-    /// `chat.completions.create`, one of the connection's operations.
+    /// `chat.completions.create`, one of the connection's operations: the
+    /// name it is logged, recorded and faked by.
     pub operation: String,
+    /// Its number in the plan's provider operations, by which a call
+    /// finds it (chunk 8.1e, as a provider call's site does since chunk
+    /// 8.1d2).
+    pub called: u32,
     /// Each member of its input, by its spelling on the wire.
     pub input: Vec<(String, AiInput)>,
     /// Whether the input reads `request.instructions`: the instructions
@@ -290,6 +295,8 @@ pub enum AiEnvelope {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackageStream {
     pub operation: String,
+    /// Its number in the plan's provider operations (chunk 8.1e).
+    pub called: u32,
     pub input: Vec<(String, AiInput)>,
     pub instructions_apart: bool,
     /// Where an event's piece of text is.
@@ -305,6 +312,8 @@ pub struct PackageStream {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackageEmbed {
     pub operation: String,
+    /// Its number in the plan's provider operations (chunk 8.1e).
+    pub called: u32,
     pub input: Vec<(String, AiInput)>,
     /// The list of the answer's items.
     pub vectors: Vec<String>,

@@ -181,7 +181,7 @@ fn a_get_route_sends_a_query_s_layer_as_plain_geojson() {
     };
     // A mapping library's fetch of the layer.
     let response = runtime.block_on(async {
-        let mut ctx = Ctx::new(program.places(), &host, env());
+        let mut ctx = Ctx::of(&program, &host, env());
         let request = jadpo_runtime::http::Request {
             method: "GET".to_string(),
             path: "/drop-points".to_string(),
@@ -205,7 +205,7 @@ fn a_get_route_sends_a_query_s_layer_as_plain_geojson() {
     let names = |reach: i128| {
         let id = program.plan().find("walkable_pins").expect("the action");
         let found = runtime.block_on(async {
-            let mut ctx = Ctx::new(program.places(), &host, env());
+            let mut ctx = Ctx::of(&program, &host, env());
             program
                 .run(&mut ctx, id, vec![point("54.6", "-3.15"), metres(reach)])
                 .await

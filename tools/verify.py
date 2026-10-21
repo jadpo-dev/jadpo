@@ -335,6 +335,12 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         packages = [arg for name in crates for arg in ('-p', name)]
         features = (['--features', 'jadpo-drivers/postgres,jadpo-drivers/package,jadpo-drivers/smtp']
                     if 'jadpo-drivers' in crates else [])
+        # A deployable holds no testing machinery (chunk 8.1e): the native
+        # host's deployable example built without the runtime's `testing`
+        # feature, its symbols naming none of the fakes, recordings or crash
+        # points.
+        checks.append(Step('a deployable built without testing', 'tests',
+                           [python, 'tools/deployable.py'], lane='cargo'))
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))

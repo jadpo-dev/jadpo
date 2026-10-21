@@ -1640,6 +1640,7 @@ name = "jadpo-runtime"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "jadpo-runtime",
  "jadpo-std",
  "jadpo-value",
  "miniz_oxide",

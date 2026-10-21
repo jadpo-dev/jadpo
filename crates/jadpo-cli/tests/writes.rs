@@ -367,7 +367,7 @@ async fn call(program: &Program, host: &dyn Host, action: &str, args: Vec<Value>
         seed: Some(7),
         clock: Clock::TEST,
     };
-    let mut ctx = Ctx::new(program.places(), host, env);
+    let mut ctx = Ctx::of(program, host, env);
     program.run(&mut ctx, id, args).await
 }
 

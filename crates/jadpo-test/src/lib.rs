@@ -544,7 +544,7 @@ pub fn recordings(prepared: &Prepared) -> Vec<Test> {
     let lines = |text: &str| u32::try_from(text.lines().count().max(1)).unwrap_or(u32::MAX);
     let mut out: Vec<Test> = prepared
         .plan()
-        .providers()
+        .testing()
         .recorded
         .iter()
         .map(|recorded| Test {

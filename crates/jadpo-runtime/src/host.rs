@@ -322,7 +322,9 @@ pub trait Host {
 
     /// The outcome-and-effect record each outside call is kept in (chunk
     /// 8.1c): only a test's host keeps one ([`crate::capability::Faked`]),
-    /// so everywhere else a call pays only this asking.
+    /// so everywhere else a call pays only this asking. Only with the
+    /// `testing` feature (chunk 8.1e).
+    #[cfg(feature = "testing")]
     fn record(&self) -> Option<&crate::record::Record> {
         None
     }
@@ -500,6 +502,7 @@ impl<H: Host + ?Sized> Host for &H {
         (**self).call_log()
     }
 
+    #[cfg(feature = "testing")]
     fn record(&self) -> Option<&crate::record::Record> {
         (**self).record()
     }

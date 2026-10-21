@@ -217,10 +217,6 @@ pub struct ProviderPlan {
     /// runtime receives at its generated route (area 11, "Receiving from
     /// outside"; chunk 7.7).
     pub webhooks: Vec<WebhookPlan>,
-    /// Every recording of the app's own integrations (area 11,
-    /// "Provenance and confirmation"; chunk 7.2d2), which `jadpo test` and
-    /// the publishing bar decode with its operation's decoders.
-    pub recorded: Vec<RecordedPlan>,
     /// Each queue the app receives through `receiving:` (area 12, "Events
     /// from outside"; chunk 7.7c), fetched by the tick through its
     /// connection's package.
@@ -507,10 +503,6 @@ pub struct OperationPlan {
     /// The identity keys of the package failures it answers with, whose
     /// codes the provider's error code is matched against.
     pub failures: Vec<String>,
-    /// Its recording's text, `recordings/<resource>.<operation>.json` in
-    /// its package, which `jadpo dev`'s fake answers from with its
-    /// placeholders filled (chunk 7.2d2).
-    pub recording: Option<String>,
 }
 
 /// What the call at one site needs (chunk 7.2c2): the operation it calls,
@@ -787,7 +779,6 @@ mod tests {
             repeat: Repeat::Safe,
             changes: false,
             failures: Vec::new(),
-            recording: None,
         };
         let plan = ProviderPlan {
             operations: vec![

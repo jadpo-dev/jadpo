@@ -262,7 +262,7 @@ fn call(program: &Program, url: &str, name: &str, since: i32) -> (Value, usize) 
             seed: Some(1),
             clock: Clock::TEST,
         };
-        let mut ctx = Ctx::new(program.places(), &host, env);
+        let mut ctx = Ctx::of(program, &host, env);
         program.run(&mut ctx, id, vec![Value::Date(since)]).await
     });
     let Outcome::Value(value) = found else {

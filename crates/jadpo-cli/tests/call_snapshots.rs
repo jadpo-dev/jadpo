@@ -348,7 +348,7 @@ fn run(
         seed: Some(seed),
         clock: Clock::TEST,
     };
-    let mut ctx = Ctx::new(program.places(), host, env);
+    let mut ctx = Ctx::of(program, host, env);
     ctx.set_call_key("request", request);
     runtime.block_on(program.run(&mut ctx, id, args))
 }

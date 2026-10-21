@@ -209,7 +209,7 @@ fn tested<E: Executor>(
                 .err()
                 .map(|unread| Box::new(outcome::prompt_recording(sources, test, &unread, rerun)));
         }
-        return match executor.recording(&mut ctx, &test.file) {
+        return match jadpo_runtime::recorded::run(executor, &mut ctx, &test.file) {
             Some(Ok(())) => None,
             Some(Err(unread)) => {
                 let operation = test
@@ -234,7 +234,7 @@ fn tested<E: Executor>(
             ))),
         };
     }
-    let Some(callable) = executor.callable(&test.key) else {
+    let Some(callable) = executor.plan().callable(&test.key) else {
         return Some(Box::new(outcome::not_runnable(
             sources,
             test,
@@ -243,7 +243,7 @@ fn tested<E: Executor>(
         )));
     };
     let mut env = TestEnv::new(&test.key);
-    if let Some(start) = executor.clock(callable) {
+    if let Some(start) = executor.plan().test_clock(callable) {
         env.env.clock = jadpo_runtime::Clock::fixed(start);
     }
     let places = executor.places();
@@ -314,7 +314,7 @@ fn tested<E: Executor>(
     let record = recording(kept.as_deref());
     let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);
     let mut ctx = Ctx::of(executor, &host, env.env);
-    ctx.set_settings(executor.settings(callable));
+    ctx.set_settings(executor.plan().test_settings(callable));
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
     let outcome = ran.unwrap_or_else(|_| {
         Outcome::Fault(ctx.fault(
@@ -399,7 +399,7 @@ impl<E: Executor> Stored<'_, E> {
         let (outcome, undelivered, reached, crashed) = {
             let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);
             let mut ctx = Ctx::of(executor, &host, env.env);
-            ctx.set_settings(executor.settings(self.callable));
+            ctx.set_settings(executor.plan().test_settings(self.callable));
             // What each step emits is delivered before the next statement,
             // in an order the run's seed decides (chunk 6.11).
             ctx.deliver_between_steps(crate::env::delivery_order(self.rerun.seed, &test.key));
@@ -515,9 +515,21 @@ mod tests {
 
     /// An executor whose callable `n` faults when `n` is a multiple of 3,
     /// and takes longer the earlier it comes, so threads finish out of
-    /// order.
+    /// order; test `test n<n>` is callable `n` in its plan.
     struct Fake {
         places: Places,
+        loaded: jadpo_runtime::Loaded,
+    }
+
+    impl Fake {
+        fn new() -> Fake {
+            let mut plan = jadpo_runtime::RuntimePlan::default();
+            plan.testing.tests = (0..40).map(|n| (format!("test n{n}"), n)).collect();
+            Fake {
+                places: Places::new(),
+                loaded: jadpo_runtime::Loaded::new(std::sync::Arc::new(plan)),
+            }
+        }
     }
 
     impl Executor for Fake {
@@ -525,8 +537,8 @@ mod tests {
             &self.places
         }
 
-        fn callable(&self, key: &str) -> Option<u32> {
-            key.strip_prefix("test n").and_then(|n| n.parse().ok())
+        fn plan(&self) -> jadpo_runtime::Plan<'_> {
+            self.loaded.plan()
         }
 
         fn run<'a, 'p: 'a>(
@@ -566,21 +578,12 @@ mod tests {
             seed: 1,
         };
         let sources: BTreeMap<String, String> = BTreeMap::new();
-        let failed: Vec<usize> = spread(
-            || Fake {
-                places: Places::new(),
-            },
-            &tests,
-            &rerun,
-            &sources,
-            None,
-            false,
-        )
-        .iter()
-        .enumerate()
-        .filter(|(_, (failure, _))| failure.is_some())
-        .map(|(n, _)| n)
-        .collect();
+        let failed: Vec<usize> = spread(Fake::new, &tests, &rerun, &sources, None, false)
+            .iter()
+            .enumerate()
+            .filter(|(_, (failure, _))| failure.is_some())
+            .map(|(n, _)| n)
+            .collect();
         let expected: Vec<usize> = (0..40).filter(|n: &usize| n.is_multiple_of(3)).collect();
         assert_eq!(failed, expected);
     }

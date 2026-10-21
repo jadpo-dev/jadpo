@@ -23,6 +23,16 @@ blake3.workspace = true
 # (chunk 6.4b3); pure Rust, so it builds for wasm32.
 miniz_oxide.workspace = true
 
+[features]
+# What only `jadpo test` and `jadpo dev` run (chunk 8.1e): the fakes, the
+# recordings, the crash points and the plan's dev and test section. A
+# deployable built without it holds none of them.
+testing = ["jadpo-std/testing"]
+
+# The crate's own tests run with `testing` on.
+[dev-dependencies]
+jadpo-runtime = { path = ".", features = ["testing"] }
+
 [[test]]
 name = "integration"
 path = "tests/main.rs"

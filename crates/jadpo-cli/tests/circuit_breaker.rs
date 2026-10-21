@@ -345,7 +345,7 @@ async fn ship(
     parcel: &str,
 ) -> Vec<Deferred> {
     let id = program.plan().find("ship").expect("the action");
-    let mut ctx = harness.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program, host);
     match program.run(&mut ctx, id, vec![Value::text(parcel)]).await {
         Outcome::Value(_) => {}
         other => panic!("the parcel is shipped: {other:?}"),

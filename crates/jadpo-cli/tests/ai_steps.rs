@@ -368,7 +368,7 @@ fn a_models_answer_is_a_step_a_retry_replays() {
     model.answer(200, &completion("Welcome to the bakery, Ada!"));
     Runtime::new().expect("runtime").block_on(async {
         let id = program.plan().find("choose").expect("the action");
-        let mut ctx = harness.ctx_on(program.places(), &host);
+        let mut ctx = harness.ctx_on(program, &host);
         let outcome = program.run(&mut ctx, id, vec![Value::text("Ada")]).await;
         assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
         let work = ctx.take_deferred();

@@ -19,7 +19,9 @@ jadpo-check.workspace = true
 jadpo-db.workspace = true
 jadpo-graph.workspace = true
 jadpo-sql.workspace = true
-jadpo-std.workspace = true
+# The runtime plan's dev and test section (chunk 8.1e), which every plan
+# holds: a deployable's bytes leave it out.
+jadpo-std = { workspace = true, features = ["testing"] }
 
 [lints]
 workspace = true

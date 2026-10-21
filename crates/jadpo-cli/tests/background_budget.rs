@@ -360,7 +360,7 @@ impl Budgeted {
             seed: Some(self.seeds.get()),
             clock: Clock::fixed(T0),
         };
-        Ctx::new(program.places(), self, env)
+        Ctx::of(program, self, env)
     }
 
     async fn rows(&self, sql: &str) -> Vec<Row> {

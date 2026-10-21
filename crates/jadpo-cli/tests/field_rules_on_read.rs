@@ -210,7 +210,7 @@ fn call(program: &Program, host: &Harness, name: &str, args: Vec<Value>) -> Outc
             seed: Some(1),
             clock: Clock::TEST,
         };
-        let mut ctx = Ctx::new(program.places(), host, env);
+        let mut ctx = Ctx::of(program, host, env);
         program.run(&mut ctx, id, args).await
     })
 }

@@ -960,7 +960,7 @@ impl Run<'_> {
     }
 
     fn ctx(&self) -> Ctx<'_> {
-        let mut ctx = Ctx::new(self.program.places(), self.host, Env::default());
+        let mut ctx = Ctx::of(self.program, self.host, Env::default());
         ctx.allow_standalone_calls();
         ctx
     }

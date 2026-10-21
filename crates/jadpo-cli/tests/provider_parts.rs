@@ -205,8 +205,8 @@ fn root(name: &str) -> std::path::PathBuf {
 fn run(runtime: &Runtime, program: &Program, name: &str, args: Vec<Value>) -> Outcome {
     let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(MemoryHost::new()).with("payments", driver);
-    let mut ctx = Ctx::new(
-        program.places(),
+    let mut ctx = Ctx::of(
+        program,
         &host,
         Env {
             seed: Some(7),

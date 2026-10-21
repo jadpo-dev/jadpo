@@ -190,7 +190,7 @@ const DAY: i64 = 24 * 60 * 60 * 1000;
 /// left for after its response.
 async fn call(host: &Harness, program: &Program, action: &str, args: Vec<Value>) -> Vec<Deferred> {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     match program.run(&mut ctx, id, args).await {
         Outcome::Value(_) => {}
         other => panic!("`{action}` runs: {other:?}"),
@@ -255,7 +255,7 @@ async fn drive(
             }
             Deferred::Deliveries(deliveries) => {
                 for delivery in deliveries {
-                    let mut ctx = host.ctx(program.places());
+                    let mut ctx = host.ctx(program);
                     deliver(program, &mut ctx, delivery).await;
                     queue.extend(ctx.take_deferred());
                 }

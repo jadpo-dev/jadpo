@@ -139,7 +139,7 @@ pub(crate) fn plan(
     json_types: &mut Vec<TypeRef>,
     table: &[jadpo_std::connections::Connection],
     numbering: &Numbering,
-) -> ProviderPlan {
+) -> (ProviderPlan, Recordings) {
     let lookup = Lookup::new(db, project);
     let operations = jadpo_check::providers::operations(db, project);
     let mut number = |ty: TypeRef| -> u32 {
@@ -156,13 +156,19 @@ pub(crate) fn plan(
         application: jadpo_check::routes::openapi::title(db, project),
         ..ProviderPlan::default()
     };
+    let mut recordings = Recordings::default();
     // Numbered as `numbering` numbers them (chunk 8.1d2).
     for (at, _, operation) in Numbering::listed(db, project, table) {
         let keyed = jadpo_std::connections::package(table, at)
             .and_then(|plan| plan.idempotency.as_ref())
             .is_some_and(|plan| !plan.header.is_empty());
-        let mut planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
-        planned.recording = recording(db, project, operation);
+        let planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
+        if let (Some(text), Ok(numbered)) = (
+            recording(db, project, operation),
+            u32::try_from(out.operations.len()),
+        ) {
+            recordings.operations.insert(numbered, text);
+        }
         out.operations.push(planned);
     }
     out.first = numbering.first.clone();
@@ -185,7 +191,7 @@ pub(crate) fn plan(
         let found = full
             .split_once('.')
             .and_then(|(resource, name)| operations.find(&home.folder, resource, name));
-        out.recorded.push(RecordedPlan {
+        recordings.recorded.push(RecordedPlan {
             file: record.path.clone(),
             package: home.versioned(),
             operation: full.to_string(),
@@ -326,7 +332,7 @@ pub(crate) fn plan(
             source,
         });
     }
-    out
+    (out, recordings)
 }
 
 /// How calls through package connection `connection` are made: its
@@ -479,8 +485,16 @@ fn operation_plan(
             .filter(|key: &Key| types.failure_id(key).is_some())
             .map(|key| key.as_str().to_string())
             .collect(),
-        recording: None,
     }
+}
+
+/// What the plan's dev and test section keeps of the provider packages'
+/// recordings (chunk 8.1e): each operation's text, by its number, and
+/// every recording of the app's own integrations.
+#[derive(Debug, Default)]
+pub(crate) struct Recordings {
+    pub(crate) operations: std::collections::BTreeMap<u32, String>,
+    pub(crate) recorded: Vec<RecordedPlan>,
 }
 
 /// The text of `operation`'s recording, `recordings/<resource>.<operation>.json`

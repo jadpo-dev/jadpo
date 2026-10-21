@@ -497,7 +497,7 @@ enum Asked<'s> {
     Embed(Option<&'s jadpo_std::embed::EmbedSite>),
 }
 
-/// A provider package's own function `function`, a field's decoder or
+/// A provider package's own function `callee`, a field's decoder or
 /// encoder or an operation's whole-answer decoder (area 11, "Decoding";
 /// chunk 7.2c2), run on `args` from site `at` of the frame on top of
 /// `ctx`. It is pure, so it never pauses: what it gives, or how it ended
@@ -505,14 +505,10 @@ enum Asked<'s> {
 pub(crate) fn package_function(
     program: &Program,
     ctx: &mut Ctx<'_>,
-    function: &str,
+    callee: u32,
     args: Vec<Value>,
     at: u32,
 ) -> Result<Value, String> {
-    let key = jadpo_graph::Key::from_text(function.to_string());
-    let Some(callee) = program.plan().id(&key) else {
-        return Err(format!("`{function}`, which the plan doesn't have"));
-    };
     let mut machine = Machine::new(program);
     let mut step = machine.start(ctx, callee, args, SiteId(at));
     loop {

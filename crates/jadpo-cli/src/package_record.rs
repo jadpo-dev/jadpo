@@ -234,8 +234,7 @@ pub fn record(call: &Call) -> Reply {
             );
         }
     };
-    let places = program.places();
-    let mut ctx = Ctx::new(places, &host, Env::default());
+    let mut ctx = Ctx::of(&program, &host, Env::default());
     // A keyed operation's key is derived as any call's, from this run's
     // randomness, so each recording is a request of its own (area 12,
     // "Keys").

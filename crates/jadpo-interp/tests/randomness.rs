@@ -110,7 +110,7 @@ fn run_on(
     replay: Option<Vec<u8>>,
 ) -> (Outcome, Option<Vec<u8>>) {
     let id = program.plan().find(name).expect("callable");
-    let mut ctx = Ctx::new(program.places(), host, env);
+    let mut ctx = Ctx::of(program, host, env);
     match replay {
         Some(random) => ctx.replay_run(Recording {
             random,
@@ -200,7 +200,7 @@ fn no_generator_and_no_seed_is_a_fault() {
     let program = main(SOURCE);
     let id = program.plan().find("cancel_link").expect("callable");
     let host = MemoryHost::new();
-    let mut ctx = Ctx::new(program.places(), &host, LIVE);
+    let mut ctx = Ctx::of(&program, &host, LIVE);
     let outcome = jadpo_runtime::block_on(program.run(&mut ctx, id, Vec::new())).expect("ran");
     let Outcome::Fault(fault) = outcome else {
         panic!("a fault: {outcome:?}");
