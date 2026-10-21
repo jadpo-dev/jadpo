@@ -1207,7 +1207,7 @@ decoding a few kilobytes once per process costs less than either.
 **Compiled code** (chunk 8.1f, decided before it was built).
 `jadpo-codegen` writes a checked project as one Rust crate from its plan
 (`jadpo_plan::Plan`: each callable's typed body and decoded sites, and
-the runtime plan), every file built with `quote!`, parsed into a
+the runtime plan), its Rust built with `quote!`, parsed into a
 `syn::File` and printed by prettyplease (`jadpo_codegen::generate`), so a
 file that doesn't parse is the generator's error and never rustc's. The
 crate is its `Cargo.toml`, a library depending on `jadpo-std`,
