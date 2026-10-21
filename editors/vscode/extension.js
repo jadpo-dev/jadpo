@@ -75,7 +75,9 @@ async function stop() {
 }
 
 async function activate(context) {
-  output = vscode.window.createOutputChannel("Jadpo");
+  // vscode-languageclient 10 logs through a `LogOutputChannel` (`.error`, `.info`),
+  // which only `{ log: true }` gives.
+  output = vscode.window.createOutputChannel("Jadpo", { log: true });
   context.subscriptions.push(
     output,
     vscode.commands.registerCommand("jadpo.restartServer", async () => {

@@ -21,9 +21,9 @@ const FILES = {
   "app.jadpo": "application {}\n",
   "domains/notes/types/body.jadpo": "/// The text of a note.\ntype Body = Text {\n    min_length: 1\n}\n",
   "domains/notes/actions/save_note.jadpo":
-    "/// Saves a note.\naction save_note(body: Body) -> Body {\n    return body\n}\n",
+    "use notes/types { Body }\n\n/// Saves a note.\naction save_note(body: Body) -> Body {\n    return body\n}\n",
   "domains/notes/actions/broken.jadpo":
-    "action broken(body: Body) -> Body {\n    return kepe(body)\n}\n",
+    "use notes/types { Body }\n\naction broken(body: Body) -> Body {\n    return kepe(body)\n}\n",
 };
 
 test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `no ${binary}` }, async () => {
@@ -73,19 +73,19 @@ test("jadpo lsp answers a standard client", { skip: !fs.existsSync(binary) && `n
     const save = { uri: uri("domains/notes/actions/save_note.jadpo") };
     const hover = await connection.sendRequest("textDocument/hover", {
       textDocument: save,
-      position: { line: 1, character: 9 },
+      position: { line: 3, character: 9 },
     });
     assert.match(hover.contents.value, /action save_note\(body: Body\) -> Body/);
 
     const definition = await connection.sendRequest("textDocument/definition", {
       textDocument: save,
-      position: { line: 1, character: 25 },
+      position: { line: 3, character: 25 },
     });
     assert.strictEqual(definition.uri, uri("domains/notes/types/body.jadpo"));
 
     const completion = await connection.sendRequest("textDocument/completion", {
       textDocument: save,
-      position: { line: 2, character: 11 },
+      position: { line: 4, character: 11 },
     });
     assert.ok(completion.items.some((item) => item.label === "body"));
 
