@@ -1541,6 +1541,73 @@ locales {
 }
 ```
 
+Text for people is only ever written in a supported locale. A `Locale`
+the list doesn't have can still reach `text.format`,
+`temporal.format_relative` or a message as the app runs: one saved with a
+record before `supported:` changed, or written out anywhere but `locale:`.
+It is written in the supported locale a browser asking for it would get
+("Choosing a locale from a request", below): a supported locale of its
+language, the one CLDR's likely subtags give for the language first, else
+`default:` (chosen 2026-10-21 in chunk 8.2c). Case mapping and collation
+are not text for people in a language, and take any `Locale` (area 19,
+"Text").
+
+```jadpo check project=locales-unsupported file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=locales-unsupported file=domains/shop/types/ordered_at.jadpo
+/// When an order was placed.
+type OrderedAt = Instant {}
+```
+
+```jadpo check project=locales-unsupported file=domains/shop/types/placed_text.jadpo
+/// When an order was placed, shown to its customer.
+type PlacedText = Output {
+    placed: PresentationText
+}
+```
+
+```jadpo check project=locales-unsupported file=domains/shop/actions/show_placed.jadpo
+use shop/types { OrderedAt, PlacedText }
+
+/// The placing, in the locale saved with the customer's order.
+action show_placed(ordered_at: OrderedAt, saved_locale: Locale) -> PlacedText {
+    return PlacedText {
+        placed: text.format(
+            ordered_at,
+            zone: Zone.europe_london,
+            locale: saved_locale,
+            format: TimeFormat.date_long
+        )
+    }
+}
+```
+
+```jadpo check project=locales-unsupported file=domains/shop/actions/show_placed.test.jadpo
+test "a locale the application doesn't support is written in one it does" {
+    assert show_placed("2026-09-27T13:30:05Z", Locale.fr_fr).placed == "27 septembre 2026"
+    assert show_placed("2026-09-27T13:30:05Z", Locale.fr_ca).placed == "27 septembre 2026"
+    assert show_placed("2026-09-27T13:30:05Z", Locale.de_de).placed == "27 September 2026"
+}
+```
+
+So a deployable carries the locale data of its supported locales only
+(chunk 8.2c): `jadpo build` takes, from the CLDR data compiled into
+Jadpo, the entries the supported locales reach as ICU4X looks data up
+(the locale, then each locale its lookups fall back to, down to the root),
+every locale's collation, and the data that is the same in every locale,
+and compiles the deployable with that; `jadpo test` and `jadpo dev` keep
+every locale, and write the same text. A WebAssembly module that runs
+every standard-library operation is 18.5 MB with every locale and 8.5 MB
+with `en_gb` and `fr_fr` (6.1 MB and 2.7 MB with gzip), 0.9 MB of it
+every locale's collation.
+
 Every locale knows its text direction (decided 2026-10-16, built in chunk
 5.4d): `locale.direction(value)` gives a value of the built-in enum
 `TextDirection`, `.left_to_right` or `.right_to_left`, as CLDR's likely
@@ -6090,7 +6157,9 @@ builtin`. Chunk 5.4f built `jadpo translations export` and `import`.
 Chunk 7.1b3 built library packages' translations: a package's
 `translations/`, `Postcodes.translations.<message>(...)`, the root file's
 package groups and their record lines, and a package's messages in its
-surface and the publishing bar.
+surface and the publishing bar. Chunk 8.2c built the locale data a
+deployable carries, its supported locales' only, and the text a `Locale`
+the app doesn't support is written in (see Locales).
 
 ### Consistency with the rest of the language
 
@@ -6327,6 +6396,7 @@ surface and the publishing bar.
 | `locales { }` (chosen in chunk 5.3) | An unnamed singleton declaration in `app.jadpo` (as area 1 reserves the word), not a member of `application { }`: the page's `locales: { ... }` was written with a colon and is amended to `locales { default: Locale.en_gb supported: [Locale.en_gb, ...] }`, each once and no others, entries written `Locale.<tag>` (`type.locale_invalid` for text, a non-list, a variant `Locale` has not; the fix for `"fr-FR"` is one edit), none twice (`type.locale_duplicate`), the default among them (`type.locale_default_unsupported`). A missing option is `syntax.locales_default_required` or `syntax.locales_supported_required`, a given-twice option `syntax.locales_duplicate_option`, any other name `syntax.locales_unknown_option` (`unsupported:` among them: there is no such setting), a second `locales { }` `semantic.multiple_locale_declarations`. `syntax.locales_unsupported_required` and `syntax.locales_unsupported_invalid` are gone with `unsupported:` | 2026-10-16 |
 | What a locale is checked against (chosen in chunk 5.3) | A project formats text for people only with `locales { }` declared (`type.temporal_locales_required`, at the call); files handed to the compiler on their own have no application to declare them, so the rule does not apply. A `Locale.x` written as `locale:`, or as the `default:` or `test:` of a `Locale` setting, that is not supported is `type.locale_unsupported`. A `Locale` passed in is read through the wire or a setting, which accept only the supported tags (`invalid_value`, rule `variant`; OpenAPI lists only those); with no `locales { }` every `Locale` is accepted as before. A problem in the declaration is reported once, and the call is not also reported | 2026-10-16 |
 | Locale data (chosen in chunk 5.3) | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text. A WebAssembly module that formats is about 3.5 MB larger than one that does not (3.9 MB against 0.35 MB; 1.2 MB against 0.1 MB compressed with gzip, 0.8 MB with Brotli), because the data holds every locale `Locale` lists. The next lever, if a deployable needs it, is data exported for the supported locales only | 2026-10-16 |
+| Locale data a deployable carries (chosen in chunk 8.2c) | `jadpo build` bakes again, from the ICU4X data compiled into Jadpo, each marker's entries for the locales a supported locale's lookups walk through (its fallback for that marker, down to `und`; only `und` with no `locales { }`), every locale's collation (`list.sort_by` takes any `Locale`, area 19), and every marker with one entry, into the deployable's `build/rust/cldr/`, which its build compiles through ICU4X's `ICU4X_DATA_DIR`; `jadpo test` and `jadpo dev` keep every locale. A `Locale` the app doesn't support reaching `text.format`, `temporal.format_relative` or a message at run time is written in the supported locale `locale.from_accept_language` would give its tag, else `default:`, on every target, so both write the same text. Measured on `jadpo-value`'s `formats` example for wasm32 in release, which links every operation: 18,486,066 bytes with every locale, 8,276,025 with the root only, 8,415,647 with `en_gb`, 8,486,985 with `en_gb` and `fr_fr` (gzip 6,131,551, 2,650,565, 2,693,731 and 2,718,160); keeping every locale's collation costs 889,760 of them | 2026-10-21 |
 | Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
 | `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
 | Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page called a library call without naming it, were chunks 5.3b and 5.3c; both are built now | 2026-10-16 |

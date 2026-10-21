@@ -2414,15 +2414,32 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   build: reading the request 26 allocations and 1.35 µs by the walk, 8
   and 0.57 µs by its entry; writing the answer 1.05 µs against 0.89 µs,
   17 allocations either way.
+- [x] **8.2c Locale data for the supported locales** `opus · xhigh`,
+  after 8.1o (from chunk 5.3). Built (area 10, "Locales"; §2.6, "The
+  locale data a deployable carries"): `jadpo-cldr`, a tooling crate,
+  bakes ICU4X's compiled data again for a deployable's supported locales
+  (each marker's entries their lookups walk through, down to `und`;
+  every locale's collation, since `list.sort_by` takes any `Locale`;
+  every marker with one entry) into `build/rust/cldr/`, which `jadpo
+  build` compiles in through `ICU4X_DATA_DIR`, native and Workers alike;
+  `jadpo test` and `jadpo dev` keep every locale. Decided in the chunk
+  (area 10, 2026-10-21): a `Locale` the app doesn't support reaching
+  `text.format`, `temporal.format_relative` or a message is written in
+  the supported locale a header naming it would get, else `default:`, on
+  every target (formatting wrote it in its own words, a message
+  faulted). Proved live by a shop supporting `en_gb` and `fr_fr`, built
+  and run: no German or Spanish weekday in its binary, and its answers
+  are `jadpo dev`'s. Before and after: the shop's native binary 31.3 MB
+  to 21.0 MB (27.4 to 17.1 MB stripped; release, aarch64 macOS); a wasm32
+  module running every operation (`jadpo-value`'s `formats` example,
+  release) 18.5 MB to 8.5 MB, 6.1 to 2.7 MB gzipped, 0.9 MB of it every
+  locale's collation.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
   5.1c), and a `client_address:` source other than `cloudflare` refused when
   a project is built for Workers (area 10, "Client addresses"), which needs
   deployables declared first.
-  From chunk 5.3: a deployable carries locale data only for its
-  application's supported locales (today all 533 are compiled in: about
-  3.5 MB of a 3.9 MB module, 1.2 MB gzipped).
   From the Phase 6 review: the `trigger:` adapter; an `every:` under a
   minute an error naming the schedule (area 12, decided 2026-10-19); a
   batch carried on in a fresh invocation; 6.7's budgets set to Workers'

@@ -27,7 +27,7 @@ runtime = [
     "jadpo-host-native",
     "jadpo-host-workers",
 ]
-tooling = ["jadpo-term", "jadpo-test", "jadpo-lsp", "jadpo-cli"]
+tooling = ["jadpo-term", "jadpo-test", "jadpo-lsp", "jadpo-cldr", "jadpo-cli"]
 
 # Runtime crates that never build for wasm32: tools/verify.py leaves them
 # out of its wasm32 build. A crate listed before it exists is skipped.
@@ -60,6 +60,7 @@ jadpo-test = { path = "crates/jadpo-test" }
 jadpo-drivers = { path = "crates/jadpo-drivers" }
 jadpo-host-native = { path = "crates/jadpo-host-native" }
 jadpo-codegen = { path = "crates/jadpo-codegen" }
+jadpo-cldr = { path = "crates/jadpo-cldr" }
 rowan = "=0.16.1"
 ungrammar = "=1.16.1"
 serde_json = "1"
@@ -139,6 +140,34 @@ fixed_decimal = { version = "=0.7.2", default-features = false }
 # the same release; units' names are read through it too, without logging
 # the sets a name isn't in (`present::names`).
 icu_provider = { version = "=2.3.1", default-features = false }
+# The CLDR data a deployable carries (jadpo-cldr only; roadmap chunk 8.2c):
+# `jadpo build` bakes it again, from the data compiled into this Jadpo, for
+# the application's supported locales, and the deployable's build compiles
+# that in place of the full set through ICU4X's `ICU4X_DATA_DIR`. ICU4X's
+# own exporter and its baked writer at the release above, without the
+# blob and file-system formats or rayon; the data crates are the ones the
+# components above already compile in, named so their macros can be
+# called; the rest are the crates the baked data names.
+icu_provider_export = { version = "=2.3.0", default-features = false, features = ["baked_exporter"] }
+icu_calendar_data = { version = "=2.3.0", default-features = false }
+icu_casemap_data = { version = "=2.3.0", default-features = false }
+icu_collator_data = { version = "=2.3.0", default-features = false }
+icu_datetime_data = { version = "=2.3.0", default-features = false }
+icu_decimal_data = { version = "=2.3.0", default-features = false }
+icu_experimental_data = { version = "=0.6.0", default-features = false }
+icu_list_data = { version = "=2.3.0", default-features = false }
+icu_locale_data = { version = "=2.3.0", default-features = false }
+icu_locale_fallback = { version = "=2.3.0", default-features = false }
+icu_locale_fallback_data = { version = "=2.3.0", default-features = false }
+icu_normalizer_data = { version = "=2.3.0", default-features = false }
+icu_plurals_data = { version = "=2.3.0", default-features = false }
+icu_properties_data = { version = "=2.3.0", default-features = false }
+icu_time_data = { version = "=2.3.1", default-features = false }
+icu_collections = { version = "=2.3.0", default-features = false }
+icu_locale_core = { version = "=2.3.0", default-features = false }
+icu_pattern = { version = "=0.5.0", default-features = false }
+zerotrie = { version = "=0.2.5", default-features = false }
+zerovec = { version = "=0.11.8", default-features = false }
 writeable = { version = "=0.6.4", default-features = false }
 # SHA-256 for `hash.sha256` (area 19, "Hashing and cryptography";
 # jadpo-value only): RustCrypto's, pure Rust on wasm32, already in the

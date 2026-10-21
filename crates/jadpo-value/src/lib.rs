@@ -362,7 +362,7 @@ pub fn run(
         // The text for people, over locale data (area 10, "Showing dates
         // and times to people").
         (Op::TemporalFormatRelative, [value, now, zone, locale]) => {
-            present::format_relative_value(value, now, zone, locale)
+            present::format_relative_value(value, now, zone, &written_in(locale, locales))
         }
         (Op::TemporalFormatRelative, _) => Err(Fault::Shape),
         // The standard type contract (area 19): one implementation each,
@@ -391,7 +391,7 @@ pub fn run(
         ) => standard::format_as(
             standard,
             value,
-            locale,
+            &written_in(locale, locales),
             zone,
             format,
             &standard::MoneyOptions::of(precision, display, sign)?,
@@ -532,6 +532,21 @@ pub fn run(
             | Op::TextUpper,
             _,
         ) => run_text(op, args),
+    }
+}
+
+/// The locale text for people is written in, for the `Locale` value
+/// `locale` (area 10, "Locales"): itself where the application supports
+/// it, else the supported one a header asking for it would get
+/// ([`locale::written_in`]); with no locales declared, itself.
+fn written_in(locale: &Value, locales: Option<&LocalePlan>) -> Value {
+    match (locale, locales) {
+        (Value::Variant(variant), Some(plan))
+            if &*variant.ty == jadpo_std::LOCALE && !plan.supports(variant.ordinal) =>
+        {
+            locale::value(locale::written_in(variant.ordinal, plan))
+        }
+        _ => locale.clone(),
     }
 }
 
@@ -1272,6 +1287,67 @@ mod tests {
             run(Op::ListCount, &[Value::Int(1)], None, &mut double),
             Err(Fault::Shape)
         );
+        // Text for people in a locale the application doesn't support is
+        // written in the one a header asking for it would get (area 10,
+        // "Locales"): German in the default, Canadian French in French.
+        let reader_locale = |variant: &str| {
+            Value::variant(
+                jadpo_std::LOCALE,
+                jadpo_std::locale_ordinal(variant).unwrap_or(0),
+                variant,
+                Vec::new(),
+            )
+        };
+        let mut long_date = |reader: &str, locales: Option<&LocalePlan>| {
+            let london = temporal::zone_value(
+                jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap_or(0),
+            );
+            run(
+                Op::TextFormat,
+                &[
+                    Value::Instant(1_790_515_805_000),
+                    reader_locale(reader),
+                    london,
+                    Value::text("date_long"),
+                    Value::None,
+                    Value::None,
+                    Value::None,
+                    Value::None,
+                    Value::None,
+                ],
+                locales,
+                &mut double,
+            )
+        };
+        assert_eq!(
+            long_date("de_de", Some(&plan)),
+            Ok(Value::text("27 September 2026"))
+        );
+        assert_eq!(
+            long_date("fr_ca", Some(&plan)),
+            Ok(Value::text("27 septembre 2026"))
+        );
+        assert_eq!(
+            long_date("de_de", None),
+            Ok(Value::text("27. September 2026"))
+        );
+        let mut relative = |reader: &str| {
+            run(
+                Op::TemporalFormatRelative,
+                &[
+                    Value::Instant(1_790_515_805_000 - 86_400_000 * 9),
+                    Value::Instant(1_790_515_805_000),
+                    temporal::zone_value(
+                        jadpo_std::variant_ordinal(jadpo_std::ZONE, "europe_london").unwrap_or(0),
+                    ),
+                    reader_locale(reader),
+                ],
+                Some(&plan),
+                &mut double,
+            )
+        };
+        assert_eq!(relative("de_de"), relative("en_gb"));
+        assert_eq!(relative("fr_ca"), relative("fr_fr"));
         // The locale a header asks for is a `Locale` variant, and a call
         // with no locales declared, or a header that is not text, is not
         // run.

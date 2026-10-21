@@ -5,7 +5,9 @@
 //! `build/rust/` and compiles it in release, offline, with the toolchain
 //! this Jadpo pins and the runtime crates' lock, into one native binary in
 //! `build/target/<deployable>/`, beside its APIs' OpenAPI documents and
-//! each `<api>.failures.<locale>.json` (area 10).
+//! each `<api>.failures.<locale>.json` (area 10). The binary carries the
+//! CLDR data of the app's supported locales only (chunk 8.2c), where
+//! `jadpo test` and `jadpo dev` keep every locale.
 //!
 //! With no `deployables:` declared there is one deployable, `app`, which
 //! runs everything natively (area 14, question 14). Its build stamp
@@ -110,6 +112,33 @@ pub fn build(call: &Call) -> Reply {
     };
     let folder = root.join("build/rust");
     let runtime = sources.display().to_string();
+    // The CLDR data for the supported locales only (area 10, "Locales"):
+    // `jadpo test` and `jadpo dev` keep every locale, the deployable
+    // carries these.
+    let tags: Vec<&str> = plan
+        .runtime()
+        .locales
+        .as_ref()
+        .map(|locales| {
+            locales
+                .supported
+                .iter()
+                .filter_map(|&ordinal| jadpo_std::LOCALES.get(ordinal as usize))
+                .map(|(_, tag)| *tag)
+                .collect()
+        })
+        .unwrap_or_default();
+    let cldr = match jadpo_cldr::export(&tags, &folder.join(".cldr-export")) {
+        Ok(cldr) => cldr,
+        Err(error) => {
+            return Reply::failed(failed(
+                "The deployable's locale data couldn't be written".to_string(),
+                format!(
+                    "Jadpo exports the CLDR data of the app's supported locales for the deployable, and that failed, which is Jadpo's own mistake: {error}."
+                ),
+            ));
+        }
+    };
     let workspace = match jadpo_codegen::deployable::workspace(
         &plan,
         &jadpo_codegen::deployable::Deployable {
@@ -125,6 +154,7 @@ pub fn build(call: &Call) -> Reply {
             runtime: &runtime,
             toolchain: &toolchain,
             lock: &runtime_lock,
+            cldr: &cldr,
         },
     ) {
         Ok(workspace) => workspace,

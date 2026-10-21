@@ -2,8 +2,8 @@
 //! docs/compiler-runtime.md §2.6, "A native deployable", and §2.8): the
 //! program's crate, a binary named after the deployable whose `main` hands
 //! it, its build stamp and each store's migrations to the native host, the
-//! toolchain pinned and the runtime crates' lock beside them, the same
-//! files every time.
+//! toolchain pinned and the runtime crates' lock beside them, the CLDR
+//! data it carries in `cldr/` (chunk 8.2c), the same files every time.
 
 use std::collections::BTreeMap;
 
@@ -36,6 +36,17 @@ fn plan() -> Plan {
     Plan::build(&db, project)
 }
 
+/// The CLDR data a deployable carries, as `jadpo_cldr::export` gives it.
+fn cldr() -> &'static BTreeMap<String, Vec<u8>> {
+    static CLDR: std::sync::OnceLock<BTreeMap<String, Vec<u8>>> = std::sync::OnceLock::new();
+    CLDR.get_or_init(|| {
+        BTreeMap::from([
+            ("mod.rs".to_string(), b"include!(\"x.rs.data\");\n".to_vec()),
+            ("x.rs.data".to_string(), b"// the data\n".to_vec()),
+        ])
+    })
+}
+
 fn deployable(stores: &BTreeMap<String, Vec<(String, String)>>) -> Deployable<'_> {
     Deployable {
         name: "kiosk",
@@ -50,6 +61,7 @@ fn deployable(stores: &BTreeMap<String, Vec<(String, String)>>) -> Deployable<'_
         runtime: "/opt/jadpo/crates",
         toolchain: "[toolchain]\nchannel = \"1.99.0\"\n",
         lock: b"# the runtime crates' lock\n",
+        cldr: cldr(),
     }
 }
 
@@ -88,6 +100,10 @@ fn a_deployable_is_its_program_and_a_binary_named_after_it() {
         "[toolchain]\nchannel = \"1.99.0\"\n"
     );
     assert_eq!(text(files, "Cargo.lock"), "# the runtime crates' lock\n");
+    // The CLDR data it carries, in `cldr/`, which its build names to
+    // ICU4X's data crates.
+    assert_eq!(text(files, "cldr/mod.rs"), "include!(\"x.rs.data\");\n");
+    assert_eq!(text(files, "cldr/x.rs.data"), "// the data\n");
     // The program, as `generate` writes it, holding the plan's bytes
     // without the dev and test section.
     let program = text(files, "program/Cargo.toml");

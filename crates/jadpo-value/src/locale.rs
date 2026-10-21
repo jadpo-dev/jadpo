@@ -126,6 +126,24 @@ fn is_range(range: &str) -> bool {
         })
 }
 
+/// The supported locale text for people is written in for the locale at
+/// `ordinal` (area 10, "Locales"; chunk 8.2c): itself where the
+/// application supports it; otherwise the one a header asking for it
+/// would get, a supported locale of its language (the one CLDR's likely
+/// subtags give first), else `default:`. A `Locale` the application
+/// doesn't list (one stored before `supported:` changed) is so written in
+/// one it does on every target, and a deployable, which carries the
+/// supported locales' data only, writes what `jadpo test` writes.
+pub fn written_in(ordinal: u32, plan: &LocalePlan) -> u32 {
+    if plan.supports(ordinal) {
+        return ordinal;
+    }
+    jadpo_std::LOCALES
+        .get(ordinal as usize)
+        .and_then(|(_, tag)| supported_for(&tag.to_ascii_lowercase(), plan))
+        .unwrap_or(plan.default)
+}
+
 /// The locales a wording is looked for in, in order, for a call in the
 /// locale at `ordinal` (area 10, "Translations as messages"). A complete
 /// locale has every wording itself, so only it. One whose translations are
@@ -528,5 +546,30 @@ mod tests {
             super::pick(&Value::text("Rye"), ord("fr_fr"), None),
             Err(Fault::Shape)
         );
+    }
+
+    #[test]
+    fn text_for_people_is_written_in_a_supported_locale() {
+        let app = plan("en_gb", &["en_gb", "en_us", "fr_fr"]);
+        let written = |variant: &str| {
+            let at = written_in(ord(variant), &app);
+            jadpo_std::LOCALES
+                .get(at as usize)
+                .map_or("?", |(name, _)| name)
+        };
+        // A supported locale is itself.
+        assert_eq!(written("fr_fr"), "fr_fr");
+        assert_eq!(written("en_us"), "en_us");
+        // Another region of a supported language is that language's, the
+        // likely one first, as a header asking for it would get.
+        assert_eq!(written("fr_ca"), "fr_fr");
+        assert_eq!(written("en_au"), "en_us");
+        // Any other is the default.
+        assert_eq!(written("de_de"), "en_gb");
+        assert_eq!(written("ja_jp"), "en_gb");
+        // The pseudo-locale is the default's unless it is listed.
+        assert_eq!(written("en_xa"), "en_us");
+        let listed = plan("en_gb", &["en_gb", "en_xa"]);
+        assert_eq!(written_in(ord("en_xa"), &listed), ord("en_xa"));
     }
 }
