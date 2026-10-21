@@ -634,6 +634,7 @@ pub async fn call(
     };
     // A step of an action with several changing calls (area 12; chunk
     // 7.5b): given its recorded answer back, or sent at its place.
+    let did_nothing = did_nothing(providers, op);
     let stepped = crate::steps::step(
         ctx,
         crate::steps::Proposed {
@@ -645,6 +646,7 @@ pub async fn call(
                 .idempotency
                 .as_ref()
                 .and_then(|idempotency| idempotency.window_ms),
+            did_nothing: &did_nothing,
         },
     )
     .await;
@@ -673,13 +675,7 @@ pub async fn call(
                 .idempotency
                 .as_ref()
                 .and_then(|idempotency| idempotency.reused.clone()),
-            did_nothing: op
-                .failures
-                .iter()
-                .filter_map(|key| providers.failures.iter().find(|plan| plan.key == *key))
-                .filter(|plan| matches!(plan.kind.as_deref(), Some("unavailable" | "rate_limited")))
-                .map(|plan| plan.code.clone())
-                .collect(),
+            did_nothing: did_nothing.clone(),
         });
         request.headers.push(header);
     }
@@ -751,7 +747,7 @@ pub async fn call(
         other => other,
     };
     if let Some(at) = step
-        && let Err(unanswered) = keep(ctx, plan, op, at, &answer).await
+        && let Err(unanswered) = keep(ctx, plan, op, at, &answer, &did_nothing).await
     {
         return match unanswered {
             Unanswered::Failed(code) => failed(providers, op, &name, &code),
@@ -817,20 +813,33 @@ pub async fn call(
     done
 }
 
+/// The codes of `op`'s own failures whose kind says it did nothing,
+/// `unavailable` or `rate_limited`: one answered so is sent again under its
+/// key, never kept as its answer (area 12, "A step in doubt"; chunk 7.9a).
+fn did_nothing(providers: &Providers<'_>, op: &OperationPlan) -> Vec<String> {
+    op.failures
+        .iter()
+        .filter_map(|key| providers.failures.iter().find(|plan| plan.key == *key))
+        .filter(|plan| matches!(plan.kind.as_deref(), Some("unavailable" | "rate_limited")))
+        .map(|plan| plan.code.clone())
+        .collect()
+}
+
 /// Keeps what step `at`, a call of `op` through `plan`, was answered
 /// (chunk 7.5b): an answer as sent, or one of its own failures, which a
-/// rerun gives back; nothing for an answer that may not be the last, so
-/// the step stays in doubt and is sent again under its key. A provider
-/// that says the key came with a different request stops the action as
-/// `diverged`; one that replays a failed answer under its key parks a
-/// server's error as `outcome_unknown`, since sending it again only
-/// repeats it.
+/// rerun gives back; nothing for an answer that may not be the last, or a
+/// failure whose code is among `did_nothing` (chunk 7.9a), so the step
+/// stays in doubt and is sent again under its key. A provider that says
+/// the key came with a different request stops the action as `diverged`;
+/// one that replays a failed answer under its key parks a server's error
+/// as `outcome_unknown`, since sending it again only repeats it.
 async fn keep(
     ctx: &mut Ctx<'_>,
     plan: &ConnectionPlan,
     op: &OperationPlan,
     at: crate::steps::StepAt,
     answer: &Answer,
+    did_nothing: &[String],
 ) -> Result<(), Unanswered> {
     use crate::steps::Answered;
     let idempotency = plan.idempotency.as_ref();
@@ -842,6 +851,7 @@ async fn keep(
         {
             Err(crate::steps::reused(ctx, at).await)
         }
+        Answer::Failed(code) if did_nothing.contains(code) => Ok(()),
         Answer::Failed(code) => {
             crate::steps::answered(ctx, at, Answered::Failed(code.clone())).await
         }
@@ -1270,7 +1280,10 @@ fn request(
                     headers: &signed,
                     body: body.as_deref().unwrap_or_default().as_bytes(),
                 };
-                let Some(added) = crate::sigv4::sign(&unsigned, &signer, ctx.now()) else {
+                // Signed at the host's time, which AWS checks, never a
+                // record's fixed `clock.now` (chunk 7.9a).
+                let now = crate::steps::wall(ctx);
+                let Some(added) = crate::sigv4::sign(&unsigned, &signer, now) else {
                     return Err(Unready::Misconfigured);
                 };
                 headers.extend(added);

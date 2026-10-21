@@ -1926,7 +1926,7 @@ ahead, read everything Phase 7 built; their confirmed findings are the
 chunks below, taken before Phase 8, in this order (7.9a, 7.9b and 7.9c
 side by side, then 7.9d, then 7.9e).
 
-- [ ] **7.9a Phase 7 review fixes: keys and replays** `opus · xhigh`: a
+- [x] **7.9a Phase 7 review fixes: keys and replays** `opus · xhigh`: a
   route whose action calls out but neither writes nor emits keeps the
   client's `Idempotency-Key` (a store for its keys, provider keys derived
   from the client's key, the action resumable); a delivery run while a
@@ -1939,7 +1939,12 @@ side by side, then 7.9d, then 7.9e).
   the record's fixed clock for `clock.now` only; an answered unkeyed
   changing call on area 6's rerun parked `outcome_unknown` (areas 12 and
   16 made to agree); and in tests, fakes judged exhausted or unused on the
-  plain run only, the `ai` answer cache cleared per attempt.
+  plain run only, the `ai` answer cache cleared per attempt. Built: each
+  as listed, the sign-in email (its `send:` action and Jadpo's own) keyed
+  per attempt from fresh randomness with no record, a route's held commit
+  and a delivery's taking the same steps and parking an unkeyed change
+  too, and OpenAPI saying where a key is kept; choices in area 12's
+  decisions table, "Keys and replays, chosen in chunk 7.9a".
 - [ ] **7.9b Phase 7 review fixes: policy and privacy** `opus · xhigh`:
   `to_models: false` and `personal_data: { allowed: }` count what a
   condition decides (an `if`, a `match`, a `list.filter` on a marked

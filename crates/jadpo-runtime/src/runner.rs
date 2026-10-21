@@ -254,8 +254,14 @@ async fn held<S: Copy>(
     overran: S,
 ) -> Result<Outcome, S> {
     let runner = ctx.runner();
+    // Run again after a concurrent change at the commit, its keyed calls
+    // take the steps they took, and an unkeyed change that went out is
+    // never sent again (chunk 7.9a).
+    let steps = ctx.steps();
+    let mark = ctx.capabilities().calls().len();
     let mut attempt = 1;
     loop {
+        ctx.set_steps(steps);
         ctx.hold();
         let outcome = match race(as_system(executor, ctx, job.clone()), &mut *stop).await {
             First::Left(outcome) => outcome,
@@ -274,6 +280,12 @@ async fn held<S: Copy>(
         };
         match crate::commit_held(ctx, open, None).await {
             Ok(()) => return Ok(outcome),
+            Err(StoreError::ConcurrentChange) if ctx.capabilities().may_have_acted(mark) => {
+                return Ok(Outcome::Failed(Box::new(crate::Failure {
+                    frames: ctx.frames(),
+                    ..crate::outcome_unknown()
+                })));
+            }
             Err(StoreError::ConcurrentChange) if attempt < crate::RERUN_ATTEMPTS => attempt += 1,
             Err(_) => {
                 return Ok(Outcome::Failed(Box::new(crate::Failure {
@@ -459,7 +471,18 @@ pub(crate) async fn attempt_delivery(
 ) -> Option<(Outcome, &'static str)> {
     let from = ctx.steps_kept();
     let (id, subscriber) = (delivery.id, delivery.subscriber.clone());
+    // Each attempt counts its keyed calls from none under its own key,
+    // with none of the models' answers whoever runs `ctx` was given, as
+    // its retry in a context of its own does, a route waiting for it
+    // (`settle:`) or a test; theirs are given back after (chunk 7.9a).
+    let counted = ctx.steps();
+    ctx.set_steps(0);
+    let call_key = ctx.swap_call_key(None);
+    let reused = ctx.swap_reused(Vec::new());
     let attempted = attempt(executor, ctx, budget, delivery, within).await;
+    ctx.set_steps(counted);
+    ctx.swap_call_key(call_key);
+    ctx.swap_reused(reused);
     let steps = ctx.take_steps(from);
     if let (Some((_, state)), false) = (&attempted, steps.is_empty())
         && let Some(log) = ctx.host().call_log()
@@ -641,6 +664,19 @@ async fn attempt(
     // keeps a record of its steps, held by this attempt (area 12, "One
     // runner per record"; chunk 7.5b).
     ctx.set_resumable(Some(i64::from(attempt)));
+    // A sign-in email is made with a link and a code no attempt before
+    // had, which end the last attempt's: so each attempt's calls go under
+    // keys of its own, and a provider that replays a key's first answer
+    // still sends the link that works. Its key doesn't survive a retry,
+    // so no record of its steps is kept (chunk 7.9a).
+    if subscriber.event == jadpo_std::email::MAGIC_LINK_EMAIL {
+        ctx.set_resumable(None);
+        let Some(fresh) = ctx.new_id() else {
+            let state = retried("unavailable", Some("unavailable")).await;
+            return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
+        };
+        ctx.set_call_key("sign-in link", jadpo_value::encoding::to_hex(&fresh));
+    }
     let ran = match &subscriber.target {
         // A capability's operation is handed the event whole (chunk 7.0c).
         Target::Capability {

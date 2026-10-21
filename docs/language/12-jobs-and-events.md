@@ -1571,8 +1571,11 @@ compare them.
   provider that supports keys ignores the repeat.
 - **Every action repeats as a unit.** A changing call that takes no
   idempotency key, and that its package does not mark safe to repeat, is
-  the only changing call in its action, so a rerun or a redelivery repeats
-  that one call. Changing calls that do take keys may be several, in order:
+  the only changing call in its action. Once it has gone out it is never
+  sent again blindly: a retry the action would otherwise get, and area 6's
+  rerun after a concurrent change, stop it as `outcome_unknown` for an
+  operator instead (area 16, "Parked, never sent again blindly"; chunk
+  7.9a). Changing calls that do take keys may be several, in order:
   each is recorded as it goes, so a rerun replays what already happened
   instead of sending it again (question 11, revised 2026-10-16). Writes are
   not limited this way: every write to the action's store, across any
@@ -1682,6 +1685,14 @@ action subscribe(event: PlanChosen) fails CardDeclined -> Unit {
 environment, the connection, the caller's scope, the action's key (the
 delivery key, or the client's `Idempotency-Key`), the step's number and a
 key generation, hashed to 36 characters or the package's `max_length:`.
+A route's action that makes a changing call keeps its client's key, in
+the store it writes or `events: { store: }`'s, even when it neither
+writes nor emits; and its calls' keys come from the client's key whether
+or not any store keeps it. A delivery's attempt counts its steps from 1
+wherever it runs, a route waiting for it (`settle:`) included. A sign-in
+email (area 16, "Built-in emails") is made with a link and a code each
+attempt, so each attempt's calls go under a key of their own and keep no
+record (chunk 7.9a).
 Hashing fixes a collision that affects single calls too: area 7 scopes a
 client's key to the caller, but a provider such as Stripe scopes keys to
 the account, so two users sending the same key would otherwise be given
@@ -1706,7 +1717,10 @@ area 6's rerun after a concurrent change), answered steps are replayed in
 order without being sent, and `clock.now` is the time stored in the
 record, fixed for the record's whole life, so timestamps written after a
 resumed action are from when it started, which is also when the provider
-acted. At each step the operation and fingerprint must match the record,
+acted. Only code's `clock.now` is fixed: the runtime's own timestamps (an
+event's `emitted_at`, from which `within:` counts, a request's AWS
+signature, the day an `ai` budget counts, a received event's) are the
+host's time (chunk 7.9a). At each step the operation and fingerprint must match the record,
 and at the end every recorded step must have been replayed. Any
 difference (a deploy changed the code, a fresh database read changed a
 request, configuration changed) stops the action as `diverged` before
@@ -1718,7 +1732,9 @@ finishes it.
   later, and the next attempt sends it again under the same key while the
   provider's window lasts. It parks as `outcome_unknown` instead when it
   has no key, when its window would pass, or when the provider replays a
-  `5xx` under that key.
+  `5xx` under that key. A step answered with one of its operation's own
+  failures whose kind is `unavailable` or `rate_limited` did nothing: it
+  stays in doubt, its failure never kept or replayed (chunk 7.9a).
 - **One runner per record.** A route's key is claimed as today (area 7); a
   delivery's lease carries a generation that every record write checks. A
   provider's "key in use" answer means wait and retry, never a failure.
@@ -4845,6 +4861,14 @@ deadline ("Several changing calls in one action").
 Built in chunk 7.5f: each step's state under its
 request's or delivery's line in `jadpo dev`, and the metric and alert
 on unfinished records ("Several changing calls in one action").
+Built in chunk 7.9a, from the Phase 7 soundness review: a route's action
+that calls out keeping its client's key, a delivery's attempt keying its
+calls the same wherever it runs, a sign-in email keyed per attempt, a
+failure that did nothing left in doubt, the runtime's own timestamps on
+the host's clock, and an unkeyed change never sent again on a rerun
+("Several changing calls in one action"; live tests in
+`crates/jadpo-cli/tests/step_replays.rs`; decisions table, "Keys and
+replays, chosen in chunk 7.9a").
 
 Not yet:
 
@@ -5121,6 +5145,7 @@ Not yet:
 | Topic | Decision | Date |
 |---|---|---|
 | Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise (decided for Richard, following grants) | 2026-10-20 |
+| Keys and replays, chosen in chunk 7.9a | From the Phase 7 soundness review, each the conservative reading. A route's action keeps its client's `Idempotency-Key` in the store it writes, else beside its events, else, when it makes a changing call (a provider's operation with `changes: true`, a store's `put`), in the store `events: { store: }` names, where its record of several steps is kept too, so its steps are resumed under the key and one call's response is kept for a repeat; an action that only reads keeps none, and its OpenAPI says where the key is kept. With no store to keep it, the route's calls' keys are still derived from the client's key in its caller's scope, never the request's id. A delivery's attempt counts its keyed calls from none under its own key and with none of the `ai` answers kept for a rerun, wherever it runs (a route waiting with `settle:`, a test), giving back whoever ran it theirs after. A sign-in email (`MagicLinkEmail`, and the action `send:` names) is keyed per attempt, from fresh randomness, since each attempt makes a link and a code that end the last's: a provider replaying the last attempt's key would leave the person a dead code; its key doesn't survive a retry, so it keeps no record of its steps. A step's own failure whose kind is `unavailable` or `rate_limited` is never kept, and one kept by an earlier runtime never replayed: the step stays in doubt and goes again under its key. Code's `clock.now` is the record's fixed time; an event's `emitted_at`, a delivery's handled record, a request's AWS signature, the day an `ai` budget counts and a received event's stamp are the host's. An unkeyed change that went out (answered, or no answer) stops a rerun after a concurrent change, in the boundary or at a held commit, as `outcome_unknown`, which a route keeps for its key and a delivery parks; areas 6, 12 and 16 say the same. In `jadpo test` how often each scripted operation and prompt was called is judged on the run without a crash only, since a crash sends its step again and the `ai` fake, or a call with no key, answers it afresh; a request a crash sends again forgets the `ai` answers kept for a rerun, as a client's retry reaches a runner that kept none, so a model asked before the steps is asked again there as in production (decided for Richard) | 2026-10-21 |
 | Development and the metric, chosen in chunk 7.5f | Each the conservative reading. Until area 17's request timelines (`jadpo trace`), a request's timeline in `jadpo dev` is its line and the trace lines under it, so each step a request's action reached is a trace line there, in place of the call it made; a delivery, which `jadpo dev` didn't print, gets a line of its own only when its subscriber's action reached steps under a record, since that is when one needs following, with `jadpo deliveries show <id>` under it when the attempt failed, parked or diverged. A step's state is what this run made of it, from the record: `replayed` (answered on an earlier run), `answered`, its failure's code, `in doubt` (sent, no answer kept), `diverged` or `outcome unknown` (in doubt and not to be sent again), with where its answer came from; never its request, answer or key, nor the key's generation. The metric counts the records not abandoned, a run under way included, and gives when the oldest's first run started; the tick carries it for each store that keeps records, until telemetry (area 16) sends it. The alert holds once a record has been unfinished a day from its first run's start, a subscriber's default `within:` and a route's key's lapse, so no retry with the default budget is still to finish it; each such record is marked in `jadpo_step_records.alerted_at`, and the tick raises the alert only when none still unfinished was marked before, so it is raised once until no record is unfinished past a day, by one instance's tick. `jadpo deliveries` shows it in its default list and with `--state diverged` or `unfinished` (decided for Richard) | 2026-10-20 |
 | The late-failure warning and the deadline sum, chosen in chunk 7.5e | Each the conservative reading. A failure ends a run for good unless its kind is `unavailable` or `rate_limited`, the two retried ("Retries and giving up"); one whose kind isn't known counts as ending it. A point after the first changing call is an `attempt` passing a failure on (the failures its arms map to, or else the call's or write's own), `reject` and `propagate`; a failure handled by an outcome `match` isn't one. Where two ways meet, a changing call on either may have been made. One finding for each action, at its first point, the others shown beside it, so one `decline` answers it, as declines answer one finding each. A package's action is never told, since the app decides what can be left behind: its surface lists each failure that can follow its own changing call as `after_effect`, and an app's `attempt` of it is a point even before the app's own first changing call; an app's action called before any is told itself instead. The deadline sum is one analysis over every outside call a route reaches, a provider's operation and an `ai` call alike, so chunk 5.5v6's streaming routes rely on it: a provider call through a connection costs its `timeout:` (10s by default; 3s since 2026-10-20, area 11's "Default timeouts") times its `retry: { attempts: }` (3), a package's action its own calls through the connection the app called it through, and `ai.generate` its `timeout:` times its `attempts:`; the waits between attempts and `within:` aren't counted, and a store's `put` and `read` have no `timeout:` and cost nothing. The ways are summed and the longest compared with the route's `deadline:` (10s by default): more is `route.calls_past_deadline` at the route, a plain mistake, not declinable (area 1, question 11), whatever its API; equal fits. Schedules and subscribers have no deadline to compare (decided for Richard) | 2026-10-20 |
 | Tests, chosen in chunk 7.5d | Each the conservative reading. A package's fake keeps a keyed call's first answer under its key, as its provider does: the same key and request are given it again without taking a scripted answer, and a different request the package's `reused:` answer (with none, a refusal without a code, a fault). A failure is kept as Stripe keeps one, whatever the package's `replays_failures:`, unless its kind is `unavailable` or `rate_limited`, so a step sent again after a crash is answered as it was the first time. `lost` acted: what it did, the generated default, answers the next call under its key. `in_use` is another runner's request under the key, the one that acts, so it keeps nothing and answers as `unavailable`; `unavailable` and `misconfigured` keep nothing either. `jadpo dev`'s fake keeps keys the same way, its last 10,000. Crash points count every step a test's run reaches under a record, a step sent again counted again, across the whole run; only a run that passed is crashed, once for each boundary of each step, each on its own copy of the database with a fresh fake, and the first crash that fails is the one reported, with a `crash` line first. A crash isn't counted as an attempt: the delivery is given back, due at once, and a route's claim is given up and its request sent again under its key. A crashed run whose fake acted more or less often than the run without one is a defect in Jadpo, reported as `test.fault`. A delivery that stops as `diverged` between a test's steps ends the test as `test.subscriber_failed`, since it never finishes; one parked as `outcome_unknown` still doesn't. Each delivery attempt in a test counts its keyed calls from none under the delivery's own key, as a runner's fresh context does, and gives the test's back after. An `ai.generate` call kept as a step (chunk 5.5v3) gets crash points like any other step; the `ai` fake keeps no keys, area 21 asking none of it, so a step sent again after a crash once it was answered takes the prompt's next scripted answer, as a model asked again answers afresh. Crash points have no switch to turn them off (decided for Richard) | 2026-10-20 |

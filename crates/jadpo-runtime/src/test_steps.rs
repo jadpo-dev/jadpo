@@ -202,14 +202,10 @@ pub async fn after_step(
         // Each attempt counts its keyed calls from none under the
         // delivery's own key, as a runner's fresh context does, so an
         // attempt after a crash sends the keys the first one sent (chunk
-        // 7.5d); the test's own are given back after.
-        let steps = ctx.steps();
-        ctx.set_steps(0);
-        let call_key = ctx.swap_call_key(None);
+        // 7.5d); the test's own are given back after (the attempt's own
+        // doing since chunk 7.9a).
         let attempted =
             crate::runner::attempt_delivery(executor, ctx, &budget, delivery.clone(), None).await;
-        ctx.set_steps(steps);
-        ctx.swap_call_key(call_key);
         match attempted {
             None => {
                 unclaimed.insert(delivery.id);

@@ -71,6 +71,29 @@ const LATER_ITEMS: [(&str, &str); 1] = [(
 /// (`route.stream_invalid`).
 const STREAM_REASON: &str = "A route whose action returns an `AiStream` sends the model's answer as server-sent events as it is written, answering 200 once its first piece has come; it has no other success to report, and nothing to wait for with `settle:`.";
 
+/// The store a route running action `key` keeps its client's
+/// `Idempotency-Key` in (area 7, "Idempotency keys"): the one the action
+/// writes; else, emitting, the one its events go in (chunk 6.1b); else,
+/// making a changing call, the one `events: { store: }` names, where the
+/// record of its steps is kept too (chunk 7.9a), so a client's retry is
+/// answered from what the first request did rather than acting twice.
+/// `None` for an action a retry changes nothing by running again, or one
+/// with no store to keep the key in.
+pub fn keys_store(db: &dyn Db, project: Project, key: &Key) -> Option<String> {
+    let name = key.name();
+    crate::types::written_stores(db, project)
+        .get(name)
+        .and_then(|stores| stores.keys().next().cloned())
+        .or_else(|| crate::events::outbox_store(db, project, name))
+        .or_else(|| {
+            crate::types::action_steps(db, project)
+                .get(key)
+                .is_some_and(|steps| steps.changing > 0)
+                .then(|| crate::events::events_settings(db, project).store.clone())
+                .flatten()
+        })
+}
+
 /// Whether a route sending `ty` streams a model's answer: an `AiStream`
 /// (area 7, "Streaming a model's answer"; chunk 5.5v6).
 pub fn streams(ty: &Ty) -> bool {

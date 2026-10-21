@@ -444,11 +444,12 @@ fn the_sweep_runs_each_delivery_at_the_hosts_time_and_leases_it_from_its_claim()
         // Two notes posted, their work dropped with the process.
         drop(post(&host, program, "first").await);
         drop(post(&host, program, "second").await);
-        // The tick a minute on, each reading of the clock ten minutes
-        // after the last, as long deliveries would take.
+        // The tick a minute on, each reading of the clock five minutes
+        // after the last, as long deliveries would take, all within the
+        // relays' `within:` of an hour.
         let tick = T0 + 60_000;
         host.set_now(tick);
-        host.step(600_000);
+        host.step(300_000);
         let swept = sweep(program, &host, "main", tick)
             .await
             .expect("the sweep runs");
@@ -471,7 +472,7 @@ fn the_sweep_runs_each_delivery_at_the_hosts_time_and_leases_it_from_its_claim()
             distinct, claims,
             "each delivery claimed at its own time, not the tick's"
         );
-        assert!(claims[3] > tick + 600_000, "{claims:?}");
+        assert!(claims[3] > tick + 300_000, "{claims:?}");
     });
 }
 

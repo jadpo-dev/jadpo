@@ -153,6 +153,7 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
             repeat: Repeat::Safe,
             changes: true,
             window_ms: None,
+            did_nothing: &[],
         },
     )
     .await;

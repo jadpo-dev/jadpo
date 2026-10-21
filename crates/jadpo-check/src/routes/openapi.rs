@@ -573,7 +573,7 @@ fn idempotency_extension(required: bool, keys: Keys) -> Value {
         match keys {
             Keys::Kept => "response",
             Keys::Claimed => "request",
-            Keys::Nothing => "nothing",
+            Keys::Nothing | Keys::Derived => "nothing",
         },
     );
     out.set(
@@ -1215,6 +1215,9 @@ enum Keys {
     /// Nothing: the action writes no store, so running it again changes
     /// nothing.
     Nothing,
+    /// Nothing, for want of a store to keep it in, though the action
+    /// makes changing calls: their keys are derived from it (chunk 7.9a).
+    Derived,
 }
 
 fn facts(db: &dyn Db, project: Project, lookup: &Lookup<'_>, route: &RouteModel) -> Facts {
@@ -1233,11 +1236,17 @@ fn facts(db: &dyn Db, project: Project, lookup: &Lookup<'_>, route: &RouteModel)
         };
     };
     let name = key.name();
-    let writes = crate::types::written_stores(db, project)
-        .get(name)
-        .is_some_and(|stores| !stores.is_empty());
-    let keys = if !writes {
-        Keys::Nothing
+    // Where the runtime keeps the key (chunk 7.9a): the store it writes,
+    // or beside its events or its changing calls' record.
+    let keys = if super::keys_store(db, project, &key).is_none() {
+        let changes = crate::types::action_steps(db, project)
+            .get(&key)
+            .is_some_and(|steps| steps.changing > 0);
+        if changes {
+            Keys::Derived
+        } else {
+            Keys::Nothing
+        }
     } else if route.output.as_ref().is_some_and(super::streams)
         || crate::types::unkept_responses(db, project).contains(name)
     {
@@ -1470,6 +1479,7 @@ fn operation(
                 Keys::Claimed if route.output.as_ref().is_some_and(super::streams) => "Keeps a retry from running alongside the first request until its action has committed; a stream isn't kept, so a retry once it has started runs again.",
                 Keys::Claimed => "Keeps a retry from running alongside the first request; the response isn't kept, since it starts or ends a session or carries a new credential, so a retry once the first has finished runs again.",
                 Keys::Nothing => "Accepted, but nothing is kept: the route writes no store, so running it again changes nothing.",
+                Keys::Derived => "Accepted, but nothing is kept, since the application names no store to keep it in (`events: { store: }`): the route's calls out go under keys derived from it, so a provider that keeps keys acts once for a repeat with the same key.",
             },
         );
         parameter.set_some("required", key_required);

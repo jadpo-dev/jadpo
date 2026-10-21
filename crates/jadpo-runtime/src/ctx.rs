@@ -466,6 +466,20 @@ impl<'p> Ctx<'p> {
         self.reused.push(reused);
     }
 
+    /// Puts `reused` in place of the `ai.generate` answers kept for a
+    /// rerun, giving back what it had: a delivery's attempt runs with none
+    /// of whoever ran it, as a runner's fresh context does (chunk 7.9a).
+    pub(crate) fn swap_reused(&mut self, reused: Vec<crate::ai::Reused>) -> Vec<crate::ai::Reused> {
+        std::mem::replace(&mut self.reused, reused)
+    }
+
+    /// Forgets the `ai.generate` answers kept for a rerun: a request sent
+    /// again after a crash `jadpo test` made goes, as a client's retry
+    /// does, to a runner that kept none (chunk 7.9a).
+    pub(crate) fn forget_reused(&mut self) {
+        self.reused.clear();
+    }
+
     /// The open stream an `ai.stream` call at step `step` gave when it
     /// sent the request digested as `digest`, on an earlier run of its
     /// action (chunk 5.5v6): its number, while it is still open.

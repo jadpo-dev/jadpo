@@ -109,7 +109,6 @@ pub(crate) fn table(
         ..RouteTable::default()
     };
     let graph = std::sync::Arc::clone(jadpo_check::graph::graph(db, project));
-    let written = jadpo_check::types::written_stores(db, project);
     let databases = jadpo_check::data::connections(db, project).databases();
     let mut stores: Vec<String> = jadpo_check::data::data_model(db, project)
         .entities
@@ -199,12 +198,10 @@ pub(crate) fn table(
             };
             // Its keys go in the store it writes (area 5, "System tables"),
             // or, writing none, beside the events it emits (area 12, chunk
-            // 6.1b); an action that does neither keeps none, since running
-            // it again changes nothing.
-            let keys = written
-                .get(key.name())
-                .and_then(|stores| stores.keys().next().cloned())
-                .or_else(|| jadpo_check::events::outbox_store(db, project, key.name()));
+            // 6.1b) or the record of the changing calls it makes (chunk
+            // 7.9a); an action that does none of these keeps none, since
+            // running it again changes nothing.
+            let keys = jadpo_check::routes::keys_store(db, project, &key);
             (Run::Action(id), keys)
         };
         let args = route

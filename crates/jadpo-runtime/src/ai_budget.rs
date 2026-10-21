@@ -268,7 +268,7 @@ pub(crate) async fn take(
     {
         return Err(Refused::OverBudget);
     }
-    let day = day_of(ctx.now());
+    let day = day_of(crate::steps::wall(ctx));
     // The application's own price for the model, else its package's
     // (chunk 5.5v7).
     let price = match ai

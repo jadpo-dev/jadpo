@@ -438,3 +438,120 @@ fn a_models_answer_is_a_step_a_retry_replays() {
         );
     });
 }
+
+// --- crash points in `jadpo test` (chunk 7.9a) ----------------------------------
+
+/// The project with a test that scripts the model's one answer, for
+/// `jadpo test`, which runs it again with a crash at each step's
+/// boundary; `asked_first` asks the model before the first changing call
+/// and opens the customer with its answer.
+fn tested(name: &str, asked_first: bool) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("ai-steps-7.9a-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in files("https://sandbox.acme-pay.example") {
+        // The tests read the sandbox and a model on this machine, as a
+        // project's tests do.
+        let text = text
+            .replace(
+                "pay_environment: ProviderEnvironment\n",
+                "pay_environment: ProviderEnvironment {\n        default: ProviderEnvironment.sandbox\n    }\n",
+            )
+            .replace(
+                "model_url: Url\n",
+                "model_url: Url {\n        default: \"http://127.0.0.1:11434/v1\"\n    }\n",
+            );
+        let text = if asked_first && path == "domains/billing/actions/start.jadpo" {
+            r#"use app { pay }
+use billing/entities { Account }
+use billing/events { PlanChosen }
+use billing/failures { AssistantUnavailable }
+use billing/prompts { WelcomeCustomer }
+use shared/providers/acme_pay
+
+/// Asks for a welcome first, then opens the customer under it, starts
+/// the subscription and keeps the account.
+action start(event: PlanChosen) fails AssistantUnavailable -> Unit {
+    var welcome: AcmePay.Reference = attempt ai.generate(WelcomeCustomer { customer: event.name }, as: AcmePay.Reference) {
+        refused: AssistantUnavailable
+        malformed: AssistantUnavailable
+        timed_out: AssistantUnavailable
+        over_budget: AssistantUnavailable
+        too_long: AssistantUnavailable
+    }
+    var opened: AcmePay.Customer = pay.customers.create(AcmePay.CustomerRequest {
+        reference: welcome
+    })
+    var subscription: AcmePay.Subscription = pay.subscriptions.create(AcmePay.SubscriptionRequest {
+        customer: opened.id
+    })
+    var account: Account = Account.create {
+        set: {
+            customer: opened.id
+            subscription: subscription.id
+            welcome: "Welcome"
+        }
+    }
+    assert account.customer == opened.id
+}
+"#
+            .to_string()
+        } else {
+            text
+        };
+        write(&root, path, &text);
+    }
+    write(
+        &root,
+        "domains/billing/actions/choose.test.jadpo",
+        r#"test "a chosen plan is welcomed and started" {
+    fakes: {
+        ai.welcome_customer: ["Welcome to the bakery, Ada!"]
+    }
+    choose("Ada")
+}
+"#,
+    );
+    for args in [&["migrate", "new", "initial"][..], &["records", "update"]] {
+        let out = jadpo(&root, args);
+        assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
+    }
+    root
+}
+
+/// A model asked as a step and crashed after it answered, before its
+/// answer was kept, is asked again: the crash runs take an answer past
+/// the one scripted, which only the run without a crash is judged on, so
+/// the test passes.
+#[test]
+fn a_test_scripting_one_answer_passes_with_a_crash_after_the_model_answered() {
+    let root = tested("one-answer", false);
+    if !jadpo_test::live() {
+        return;
+    }
+    let out = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stdout.contains("1 passed"), "{}", out.stdout);
+}
+
+/// A model asked before the first changing call is asked again after a
+/// crash, as a restarted runner would ask it: an answer it gives afresh
+/// changes the request the customer was opened with, so the test fails as
+/// diverged rather than passing on the first run's answer.
+#[test]
+fn a_model_asked_before_the_steps_is_asked_again_after_a_crash() {
+    let root = tested("asked-first", true);
+    if !jadpo_test::live() {
+        return;
+    }
+    let out = jadpo(&root, &["test", "--seed", "1"]);
+    assert_ne!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    for line in [
+        "FAIL  a chosen plan is welcomed and started",
+        "crash: ",
+        "stopped as diverged",
+        "`reference` differs from the record",
+        "rule: test.subscriber_failed",
+    ] {
+        assert!(out.stdout.contains(line), "{line}\n{}", out.stdout);
+    }
+}

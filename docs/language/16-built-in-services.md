@@ -1361,7 +1361,11 @@ action send_sign_in_link(request: MagicLinkRequest) fails MessageNotSent -> Unit
 ```
 
 - It runs after the request commits, like a subscriber, and is retried
-  under area 12's rules; its failures are a subscriber's.
+  under area 12's rules; its failures are a subscriber's. Each attempt is
+  given a link and a code of its own, ending the last attempt's, so its
+  provider calls go under keys of their own each attempt and keep no
+  record of their steps: a provider that replays a key's first answer
+  still sends the link that works (chunk 7.9a).
 - In development its provider calls are faked and logged, as every
   provider call is (area 11), and the local inbox does not show it, since
   Jadpo sends no email.
@@ -2815,8 +2819,11 @@ reading:
   call and then ended in a way that is otherwise retried (a store that
   couldn't be reached, its time running out) is parked too, since a
   retry would send the call again; one that fails for good stays
-  `failed`. A send under a key, or one that surely did nothing, is
-  retried as any delivery is. A subscriber's action whose worker is lost
+  `failed`. Any action that sent one is never run again after a
+  concurrent change (area 6) either: it stops as `outcome_unknown`, which
+  a route keeps for its client's key and a delivery parks (area 12,
+  "Several changing calls in one action"; chunk 7.9a). A send under a
+  key, or one that surely did nothing, is retried as any delivery is. A subscriber's action whose worker is lost
   while its call is out is the step record's (area 12, "Several changing
   calls in one action"; chunk 7.5): until then it is claimed again as
   any lost delivery is. A schedule's run has no retry to stop, its next

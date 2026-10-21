@@ -464,6 +464,9 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     // Run again after a concurrent change, its keyed calls take the same
     // steps, so each sends the same key (area 12, "Keys"; chunk 7.2c).
     let steps = ctx.steps();
+    // Where its calls start in the invocation's log: an unkeyed change
+    // among them that went out is never sent again (chunk 7.9a).
+    let mark = ctx.capabilities().calls().len();
     loop {
         ctx.set_steps(steps);
         crate::steps::rewind(ctx);
@@ -520,6 +523,15 @@ async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
                 return outcome;
             }
             Ended::RolledBack => return outcome,
+            // A change with no key that went out would act again on a
+            // rerun: the action stops there for an operator instead (area
+            // 16, "Parked, never sent again blindly"; chunk 7.9a).
+            Ended::Changed if ctx.capabilities().may_have_acted(mark) => {
+                return Outcome::Failed(Box::new(Failure {
+                    frames: ctx.frames(),
+                    ..outcome_unknown()
+                }));
+            }
             Ended::Changed if attempt < RERUN_ATTEMPTS => attempt += 1,
             Ended::Changed | Ended::Unavailable => {
                 return Outcome::Failed(Box::new(Failure {
@@ -584,7 +596,8 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             outbox: Vec::with_capacity(events.len()),
             deliveries: Vec::new(),
         };
-        let emitted_at = ctx.now();
+        // The host's time, never a record's fixed `clock.now` (chunk 7.9a).
+        let emitted_at = crate::steps::wall(ctx);
         let trace = ctx.trace();
         let depth = ctx.chain();
         for event in events {
@@ -627,7 +640,7 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
     if let Some(handled) = handled
         && open.as_deref() == Some(handled.store.as_str())
     {
-        let now = ctx.now();
+        let now = crate::steps::wall(ctx);
         let transaction = ctx.transaction(&handled.store).await?;
         transaction
             .execute(

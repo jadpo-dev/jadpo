@@ -162,6 +162,10 @@ pub struct Proposed<'a> {
     pub changes: bool,
     /// How long its provider keeps a key, when it takes one.
     pub window_ms: Option<u64>,
+    /// The codes of its own failures whose kind says it did nothing
+    /// (`unavailable`, `rate_limited`): never given back, since one sent
+    /// again under its key may act (chunk 7.9a).
+    pub did_nothing: &'a [String],
 }
 
 /// What the record makes of a step ([`step`]).
@@ -370,10 +374,18 @@ pub fn record_id(scope: &str, key: &str) -> [u8; 16] {
     id
 }
 
-/// The time on the host's clock, which a step's window counts on: never
-/// the record's fixed `clock.now`.
-fn wall(ctx: &Ctx<'_>) -> i64 {
-    ctx.host().now_ms().unwrap_or_else(|| ctx.env().clock.now())
+/// The time on the host's clock, which a step's window and the runtime's
+/// own timestamps count on (an event's `emitted_at`, a request's signature,
+/// the day an `ai` budget counts): never the record's fixed `clock.now`,
+/// which only code reads. On a host with no clock, the clock the
+/// invocation had before a record fixed it (chunk 7.9a).
+pub(crate) fn wall(ctx: &Ctx<'_>) -> i64 {
+    ctx.host()
+        .now_ms()
+        .unwrap_or_else(|| match ctx.steps_record() {
+            Some(record) => record.clock.now(),
+            None => ctx.env().clock.now(),
+        })
 }
 
 /// Opens the record of the action `spec` describes, as its outermost
@@ -651,7 +663,11 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
         position,
         key_generation: kept.key_generation,
     };
-    if let Some(answer) = kept.answer {
+    // A failure that says it did nothing is never given back: kept by a
+    // runtime before chunk 7.9a, it leaves the step in doubt.
+    if let Some(answer) = kept.answer
+        && !matches!(&answer, Answered::Failed(code) if proposed.did_nothing.contains(code))
+    {
         record.note(position, &kept.operation, StepState::Replayed);
         return Ok(Stepped::Replay(answer));
     }
@@ -1145,6 +1161,70 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>) -> Result<(), StoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A host with a clock, when given one, and nothing else.
+    struct Clocked(Option<i64>);
+
+    impl crate::Host for Clocked {
+        fn database(&self, _store: &str) -> Option<&dyn crate::Database> {
+            None
+        }
+
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
+        }
+
+        fn now_ms(&self) -> Option<i64> {
+            self.0
+        }
+    }
+
+    /// A record of action `charge`, its first run started at `started_at`.
+    fn kept(started_at: i64, clock: Clock) -> Record {
+        let ring = KeyRing::from_signing_text("a-signing-key-for-the-record-of-steps", None);
+        Record {
+            store: "main".into(),
+            action: "action charge".into(),
+            build: String::new(),
+            shape: String::new(),
+            scope: "delivery".into(),
+            key: "d1".into(),
+            id: record_id("delivery", "d1"),
+            generation: 1,
+            answers: ring.clone(),
+            fingerprints: ring,
+            started_at,
+            kept: true,
+            steps: Vec::new(),
+            at: 0,
+            clock,
+            shown: BTreeMap::new(),
+            calls_from: 0,
+        }
+    }
+
+    /// Once a record fixes `clock.now` at its first run's start, the
+    /// runtime's own time (an event's `emitted_at`, a request's AWS
+    /// signature, an `ai` budget's day) is still the host's, or, on a host
+    /// with no clock, the invocation's own (chunk 7.9a).
+    #[test]
+    fn the_runtimes_own_time_is_never_a_records_fixed_clock() {
+        const STARTED: i64 = 1_000;
+        const INVOKED: i64 = 5_000;
+        const HOST: i64 = 9_000;
+        let places = crate::Places::new();
+        for (host, wanted) in [(Clocked(Some(HOST)), HOST), (Clocked(None), INVOKED)] {
+            let env = crate::Env {
+                seed: None,
+                clock: Clock::fixed(INVOKED),
+            };
+            let mut ctx = Ctx::new(&places, &host, env);
+            ctx.set_steps_record(Some(kept(STARTED, ctx.env().clock)));
+            ctx.set_clock(Clock::fixed(STARTED));
+            assert_eq!(ctx.now(), STARTED, "`clock.now` is the record's");
+            assert_eq!(wall(&ctx), wanted);
+        }
+    }
 
     #[test]
     fn a_records_id_is_its_scope_and_key_never_run_together() {
