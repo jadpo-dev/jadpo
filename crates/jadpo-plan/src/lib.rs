@@ -188,13 +188,14 @@ fn events_plan(
     db: &dyn Db,
     project: Project,
     by_key: &HashMap<Key, u32>,
+    numbering: &providers::Numbering,
     setting: &dyn Fn(&str) -> Option<u32>,
 ) -> jadpo_std::subscriber::EventsPlan {
     use jadpo_check::events::Tenant;
     use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
     let written = jadpo_check::types::written_stores(db, project);
     let called = jadpo_check::types::called_connections(db, project);
-    let (emails, sending) = emails::plan(db, project, by_key, setting);
+    let (emails, sending) = emails::plan(db, project, by_key, numbering, setting);
     // A package's own subscriber listens to each connection receiving its
     // package's webhooks, and its action calls the API through that one
     // (chunk 7.6b): one plan for each, named by the connection.
@@ -672,6 +673,19 @@ impl Plan {
                 Some((entry.key.clone(), (at as u32, fields)))
             })
             .collect();
+        // Every connection, with its driver and the targets it runs on
+        // (area 11; chunk 8.1d), and each provider operation's number, which
+        // a call's site names it by (chunk 8.1d2).
+        let setting_number = |name: &str| {
+            setting_ids
+                .get(&config::key(
+                    jadpo_check::graph::registry(db, project),
+                    name,
+                ))
+                .copied()
+        };
+        let connections = connections::table(db, project, &setting_number);
+        let numbering = providers::Numbering::new(db, project, &connections);
         let mut callables = Vec::with_capacity(found.len());
         // What the runtime keeps for an action with several changing calls
         // (area 12; chunk 7.5b).
@@ -717,6 +731,9 @@ impl Plan {
                 },
                 starter: &key,
                 batches: &mut batch_sites,
+                called: &|connection: &str, operation: &str| {
+                    numbering.called(&file, connection, operation)
+                },
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -905,17 +922,6 @@ impl Plan {
                 });
             }
         }
-        // Every connection, with its driver and the targets it runs on
-        // (area 11; chunk 8.1d).
-        let setting_number = |name: &str| {
-            setting_ids
-                .get(&config::key(
-                    jadpo_check::graph::registry(db, project),
-                    name,
-                ))
-                .copied()
-        };
-        let connections = connections::table(db, project, &setting_number);
         // Each provider operation's input and output (area 11, chunk 7.2c).
         let providers = providers::plan(
             db,
@@ -924,6 +930,7 @@ impl Plan {
             &setting_number,
             &mut json_types,
             &connections,
+            &numbering,
         );
         let mut json = routes::json_table(db, project, &mut types, &json_types);
         json.events = events;
@@ -947,7 +954,7 @@ impl Plan {
             magic.first_sign_in = jadpo_check::graph::declaration_key(&lookup, name)
                 .and_then(|key| by_key.get(&key).copied());
         }
-        let events = events_plan(db, project, &by_key, &|name: &str| {
+        let events = events_plan(db, project, &by_key, &numbering, &|name: &str| {
             setting_ids
                 .get(&config::key(
                     jadpo_check::graph::registry(db, project),

@@ -31,11 +31,13 @@ pub(crate) fn template_keys(db: &dyn Db, project: Project) -> Vec<(String, Key)>
 
 /// Every email, and the subscriber each has, which hands it to the
 /// connection `email:` names: none when nothing sends email, which the
-/// checker refuses for an email that is emitted.
+/// checker refuses for an email that is emitted. A mail package's
+/// operation is named by its number in `numbering`.
 pub(crate) fn plan(
     db: &dyn Db,
     project: Project,
     by_key: &HashMap<Key, u32>,
+    numbering: &crate::providers::Numbering,
     setting: &dyn Fn(&str) -> Option<u32>,
 ) -> (EmailsPlan, Vec<SubscriberPlan>) {
     let settings = jadpo_check::emails::settings(db, project);
@@ -112,6 +114,9 @@ pub(crate) fn plan(
             .settings;
         Some(PackageEmail {
             operation: mapping.operation.clone(),
+            called: numbering
+                .number(connection, &mapping.operation)
+                .unwrap_or(u32::MAX),
             input: mail_inputs(&mapping.input, given, setting)?,
             receipt: mapping.receipt.clone(),
             failures: mapping.failures.clone(),

@@ -95,6 +95,8 @@ pub struct EmailsPlan {
 pub struct PackageEmail {
     /// `emails.send`.
     pub operation: String,
+    /// Its number in the plan's provider operations (chunk 8.1d2).
+    pub called: u32,
     /// Each field of its input, by its spelling on the wire.
     pub input: Vec<(String, MailInput)>,
     /// Where the provider's id for the message is in its answer, by field

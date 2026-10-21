@@ -6,23 +6,131 @@
 //! `json.write` use, a provider package's field and variant spellings on
 //! the wire included.
 
+use std::collections::HashMap;
+
 use jadpo_check::lookups::Lookup;
+use jadpo_check::providers::Operation;
 use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
-    Address, AwsPlan, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan,
-    OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan, RecordedPlan, WebhookEvent,
-    WebhookPlan, WebhookReply,
+    Address, AwsPlan, Called, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS,
+    IdempotencyPlan, OperationPlan, PathPart, PollPlan, Protocol, ProviderPlan, RecordedPlan,
+    WebhookEvent, WebhookPlan, WebhookReply,
 };
 use jadpo_std::receiving::{
     AcknowledgePlan, CloudflareQueue, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
 };
 use jadpo_std::subscriber::Repeat;
 
+/// Each provider operation's number in the plan's provider operations
+/// (chunk 8.1d2), as [`plan`] lists them: every operation of each package
+/// connection's package, public or not, a connection's together in its
+/// package's order.
+#[derive(Debug, Default)]
+pub(crate) struct Numbering {
+    /// Each operation's number, by its connection's name and its own,
+    /// `bookings.create`.
+    named: HashMap<(String, String), u32>,
+    /// Each operation's place among its package's operations, by the
+    /// package's folder and its name.
+    places: HashMap<(String, String), u32>,
+    /// Each connection's first operation's number, by the connection's
+    /// number in the connections table; `u32::MAX` for none.
+    first: Vec<u32>,
+}
+
+impl Numbering {
+    /// The operations in number order, each with its connection's number
+    /// in `table`.
+    fn listed<'a>(
+        db: &'a dyn Db,
+        project: Project,
+        table: &[jadpo_std::connections::Connection],
+    ) -> Vec<(
+        u32,
+        &'a jadpo_check::connections::PackageConnection,
+        &'a Operation,
+    )> {
+        let operations = jadpo_check::providers::operations(db, project);
+        let mut out = Vec::new();
+        for connection in &jadpo_check::connections::package_connections(db, project).connections {
+            let Some((at, _)) = jadpo_std::connections::named(table, &connection.name) else {
+                continue;
+            };
+            // Every operation, public or not: a package's own actions call
+            // the ones it keeps to itself (chunk 7.6).
+            for operation in operations.of(&connection.folder) {
+                out.push((at, connection, operation));
+            }
+        }
+        out
+    }
+
+    /// The numbering of `project`'s operations, its connections numbered
+    /// by `table`.
+    pub(crate) fn new(
+        db: &dyn Db,
+        project: Project,
+        table: &[jadpo_std::connections::Connection],
+    ) -> Numbering {
+        let mut out = Numbering {
+            first: vec![u32::MAX; table.len()],
+            ..Numbering::default()
+        };
+        for (number, (at, connection, operation)) in Numbering::listed(db, project, table)
+            .into_iter()
+            .enumerate()
+        {
+            let number = u32::try_from(number).unwrap_or(u32::MAX);
+            if let Some(first) = out.first.get_mut(at as usize) {
+                *first = (*first).min(number);
+            }
+            out.named
+                .entry((connection.name.clone(), operation.full_name()))
+                .or_insert(number);
+        }
+        // Each operation's place among its package's, as `listed` lists
+        // a connection's.
+        let mut counted: HashMap<&str, u32> = HashMap::new();
+        for operation in &jadpo_check::providers::operations(db, project).list {
+            let place = counted.entry(operation.folder.as_str()).or_default();
+            out.places
+                .entry((operation.folder.clone(), operation.full_name()))
+                .or_insert(*place);
+            *place = place.saturating_add(1);
+        }
+        out
+    }
+
+    /// The number of operation `operation` of connection `connection`.
+    pub(crate) fn number(&self, connection: &str, operation: &str) -> Option<u32> {
+        self.named
+            .get(&(connection.to_string(), operation.to_string()))
+            .copied()
+    }
+
+    /// The operation a call's site in the file at `path` calls:
+    /// `operation` of `connection`, or for a package action's own
+    /// operation, its place among its package's.
+    pub(crate) fn called(&self, path: &str, connection: &str, operation: &str) -> Called {
+        if connection == jadpo_graph::body::OWN_CONNECTION {
+            let place = jadpo_db::package_at(path).and_then(|(home, _)| {
+                self.places
+                    .get(&(home.folder, operation.to_string()))
+                    .copied()
+            });
+            return place.map_or_else(Called::default, Called::Own);
+        }
+        self.number(connection, operation)
+            .map_or_else(Called::default, Called::Operation)
+    }
+}
+
 /// The provider plan, numbering each operation's input and output in
 /// `json_types` (the plan's JSON table's types), each operation's
-/// connection by its number in `table`, the plan's connections table, and
-/// reading each setting through `setting`.
+/// connection by its number in `table`, the plan's connections table, each
+/// operation the runtime calls by its number in `numbering`, and reading
+/// each setting through `setting`.
 pub(crate) fn plan(
     db: &dyn Db,
     project: Project,
@@ -30,6 +138,7 @@ pub(crate) fn plan(
     setting: &dyn Fn(&str) -> Option<u32>,
     json_types: &mut Vec<TypeRef>,
     table: &[jadpo_std::connections::Connection],
+    numbering: &Numbering,
 ) -> ProviderPlan {
     let lookup = Lookup::new(db, project);
     let operations = jadpo_check::providers::operations(db, project);
@@ -47,21 +156,16 @@ pub(crate) fn plan(
         application: jadpo_check::routes::openapi::title(db, project),
         ..ProviderPlan::default()
     };
-    for connection in &jadpo_check::connections::package_connections(db, project).connections {
-        let Some((at, _)) = jadpo_std::connections::named(table, &connection.name) else {
-            continue;
-        };
+    // Numbered as `numbering` numbers them (chunk 8.1d2).
+    for (at, _, operation) in Numbering::listed(db, project, table) {
         let keyed = jadpo_std::connections::package(table, at)
             .and_then(|plan| plan.idempotency.as_ref())
             .is_some_and(|plan| !plan.header.is_empty());
-        // Every operation, public or not: a package's own actions call
-        // the ones it keeps to itself (chunk 7.6).
-        for operation in operations.of(&connection.folder) {
-            let mut planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
-            planned.recording = recording(db, project, operation);
-            out.operations.push(planned);
-        }
+        let mut planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
+        planned.recording = recording(db, project, operation);
+        out.operations.push(planned);
     }
+    out.first = numbering.first.clone();
     // Every recording of the app's own integrations, decoded by `jadpo
     // test` and the publishing bar with its operation's decoders (chunk
     // 7.2d2). An installed package's were decoded when it was published.
@@ -135,6 +239,9 @@ pub(crate) fn plan(
             connection: poll.connection.clone(),
             name: poll.name.clone(),
             operation: poll.call.clone(),
+            called: numbering
+                .number(&poll.connection, &poll.call)
+                .unwrap_or(u32::MAX),
             every_ms: poll.every_ms,
             event: poll.event.as_str().to_string(),
             number: number(TypeRef::Node(poll.event.clone())),
@@ -179,6 +286,9 @@ pub(crate) fn plan(
                 QueueSource::Package {
                     receive: ReceivePlan {
                         operation: receive.0.clone(),
+                        called: numbering
+                            .number(&queue.connection, &receive.0)
+                            .unwrap_or(u32::MAX),
                         input: receive_input,
                         messages: messages.clone(),
                         body: body.clone(),
@@ -186,6 +296,9 @@ pub(crate) fn plan(
                     },
                     acknowledge: AcknowledgePlan {
                         operation: acknowledge.0.clone(),
+                        called: numbering
+                            .number(&queue.connection, &acknowledge.0)
+                            .unwrap_or(u32::MAX),
                         input: acknowledge_input,
                     },
                 }

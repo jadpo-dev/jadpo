@@ -87,16 +87,11 @@ async fn body(
                         files(ctx, connection, op, &args, at.0).await
                     }
                     Target::Provider => {
-                        let mut called = machine.provider_call(at).unwrap_or_default();
-                        // A package action's own operation goes through the
-                        // connection its action was called through.
-                        let own: String;
-                        if called.0 == jadpo_graph::body::OWN_CONNECTION {
-                            own = ctx.package_connection().unwrap_or_default().to_string();
-                            called.0 = &own;
-                        }
+                        // The operation by its number; a package action's
+                        // own through the connection its action was called
+                        // through (chunk 8.1d2).
                         let site = machine.provider_site(at).cloned().unwrap_or_default();
-                        provider(program, ctx, called, &site, args, at.0).await
+                        provider(program, ctx, &site, args, at.0).await
                     }
                     Target::Generate => {
                         let site = machine.generate_site(at).cloned();
@@ -428,7 +423,6 @@ async fn files(
 async fn provider(
     program: &Program,
     ctx: &mut Ctx<'_>,
-    (connection, operation): (&str, &str),
     call: &jadpo_std::provider::CallSite,
     args: Vec<Value>,
     at: u32,
@@ -438,8 +432,6 @@ async fn provider(
     // site (chunk 7.2c2).
     let calling = provider::Calling {
         plan: program.runtime_plan(),
-        connection,
-        operation,
         site: provider::Site {
             call,
             functions: program,

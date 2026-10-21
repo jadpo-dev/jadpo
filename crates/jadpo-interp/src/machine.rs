@@ -720,8 +720,6 @@ impl<'p> Machine<'p> {
         }
     }
 
-    /// Whether `key` is a failure of the provider operation `operation` of
-    /// `connection`: its package's, which its call maps.
     /// The connection and action of the package action called at `at`,
     /// when `key` is one of the failures that can leave it, all its
     /// package's own (chunk 7.6).
@@ -741,11 +739,22 @@ impl<'p> Machine<'p> {
             .then_some((connection, name))
     }
 
-    fn provider_failure(&self, connection: &str, operation: &str, key: &str) -> bool {
-        let plan = self.program.plan();
-        plan.providers()
-            .operation(plan.connections(), connection, operation)
-            .is_some_and(|(_, op)| op.failures.iter().any(|known| known == key))
+    /// Whether `key` is a failure of the provider operation the call at
+    /// `at` makes, by its number: its package's, which its call maps.
+    fn provider_failure(&self, at: SiteId, key: &str) -> bool {
+        let Some(jadpo_std::provider::CallSite {
+            called: jadpo_std::provider::Called::Operation(number),
+            ..
+        }) = self.provider_site(at)
+        else {
+            return false;
+        };
+        self.program
+            .plan()
+            .providers()
+            .operations
+            .get(*number as usize)
+            .is_some_and(|op| op.failures.iter().any(|known| known == key))
     }
 
     /// Whether the call it paused at is caught, its failure handled by an
@@ -1751,9 +1760,9 @@ impl<'p> Machine<'p> {
                     if let Stop::Failed(failure) = &stop
                         && let Some((connection, operation)) = self
                             .provider_call(inner)
-                            .filter(|(connection, operation)| {
+                            .filter(|(connection, _)| {
                                 *connection != jadpo_graph::body::OWN_CONNECTION
-                                    && (self.provider_failure(connection, operation, &failure.key)
+                                    && (self.provider_failure(inner, &failure.key)
                                         || failure.key == "runtime timed_out")
                             })
                             .or_else(|| self.package_action_failure(inner, &failure.key))
