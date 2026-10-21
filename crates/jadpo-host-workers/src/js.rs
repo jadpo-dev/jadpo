@@ -1,7 +1,9 @@
 //! Jadpo's own bindings to what Workers gives a Worker beyond the Web
 //! platform's APIs (`web-sys` binds those): `connect()` from
-//! `cloudflare:sockets`, an invocation's `ctx.waitUntil`, and the globals a
-//! Worker has rather than a window's (`fetch`, `setTimeout`, `crypto`).
+//! `cloudflare:sockets`, an invocation's `ctx.waitUntil`, the service
+//! binding a Worker starts a fresh invocation of itself through, and the
+//! globals a Worker has rather than a window's (`fetch`, `setTimeout`,
+//! `crypto`).
 //! Everything that can throw is bound with `catch`, so a JavaScript
 //! exception comes back as an error and never unwinds through the module.
 //!
@@ -51,6 +53,17 @@ extern "C" {
     /// response has been sent.
     #[wasm_bindgen(method, catch, js_name = waitUntil)]
     pub(crate) fn wait_until(this: &ExecutionContext, promise: &Promise) -> Result<(), JsValue>;
+
+    /// A service binding to the Worker's own `JadpoHandOn` entrypoint,
+    /// through which it starts a fresh invocation of itself (chunk 8.2h).
+    #[derive(Debug, Clone)]
+    pub(crate) type HandOnBinding;
+
+    /// Starts a fresh invocation of the Worker for the work `work` names,
+    /// a call through Workers' RPC: what it gives settles once that
+    /// invocation has taken the work on.
+    #[wasm_bindgen(method, catch, js_name = handOn)]
+    pub(crate) fn hand_on(this: &HandOnBinding, work: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch, js_name = setTimeout)]
     pub(crate) fn set_timeout(handler: &Function, millis: f64) -> Result<JsValue, JsValue>;

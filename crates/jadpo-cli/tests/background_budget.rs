@@ -27,7 +27,7 @@ use jadpo_cli::{Output, run};
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::budget::Invocation;
-use jadpo_runtime::runner::{Deferred, after_response, run_deferred};
+use jadpo_runtime::runner::{Deferred, HandOn, after_response, carry_on, run_deferred};
 use jadpo_runtime::{
     Clock, Ctx, Database, Env, Executor, Host, Isolation, LocalFuture, Outcome, Row, SqlValue,
     StoreError, Transaction,
@@ -333,7 +333,7 @@ struct Budgeted {
     drawn: Cell<u64>,
     claims: RefCell<Vec<(i64, i64)>>,
     deferred: RefCell<Vec<LocalFuture<'static, ()>>>,
-    handed: RefCell<Vec<LocalFuture<'static, ()>>>,
+    handed: RefCell<Vec<HandOn>>,
 }
 
 impl Budgeted {
@@ -436,7 +436,7 @@ impl Host for Budgeted {
         self.deferred.borrow_mut().push(work);
     }
 
-    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+    fn hand_on(&self, work: HandOn) {
         self.handed.borrow_mut().push(work);
     }
 }
@@ -675,7 +675,7 @@ fn a_batch_run_carries_on_in_a_second_invocation() {
             let Some(next) = next else {
                 break;
             };
-            next.await;
+            next.run().await;
             invocations += 1;
             assert!(invocations < 10, "it keeps handing itself on");
         }
@@ -683,6 +683,117 @@ fn a_batch_run_carries_on_in_a_second_invocation() {
         assert_eq!(host.count(touched).await, 10, "each item touched once");
         assert_eq!(
             host.count("SELECT count(*) FROM \"jadpo_batch_runs\" WHERE \"state\" = 'finished' AND \"items_done\" = 10")
+                .await,
+            1
+        );
+    });
+}
+
+/// Work handed on is carried on from its records alone, as a Worker's
+/// fresh invocation carries it on (chunk 8.2h): the message names each
+/// delivery and batch run by its id and store and holds nothing an
+/// application keeps; read back, a delivery still to run is run, one run
+/// meanwhile is left out, and the batch run goes on to its end, handing
+/// itself on by message in turn. A message that isn't one carries nothing
+/// on.
+#[test]
+fn work_handed_on_is_carried_on_from_its_records() {
+    let Some(loaded) = load("carried-by-message") else {
+        return;
+    };
+    let program: Rc<Program> = Rc::new(loaded.program);
+    // Ten seconds, and each commit takes four: an invocation runs three
+    // pieces.
+    let host = Rc::new(Budgeted::new(&loaded.url, 10_000, false, 4_000));
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let mut work = Vec::new();
+        for words in ["first", "second", "third", "fourth", "fifth"] {
+            work.extend(
+                host.call(&program, "post_note", vec![Value::text(words)])
+                    .await,
+            );
+        }
+        for code in ["a", "b", "c", "d", "e", "f"] {
+            host.call(&program, "add_item", vec![Value::text(code)])
+                .await;
+        }
+        work.extend(host.call(&program, "touch_all", vec![]).await);
+        after_response(
+            Rc::clone(&program) as Rc<dyn Executor>,
+            Rc::clone(&host) as Rc<dyn Host>,
+            work,
+        );
+        let first = host.deferred.borrow_mut().pop().expect("work for after");
+        first.await;
+        assert_eq!(host.count("SELECT count(*) FROM \"echo\"").await, 3);
+        let handed = host.handed.borrow_mut().pop().expect("work handed on");
+        assert_eq!(handed.work().len(), 3, "{handed:?}");
+        let message = handed.message();
+        drop(handed);
+        let document: serde_json::Value = serde_json::from_str(&message).expect("JSON");
+        let pieces = document["handed_on"].as_array().expect("pieces");
+        assert_eq!(pieces.len(), 3, "{message}");
+        for piece in &pieces[..2] {
+            assert_eq!(piece["store"], "main", "{message}");
+            assert_eq!(piece["delivery"].as_str().map(str::len), Some(32), "{message}");
+        }
+        assert_eq!(pieces[2]["store"], "main", "{message}");
+        assert_eq!(pieces[2]["batch"].as_str().map(str::len), Some(32), "{message}");
+        assert!(
+            !message.contains("fourth") && !message.contains("note_id"),
+            "{message}"
+        );
+
+        // The fifth note's delivery is run meanwhile, as the tick's sweep
+        // might run it.
+        host.rows(
+            "UPDATE \"jadpo_deliveries\" SET \"status\" = 'succeeded' WHERE \"id\" IN (SELECT \"d\".\"id\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" JOIN \"note\" AS \"n\" ON \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' WHERE \"n\".\"words\" = 'fifth') RETURNING 1",
+        )
+        .await;
+        assert!(
+            carry_on(
+                Rc::clone(&program) as Rc<dyn Executor>,
+                Rc::clone(&host) as Rc<dyn Host>,
+                "{\"handed_on\":[{\"store\":\"main\",\"delivery\":\"not-an-id\"}]}",
+            )
+            .is_none(),
+            "a message that isn't one"
+        );
+        let mut message = Some(message);
+        let mut invocations = 1;
+        while let Some(next) = message.take() {
+            carry_on(
+                Rc::clone(&program) as Rc<dyn Executor>,
+                Rc::clone(&host) as Rc<dyn Host>,
+                &next,
+            )
+            .expect("a message it wrote")
+            .await;
+            invocations += 1;
+            assert!(invocations < 10, "it keeps handing itself on");
+            message = host.handed.borrow_mut().pop().map(|handed| handed.message());
+        }
+        assert!(invocations >= 3, "{invocations}");
+        assert_eq!(
+            delivery(&host.db, "fourth").await,
+            ("succeeded".to_string(), 1, None),
+            "read back and run"
+        );
+        assert_eq!(
+            delivery(&host.db, "fifth").await,
+            ("succeeded".to_string(), 0, None),
+            "left out, run already"
+        );
+        assert_eq!(host.count("SELECT count(*) FROM \"echo\"").await, 4);
+        assert_eq!(
+            host.count("SELECT count(*) FROM \"item\" WHERE \"touches\" = 1")
+                .await,
+            6,
+            "each item touched once"
+        );
+        assert_eq!(
+            host.count("SELECT count(*) FROM \"jadpo_batch_runs\" WHERE \"state\" = 'finished' AND \"items_done\" = 6")
                 .await,
             1
         );

@@ -1069,16 +1069,19 @@ Until chunk 8.2b, `web`, built for `Target.wasm`, was refused as
 ### A Workers deployable
 
 Built in chunk 8.2b, its `fetch` serving each request in chunk 8.2d and
-its `scheduled` ticking at the minute's cron in chunk 8.2f, each the most
+its `scheduled` ticking at the minute's cron in chunk 8.2f, its work
+handed on and its streamed answers in chunk 8.2h, each the most
 conservative reading where the pages leave a choice open (Decisions, "A
 Workers deployable" and "A Worker's start"; area 12, "The tick on
-Workers"). The queue's handler comes with 8.2k.
+Workers" and Decisions, "Work handed on, on Workers"). The queue's
+handler comes with 8.2k.
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
   crate and a `cdylib`, `jadpo-worker-<deployable>`, exporting the
-  Worker's `fetch` through the Workers host, with the program, its build
-  stamp and each store's migrations as a native binary is given them. It
+  Worker's `fetch`, and `hand_on` for work handed on (chunk 8.2h),
+  through the Workers host, with the program, its build stamp and each
+  store's migrations as a native binary is given them. It
   links the package driver, which every Worker has, PostgreSQL's when the
   project keeps a database (every deployable's tick reaches each store),
   SMTP's when the deployable reaches an SMTP connection, and no other.
@@ -1090,8 +1093,10 @@ Workers"). The queue's handler comes with 8.2k.
   what an earlier build left there: `<deployable>.wasm`, the module;
   `<deployable>.js`, wasm-bindgen's JavaScript for it; `worker.mjs`,
   Jadpo's module shim, which instantiates the module once per isolate and
-  hands each request, the Worker's `env` and the invocation's `ctx` to it;
-  `wrangler.json`; and the documents of the APIs it serves.
+  hands each request, the Worker's `env` and the invocation's `ctx` to it,
+  and exports `JadpoHandOn`, a named entrypoint whose `handOn` takes on
+  work another invocation handed on (chunk 8.2h); `wrangler.json`; and
+  the documents of the APIs it serves.
 - **The Wrangler file.** `name`, the deployable's name with each `_` a
   `-`, since Cloudflare takes letters, digits and dashes; `main`, the
   shim; `compatibility_date`, the date the Workers host is tested at under
@@ -1112,7 +1117,12 @@ Workers"). The queue's handler comes with 8.2k.
   trigger, runs its tick when the tick has a store to keep or sweep
   (chunk 8.2f). With rate limits counted in Cloudflare's binding,
   `ratelimits`: a binding for each limit, its name, its `namespace_id` and
-  `simple: { limit, period }` (area 16, "Rate limits"; chunk 8.2m2). The
+  `simple: { limit, period }` (area 16, "Rate limits"; chunk 8.2m2). A
+  Worker that runs subscribers or schedules is bound to its own
+  `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
+  service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
+  hands what one invocation's 30 seconds didn't reach on to a fresh one
+  (chunk 8.2h; area 12, "Running background work"). The
   queues' consumers (8.2k) join the file with their chunk, which checks it
   against Wrangler itself.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
@@ -1158,11 +1168,14 @@ Workers"). The queue's handler comes with 8.2k.
   limits and the failure envelope. The client's address is
   `CF-Connecting-IP`, which Cloudflare sets on every request (area 10);
   the work a response leaves runs after it in `waitUntil`, within its 30
-  seconds; rate limits are counted in the store `rate_limits:` names,
-  Cloudflare's rate-limiting binding, and in the isolate's memory only
-  while it can't be asked (area 16, "Rate limits"; chunk 8.2m2). A streamed answer
-  (`ai.stream`) is sent whole once it ends until chunk 8.2h sends it as
-  it comes.
+  seconds, and what that doesn't reach is handed on to a fresh invocation
+  of the Worker through its binding to itself, which carries it on with
+  30 seconds of its own (chunk 8.2h); rate limits are counted in the store
+  `rate_limits:` names, Cloudflare's rate-limiting binding, and in the
+  isolate's memory only while it can't be asked (area 16, "Rate limits";
+  chunk 8.2m2). A streamed answer (`ai.stream`) is a `ReadableStream`,
+  each event sent as it is read, and a client that goes away ends the
+  request and with it the model's call (chunk 8.2h).
 - **The tick.** Each run of the minute's cron trigger calls the Worker's
   `scheduled`, which starts the isolate as a request does and, once its
   databases are current, runs the runtime's tick (area 12, "The tick"):

@@ -330,8 +330,8 @@ impl<D: Database> Host for Harness<D> {
         self.deferred.borrow_mut().push(work);
     }
 
-    fn hand_on(&self, work: LocalFuture<'static, ()>) {
-        self.handed.borrow_mut().push(work);
+    fn hand_on(&self, work: jadpo_runtime::runner::HandOn) {
+        self.handed.borrow_mut().push(work.run());
     }
 
     /// Its own, so tests side by side never wait on each other.

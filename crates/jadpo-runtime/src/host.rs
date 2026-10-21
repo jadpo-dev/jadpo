@@ -439,11 +439,15 @@ pub trait Host {
     /// Runs `work` as a fresh invocation, with a budget of its own: what an
     /// invocation whose budget was spent hands on, a batch run carried on
     /// and the work it hadn't reached (chunk 6.7). Natively a task of its
-    /// own on the worker's thread; on Workers a fresh invocation (chunk
-    /// 8.2h). A host with nothing to run it on, as a test's or a tool's,
-    /// drops it: what it held was given back, and the minute tick takes it
-    /// up.
-    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+    /// own on the worker's thread ([`HandOn::run`]); on Workers a fresh
+    /// invocation of the Worker, a request to itself through a service
+    /// binding sent [`HandOn::message`] (chunk 8.2h). A host with nothing
+    /// to run it on, as a test's or a tool's, drops it: what it held was
+    /// given back, and the minute tick takes it up.
+    ///
+    /// [`HandOn::run`]: crate::runner::HandOn::run
+    /// [`HandOn::message`]: crate::runner::HandOn::message
+    fn hand_on(&self, work: crate::runner::HandOn) {
         drop(work);
     }
 
@@ -579,7 +583,7 @@ impl<H: Host + ?Sized> Host for &H {
         (**self).stopping()
     }
 
-    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+    fn hand_on(&self, work: crate::runner::HandOn) {
         (**self).hand_on(work);
     }
 

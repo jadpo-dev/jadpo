@@ -2652,13 +2652,29 @@ whose entry names them.
   Cloudflare's cron, or an external tick another scheduler calls: the
   native deployable's `tick` command, one tick and exit, with no HTTP
   endpoint (Richard, 2026-10-21; area 12, question 16).
-- [ ] **8.2h After the response** `opus · xhigh`, after 8.2d: outbox
-  delivery after commit in `waitUntil`, within its 30 seconds, the
-  minute's cron sweeping what it leaves; a batch carried on in a fresh
-  invocation (`Host::hand_on`: a request to the Worker itself or a
-  queue, chosen here); a route's streamed answer (`ai.stream`) sent as a
-  `ReadableStream`. Proved under workerd by a subscriber and a batch run
-  longer than one invocation's budget.
+- [x] **8.2h After the response** `opus · xhigh`, after 8.2d. Built
+  (area 12, "Running background work"; §2.6, "After the response on
+  Workers"): `Host::hand_on` given a `runner::HandOn`, run natively as
+  before and on Workers sent as its message, each delivery and batch run
+  named by its record and store, to a fresh invocation of the Worker
+  through a service binding to its own `JadpoHandOn` entrypoint
+  (`JADPO_HAND_ON`, written into the Wrangler file of a Worker running
+  subscribers or schedules), which reads each piece back
+  (`runner::carry_on`, a delivery run meanwhile left out) and carries it
+  on in its own `waitUntil` with 30 seconds of its own; a streamed answer
+  sent as a `ReadableStream` pulled as the client reads, a client that
+  goes away ending the model's call with the request. Decided in the chunk
+  (area 12, "Work handed on, on Workers", 2026-10-21): a request to the
+  Worker itself, not a queue. Proved under workerd
+  (`crates/jadpo-cli/tests/workers.rs`) by a news desk whose model is a
+  server the test starts: a draft's first piece before the model wrote
+  the rest, a client going away closing the model's connection once the
+  model writes again, and 18
+  stories' subscriber deliveries and an 18-item batch run, 2 seconds
+  each, past one invocation's 30 seconds and finished by the invocation
+  each handed on to, then the minute's cron telling a summary the
+  budget's end cut short; natively, work carried on from its message
+  alone (`tests/background_budget.rs`).
 - [x] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d.
   Built (area 5, "PostgreSQL through Hyperdrive"; §2.6): a connection
   names its binding through its `url:` setting, whose variable is a
@@ -2754,7 +2770,10 @@ whose entry names them.
   address there checked. From 8.2i: the Worker reaching Hyperdrive
   without TLS as its binding's address says, Hyperdrive's default TLS
   checking the database's certificate, and a `vector` column read through
-  it (tokio-postgres describes one through a named statement).
+  it (tokio-postgres describes one through a named statement). From 8.2h:
+  a Worker's binding to its own `JadpoHandOn` accepted, each invocation
+  handed on given its own 30 seconds once the one that called it has
+  ended, and a client leaving a streamed answer ending the model's call.
 
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
