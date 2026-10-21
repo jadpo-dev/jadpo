@@ -6,6 +6,9 @@
 //! [`Server::start`] finds or starts it; [`Server::url`] names a database
 //! on it, for `jadpo_host_native::postgres`; [`Server::admin`] runs what
 //! must run outside a transaction, such as `CREATE DATABASE`.
+//! [`Server::start_on_tcp`] starts a disposable one that also listens on
+//! `127.0.0.1`, with TLS on when a test gives it a certificate it made
+//! (chunk 8.1n).
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -53,11 +56,14 @@ pub struct Server {
 enum Kind {
     /// The server `JADPO_TEST_DATABASE_URL` names.
     External { url: String },
-    /// A server this process started.
+    /// A server this process started: its socket's port, and whether it
+    /// also listens on `127.0.0.1` at that port.
     Disposable {
         root: PathBuf,
         bin: PathBuf,
         watchdog: Mutex<Option<Child>>,
+        port: u16,
+        tcp: bool,
     },
 }
 
@@ -118,7 +124,27 @@ impl Server {
             });
         }
         let bin = find_tools().ok_or(ServerError::NotFound)?;
-        start_disposable(bin)
+        start_disposable(bin, Listen::Socket)
+    }
+
+    /// A new disposable server, from the machine's PostgreSQL tools, that
+    /// also listens on `127.0.0.1` at a port of its own ([`Server::tcp_port`]):
+    /// with `tls`, a certificate and its key as PEM, which a test made with
+    /// an authority of its own, it offers TLS with them, and otherwise none
+    /// (chunk 8.1n). It takes plain connections either way.
+    pub fn start_on_tcp(tls: Option<(&str, &str)>) -> Result<Server, ServerError> {
+        let bin = find_tools().ok_or(ServerError::NotFound)?;
+        start_disposable(bin, Listen::Tcp(tls))
+    }
+
+    /// The port a server [`Server::start_on_tcp`] started listens on.
+    pub fn tcp_port(&self) -> Option<u16> {
+        match &self.kind {
+            Kind::Disposable {
+                port, tcp: true, ..
+            } => Some(*port),
+            _ => None,
+        }
     }
 
     /// A URL for `database` on this server, as `jadpo_host_native::postgres`
@@ -126,8 +152,8 @@ impl Server {
     pub fn url(&self, database: &str) -> String {
         match &self.kind {
             Kind::External { url } => with_database(url, database),
-            Kind::Disposable { root, .. } => format!(
-                "host={} port={PORT} user={USER} dbname={}",
+            Kind::Disposable { root, port, .. } => format!(
+                "host={} port={port} user={USER} dbname={}",
                 literal(&root.to_string_lossy()),
                 literal(database)
             ),
@@ -200,6 +226,7 @@ impl Drop for Server {
             root,
             bin,
             watchdog,
+            ..
         } = &self.kind
         {
             stop(bin, root);
@@ -315,9 +342,41 @@ fn new_root() -> Result<PathBuf, ServerError> {
         .map_err(|error| failed("making the server's folder", error))
 }
 
-fn start_disposable(bin: PathBuf) -> Result<Server, ServerError> {
+/// A free port on `127.0.0.1`, as the system hands one out.
+fn free_port() -> Result<u16, ServerError> {
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .and_then(|listener| listener.local_addr())
+        .map(|address| address.port())
+        .map_err(|error| failed("finding a free port", error))
+}
+
+/// Writes `text` to `path`, readable only by its owner, as PostgreSQL
+/// wants its key.
+fn private(path: &Path, text: &str) -> std::io::Result<()> {
+    std::fs::write(path, text)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+/// Where a disposable server listens: on its Unix socket only, or on
+/// `127.0.0.1` too, with TLS when given a certificate and its key.
+#[derive(Clone, Copy)]
+enum Listen<'a> {
+    Socket,
+    Tcp(Option<(&'a str, &'a str)>),
+}
+
+fn start_disposable(bin: PathBuf, listen: Listen<'_>) -> Result<Server, ServerError> {
     let root = new_root()?;
     let data = root.join("data");
+    let port = match listen {
+        Listen::Tcp(_) => free_port()?,
+        Listen::Socket => PORT,
+    };
     let run = |step: &str, command: &mut Command| -> Result<(), ServerError> {
         let output = command
             .stdin(Stdio::null())
@@ -350,16 +409,32 @@ fn start_disposable(bin: PathBuf) -> Result<Server, ServerError> {
                 "--no-sync",
             ]),
         )?;
+        let quoted = |path: &Path| path.to_string_lossy().replace('\'', "''");
+        let listening = match listen {
+            Listen::Tcp(Some((certificate, key))) => {
+                let (crt, pem) = (root.join("server.crt"), root.join("server.key"));
+                private(&crt, certificate)
+                    .and_then(|()| private(&pem, key))
+                    .map_err(|error| failed("writing the server's certificate", error))?;
+                format!(
+                    "listen_addresses = '127.0.0.1'\nssl = on\nssl_cert_file = '{}'\nssl_key_file = '{}'\n",
+                    quoted(&crt),
+                    quoted(&pem)
+                )
+            }
+            Listen::Tcp(None) => "listen_addresses = '127.0.0.1'\n".to_string(),
+            Listen::Socket => "listen_addresses = ''\n".to_string(),
+        };
         let settings = format!(
             "\n# Written by jadpo-test: a disposable server for tests.\n\
-             listen_addresses = ''\n\
+             {listening}\
              unix_socket_directories = '{}'\n\
-             port = {PORT}\n\
+             port = {port}\n\
              fsync = off\n\
              synchronous_commit = off\n\
              full_page_writes = off\n\
              max_connections = 300\n",
-            root.to_string_lossy().replace('\'', "''")
+            quoted(&root)
         );
         append(&data.join("postgresql.conf"), &settings)
             .map_err(|error| failed("configuring the server", error))?;
@@ -390,6 +465,8 @@ fn start_disposable(bin: PathBuf) -> Result<Server, ServerError> {
             root,
             bin,
             watchdog: Mutex::new(watchdog),
+            port,
+            tcp: matches!(listen, Listen::Tcp(_)),
         },
     })
 }

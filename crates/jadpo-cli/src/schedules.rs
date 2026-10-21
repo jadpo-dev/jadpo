@@ -33,6 +33,7 @@ use jadpo_runtime::schedules::watch::{
 use jadpo_runtime::schedules::{Due, Ran, why};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table};
 
+use crate::database::Address;
 use crate::run::{Call, Reply, quoted};
 
 /// What `jadpo schedules` does besides listing.
@@ -287,7 +288,7 @@ impl Project {
     }
 
     /// The database the schedules' state is in: `(store, url)`.
-    fn database(&self, call: &Call) -> Result<(String, String), Reply> {
+    fn database(&self, call: &Call) -> Result<(String, Address), Reply> {
         let Some(store) = self.store.clone() else {
             return Err(Reply::failed(
                 Diagnostic::new(
@@ -331,20 +332,21 @@ fn qualified(schedule: &ScheduleModel) -> String {
 }
 
 /// The address of `store`'s database: `--url`, else its connection's
-/// setting, else the one a running `jadpo dev` started for it.
+/// setting, each secured as its connection says, else the one a running
+/// `jadpo dev` started for it.
 pub(crate) fn url_of(
     call: &Call,
     root: &Path,
     loaded: &jadpo_db::Loaded,
     store: &str,
-) -> Result<Option<String>, Reply> {
+) -> Result<Option<Address>, Reply> {
     if let Some(url) = call.value("--url") {
-        return Ok(Some(url.to_string()));
+        return Address::of(call, loaded, store, url.to_string()).map(Some);
     }
     if let Some((_, url)) = crate::migrate::configured_url(call, loaded, store.to_string())? {
         return Ok(Some(url));
     }
-    Ok(dev_stores(root).remove(store))
+    Ok(dev_stores(root).remove(store).map(Address::by_default))
 }
 
 /// The databases a running `jadpo dev` started, by store.
@@ -392,7 +394,7 @@ pub(crate) fn tick_every(declared: &[Declared]) -> u64 {
 /// failure to reach or read it is `schedules.unavailable`.
 fn with_database<T>(
     store: &str,
-    url: &str,
+    url: &Address,
     work: impl for<'d> FnOnce(
         &'d dyn jadpo_runtime::Database,
     )
@@ -411,7 +413,7 @@ fn with_database<T>(
         )
     };
     let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = jadpo_host_native::postgres(url).map_err(|error| failed(store_error(&error)))?;
+    let database = url.open().map_err(|error| failed(store_error(&error)))?;
     runtime
         .block_on(work(&database))
         .map_err(|error| failed(store_error(&error)))
@@ -1276,7 +1278,7 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
     // Only `jadpo dev`'s own database, which it notes for the session, is
     // run against here; any other is a deployment's, whose own server
     // runs it (area 12, decided 2026-10-19).
-    if dev_stores(&project.root).get(&state_store) != Some(&state_url) {
+    if dev_stores(&project.root).get(&state_store) != Some(&state_url.url) {
         return request(call, project, schedule, &state_store, &state_url);
     }
     crate::run::say(&format!("Running `{name}`"));
@@ -1302,7 +1304,10 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         let url = if call.value("--url").is_some() && store != &state_store && stores.len() > 1 {
             None
         } else if let Some(configured) = ready.configured.get(store) {
-            Some(configured.clone())
+            match Address::of(call, &project.loaded, store, configured.clone()) {
+                Ok(address) => Some(address),
+                Err(reply) => return reply,
+            }
         } else {
             match url_of(call, &project.root, &project.loaded, store) {
                 Ok(url) => url,
@@ -1331,7 +1336,7 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         let program = jadpo_interp::Program::new(prepared).with_config(&config);
         let mut host = jadpo_host_native::NativeHost::new();
         for (store, url) in &urls {
-            let database = jadpo_host_native::postgres(url)?;
+            let database = url.open()?;
             host = host.with_store(store.clone(), database);
         }
         let runtime = jadpo_host_native::Runtime::new()
@@ -1412,7 +1417,7 @@ fn request(
     project: &Project,
     schedule: &ScheduleModel,
     store: &str,
-    url: &str,
+    url: &Address,
 ) -> Reply {
     let name = project.shown(schedule);
     let declared = Declared {
@@ -1434,7 +1439,7 @@ pub(crate) fn ask_tick(
     period: u64,
     now: i64,
     store: &str,
-    url: &str,
+    url: &Address,
 ) -> Reply {
     let name = declared.name.clone();
     crate::run::say(&format!("Asking the app's next tick to run `{name}`"));

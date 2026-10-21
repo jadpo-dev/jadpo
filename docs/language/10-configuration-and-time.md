@@ -180,7 +180,9 @@ type built on one of them, an enum whose variants carry no data, and the
 built-in enums `Zone` and `Locale` (question 2). A `ModelId` is read from its
 text, `openai/gpt-4.1-mini`, since every model `ai:` names is one (area 21;
 chunk 5.5v3), and a `Money` from its canonical text, `"GBP 20.00"`, since
-`ai: { limits: { per_day: { cost: } } }` names one (area 21; chunk 5.5v5).
+`ai: { limits: { per_day: { cost: } } }` names one (area 21; chunk 5.5v5). A
+`Certificate` is read from its PEM, since a database connection's
+`authority:` names one (area 5; chunk 8.1n).
 Lists, objects, maps, `T?` and data-carrying enums are rejected
 (`configuration.type_unsupported`): split them into fields.
 
@@ -518,6 +520,13 @@ connection only through that setting.
 A project that declares no database has one called `main` on PostgreSQL, and
 it opens at `config.database_url` when the project declares one (and it is a
 `PostgresUrl`).
+
+A `PostgresUrl` may not set TLS itself (`sslmode` and libpq's other `ssl…`
+settings), since its connection in `app.jadpo` decides (area 5, "PostgreSQL
+over TLS"; chunk 8.1n): such a value is `configuration.value_invalid`,
+saying so. A setting may be a `Certificate` (area 19), read from its PEM:
+what a database connection's `authority:` reads, the authority its
+server's certificate is signed by.
 
 A connection to a provider package (area 11, "Connecting in `app.jadpo`")
 reads its settings the same way, never a value written in source:
@@ -3589,7 +3598,7 @@ error: `admin_emails` can't be a `List<Email>`
   |
 2 |     admin_emails: List<Email>
   |                   ^^^^^^^^^^^ not read from one variable
-  reason: A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money` and enums. A list is one value in many variables or one variable holding a format; split it into settings.
+  reason: A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money`, `Certificate` and enums. A list is one value in many variables or one variable holding a format; split it into settings.
   next: Split `admin_emails` into settings of those types (agent)
   rule: configuration.type_unsupported
   help: docs/language/10-configuration-and-time.html#configuration-type-unsupported
@@ -6289,6 +6298,7 @@ surface and the publishing bar.
 | Variables (chosen in chunk 5.1) | A variable is capitals, digits and `_` starting with a capital (`configuration.binding_invalid`, `configuration.binding_empty`); no two settings share one, and a `SigningKey`'s `_PREVIOUS` counts as taken (`configuration.duplicate_binding`) | 2026-10-16 |
 | `default:` and `test:` (chosen in chunk 5.1) | A literal of the setting's type, checked against every rule of the type and its parents (`configuration.default_literal_required`, `configuration.default_type`, `configuration.default_invalid`, the same three for `test:` and a test's `config:`); an enum's variant is written `Type.value`. A secret has neither (`configuration.secret_default`), and `secret:` is `true` or `false` (`configuration.secret_invalid`) | 2026-10-16 |
 | Built-in connection types (chosen in chunk 5.1) | `Url` accepts only `http://` and `https://`. `PostgresUrl` (`postgres://`, `postgresql://`), `RedisUrl` (`redis://`, `rediss://`) and `SigningKey` (at least 32 visible characters) are built in, text underneath, always secret and never stored by an entity | 2026-10-16 |
+| A database's authority (chosen in chunk 8.1n) | A setting may be area 19's `Certificate`, read from its PEM, as a database connection's `authority:` needs (area 5, "PostgreSQL over TLS"); a `PostgresUrl` that sets `sslmode` or another `ssl…` setting is invalid | 2026-10-21 |
 | Where a secret may go (chosen in chunk 5.1) | The value of a `url:`, `credential:`, `signing_key:` or `secret:` member of `application { }` or `authentication { }`, and nowhere else: no function, action, query, fixture or test is a place the compiler owns, so any read of a secret there is `configuration.secret_flow`, which needs no tracking through variables and calls, and covers comparing | 2026-10-16 |
 | Connection addresses (chosen in chunk 5.1) | A connection's `url: config.<name>` reads a setting of the type its driver needs (`configuration.url_type`); an address written in source is refused the same way. A project with no database declared opens `main` at `config.database_url` when it declares one (of the right type) | 2026-10-16 |
 | Values in tests (chosen in chunk 5.1) | A test reads each setting's `test:` value, then its default; a secret is a fresh random hexadecimal value for each run (a `PostgresUrl` or `RedisUrl` an address at `127.0.0.1:1`); the environment is never read. A test's `config:` changes non-secret settings for that test and the code it calls; a secret there is `configuration.secret_default`. A setting a test reaches through calls with none of the three is `configuration.test_value_missing` (a request through a route is not followed; the run's fault names it) | 2026-10-16 |

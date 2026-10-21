@@ -64,6 +64,7 @@ pub mod compiled;
 pub mod config;
 pub mod connections;
 pub mod constant;
+pub mod database_tls;
 pub mod email;
 pub mod email_health;
 pub mod embed;

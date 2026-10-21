@@ -18,4 +18,4 @@ mod wire;
 
 pub use classify::{Cause, classify};
 #[cfg(feature = "postgres")]
-pub use driver::Postgres;
+pub use driver::{Postgres, Security};

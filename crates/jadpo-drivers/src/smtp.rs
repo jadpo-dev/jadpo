@@ -365,7 +365,13 @@ async fn secured(
     timeout: u64,
 ) -> Result<Box<dyn Stream>, RelayError> {
     use std::io::ErrorKind;
-    match within(transport, timeout, transport.upgrade(stream, name)).await {
+    match within(
+        transport,
+        timeout,
+        transport.upgrade(stream, name, crate::Trust::Roots),
+    )
+    .await
+    {
         Some(Ok(secure)) => Ok(secure),
         Some(Err(error))
             if matches!(

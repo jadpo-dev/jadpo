@@ -1636,7 +1636,8 @@ or column, class 22, class 0A, a not-null or check violation) a
 `Statement` error, which the runtime reports as a defect in Jadpo rather
 than asking a person to check the database; anything else a fault with its
 SQLSTATE and message.
-PostgreSQL's connections are unencrypted until chunk 8.1n.
+Since chunk 8.1n its connections use TLS as their connection says
+("PostgreSQL over TLS", below).
 `jadpo-host-native` gives `Runtime` (one current-thread tokio runtime
 with a `LocalSet`), `NativeTransport` over tokio's TCP and Unix sockets,
 and `postgres(url)`.
@@ -1669,7 +1670,47 @@ verifier: a deployable trusts the same servers on every machine,
 container images without a CA bundle included, and a test can't pass on
 what a developer's keychain trusts; new roots come with a rebuild.
 `tls::trusting` builds a configuration trusting one authority, what a
-test's server on this machine is checked with.
+test's server on this machine is checked with. Since chunk 8.1n the
+upgrade takes whom it trusts (`Trust`): the host's roots, or only the
+authorities a database connection names (`Trust::Authorities`, natively
+`tls::trusting_all`).
+
+**PostgreSQL over TLS** (chunk 8.1n; area 5, "PostgreSQL over TLS"). How
+a store's connections are secured is its connection's in `app.jadpo`,
+carried in the plan as `ConnectionDriver::Postgres { url, tls }`
+(`jadpo_std::connections::DatabaseTls`: `Roots`, `Authority` with its
+`Certificate` setting's number, or `Off` for `tls: false`), which the
+factory builds into the driver's `jadpo_drivers::postgres::Security`
+(`Postgres::secured`; `Postgres::new` is `Security::Roots`). For each
+endpoint the driver decides: a Unix socket, and with `Roots` a host that
+is this machine (`jadpo_std::database_tls::is_this_machine`), plain;
+otherwise PostgreSQL's SSL request (eight bytes, then one byte read, so
+nothing past the answer is read as anything but TLS) and, on `S`, the
+transport's upgrade for the host's name, within ten seconds; then
+tokio-postgres's startup over the secured stream with its own TLS off
+(`SslMode::Disable`), so the one TLS stack stays the host's and the driver
+needs no `TlsConnect`. A server elsewhere answering anything but `S`, and
+an upgrade that fails its check (`InvalidData`, `InvalidInput`,
+`Unsupported`), are `StoreError::Fault` naming the server, since trying
+again changes nothing; a connection that broke off is `Unavailable`. An
+address with `sslmode` or another `ssl…` setting
+(`jadpo_std::database_tls::tls_parameter`) is refused by the driver, by
+`PostgresUrl`'s check (`configuration.value_invalid` with
+`config::TLS_RULE`, as the app starts and in `jadpo config check`) and by
+`jadpo migrate`. The CLI's commands that open a database (`jadpo
+migrate`, `schedules`, `runs`, `deliveries`, `ai usage`, `jadpo dev`)
+open it as its connection says (`jadpo_cli`'s `database::Address`),
+reading the authority's setting as they read the address. SCRAM's channel
+binding is left off, as tokio-postgres never sees the TLS; the
+certificate check is what binds the session to the server. Proved by the
+driver against a scripted server (the request sent or not, the name and
+trust upgraded with, each refusal) and live against servers the harness
+starts on `127.0.0.1` (`Server::start_on_tcp`), one with `ssl = on` and a
+certificate an authority the test makes signed
+(`crates/jadpo-test/tests/postgres_tls.rs`): a plain server elsewhere
+refused and reached with `tls: false`, this machine reached without TLS,
+the private authority trusted (`pg_stat_ssl` says so) and Mozilla's roots,
+another authority and another name refused.
 
 Built in chunk 3.2: the runtime runs a read plan (one statement,
 then one per include, each with the keys of the records it is included in
@@ -2845,7 +2886,8 @@ package find theirs by number too: a package's `generate:`, `stream:` and
 `PackageStream::called`, `PackageEmbed::called`), its name kept for
 what is logged, recorded and faked. The plan's format was `jadpo runtime
 plan 4`; it is 5 since chunk 8.1f added compiled code's site plans
-(§2.5, "Compiled code").
+(§2.5, "Compiled code"), and 6 since chunk 8.1n added a database
+connection's `tls`.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -3396,7 +3438,9 @@ how to get a server when there is none. It makes a cluster in a new
 temporary folder (user `jadpo`, trust authentication, UTF-8, C locale),
 listening only on a socket in that folder with durability off and 300
 connections, and stops it and removes the folder when dropped or, failing
-that, once the process that started it ends. The driver's live tests
+that, once the process that started it ends. Since chunk 8.1n
+`Server::start_on_tcp` starts one listening on `127.0.0.1` too, at a free
+port, offering TLS when given a certificate and key as PEM. The driver's live tests
 (`crates/jadpo-test/tests/postgres.rs`) share one server per process and
 create a database each; `JADPO_SKIP_POSTGRES=1` skips them, as the
 quick gate's `compiler tests` step does, and the `live PostgreSQL` step runs

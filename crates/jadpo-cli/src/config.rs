@@ -350,6 +350,18 @@ pub(crate) fn value_diagnostic(
             ),
             jadpo_diag::Decider::Human,
         ),
+        ProblemKind::Invalid { rule } if rule == jadpo_runtime::config::TLS_RULE => Diagnostic::new(
+            &rule::CONFIGURATION_VALUE_INVALID,
+            format!("`{variable}` sets TLS itself"),
+        )
+        .reason(format!(
+            "`{field}` reads `{variable}`, and the address there sets `sslmode` or another of libpq's `ssl…` settings, which the database's connection in `app.jadpo` decides: TLS always, but to this machine, with `authority:` for a private authority and `tls: false` for a server elsewhere that offers none (area 5, \"PostgreSQL over TLS\"). The value isn't shown{}.",
+            if secret { ", as it is secret" } else { ", so it can't leak into a log" }
+        ))
+        .next_for(
+            format!("Take the `ssl…` settings out of `{variable}`, and say in `app.jadpo` what the connection needs"),
+            jadpo_diag::Decider::Human,
+        ),
         ProblemKind::Invalid { rule } => {
             let of = if ty.is_empty() {
                 String::new()

@@ -24,6 +24,7 @@ use jadpo_graph::migration::{
 use jadpo_graph::schema::{Change, Holds, Schema};
 use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen};
 
+use crate::database::Address;
 use crate::fmt::project_not_found;
 use crate::run::{Call, Reply};
 
@@ -912,13 +913,14 @@ fn change_groups(
 
 /// The store `apply` and `status` run against, with its URL: `--url` if
 /// given, otherwise the address the store's connection reads from its
-/// setting (area 10), from the environment over `.env.local`. `--store`
-/// picks the store when the project has several.
+/// setting (area 10), from the environment over `.env.local`, secured as
+/// its connection says either way (chunk 8.1n). `--store` picks the store
+/// when the project has several.
 fn target(
     call: &Call,
     loaded: &Loaded,
     steps: &BTreeMap<String, Vec<jadpo_runtime::Migration>>,
-) -> Result<Option<(String, String)>, Reply> {
+) -> Result<Option<(String, Address)>, Reply> {
     let url = call.value("--url");
     let store = match call.value("--store") {
         Some(store) => store.to_string(),
@@ -939,18 +941,19 @@ fn target(
         },
     };
     if let Some(url) = url {
-        return Ok(Some((store, url.to_string())));
+        let address = Address::of(call, loaded, &store, url.to_string())?;
+        return Ok(Some((store, address)));
     }
     configured_url(call, loaded, store)
 }
 
 /// The address the connection `store` reads from its setting, when a
-/// variable gives one.
+/// variable gives one, secured as the connection says.
 pub(crate) fn configured_url(
     call: &Call,
     loaded: &Loaded,
     store: String,
-) -> Result<Option<(String, String)>, Reply> {
+) -> Result<Option<(String, Address)>, Reply> {
     use jadpo_runtime::config::Variables;
     let urls = jadpo_check::config::connection_urls(&loaded.db, loaded.project);
     let Some(connection) = urls.url_of(&store) else {
@@ -966,17 +969,23 @@ pub(crate) fn configured_url(
         return Ok(None);
     };
     if jadpo_std::check_builtin_text(jadpo_std::Builtin::PostgresUrl, &url).is_err() {
+        let rule = if jadpo_std::database_tls::tls_parameter(&url).is_some() {
+            jadpo_runtime::config::TLS_RULE
+        } else {
+            "format"
+        };
         return Err(Reply::failed(crate::config::value_diagnostic(
             &setting.name,
             &setting.variable,
             true,
             "PostgresUrl",
             &jadpo_runtime::config::ProblemKind::Invalid {
-                rule: "format".to_string(),
+                rule: rule.to_string(),
             },
         )));
     }
-    Ok(Some((store, url)))
+    let address = Address::of(call, loaded, &store, url)?;
+    Ok(Some((store, address)))
 }
 
 /// Whether the migrations may be applied: their records read, and the
@@ -1038,7 +1047,7 @@ fn apply(call: &Call) -> Reply {
         with_backfills(program.as_ref(), |backfills| {
             let runtime = jadpo_host_native::Runtime::new()
                 .map_err(|error| jadpo_runtime::StoreError::Fault(error.to_string()))?;
-            let database = jadpo_host_native::postgres(&url)?;
+            let database = url.open()?;
             Ok(runtime.block_on(async {
                 let mut filled: Vec<Filled> = Vec::new();
                 let ran = jadpo_runtime::migrate_with(
@@ -1269,12 +1278,12 @@ fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
 
 /// Runs `work` against the database at `url`, on a runtime of its own.
 fn run<T>(
-    url: &str,
+    url: &Address,
     work: impl for<'d> FnOnce(&'d dyn jadpo_runtime::Database) -> jadpo_runtime::LocalFuture<'d, T>,
 ) -> Result<T, jadpo_runtime::StoreError> {
     let runtime = jadpo_host_native::Runtime::new()
         .map_err(|error| jadpo_runtime::StoreError::Fault(error.to_string()))?;
-    let database = jadpo_host_native::postgres(url)?;
+    let database = url.open()?;
     Ok(runtime.block_on(work(&database)))
 }
 

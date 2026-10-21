@@ -12,6 +12,7 @@ mod commands;
 mod completion;
 pub mod config;
 mod conform_fake;
+mod database;
 mod declines;
 mod deliveries;
 mod derived;

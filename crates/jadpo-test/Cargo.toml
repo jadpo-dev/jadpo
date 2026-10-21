@@ -29,6 +29,13 @@ jadpo-std.workspace = true
 jadpo-term.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+# PostgreSQL over TLS against servers given a certificate the test makes
+# (chunk 8.1n), with jadpo-host-native's test authority.
+jadpo-std.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+
 [lints]
 workspace = true
 

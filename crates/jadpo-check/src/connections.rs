@@ -317,11 +317,17 @@ pub fn names_package(list: &Option<ast::MemberList>, name: &str) -> bool {
         })
 }
 
-/// The problems with the connections to packages, and every connection
-/// whose name is a domain's or a library's.
+/// The problems with the connections to packages and databases, and
+/// every connection whose name is a domain's or a library's.
 #[salsa::tracked(returns(ref))]
 pub fn connection_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let mut out = package_connections(db, project).problems.clone();
+    out.extend(
+        crate::databases::database_connections(db, project)
+            .problems
+            .iter()
+            .cloned(),
+    );
     out.extend(name_clashes(db, project));
     out.extend(sandbox_problems(db, project));
     out
@@ -1982,8 +1988,10 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             rows.push(row);
         }
     }
-    // The driver connections whose address a setting gives.
+    // The driver connections whose address a setting gives; a database
+    // says how it is secured unless it is the default (chunk 8.1n).
     let model = crate::data::data_model(db, project);
+    let databases = crate::databases::database_connections(db, project);
     for url in &connection_urls(db, project).urls {
         let mut domains: Vec<String> = model
             .entities
@@ -2005,7 +2013,13 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             when: None,
             reached_for: match url.kind {
                 ConnectionKind::Redis => "cache".to_string(),
-                _ => "database".to_string(),
+                _ => match databases.tls_of(&url.connection) {
+                    crate::databases::DatabaseTls::Roots => "database".to_string(),
+                    crate::databases::DatabaseTls::Authority(setting) => {
+                        format!("database, its certificate checked against `config.{setting}`")
+                    }
+                    crate::databases::DatabaseTls::Off => "database, without TLS".to_string(),
+                },
             },
             domains,
         });
@@ -2132,7 +2146,19 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             when.set("is", *word);
             entry.set("when", when);
         }
-        entry.set("for", row.reached_for.trim_matches('`'));
+        match row.reached_for.split_once(", ") {
+            Some((reached_for, _)) if row.reached_for.starts_with("database, ") => {
+                entry.set("for", reached_for);
+                match databases.tls_of(&row.connection) {
+                    crate::databases::DatabaseTls::Authority(setting) => {
+                        entry.set("authority", setting.as_str());
+                    }
+                    crate::databases::DatabaseTls::Off => entry.set("tls", false),
+                    crate::databases::DatabaseTls::Roots => {}
+                }
+            }
+            _ => entry.set("for", row.reached_for.trim_matches('`')),
+        }
         entry.set("domains", row.domains.clone());
         hosts.push(entry);
     }
