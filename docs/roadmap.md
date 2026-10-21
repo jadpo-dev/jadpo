@@ -2609,9 +2609,9 @@ whose entry names them.
   delay documented. Proved through workerd's scheduled entry.
 - [ ] **8.2g The `trigger:` adapter** `opus · high`, after 8.2f:
   `schedules: { trigger: }` (area 12, question 16): the native timer,
-  Cloudflare's cron, or an external tick another scheduler calls. The
-  external tick's surface isn't on the pages, so the chunk starts by
-  asking Richard with a recommendation.
+  Cloudflare's cron, or an external tick another scheduler calls: the
+  native deployable's `tick` command, one tick and exit, with no HTTP
+  endpoint (Richard, 2026-10-21; area 12, question 16).
 - [ ] **8.2h After the response** `opus · xhigh`, after 8.2d: outbox
   delivery after commit in `waitUntil`, within its 30 seconds, the
   minute's cron sweeping what it leaves; a batch carried on in a fresh
