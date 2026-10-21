@@ -28,6 +28,7 @@ use jadpo_std::{Op, RuleKey, RuntimePlan, Unreadable};
 use jadpo_value::shape::Shape;
 use jadpo_value::{Rounding, Validator, Value};
 
+use crate::calls::{self, Called};
 use crate::effects::{self, Effect, Refused, Standard};
 use crate::operators::{Operator, operate};
 use crate::{
@@ -1160,6 +1161,194 @@ pub async fn step(
         Ok(()) => Ok(ran),
         Err(ended) => Err(result(ended)),
     }
+}
+
+// --- translations, providers, files and models ------------------------------------
+
+/// What one of the runtime's entry points for a body's sites of areas 10,
+/// 11, 16 and 21 gave ([`crate::calls`], which the interpreter calls too),
+/// as what stops the site (chunk 8.1i).
+fn called(called: Called) -> Ran {
+    match called {
+        Called::Value(value) => Ok(value),
+        Called::Broke {
+            rule,
+            written,
+            problem,
+        } => Err(Stop::Invalid {
+            rule,
+            written,
+            problem,
+            name: None,
+        }),
+        Called::Failed(failure) => Err(Stop::Failed(failure)),
+        Called::Fault(fault) => Err(Stop::Fault(fault)),
+    }
+}
+
+/// `translations.<message>(locale, …)`, translation `key`, with `values`,
+/// the locale first, at site `at` (area 10).
+pub fn translate(cx: &mut Ctx<'_>, p: &Program, key: &str, values: &[Value], at: u32) -> Ran {
+    called(calls::translate(cx, p.loaded.plan(), key, values, at))
+}
+
+/// `prompts.render(prompt)` at site `at` (area 21): the prompt at place
+/// `entry` among the plan's, each field it writes by its type's number in
+/// the JSON table, `fields`.
+pub fn render_prompt(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    entry: u32,
+    fields: &[u32],
+    prompt: &Value,
+    at: u32,
+) -> Ran {
+    called(calls::render_prompt(
+        cx,
+        p.loaded.plan(),
+        entry,
+        fields,
+        prompt,
+        at,
+    ))
+}
+
+/// A value an email's HTML template writes out at site `at` (area 16).
+pub fn escape(cx: &mut Ctx<'_>, value: &Value, at: u32) -> Ran {
+    called(calls::escape(cx, value, at))
+}
+
+/// `store.put(bytes, type)` or `store.read(file)`, `op`, of the store
+/// that is connection `connection`, with `args`, at site `at` (area 16).
+pub async fn files(
+    cx: &mut Ctx<'_>,
+    connection: &str,
+    op: jadpo_std::files::FilesOp,
+    args: &[Value],
+    at: u32,
+) -> Ran {
+    called(calls::files(cx, connection, op, args, at).await)
+}
+
+/// The provider call whose site is outside call `call` in the plan, if it
+/// is one.
+fn provider_site(p: &Program, call: Option<u32>) -> Option<&jadpo_std::provider::CallSite> {
+    match p.runtime().sites.calls.get(call? as usize)? {
+        jadpo_std::compiled::CallPlan::Provider(site) => Some(site),
+        _ => None,
+    }
+}
+
+/// A provider operation's call, outside call `call` in the plan, with
+/// `input`, at site `at` (area 11), its package's functions run by the
+/// compiled program.
+pub async fn provider(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    call: Option<u32>,
+    input: Option<Value>,
+    at: u32,
+) -> Ran {
+    static NONE: OnceLock<jadpo_std::provider::CallSite> = OnceLock::new();
+    let site = provider_site(p, call).unwrap_or_else(|| NONE.get_or_init(Default::default));
+    called(calls::provider(cx, p.loaded.plan(), p, site, input, at).await)
+}
+
+/// Whether failure `key` of provider call `call` is one its `attempt`
+/// maps by its code (area 11).
+pub fn provider_maps(p: &Program, call: Option<u32>, key: &str) -> bool {
+    provider_site(p, call).is_some_and(|site| calls::provider_maps(p.loaded.plan(), site, key))
+}
+
+/// The arm among `named` that maps `failure`, a provider operation's or a
+/// package action's, by its code, the call `called` at site `inner`; the
+/// fault there when none does (area 11).
+pub fn mapped_code(
+    cx: &mut Ctx<'_>,
+    named: &[Option<&str>],
+    failure: &Failure,
+    called: (&str, &str),
+    inner: u32,
+) -> Result<u32, Stop> {
+    calls::mapped(cx, named, failure, called, inner).map_err(Stop::Fault)
+}
+
+/// An `ai` call, outside call `call` in the plan, with `given`, at site
+/// `at` (area 21); `embed` for `ai.embed` or `ai.embed_all`, which names
+/// its fault apart when the program asks no model.
+pub async fn ai(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    call: Option<u32>,
+    embed: bool,
+    given: Value,
+    at: u32,
+) -> Ran {
+    let site = call.and_then(|call| p.runtime().sites.calls.get(call as usize));
+    let asked = match site.and_then(calls::Asked::of) {
+        Some(asked) => asked,
+        None if embed => calls::Asked::Embed(None),
+        None => calls::Asked::Generate(None),
+    };
+    called(calls::ai(cx, p.loaded.plan(), asked, given, at).await)
+}
+
+/// A package's action `callee` called through connection `connection`
+/// with `args`, from site `at` (area 11, chunk 7.6): its own operations go
+/// through that connection; `caught` when the caller handles its failure.
+pub async fn package(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    connection: &str,
+    callee: u32,
+    args: Vec<Value>,
+    at: u32,
+    caught: bool,
+) -> Ran {
+    cx.enter_package(connection);
+    let ran = invoke(cx, p, callee, args, at, caught).await;
+    cx.leave_package();
+    ran
+}
+
+/// A test's `fakes:` at site `at` scripting operation `operation` of
+/// connection `connection` to answer `answer` (area 13).
+#[cfg(feature = "testing")]
+pub fn fake(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    connection: &str,
+    operation: &str,
+    answer: calls::FakeAnswer,
+    at: u32,
+) -> Ran {
+    called(calls::fake(
+        cx,
+        p.loaded.plan(),
+        p,
+        (connection, operation),
+        answer,
+        at,
+    ))
+}
+
+/// A test's `fakes: { ai.<prompt>: }` at site `at` scripting prompt
+/// `prompt`'s next answer, `answer` (area 21).
+#[cfg(feature = "testing")]
+pub fn ai_fake(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    prompt: &str,
+    answer: calls::AiAnswer<'_>,
+    at: u32,
+) -> Ran {
+    called(calls::ai_fake(cx, p.loaded.plan(), prompt, answer, at))
+}
+
+/// `ai.<prompt>.requests` at site `at` (area 21).
+#[cfg(feature = "testing")]
+pub fn ai_requests(cx: &mut Ctx<'_>, p: &Program, prompt: &str, at: u32) -> Ran {
+    called(calls::ai_requests(cx, p.loaded.plan(), prompt, at))
 }
 
 // --- assertions --------------------------------------------------------------

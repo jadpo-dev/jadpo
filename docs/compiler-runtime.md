@@ -1251,7 +1251,9 @@ chunk 8.1g `construct`, `mapped`, `broke` and `rule_arm` for an
 `attempt`, `is_variant` and `items` for a `match` arm and a `for`,
 `standard` and `standard_each`, `emit`, `sent_emails` and
 `assert_fails`; since chunk 8.1h `caller`, `session`, `batch`, `advance`
-and `schedule`), each turning what the runtime or `jadpo-value` gives
+and `schedule`; since chunk 8.1i `translate`, `render_prompt`, `escape`,
+`files`, `provider`, `provider_maps` and `mapped_code`, `ai`, `package`,
+`fake`, `ai_fake` and `ai_requests`), each turning what the runtime or `jadpo-value` gives
 into the stop the interpreter's walker raises at the same site, with the
 same words. The operators are one implementation both executors call,
 `jadpo_runtime::operators::operate`, and so is the standard library:
@@ -1269,6 +1271,26 @@ starts a run (`batches.each` and a file helper's read or write), reads it
 or cancels it, each giving a store's refusal as the failure it raised;
 the interpreter's copies are gone, and
 `the_interpreter_runs_identity_and_batches_only_through_the_runtime`
+keeps them gone. So, since chunk 8.1i, are a body's sites of areas 10,
+11, 16 and 21: `jadpo_runtime::calls` has one entry point each, giving a
+`Called` (a value, a condition for the `attempt`, a failure or a fault)
+that each executor turns into its stop: `translate` (a
+`translations.<message>` call, and an email template's wordings),
+`render_prompt`, `escape` (a value an email's HTML template writes out),
+`files` (a store's `put` and `read`), `provider` (a provider package's
+operation, its package's functions run by the executor), `ai`
+(`ai.generate`, `ai.stream`, `ai.embed` and `ai.embed_all`, by the site the
+plan decodes, `calls::Asked`), and with the `testing` feature `fake` (a
+test's `fakes:`), `ai_fake` (its `fakes: { ai: }`, a recording's answer
+among them) and `ai_requests`. An `attempt` over a provider's operation or
+a package's action maps a failure of the operation's, its package's or
+`timed_out` by its code (`calls::provider_maps`, and `calls::mapped`,
+which faults on one no arm maps); compiled code writes that arm into the
+`attempt`'s `match`, the package action's failures listed from its body,
+and calls a package's action through the connection named
+(`compiled::package`, `Ctx::enter_package`). The interpreter's copies are
+gone, and
+`the_interpreter_runs_translations_providers_files_and_models_only_through_the_runtime`
 keeps them gone. `clock.advance` is `test_steps::advance_clock`, a step
 after which what came due is delivered, and a test's `<schedule>.run()`
 its action invoked as the system between `schedules::test_run` and
@@ -1295,8 +1317,12 @@ key: plan format 5. The interpreter reads the same plans from the
 compiler's `Plan`, built in the same pass. The application's locales
 joined the runtime plan when compiled code first called the standard
 library (`RuntimePlan::locales`, chunk 8.1g, plan format 7), and the
-compiler's `Plan::locales` reads them there; translations join it with
-their first compiled call (8.1i).
+compiler's `Plan::locales` reads them there; the translations joined it
+with their first compiled call (`RuntimePlan::translations`, chunk 8.1i,
+plan format 8), and the runtime's view of the plan carries them, the
+locales and the outside calls' sites (`Plan::translations`, `locales` and
+`calls`, whose first `ai.generate` of a prompt `Plan::generate_site` finds
+for a test's scripted answer to it).
 
 A body's sites are numbered as its typed body numbers them (§2.3), and
 generated code passes those numbers, as literals, wherever the
@@ -1348,13 +1374,14 @@ deadline every 4,096 calls, the interpreter's interval in tasks: an
 one, and a function, which can't, stops with `deadline_exceeded` once it
 has passed.
 
-What isn't compiled yet is refused by name: `generate` gives every
+What isn't compiled is refused by name: `generate` gives every
 `Refusal` (the form, `` `for` ``, `` `list.count` ``, `` `Type(value)` ``,
 and where it is written) rather than a crate that faults where a test
-happens to reach it, so the generator run over the corpus shows what
-8.1g to 8.1i have left (`crates/jadpo-codegen/tests/corpus.rs`, which
-also holds every crate it writes to parsing as Rust, and lists each
-project refused with its forms). Built in 8.1f:
+happens to reach it, so the generator run over the corpus showed what
+8.1g to 8.1i had left (`crates/jadpo-codegen/tests/corpus.rs`, which
+also holds every crate it writes to parsing as Rust, and since chunk
+8.1i that it refuses none; what it still refuses, a site that waits in a
+function, is a body the checker refuses). Built in 8.1f:
 `var`, assignment, `return`, `if`, an expression's statement and
 `assert`; literals, locals, field reads, calls of functions, actions and
 fixtures, queries and `get`, object and variant builds, lists, every
@@ -1369,11 +1396,13 @@ from its record (`Principal.user`, `Principal.service`), `sessions.*`,
 tokens and keys, magic links' and a test's passkeys' operations,
 `batches.each`, `batches.status`, `batches.cancel`, a file helper's read
 and write with an export's rows, `clock.advance` and a test's
-`<schedule>.run()`. 190 of the 206 compile; what is left is 8.1i's
-(`translations.<message>`, provider operations and a package's action, a
-test's `fakes:`, and in projects that check only with their migrations a
-store's `put` and `read`, `prompts.render`, `ai.*` and an email
-template's `{{ value }}`).
+`<schedule>.run()`. 190 of the 206 compile. Built in 8.1i:
+`translations.<message>`, provider operations with their failures mapped
+by code, a package's action, a test's `fakes:` and `fakes: { ai: }`,
+`ai.<prompt>.requests`, and in projects that check only with their
+migrations a store's `put` and `read`, `prompts.render`, `ai.generate`,
+`ai.stream`, `ai.embed` and `ai.embed_all`, and an email template's
+`{{ value }}`. All 206 compile, and every teaching example.
 
 The differential harness is `jadpo_test::compiled`:
 `differential_all(projects, folder)` compiles each project into a
@@ -1405,16 +1434,19 @@ harness per project). The gate's compiled step
 (`crates/jadpo-cli/tests/compiled.rs`) runs every project of the corpus
 that checks, the pages' and the teaching examples' (since chunk 8.1h each
 example copied whole, with its migrations, prompts, templates, recordings
-and lock, so all 28 reach it), and requires every one that compiles to
-give the same records both ways, every project of areas 1 to 4 to
-compile, and every project of areas 5 to 9 and 13 but those using a form
-of 8.1i's: 232 projects, 451 tests, 26 left with a form not compiled yet
-(22 of the 28 teaching examples compared, all 276 of their tests passing
-both ways), a project of its own whose `return` inside an inline function
-leaves its function, and area 19's export with a test that starts it,
-run to its end. On the ten-core Mac, lightly loaded, it takes 60 s the
+and lock, so all 28 reach it), and since chunk 8.1i requires every one
+to compile and give the same records both ways, and every teaching
+example's tests to pass: 258 projects and 525 tests, all 28 teaching
+examples with their 334 tests passing both ways, a project of its own
+whose `return` inside an inline function leaves its function, and area
+19's export with a test that starts it, run to its end. A project whose
+migrations need an extension the server lacks or has too old a version
+of (`jadpo_test::compiled::Problem::Unserved`) is skipped on a
+developer's machine, saying so, and fails under CI, whose image has them
+all (`jadpo_test::skip_for_version`): example 22's pgvector 0.8 on a
+server with 0.7. On the ten-core Mac, lightly loaded, it takes 60 s the
 first time, most of it building the runtime crates, as one project's
-harness did, and 33 s after. One crate per project for now; 8.1j
+harness did, and 33 s after (chunk 8.1h). One crate per project for now; 8.1j
 compiles the corpus as one crate, in one rustc invocation, in a CI job of
 its own.
 

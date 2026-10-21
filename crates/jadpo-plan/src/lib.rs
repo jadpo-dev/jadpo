@@ -354,9 +354,6 @@ pub struct Plan {
     /// stores of files, providers, `ai:`, prompts and their recordings,
     /// shared with every thread's runtime.
     runtime: Arc<RuntimePlan>,
-    /// Every translation key and its message in each supported locale
-    /// (area 10, chunk 5.3b), which the runtime formats a call from.
-    translations: jadpo_std::translation::TranslationPlan,
     /// The latest migration's backfills `jadpo migrate apply` works out in
     /// Jadpo (chunk 5.6b2), in a plan built for it.
     backfills: Vec<BackfillPlan>,
@@ -1199,6 +1196,7 @@ impl Plan {
             ai,
             prompts,
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
+            translations: jadpo_check::translations::plan(db, project),
             callables: keyed,
             sites,
             actions,
@@ -1216,7 +1214,6 @@ impl Plan {
             entities,
             writes,
             runtime: Arc::new(runtime),
-            translations: jadpo_check::translations::plan(db, project),
             backfills,
             migration_json,
             batch_numbers,
@@ -1492,7 +1489,7 @@ impl Plan {
 
     /// The translation keys and their messages (area 10).
     pub fn translations(&self) -> &jadpo_std::translation::TranslationPlan {
-        &self.translations
+        &self.runtime.translations
     }
 
     /// Every prompt that checks, by its place (area 21).

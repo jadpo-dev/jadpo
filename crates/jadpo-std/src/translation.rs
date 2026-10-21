@@ -507,8 +507,9 @@ impl TranslationEntry {
 }
 
 /// Every entry, in key order: what the runtime writes a translation call
-/// from.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// from, part of the runtime plan since compiled code first called one
+/// (chunk 8.1i).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TranslationPlan {
     pub entries: Vec<TranslationEntry>,
 }

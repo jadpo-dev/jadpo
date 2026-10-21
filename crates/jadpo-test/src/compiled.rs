@@ -63,6 +63,11 @@ impl Compared {
 pub enum Problem {
     /// The project's tests didn't run: why, as the runner said.
     NotRun(String),
+    /// The server lacks an extension the project's migrations create, or
+    /// has too old a one (areas 20 and 21), so neither executor could run
+    /// its tests: which, as the runner said. A developer's server may; CI's
+    /// never does (`jadpo_test::skip_for_version`).
+    Unserved(String),
     /// The generator refused the project or failed.
     Generate(jadpo_codegen::Error),
     /// The harness's workspace couldn't be written.
@@ -79,6 +84,7 @@ impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Problem::NotRun(why) => write!(f, "the tests didn't run: {why}"),
+            Problem::Unserved(why) => write!(f, "{UNSERVED}{why}"),
             Problem::Generate(error) => write!(f, "the project wasn't compiled:\n{error}"),
             Problem::Write(error) => write!(f, "the harness couldn't be written: {error}"),
             Problem::Build(failed) => write!(f, "the harness wasn't built: {failed}"),
@@ -95,32 +101,14 @@ impl fmt::Display for Problem {
 
 impl std::error::Error for Problem {}
 
-impl Problem {
-    /// Whether the generator refused the project for a body form not
-    /// compiled yet.
-    pub fn refused(&self) -> bool {
-        matches!(self, Problem::Generate(jadpo_codegen::Error::Refused(_)))
-    }
-
-    /// The forms the generator refused, each once, in the order first
-    /// refused: none for any other problem.
-    pub fn forms(&self) -> Vec<String> {
-        let mut forms: Vec<String> = Vec::new();
-        if let Problem::Generate(jadpo_codegen::Error::Refused(refusals)) = self {
-            for refusal in refusals {
-                if !forms.contains(&refusal.form) {
-                    forms.push(refusal.form.clone());
-                }
-            }
-        }
-        forms
-    }
-}
+/// How the harness says the server can't serve the project's migrations.
+const UNSERVED: &str = "the server can't serve the project's migrations: ";
 
 /// The finished run in `ran`.
 fn done(ran: Ran) -> Result<Box<Run>, Problem> {
     match ran {
         Ran::Done(run) => Ok(run),
+        Ran::Unmigrated { store, error } => Err(Problem::Unserved(format!("{store}: {error:?}"))),
         other => Err(Problem::NotRun(format!("{other:?}"))),
     }
 }
@@ -456,6 +444,9 @@ fn run_harness(binary: &Path, program: usize, folder: &Path) -> Result<Compared,
         Some(compared) if output.status.success() => Ok(compared),
         _ if said.starts_with(DIFFERS) => Err(Problem::Differs(
             said[DIFFERS.len()..].trim_end().to_string(),
+        )),
+        _ if said.starts_with(UNSERVED) => Err(Problem::Unserved(
+            said[UNSERVED.len()..].trim_end().to_string(),
         )),
         _ => Err(Problem::Harness(format!(
             "{said}{}",

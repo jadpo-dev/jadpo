@@ -13,6 +13,7 @@
 
 use jadpo_graph::Kind;
 use jadpo_graph::body::SiteId;
+use jadpo_runtime::calls::{self, Asked, Called};
 use jadpo_runtime::{
     ActionBody, Ctx, Fault, FaultKind, Isolation, LocalFuture, Outcome, StoreOp, Stored,
 };
@@ -82,16 +83,21 @@ async fn body(
                     } => request(program, ctx, route, &args, keyed, signed).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
+                    // A store's put or read, a provider's operation and a
+                    // model's call, through the runtime's entry points,
+                    // which compiled code calls too (chunk 8.1i).
                     Target::Files(op) => {
                         let connection = machine.files_connection(at).unwrap_or_default();
-                        files(ctx, connection, op, &args, at.0).await
+                        called(calls::files(ctx, connection, op, &args, at.0).await)
                     }
                     Target::Provider => {
                         // The operation by its number; a package action's
                         // own through the connection its action was called
                         // through (chunk 8.1d2).
                         let site = machine.provider_site(at).cloned().unwrap_or_default();
-                        provider(program, ctx, &site, args, at.0).await
+                        let input = args.into_iter().next();
+                        let plan = program.runtime_plan();
+                        called(calls::provider(ctx, plan, program, &site, input, at.0).await)
                     }
                     Target::Generate => {
                         let site = machine.generate_site(at).cloned();
@@ -298,6 +304,19 @@ async fn batch(
     stopped(jadpo_runtime::batches::call(ctx, batches, op, plan, args, at).await)
 }
 
+/// An `ai` call at site `at` (area 21), with its one argument, through the
+/// runtime's entry point for them.
+async fn ai(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    asked: Asked<'_>,
+    args: Vec<Value>,
+    at: u32,
+) -> Result<Value, Stop> {
+    let given = args.into_iter().next().unwrap_or(Value::Unit);
+    called(calls::ai(ctx, program.runtime_plan(), asked, given, at).await)
+}
+
 /// What the runtime's entry point gave, as what stops the walk.
 fn stopped(stored: Stored) -> Result<Value, Stop> {
     match stored {
@@ -308,118 +327,25 @@ fn stopped(stored: Stored) -> Result<Value, Stop> {
     }
 }
 
-/// `store.put(bytes, type)` or `store.read(file)` at site `at` (area 16,
-/// chunk 6.4b), through the runtime's `files` capability: an outside call,
-/// which the seam refuses once the action's transaction is open.
-async fn files(
-    ctx: &mut Ctx<'_>,
-    connection: &str,
-    op: jadpo_std::files::FilesOp,
-    args: &[Value],
-    at: u32,
-) -> Result<Value, Stop> {
-    use jadpo_runtime::files::{self, Done};
-    use jadpo_std::files::FilesOp;
-    let done = match (op, args) {
-        (FilesOp::Put, [bytes, file_type]) => files::put(ctx, connection, bytes, file_type).await,
-        (FilesOp::Read, [file]) => files::read_whole(ctx, file).await,
-        _ => Done::Fault(FaultKind::Defect(format!(
-            "`{connection}.{}` called with the wrong arguments",
-            op.name()
-        ))),
-    };
-    match done {
-        Done::Value(value) => Ok(value),
-        Done::Broke(rule) => Err(Stop::Invalid {
+/// What one of the runtime's entry points for a body's sites of areas
+/// 10, 11, 16 and 21 gave ([`jadpo_runtime::calls`], which compiled code
+/// calls too), as what stops the walk.
+pub(crate) fn called(called: Called) -> Result<Value, Stop> {
+    match called {
+        Called::Value(value) => Ok(value),
+        Called::Broke {
             rule,
-            written: rule.word().to_string(),
-            problem: None,
-            name: None,
-        }),
-        Done::Failed(failure) => Err(Stop::Failed(failure)),
-        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
-    }
-}
-
-/// `connection.resource.operation(input)` at site `at` (area 11, chunk
-/// 7.2c): the runtime makes the request from the plan, sends it through
-/// the capability seam and decodes the answer; a failure the operation
-/// declares is the call's, for its `attempt` to map.
-async fn provider(
-    program: &Program,
-    ctx: &mut Ctx<'_>,
-    call: &jadpo_std::provider::CallSite,
-    args: Vec<Value>,
-    at: u32,
-) -> Result<Value, Stop> {
-    use jadpo_runtime::provider::{self, Done};
-    // The package's own decoders and encoders run here, at the call's
-    // site (chunk 7.2c2).
-    let calling = provider::Calling {
-        plan: program.runtime_plan(),
-        site: provider::Site {
-            call,
-            functions: program,
-            at,
-        },
-    };
-    match provider::call(ctx, calling, args.into_iter().next()).await {
-        Done::Value(value) => Ok(value),
-        Done::Failed(failure) => Err(Stop::Failed(failure)),
-        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
-    }
-}
-
-/// An `ai` call at site `at` (area 21): `ai.generate(prompt, as: T)`
-/// (chunk 5.5v3), `ai.stream(prompt)` (chunk 5.5v6), `ai.embed(text, as:
-/// V)` or `ai.embed_all(texts, as: V)` (chunk 5.5v4), which the runtime
-/// answers through the connection `ai:` names; a condition it ends in is
-/// the call's, for its `attempt` to map.
-async fn ai(
-    program: &Program,
-    ctx: &mut Ctx<'_>,
-    asked: Asked<'_>,
-    args: Vec<Value>,
-    at: u32,
-) -> Result<Value, Stop> {
-    use jadpo_runtime::ai::{Calling, Done};
-    let plan = program.runtime_plan();
-    let given = args.into_iter().next().unwrap_or(Value::Unit);
-    let done = match asked {
-        Asked::Generate(Some(site)) => {
-            jadpo_runtime::ai::generate(ctx, Calling { plan, site }, given).await
-        }
-        Asked::Stream(Some(site)) => {
-            jadpo_runtime::stream::stream(ctx, Calling { plan, site }, given).await
-        }
-        Asked::Embed(Some(site)) => {
-            jadpo_runtime::embed::embed(ctx, Calling { plan, site }, given).await
-        }
-        Asked::Generate(None) | Asked::Stream(None) => Done::Fault(FaultKind::Defect(
-            "a model asked in a program that names none".into(),
-        )),
-        Asked::Embed(None) => Done::Fault(FaultKind::Defect(
-            "an embedding asked in a program that names no model".into(),
-        )),
-    };
-    match done {
-        Done::Value(value) => Ok(value),
-        Done::Broke { rule, problem } => Err(Stop::Invalid {
+            written,
+            problem,
+        } => Err(Stop::Invalid {
             rule,
-            written: rule.word().to_string(),
+            written,
             problem,
             name: None,
         }),
-        Done::Failed(failure) => Err(Stop::Failed(failure)),
-        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
+        Called::Failed(failure) => Err(Stop::Failed(failure)),
+        Called::Fault(fault) => Err(Stop::Fault(fault)),
     }
-}
-
-/// An `ai` call's site, as the plan decodes it.
-enum Asked<'s> {
-    Generate(Option<&'s jadpo_std::ai::GenerateSite>),
-    Stream(Option<&'s jadpo_std::ai::StreamSite>),
-    Embed(Option<&'s jadpo_std::embed::EmbedSite>),
 }
 
 /// A provider package's own function `callee`, a field's decoder or

@@ -550,14 +550,6 @@ impl Program {
         }
     }
 
-    /// What a provider call runs with (area 11, chunk 7.2c): the plan's
-    /// connections and operations, the JSON codecs their types are written
-    /// and read with, the failures they raise and the credentials it
-    /// started with.
-    pub(crate) fn providers(&self) -> Option<jadpo_runtime::provider::Providers<'_>> {
-        self.runtime_plan().providers(&self.started)
-    }
-
     /// What an `ai` call runs with (area 21, chunk 5.5v3): the connection
     /// `ai:` names and its models, the prompts, and the JSON codecs their
     /// fields and the answers' types are written and read with; `None`
@@ -570,21 +562,7 @@ impl Program {
     /// decodes it: how a scripted value of its type is sent (chunk 5.5v3),
     /// and what `jadpo ai record` asks as (chunk 5.5v4b).
     pub fn generate_site_of(&self, prompt: &str) -> Option<&jadpo_std::ai::GenerateSite> {
-        self.plan().callables().iter().find_map(|callable| {
-            callable.sites.iter().find_map(|site| match &site.decoded {
-                jadpo_plan::Decoded::Generate(generate) if generate.prompt == prompt => {
-                    Some(generate.as_ref())
-                }
-                _ => None,
-            })
-        })
-    }
-
-    /// The plan's JSON codecs, with this thread's validators and shapes:
-    /// what [`Program::stored_json`] numbers, and a prompt's fields are
-    /// written with (area 21).
-    pub(crate) fn json_codecs(&self) -> jadpo_value::json::Codecs<'_> {
-        self.stored_json().codecs
+        self.runtime_plan().generate_site(prompt)
     }
 
     /// The codecs a JSON-held column is written and read with (chunk

@@ -15,9 +15,11 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
+use jadpo_std::LocalePlan;
 pub use jadpo_std::RuntimePlan;
-use jadpo_std::ai::AiPlan;
+use jadpo_std::ai::{AiPlan, GenerateSite};
 use jadpo_std::batch::BatchPlan;
+use jadpo_std::compiled::CallPlan;
 use jadpo_std::config::ConfigPlan;
 use jadpo_std::connections::Connection;
 use jadpo_std::http::{EventJson, RouteTable};
@@ -25,6 +27,7 @@ use jadpo_std::prompt::PromptPlan;
 use jadpo_std::provider::ProviderPlan;
 use jadpo_std::schedule::SchedulesPlan;
 use jadpo_std::subscriber::EventsPlan;
+use jadpo_std::translation::TranslationPlan;
 use jadpo_std::types::FailurePlan;
 use jadpo_std::write::PurgePlan;
 use jadpo_value::Validator;
@@ -120,6 +123,9 @@ impl Loaded {
             providers: Some(&plan.providers),
             ai: plan.ai.as_ref(),
             prompts: Some(&plan.prompts),
+            translations: Some(&plan.translations),
+            locales: plan.locales.as_ref(),
+            calls: &plan.sites.calls,
             callables: Some(&plan.callables),
             #[cfg(feature = "testing")]
             testing: Some(&plan.testing),
@@ -168,6 +174,15 @@ pub struct Plan<'a> {
     /// The connection `ai:` names, and the prompts.
     pub ai: Option<&'a AiPlan>,
     pub prompts: Option<&'a PromptPlan>,
+    /// Every message's wording by key, and the locales the application
+    /// supports (area 10): what a `translations.<message>` call is written
+    /// from (chunk 8.1i).
+    pub translations: Option<&'a TranslationPlan>,
+    pub locales: Option<&'a LocalePlan>,
+    /// Each outside call's site, numbered in callable and site order
+    /// (chunk 8.1f): the first `ai.generate` of a prompt is how a test's
+    /// scripted answer to it is sent (chunk 8.1i).
+    pub calls: &'a [CallPlan],
     /// Each callable's number by its identity key, but a test's (chunk
     /// 8.1e): how the runtime finds one the plan names by its key.
     pub callables: Option<&'a BTreeMap<String, u32>>,
@@ -204,6 +219,9 @@ impl Plan<'static> {
         providers: None,
         ai: None,
         prompts: None,
+        translations: None,
+        locales: None,
+        calls: &[],
         callables: None,
         #[cfg(feature = "testing")]
         testing: None,
@@ -405,6 +423,17 @@ impl<'a> Plan<'a> {
         jadpo_std::connections::files(self.connections)
             .map(|(name, _)| name)
             .collect()
+    }
+
+    /// The first `ai.generate` call of prompt `prompt`, in callable and
+    /// site order, as its site decodes it: how a test's scripted value of
+    /// its type is sent (chunk 5.5v3), and what `jadpo ai record` asks as
+    /// (chunk 5.5v4b).
+    pub fn generate_site(self, prompt: &str) -> Option<&'a GenerateSite> {
+        self.calls.iter().find_map(|call| match call {
+            CallPlan::Generate(site) if site.prompt == prompt => Some(site),
+            _ => None,
+        })
     }
 
     /// The connection `ai:` names (area 21; chunk 5.5v3): what a test's

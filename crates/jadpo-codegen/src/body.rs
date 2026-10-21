@@ -71,6 +71,8 @@ fn text(text: &str) -> Literal {
 pub(crate) struct Emitter<'a> {
     pub plan: &'a Plan,
     pub callable: &'a CallablePlan,
+    /// The callable's number, which its outside calls are numbered by.
+    pub number: u32,
     pub shape: Shape,
     /// Each callable's function, by number, as another module names it.
     pub paths: &'a [TokenStream],
@@ -875,6 +877,7 @@ impl Emitter<'_> {
             | Callee::Action(_)
             | Callee::Fixture(_)
             | Callee::LibraryFunction(_)
+            | Callee::PackageAction { .. }
             | Callee::Query(_)
             | Callee::Entity { .. } => {
                 let ran = self.call_ran(id, callee, args, false);
@@ -924,26 +927,250 @@ impl Emitter<'_> {
                     true,
                 )
             }
-            // Named by what is written where that names the operation, and
-            // by its kind where what is written is the project's own.
             Callee::Generate { .. } | Callee::Stream { .. } | Callee::Embed { .. } => {
-                let written = self.written(id);
-                self.refuse(format!("`{written}`"), id)
+                let embed = matches!(callee, Callee::Embed { .. });
+                self.ai(id, args, embed)
             }
-            Callee::PackageAction { .. } => self.refuse("a package's action".into(), id),
-            Callee::Files { op, .. } => self.refuse(format!("`<store>.{}`", op.name()), id),
-            Callee::Provider { .. } => self.refuse("a provider's operation".into(), id),
-            Callee::Fake { .. } => self.refuse("a test's `fakes:`".into(), id),
-            Callee::AiFake { .. } => self.refuse("a test's `fakes: { ai: }`".into(), id),
-            Callee::AiRequests { .. } => self.refuse("`ai.<prompt>.requests`".into(), id),
+            Callee::Files { connection, op } => {
+                let (lets, names) = self.arguments(args, id);
+                let op = format_ident!("{}", format!("{op:?}"));
+                let (connection, at) = (text(connection), number(id.0));
+                self.waited(
+                    id,
+                    lets,
+                    quote!(rt::files(cx, #connection, jadpo_std::files::FilesOp::#op, &[#(#names),*], #at).await),
+                    false,
+                )
+            }
+            Callee::Provider { .. } => {
+                let (lets, names) = self.arguments(args, id);
+                let input = match names.first() {
+                    Some(input) => quote!(Some(#input)),
+                    None => quote!(None),
+                };
+                let (call, at) = (self.call_number(id), number(id.0));
+                self.waited(
+                    id,
+                    lets,
+                    quote!(rt::provider(cx, p, #call, #input, #at).await),
+                    false,
+                )
+            }
+            Callee::Fake {
+                connection,
+                operation,
+                answer,
+            } => self.fake(id, (connection, operation), answer, args),
+            Callee::AiFake { prompt, answer } => self.ai_fake(id, prompt, answer, args),
+            Callee::AiRequests { prompt } => {
+                let (prompt, at) = (text(prompt), number(id.0));
+                self.tri(quote!(rt::ai_requests(cx, p, #prompt, #at)))
+            }
             Callee::Schedule { .. } => {
                 let ran = self.schedule_ran(id, false);
                 self.tri(ran)
             }
-            Callee::Translation(_) => self.refuse("`translations.<message>`".into(), id),
-            Callee::Prompt(_) => self.refuse("`prompts.render`".into(), id),
-            Callee::Escape => self.refuse("an email template's `{{ value }}`".into(), id),
+            // Its values in order, the locale first (area 10).
+            Callee::Translation(key) => {
+                if args.iter().any(Option::is_none) {
+                    let defect = self.defect("a translation without one of its values", id);
+                    return quote!({ #defect });
+                }
+                let (lets, names) = self.arguments(args, id);
+                let (key, at) = (text(key), number(id.0));
+                let translated = self.tri(quote!(rt::translate(cx, p, #key, &[#(#names),*], #at)));
+                quote!({
+                    #(#lets)*
+                    #translated
+                })
+            }
+            Callee::Prompt(_) => {
+                let [Some(arg)] = args else {
+                    let defect = self.defect("a prompt rendered from nothing", id);
+                    return quote!({ #defect });
+                };
+                let value = self.expr(*arg);
+                let Some(Decoded::Prompt { entry, fields }) = self.decoded(id).cloned() else {
+                    let defect = self.defect("a prompt the plan can't render", id);
+                    return quote!({ let _ = #value; #defect });
+                };
+                let (entry, at) = (number(entry), number(id.0));
+                let fields = fields.into_iter().map(number);
+                let rendered = self.tri(quote!(rt::render_prompt(
+                    cx,
+                    p,
+                    #entry,
+                    &[#(#fields),*],
+                    &prompt,
+                    #at
+                )));
+                quote!({
+                    let prompt = #value;
+                    #rendered
+                })
+            }
+            Callee::Escape => {
+                let [Some(arg)] = args else {
+                    let defect = self.defect("an escape of nothing", id);
+                    return quote!({ #defect });
+                };
+                let value = self.expr(*arg);
+                let at = number(id.0);
+                let escaped = self.tri(quote!(rt::escape(cx, &value, #at)));
+                quote!({
+                    let value = #value;
+                    #escaped
+                })
+            }
         }
+    }
+
+    /// The number of the outside call at `id` in the runtime plan's calls,
+    /// as generated code names it: `Some(n)`, or `None` for a site the plan
+    /// decodes as none, which the runtime faults on as the interpreter
+    /// does.
+    fn call_number(&self, id: SiteId) -> TokenStream {
+        match self.plan.call_number(self.number, id.0) {
+            Some(call) => {
+                let call = number(call);
+                quote!(Some(#call))
+            }
+            None => quote!(None),
+        }
+    }
+
+    /// `ai.generate`, `ai.stream`, `ai.embed` or `ai.embed_all` at `id`
+    /// (area 21): its prompt or text, its first value, worked out, then
+    /// the model asked through the runtime's entry point.
+    fn ai(&mut self, id: SiteId, args: &[Option<SiteId>], embed: bool) -> TokenStream {
+        let Some(Some(arg)) = args.first() else {
+            let defect = self.defect(
+                if embed {
+                    "an embedding asked of no text"
+                } else {
+                    "a model asked with no prompt"
+                },
+                id,
+            );
+            return quote!({ #defect });
+        };
+        let given = self.expr(*arg);
+        let (call, at) = (self.call_number(id), number(id.0));
+        self.waited(
+            id,
+            vec![quote!(let given = #given;)],
+            quote!(rt::ai(cx, p, #call, #embed, given, #at).await),
+            false,
+        )
+    }
+
+    /// A test's `fakes:` answer at `id` for `operation` of `connection`
+    /// (area 13): a value, its one argument, worked out first, then given
+    /// to the connection's fake through the runtime's entry point.
+    fn fake(
+        &mut self,
+        id: SiteId,
+        (connection, operation): (&str, &str),
+        answer: &jadpo_graph::body::FakeAnswer,
+        args: &[Option<SiteId>],
+    ) -> TokenStream {
+        use jadpo_graph::body::{FakeAnswer, FakeCondition};
+        let at = number(id.0);
+        let (lets, given) = match answer {
+            FakeAnswer::Value => {
+                let [Some(arg)] = args else {
+                    let defect = self.defect("a scripted answer without its value", id);
+                    return quote!({ #defect });
+                };
+                let value = self.expr(*arg);
+                (
+                    quote!(let value = #value;),
+                    quote!(jadpo_runtime::calls::FakeAnswer::Value(value)),
+                )
+            }
+            FakeAnswer::Failed(code) => {
+                let code = text(code);
+                (
+                    TokenStream::new(),
+                    quote!(jadpo_runtime::calls::FakeAnswer::Failed(#code.to_string())),
+                )
+            }
+            FakeAnswer::Condition(FakeCondition::Unavailable | FakeCondition::InUse) => (
+                TokenStream::new(),
+                quote!(jadpo_runtime::calls::FakeAnswer::Unavailable),
+            ),
+            FakeAnswer::Condition(FakeCondition::Lost) => (
+                TokenStream::new(),
+                quote!(jadpo_runtime::calls::FakeAnswer::Lost),
+            ),
+            FakeAnswer::Condition(FakeCondition::Misconfigured) => (
+                TokenStream::new(),
+                quote!(jadpo_runtime::calls::FakeAnswer::Misconfigured),
+            ),
+        };
+        let (connection, operation) = (text(connection), text(operation));
+        let scripted = self.tri(quote!(rt::fake(cx, p, #connection, #operation, #given, #at)));
+        quote!({
+            #lets
+            #scripted
+        })
+    }
+
+    /// A test's `fakes: { ai.<prompt>: }` answer at `id` (area 21): a
+    /// value, `raw(...)`'s text or `partial(...)`'s, its one argument,
+    /// worked out first, then given to the `ai` fake through the runtime's
+    /// entry point.
+    fn ai_fake(
+        &mut self,
+        id: SiteId,
+        prompt: &str,
+        answer: &jadpo_graph::body::AiFakeAnswer,
+        args: &[Option<SiteId>],
+    ) -> TokenStream {
+        use jadpo_graph::body::AiFakeAnswer;
+        let at = number(id.0);
+        let value = match answer {
+            AiFakeAnswer::Value | AiFakeAnswer::Raw | AiFakeAnswer::Partial(_) => {
+                let [Some(arg)] = args else {
+                    let defect = self.defect("a scripted answer without its value", id);
+                    return quote!({ #defect });
+                };
+                let value = self.expr(*arg);
+                quote!(let value = #value;)
+            }
+            AiFakeAnswer::Failed(_) | AiFakeAnswer::Recorded(_) => TokenStream::new(),
+        };
+        let given = match answer {
+            AiFakeAnswer::Value => {
+                let json = match self.decoded(id) {
+                    Some(Decoded::Json(json)) => {
+                        let json = number(*json);
+                        quote!(Some(#json))
+                    }
+                    _ => quote!(None),
+                };
+                quote!(jadpo_runtime::calls::AiAnswer::Value(value, #json))
+            }
+            AiFakeAnswer::Raw => quote!(jadpo_runtime::calls::AiAnswer::Raw(value)),
+            AiFakeAnswer::Partial(word) => {
+                let word = text(word);
+                quote!(jadpo_runtime::calls::AiAnswer::Partial(value, #word))
+            }
+            AiFakeAnswer::Failed(word) => {
+                let word = text(word);
+                quote!(jadpo_runtime::calls::AiAnswer::Failed(#word))
+            }
+            AiFakeAnswer::Recorded(name) => {
+                let name = text(name);
+                quote!(jadpo_runtime::calls::AiAnswer::Recorded(#name))
+            }
+        };
+        let prompt = text(prompt);
+        let scripted = self.tri(quote!(rt::ai_fake(cx, p, #prompt, #given, #at)));
+        quote!({
+            #value
+            #scripted
+        })
     }
 
     /// A site that waits on the runtime, `id`: `lets`, its values worked
@@ -1109,7 +1336,8 @@ impl Emitter<'_> {
             Callee::Function(_)
             | Callee::Action(_)
             | Callee::Fixture(_)
-            | Callee::LibraryFunction(_) => {
+            | Callee::LibraryFunction(_)
+            | Callee::PackageAction { .. } => {
                 let Some(Decoded::Callable(Some(target))) = self.decoded(id) else {
                     let defect = self.defect("a call to a callable that has no body", id);
                     return quote!({ #defect });
@@ -1130,11 +1358,16 @@ impl Emitter<'_> {
                 let caller = self.plan.callable(target).map(|callable| callable.caller);
                 let call_as = self.call_as(caller, &names);
                 let target = number(target);
-                let ran = self.stepped(
-                    quote!(rt::invoke(cx, p, #target, vec![#(#names),*], #at, #caught).await),
-                    id,
-                    false,
-                );
+                // A package's action goes through the connection it was
+                // called through (chunk 7.6).
+                let invoked = match callee {
+                    Callee::PackageAction { connection, .. } => {
+                        let connection = text(connection);
+                        quote!(rt::package(cx, p, #connection, #target, vec![#(#names),*], #at, #caught).await)
+                    }
+                    _ => quote!(rt::invoke(cx, p, #target, vec![#(#names),*], #at, #caught).await),
+                };
+                let ran = self.stepped(invoked, id, false);
                 quote!({
                     #(#lets)*
                     #call_as
@@ -1437,6 +1670,7 @@ impl Emitter<'_> {
             cases.push(quote!(Some(#index) => { #(#lets)* #raised }));
         }
         let unmapped = self.defect("a construction that can fail, with no failure for it", id);
+        let coded = self.coded(id, inner, arms, &raises);
         let passed = self.fail(quote!(stop));
         quote!({
             let ran: Ran = #ran;
@@ -1448,9 +1682,131 @@ impl Emitter<'_> {
                         _ => #unmapped,
                     }
                 }
+                #coded
                 Err(stop) => #passed,
             }
         })
+    }
+
+    /// When an `attempt`'s call, `inner`, is a provider's operation or a
+    /// package's action (area 11, chunks 7.2c and 7.6): the arm of its
+    /// `match` that maps a failure of the operation's, of its package's, or
+    /// `timed_out`, by its code, raising the arm's failure at the call's
+    /// site with the provider's as its cause, its fields worked out only
+    /// then; one no arm maps is a fault there, never passed on. A package
+    /// action's own operation's failure passes on. Nothing for any other
+    /// call.
+    fn coded(
+        &mut self,
+        id: SiteId,
+        inner: SiteId,
+        arms: &[RuleArm],
+        raises: &[Option<jadpo_plan::Raise>],
+    ) -> TokenStream {
+        let node = self
+            .body()
+            .sites
+            .get(inner.0 as usize)
+            .map(|site| site.node.clone());
+        let (guard, called) = match node {
+            Some(Node::Expr(Expr::Call {
+                callee:
+                    Callee::Provider {
+                        connection,
+                        operation,
+                    },
+                ..
+            })) if connection != jadpo_graph::body::OWN_CONNECTION => {
+                let call = self.call_number(inner);
+                (
+                    quote!(rt::provider_maps(p, #call, &cause.key)),
+                    (connection, operation),
+                )
+            }
+            Some(Node::Expr(Expr::Call {
+                callee: Callee::PackageAction { connection, .. },
+                ..
+            })) => {
+                let Some(Decoded::Callable(Some(target))) = self.decoded(inner) else {
+                    return TokenStream::new();
+                };
+                let Some(action) = self.plan.callable(*target) else {
+                    return TokenStream::new();
+                };
+                let name = action.key.name();
+                let name = name.rsplit('.').next().unwrap_or(name).to_string();
+                let keys = action.body.failures.iter().map(|key| text(key.as_str()));
+                (
+                    quote!({
+                        const KEYS: &[&str] = &[#(#keys),*];
+                        KEYS.contains(&cause.key.as_str())
+                    }),
+                    (connection, name),
+                )
+            }
+            _ => return TokenStream::new(),
+        };
+        let at = number(id.0);
+        let named = arms.iter().map(|arm| match &arm.named {
+            Some(named) => {
+                let named = text(named);
+                quote!(Some(#named))
+            }
+            None => quote!(None),
+        });
+        let named: Vec<TokenStream> = named.collect();
+        let mut cases = Vec::new();
+        for (index, arm) in arms.iter().enumerate() {
+            let mut lets = Vec::new();
+            let mut fields = Vec::new();
+            for (place, (_, site)) in arm.fields.iter().enumerate() {
+                let value = self.expr(*site);
+                let name = format_ident!("g{}", place);
+                lets.push(quote!(let #name = #value;));
+                fields.push(name);
+            }
+            let raised = match raises.get(index).and_then(Option::as_ref) {
+                Some(raise) => {
+                    let failure = number(raise.failure.0);
+                    let slots = raise.slots.iter().map(|slot| self::slot(*slot));
+                    let made = self.tri(quote!(rt::mapped(
+                        cx,
+                        p,
+                        #failure,
+                        &[#(#slots),*],
+                        vec![#(#fields),*],
+                        None,
+                        None,
+                        #at
+                    )));
+                    let inner = number(inner.0);
+                    let stop = self.fail(quote!(rt::raised(cx, failure, Some(cause), #inner)));
+                    quote!(let failure = #made; #stop)
+                }
+                None => self.defect("an arm naming something that isn't a failure", id),
+            };
+            let index = number(u32::try_from(index).unwrap_or(u32::MAX));
+            cases.push(quote!(#index => { #(#lets)* #raised }));
+        }
+        let (connection, operation) = (text(&called.0), text(&called.1));
+        let inner = number(inner.0);
+        let index = self.tri(quote!(rt::mapped_code(
+            cx,
+            &[#(#named),*],
+            &cause,
+            (#connection, #operation),
+            #inner
+        )));
+        let unarmed = self.defect("an arm naming something that isn't a failure", id);
+        quote! {
+            Err(Stop::Failed(cause)) if #guard => {
+                let index = #index;
+                match index {
+                    #(#cases)*
+                    _ => { #unarmed }
+                }
+            }
+        }
     }
 
     /// `reject Failure { … }` at `id`: its fields worked out in the order
