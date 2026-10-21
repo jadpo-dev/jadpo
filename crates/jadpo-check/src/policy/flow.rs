@@ -1355,6 +1355,23 @@ impl Walk<'_> {
         }
     }
 
+    /// What a loop going through the list `prov` decides of what it
+    /// makes: everything the list holds, for what a caller is shown and a
+    /// write stores. What reaches a model is only what decided which
+    /// items the list has, a filter's predicate among them, since a loop
+    /// over records would otherwise send each one's every field (Richard,
+    /// 2026-10-21): a `for`'s list, and `list.map`'s and `list.count`'s.
+    fn iterated(&self, prov: &Prov) -> Vec<Src> {
+        if !self.personal {
+            return decide(prov);
+        }
+        prov.whole
+            .iter()
+            .filter(|src| matches!(shallow((*src).clone()), Src::Decided(_)))
+            .cloned()
+            .collect()
+    }
+
     /// After the `if`, `match` or loop at `site`, walked with `saved` as
     /// what decided it runs: what it tested decides the statements after
     /// it too when a `return` or `reject` inside it may have left.
@@ -1506,7 +1523,11 @@ impl Walk<'_> {
                         self.local(*item, &each);
                         // The body runs once for each item.
                         let prov = self.with_pc(prov);
-                        self.decided_by(&prov);
+                        for src in self.iterated(&prov) {
+                            if !self.pc.contains(&src) {
+                                self.pc.push(src);
+                            }
+                        }
                     }
                     // A turn that may have left decides every turn after
                     // it, from the top of the body, as another item.
@@ -2065,7 +2086,7 @@ impl Walk<'_> {
             Callee::Caller(kind) => Prov::of(Src::Caller(*kind)),
             // How many there are shows only what decided which were kept.
             Callee::Std(Op::ListCount) => Prov {
-                whole: decide(&first),
+                whole: self.iterated(&first),
                 fields: BTreeMap::new(),
             },
             // Which items pass shows what the predicate tests.
@@ -2080,7 +2101,7 @@ impl Walk<'_> {
             }
             Callee::Std(Op::ListMap) => {
                 let mut out = provs.get(1).cloned().unwrap_or_default();
-                for src in decide(&first) {
+                for src in self.iterated(&first) {
                     out.add(src);
                 }
                 out
