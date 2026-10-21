@@ -3652,7 +3652,8 @@ and answered; and a slot taken and never given back, as an invocation
 cancelled mid-call leaves it, taken back once its holder had been quiet
 for five seconds (workerd itself lets a request whose client left run on
 until it answers, so the probe leaves its slot as a cancelled one
-would). The step takes about 9 s. *Rejected:* counting the connections an invocation holds
+would). They add about 2 s to the step (6.7 s against 4.5 s warm on the
+ten-core Mac), the five-second wait running beside its other tests. *Rejected:* counting the connections an invocation holds
 open, Cloudflare's rule before 2026-04-09, which would hold a seventh
 behind a store's idle connections and need them closed to make room;
 leaving the seventh to the platform's queue, where its timer runs unseen

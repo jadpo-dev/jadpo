@@ -2724,7 +2724,7 @@ whose entry names them.
   `waitUntil` ran out without dropping what it held. Decided in the
   chunk (area 14 and area 11, 2026-10-22). Proved under workerd
   (`crates/jadpo-host-workers/tests/connections.rs`, the `wasm32` group,
-  about 9 s): eight requests sent uncounted all reaching the server at
+  about 2 s more for its step): eight requests sent uncounted all reaching the server at
   once and counted never more than six, one whose timeout passed while
   it waited `NotSent` and never seen; an echo's `connect()` waiting
   behind six requests' heads; four requests from a response and four

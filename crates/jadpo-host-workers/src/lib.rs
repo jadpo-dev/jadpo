@@ -5,21 +5,21 @@
 //!
 //! - [`WorkersHost`]: the runtime's `Host` for one invocation: each
 //!   connection's driver as the factory built it from the plan
-//!   ([`WorkersHost::supplies`]), randomness from Web Crypto's `getRandomValues`, the
-//!   wall clock (`Date.now()`) and a monotonic clock made from it, timers
-//!   on `setTimeout`, settings from the Worker's bindings, the work a
-//!   response leaves run through `ctx.waitUntil` and the work an
-//!   invocation hands on run in a fresh one, a request to the Worker
-//!   itself through a service binding ([`HAND_ON_BINDING`]), rate limits
-//!   counted in Cloudflare's rate-limiting binding when `rate_limits:`
-//!   names one, and in the isolate's memory while it can't be asked, and
-//!   Workers' budgets for background work (30 seconds after a response and
-//!   for work handed on, 15 minutes for the cron, which the ticks one cron
-//!   runs share); the six connections an invocation may have waiting for
-//!   their answer's head at once ([`Opening`]), shared by its drivers and
-//!   its own fetches, and the isolate's `max_concurrent:` slots, handed
-//!   from one invocation to another without either waking the other (chunk
-//!   8.2j).
+//!   ([`WorkersHost::supplies`]), randomness from Web Crypto's
+//!   `getRandomValues`, the wall clock (`Date.now()`) and a monotonic clock
+//!   made from it, timers on `setTimeout`, settings from the Worker's
+//!   bindings, the work a response leaves run through `ctx.waitUntil` and
+//!   the work an invocation hands on run in a fresh one, a request to the
+//!   Worker itself through a service binding ([`HAND_ON_BINDING`]), rate
+//!   limits counted in Cloudflare's rate-limiting binding when
+//!   `rate_limits:` names one, and in the isolate's memory while it can't
+//!   be asked, and Workers' budgets for background work (30 seconds after a
+//!   response and for work handed on, 15 minutes for the cron, which the
+//!   ticks one cron runs share); the six connections an invocation may have
+//!   waiting for their answer's head at once ([`Opening`]), shared by its
+//!   drivers and its own fetches, and the isolate's `max_concurrent:`
+//!   slots, handed from one invocation to another without either waking the
+//!   other (chunk 8.2j).
 //! - [`WorkersTransport`]: the drivers' `Transport` over `connect()` from
 //!   `cloudflare:sockets`, upgraded with `startTls()`; a Hyperdrive
 //!   binding's host is the platform's pooler, which PostgreSQL's driver
