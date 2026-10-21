@@ -6,8 +6,9 @@ here, so this script stays the single gate that CI and every session run
 (docs/compiler-runtime.md §2.7).
 
   python3 tools/verify.py                  # everything
-  python3 tools/verify.py --profile quick  # without live PostgreSQL or the wasm32 steps
+  python3 tools/verify.py --profile quick  # without live PostgreSQL, compiled code or the wasm32 steps
   python3 tools/verify.py --group lint     # one CI job's share (repeatable)
+  python3 tools/verify.py --group compiled # the differential run alone
   python3 tools/verify.py --require-examples  # fail on a feature no example uses
 
 It builds the workspace and its tests once, then runs every step that
@@ -39,7 +40,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WASM = 'wasm32-unknown-unknown'
 # The CI jobs a step belongs to (.github/workflows/validation.yml).
-GROUPS = ('lint', 'docs', 'tests', 'wasm32')
+GROUPS = ('lint', 'docs', 'tests', 'compiled', 'wasm32')
 # Each test binary is a process of its own and runs its tests on threads;
 # this many run at once.
 JOBS = os.cpu_count() or 4
@@ -103,8 +104,8 @@ class Step:
     # Measures time, so runs after everything else, by itself.
     alone: bool = False
     # Prints its output even when it passes (timings), or only the lines
-    # that start with this text.
-    show: bool | str = False
+    # that start with this text, or with one of these.
+    show: bool | str | tuple[str, ...] = False
     # For `everything`: the (package, filter) pairs other steps run, which
     # it skips.
     owned: set[tuple[str, str]] = field(default_factory=set)
@@ -207,13 +208,19 @@ POSTGRES = [
     # needs PostGIS: CI's image has it (tools/postgres/Dockerfile).
     ('live PostgreSQL: geography',
      [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries'), ('jadpo-cli', 'geo_layers')], []),
-    # Compiled code: every corpus project that compiles written as a Rust
-    # crate, one differential harness over them all built with cargo,
-    # offline, in target/jadpo-compiled/ (kept, so a later run compiles only
-    # what changed), and their tests run interpreted and compiled with the
-    # same records (chunks 8.1f and 8.1g).
-    ('live PostgreSQL: compiled code', [('jadpo-cli', 'compiled')], []),
 ]
+
+# Phase 8 (docs/compiler-runtime.md §2.5 and §2.7): the differential run.
+# Every project of the corpus that checks, the pages' and the teaching
+# examples', compiled as modules of one generated crate beside one
+# harness binary, built with cargo, offline, in target/jadpo-compiled/
+# (kept, so a later run compiles only what changed), and its tests run
+# interpreted and compiled with the same records, against the run's
+# server. The `compiled` group, a CI job of its own (chunk 8.1j); its
+# summary lines are shown.
+COMPILED = ('compiled code: the corpus interpreted and compiled with the same records',
+            [('jadpo-cli', 'compiled')], [])
+COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 
 
 # A test file with a live part calls the one helper that says whether it
@@ -239,9 +246,10 @@ def live_test_files(root: Path = ROOT) -> list[tuple[str, str]]:
 
 
 def postgres_steps(table: list | None = None, root: Path = ROOT) -> list[tuple[str, list[tuple[str, str]], list[str]]]:
-    """The table's steps, then one for each live test file it leaves out."""
+    """The table's steps, then one for each live test file it and the
+    differential run (COMPILED) leave out."""
     table = POSTGRES if table is None else table
-    listed = {test for _, tests, _ in table for test in tests}
+    listed = {test for _, tests, _ in [*table, COMPILED] for test in tests}
     return list(table) + [(f'live PostgreSQL: {module} (not listed in POSTGRES)', [(package, module)], [])
                           for package, module in live_test_files(root) if (package, module) not in listed]
 
@@ -336,6 +344,9 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                         args=args if '--nocapture' in args else [*args, '--show-output'],
                         show=True if '--nocapture' in args else 'skipped:', postgres=True)
                    for name, tests, args in postgres]
+        name, tests, args = COMPILED
+        checks.append(Step(name, 'compiled', tests=modules(tests), args=[*args, '--show-output'],
+                           show=COMPILED_SHOWN, postgres=True))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
         # have, so tokio-postgres is proven to build for wasm32 too.
@@ -389,7 +400,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # Test files another step runs are left out of `compiler tests`.
     owned = {test for _, tests in own_steps for test in modules(tests)}
     if full:
-        owned |= {test for _, tests, _ in postgres for test in modules(tests)}
+        owned |= {test for _, tests, _ in [*postgres, COMPILED] for test in modules(tests)}
     for step in checks:
         if step.tests == 'everything':
             step.owned = owned
@@ -413,11 +424,27 @@ def run(command: list[str], env: dict[str, str] | None = None, cwd: Path | str =
 SERVER_BIN = 'jadpo-test-server'
 
 
-def build_tests() -> tuple[bool, str, list[TestBinary], dict[str, str]]:
-    """`cargo test --no-run` over the workspace: every test binary, and
-    `jadpo` and jadpo-test-server beside them, built once with one set of
-    features."""
-    return built(['cargo', 'test', '--locked', '--workspace', '--no-run'])
+def build_tests(packages: list[str] | None = None) -> tuple[bool, str, list[TestBinary], dict[str, str]]:
+    """`cargo test --no-run` over the workspace, or over `packages` alone:
+    every test binary, and `jadpo` and jadpo-test-server beside them, built
+    once with one set of features."""
+    chosen = ['--workspace'] if packages is None else [arg for package in packages for arg in ('-p', package)]
+    return built(['cargo', 'test', '--locked', *chosen, '--no-run'])
+
+
+def packages_for(chosen: list[Step], server: bool) -> list[str] | None:
+    """The packages whose tests and tools `chosen` runs, when that is fewer
+    than the workspace (a run of the `compiled` group alone, as its CI job
+    is): those its test steps name, jadpo-cli for `jadpo` and jadpo-test for
+    the server a run starts (`server`). None when a step runs every test."""
+    if any(step.tests == 'everything' for step in chosen):
+        return None
+    packages = {package for step in chosen if isinstance(step.tests, list) for package, _ in step.tests}
+    if any(step.jadpo for step in chosen):
+        packages.add('jadpo-cli')
+    if server and any(step.postgres for step in chosen):
+        packages.add('jadpo-test')
+    return sorted(packages)
 
 
 def built(command: list[str]) -> tuple[bool, str, list[TestBinary], dict[str, str]]:
@@ -547,7 +574,7 @@ class Report:
             word = 'ok' if step.ok else 'FAILED'
             print(f'{word:<6} {step.seconds:6.1f} s  {step.name}', flush=True)
             shown = step.output.strip('\n')
-            if isinstance(step.show, str):
+            if isinstance(step.show, (str, tuple)):
                 shown = '\n'.join(line for line in shown.splitlines() if line.startswith(step.show))
             if step.show and step.ok and shown.strip():
                 print(indent(shown), flush=True)
@@ -637,7 +664,8 @@ def self_test() -> list[str]:
         if compiler.env.get('JADPO_REQUIRE_LIVE') != '1':
             problems.append('the full profile\'s compiler tests let a live test skip')
         unshown = [step.name for step in chosen if step.postgres and isinstance(step.tests, list)
-                   and step.show not in (True, 'skipped:')]
+                   and not (step.show is True or 'skipped:' in (step.show if isinstance(step.show, tuple)
+                                                                 else (step.show,)))]
         if unshown:
             problems.append(f'live steps that hide their skipped: lines: {", ".join(unshown)}')
     # A `skipped:` line fails a step under CI, and only there.
@@ -668,7 +696,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='The gate every change must pass.')
     parser.add_argument(
         '--profile', choices=['full', 'quick'], default='full',
-        help='quick leaves out the live PostgreSQL tests and the wasm32 build (default: full)')
+        help='quick leaves out the live PostgreSQL tests, compiled code and the wasm32 build (default: full)')
     parser.add_argument(
         '--group', choices=GROUPS, action='append',
         help='run only this CI job\'s steps; repeatable (default: every group)')
@@ -694,8 +722,11 @@ def main() -> int:
     built: Step | None = None
     begun = time.monotonic()
     if any(step.tests for step in chosen):
-        built = Step('build the workspace and its tests', 'tests')
-        built.ok, built.output, binaries, tools = build_tests()
+        # The workspace, or only what the steps chosen need.
+        packages = packages_for(chosen, server=not os.environ.get('JADPO_TEST_DATABASE_URL', '').strip())
+        built = Step('build the workspace and its tests' if packages is None
+                     else f'build the tests of {", ".join(packages)}', 'tests')
+        built.ok, built.output, binaries, tools = build_tests(packages)
         if not built.ok and 'jadpo' not in tools and any(step.jadpo for step in chosen):
             # The tests don't build, but the pages and examples may still
             # check with jadpo itself.

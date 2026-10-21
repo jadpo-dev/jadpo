@@ -21,13 +21,15 @@ The gate needs Python 3 and Rust, and PostgreSQL's tools (`initdb`,
 `pg_ctl`) for its live database tests: it starts one disposable server for
 the run, or uses the one `JADPO_TEST_DATABASE_URL` names. It builds once,
 runs its steps concurrently and prints `ok` or `FAILED` for each;
-`--profile quick` leaves out the live database tests and the wasm32 build,
-skips `jadpo test` for projects with migrations (saying so), and needs no
-PostgreSQL at all:
+`--profile quick` leaves out the live database tests, compiled code and
+the wasm32 build, skips `jadpo test` for projects with migrations (saying
+so), and needs no PostgreSQL at all; `--group compiled` runs only the
+differential run, every example compiled and its tests run both ways:
 
 ```sh
 python3 tools/verify.py
 python3 tools/verify.py --profile quick
+python3 tools/verify.py --group compiled
 ```
 
 Each crate's integration tests are one binary whose modules are the files

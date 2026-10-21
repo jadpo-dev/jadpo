@@ -1406,13 +1406,21 @@ migrations a store's `put` and `read`, `prompts.render`, `ai.generate`,
 
 The differential harness is `jadpo_test::compiled`:
 `differential_all(projects, folder)` compiles each project into a
-workspace kept at `folder`, a crate of its own for each (`app-<n>`, by
-its place, named `jadpo-compiled-<n>`), and `harness/`, one binary
-depending on them all and on `jadpo-test` and holding each crate's
-`program` by place, with the repository's `Cargo.lock` and `[profile.*]`
-tables copied in; builds the harness with `cargo build --offline` into a
-target folder of its own there, once; and runs it on each project in
-turn, a few at a time (`differential` does it for one). The harness
+workspace kept at `folder`, all of them modules of one crate
+(`compiled/`, named `jadpo-compiled`; chunk 8.1j): `jadpo_codegen::module`
+writes a project as `src/p<n>/`, by its place, its root `mod.rs` with its
+plan's bytes beside it, and `jadpo_codegen::holding` the crate's manifest
+and `src/lib.rs`, declaring each module and listing each `program` in
+`PROGRAMS`; generated code names its callables from its project's root
+(`super::<module>::<function>`), so a project reads the same as a crate
+of its own or as a module. Beside it is `harness/`, one binary depending
+on that crate and on `jadpo-test`, whose `main` hands `PROGRAMS` to
+`compiled::harness`, with the repository's `Cargo.lock` and
+`[profile.*]` tables copied in. It builds the harness with `cargo build
+--offline` into a target folder of its own there, once, so the whole
+corpus is one rustc invocation in the dev profile, and runs it on each
+project in turn, a few at a time (`differential` does it for one). The
+harness
 (`compiled::harness`, given the program's place and the project's
 folder) runs every test with records, seed 1, on the interpreter and
 then on that compiled program (`jadpo_test::run_with` runs tests on any
@@ -1426,11 +1434,13 @@ ended, at the test's clock with counted random bytes
 its `each:` and `finished:` calls and an export's rows kept in the test's
 record, so compiled code's runs are compared too; `jadpo test` leaves a
 run as it started until area 13's question 18 is built. Its files
-are written only when they change and the folder is kept
+are written only when they change, a module of a project no longer
+given is removed, and the folder is kept
 (`target/jadpo-compiled/corpus/` in the gate), so the runtime crates and
-`jadpo-test` are compiled once, and a later run compiles the generated
-crates that changed and links the harness once (chunk 8.1g; 8.1f built a
-harness per project). The gate's compiled step
+`jadpo-test` are compiled once, and a later run with nothing changed
+compiles nothing and one with any change compiles the corpus's crate
+again and links the harness once (chunk 8.1g; 8.1f built a harness per
+project). The gate's compiled step
 (`crates/jadpo-cli/tests/compiled.rs`) runs every project of the corpus
 that checks, the pages' and the teaching examples' (since chunk 8.1h each
 example copied whole, with its migrations, prompts, templates, recordings
@@ -1444,11 +1454,22 @@ migrations need an extension the server lacks or has too old a version
 of (`jadpo_test::compiled::Problem::Unserved`) is skipped on a
 developer's machine, saying so, and fails under CI, whose image has them
 all (`jadpo_test::skip_for_version`): example 22's pgvector 0.8 on a
-server with 0.7. On the ten-core Mac, lightly loaded, it takes 60 s the
-first time, most of it building the runtime crates, as one project's
-harness did, and 33 s after (chunk 8.1h). One crate per project for now; 8.1j
-compiles the corpus as one crate, in one rustc invocation, in a CI job of
-its own.
+server with 0.7. The corpus's crate is 177,642 lines of Rust in 258
+modules; rustc takes 10 s over it on the ten-core Mac (9.3 s of it the
+front end, which is one thread), and a cold build of the harness 42 s,
+the corpus's crate starting as soon as the runtime crates' metadata is
+ready and ending before `jadpo-check`, the longest of the compiler
+crates `jadpo-test` needs (one-minute load average 36 to 39). The whole
+step takes 69 s with that cold build and 44 s with nothing to build, of
+which running the 258 harnesses is about 22 s, the same with four
+processes at once as with ten (chunk 8.1j). The gate runs it as a group
+of its own, `compiled`, which CI runs as a job of its own (§2.7, "The
+differential run").
+*Rejected:* a crate per project (chunks 8.1f to 8.1i), which starts
+rustc 258 times, each loading the runtime crates' metadata again, and
+the harness's `main` in the corpus's crate, which would wait for all of
+`jadpo-test` before rustc starts on the corpus, rather than building it
+beside the compiler crates.
 
 The first route is area 7's `todos` project: `POST /todos` creates a
 record through an action and `GET /todos/{todo_id}` reads it through a
@@ -3605,7 +3626,7 @@ it), may use them.
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
-| 8 | The differential run; the golden todo built for wasm32 and smoke-tested in local workerd |
+| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
@@ -3641,7 +3662,10 @@ tests` is the longest step and mostly waits on the processes its tests
 start: capping it to two threads as well made the full gate 126 to 168 s
 against 95 to 96 s. The gate finds what cargo built, and the wasm32
 examples, where cargo says they are, so `CARGO_TARGET_DIR` holds.
-`--group lint|docs|tests|wasm32` runs one CI job's share, and
+`--group lint|docs|tests|compiled|wasm32` runs one CI job's share (a run
+whose steps need fewer packages' tests than the workspace's builds only
+those: `--group compiled` builds `jadpo-cli`'s, and `jadpo-test`'s when
+it starts the server), and
 `--require-examples` makes the coverage test fail on a feature no
 example uses (above).
 
@@ -3671,19 +3695,50 @@ was 280 s (203 to 432 s), and `docs` 162 s; this chunk's branch took 264
 s, the `tests` job 256 s and its gate 219 s, one run, so a sign rather
 than a measure.
 
-**CI.** GitHub Actions on Linux runs the gate's four groups as parallel
+**The differential run** (chunk 8.1j). The compiled step (§2.5,
+"Compiled code") is the gate's `compiled` group, a step of its own using
+the run's server: every project of the corpus that checks compiled as
+modules of one crate, one rustc invocation in the dev profile, every
+test run interpreted and compiled with the same records, and its counts
+shown under the step. It builds the compiler a second time, into the
+harness's own target folder, and inside the `tests` job it shared a
+four-core runner with sixty other steps: the step took 628 s there and
+the job 13 min 20 s (chunk 8.1i's pull request). So CI runs it as a job
+of its own, `compiled`, whose budget is its timeout: 12 minutes from
+start to end, about twice what it took with no cargo cache at all, 5 min
+31 s and 5 min 41 s in two runs (110 to 119 s building `jadpo-cli`'s
+tests, 170 to 174 s for the step, all 258 projects and 525 tests
+compared, the 28 teaching examples' 334 tests passing both ways), and 4
+min 11 s with its cache (76 s and 127 s). The `tests` job's gate beside
+it took 420, 432 and 764 s in those three runs, against 739 to 873 s in
+the five runs before them, which ran the step too. The projects the
+step writes into `target/tmp/` are removed before the cache is saved,
+since the cache action takes their `tests` folders for cargo's own and
+fails on each. Locally, `python3 tools/verify.py` still runs every
+group, this one among them, since a chunk that breaks compiled code
+costs less to find before its pull request than after; there the step
+took 136 and 149 s of gates of 161 and 197 s (load average up to 52), the
+longest step; `--profile quick` leaves it out, as it leaves out every
+live step, and `--group compiled` runs it alone, as CI does (90 s with
+the harness built from nothing, 69 s of it the step).
+
+**CI.** GitHub Actions on Linux runs the gate's five groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
 (formatting, clippy, the name ban, the editor grammar), `docs` (the pages
 and the teaching examples), `tests` (every test, with the live PostgreSQL
 steps running at once on one PostgreSQL container named by
-`JADPO_TEST_DATABASE_URL`) and `wasm32`; `docs` and `tests` each build and
+`JADPO_TEST_DATABASE_URL`), `compiled` (the differential run above) and
+`wasm32`; `docs`, `tests` and `compiled` each build and
 start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
 "Without pgvector"), while the toolchain installs. A local run's
 disposable server comes from the machine's own PostgreSQL tools, which
 need pgvector for the vector tests and PostGIS for the geography tests
-(Postgres.app ships both). The
-`supported-language` job needs all four and passes only when each did; it
+(Postgres.app ships both). The harness's workspace is kept under
+`target/`, so the `compiled` job's cache keeps the registry crates built
+in its target folder as well as the workspace's: the cache action keeps
+every registry crate's build in each target folder it finds there. The
+`supported-language` job needs all five and passes only when each did; it
 is the check branch protection requires. Benchmarks (Phase 9) are a
 separate command, not the gate.
 

@@ -2,10 +2,11 @@
 //! §2.5, "Differential test" and "Compiled code"): a project's tests run
 //! interpreted and compiled, their records compared.
 //!
-//! [`differential_all`] compiles each project ([`jadpo_codegen::generate`])
-//! as a crate of its own in a workspace it keeps, beside one harness
-//! binary depending on every generated crate and on this one, builds that
-//! binary offline with cargo, once, and runs it on each project in turn
+//! [`differential_all`] compiles each project ([`jadpo_codegen::module`])
+//! as a module of one crate, `jadpo-compiled`, in a workspace it keeps,
+//! beside one harness binary depending on that crate and on this one,
+//! builds that binary offline with cargo, once, so the whole corpus is one
+//! rustc invocation (chunk 8.1j), and runs it on each project in turn
 //! ([`differential`] does it for one). The harness ([`harness`]) runs every
 //! test of the project it is given with records, seed 1, on the
 //! interpreter and then on that project's compiled program, in one
@@ -14,9 +15,9 @@
 //! the first line that differs, with both sides.
 //!
 //! The workspace's files are written only when they change, and its
-//! target folder is kept, so a second run compiles only what changed: the
-//! first builds the runtime crates and this one once, and every run links
-//! one binary however many projects it compares (chunk 8.1g).
+//! target folder is kept, so a run with nothing changed compiles nothing:
+//! the first builds the runtime crates and this one once, and every run
+//! links one binary however many projects it compares (chunk 8.1g).
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -234,19 +235,24 @@ pub fn differential(folder: &Path, work: &Path) -> Result<Compared, Problem> {
         .unwrap_or_else(|| Err(Problem::Harness("no project was compared".into())))
 }
 
+/// The crate every project is compiled into, in the harness's workspace.
+const CRATE: &str = "compiled";
+
 /// Compiles each project at `folders` into the harness workspace at
-/// `work`, as a crate of its own (`app-<n>`, by its place in `folders`),
-/// builds one harness binary depending on them all, and runs it on each
-/// project in turn: what each compared, or why it couldn't, in `folders`'
-/// order. A project that doesn't check or isn't compiled is that
-/// project's problem; a harness that doesn't build is every project's.
+/// `work`, as a module of one crate (`compiled/src/p<n>/`, by its place in
+/// `folders`), builds one harness binary depending on it, and runs it on
+/// each project in turn: what each compared, or why it couldn't, in
+/// `folders`' order. A project that doesn't check or isn't compiled is
+/// that project's problem; a harness that doesn't build is every
+/// project's.
 pub fn differential_all(
     folders: &[PathBuf],
     work: &Path,
 ) -> Result<Vec<Result<Compared, Problem>>, Problem> {
     let sources = sources();
+    let crate_folder = work.join(CRATE);
     // Each project checked and generated on a thread of its own.
-    let generated = shared_out(folders, |place, folder| generated(folder, &sources, place));
+    let generated = shared_out(folders, |place, folder| generated(folder, place));
     let mut results: Vec<Option<Result<Compared, Problem>>> = Vec::new();
     // Each compiled project's place in `folders`, in the order the harness
     // holds their programs.
@@ -255,7 +261,7 @@ pub fn differential_all(
         match generated {
             Ok(generated) => {
                 generated
-                    .write(&work.join(format!("app-{place}")))
+                    .write(&crate_folder)
                     .map_err(|error| Problem::Write(error.to_string()))?;
                 compiled.push(place);
                 results.push(None);
@@ -264,7 +270,18 @@ pub fn differential_all(
         }
     }
     if !compiled.is_empty() {
-        let binary = harness_binary(work, &sources, &compiled)?;
+        jadpo_codegen::holding(
+            &compiled,
+            &jadpo_codegen::Options {
+                name: "jadpo-compiled".into(),
+                runtime: sources.display().to_string(),
+            },
+        )
+        .map_err(Problem::Generate)?
+        .write(&crate_folder)
+        .map_err(|error| Problem::Write(error.to_string()))?;
+        remove_stale_modules(&crate_folder, &compiled)?;
+        let binary = harness_binary(work, &sources)?;
         // A few projects at a time: each runs its own tests on a thread
         // per core, and most have one or two.
         let runs: Vec<(usize, usize)> = compiled.iter().copied().enumerate().collect();
@@ -320,12 +337,30 @@ fn shared_out<T: Sync, R: Send>(items: &[T], work: impl Fn(usize, &T) -> R + Syn
     done.into_iter().map(|(_, result)| result).collect()
 }
 
-/// The crate the project at `folder` compiles to, named for its `place`.
-fn generated(
-    folder: &Path,
-    sources: &Path,
-    place: usize,
-) -> Result<jadpo_codegen::Generated, Problem> {
+/// Removes each project's module in the crate at `folder` that isn't one
+/// of `compiled`'s, left by an earlier run over other projects, so the
+/// folder holds what is compiled.
+fn remove_stale_modules(folder: &Path, compiled: &[usize]) -> Result<(), Problem> {
+    let Ok(entries) = std::fs::read_dir(folder.join("src")) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let stale = name
+            .to_str()
+            .and_then(|name| name.strip_prefix('p'))
+            .and_then(|place| place.parse::<usize>().ok())
+            .is_some_and(|place| !compiled.contains(&place));
+        if stale {
+            std::fs::remove_dir_all(entry.path())
+                .map_err(|error| Problem::Write(error.to_string()))?;
+        }
+    }
+    Ok(())
+}
+
+/// The module the project at `folder` compiles to, named for its `place`.
+fn generated(folder: &Path, place: usize) -> Result<jadpo_codegen::Generated, Problem> {
     let loaded = jadpo_db::load(folder);
     let errors: Vec<String> = jadpo_check::check(&loaded.db, loaded.project)
         .iter()
@@ -336,36 +371,23 @@ fn generated(
         return Err(Problem::NotRun(errors.join("\n")));
     }
     let prepared = Prepared::checked(&loaded.db, loaded.project);
-    jadpo_codegen::generate(
-        prepared.plan(),
-        &jadpo_codegen::Options {
-            name: format!("jadpo-compiled-{place}"),
-            runtime: sources.display().to_string(),
-        },
-    )
-    .map_err(Problem::Generate)
+    jadpo_codegen::module(prepared.plan(), place).map_err(Problem::Generate)
 }
 
-/// Writes the harness's workspace around the crates `app-<n>` for each
-/// place in `compiled`, and builds its binary: its path.
-fn harness_binary(work: &Path, sources: &Path, compiled: &[usize]) -> Result<PathBuf, Problem> {
+/// Writes the harness's workspace around the crate holding every project,
+/// and builds its binary: its path.
+fn harness_binary(work: &Path, sources: &Path) -> Result<PathBuf, Problem> {
     let root = sources.parent().unwrap_or(sources);
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap_or_default();
-    let members: Vec<String> = compiled
-        .iter()
-        .map(|place| format!("\"app-{place}\""))
-        .chain(["\"harness\"".to_string()])
-        .collect();
     write(
         &work.join("Cargo.toml"),
         format!(
             "# The differential harness's workspace (docs/compiler-runtime.md §2.5), written by jadpo-test; don't edit it.\n\
              [workspace]\n\
-             members = [{}]\n\
+             members = [\"{CRATE}\", \"harness\"]\n\
              resolver = \"3\"\n\
              \n\
              {}",
-            members.join(", "),
             profiles(&manifest)
         )
         .as_bytes(),
@@ -374,14 +396,6 @@ fn harness_binary(work: &Path, sources: &Path, compiled: &[usize]) -> Result<Pat
     // with and nothing is fetched; cargo adds the generated packages to it.
     let lock = std::fs::read(root.join("Cargo.lock")).unwrap_or_default();
     write(&work.join("Cargo.lock"), &lock)?;
-    let dependencies: String = compiled
-        .iter()
-        .map(|place| {
-            format!(
-                "jadpo-compiled-{place} = {{ path = \"../app-{place}\", features = [\"testing\"] }}\n"
-            )
-        })
-        .collect();
     write(
         &work.join("harness/Cargo.toml"),
         format!(
@@ -397,27 +411,20 @@ fn harness_binary(work: &Path, sources: &Path, compiled: &[usize]) -> Result<Pat
              path = \"src/main.rs\"\n\
              \n\
              [dependencies]\n\
-             {dependencies}\
+             jadpo-compiled = {{ path = \"../{CRATE}\", features = [\"testing\"] }}\n\
              jadpo-test = {{ path = \"{}\" }}\n",
             sources.join("jadpo-test").display()
         )
         .as_bytes(),
     )?;
-    let programs: Vec<String> = compiled
-        .iter()
-        .map(|place| format!("jadpo_compiled_{place}::program"))
-        .collect();
     write(
         &work.join("harness/src/main.rs"),
-        format!(
-            "//! Runs a project's tests interpreted and compiled and compares their\n\
-             //! records (docs/compiler-runtime.md §2.5); written by jadpo-test.\n\
-             \n\
-             fn main() -> std::process::ExitCode {{\n    \
-                 jadpo_test::compiled::harness(&[{}])\n\
-             }}\n",
-            programs.join(", ")
-        )
+        "//! Runs a project's tests interpreted and compiled and compares their\n\
+         //! records (docs/compiler-runtime.md §2.5); written by jadpo-test.\n\
+         \n\
+         fn main() -> std::process::ExitCode {\n    \
+             jadpo_test::compiled::harness(jadpo_compiled::PROGRAMS)\n\
+         }\n"
         .as_bytes(),
     )?;
     jadpo_codegen::cargo::build(&jadpo_codegen::cargo::Build {
