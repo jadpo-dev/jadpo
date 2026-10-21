@@ -14,8 +14,8 @@ use std::net::TcpListener;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use jadpo_host_native::http::{AppHandler, MakeHandler, serve};
-use jadpo_host_native::{Drivers, NativeHost, supplies};
+use jadpo_host_native::http::{AppHandler, MakeHandler, WorkerThread, serve};
+use jadpo_host_native::{Drivers, supplies};
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::{
     Ctx, Executor, FaultKind, Frame, Loaded, LocalFuture, Outcome, Places, Plan, RuntimePlan,
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let address = args.next().unwrap_or_else(|| "127.0.0.1:0".to_string());
     let plan = Arc::new(RuntimePlan::decode(&std::fs::read(file)?)?);
     let validators = Loaded::compile(&plan);
-    let make: MakeHandler = Arc::new(move || {
+    let make: MakeHandler = Arc::new(move |worker: &WorkerThread| {
         let loaded = Loaded::sharing(Arc::clone(&plan), Arc::clone(&validators));
         let started = Rc::new(Started::new(&loaded.plan(), None, Target::Native));
         let drivers = Drivers::build(&plan.connections, &started, &supplies());
@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             loaded,
             started,
         });
-        let host = NativeHost::new().with_drivers(drivers);
+        let host = worker.host().with_drivers(drivers);
         Box::new(AppHandler::new(host, move || Rc::clone(&program)))
     });
     let stop = jadpo_host_native::stop_signals()?;

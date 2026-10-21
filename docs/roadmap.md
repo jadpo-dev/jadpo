@@ -2143,8 +2143,8 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   `jadpo-host-native` carrying the fakes, recordings, crash points, the
   outcome-and-effect record and that section; the gate builds a
   deployable example without it and reads its symbols
-  (`tools/deployable.py`). A release build of that example is 30,485,760
-  bytes without the feature and 30,584,832 with it. §2.6's "The `testing`
+  (`tools/deployable.py`). A release build of that example is 30,513,808
+  bytes without the feature and 30,629,520 with it. §2.6's "The `testing`
   feature".
 - [ ] **8.1f Compiled code: the first route** `opus · xhigh`, after 8.1c,
   8.1d2 and 8.1e: `jadpo-codegen` writing a checked project as one Rust crate

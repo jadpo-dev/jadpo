@@ -2521,8 +2521,8 @@ bytes, its drivers built by the factory, served through `Serving` on
 `NativeHost`) on its own, so without the feature, and reads its symbols
 for any of the above (`tools/deployable.py`); its wasm32 build of the
 runtime crates is without it too. Measured on that example, a release
-build on aarch64 macOS: 30,485,760 bytes without the feature and
-30,584,832 with it (26,681,776 and 26,831,848 stripped), about 0.3%, as
+build on aarch64 macOS: 30,513,808 bytes without the feature and
+30,629,520 with it (26,698,936 and 26,865,496 stripped), about 0.4%, as
 most of a deployable is the standard library's locale and time-zone
 data; what the feature buys is that a deployable reaches no fake, crash
 point or test section at all.
