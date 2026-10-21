@@ -1084,8 +1084,8 @@ fn parts(url: &str) -> (String, String, String, String) {
     let (server, path) = rest.split_once('/').unwrap_or((rest, ""));
     let database = query
         .split('&')
-        .filter_map(|pair| pair.strip_prefix("dbname="))
-        .last()
+        .rev()
+        .find_map(|pair| pair.strip_prefix("dbname="))
         .unwrap_or(path);
     (
         decoded(user),
