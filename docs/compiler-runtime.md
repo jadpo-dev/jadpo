@@ -2423,6 +2423,37 @@ encoding, which compiled code holds as a constant (§2.5); chunk 8.1d
 builds each connection's driver from it and `Started` ("One connections
 table and the driver factory" below).
 
+**The `testing` feature** (chunk 8.1e, from the Phase 7 architecture
+review). What only `jadpo test` and `jadpo dev` run is behind a cargo
+feature, `testing`, on `jadpo-std`, `jadpo-runtime` and
+`jadpo-host-native`: the fakes (`fakes`, `capability::Faked`, the `ai`
+fake, a fake's `Answer::Generated` and `Answer::Recorded`), the recordings
+(`recorded`, `prompt_recordings`), the crash points (`crashes`), the
+outcome-and-effect record (`record`, `Host::record`), the delivery
+between a test's steps (`test_steps`), and the plan's dev and test
+section, `jadpo_std::testing::TestingPlan` (each test's identity key,
+what its `config:` and `clock:` give it, each provider operation's
+recording by its number, the recordings of the app's own integrations
+and of prompts' answers). The section is `RuntimePlan::testing`, written
+after the rest of the plan's bytes and only when it holds something
+(`RuntimePlan::encode`); `RuntimePlan::encode_deployable` leaves it out,
+and a build without the feature refuses bytes that hold one
+(`Unreadable::Testing`). The tools (`jadpo-plan`, `jadpo-interp`,
+`jadpo-test`, `jadpo-cli`) turn it on, each runtime crate's own tests
+through a dev-dependency on itself, and no shared or runtime crate turns
+it on by default or for another (`no_runtime_crate_turns_on_testing`).
+The gate builds the native host's deployable example
+(`crates/jadpo-host-native/examples/deployable.rs`: a plan read from its
+bytes, its drivers built by the factory, served through `Serving` on
+`NativeHost`) on its own, so without the feature, and reads its symbols
+for any of the above (`tools/deployable.py`); its wasm32 build of the
+runtime crates is without it too. Measured on that example, a release
+build on aarch64 macOS: 30,485,760 bytes without the feature and
+30,584,832 with it (26,681,776 and 26,831,848 stripped), about 0.3%, as
+most of a deployable is the standard library's locale and time-zone
+data; what the feature buys is that a deployable reaches no fake, crash
+point or test section at all.
+
 **One connections table and the driver factory** (chunk 8.1d, from the
 Phase 7 architecture review; area 11, "Connecting in `app.jadpo`" and
 "Targets"). The plan lists every connection `connections:` declares

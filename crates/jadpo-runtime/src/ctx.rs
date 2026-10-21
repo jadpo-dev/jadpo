@@ -251,6 +251,7 @@ pub struct Ctx<'p> {
     through: Vec<String>,
     /// The steps it reached under a record, and the crash `jadpo test`
     /// asked for, if any (chunk 7.5d).
+    #[cfg(feature = "testing")]
     crashes: crate::crashes::Crashes,
     /// Each `ai.generate` call's answer, by the step it took and the
     /// request it sent, given back to an action run again after a
@@ -331,6 +332,7 @@ impl<'p> Ctx<'p> {
             resumable: None,
             record: None,
             through: Vec::new(),
+            #[cfg(feature = "testing")]
             crashes: crate::crashes::Crashes::default(),
             reused: Vec::new(),
             shown: Vec::new(),
@@ -372,10 +374,12 @@ impl<'p> Ctx<'p> {
         }
     }
 
+    #[cfg(feature = "testing")]
     pub(crate) fn crashes(&self) -> &crate::crashes::Crashes {
         &self.crashes
     }
 
+    #[cfg(feature = "testing")]
     pub(crate) fn crashes_mut(&mut self) -> &mut crate::crashes::Crashes {
         &mut self.crashes
     }

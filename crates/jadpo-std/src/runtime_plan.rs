@@ -119,12 +119,13 @@ impl RuntimePlan {
     /// same plan always gives the same bytes; the one refusal is a value
     /// the encoding has no form for, which no plan holds.
     pub fn encode(&self) -> Result<Vec<u8>, canonical::Error> {
-        let mut bytes = self.encode_deployable()?;
         #[cfg(feature = "testing")]
         if !self.testing.is_empty() {
+            let mut bytes = self.encode_deployable()?;
             bytes.extend_from_slice(&canonical::to_bytes(&self.testing)?);
+            return Ok(bytes);
         }
-        Ok(bytes)
+        self.encode_deployable()
     }
 
     /// Its canonical bytes without its dev and test section: what a

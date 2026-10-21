@@ -143,6 +143,7 @@ pub(crate) async fn comes_from(ctx: &mut Ctx<'_>, asking: Asking<'_>) -> Result<
 /// replayed run's tape, the action's record or an earlier run's answers.
 pub(crate) fn given_back(ctx: &mut Ctx<'_>, call: &Call, answer: &Answer) {
     let now = ctx.now();
+    #[cfg(feature = "testing")]
     if let Some(record) = ctx.host().record() {
         record.call(
             call,
@@ -462,6 +463,7 @@ pub(crate) async fn exchange(
         Form::Streamed => driver.stream(call).await,
     };
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
+    #[cfg(feature = "testing")]
     if let Some(record) = host.record() {
         match &answer {
             Streamed::Whole(answer) => record.call(call, &crate::record::answer(answer)),
@@ -480,6 +482,7 @@ pub(crate) async fn exchange(
     drop(slot);
     // A step answered, its answer not kept yet, which `jadpo test` may
     // crash after (chunk 7.5d).
+    #[cfg(feature = "testing")]
     if call.step.is_some() && crate::crashes::due(ctx, crate::crashes::Boundary::AfterSend) {
         return Err(Unanswered::Fault(FaultKind::Crashed));
     }

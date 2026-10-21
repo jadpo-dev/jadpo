@@ -95,6 +95,9 @@ impl Served for NativeHost {
     }
 }
 
+/// A host with fakes in front, as `jadpo dev` serves (chunk 8.1d): only
+/// with the `testing` feature (chunk 8.1e).
+#[cfg(feature = "testing")]
 impl<H: Served> Served for jadpo_runtime::capability::Faked<H> {
     fn native(&self) -> &NativeHost {
         self.host().native()

@@ -495,8 +495,10 @@ impl<E: crate::Executor + ?Sized> Functions for E {
 
 /// An executor reached through a reference, as the package's functions'
 /// runner (chunk 8.1e).
+#[cfg(feature = "testing")]
 pub(crate) struct Through<'e>(pub(crate) &'e dyn crate::Executor);
 
+#[cfg(feature = "testing")]
 impl Functions for Through<'_> {
     fn function(
         &self,
@@ -880,6 +882,7 @@ async fn made(
     // A fake's generated default or recording, made as the provider
     // would send it, is an answer as sent from here: a step keeps it as it
     // keeps any other.
+    #[cfg(feature = "testing")]
     let answer = match answer {
         Answer::Generated => Answer::Wire(crate::fakes::default_answer(ctx, providers, op)),
         Answer::Recorded => Answer::Wire(recorded_answer(ctx, providers, op, number)),
@@ -911,6 +914,7 @@ async fn made(
             // A package's fake answering with the operation's generated
             // default, made as the provider would send it and read back as
             // any answer is (area 11, "Tests and fakes"; chunk 7.2d).
+            #[cfg(feature = "testing")]
             Ok(Given::Generated) => {
                 let text = crate::fakes::default_answer(ctx, providers, op);
                 let done = decode(ctx, providers, op, &name, &text, site);
@@ -920,6 +924,7 @@ async fn made(
             // A package's fake answering from the operation's recording,
             // its placeholders filled with generated values of their types
             // (area 11, "Provider calls in development"; chunk 7.2d2).
+            #[cfg(feature = "testing")]
             Ok(Given::Recorded) => {
                 let text = recorded_answer(ctx, providers, op, number);
                 let done = decode(ctx, providers, op, &name, &text, site);
@@ -1034,6 +1039,7 @@ fn replayed(
 /// Operation `op`'s recording with its placeholders filled, as its
 /// provider would send it; its generated default when it keeps none, or
 /// one that isn't JSON.
+#[cfg(feature = "testing")]
 fn recorded_answer(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,

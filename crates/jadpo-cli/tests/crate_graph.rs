@@ -308,6 +308,71 @@ fn runtime_crates_deny_panics() {
     );
 }
 
+/// A deployable holds no testing machinery (docs/compiler-runtime.md §2.6,
+/// "The `testing` feature"; chunk 8.1e): no shared or runtime crate turns
+/// on a `testing` feature by default or in what it depends on, outside
+/// its own tests, so only a tool that asks for it (`jadpo test`, `jadpo
+/// dev`) builds the fakes, recordings and crash points in.
+/// `tools/deployable.py` builds a deployable and reads its symbols.
+#[test]
+fn no_runtime_crate_turns_on_testing() {
+    let workspace = read();
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
+    let output = Command::new(env!("CARGO"))
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--offline",
+            "--manifest-path",
+            root,
+        ])
+        .output()
+        .expect("cargo metadata runs");
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("metadata is JSON");
+    let testing = |feature: &serde_json::Value| {
+        feature
+            .as_str()
+            .is_some_and(|feature| feature == "testing" || feature.ends_with("/testing"))
+    };
+    let mut problems = Vec::new();
+    for package in metadata["packages"].as_array().expect("packages") {
+        let name = package["name"].as_str().expect("name");
+        if !matches!(workspace.layers.get(name), Some(Shared | Runtime)) {
+            continue;
+        }
+        let default = package["features"]["default"].as_array();
+        if default.is_some_and(|features| features.iter().any(testing)) {
+            problems.push(format!("{name} turns `testing` on by default"));
+        }
+        for dependency in package["dependencies"].as_array().expect("dependencies") {
+            if dependency["kind"].as_str() == Some("dev") {
+                continue;
+            }
+            let features = dependency["features"].as_array();
+            if features.is_some_and(|features| features.iter().any(testing)) {
+                problems.push(format!(
+                    "{name} turns on `testing` of {}",
+                    dependency["name"].as_str().unwrap_or_default()
+                ));
+            }
+        }
+    }
+    let runtime = metadata["packages"]
+        .as_array()
+        .expect("packages")
+        .iter()
+        .find(|package| package["name"] == "jadpo-runtime")
+        .expect("jadpo-runtime");
+    assert!(
+        runtime["features"]["testing"].is_array(),
+        "jadpo-runtime has a `testing` feature"
+    );
+    assert!(problems.is_empty(), "{problems:?}");
+}
+
 /// Why the crate at `dir` doesn't have its integration tests as one binary
 /// (docs/compiler-runtime.md §2.7): its `tests/*.rs` files are modules of
 /// `tests/main.rs`, and cargo, told not to find tests itself, builds that

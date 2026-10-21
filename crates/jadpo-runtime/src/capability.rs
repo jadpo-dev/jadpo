@@ -30,7 +30,9 @@ use jadpo_value::Value;
 
 pub use jadpo_std::subscriber::Repeat;
 
-use crate::{Database, Host, LocalFuture, Passkeys};
+use crate::LocalFuture;
+#[cfg(feature = "testing")]
+use crate::{Database, Host, Passkeys};
 
 /// One call that leaves the process: an operation of the capability or
 /// provider a connection fills (area 11), given its input.
@@ -177,12 +179,15 @@ pub enum Answer {
     /// fakes"; chunk 7.2d): what a package's fake answers a call nothing
     /// scripted, made by the call's site from the operation's output type,
     /// as the provider would send it, and read back as any answer is.
+    /// Only with the `testing` feature (chunk 8.1e).
+    #[cfg(feature = "testing")]
     Generated,
     /// A provider operation's recording (area 11, "Provider calls in
     /// development"; chunk 7.2d2): what `jadpo dev`'s fake answers a call
     /// nothing scripted with when the operation's package keeps one, its
     /// placeholders filled by the call's site with generated values of
-    /// their types.
+    /// their types. Only with the `testing` feature (chunk 8.1e).
+    #[cfg(feature = "testing")]
     Recorded,
 }
 
@@ -198,7 +203,9 @@ impl std::fmt::Debug for Answer {
             Answer::TimedOut => f.write_str("TimedOut"),
             Answer::RetryAfter(millis) => f.debug_tuple("RetryAfter").field(millis).finish(),
             Answer::Misconfigured => f.write_str("Misconfigured"),
+            #[cfg(feature = "testing")]
             Answer::Generated => f.write_str("Generated"),
+            #[cfg(feature = "testing")]
             Answer::Recorded => f.write_str("Recorded"),
         }
     }
@@ -335,6 +342,7 @@ impl Ended {
             Answer::Unavailable | Answer::RetryAfter(_) => Ended::Unavailable,
             Answer::Unknown | Answer::TimedOut => Ended::Unknown,
             Answer::Misconfigured => Ended::Misconfigured,
+            #[cfg(feature = "testing")]
             Answer::Generated | Answer::Recorded => Ended::Answered,
         }
     }
@@ -521,9 +529,11 @@ impl Capability for Fake {
     }
 }
 
+#[cfg(feature = "testing")]
 /// What picks a [`Faked`]'s chosen fake for a connection, by its place.
 type Choose = Rc<dyn Fn(&str) -> Option<usize>>;
 
+#[cfg(feature = "testing")]
 /// `host` with fakes in some connections' place (area 13): a test runs on
 /// it, and `jadpo dev` will (chunk 7.2). Every other capability, and
 /// everything else a host gives, is `host`'s own.
@@ -539,6 +549,7 @@ pub struct Faked<H> {
     record: Option<Rc<crate::record::Record>>,
 }
 
+#[cfg(feature = "testing")]
 impl<H> std::fmt::Debug for Faked<H> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names: Vec<&str> = self.fakes.iter().map(|(name, _)| name.as_str()).collect();
@@ -548,6 +559,7 @@ impl<H> std::fmt::Debug for Faked<H> {
     }
 }
 
+#[cfg(feature = "testing")]
 impl<H: Host> Faked<H> {
     pub fn new(host: H) -> Faked<H> {
         Faked {
@@ -592,6 +604,7 @@ impl<H: Host> Faked<H> {
     }
 }
 
+#[cfg(feature = "testing")]
 impl<H: Host> Host for Faked<H> {
     fn capability(&self, connection: &str) -> Option<&dyn Capability> {
         if let Some((_, fake)) = self.fakes.iter().find(|(name, _)| name == connection) {

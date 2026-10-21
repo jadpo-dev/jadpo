@@ -702,10 +702,12 @@ pub(crate) async fn sending(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswe
     written(ctx, at).await?;
     going_out(ctx, at);
     // A step reached, which `jadpo test` may crash before (chunk 7.5d).
+    #[cfg(feature = "testing")]
     let named = ctx.steps_record().and_then(|record| {
         let kept = record.steps.get((at.position as usize).checked_sub(1)?)?;
         Some((record.name().to_string(), kept.operation.clone()))
     });
+    #[cfg(feature = "testing")]
     if let Some((action, operation)) = named {
         crate::crashes::reached(ctx, &action, at.position, &operation);
         if crate::crashes::due(ctx, crate::crashes::Boundary::BeforeSend) {
@@ -872,6 +874,7 @@ pub async fn answered(ctx: &mut Ctx<'_>, at: StepAt, answer: Answered) -> Result
         record.note(at.position, &operation, state);
     }
     // Its answer kept, which `jadpo test` may crash after (chunk 7.5d).
+    #[cfg(feature = "testing")]
     if crate::crashes::due(ctx, crate::crashes::Boundary::AfterAnswer) {
         return Err(Unanswered::Fault(FaultKind::Crashed));
     }

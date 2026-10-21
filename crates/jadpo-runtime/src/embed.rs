@@ -337,6 +337,7 @@ async fn embedded(
     };
     // A fake's own: the vectors made from each text and the seed.
     let answer = match answer {
+        #[cfg(feature = "testing")]
         Answer::Generated => {
             let seed = ctx.env().seed.unwrap_or_default();
             Answer::Wire(fake_answer(&texts, seed, site.dimensions))
@@ -382,7 +383,13 @@ async fn embedded(
         Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
             return Done::Failed(Box::new(crate::unavailable()));
         }
-        Answer::Value(_) | Answer::Generated | Answer::Recorded => {
+        Answer::Value(_) => {
+            return Done::Fault(FaultKind::Defect(
+                "an answer to `ai.embed` that isn't an embeddings answer".into(),
+            ));
+        }
+        #[cfg(feature = "testing")]
+        Answer::Generated | Answer::Recorded => {
             return Done::Fault(FaultKind::Defect(
                 "an answer to `ai.embed` that isn't an embeddings answer".into(),
             ));
@@ -581,6 +588,7 @@ pub fn embeddings_answer(vectors: &[Vec<f32>]) -> Rc<str> {
 }
 
 /// The fake's answer: the vector [`seeded`] makes for each text.
+#[cfg(feature = "testing")]
 fn fake_answer(texts: &[String], seed: u64, dimensions: u64) -> Rc<str> {
     let vectors: Vec<Vec<f32>> = texts
         .iter()
@@ -594,6 +602,7 @@ fn fake_answer(texts: &[String], seed: u64, dimensions: u64) -> Rc<str> {
 /// counter, each from -1 to 1, then made unit length, so the same text
 /// under the same seed always gives the same vector and its cosine with
 /// another is defined.
+#[cfg(feature = "testing")]
 pub fn seeded(text: &str, seed: u64, dimensions: u64) -> Vec<f32> {
     let of_text = jadpo_value::hash::sha256(text.as_bytes());
     let wanted = usize::try_from(dimensions).unwrap_or(0);

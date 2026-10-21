@@ -43,6 +43,7 @@ pub(crate) struct Background {
     emitted: u32,
     /// How a test delivers what its steps emit (area 13, "Caches and
     /// events"; chunk 6.11): set by `jadpo test`, `None` anywhere else.
+    #[cfg(feature = "testing")]
     between_steps: Option<crate::test_steps::BetweenSteps>,
 }
 
@@ -106,14 +107,17 @@ impl Background {
         self.deferred.split_off(from)
     }
 
+    #[cfg(feature = "testing")]
     pub(crate) fn between_steps(&self) -> Option<&crate::test_steps::BetweenSteps> {
         self.between_steps.as_ref()
     }
 
+    #[cfg(feature = "testing")]
     pub(crate) fn between_steps_mut(&mut self) -> Option<&mut crate::test_steps::BetweenSteps> {
         self.between_steps.as_mut()
     }
 
+    #[cfg(feature = "testing")]
     pub(crate) fn set_between_steps(&mut self, between: crate::test_steps::BetweenSteps) {
         self.between_steps = Some(between);
     }
