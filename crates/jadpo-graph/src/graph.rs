@@ -47,6 +47,31 @@ impl Graph {
         self.nodes.is_empty()
     }
 
+    /// A digest of every node's identity key and content digest (chunk
+    /// 7.5b), 32 hex digits: the same source always gives the same one,
+    /// and a change to any node's content another. What a record of
+    /// several changing calls keeps as its build under `jadpo dev`, and
+    /// what area 18's build id digests as the source (chunk 8.1o).
+    pub fn digest(&self) -> String {
+        let mut nodes: Vec<(&str, String)> = self
+            .nodes
+            .iter()
+            .map(|node| {
+                let digest = node.digest.as_ref().map(|d| d.short()).unwrap_or_default();
+                (node.key.as_str(), digest)
+            })
+            .collect();
+        nodes.sort();
+        let mut hasher = blake3::Hasher::new();
+        for (key, digest) in &nodes {
+            for part in [*key, digest.as_str()] {
+                hasher.update(&(part.len() as u64).to_le_bytes());
+                hasher.update(part.as_bytes());
+            }
+        }
+        hasher.finalize().to_hex()[..32].to_string()
+    }
+
     pub fn ids(&self) -> impl Iterator<Item = NodeId> + '_ {
         (0..self.nodes.len()).map(|i| NodeId(i as u32))
     }

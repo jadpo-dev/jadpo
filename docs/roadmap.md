@@ -2375,19 +2375,50 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   not applied, then booking a repair, answering its readiness check and a
   request whose body arrived after SIGTERM, and ending with code 0 (49 s
   cold, seconds warm). §2.6's "A native deployable".
-- [ ] **8.1o2 Declared deployables** `opus · xhigh`, after 8.1o:
-  `deployables: { }` read from `app.jadpo` (area 14, question 14: what
-  each serves, `serves: [main, webhooks]`, and runs, `runs:
-  [Trigger.schedules, Trigger.subscribers]`, and its target,
-  `Target.native` or `Target.wasm`), each compiled from what it reaches
-  and serving and running only that, `jadpo build <deployable>`, the
-  manifest's `source` and `deployables` with their build ids (area 18);
-  `jadpo check` refusing a driver or package a deployable's target can't
-  run, naming the alternative (area 11, question 24), `Driver.disk` and
-  a service on Workers and `Driver.cloudflare_queues` in a native
-  deployable among them. Area 11 says that refusal waits for deployables
-  to be declared, so whether the one deployable of an app that declares
-  none is held to a target by `jadpo check` is decided there.
+- [x] **8.1o2 Declared deployables** `opus · xhigh`, after 8.1o; split
+  on 2026-10-21, a deployable compiled from only what it reaches going to
+  8.1o3. Built (area 14, "Declared deployables"): `deployables: { }` read
+  from `app.jadpo`, each with `serves:`, `runs:` (`Trigger.schedules`,
+  `Trigger.subscribers`) and `target:` (`Target.native`, `Target.wasm`),
+  or `app` alone with no target when none is declared (Richard,
+  2026-10-21), and `deployable.invalid`, `api_unknown`, `trigger_unknown`,
+  `target_unknown`, `empty`, `unserved` (an API with routes, or the app's
+  schedules or subscribers, that no deployable takes) and `settle_unrun`;
+  what each reaches, from its APIs' routes, webhooks' replies, schedules,
+  subscribers and batch runs through every callable's calls to the
+  connections they use, its polls, webhooks, queues and email
+  (`jadpo_check::deployables::reaches`); a deployable that declares a
+  target refused each connection it reaches that the target can't run,
+  naming the alternative (`deployable.target_unsupported`: the disk, a
+  service without `host:` and SMTP on port 25 on Workers, a Cloudflare
+  queue natively), and `jadpo check`'s "On Workers" listing each
+  `max_concurrent:` a Workers deployable reaches, counted per instance;
+  each deployable's plan serving only its APIs' routes and webhooks and
+  running only its triggers (`Plan::for_deployable`, `RuntimePlan::runs`,
+  plan format 9; the runner and the tick hold to it); `jadpo build
+  [<deployable>]`, each into `build/target/<deployable>/` beside its own
+  APIs' documents from `build/rust/<deployable>/`, one cargo target for
+  all, the program named `jadpo-program-<deployable>` so their units
+  don't collide, each binary placed as a new file (macOS kills one copied
+  over a binary it ran), a `Target.wasm` one `toolchain.not_built_yet`;
+  the manifest's `source` and `deployables`, each one's target and build
+  id, which digests a declared deployable's declaration with the graph's
+  digest (`jadpo_cli::stamp`). Proved live
+  (`crates/jadpo-cli/tests/deployable.rs`): example 23 declared as a
+  kiosk serving `main` and running the subscribers and an office serving
+  `staff` and running a schedule each second, the kiosk booking and
+  refusing the staff's route without running the schedule, the office
+  the other way round and running it (20 s warm).
+- [ ] **8.1o3 A deployable compiled from what it reaches**
+  `opus · xhigh`, after 8.1o2: each deployable's program holding only the
+  callables, sites and plan parts it reaches (8.1o2's `reaches`, with
+  every callable the runtime names by number or key, a webhook reply's
+  action, a package's `decode:` and `encode:`, an email's templates, kept
+  whole), the settings it reads and the connections it builds only those
+  it reaches, and its build id digesting that subgraph rather than the
+  whole graph (area 18, "A build id is a digest"), so a change it doesn't
+  reach leaves its id alone; the binary's size measured against the whole
+  program's.
 - [x] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
   8.1k. Built, decided first (§2.5, "A typed per-route entry"): each
   route's codecs generated from its types' plans, `entries.rs` in a
@@ -2541,9 +2572,10 @@ whose entry names them.
 - [ ] **8.2m What `jadpo check` and `jadpo build` say for Workers**
   `opus · high`, after 8.2b: a `client_address:` source other than
   `cloudflare` refused for a Workers deployable (area 10, "Client
-  addresses"); `max_concurrent:` counted per isolate said by `jadpo
-  check` and on `jadpo build`'s screen (decided 2026-10-21); SMTP on port
-  25 refused there (area 11, "Targets").
+  addresses"; beside 8.1o2's `jadpo_check::deployables::target_problems`);
+  `max_concurrent:` counted per isolate said on `jadpo build`'s screen
+  (decided 2026-10-21; `jadpo check`'s "On Workers" says it since 8.1o2,
+  which also refuses SMTP on port 25 on Workers).
 - [ ] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d:
   area 16's counters on Workers kept in the store `rate_limits: { store: }`
   names, Cloudflare's rate-limiting binding taken as a driver, in place of

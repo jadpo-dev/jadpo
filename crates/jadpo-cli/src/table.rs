@@ -84,6 +84,8 @@ pub enum Values {
     Query,
     /// The name of one of the project's schedules.
     Schedule,
+    /// The name of one of the project's deployables (chunk 8.1o2).
+    Deployable,
     /// A delivery's or schedule run's id, which nothing completes: they
     /// are in a database, not the project (chunk 6.12).
     Id,
@@ -442,27 +444,34 @@ pub static COMMANDS: &[Command] = &[
         synonyms: &[],
         group: "Build and check",
         summary: "Build the app to deploy",
-        description: "Check the project as `jadpo check` does, then compile it into one native \
-                      binary in build/target/<deployable>/, beside its APIs' OpenAPI documents and \
-                      the failure texts their clients show. The binary reads its settings from the \
-                      environment as it starts, refuses to start against a database that hasn't \
-                      applied every migration, listens on PORT (8080 when unset), and drains on \
-                      SIGTERM. Every event it logs carries its build stamp: the build id, the commit, \
-                      whether the tree had changes, the compiler, the deployable and the target. \
-                      With no `deployables:` in app.jadpo there is one deployable, `app`, which runs \
-                      everything. It compiles offline in release with the toolchain and the runtime's \
-                      lock this Jadpo was built with, keeping its Rust in build/rust/.",
+        description: "Check the project as `jadpo check` does, then compile each deployable into \
+                      one native binary in build/target/<deployable>/, beside the OpenAPI documents \
+                      of the APIs it serves and the failure texts their clients show. A binary \
+                      reads its settings from the environment as it starts, refuses to start \
+                      against a database that hasn't applied every migration, listens on PORT \
+                      (8080 when unset), and drains on SIGTERM. Every event it logs carries its \
+                      build stamp: the build id, the commit, whether the tree had changes, the \
+                      compiler, the deployable and the target. `deployables:` in app.jadpo names \
+                      each one, what it serves and runs and its target; with none declared there \
+                      is one, `app`, which runs everything. One built for Target.wasm isn't built \
+                      yet. It compiles offline in release with the toolchain and the runtime's \
+                      lock this Jadpo was built with, keeping each one's Rust in \
+                      build/rust/<deployable>/.",
         arguments: &[Argument {
             name: "deployable",
-            description: "The deployable to build: `app` when none is declared",
+            description: "The deployable to build; every one when left out",
             required: false,
-            values: Values::Fixed(&[]),
+            values: Values::Deployable,
         }],
         flags: &[],
         examples: &[
             Example {
-                description: "Build the app you are in",
+                description: "Build every deployable of the app you are in",
                 command: "jadpo build",
+            },
+            Example {
+                description: "Build one deployable",
+                command: "jadpo build kiosk",
             },
             Example {
                 description: "Print where it was written and its build stamp as data",
