@@ -19,6 +19,14 @@ jadpo-std.workspace = true
 # factory's supplies (chunk 8.1d). A deployable turns on the drivers it
 # reaches; the host needs only the package driver's `Fetch`.
 jadpo-drivers = { workspace = true, features = ["package"] }
+# The passkey ceremonies (area 8, "Passkeys"; chunk 8.2l): jadpo-value's
+# pure-Rust ES256 and RS256 checks, SHA-256 and base64url, serde_json for
+# WebAuthn's JSON, and serde_cbor_2 for its CBOR, the reader `webauthn-rs`
+# reads it with natively, so both hosts read a device's answer alike.
+jadpo-value.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_cbor_2.workspace = true
 # The byte streams a driver reads and writes (`Transport`'s `Stream`).
 tokio.workspace = true
 wasm-bindgen.workspace = true
@@ -72,8 +80,11 @@ tokio = { workspace = true, features = ["io-util"] }
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # Turns the probe's module into the module and the JavaScript workerd runs.
 wasm-bindgen-cli-support.workspace = true
-# Reads cargo's messages for where it put the probe.
-serde_json.workspace = true
+# The native host's `webauthn-rs` ceremonies and software authenticator,
+# which the Workers host's passkeys are held to (tests/passkeys.rs), and
+# OpenSSL for the answers a device shouldn't give.
+jadpo-host-native = { workspace = true, features = ["test-authenticator"] }
+openssl.workspace = true
 # The test's TLS servers and the authority workerd is told to trust.
 rustls.workspace = true
 rcgen.workspace = true

@@ -279,3 +279,81 @@ fn the_factory_is_supplied_for_workers() {
         "target:workers transport:yes fetch:yes disk:no"
     );
 }
+
+/// A passkey is registered and signed in with under workerd (chunk 8.2l):
+/// the ceremonies built for wasm32, their challenges from Web Crypto, the
+/// test authenticator answering as the device. What the Worker keeps is
+/// what the native host's `webauthn-rs` keeps of the same passkey; an
+/// answer from another site, and a counter gone back, are refused.
+#[test]
+fn a_passkey_registers_and_signs_in_under_workerd() {
+    use jadpo_host_native::passkeys::WebauthnPasskeys;
+    use jadpo_host_native::test_authenticator::TestAuthenticator;
+    use jadpo_runtime::Passkeys;
+    use jadpo_value::encoding::{from_base64url, to_base64url};
+
+    const ORIGIN: &str = "https://notes.example";
+    let bed = bed();
+    let pack = |text: &str| to_base64url(text.as_bytes());
+    let unpack = |text: &str| String::from_utf8(from_base64url(text).unwrap()).unwrap();
+    // `options:… state:…`, unpacked.
+    let started = |answer: String| {
+        let (options, state) = answer
+            .strip_prefix("options:")
+            .and_then(|rest| rest.split_once(" state:"))
+            .unwrap_or_else(|| panic!("{answer}"));
+        (unpack(options), state.to_string())
+    };
+    let kept = |answer: String| -> String {
+        answer
+            .strip_prefix("kept:")
+            .unwrap_or_else(|| panic!("{answer}"))
+            .to_string()
+    };
+
+    let mut device = TestAuthenticator::seeded(ORIGIN, 82);
+    let (options, state) = started(bed.get(&format!("/passkey/register/options?origin={ORIGIN}")));
+    let made = device.create(&options).unwrap();
+    let stored = kept(bed.get(&format!(
+        "/passkey/register?origin={ORIGIN}&state={state}&credential={}",
+        pack(&made)
+    )));
+
+    // The same device registering with the native host keeps the same.
+    let mut twin = TestAuthenticator::seeded(ORIGIN, 82);
+    let (options, state) = WebauthnPasskeys
+        .start_registration(ORIGIN, 300_000, [7; 16], "ada@example.com", &[])
+        .unwrap();
+    let native = WebauthnPasskeys
+        .finish_registration(ORIGIN, 300_000, &state, &twin.create(&options).unwrap())
+        .unwrap();
+    let kept_json: serde_json::Value = serde_json::from_str(&unpack(&stored)).unwrap();
+    assert_eq!(
+        kept_json["credential_id"],
+        to_base64url(&native.credential_id)
+    );
+    assert_eq!(kept_json["public_key"], to_base64url(&native.public_key));
+    assert_eq!(kept_json["sign_count"], 0);
+
+    let sign_in = |device: &mut TestAuthenticator, stored: &str| {
+        let (options, state) =
+            started(bed.get(&format!("/passkey/sign-in/options?origin={ORIGIN}")));
+        let answer = device.get(&options).unwrap();
+        bed.get(&format!(
+            "/passkey/sign-in?origin={ORIGIN}&state={state}&credential={}&stored={stored}",
+            pack(&answer)
+        ))
+    };
+    let once = kept(sign_in(&mut device, &stored));
+    let once_json: serde_json::Value = serde_json::from_str(&unpack(&once)).unwrap();
+    assert_eq!(once_json["sign_count"], 1);
+    let twice = kept(sign_in(&mut device, &once));
+    let twice_json: serde_json::Value = serde_json::from_str(&unpack(&twice)).unwrap();
+    assert_eq!(twice_json["sign_count"], 2);
+
+    device.at("https://evil.example");
+    assert_eq!(sign_in(&mut device, &twice), "error:Rejected");
+    device.at(ORIGIN);
+    device.set_sign_count(1);
+    assert_eq!(sign_in(&mut device, &twice), "error:Rejected");
+}

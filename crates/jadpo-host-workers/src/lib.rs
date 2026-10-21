@@ -44,6 +44,7 @@
 pub mod deployable;
 mod fetch;
 mod js;
+mod passkeys;
 mod timer;
 mod transport;
 
@@ -55,13 +56,14 @@ use jadpo_drivers::factory::{Drivers, Supplies};
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::capability::Capability;
 use jadpo_runtime::http::address::Target;
-use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, RateLimits};
+use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, Passkeys, RateLimits};
 use jadpo_std::http::RateLimit;
 use js_sys::{Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
 
 pub use fetch::{WorkersFetch, WorkersOutbound};
 pub use js::ExecutionContext;
+pub use passkeys::WorkersPasskeys;
 pub use transport::{WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
 /// deployable's crate exports (`#[wasm_bindgen(wasm_bindgen = …)]`), so
@@ -162,6 +164,25 @@ fn isolate_limits() -> &'static RateLimits {
 /// The most bytes one `getRandomValues` fills.
 const MOST_RANDOM: usize = 65_536;
 
+/// Fills `bytes` from Web Crypto's `getRandomValues`, 65,536 bytes at a
+/// time: `false` when it can't, never a weaker source.
+pub fn web_crypto_random(bytes: &mut [u8]) -> bool {
+    bytes.chunks_mut(MOST_RANDOM).all(|chunk| {
+        let Ok(length) = u32::try_from(chunk.len()) else {
+            return false;
+        };
+        let array = Uint8Array::new_with_length(length);
+        if js::get_random_values(&array).is_err() {
+            return false;
+        }
+        array.copy_to(chunk);
+        true
+    })
+}
+
+/// The passkey ceremonies, their challenges from Web Crypto.
+static PASSKEYS: WorkersPasskeys = WorkersPasskeys::new(web_crypto_random);
+
 thread_local! {
     /// The monotonic clock's last reading, which it never goes back past.
     static MONOTONIC: Cell<u64> = const { Cell::new(0) };
@@ -217,20 +238,15 @@ impl Host for WorkersHost {
             .and_then(|value| value.as_string())
     }
 
-    /// Web Crypto's `getRandomValues`, 65,536 bytes at a time: `false`
-    /// when it can't give, never a weaker source.
+    /// Web Crypto's `getRandomValues` ([`web_crypto_random`]).
     fn random(&self, bytes: &mut [u8]) -> bool {
-        bytes.chunks_mut(MOST_RANDOM).all(|chunk| {
-            let Ok(length) = u32::try_from(chunk.len()) else {
-                return false;
-            };
-            let array = Uint8Array::new_with_length(length);
-            if js::get_random_values(&array).is_err() {
-                return false;
-            }
-            array.copy_to(chunk);
-            true
-        })
+        web_crypto_random(bytes)
+    }
+
+    /// The ceremonies in pure Rust ([`WorkersPasskeys`]): `webauthn-rs`'s
+    /// checks, on jadpo-value's ES256 and RS256.
+    fn passkeys(&self) -> Option<&dyn Passkeys> {
+        Some(&PASSKEYS)
     }
 
     fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {

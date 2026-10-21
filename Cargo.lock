@@ -1686,11 +1686,16 @@ name = "jadpo-host-workers"
 version = "0.1.0"
 dependencies = [
  "jadpo-drivers",
+ "jadpo-host-native",
  "jadpo-runtime",
  "jadpo-std",
+ "jadpo-value",
  "js-sys",
+ "openssl",
  "rcgen",
  "rustls",
+ "serde",
+ "serde_cbor_2",
  "serde_json",
  "tokio",
  "wasm-bindgen",
