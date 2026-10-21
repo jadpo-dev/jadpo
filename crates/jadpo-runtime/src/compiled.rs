@@ -106,14 +106,16 @@ pub struct Place {
 
 /// What a generated crate holds: its plan's canonical bytes, its frame
 /// table, its callables by number, its file writes' rows by the callable
-/// and site of their inline function's body, and where the process keeps
-/// what it decodes from them once.
+/// and site of their inline function's body, each route's typed entry by
+/// its number (chunk 8.1p), and where the process keeps what it decodes
+/// from them once.
 #[derive(Debug)]
 pub struct Code {
     pub plan: &'static [u8],
     pub places: &'static [Place],
     pub callable: fn(u32) -> Option<Callable>,
     pub row: fn(u32, u32) -> Option<Row>,
+    pub routes: crate::http::Entries,
     pub shared: &'static Shared,
 }
 
@@ -278,8 +280,19 @@ impl Program {
         (self.code.callable)(n)
     }
 
-    /// What the HTTP component answers its routes with.
+    /// What the HTTP component answers its routes with: each route read
+    /// and written by its typed entry (chunk 8.1p).
     pub fn app(&self) -> crate::http::App<'_> {
+        crate::http::App {
+            entries: Some(self.code.routes),
+            ..self.loaded.plan().app()
+        }
+    }
+
+    /// The same, every route read and written by the codec walk, as the
+    /// interpreter reads and writes them: what the differential harness
+    /// compares the entries with.
+    pub fn walked_app(&self) -> crate::http::App<'_> {
         self.loaded.plan().app()
     }
 

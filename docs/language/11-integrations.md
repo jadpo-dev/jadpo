@@ -9794,6 +9794,7 @@ packages and extension points, as each note says; 26 was decided then.
 
 | Topic | Decision | Date |
 |---|---|---|
+| `max_concurrent:` on Workers | Counted per isolate: Workers runs many isolates and a cap across them would need a Durable Object and a round trip per call, so the deploy report and `jadpo check` say "on Workers, per instance"; a provider that needs a hard global limit enforces it on its side, and its rate-limit answers already make calls back off (Richard; built in chunk 8.2) | 2026-10-21 |
 | Keyword and folder | Carried from area 1: `integration` in `integrations/`, one declaration per provider version, contract beside it (Superseded 2026-10-13: reopened by questions 15 and 18.) | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure`, e.g. `timed_out: ChargeUnavailable`; time limits are integration settings | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |

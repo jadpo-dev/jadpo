@@ -2388,11 +2388,32 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   deployable among them. Area 11 says that refusal waits for deployables
   to be declared, so whether the one deployable of an app that declares
   none is held to a target by `jadpo check` is decided there.
-- [ ] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
-  8.1k: decided in §2.5 first, a struct or enum per type with codecs from
-  its type plan, and each route's entry decoding a request straight into
-  its input's struct and writing its output from its output's, `Value`
-  kept where the runtime and the standard library take one.
+- [x] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
+  8.1k. Built, decided first (§2.5, "A typed per-route entry"): each
+  route's codecs generated from its types' plans, `entries.rs` in a
+  project's crate, a reader per codec a route reads and a writer per codec
+  it writes, and each route's entry (`jadpo_runtime::http::Entry`: its
+  placeholders' readers, its input's, its output's writer), which the HTTP
+  component takes from compiled code (`App::entries`) in place of the
+  codec walk, the interpreter keeping the walk as the reference and both
+  reading a request through one function (`http::read_request`); a body
+  read in place (`jadpo_value::json::Doc`, accepting exactly what
+  `json::parse` accepts, held to it by a seeded comparison), the readers
+  calling the walk's own rules (`json::presence`, `json::scalar`,
+  `Codecs::check`, `json::collected`, `Shape::build_slots`) and writing a
+  problem's path only when there is one; `Value` kept from the action on,
+  and a codec the generator doesn't walk (a map, a standard type sent as
+  its parts, a geometry, a page, a standard enum read ignoring case) read
+  and written by the walk at that place. No Rust struct per type: one
+  would become a `Value` at once; typed bodies are listed with 9.2. The
+  compiled step holds every route's entry to the walk over a seeded set of
+  requests and values (`jadpo_test::entries`, 5,832 across the corpus
+  here), and the differential run still gives the same records both
+  ways (257 projects and 518 tests on this machine, whose pgvector is too
+  old for example 22, which CI runs). On example 23's `POST /repairs`, release
+  build: reading the request 26 allocations and 1.35 µs by the walk, 8
+  and 0.57 µs by its entry; writing the answer 1.05 µs against 0.89 µs,
+  17 allocations either way.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
@@ -2414,11 +2435,11 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   deployable.
   From the Phase 7 review: the six connections an invocation may hold,
   counted across `Transport` and `Fetch` and shared with `waitUntil`;
-  `max_concurrent:` per isolate said in the deploy report, or decided
-  otherwise (**needs Richard**); SQS through `receiving:` looped inside
+  `max_concurrent:` per isolate on Workers, said in the deploy report and
+  by `jadpo check` (decided, Richard, 2026-10-21); SQS through `receiving:` looped inside
   the minute's cron or its delay documented; passkeys on Workers built on
-  jadpo-value's pure-Rust checks or `passkey:` refused there (**needs
-  Richard**); `Driver.disk` refused on Workers; the `Fetch` aborting
+  jadpo-value's pure-Rust ES256 and RSA checks (decided, Richard,
+  2026-10-21); `Driver.disk` refused on Workers; the `Fetch` aborting
   through an `AbortSignal`, `redirect: "manual"` for the outbound guard;
   the Wasm size measured with and without the `testing` feature.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
@@ -2449,6 +2470,12 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
   ([optimisation results](experiments/wasm-optimization-results.md)).
+  From chunk 8.1p: typed values in compiled bodies (a struct or enum per
+  type, locals and parameters typed, a `Value` made only at the runtime's
+  entry points), if profiling shows a body's own work matters beside the
+  request's edge and the store; an answer's body sized before it is
+  written, and a UUID's or an instant's text written without a string of
+  its own (17 allocations write example 23's ticket either way).
 
 ## Phase 10 — Golden todo
 

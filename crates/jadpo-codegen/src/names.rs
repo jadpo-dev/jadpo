@@ -7,8 +7,9 @@ use jadpo_plan::CallablePlan;
 use proc_macro2::Ident;
 use quote::format_ident;
 
-/// Words a module can't be called, being Rust's own or a crate generated
-/// code names: a domain called one of them takes a `_` after it.
+/// Words a module can't be called, being Rust's own, a crate generated
+/// code names or the module of its routes' entries: a domain called one
+/// of them takes a `_` after it.
 const RESERVED: &[&str] = &[
     "abstract",
     "alloc",
@@ -25,6 +26,7 @@ const RESERVED: &[&str] = &[
     "do",
     "dyn",
     "else",
+    "entries",
     "enum",
     "extern",
     "false",

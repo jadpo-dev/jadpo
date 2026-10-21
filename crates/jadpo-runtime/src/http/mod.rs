@@ -5,7 +5,9 @@
 //! the runtime's action boundary) or the query (through the store's entry
 //! point), and answers with the output, or with the failure envelope and
 //! the status its kind sets (area 4), always with a `request_id` in the
-//! body and `x-request-id`.
+//! body and `x-request-id`. Compiled code reads and writes a route with
+//! its typed entry ([`Entry`], chunk 8.1p) where the interpreter walks its
+//! codecs; everything around them is the same code ([`read_request`]).
 //!
 //! The runtime answers `HEAD` (as `GET`, without the body) and `OPTIONS`
 //! (with `Allow`) itself, and every route has the default rate limits,
@@ -62,7 +64,8 @@ use jadpo_std::http::{
 use jadpo_std::types::FailurePlan;
 use jadpo_std::{HttpMethod, Idempotency};
 use jadpo_value::Value;
-use jadpo_value::json::{Codecs, Path, Problem, write_string};
+use jadpo_value::json::reading::{At, InputReader, Reading, TextReader, Writer};
+use jadpo_value::json::{Codecs, Doc, Members, Path, Problem, write_string};
 
 use crate::race::{First, race};
 use crate::ratelimit::Allowed;
@@ -164,7 +167,36 @@ pub struct App<'a> {
     /// The codecs a JSON-held column a route's query reads is read with
     /// (chunk 5.5w2b): the plan's JSON table's.
     pub json: crate::JsonCodecs<'a>,
+    /// Each route's typed entry, by its number, where compiled code gives
+    /// one (chunk 8.1p); the interpreter gives none, and reads and writes
+    /// every route by the codec walk.
+    pub entries: Option<Entries>,
 }
+
+impl App<'_> {
+    /// Route `number`'s typed entry, where the program gives one.
+    pub fn entry(&self, number: u32) -> Option<&'static Entry> {
+        self.entries.and_then(|entries| entries(number))
+    }
+}
+
+/// A route's typed entry (chunk 8.1p; docs/compiler-runtime.md §2.5, "A
+/// typed per-route entry"): compiled code's readers of its placeholders
+/// and its input and its output's writer, each generated from its type's
+/// plan, which the component reads and writes the route with in place of
+/// the codec walk. Everything around them is the component's own.
+#[derive(Clone, Copy, Debug)]
+pub struct Entry {
+    /// Each placeholder's reader, in the path's order.
+    pub params: &'static [TextReader],
+    /// The input's reader; `None` when it is read by the codec walk.
+    pub input: Option<InputReader>,
+    /// The output's writer; `None` when it is written by the codec walk.
+    pub output: Option<Writer>,
+}
+
+/// A program's routes' entries, by route number.
+pub type Entries = fn(u32) -> Option<&'static Entry>;
 
 /// The failures the runtime answers with itself (area 7, "How failures
 /// reach the client").
@@ -502,7 +534,7 @@ async fn route_request(
     };
     // Work that never waits checks the deadline as it runs.
     ctx.set_deadline(Some(u64::from(route.deadline_ms)));
-    let mut response = run_route(app, executor, ctx, request, request_id, route).await;
+    let mut response = run_route(app, executor, ctx, request, request_id, (number, route)).await;
     ctx.set_deadline(None);
     response.route = app.routes.label(number);
     response
@@ -597,13 +629,241 @@ pub(crate) fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>>
     Some(out)
 }
 
+/// What reading a route's request gave (chunk 8.1p).
+#[derive(Debug)]
+pub enum Read {
+    /// Answered with this failure before its values are read: a query
+    /// string or a body the runtime can't read, or a body not sent as JSON.
+    Refused((u16, &'static str, &'static str)),
+    /// The problems found reading its values, in order (`invalid_input`).
+    Problems(Vec<Problem>),
+    /// Each placeholder's value, in the path's order, and its input.
+    Values {
+        params: Vec<Option<Value>>,
+        input: Option<Value>,
+    },
+}
+
+/// Route `number`'s placeholders and input, read from `request`: by the
+/// route's typed entry where the program gives one (chunk 8.1p), and by
+/// the codec walk otherwise. A query string or a body the route doesn't
+/// read is refused here too, as an unknown field is, so either way a
+/// request is refused for the same reasons, in the same order.
+pub fn read_request(app: &App<'_>, number: u32, request: &Request) -> Read {
+    let Some(route) = app.table.routes.get(number as usize) else {
+        return Read::Values {
+            params: Vec::new(),
+            input: None,
+        };
+    };
+    let entry = app.entry(number);
+    let mut reading = Reading::new(app.codecs, Vec::new());
+    // Placeholders, each decoded once and checked.
+    let mut params = Vec::new();
+    for (segment, written) in route.segments.iter().zip(trie::segments(&request.path)) {
+        if let Segment::Param { name, codec } = segment {
+            let written = decoded(written);
+            let value = match entry.and_then(|entry| entry.params.get(params.len())) {
+                Some(read) => read(&mut reading, &written, &At::Member(&At::Top, name)),
+                None => app.codecs.read_text(
+                    *codec,
+                    &written,
+                    &Path::field(name),
+                    reading.problems_mut(),
+                ),
+            };
+            params.push(value);
+        }
+    }
+    // A query string or a body the route doesn't read is refused, as an
+    // unknown field is: the query's keys each, the body as a whole.
+    let reads_query = route.input.as_ref().is_some_and(|plan| plan.query);
+    let reads_body = route.input.as_ref().is_some_and(|plan| !plan.query);
+    if !reads_query && let Some(query) = request.query.as_deref() {
+        let Some(values) = query_values(query) else {
+            return Read::Refused(INVALID_REQUEST);
+        };
+        for key in values.into_keys() {
+            reading.problems_mut().push(Problem {
+                field: key,
+                rule: "unknown_field".to_string(),
+            });
+        }
+    }
+    if !reads_body && !request.body.iter().all(u8::is_ascii_whitespace) {
+        reading.problems_mut().push(Problem {
+            field: String::new(),
+            rule: "unknown_field".to_string(),
+        });
+    }
+    // The input.
+    let input = match &route.input {
+        None => None,
+        Some(plan) => {
+            let read = match entry.and_then(|entry| entry.input) {
+                Some(read) => typed_input(plan, request, &mut reading, read),
+                None => walked_input(app, plan, request, reading.problems_mut()),
+            };
+            match read {
+                Ok(input) => input,
+                Err(refused) => return Read::Refused(refused),
+            }
+        }
+    };
+    let problems = reading.into_problems();
+    if !problems.is_empty() {
+        return Read::Problems(problems);
+    }
+    Read::Values { params, input }
+}
+
+/// A route's input read by the codec walk: its query string's values or
+/// its body as a `serde_json` object, its header fields put in, then read
+/// by its codec.
+fn walked_input(
+    app: &App<'_>,
+    plan: &jadpo_std::http::InputPlan,
+    request: &Request,
+    problems: &mut Vec<Problem>,
+) -> Result<Option<Value>, (u16, &'static str, &'static str)> {
+    let mut object = serde_json::Map::new();
+    // The body's numbers as written, so a vector's items are read from
+    // their own text (chunk 5.8c).
+    let mut numbers = jadpo_value::json::Numbers::default();
+    if plan.query {
+        let Some(values) = query_values(request.query.as_deref().unwrap_or("")) else {
+            return Err(INVALID_REQUEST);
+        };
+        let lists = list_fields(app, plan.codec);
+        for (key, values) in values {
+            let value = if lists.contains(&key) {
+                serde_json::Value::Array(
+                    values.into_iter().map(serde_json::Value::String).collect(),
+                )
+            } else if values.len() == 1 {
+                values
+                    .into_iter()
+                    .next()
+                    .map_or(serde_json::Value::Null, serde_json::Value::String)
+            } else {
+                // A single value given twice: reported as the wrong kind.
+                serde_json::Value::Array(
+                    values.into_iter().map(serde_json::Value::String).collect(),
+                )
+            };
+            object.insert(key, value);
+        }
+    } else {
+        if !json_content(request) {
+            return Err(BODY_NOT_JSON);
+        }
+        if request.body.iter().all(u8::is_ascii_whitespace) {
+            return Err(INVALID_REQUEST);
+        }
+        // A member named twice makes the body unreadable, as `json.read`
+        // reads it (chunk 5.8c).
+        match jadpo_value::json::parse(&request.body) {
+            Some((serde_json::Value::Object(entries), written)) => {
+                object = entries;
+                numbers = written;
+            }
+            Some(_) => {
+                problems.push(Problem {
+                    field: String::new(),
+                    rule: "type".to_string(),
+                });
+            }
+            None => return Err(INVALID_REQUEST),
+        }
+    }
+    // Fields read from headers never come in the body or the query.
+    for (field, header) in &plan.headers {
+        if object.contains_key(field) {
+            problems.push(Problem {
+                field: field.clone(),
+                rule: "unknown_field".to_string(),
+            });
+            object.remove(field);
+        }
+        if let Some(value) = request.header(header) {
+            object.insert(field.clone(), serde_json::Value::String(value.to_string()));
+        }
+    }
+    let before = problems.len();
+    let value = app.codecs.read(
+        plan.codec,
+        &serde_json::Value::Object(object),
+        &Path::default().numbered(&numbers),
+        problems,
+    );
+    Ok(if problems.len() > before { None } else { value })
+}
+
+/// A route's input read by its typed entry's reader (chunk 8.1p): its
+/// query string's values, or its body read in place ([`Doc`]), as the
+/// members of an object with its header fields in place of any member of
+/// their names, refused and reported as [`walked_input`] refuses and
+/// reports them.
+fn typed_input(
+    plan: &jadpo_std::http::InputPlan,
+    request: &Request,
+    reading: &mut Reading<'_>,
+    read: InputReader,
+) -> Result<Option<Value>, (u16, &'static str, &'static str)> {
+    let values;
+    let doc;
+    let members = if plan.query {
+        values = query_values(request.query.as_deref().unwrap_or("")).ok_or(INVALID_REQUEST)?;
+        Members::query(&values)
+    } else {
+        if !json_content(request) {
+            return Err(BODY_NOT_JSON);
+        }
+        if request.body.iter().all(u8::is_ascii_whitespace) {
+            return Err(INVALID_REQUEST);
+        }
+        // A member named twice makes the body unreadable, as `json.read`
+        // reads it (chunk 5.8c).
+        doc = Doc::parse(&request.body).ok_or(INVALID_REQUEST)?;
+        match doc.root().members() {
+            Some(members) => members,
+            None => {
+                reading.problems_mut().push(Problem {
+                    field: String::new(),
+                    rule: "type".to_string(),
+                });
+                Members::empty()
+            }
+        }
+    };
+    // Fields read from headers never come in the body or the query.
+    let mut headers = Vec::with_capacity(plan.headers.len());
+    for (field, header) in &plan.headers {
+        if members.contains(field) {
+            reading.problems_mut().push(Problem {
+                field: field.clone(),
+                rule: "unknown_field".to_string(),
+            });
+        }
+        headers.push((field.as_str(), request.header(header)));
+    }
+    let members = members.with_headers(&headers);
+    let before = reading.count();
+    let value = read(reading, &members);
+    Ok(if reading.count() > before {
+        None
+    } else {
+        value
+    })
+}
+
 async fn run_route(
     app: &App<'_>,
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    route: &RoutePlan,
+    (number, route): (u32, &RoutePlan),
 ) -> Response {
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
@@ -703,7 +963,7 @@ async fn run_route(
                 ctx,
                 request,
                 request_id,
-                route,
+                (number, route),
                 (deadline, ends_at),
                 within,
                 caller,
@@ -803,7 +1063,7 @@ async fn run_with_caller(
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
-    route: &RoutePlan,
+    (number, route): (u32, &RoutePlan),
     (deadline, ends_at): (crate::LocalFuture<'_, ()>, Option<u64>),
     mut within: Option<crate::LocalFuture<'_, ()>>,
     caller: Option<crate::Caller>,
@@ -813,116 +1073,11 @@ async fn run_with_caller(
     let caller_value = caller.as_ref().map(|caller| caller.value.clone());
     ctx.set_caller(caller);
     let codecs = &app.codecs;
-    let mut problems: Vec<Problem> = Vec::new();
-    // Placeholders, each decoded once and checked.
-    let mut params = Vec::new();
-    for (segment, written) in route.segments.iter().zip(trie::segments(&request.path)) {
-        if let Segment::Param { name, codec } = segment {
-            let written = decoded(written);
-            params.push(codecs.read_text(*codec, &written, &Path::field(name), &mut problems));
-        }
-    }
-    // A query string or a body the route doesn't read is refused, as an
-    // unknown field is: the query's keys each, the body as a whole.
-    let reads_query = route.input.as_ref().is_some_and(|plan| plan.query);
-    let reads_body = route.input.as_ref().is_some_and(|plan| !plan.query);
-    if !reads_query && let Some(query) = request.query.as_deref() {
-        let Some(values) = query_values(query) else {
-            return runtime_failure(INVALID_REQUEST, request_id, None);
-        };
-        for key in values.into_keys() {
-            problems.push(Problem {
-                field: key,
-                rule: "unknown_field".to_string(),
-            });
-        }
-    }
-    if !reads_body && !request.body.iter().all(u8::is_ascii_whitespace) {
-        problems.push(Problem {
-            field: String::new(),
-            rule: "unknown_field".to_string(),
-        });
-    }
-    // The input.
-    let input = match &route.input {
-        None => None,
-        Some(plan) => {
-            let mut object = serde_json::Map::new();
-            // The body's numbers as written, so a vector's items are read
-            // from their own text (chunk 5.8c).
-            let mut numbers = jadpo_value::json::Numbers::default();
-            if plan.query {
-                let Some(values) = query_values(request.query.as_deref().unwrap_or("")) else {
-                    return runtime_failure(INVALID_REQUEST, request_id, None);
-                };
-                let lists = list_fields(app, plan.codec);
-                for (key, values) in values {
-                    let value = if lists.contains(&key) {
-                        serde_json::Value::Array(
-                            values.into_iter().map(serde_json::Value::String).collect(),
-                        )
-                    } else if values.len() == 1 {
-                        values
-                            .into_iter()
-                            .next()
-                            .map_or(serde_json::Value::Null, serde_json::Value::String)
-                    } else {
-                        // A single value given twice: reported as the wrong kind.
-                        serde_json::Value::Array(
-                            values.into_iter().map(serde_json::Value::String).collect(),
-                        )
-                    };
-                    object.insert(key, value);
-                }
-            } else {
-                if !json_content(request) {
-                    return runtime_failure(BODY_NOT_JSON, request_id, None);
-                }
-                if request.body.iter().all(u8::is_ascii_whitespace) {
-                    return runtime_failure(INVALID_REQUEST, request_id, None);
-                }
-                // A member named twice makes the body unreadable, as
-                // `json.read` reads it (chunk 5.8c).
-                match jadpo_value::json::parse(&request.body) {
-                    Some((serde_json::Value::Object(entries), written)) => {
-                        object = entries;
-                        numbers = written;
-                    }
-                    Some(_) => {
-                        problems.push(Problem {
-                            field: String::new(),
-                            rule: "type".to_string(),
-                        });
-                    }
-                    None => return runtime_failure(INVALID_REQUEST, request_id, None),
-                }
-            }
-            // Fields read from headers never come in the body or the query.
-            for (field, header) in &plan.headers {
-                if object.contains_key(field) {
-                    problems.push(Problem {
-                        field: field.clone(),
-                        rule: "unknown_field".to_string(),
-                    });
-                    object.remove(field);
-                }
-                if let Some(value) = request.header(header) {
-                    object.insert(field.clone(), serde_json::Value::String(value.to_string()));
-                }
-            }
-            let before = problems.len();
-            let value = codecs.read(
-                plan.codec,
-                &serde_json::Value::Object(object),
-                &Path::default().numbered(&numbers),
-                &mut problems,
-            );
-            if problems.len() > before { None } else { value }
-        }
+    let (params, input) = match read_request(app, number, request) {
+        Read::Refused(refusal) => return runtime_failure(refusal, request_id, None),
+        Read::Problems(problems) => return invalid_input(request_id, &problems),
+        Read::Values { params, input } => (params, input),
     };
-    if !problems.is_empty() {
-        return invalid_input(request_id, &problems);
-    }
     // The call's arguments.
     let mut args = Vec::with_capacity(route.args.len());
     for arg in &route.args {
@@ -1107,7 +1262,7 @@ async fn run_with_caller(
                 let First::Left(outcome) = answered else {
                     return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
                 };
-                let mut response = answer(app, route, request_id, outcome);
+                let mut response = answer(app, (number, route), request_id, outcome);
                 if response.status == route.status.code() {
                     response.status = status;
                 }
@@ -1178,7 +1333,7 @@ async fn run_with_caller(
         };
         let mut response = match &settling {
             Some(_) => Response::default(),
-            None => answer(app, route, request_id, outcome),
+            None => answer(app, (number, route), request_id, outcome),
         };
         let guard = guard.as_ref().filter(|_| claimed.get());
         let keep = guard.filter(|_| storable);
@@ -1265,7 +1420,7 @@ async fn run_with_caller(
             };
             response = answer(
                 app,
-                route,
+                (number, route),
                 request_id,
                 answer_query(app, ctx, settle, args).await,
             );
@@ -1396,12 +1551,20 @@ async fn answer_query(
 
 /// The response `outcome` gives: the output with the route's status, or
 /// the failure envelope.
-fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) -> Response {
+fn answer(
+    app: &App<'_>,
+    (number, route): (u32, &RoutePlan),
+    request_id: &str,
+    outcome: Outcome,
+) -> Response {
     match outcome {
         Outcome::Value(value) => match route.output {
             Some(codec) => {
                 let mut body = String::new();
-                app.codecs.write(codec, &value, &mut body);
+                match app.entry(number).and_then(|entry| entry.output) {
+                    Some(write) => write(&app.codecs, &value, &mut body),
+                    None => app.codecs.write(codec, &value, &mut body),
+                }
                 Response {
                     status: route.status.code(),
                     headers: vec![("content-type".to_string(), "application/json".to_string())],

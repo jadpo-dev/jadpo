@@ -2211,6 +2211,7 @@ what other areas carried here and where this page answers it.
 
 | Topic | Decision | Date |
 |---|---|---|
+| A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |
 | Helpers | Carried from area 1: descriptions written once as `///`; the library catalogue, callers and `jadpo impact` are computed; similar helpers flagged by `jadpo check` | 2026-10-12 |

@@ -12,7 +12,9 @@
 //! interpreter and then on that project's compiled program, in one
 //! process, and compares the two runs test by test
 //! ([`crate::differential`]): how many it compared and how many passed, or
-//! the first line that differs, with both sides.
+//! the first line that differs, with both sides. It then holds every
+//! route's typed entry to the codec walk over a seeded set of requests and
+//! values (chunk 8.1p, [`crate::entries`]).
 //!
 //! The workspace's files are written only when they change, and its
 //! target folder is kept, so a run with nothing changed compiles nothing:
@@ -37,12 +39,20 @@ pub struct Compared {
     pub tests: usize,
     /// The tests that passed compiled.
     pub passed: usize,
+    /// The requests and values its routes' typed entries read and wrote
+    /// as the codec walk does (chunk 8.1p).
+    pub requests: usize,
 }
 
 impl fmt::Display for Compared {
-    /// `compared 3 tests, 3 passed`: the line the harness ends with.
+    /// `compared 3 tests, 3 passed, 120 requests`: the line the harness
+    /// ends with.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "compared {} tests, {} passed", self.tests, self.passed)
+        write!(
+            f,
+            "compared {} tests, {} passed, {} requests",
+            self.tests, self.passed, self.requests
+        )
     }
 }
 
@@ -51,10 +61,12 @@ impl Compared {
     fn read(line: &str) -> Option<Compared> {
         let rest = line.strip_prefix("compared ")?;
         let (tests, rest) = rest.split_once(" tests, ")?;
-        let passed = rest.strip_suffix(" passed")?;
+        let (passed, rest) = rest.split_once(" passed, ")?;
+        let requests = rest.strip_suffix(" requests")?;
         Some(Compared {
             tests: tests.parse().ok()?,
             passed: passed.parse().ok()?,
+            requests: requests.parse().ok()?,
         })
     }
 }
@@ -77,6 +89,9 @@ pub enum Problem {
     Build(jadpo_codegen::cargo::Failed),
     /// The two runs' records differ: the first difference, both sides.
     Differs(String),
+    /// A route's typed entry reads a request or writes a value otherwise
+    /// than the codec walk (chunk 8.1p): which, both ways.
+    Entries(String),
     /// The harness ended without saying what it compared: what it said.
     Harness(String),
 }
@@ -95,6 +110,7 @@ impl fmt::Display for Problem {
                     "compiled code's records differ from the interpreter's:\n{difference}"
                 )
             }
+            Problem::Entries(difference) => write!(f, "{ENTRIES}{difference}"),
             Problem::Harness(said) => write!(f, "the harness ended without a comparison:\n{said}"),
         }
     }
@@ -104,6 +120,9 @@ impl std::error::Error for Problem {}
 
 /// How the harness says the server can't serve the project's migrations.
 const UNSERVED: &str = "the server can't serve the project's migrations: ";
+
+/// How the harness says a typed entry and the codec walk differ.
+const ENTRIES: &str = "a route's typed entry differs from the codec walk: ";
 
 /// The finished run in `ran`.
 fn done(ran: Ran) -> Result<Box<Run>, Problem> {
@@ -138,6 +157,7 @@ pub fn compare<E: Executor + 'static>(
             return Ok(Compared {
                 tests: 0,
                 passed: 0,
+                requests: 0,
             });
         }
         ran => done(ran)?,
@@ -148,6 +168,7 @@ pub fn compare<E: Executor + 'static>(
     Ok(Compared {
         tests,
         passed: compiled.passed(),
+        requests: 0,
     })
 }
 
@@ -178,6 +199,16 @@ pub fn harness(programs: &[MakeProgram]) -> ExitCode {
             Some(values) => program.with_config(values),
             None => program,
         }
+    })
+    .and_then(|compared| {
+        // Every route's typed entry read and written beside the codec
+        // walk (chunk 8.1p).
+        let program = make().expect("the compiled plan reads back");
+        let requests = crate::entries::compare(&program).map_err(Problem::Entries)?;
+        Ok(Compared {
+            requests,
+            ..compared
+        })
     });
     match compared {
         Ok(compared) => {
@@ -455,6 +486,9 @@ fn run_harness(binary: &Path, program: usize, folder: &Path) -> Result<Compared,
         _ if said.starts_with(UNSERVED) => Err(Problem::Unserved(
             said[UNSERVED.len()..].trim_end().to_string(),
         )),
+        _ if said.starts_with(ENTRIES) => Err(Problem::Entries(
+            said[ENTRIES.len()..].trim_end().to_string(),
+        )),
         _ => Err(Problem::Harness(format!(
             "{said}{}",
             String::from_utf8_lossy(&output.stderr)
@@ -471,8 +505,12 @@ mod tests {
         let compared = Compared {
             tests: 3,
             passed: 2,
+            requests: 120,
         };
-        assert_eq!(compared.to_string(), "compared 3 tests, 2 passed");
+        assert_eq!(
+            compared.to_string(),
+            "compared 3 tests, 2 passed, 120 requests"
+        );
         assert_eq!(Compared::read(&compared.to_string()), Some(compared));
         assert_eq!(Compared::read("compared three"), None);
     }

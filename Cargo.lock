@@ -1717,6 +1717,7 @@ dependencies = [
  "jadpo-runtime",
  "jadpo-std",
  "jadpo-term",
+ "jadpo-value",
  "rcgen",
  "rustls",
  "serde_json",

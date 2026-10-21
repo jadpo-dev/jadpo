@@ -132,6 +132,27 @@ impl Shape {
                 *place = Some(value);
             }
         }
+        self.build_slots(&mut values)
+    }
+
+    /// The value built from `values`, each field's by its place and `None`
+    /// for one not given, taken out of them: `none` given to a field that
+    /// can't be cleared is the same as leaving it out, a field left out
+    /// holds what it holds when absent, and an `Input` remembers the
+    /// optional fields it was built without. `None` when a field is missing
+    /// that has nothing to hold, or `values` isn't one per field. What
+    /// compiled code's generated readers build with (chunk 8.1p).
+    pub fn build_slots(&self, values: &mut [Option<Value>]) -> Option<Value> {
+        if values.len() != self.fields.len() {
+            return None;
+        }
+        for slot in &self.none_left_out {
+            if let Some(place) = values.get_mut(*slot as usize)
+                && *place == Some(Value::None)
+            {
+                *place = None;
+            }
+        }
         let omitted: Vec<u32> = self
             .omittable
             .iter()
@@ -141,9 +162,9 @@ impl Shape {
         let fields = self
             .fields
             .iter()
-            .zip(values)
+            .zip(values.iter_mut())
             .map(|((name, absent), value)| {
-                Some((Rc::clone(name), value.or_else(|| absent.clone())?))
+                Some((Rc::clone(name), value.take().or_else(|| absent.clone())?))
             })
             .collect::<Option<Vec<_>>>()?;
         Some(match &self.variant {
