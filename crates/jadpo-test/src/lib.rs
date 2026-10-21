@@ -30,6 +30,7 @@
 
 pub mod database;
 mod diff;
+pub mod differential;
 mod env;
 pub mod host;
 mod json;
@@ -51,6 +52,7 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::{EdgeKind, Graph, Kind};
 use jadpo_interp::Prepared;
 
+pub use differential::{Difference, TestRecord, differential};
 pub use env::{Fakes, TestDatabase, TestEnv};
 pub use json::{json, schema};
 pub use live::{REQUIRE_VARIABLE, SKIP_VARIABLE, live, skip_for_version};
@@ -140,6 +142,9 @@ pub struct Options {
     /// Running in CI (the `CI` variable is set), where a package linked to
     /// a live checkout is refused (area 11).
     pub ci: bool,
+    /// Keep each test's outcome-and-effect record ([`TestRecord`]), for
+    /// the differential run (chunk 8.1c). Off, nothing is recorded.
+    pub record: bool,
 }
 
 /// How a request to run tests ended.
@@ -252,6 +257,8 @@ pub struct TestResult {
     pub test: Test,
     /// `None` when it passed.
     pub failure: Option<Box<TestFailure>>,
+    /// What it did, when the run kept records ([`Options::record`]).
+    pub record: Option<TestRecord>,
 }
 
 /// Runs what `options` asks for.
@@ -452,12 +459,22 @@ pub(crate) fn choose_and_run(
     {
         return Ran::Unmigrated { store, error };
     }
-    let failures = run::run_all(prepared, &ordered, &rerun, databases.as_ref());
+    let failures = run::run_all(
+        prepared,
+        &ordered,
+        &rerun,
+        databases.as_ref(),
+        options.record,
+    );
     drop(databases);
     let results: Vec<TestResult> = ordered
         .into_iter()
         .zip(failures)
-        .map(|(test, failure)| TestResult { test, failure })
+        .map(|(test, (failure, record))| TestResult {
+            test,
+            failure,
+            record,
+        })
         .collect();
     if project {
         record::write(&loaded.root, tests, &results);

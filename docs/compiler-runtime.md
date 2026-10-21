@@ -1281,6 +1281,32 @@ fails the gate and prints both sides. From Phase 8, random well-typed
 function bodies add fuzzed comparisons, as Cranelift does against its
 interpreter.
 
+Built in chunk 8.1c: the record each run is compared by,
+`jadpo_runtime::record::Record`, written by the runtime whichever
+executor runs the test, in the order things happened. A test's stores are
+wrapped (`record::Recorded`) so every statement is kept with its SQL
+text, its parameters' types (never their values) and the rows it read or
+changed, or its refusal's classification, with each transaction's end;
+an outbox row written keeps each event's type and payload; the capability
+seam keeps each outside call's connection, operation and answer through
+`Host::record`, which only a test's `Faked` host answers, so a deployable
+pays one `None` per outside call and nothing per statement; and the
+runner adds the outcome (`record::outcome`: a value, a failure's code,
+fields and causes, a fault's classification and site, a failed
+assertion's site, comparison and parts). With `Options::record`, `jadpo
+test` keeps each test's `TestRecord` in canonical form: those lines, how
+the test ended, then every row its database holds when it ends (each
+table but the migrations' and extensions', in name order, rows in text
+order, times in UTC, a `bytea` by its length), each identity written
+`id#1`, `id#2`… in the order it first appears.
+`jadpo_test::differential` compares two runs test by test and names the
+first line that differs, with the line before it and both sides. Only the
+test's seed and clock decide a record, so the corpus run twice gives the
+same records (`crates/jadpo-test/tests/records.rs`); the test
+authenticator's passkeys are drawn from its device number for it
+(`TestAuthenticator::seeded`). Path numbers are left for the compiled
+executor's chunks.
+
 ### 2.6 The runtime
 
 Built so far (chunk 2.1): what pure execution needs from the context,

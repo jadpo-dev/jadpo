@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 
 use openssl::bn::{BigNum, BigNumContext};
-use openssl::ec::{EcGroup, EcKey};
+use openssl::ec::{EcGroup, EcKey, EcPoint};
 use openssl::ecdsa::EcdsaSig;
 use openssl::nid::Nid;
 use openssl::pkey::Private;
@@ -39,6 +39,10 @@ pub struct TestAuthenticator {
     held: Vec<Held>,
     /// Whether each signature counts up; a synced passkey sends `0`.
     counts: bool,
+    /// What its passkeys' keys and ids are drawn from when they are the
+    /// same every run (chunk 8.1c); `None` draws them at random, as a
+    /// device does.
+    seed: Option<u64>,
 }
 
 impl TestAuthenticator {
@@ -48,7 +52,62 @@ impl TestAuthenticator {
             origin: origin.to_string(),
             held: Vec::new(),
             counts: true,
+            seed: None,
         }
+    }
+
+    /// A device as [`TestAuthenticator::new`] makes one, whose passkeys'
+    /// keys and ids come from `seed` and how many it made before, so a
+    /// test that makes them reads the same every run (chunk 8.1c): only
+    /// what it signs varies. Devices given different seeds make different
+    /// passkeys.
+    pub fn seeded(origin: &str, seed: u64) -> TestAuthenticator {
+        TestAuthenticator {
+            seed: Some(seed),
+            ..TestAuthenticator::new(origin)
+        }
+    }
+
+    /// The `n`th passkey's private key and id, from the device's seed, or
+    /// at random without one.
+    fn new_passkey(&self, group: &EcGroup) -> Result<(EcKey<Private>, Vec<u8>), String> {
+        let Some(seed) = self.seed else {
+            let mut credential_id = vec![0u8; 32];
+            openssl::rand::rand_bytes(&mut credential_id).map_err(|e| e.to_string())?;
+            return Ok((
+                EcKey::generate(group).map_err(|e| e.to_string())?,
+                credential_id,
+            ));
+        };
+        let drawn = |purpose: &[u8]| {
+            let mut input = b"jadpo test authenticator ".to_vec();
+            input.extend(seed.to_be_bytes());
+            input.extend((self.held.len() as u64).to_be_bytes());
+            input.extend(purpose);
+            sha256(&input)
+        };
+        let mut context = BigNumContext::new().map_err(|e| e.to_string())?;
+        let mut order = BigNum::new().map_err(|e| e.to_string())?;
+        group
+            .order(&mut order, &mut context)
+            .map_err(|e| e.to_string())?;
+        // A scalar from 1 to the order less one.
+        let one = BigNum::from_u32(1).map_err(|e| e.to_string())?;
+        let mut below = BigNum::new().map_err(|e| e.to_string())?;
+        below.checked_sub(&order, &one).map_err(|e| e.to_string())?;
+        let drawn_key = BigNum::from_slice(&drawn(b"key")).map_err(|e| e.to_string())?;
+        let mut scalar = BigNum::new().map_err(|e| e.to_string())?;
+        scalar
+            .nnmod(&drawn_key, &below, &mut context)
+            .map_err(|e| e.to_string())?;
+        scalar.add_word(1).map_err(|e| e.to_string())?;
+        let mut public = EcPoint::new(group).map_err(|e| e.to_string())?;
+        public
+            .mul_generator2(group, &scalar, &mut context)
+            .map_err(|e| e.to_string())?;
+        let key =
+            EcKey::from_private_components(group, &scalar, &public).map_err(|e| e.to_string())?;
+        Ok((key, drawn(b"id").to_vec()))
     }
 
     /// The same device in a browser at another origin: its answers name
@@ -114,7 +173,7 @@ impl TestAuthenticator {
             return Err("InvalidStateError: this device holds a passkey already".into());
         }
         let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).map_err(|e| e.to_string())?;
-        let secret = EcKey::generate(&group).map_err(|e| e.to_string())?;
+        let (secret, credential_id) = self.new_passkey(&group)?;
         let (mut x, mut y) = (
             BigNum::new().map_err(|e| e.to_string())?,
             BigNum::new().map_err(|e| e.to_string())?,
@@ -137,8 +196,6 @@ impl TestAuthenticator {
             Cbor::Bytes(y.to_vec_padded(32).map_err(|e| e.to_string())?),
         );
         let cose = serde_cbor_2::to_vec(&Cbor::Map(cose)).map_err(|e| e.to_string())?;
-        let mut credential_id = vec![0u8; 32];
-        openssl::rand::rand_bytes(&mut credential_id).map_err(|e| e.to_string())?;
         // Present, verified, attested credential data; a counter of 0.
         let mut auth_data = sha256(rp_id.as_bytes()).to_vec();
         auth_data.push(0x01 | 0x04 | 0x40);
