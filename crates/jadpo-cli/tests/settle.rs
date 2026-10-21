@@ -318,7 +318,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let join = program.plan().find("join").expect("join");
-        let mut ctx = host.ctx(program.places());
+        let mut ctx = host.ctx(&program);
         let ann = match program.run(&mut ctx, join, vec![Value::text("ann")]).await {
             jadpo_runtime::Outcome::Value(person) => person,
             other => panic!("ann joins: {other:?}"),
@@ -328,7 +328,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
             field(&ann, "id"),
             field(&ann, "handle"),
         );
-        let mut ctx = host.ctx(program.places());
+        let mut ctx = host.ctx(&program);
         let signed_in = jadpo_runtime::http::identity::test_credentials(
             &mut ctx,
             app.table,

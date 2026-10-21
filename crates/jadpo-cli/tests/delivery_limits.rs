@@ -324,7 +324,7 @@ async fn leave(host: &Harness<Noting>, subscriber: &str, words: &str, set: &str)
 /// left for after its response.
 async fn post(host: &Harness<Noting>, program: &Program, words: &str) -> Vec<Deferred> {
     let id = program.plan().find("post_note").expect("the action");
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     match program.run(&mut ctx, id, vec![Value::text(words)]).await {
         Outcome::Value(_) => {}
         other => panic!("the note is posted: {other:?}"),
@@ -614,7 +614,7 @@ fn a_routes_within_races_a_subscribers_body_never_its_commit() {
                 std::task::Poll::Pending
             }
         }));
-        let mut ctx = host.ctx(program.places());
+        let mut ctx = host.ctx(program);
         let settled = settle_within(program, &mut ctx, work, &mut within).await;
         assert_eq!(
             deliveries(&host, "relay_note", "quick").await,

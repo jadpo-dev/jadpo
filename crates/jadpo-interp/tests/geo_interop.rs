@@ -415,7 +415,7 @@ const PINS_SENT: &str = r#"{"type":"FeatureCollection","features":[{"type":"Feat
 fn a_route_s_layer_is_fetched_as_plain_geojson() {
     let program = support::program(&[("main.jadpo", PINS), ("main.test.jadpo", PINS_TESTS)]);
     let host = jadpo_runtime::MemoryHost::new();
-    let mut ctx = jadpo_runtime::Ctx::new(program.places(), &host, jadpo_runtime::Env::default());
+    let mut ctx = jadpo_runtime::Ctx::of(&program, &host, jadpo_runtime::Env::default());
     let request = jadpo_runtime::http::Request {
         method: "POST".to_string(),
         path: "/pins".to_string(),

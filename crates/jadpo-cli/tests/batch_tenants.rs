@@ -467,7 +467,7 @@ const BIRCH: &str = "0b000000-0000-4000-8000-000000000002";
 /// started, to its end; gives the run.
 async fn sweep(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     let outcome = program.run(&mut ctx, id, args).await;
     let work = ctx.take_deferred();
     let run = match outcome {

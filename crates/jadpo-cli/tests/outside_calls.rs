@@ -378,7 +378,7 @@ fn a_retry_after_past_the_time_left_ends_an_ai_call() {
         },
     );
     let host = Faked::new(harness()).with("acme", Rc::clone(&fake) as Rc<dyn Capability>);
-    let mut ctx = host.host().ctx_on(program.places(), &host);
+    let mut ctx = host.host().ctx_on(&program, &host);
     ctx.set_deadline(Some(10_000));
     let id = program.plan().find("answer").expect("the action");
     let running = std::pin::pin!(program.run(

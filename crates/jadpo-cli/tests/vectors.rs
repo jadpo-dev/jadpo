@@ -535,7 +535,7 @@ fn a_filtered_nearest_query_returns_the_five_code_works_out_through_its_index() 
             seed: Some(1),
             clock: Clock::TEST,
         };
-        let mut ctx = Ctx::new(program.places(), &host, env);
+        let mut ctx = Ctx::of(&program, &host, env);
         program.run(&mut ctx, id, vec![vector(&question)]).await
     });
     let Outcome::Value(Value::List(found)) = found else {
@@ -813,7 +813,7 @@ fn answered(root: &Path, url: &str, question: &[f32]) -> Vec<(String, String)> {
             seed: Some(1),
             clock: Clock::TEST,
         };
-        let mut ctx = Ctx::new(program.places(), &host, env);
+        let mut ctx = Ctx::of(&program, &host, env);
         program.run(&mut ctx, id, vec![vector(question)]).await
     });
     let Outcome::Value(Value::List(found)) = found else {
@@ -1113,7 +1113,7 @@ fn a_distance_that_is_no_number_meets_no_condition() {
                 seed: Some(1),
                 clock: Clock::TEST,
             };
-            let mut ctx = Ctx::new(program.places(), &host, env);
+            let mut ctx = Ctx::of(&program, &host, env);
             program.run(&mut ctx, id, args).await
         })
     };
@@ -1233,7 +1233,7 @@ fn a_filtered_nearest_query_fills_its_limit_past_twenty_thousand_records() {
             seed: Some(1),
             clock: Clock::TEST,
         };
-        let mut ctx = Ctx::new(program.places(), &host, env);
+        let mut ctx = Ctx::of(&program, &host, env);
         program.run(&mut ctx, id, vec![vector(&[1.0, 0.0])]).await
     });
     let Outcome::Value(Value::List(found)) = found else {

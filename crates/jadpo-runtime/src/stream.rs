@@ -645,11 +645,7 @@ pub fn settings_read(ai: &Ai<'_>, site: &StreamSite) -> Vec<u32> {
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
             if let Some(stream) = &package.stream {
-                read.extend(crate::ai::package_reads(
-                    ai,
-                    &stream.operation,
-                    &stream.input,
-                ));
+                read.extend(crate::ai::package_reads(ai, stream.called, &stream.input));
             }
         }
     }
@@ -784,7 +780,7 @@ async fn streamed(
             let mut request = match crate::ai::package_request(
                 ctx,
                 &providers,
-                (&ai.plan.connection, &mapped.operation),
+                mapped.called,
                 &json,
                 settings,
                 None,
@@ -905,7 +901,11 @@ async fn streamed(
             Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
                 return Done::Failed(Box::new(crate::unavailable()));
             }
-            Answer::Value(_) | Answer::Generated | Answer::Recorded => {
+            Answer::Value(_) => {
+                return defect("an answer to `ai.stream` that isn't a chat completion");
+            }
+            #[cfg(feature = "testing")]
+            Answer::Generated | Answer::Recorded => {
                 return defect("an answer to `ai.stream` that isn't a chat completion");
             }
         },
@@ -962,6 +962,7 @@ fn request_body(model: &str, messages: &[(String, String)], max_output: u32) -> 
 /// The finish a scripted `partial(...)` stops with, as the provider says
 /// it: a cut-off's `length`, a refusal's `content_filter`, and none for an
 /// answer out of time, whose stream just stops.
+#[cfg(feature = "testing")]
 pub(crate) fn finish_of(rule: RuleKey) -> &'static str {
     match rule {
         RuleKey::OverBudget => "length",
@@ -972,10 +973,12 @@ pub(crate) fn finish_of(rule: RuleKey) -> &'static str {
 
 /// How many words a fake's piece holds (area 21, "Tests": "the scripted
 /// text, cut into pieces of a few words").
+#[cfg(feature = "testing")]
 const WORDS_PER_PIECE: usize = 3;
 
 /// `text` cut into pieces of a few words, each keeping the space after
 /// it, so joined they are the text again.
+#[cfg(feature = "testing")]
 pub fn pieces(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut piece = String::new();
@@ -1004,6 +1007,7 @@ pub fn pieces(text: &str) -> Vec<String> {
 
 /// One `chat.completion.chunk` event, as an OpenAI-compatible server
 /// streams it.
+#[cfg(feature = "testing")]
 fn chunk_event(delta: serde_json::Value, finish: Option<&str>) -> Chunk {
     let mut choice = serde_json::Map::new();
     choice.insert("index".into(), 0.into());
@@ -1026,6 +1030,7 @@ fn chunk_event(delta: serde_json::Value, finish: Option<&str>) -> Chunk {
 /// in the built-in driver's own form: the text's pieces, each an event of
 /// its own, then the finish and `[DONE]`; a `partial(...)` out of time
 /// stops after its pieces.
+#[cfg(feature = "testing")]
 pub fn faked(prompt: &str, answer: Answer) -> Streamed {
     let completion = match &answer {
         Answer::Generated => crate::ai::completion(

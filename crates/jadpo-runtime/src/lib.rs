@@ -55,6 +55,13 @@
 //!   [`rows`], a stored file's CSV, TSV and JSON Lines rows, which a file
 //!   helper's batch run reads a page at a time.
 //!
+//! - The `testing` feature (chunk 8.1e): the fakes ([`fakes`],
+//!   [`capability::Faked`], the `ai` fake), the recordings ([`recorded`],
+//!   [`prompt_recordings`]), the crash points ([`crashes`]), the
+//!   outcome-and-effect record ([`record`]), the delivery between a test's
+//!   steps ([`test_steps`]) and the plan's dev and test section, which only
+//!   `jadpo test` and `jadpo dev` build in: a deployable holds none of them.
+//!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
 //! with their areas.
@@ -82,6 +89,7 @@ pub mod budget;
 pub mod call_log;
 pub mod capability;
 pub mod config;
+#[cfg(feature = "testing")]
 pub mod crashes;
 mod ctx;
 pub mod deliveries;
@@ -91,6 +99,7 @@ pub mod embed;
 mod env;
 mod executor;
 mod failure;
+#[cfg(feature = "testing")]
 pub mod fakes;
 mod fault;
 pub mod files;
@@ -106,6 +115,7 @@ mod places;
 mod plan;
 mod policy;
 pub mod polls;
+#[cfg(feature = "testing")]
 pub mod prompt_recordings;
 pub mod provider;
 mod purge;
@@ -113,7 +123,9 @@ mod race;
 mod ratelimit;
 mod read;
 pub mod receiving;
+#[cfg(feature = "testing")]
 pub mod record;
+#[cfg(feature = "testing")]
 pub mod recorded;
 mod report;
 pub mod rows;
@@ -127,6 +139,7 @@ pub mod statements;
 pub mod steps;
 mod store;
 pub mod stream;
+#[cfg(feature = "testing")]
 pub mod test_steps;
 pub mod unfinished;
 pub mod webhooks;

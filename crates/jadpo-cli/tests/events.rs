@@ -498,7 +498,7 @@ async fn call(
     trace: Option<Trace>,
 ) -> (Outcome, Vec<Deferred>) {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     ctx.set_caller(caller.map(|person| Caller {
         value: person.clone(),
         key: "user".to_string(),

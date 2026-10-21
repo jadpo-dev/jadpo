@@ -22,15 +22,15 @@ use crate::{Ctx, LocalFuture, Outcome, Places, Plan, Started};
 /// Runs a program's callables: where each frame is ([`Executor::places`]),
 /// what the runtime reads of the program's plan ([`Executor::plan`]) and
 /// what it started with ([`Executor::started`]), and running a callable
-/// ([`Executor::run`]). The runtime builds what each of its parts runs
-/// with from those (chunk 7.9e), so an executor bundles none of it.
+/// ([`Executor::run`], [`Executor::function`], [`Executor::row`]). The
+/// runtime builds what each of its parts runs with from those (chunk
+/// 7.9e), finds a callable by its key through the plan, and reads a
+/// test's `config:`, `clock:` and the recordings from the plan's dev and
+/// test section (chunk 8.1e), so an executor bundles none of it.
 pub trait Executor {
     /// Where every frame is: the callables' numbers, labels, files and
     /// sites.
     fn places(&self) -> &Places;
-
-    /// The number of the callable with identity key `key`.
-    fn callable(&self, key: &str) -> Option<u32>;
 
     /// What the runtime reads of the program's plan (chunk 7.9e), borrowed
     /// from its one loaded runtime plan ([`crate::Loaded::plan`], chunk
@@ -47,35 +47,6 @@ pub trait Executor {
         None
     }
 
-    /// The values callable `callable` gives some settings itself, by their
-    /// numbers: a test's `config:` (area 13). None for anything else.
-    fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
-        let _ = callable;
-        Vec::new()
-    }
-
-    /// Where callable `callable`'s clock starts, in milliseconds since
-    /// 1970-01-01T00:00:00Z: a test's `clock:` (area 13). None for anything
-    /// else, which runs at its host's time or the test default.
-    fn clock(&self, callable: u32) -> Option<i64> {
-        let _ = callable;
-        None
-    }
-
-    /// Reads the recording at `file` of one of the app's own integrations
-    /// as its operation's output, through the package's own decoders run
-    /// at `ctx` (area 11, "Provenance and confirmation"; chunk 7.2d2):
-    /// what `jadpo test` runs for each. `None` when the program holds no
-    /// such recording.
-    fn recording(
-        &self,
-        ctx: &mut Ctx<'_>,
-        file: &str,
-    ) -> Option<Result<(), crate::recorded::Unread>> {
-        let _ = (ctx, file);
-        None
-    }
-
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.
@@ -85,6 +56,24 @@ pub trait Executor {
         callable: u32,
         args: Vec<Value>,
     ) -> LocalFuture<'a, Outcome>;
+
+    /// Runs function `callable`, a package's own `decode:` or `encode:`
+    /// (area 11, "Decoding"; chunk 7.2c2), on `args`, from the site
+    /// numbered `at` in the frame on top of `ctx`: what it gives, or a
+    /// description of how it ended instead, its failure's code or its
+    /// fault, never a value. Pure, so it never waits. What a call's site
+    /// and a recording's check run the package's functions through
+    /// ([`crate::provider::Functions`], chunk 8.1e).
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        callable: u32,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String> {
+        let _ = (ctx, callable, args, at);
+        Err("a fault, `defect`".to_string())
+    }
 
     /// A file helper's write's row for `item` (area 12, "Batches"; chunk
     /// 6.4b2): the inline function `row` names, in the body of the action

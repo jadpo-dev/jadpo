@@ -52,6 +52,10 @@ path = "tests/main.rs"
 rcgen.workspace = true
 
 [features]
+# The runtime's fakes, recordings, crash points and the plan's dev and test
+# section (chunk 8.1e), for `jadpo test` and `jadpo dev`: a deployable is
+# built without it.
+testing = ["jadpo-runtime/testing"]
 test-authenticator = []
 # A test's server on this machine standing in for AWS's SNS host
 # (`fetch::Outward::reaching`, chunk 7.7b): never built outside a test.

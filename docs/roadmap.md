@@ -2127,16 +2127,25 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   operations' numbers in their plans. The names stay in what is logged
   and faked; `ai:`'s package calls still find theirs by name. Plan format
   3. §2.6's "Provider call sites by number".
-- [ ] **8.1e A smaller executor and the `testing` feature** `opus ·
-  high`, after 8.1c and 8.1d: the `Executor` down to its places, its plan
-  and running a callable: callables found by key through the plan, each
-  test's `config:` and `clock:` and the recordings in a dev and test
-  section of the plan, `Executor::recording` run by the runtime once a
-  package's functions are reached through the executor, and every
-  context made from its executor (`Ctx::of`), so `Ctx::start_from` goes
-  (from 7.9e); a `testing` cargo feature on the runtime crates carrying
-  the fakes, recordings, crash points and that section, so a deployable
-  built without it holds none of them.
+- [x] **8.1e A smaller executor and the `testing` feature** `opus ·
+  high`. Built: the `Executor` down to its places, plan, start-up state
+  and running a callable (`run`, `function`, `row`); callables found by
+  key through the plan (`RuntimePlan::callables`, `Plan::callable`); each
+  test's key, `config:` and `clock:` and the recordings in the plan's dev
+  and test section (`jadpo_std::testing::TestingPlan`, written after the
+  rest of the bytes, left out by `RuntimePlan::encode_deployable`); a
+  recording checked by the runtime (`recorded::run`) through the
+  package's functions reached through the executor; every context made
+  from its executor (`Ctx::of`), so `Ctx::start_from` is gone;
+  `ai.generate`, `ai.stream` and `ai.embed` through a package finding
+  their operation by number (`PackageAi::called`). Plan format 4. A
+  `testing` cargo feature on `jadpo-std`, `jadpo-runtime` and
+  `jadpo-host-native` carrying the fakes, recordings, crash points, the
+  outcome-and-effect record and that section; the gate builds a
+  deployable example without it and reads its symbols
+  (`tools/deployable.py`). A release build of that example is 30,513,808
+  bytes without the feature and 30,629,520 with it. §2.6's "The `testing`
+  feature".
 - [ ] **8.1f Compiled code: the first route** `opus · xhigh`, after 8.1c,
   8.1d2 and 8.1e: `jadpo-codegen` writing a checked project as one Rust crate
   from its graph and plan (`quote!` into `syn`, printed with

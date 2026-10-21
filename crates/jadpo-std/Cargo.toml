@@ -26,5 +26,10 @@ spdx.workspace = true
 ammonia.workspace = true
 html5ever.workspace = true
 
+[features]
+# The runtime plan's dev and test section (chunk 8.1e), which `jadpo test`
+# and `jadpo dev` read: a deployable built without it holds none.
+testing = []
+
 [lints]
 workspace = true

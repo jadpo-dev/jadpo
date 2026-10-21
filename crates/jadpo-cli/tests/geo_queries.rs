@@ -361,7 +361,7 @@ impl Live {
                 seed: Some(1),
                 clock: Clock::TEST,
             };
-            let mut ctx = Ctx::new(self.program.places(), &self.host, env);
+            let mut ctx = Ctx::of(&self.program, &self.host, env);
             self.program.run(&mut ctx, id, args).await
         });
         let Outcome::Value(Value::List(found)) = found else {

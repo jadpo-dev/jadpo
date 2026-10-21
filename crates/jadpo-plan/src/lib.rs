@@ -99,13 +99,6 @@ pub struct CallablePlan {
     /// (area 9, chunk 4.10). Read from its signature, never from the value
     /// passed.
     pub caller: Option<u32>,
-    /// For a test: the settings its `config:` changes, each by its number
-    /// in the plan's settings with its value in a variable's spelling
-    /// (area 13, "Configuration in tests").
-    pub settings: Vec<(u32, String)>,
-    /// For a test: where its `clock:` starts its clock, in milliseconds
-    /// since 1970-01-01T00:00:00Z (area 13, "Test settings").
-    pub clock: Option<i64>,
     /// For an action that emits, itself or through what it calls: the
     /// store its outbox is in when it begins no transaction of its own,
     /// the one it writes or the one `events: { store: }` names (area 12,
@@ -687,6 +680,11 @@ impl Plan {
         let connections = connections::table(db, project, &setting_number);
         let numbering = providers::Numbering::new(db, project, &connections);
         let mut callables = Vec::with_capacity(found.len());
+        // The dev and test section (chunk 8.1e): each test's key, and
+        // what each test gives itself.
+        let mut testing = jadpo_std::testing::TestingPlan::default();
+        // Each callable's number by its key, but a test's.
+        let mut keyed: BTreeMap<String, u32> = BTreeMap::new();
         // What the runtime keeps for an action with several changing calls
         // (area 12; chunk 7.5b).
         let record_plans = jadpo_check::types::record_plans(db, project);
@@ -748,7 +746,7 @@ impl Plan {
                         .is_some_and(|local| holds_caller(&local.ty))
                 })
                 .and_then(|at| u32::try_from(at).ok());
-            let settings = overrides
+            let settings: Vec<(u32, String)> = overrides
                 .get(&key)
                 .into_iter()
                 .flatten()
@@ -761,12 +759,22 @@ impl Plan {
                 })
                 .collect();
             let clock = clocks.get(&key).copied();
+            let number = u32::try_from(callables.len()).unwrap_or(u32::MAX);
+            if kind == Kind::Test {
+                testing.tests.insert(key.as_str().to_string(), number);
+                if !settings.is_empty() || clock.is_some() {
+                    testing
+                        .setups
+                        .insert(number, jadpo_std::testing::TestSetup { settings, clock });
+                }
+            } else {
+                keyed.insert(key.as_str().to_string(), number);
+            }
             let outbox = (kind == Kind::Action)
                 .then(|| jadpo_check::events::outbox_store(db, project, key.name()))
                 .flatten();
             let record = record_plans.get(&key).cloned();
             callables.push(CallablePlan {
-                clock,
                 outbox,
                 record,
                 key,
@@ -779,7 +787,6 @@ impl Plan {
                 isolation,
                 gate,
                 caller,
-                settings,
             });
         }
         // Each batch's run: the query it walks, the store it is kept in and
@@ -923,7 +930,7 @@ impl Plan {
             }
         }
         // Each provider operation's input and output (area 11, chunk 7.2c).
-        let providers = providers::plan(
+        let (providers, recordings) = providers::plan(
             db,
             project,
             &mut types,
@@ -1072,7 +1079,9 @@ impl Plan {
                 let mapping = jadpo_check::ai_mapping::mappings(db, project)
                     .of
                     .get(&connection.folder)?;
-                let package = ai_package(mapping, connection, &number)?;
+                let called =
+                    |operation: &str| numbering.number(name, operation).unwrap_or(u32::MAX);
+                let package = ai_package(mapping, connection, &number, &called)?;
                 Some(jadpo_std::ai::AiPlan {
                     connection: name.clone(),
                     driver: jadpo_std::ai::AiDriver::Package(Box::new(package)),
@@ -1123,6 +1132,9 @@ impl Plan {
                 })
                 .collect()
         };
+        testing.operation_recordings = recordings.operations;
+        testing.recorded = recordings.recorded;
+        testing.prompt_recordings = prompt_recordings;
         let (validators, shapes, failures) = types.take_tables();
         let runtime = RuntimePlan {
             validators,
@@ -1139,7 +1151,8 @@ impl Plan {
             providers,
             ai,
             prompts,
-            prompt_recordings,
+            callables: keyed,
+            testing,
         };
         Plan {
             callables,
@@ -1220,9 +1233,16 @@ impl Plan {
         self.runtime.ai.as_ref()
     }
 
-    /// Every recording of a prompt's answer (chunk 5.5v4).
+    /// Every recording of a prompt's answer (chunk 5.5v4), in the dev
+    /// and test section (chunk 8.1e).
     pub fn prompt_recordings(&self) -> &[jadpo_std::embed::PromptRecording] {
-        &self.runtime.prompt_recordings
+        &self.runtime.testing.prompt_recordings
+    }
+
+    /// The dev and test section (chunk 8.1e): each test's key and what it
+    /// gives itself, and the recordings.
+    pub fn testing(&self) -> &jadpo_std::testing::TestingPlan {
+        &self.runtime.testing
     }
 
     /// Every `batches.each` call's run (area 12, chunk 6.4).
@@ -1463,6 +1483,7 @@ fn ai_package(
     mapping: &jadpo_check::ai_mapping::AiMapping,
     connection: &jadpo_check::connections::PackageConnection,
     number: &dyn Fn(&str) -> Option<u32>,
+    called: &dyn Fn(&str) -> u32,
 ) -> Option<jadpo_std::ai::PackageAi> {
     use jadpo_check::ai_mapping::MappedInput;
     use jadpo_check::connections::Given;
@@ -1512,6 +1533,7 @@ fn ai_package(
     let stream = match &mapping.stream {
         Some(stream) => Some(jadpo_std::ai::PackageStream {
             operation: stream.operation.clone(),
+            called: called(&stream.operation),
             input: inputs(&stream.input)?,
             instructions_apart: stream.instructions_apart,
             pieces: stream.pieces.clone(),
@@ -1524,6 +1546,7 @@ fn ai_package(
     let embed = match &mapping.embed {
         Some(embed) => Some(jadpo_std::ai::PackageEmbed {
             operation: embed.operation.clone(),
+            called: called(&embed.operation),
             input: inputs(&embed.input)?,
             vectors: embed.vectors.clone(),
             vector: embed.vector.clone(),
@@ -1539,6 +1562,7 @@ fn ai_package(
     };
     Some(jadpo_std::ai::PackageAi {
         operation: mapping.operation.clone(),
+        called: called(&mapping.operation),
         input: inputs(&mapping.input)?,
         instructions_apart: mapping.instructions_apart,
         answer: mapping.answer.clone(),

@@ -275,7 +275,7 @@ fn a_stored_value_that_breaks_its_rules_is_never_read_as_one() {
                 seed: Some(1),
                 clock: Clock::TEST,
             };
-            let mut ctx = Ctx::new(program.places(), &host, env);
+            let mut ctx = Ctx::of(&program, &host, env);
             program
                 .run(
                     &mut ctx,

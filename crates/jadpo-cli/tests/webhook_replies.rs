@@ -503,7 +503,7 @@ async fn send(
     request: &Request,
 ) -> (Response, Vec<Deferred>) {
     let app = program.app();
-    let mut ctx = harness.ctx(program.places());
+    let mut ctx = harness.ctx(program);
     let response = handle(&app, program, &mut ctx, request, "req_test").await;
     (response, ctx.take_deferred())
 }

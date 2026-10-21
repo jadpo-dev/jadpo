@@ -124,6 +124,22 @@ pub fn from_bytes<'de, T: de::Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, E
     Ok(value)
 }
 
+/// The value `bytes` start with, and the bytes after it: where another
+/// value follows, as a runtime plan's dev and test section follows the
+/// rest of it.
+pub fn from_prefix<'de, T: de::Deserialize<'de>>(
+    bytes: &'de [u8],
+) -> Result<(T, &'de [u8]), Error> {
+    let mut reader = Reader {
+        input: bytes,
+        at: 0,
+        depth: 0,
+    };
+    let value = T::deserialize(&mut reader)?;
+    let rest = bytes.get(reader.at..).unwrap_or_default();
+    Ok((value, rest))
+}
+
 // --- writing ----------------------------------------------------------------
 
 /// Writes values' canonical bytes.

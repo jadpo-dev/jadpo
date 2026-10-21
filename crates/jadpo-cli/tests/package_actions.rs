@@ -141,7 +141,7 @@ fn env() -> Env {
 
 fn run(runtime: &Runtime, program: &Program, name: &str) -> Outcome {
     let host = host();
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(program, &host, env());
     ctx.set_call_key("delivery", "d-1");
     let id = program.plan().find(name).expect("the action");
     runtime.block_on(program.run(&mut ctx, id, vec![Value::text("gold")]))

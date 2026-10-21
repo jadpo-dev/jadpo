@@ -27,7 +27,7 @@ fn key(name: &str) -> String {
 /// How `name` ended and how many boundaries it opened.
 fn run(program: &Program, name: &str, args: Vec<Value>) -> (Outcome, u32) {
     let host = MemoryHost::new();
-    let mut ctx = Ctx::new(program.places(), &host, Env::default());
+    let mut ctx = Ctx::of(program, &host, Env::default());
     let id = program.plan().find(&key(name)).expect("a callable");
     let outcome = block_on(program.run(&mut ctx, id, args)).expect("nothing waits");
     (outcome, ctx.actions())

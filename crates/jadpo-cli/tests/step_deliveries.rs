@@ -259,8 +259,8 @@ impl Executor for Stand<'_> {
         self.program.places()
     }
 
-    fn callable(&self, key: &str) -> Option<u32> {
-        Executor::callable(self.program, key)
+    fn started(&self) -> Option<std::rc::Rc<jadpo_runtime::Started>> {
+        Executor::started(self.program)
     }
 
     fn plan(&self) -> Plan<'_> {
@@ -269,6 +269,7 @@ impl Executor for Stand<'_> {
             json: program.json,
             events: Some(&self.events),
             event_numbers: program.event_numbers,
+            callables: program.callables,
             schedules: program.schedules,
             ..Plan::NONE
         }
@@ -317,7 +318,7 @@ fn a_fake_failing_a_subscriber_is_retried_as_the_clock_moves_then_fails_the_test
             seed: Some(1),
             clock: Clock::fixed(T0),
         };
-        let mut ctx = Ctx::new(stand.places(), &host, env);
+        let mut ctx = Ctx::of(&stand, &host, env);
         ctx.deliver_between_steps(1);
 
         // Refused as worth trying again: it waits its backoff, and the

@@ -59,8 +59,8 @@ fn keys() -> Value {
 fn verified(program: &Program, token: &str, now: i64) -> Outcome {
     let id = program.plan().find("verified").expect("verified");
     let host = MemoryHost::new();
-    let mut ctx = Ctx::new(
-        program.places(),
+    let mut ctx = Ctx::of(
+        program,
         &host,
         Env {
             seed: Some(7),

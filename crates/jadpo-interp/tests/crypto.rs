@@ -143,8 +143,8 @@ fn nonces_never_repeat_across_many_seals_with_one_key() {
     let id = program.plan().find("seal").expect("seal");
     let host = MemoryHost::new();
     // One invocation's draws, as a test's run of many seals.
-    let mut ctx = Ctx::new(
-        program.places(),
+    let mut ctx = Ctx::of(
+        &program,
         &host,
         Env {
             seed: Some(7),
@@ -180,7 +180,7 @@ fn a_nonce_is_never_recorded_or_replayed() {
         seed: Some(7),
         clock: Clock::TEST,
     };
-    let mut recording = Ctx::new(program.places(), &host, env);
+    let mut recording = Ctx::of(&program, &host, env);
     recording.record_run();
     let args = || vec![text("same note"), text("same record")];
     let outcome = jadpo_runtime::block_on(program.run(&mut recording, id, args())).expect("ran");
@@ -191,7 +191,7 @@ fn a_nonce_is_never_recorded_or_replayed() {
         "no nonce kept"
     );
     let tape = vec![0x5a; 24];
-    let mut replaying = Ctx::new(program.places(), &host, env);
+    let mut replaying = Ctx::of(&program, &host, env);
     replaying.replay_run(jadpo_runtime::capability::Recording {
         random: tape.clone(),
         calls: Vec::new(),

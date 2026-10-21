@@ -243,7 +243,7 @@ async fn purge_runs(host: &Harness) -> Vec<(String, Option<i32>)> {
 /// Runs `action` with `args` at the store's clock, as no one.
 async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     match program.run(&mut ctx, id, args).await {
         Outcome::Value(value) => value,
         other => panic!("{action}: expected a value, got {other:?}"),

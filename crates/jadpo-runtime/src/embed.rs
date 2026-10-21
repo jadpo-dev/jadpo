@@ -51,7 +51,7 @@ pub fn settings_read(ai: &Ai<'_>, site: &EmbedSite) -> Vec<u32> {
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
             if let Some(embed) = &package.embed {
-                read.extend(crate::ai::package_reads(ai, &embed.operation, &embed.input));
+                read.extend(crate::ai::package_reads(ai, embed.called, &embed.input));
             }
         }
     }
@@ -213,7 +213,7 @@ async fn embedded(
             match crate::ai::package_request(
                 ctx,
                 &providers,
-                (&ai.plan.connection, &embed.operation),
+                embed.called,
                 &json,
                 settings,
                 None,
@@ -337,6 +337,7 @@ async fn embedded(
     };
     // A fake's own: the vectors made from each text and the seed.
     let answer = match answer {
+        #[cfg(feature = "testing")]
         Answer::Generated => {
             let seed = ctx.env().seed.unwrap_or_default();
             Answer::Wire(fake_answer(&texts, seed, site.dimensions))
@@ -382,7 +383,13 @@ async fn embedded(
         Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
             return Done::Failed(Box::new(crate::unavailable()));
         }
-        Answer::Value(_) | Answer::Generated | Answer::Recorded => {
+        Answer::Value(_) => {
+            return Done::Fault(FaultKind::Defect(
+                "an answer to `ai.embed` that isn't an embeddings answer".into(),
+            ));
+        }
+        #[cfg(feature = "testing")]
+        Answer::Generated | Answer::Recorded => {
             return Done::Fault(FaultKind::Defect(
                 "an answer to `ai.embed` that isn't an embeddings answer".into(),
             ));
@@ -466,7 +473,7 @@ fn package_vectors(
     embed: &jadpo_std::ai::PackageEmbed,
     text: &str,
 ) -> Result<Rc<str>, Done> {
-    let Some((_, op)) = providers.operation(connection, &embed.operation) else {
+    let Some((_, op, _)) = providers.numbered(embed.called) else {
         return Err(Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{}`, which the plan doesn't have",
             embed.operation
@@ -581,6 +588,7 @@ pub fn embeddings_answer(vectors: &[Vec<f32>]) -> Rc<str> {
 }
 
 /// The fake's answer: the vector [`seeded`] makes for each text.
+#[cfg(feature = "testing")]
 fn fake_answer(texts: &[String], seed: u64, dimensions: u64) -> Rc<str> {
     let vectors: Vec<Vec<f32>> = texts
         .iter()
@@ -594,6 +602,7 @@ fn fake_answer(texts: &[String], seed: u64, dimensions: u64) -> Rc<str> {
 /// counter, each from -1 to 1, then made unit length, so the same text
 /// under the same seed always gives the same vector and its cosine with
 /// another is defined.
+#[cfg(feature = "testing")]
 pub fn seeded(text: &str, seed: u64, dimensions: u64) -> Vec<f32> {
     let of_text = jadpo_value::hash::sha256(text.as_bytes());
     let wanted = usize::try_from(dimensions).unwrap_or(0);

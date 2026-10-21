@@ -531,7 +531,7 @@ pub(crate) async fn call(
     args: Vec<Value>,
 ) -> (Value, Vec<Deferred>) {
     let id = program.plan().find(name).expect("the action");
-    let mut ctx = harness.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program, host);
     match program.run(&mut ctx, id, args).await {
         Outcome::Value(value) => (value, ctx.take_deferred()),
         other => panic!("{name}: {other:?}"),

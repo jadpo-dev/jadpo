@@ -22,9 +22,12 @@ jadpo-diag.workspace = true
 jadpo-drivers = { workspace = true, features = ["smtp"] }
 jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
-jadpo-host-native.workspace = true
+# `jadpo dev` serves its fakes in front of the drivers (chunk 8.1e).
+jadpo-host-native = { workspace = true, features = ["testing"] }
 jadpo-interp.workspace = true
-jadpo-runtime.workspace = true
+# The fakes, recordings, crash points and the plan's dev and test
+# section (chunk 8.1e), which `jadpo test` and `jadpo dev` run with.
+jadpo-runtime = { workspace = true, features = ["testing"] }
 jadpo-std.workspace = true
 jadpo-lsp.workspace = true
 jadpo-plan.workspace = true

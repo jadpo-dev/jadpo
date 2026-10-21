@@ -12,6 +12,7 @@
 //! settings' values and the secrets held apart from them, is
 //! [`crate::Started`], reached through the context.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
 pub use jadpo_std::RuntimePlan;
@@ -19,7 +20,6 @@ use jadpo_std::ai::AiPlan;
 use jadpo_std::batch::BatchPlan;
 use jadpo_std::config::ConfigPlan;
 use jadpo_std::connections::Connection;
-use jadpo_std::embed::PromptRecording;
 use jadpo_std::http::{EventJson, RouteTable};
 use jadpo_std::prompt::PromptPlan;
 use jadpo_std::provider::ProviderPlan;
@@ -114,7 +114,9 @@ impl Loaded {
             providers: Some(&plan.providers),
             ai: plan.ai.as_ref(),
             prompts: Some(&plan.prompts),
-            prompt_recordings: &plan.prompt_recordings,
+            callables: Some(&plan.callables),
+            #[cfg(feature = "testing")]
+            testing: Some(&plan.testing),
         }
     }
 }
@@ -156,8 +158,13 @@ pub struct Plan<'a> {
     /// The connection `ai:` names, and the prompts.
     pub ai: Option<&'a AiPlan>,
     pub prompts: Option<&'a PromptPlan>,
-    /// Each recording of a prompt's answer, which `jadpo test` reads.
-    pub prompt_recordings: &'a [PromptRecording],
+    /// Each callable's number by its identity key, but a test's (chunk
+    /// 8.1e): how the runtime finds one the plan names by its key.
+    pub callables: Option<&'a BTreeMap<String, u32>>,
+    /// The dev and test section (chunk 8.1e): each test's key and what it
+    /// gives itself, and the recordings.
+    #[cfg(feature = "testing")]
+    pub testing: Option<&'a jadpo_std::testing::TestingPlan>,
 }
 
 impl std::fmt::Debug for Plan<'_> {
@@ -186,11 +193,66 @@ impl Plan<'static> {
         providers: None,
         ai: None,
         prompts: None,
-        prompt_recordings: &[],
+        callables: None,
+        #[cfg(feature = "testing")]
+        testing: None,
     };
 }
 
 impl<'a> Plan<'a> {
+    /// The number of the callable with identity key `key` (chunk 8.1e):
+    /// a webhook reply's action, a package's own function, or, with the
+    /// `testing` feature, a test.
+    pub fn callable(self, key: &str) -> Option<u32> {
+        if let Some(number) = self.callables.and_then(|callables| callables.get(key)) {
+            return Some(*number);
+        }
+        #[cfg(feature = "testing")]
+        if let Some(number) = self.testing.and_then(|testing| testing.tests.get(key)) {
+            return Some(*number);
+        }
+        None
+    }
+
+    /// The dev and test section (chunk 8.1e), empty for an executor with
+    /// none.
+    #[cfg(feature = "testing")]
+    pub fn testing(self) -> &'a jadpo_std::testing::TestingPlan {
+        static NONE: OnceLock<jadpo_std::testing::TestingPlan> = OnceLock::new();
+        self.testing
+            .unwrap_or_else(|| NONE.get_or_init(Default::default))
+    }
+
+    /// The settings test `callable` gives its own values, by their
+    /// numbers (area 13, "Configuration in tests"; chunk 8.1e): its
+    /// `config:`, each read as its setting's type reads one.
+    #[cfg(feature = "testing")]
+    pub fn test_settings(self, callable: u32) -> Vec<(u32, jadpo_value::Value)> {
+        let Some(config) = self.config else {
+            return Vec::new();
+        };
+        let Some(setup) = self.testing().setups.get(&callable) else {
+            return Vec::new();
+        };
+        setup
+            .settings
+            .iter()
+            .filter_map(|(at, text)| {
+                let field = config.fields.get(*at as usize)?;
+                let value =
+                    crate::config::decode(config, self.json.codecs.validators, field, text).ok()?;
+                Some((*at, value))
+            })
+            .collect()
+    }
+
+    /// Where test `callable`'s clock starts, in milliseconds since
+    /// 1970-01-01T00:00:00Z: its `clock:` (area 13; chunk 8.1e).
+    #[cfg(feature = "testing")]
+    pub fn test_clock(self, callable: u32) -> Option<i64> {
+        self.testing().setups.get(&callable)?.clock
+    }
+
     /// What the HTTP component answers the program's routes with (area 7):
     /// the route table and its codecs, with this thread's validators and
     /// shapes; a program with no routes answers every path `404`.
@@ -252,6 +314,8 @@ impl<'a> Plan<'a> {
             failures: self.failures,
             credentials: started.credentials(),
             application: &plan.application,
+            #[cfg(feature = "testing")]
+            recordings: &self.testing().operation_recordings,
         })
     }
 
