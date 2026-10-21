@@ -283,6 +283,43 @@ fn the_report_lists_a_database_and_says_when_nothing_is_reached() {
     );
 }
 
+/// A database reached without TLS, and one checked against a private
+/// authority, say so in the report, where a review sees them (area 5,
+/// "PostgreSQL over TLS"; chunk 8.1n).
+#[test]
+fn the_report_lists_how_a_database_is_secured() {
+    let (_dir, root) = app("connections-database-tls");
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n            authority: config.database_authority\n        }\n        legacy: {\n            driver: Driver.postgres\n            url: config.legacy_url\n            tls: false\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    database_authority: Certificate\n    database_url: PostgresUrl\n    legacy_url: PostgresUrl\n}\n",
+    );
+    assert_eq!(rules(&root), Vec::<String>::new());
+    let report = std::fs::read_to_string(root.join("build/report/network.md")).expect("report");
+    assert!(
+        report.ends_with(
+            "| `legacy` | the address in `config.legacy_url` | always | database, without TLS | none |\n\
+             | `main` | the address in `config.database_url` | always | database, its certificate checked against `config.database_authority` | none |\n"
+        ),
+        "{report}"
+    );
+    let json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("build/report/network.json")).expect("twin"),
+    )
+    .expect("JSON");
+    assert_eq!(json["hosts"][0]["for"], "database");
+    assert_eq!(json["hosts"][0]["tls"], false);
+    assert_eq!(json["hosts"][1]["authority"], "database_authority");
+    // Saying `tls: true` says nothing, and is refused.
+    change(&root, "tls: false", "tls: true");
+    assert_eq!(rules(&root), ["connection.value_invalid"]);
+}
+
 #[test]
 fn a_connection_names_a_provider_package_the_app_holds() {
     let (_dir, root) = app("connections-unknown");

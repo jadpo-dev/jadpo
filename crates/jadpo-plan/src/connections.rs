@@ -7,7 +7,7 @@
 use jadpo_check::data::ConnectionKind;
 use jadpo_db::{Db, Project};
 use jadpo_std::ai::AiUrl;
-use jadpo_std::connections::{Connection, ConnectionDriver, SmtpServer};
+use jadpo_std::connections::{Connection, ConnectionDriver, DatabaseTls, SmtpServer};
 use jadpo_std::email::SmtpHost;
 use jadpo_std::receiving::CloudflareQueue;
 
@@ -29,6 +29,7 @@ pub(crate) fn table(
     }
     let urls = jadpo_check::config::connection_urls(db, project);
     let url = |name: &str| urls.url_of(name).and_then(|url| setting(&url.setting));
+    let databases = jadpo_check::databases::database_connections(db, project);
     let files = jadpo_check::data::files_connections(db, project);
     let smtp = &jadpo_check::emails::smtp_connections(db, project).list;
     let models = &jadpo_check::ai::model_connections(db, project).list;
@@ -38,7 +39,16 @@ pub(crate) fn table(
         .iter()
         .filter_map(|(name, kind)| {
             let driver = match kind {
-                ConnectionKind::Postgres => ConnectionDriver::Postgres { url: url(name) },
+                ConnectionKind::Postgres => ConnectionDriver::Postgres {
+                    url: url(name),
+                    tls: match databases.tls_of(name) {
+                        jadpo_check::databases::DatabaseTls::Roots => DatabaseTls::Roots,
+                        jadpo_check::databases::DatabaseTls::Authority(field) => {
+                            DatabaseTls::Authority(setting(&field)?)
+                        }
+                        jadpo_check::databases::DatabaseTls::Off => DatabaseTls::Off,
+                    },
+                },
                 ConnectionKind::Redis => ConnectionDriver::Redis { url: url(name) },
                 ConnectionKind::Files => ConnectionDriver::Disk {
                     path: files

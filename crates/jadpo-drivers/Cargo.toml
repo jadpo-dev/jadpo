@@ -13,7 +13,9 @@ license.workspace = true
 # the drivers it reaches.
 [features]
 default = []
-postgres = ["dep:tokio-postgres", "dep:bytes"]
+# PostgreSQL over the host's `Transport`, its TLS through the transport's
+# upgrade after PostgreSQL's SSL request (chunk 8.1n).
+postgres = ["dep:tokio-postgres", "dep:bytes", "tokio/io-util"]
 # The package driver (area 11, chunk 7.2c): JSON over HTTP through the
 # `Fetch` the host gives; the runtime makes and reads each request.
 package = []
@@ -39,6 +41,8 @@ tokio-postgres = { workspace = true, optional = true, features = ["js"] }
 
 [dev-dependencies]
 jadpo-value.workspace = true
+# A runtime and pipes, for a scripted server (chunk 8.1n).
+tokio = { workspace = true, features = ["rt", "io-util"] }
 
 [lints]
 workspace = true

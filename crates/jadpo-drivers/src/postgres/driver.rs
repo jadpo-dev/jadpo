@@ -15,7 +15,7 @@ use tokio_postgres::{Client, Config, NoTls};
 
 use super::classify::{Cause, classify};
 use super::wire;
-use crate::{Endpoint, Transport};
+use crate::{Endpoint, Stream, Transport, Trust, within};
 
 /// How many connections a store keeps open between transactions.
 const MAX_IDLE: usize = 8;
@@ -93,24 +93,141 @@ fn begin_sql(isolation: Isolation) -> &'static str {
     }
 }
 
+/// How a store's connections are secured (area 5, "PostgreSQL over TLS";
+/// chunk 8.1n): its connection in `app.jadpo` decides, never its address.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Security {
+    /// TLS, the server's certificate checked against the host's roots,
+    /// but to this machine (a Unix socket, `localhost`, `127.0.0.1`,
+    /// `::1`), which is reached without it.
+    #[default]
+    Roots,
+    /// TLS everywhere but a Unix socket, the server's certificate checked
+    /// against only these authorities, each in DER: `authority:
+    /// config.<name>`.
+    Authorities(Vec<Vec<u8>>),
+    /// No TLS anywhere: `tls: false`.
+    Plain,
+}
+
+impl Security {
+    /// Whom the upgrade to `endpoint` trusts, or `None` when it is reached
+    /// without TLS.
+    fn trust(&self, endpoint: &Endpoint) -> Option<Trust<'_>> {
+        let Endpoint::Tcp { host, .. } = endpoint else {
+            // PostgreSQL offers no TLS over a Unix socket, which is this
+            // machine.
+            return None;
+        };
+        match self {
+            Security::Plain => None,
+            Security::Roots if jadpo_std::database_tls::is_this_machine(host) => None,
+            Security::Roots => Some(Trust::Roots),
+            Security::Authorities(authorities) => Some(Trust::Authorities(authorities)),
+        }
+    }
+}
+
+/// How long a server has to answer the SSL request and finish the TLS
+/// handshake.
+const HANDSHAKE_MS: u64 = 10_000;
+
+/// PostgreSQL's SSL request: its length, 8, and the code 80877103.
+const SSL_REQUEST: [u8; 8] = [0, 0, 0, 8, 0x04, 0xd2, 0x16, 0x2f];
+
+/// `stream` to `host` as TLS: PostgreSQL's SSL request, then, once the
+/// server answers `S`, the host's upgrade, checking its certificate
+/// against `trust` and that it names `host`. A server that offers no TLS,
+/// or a certificate the check refuses, is a fault naming the server, never
+/// a store that is down for now, since trying again changes nothing; a
+/// connection that broke off is unavailable.
+async fn secured(
+    transport: &dyn Transport,
+    mut stream: Box<dyn Stream>,
+    host: &str,
+    trust: Trust<'_>,
+) -> Result<Box<dyn Stream>, StoreError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let asked = within(transport, HANDSHAKE_MS, async {
+        stream.write_all(&SSL_REQUEST).await?;
+        stream.flush().await?;
+        // One byte, so nothing the server sends past it is read as
+        // anything but TLS.
+        let mut answer = [0u8; 1];
+        stream.read_exact(&mut answer).await?;
+        let [byte] = answer;
+        Ok::<u8, std::io::Error>(byte)
+    })
+    .await;
+    match asked {
+        Some(Ok(b'S')) => {}
+        Some(Ok(_)) => {
+            return Err(StoreError::Fault(format!(
+                "the database server at `{host}` offers no TLS, and a database elsewhere than this machine is reached only over TLS unless its connection in `app.jadpo` says `tls: false`"
+            )));
+        }
+        Some(Err(_)) | None => return Err(StoreError::Unavailable),
+    }
+    use std::io::ErrorKind;
+    match within(
+        transport,
+        HANDSHAKE_MS,
+        transport.upgrade(stream, host, trust),
+    )
+    .await
+    {
+        Some(Ok(secure)) => Ok(secure),
+        Some(Err(error))
+            if matches!(
+                error.kind(),
+                ErrorKind::InvalidData | ErrorKind::InvalidInput | ErrorKind::Unsupported
+            ) =>
+        {
+            let whom = match trust {
+                Trust::Roots => "the public authorities Jadpo trusts",
+                Trust::Authorities(_) => "the authority its connection's `authority:` names",
+            };
+            Err(StoreError::Fault(format!(
+                "the database server at `{host}` isn't vouched for by {whom}: {error}"
+            )))
+        }
+        Some(Err(_)) | None => Err(StoreError::Unavailable),
+    }
+}
+
 /// What a store's transactions share: where it connects and the
 /// connections it keeps.
 struct Pool {
     config: Config,
     endpoints: Vec<Endpoint>,
+    security: Security,
     transport: Rc<dyn Transport>,
     idle: RefCell<Vec<(Client, Slot)>>,
     slots: Rc<Slots>,
 }
 
 impl Pool {
-    /// Opens a connection, trying each endpoint in turn.
+    /// Opens a connection, trying each endpoint in turn, over TLS where
+    /// its security says to.
     async fn connect(&self) -> Result<Client, StoreError> {
         let mut last = StoreError::Unavailable;
         for endpoint in &self.endpoints {
             let Ok(stream) = self.transport.connect(endpoint).await else {
                 last = StoreError::Unavailable;
                 continue;
+            };
+            let stream = match (self.security.trust(endpoint), endpoint) {
+                (Some(trust), Endpoint::Tcp { host, .. }) => {
+                    match secured(&*self.transport, stream, host, trust).await {
+                        Ok(secure) => secure,
+                        Err(StoreError::Unavailable) => {
+                            last = StoreError::Unavailable;
+                            continue;
+                        }
+                        Err(refused) => return Err(refused),
+                    }
+                }
+                _ => stream,
             };
             match self.config.connect_raw(stream, NoTls).await {
                 Ok((client, connection)) => {
@@ -246,10 +363,11 @@ async fn send(client: &Client, op: &Op<'_>) -> Result<Done, tokio_postgres::Erro
 /// ([`Database::query_once`]), so neither waits on a `BEGIN` or a
 /// `COMMIT` of its own (chunk 4.10).
 ///
-/// Connections are unencrypted: TLS is not built yet, so a URL that
-/// requires it (`sslmode=require`) is refused when the first transaction
-/// connects. Natively that suits a server on the same machine or network;
-/// on Workers, Hyperdrive encrypts the connection to the database.
+/// Its connections are secured as its [`Security`] says (chunk 8.1n):
+/// by default TLS, checked against the host's roots, to any server but
+/// this machine, after PostgreSQL's SSL request, through the transport's
+/// upgrade. An address that sets TLS itself (`sslmode`) is refused, since
+/// the connection decides.
 pub struct Postgres {
     pool: Rc<Pool>,
 }
@@ -270,17 +388,37 @@ impl Postgres {
     /// starting with `/` is the folder of a Unix socket. Nothing connects
     /// until the first transaction begins.
     pub fn new(url: &str, transport: Rc<dyn Transport>) -> Result<Postgres, StoreError> {
-        let config: Config = url.parse().map_err(|error| {
+        Postgres::secured(url, transport, Security::Roots)
+    }
+
+    /// A store for `url`, its connections secured as `security` says
+    /// (chunk 8.1n). An address that sets TLS itself (`sslmode`,
+    /// `sslrootcert` and the rest) is refused.
+    pub fn secured(
+        url: &str,
+        transport: Rc<dyn Transport>,
+        security: Security,
+    ) -> Result<Postgres, StoreError> {
+        if let Some(key) = jadpo_std::database_tls::tls_parameter(url) {
+            return Err(StoreError::Fault(format!(
+                "the database URL sets `{key}`, which its connection in `app.jadpo` decides: TLS always, but to this machine"
+            )));
+        }
+        let mut config: Config = url.parse().map_err(|error| {
             StoreError::Fault(format!(
                 "the database URL isn't valid: {}",
                 describe(&error)
             ))
         })?;
+        // TLS, where there is any, is set up before tokio-postgres sees
+        // the stream.
+        config.ssl_mode(tokio_postgres::config::SslMode::Disable);
         let endpoints = endpoints(&config)?;
         Ok(Postgres {
             pool: Rc::new(Pool {
                 config,
                 endpoints,
+                security,
                 transport,
                 idle: RefCell::new(Vec::new()),
                 slots: Rc::new(Slots::default()),
@@ -726,5 +864,233 @@ fn describe(error: &tokio_postgres::Error) -> String {
     match error.source() {
         Some(source) => format!("{error}: {source}"),
         None => error.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::io;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
+
+    use super::*;
+
+    /// What the scripted host saw a store do.
+    #[derive(Debug, Default)]
+    struct Seen {
+        connected: Vec<Endpoint>,
+        /// Each upgrade's name, and whether it trusted a connection's own
+        /// authority rather than the host's roots.
+        upgraded: Vec<(String, bool)>,
+    }
+
+    /// A host whose every connection is one end of a pipe the test holds
+    /// the other end of, and whose upgrade fails the check when told to.
+    struct Scripted {
+        seen: RefCell<Seen>,
+        server: RefCell<Option<DuplexStream>>,
+        refuse_certificate: bool,
+    }
+
+    impl Scripted {
+        fn new(refuse_certificate: bool) -> Rc<Scripted> {
+            Rc::new(Scripted {
+                seen: RefCell::default(),
+                server: RefCell::new(None),
+                refuse_certificate,
+            })
+        }
+    }
+
+    impl Transport for Scripted {
+        fn connect(&self, endpoint: &Endpoint) -> LocalFuture<'_, io::Result<Box<dyn Stream>>> {
+            self.seen.borrow_mut().connected.push(endpoint.clone());
+            let (client, server) = tokio::io::duplex(1024);
+            *self.server.borrow_mut() = Some(server);
+            Box::pin(async move { Ok(Box::new(client) as Box<dyn Stream>) })
+        }
+
+        fn upgrade<'a>(
+            &'a self,
+            stream: Box<dyn Stream>,
+            name: &'a str,
+            trust: Trust<'a>,
+        ) -> LocalFuture<'a, io::Result<Box<dyn Stream>>> {
+            self.seen
+                .borrow_mut()
+                .upgraded
+                .push((name.to_string(), matches!(trust, Trust::Authorities(_))));
+            let refuse = self.refuse_certificate;
+            Box::pin(async move {
+                if refuse {
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "invalid peer certificate: UnknownIssuer",
+                    ))
+                } else {
+                    Ok(stream)
+                }
+            })
+        }
+
+        fn spawn(&self, _: LocalFuture<'static, ()>) {}
+
+        fn sleep(&self, _: u64) -> LocalFuture<'_, ()> {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    /// What the store's first connection sent first, the server answering
+    /// an SSL request with `answer` and then hanging up.
+    fn first_words(
+        url: &str,
+        security: Security,
+        answer: u8,
+        refuse_certificate: bool,
+    ) -> (Result<(), StoreError>, [u8; 8], Seen) {
+        let host = Scripted::new(refuse_certificate);
+        let store = Postgres::secured(url, Rc::clone(&host) as Rc<dyn Transport>, security)
+            .expect("a store");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("a runtime");
+        let mut first = [0u8; 8];
+        let (done, ()) =
+            runtime.block_on(both(store.batch_outside_transaction("SELECT 1"), async {
+                // The connection opens when the store is first polled.
+                let mut server = loop {
+                    if let Some(server) = host.server.borrow_mut().take() {
+                        break server;
+                    }
+                    tokio::task::yield_now().await;
+                };
+                server
+                    .read_exact(&mut first)
+                    .await
+                    .expect("its first words");
+                if first == SSL_REQUEST {
+                    server.write_all(&[answer]).await.expect("an answer");
+                }
+            }));
+        drop(store);
+        let seen = std::mem::take(&mut *host.seen.borrow_mut());
+        (done, first, seen)
+    }
+
+    fn fault(result: &Result<(), StoreError>) -> &str {
+        match result {
+            Err(StoreError::Fault(why)) => why,
+            other => panic!("a fault, not {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_server_elsewhere_is_asked_for_tls_and_refused_without_it() {
+        let (done, first, seen) = first_words(
+            "postgres://app@db.example.test:6543/app",
+            Security::Roots,
+            b'N',
+            false,
+        );
+        assert_eq!(first, SSL_REQUEST);
+        assert!(seen.upgraded.is_empty());
+        assert!(
+            fault(&done).contains("`db.example.test` offers no TLS"),
+            "{done:?}"
+        );
+    }
+
+    #[test]
+    fn a_server_elsewhere_is_upgraded_against_the_hosts_roots_and_a_refused_certificate_is_a_fault()
+    {
+        let (done, first, seen) = first_words(
+            "postgres://app@db.example.test/app",
+            Security::Roots,
+            b'S',
+            true,
+        );
+        assert_eq!(first, SSL_REQUEST);
+        assert_eq!(seen.upgraded, [("db.example.test".to_string(), false)]);
+        assert!(
+            fault(&done).contains("isn't vouched for by the public authorities"),
+            "{done:?}"
+        );
+    }
+
+    #[test]
+    fn this_machine_is_reached_without_tls_unless_an_authority_is_named() {
+        for url in [
+            "postgres://app@localhost/app",
+            "postgres://app@127.0.0.1/app",
+            "postgres://app@[::1]/app",
+        ] {
+            let (_, first, seen) = first_words(url, Security::Roots, b'S', false);
+            assert_ne!(first, SSL_REQUEST, "{url}");
+            assert!(seen.upgraded.is_empty(), "{url}");
+        }
+        let (_, first, seen) = first_words(
+            "postgres://app@localhost/app",
+            Security::Authorities(vec![vec![0x30]]),
+            b'S',
+            false,
+        );
+        assert_eq!(first, SSL_REQUEST);
+        assert_eq!(seen.upgraded, [("localhost".to_string(), true)]);
+    }
+
+    #[test]
+    fn a_private_authority_is_what_the_upgrade_trusts() {
+        let (done, _, seen) = first_words(
+            "postgres://app@db.internal.example/app",
+            Security::Authorities(vec![vec![0x30]]),
+            b'S',
+            true,
+        );
+        assert_eq!(seen.upgraded, [("db.internal.example".to_string(), true)]);
+        assert!(
+            fault(&done).contains("the authority its connection's `authority:` names"),
+            "{done:?}"
+        );
+    }
+
+    #[test]
+    fn tls_false_reaches_a_server_elsewhere_without_tls() {
+        let (_, first, seen) = first_words(
+            "postgres://app@db.example.test/app",
+            Security::Plain,
+            b'S',
+            false,
+        );
+        assert_ne!(first, SSL_REQUEST);
+        assert!(seen.upgraded.is_empty());
+        assert_eq!(
+            seen.connected,
+            [Endpoint::Tcp {
+                host: "db.example.test".into(),
+                port: 5432
+            }]
+        );
+    }
+
+    #[test]
+    fn an_address_that_sets_tls_itself_is_refused() {
+        for url in [
+            "postgres://app@db.example.test/app?sslmode=require",
+            "postgresql://app@localhost/app?sslmode=disable",
+            "host=db.example.test sslrootcert=/ca.pem dbname=app",
+        ] {
+            let refused = Postgres::new(url, Scripted::new(false)).map(|_| ());
+            match refused {
+                Err(StoreError::Fault(why)) => {
+                    assert!(
+                        why.contains("its connection in `app.jadpo` decides"),
+                        "{why}"
+                    );
+                    assert!(!why.contains("example"), "never the address: {why}");
+                }
+                other => panic!("{url}: {other:?}"),
+            }
+        }
     }
 }

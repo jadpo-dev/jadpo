@@ -373,14 +373,27 @@ fn value_of(
     (state, Some(text), Some(source))
 }
 
+/// The rule a database address breaks when it sets TLS itself
+/// (`sslmode`), which its connection in `app.jadpo` decides (area 5,
+/// "PostgreSQL over TLS"; chunk 8.1n).
+pub const TLS_RULE: &str = "tls";
+
 /// The value `text` is for setting `field`, or the rule it breaks (`type`,
-/// `format`, `variant`, `max`...), never the text.
+/// `format`, `variant`, `max`, [`TLS_RULE`]...), never the text.
 pub fn decode(
     plan: &ConfigPlan,
     validators: &[Validator],
     field: &ConfigField,
     text: &str,
 ) -> Result<Value, String> {
+    if let Some(jadpo_std::http::Codec::Scalar {
+        builtin: jadpo_std::Builtin::PostgresUrl,
+        ..
+    }) = plan.codecs.get(field.codec.0 as usize)
+        && jadpo_std::database_tls::tls_parameter(text).is_some()
+    {
+        return Err(TLS_RULE.to_string());
+    }
     let codecs = Codecs {
         codecs: &plan.codecs,
         validators,

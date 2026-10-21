@@ -46,4 +46,4 @@ pub mod postgres;
 pub mod smtp;
 mod transport;
 
-pub use transport::{Endpoint, Stream, Transport, within};
+pub use transport::{Endpoint, Stream, Transport, Trust, within};

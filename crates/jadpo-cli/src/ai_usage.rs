@@ -30,6 +30,7 @@ use std::path::PathBuf;
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Table};
 
+use crate::database::Address;
 use crate::run::{Call, Reply};
 use crate::schedules::{now, store_error, url_of};
 
@@ -170,7 +171,7 @@ pub fn usage(call: &Call) -> Reply {
 }
 
 /// Every count from day `first` on in the database at `url`.
-fn read(store: &str, url: &str, first: i32) -> Result<Vec<Row>, Reply> {
+fn read(store: &str, url: &Address, first: i32) -> Result<Vec<Row>, Reply> {
     let failed = |error: String| {
         Reply::failed(
             Diagnostic::new(
@@ -184,7 +185,7 @@ fn read(store: &str, url: &str, first: i32) -> Result<Vec<Row>, Reply> {
         )
     };
     let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = jadpo_host_native::postgres(url).map_err(|error| failed(store_error(&error)))?;
+    let database = url.open().map_err(|error| failed(store_error(&error)))?;
     use jadpo_runtime::Database;
     let rows = runtime
         .block_on(database.query_once(

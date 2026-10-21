@@ -85,8 +85,9 @@ pub enum ConnectionDriver {
     /// `Driver.postgres`, a store (area 5): its address, the `url:`
     /// setting numbered here; `None` for one that names none, as the
     /// `main` a project with no database connection is given, which only
-    /// development and tests give a database.
-    Postgres { url: Option<u32> },
+    /// development and tests give a database. `tls` is how it is secured
+    /// (area 5, "PostgreSQL over TLS"; chunk 8.1n).
+    Postgres { url: Option<u32>, tls: DatabaseTls },
     /// `Driver.redis`, a cache (area 16): its `url:` setting. Its driver
     /// comes with caches.
     Redis { url: Option<u32> },
@@ -146,9 +147,14 @@ impl ConnectionDriver {
     /// it builds the driver.
     pub fn settings(&self) -> Vec<u32> {
         match self {
-            ConnectionDriver::Postgres { url } | ConnectionDriver::Redis { url } => {
-                url.iter().copied().collect()
+            ConnectionDriver::Postgres { url, tls } => {
+                let authority = match tls {
+                    DatabaseTls::Authority(at) => Some(*at),
+                    DatabaseTls::Roots | DatabaseTls::Off => None,
+                };
+                [*url, authority].into_iter().flatten().collect()
             }
+            ConnectionDriver::Redis { url } => url.iter().copied().collect(),
             ConnectionDriver::Smtp(server) => {
                 let host = match server.host {
                     SmtpHost::Setting(at) => Some(at),
@@ -184,6 +190,23 @@ impl ConnectionDriver {
             }
         }
     }
+}
+
+/// How a connection with `driver: Driver.postgres` is secured (area 5,
+/// "PostgreSQL over TLS"; chunk 8.1n).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DatabaseTls {
+    /// TLS, the server's certificate checked against the host's roots
+    /// (Mozilla's, compiled in), but to this machine, which is reached
+    /// without it: what a connection gets unless it says otherwise.
+    #[default]
+    Roots,
+    /// TLS everywhere but a Unix socket, the server's certificate checked
+    /// against only the authority in the `Certificate` setting numbered
+    /// here: `authority: config.<name>`.
+    Authority(u32),
+    /// No TLS anywhere: `tls: false`, which the network report lists.
+    Off,
 }
 
 /// The server a connection with `driver: Driver.smtp` reaches (area 11's
@@ -310,10 +333,19 @@ mod tests {
     fn a_connection_is_found_by_its_name_and_its_number() {
         let table = vec![
             Connection::new("couriers", package(Address::Setting(0))),
-            Connection::new("main", ConnectionDriver::Postgres { url: Some(1) }),
+            Connection::new(
+                "main",
+                ConnectionDriver::Postgres {
+                    url: Some(1),
+                    tls: DatabaseTls::Authority(4),
+                },
+            ),
             Connection::new("uploads", ConnectionDriver::Disk { path: None }),
         ];
         assert_eq!(named(&table, "main").map(|(at, _)| at), Some(1));
+        // A database is built from its address and the authority it
+        // checks its server against (chunk 8.1n).
+        assert_eq!(table[1].driver.settings(), [1, 4]);
         assert!(super::package(&table, 0).is_some() && super::package(&table, 1).is_none());
         assert_eq!(packages(&table).map(|(at, ..)| at).collect::<Vec<_>>(), [0]);
         assert_eq!(files(&table).collect::<Vec<_>>(), [("uploads", None)]);

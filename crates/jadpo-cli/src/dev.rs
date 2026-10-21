@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex};
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::files::DiskFiles;
 use jadpo_host_native::http::{AppHandler, Handler, MakeHandler, Server, WorkerThread};
-use jadpo_host_native::{NativeHost, Runtime, postgres};
+use jadpo_host_native::{NativeHost, Runtime, postgres_secured};
 use jadpo_interp::{Prepared, Program};
 use jadpo_runtime::Executor;
 use jadpo_runtime::Host;
@@ -196,6 +196,8 @@ struct Shared {
     current: Mutex<(Arc<Prepared>, Arc<ConfigValues>)>,
     generation: AtomicU64,
     urls: BTreeMap<String, String>,
+    /// How each store's connection says it is secured (chunk 8.1n).
+    secured: BTreeMap<String, jadpo_host_native::Security>,
     log: Mutex<Sender<Event>>,
 }
 
@@ -840,7 +842,8 @@ pub fn serve_to(
             return 1;
         }
     };
-    let mut applied = match migrate_all(&urls, &first.steps, &first.prepared) {
+    let secured = crate::database::securities(first.prepared.plan().connections(), &first.config);
+    let mut applied = match migrate_all(&urls, &secured, &first.steps, &first.prepared) {
         Ok(applied) => applied,
         Err(problem) => {
             report_failure(&mut out, *problem);
@@ -874,6 +877,7 @@ pub fn serve_to(
         current: Mutex::new((Arc::clone(&first.prepared), Arc::clone(&first.config))),
         generation: AtomicU64::new(0),
         urls: urls.clone(),
+        secured: secured.clone(),
         log: Mutex::new(sender),
     });
     let make_shared = Arc::clone(&shared);
@@ -924,7 +928,8 @@ pub fn serve_to(
                 shared: Arc::clone(&make_shared),
             }));
         for (store, url) in &make_shared.urls {
-            if let Ok(database) = postgres(url) {
+            let security = make_shared.secured.get(store).cloned().unwrap_or_default();
+            if let Ok(database) = postgres_secured(url, security) {
                 native = native.with_store(store.clone(), database);
             }
         }
@@ -1087,7 +1092,11 @@ pub fn serve_to(
                     }
                 };
                 if ready.steps != current.steps {
-                    match migrate_all(&urls, &ready.steps, &ready.prepared) {
+                    let secured = crate::database::securities(
+                        ready.prepared.plan().connections(),
+                        &ready.config,
+                    );
+                    match migrate_all(&urls, &secured, &ready.steps, &ready.prepared) {
                         Ok(ran) => applied += ran,
                         Err(problem) => {
                             rule_line(&mut out, &time, &saved, "not reloaded");
@@ -1491,18 +1500,20 @@ fn stores(
 /// `prepared` a backfill that has no SQL form (chunk 5.6b2); how many ran.
 fn migrate_all(
     urls: &BTreeMap<String, String>,
+    secured: &BTreeMap<String, jadpo_host_native::Security>,
     steps: &BTreeMap<String, Vec<jadpo_std::Migration>>,
     prepared: &Arc<Prepared>,
 ) -> Result<usize, Box<Diagnostic>> {
     let program = Program::new(Arc::clone(prepared));
     crate::migrate::with_backfills(Some(&program), |backfills| {
-        migrate_stores(urls, steps, backfills)
+        migrate_stores(urls, secured, steps, backfills)
     })
 }
 
 /// Applies each store's pending migrations with `backfills`.
 fn migrate_stores(
     urls: &BTreeMap<String, String>,
+    secured: &BTreeMap<String, jadpo_host_native::Security>,
     steps: &BTreeMap<String, Vec<jadpo_std::Migration>>,
     backfills: &dyn jadpo_runtime::Backfills,
 ) -> Result<usize, Box<Diagnostic>> {
@@ -1518,7 +1529,8 @@ fn migrate_stores(
         let Some(migrations) = steps.get(store) else {
             continue;
         };
-        let database = postgres(url).map_err(|error| {
+        let security = secured.get(store).cloned().unwrap_or_default();
+        let database = postgres_secured(url, security).map_err(|error| {
             Box::new(
                 Diagnostic::new(
                     &rule::CLI_DEV_START_FAILED,

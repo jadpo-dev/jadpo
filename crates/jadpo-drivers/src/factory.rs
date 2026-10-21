@@ -256,9 +256,13 @@ fn build_one(
 ) -> Result<Built, Why> {
     let text = |at: u32| started.driver_setting(at).ok_or(Why::Unset(Some(at)));
     match &connection.driver {
-        ConnectionDriver::Postgres { url } => {
+        ConnectionDriver::Postgres { url, tls } => {
             let url = text(url.ok_or(Why::Unset(None))?)?;
-            postgres(url, supplies)
+            let authority = match tls {
+                jadpo_std::connections::DatabaseTls::Authority(at) => Some(text(*at)?),
+                _ => None,
+            };
+            postgres(url, *tls, authority, supplies)
         }
         ConnectionDriver::Redis { .. } => Err(Why::NotInThisBuild),
         ConnectionDriver::Disk { path } => {
@@ -287,20 +291,48 @@ fn build_one(
     }
 }
 
+/// A PostgreSQL store at `url`, secured as its connection says (area 5,
+/// "PostgreSQL over TLS"; chunk 8.1n): `authority` is the text of the
+/// `Certificate` setting `tls` names.
 #[cfg(feature = "postgres")]
-fn postgres(url: &str, supplies: &Supplies) -> Result<Built, Why> {
+fn postgres(
+    url: &str,
+    tls: jadpo_std::connections::DatabaseTls,
+    authority: Option<&str>,
+    supplies: &Supplies,
+) -> Result<Built, Why> {
+    use crate::postgres::Security;
+    use jadpo_std::connections::DatabaseTls;
     let transport = supplies
         .transport
         .as_ref()
         .ok_or(Why::NotSupplied("a transport"))?;
-    crate::postgres::Postgres::new(url, Rc::clone(transport))
+    let security = match (tls, authority) {
+        (DatabaseTls::Roots, _) => Security::Roots,
+        (DatabaseTls::Off, _) => Security::Plain,
+        (DatabaseTls::Authority(_), authority) => Security::Authorities(
+            jadpo_std::database_tls::certificates(authority.unwrap_or_default())
+                .map_err(|why| Why::Invalid(format!("its `authority:` {why}")))?,
+        ),
+    };
+    crate::postgres::Postgres::secured(url, Rc::clone(transport), security)
         .map(Built::Database)
-        // The parser's message names what is wrong, never the address.
-        .map_err(|_| Why::Invalid("its `url:` isn't a PostgreSQL address".into()))
+        // The driver's message names what is wrong, never the address.
+        .map_err(|error| {
+            Why::Invalid(match error {
+                jadpo_runtime::StoreError::Fault(why) => why,
+                _ => "its `url:` isn't a PostgreSQL address".into(),
+            })
+        })
 }
 
 #[cfg(not(feature = "postgres"))]
-fn postgres(_: &str, _: &Supplies) -> Result<Built, Why> {
+fn postgres(
+    _: &str,
+    _: jadpo_std::connections::DatabaseTls,
+    _: Option<&str>,
+    _: &Supplies,
+) -> Result<Built, Why> {
     Err(Why::NotInThisBuild)
 }
 
@@ -341,7 +373,7 @@ mod tests {
 
     use jadpo_runtime::LocalFuture;
     use jadpo_runtime::capability::{Answer, Call};
-    use jadpo_std::connections::SmtpServer;
+    use jadpo_std::connections::{DatabaseTls, SmtpServer};
     use jadpo_std::email::SmtpHost;
     use jadpo_std::receiving::CloudflareQueue;
     use jadpo_value::Value;
@@ -410,8 +442,20 @@ mod tests {
                     password: None,
                 }),
             ),
-            Connection::new("main", ConnectionDriver::Postgres { url: None }),
-            Connection::new("reports", ConnectionDriver::Postgres { url: Some(3) }),
+            Connection::new(
+                "main",
+                ConnectionDriver::Postgres {
+                    url: None,
+                    tls: DatabaseTls::Roots,
+                },
+            ),
+            Connection::new(
+                "reports",
+                ConnectionDriver::Postgres {
+                    url: Some(3),
+                    tls: DatabaseTls::Authority(5),
+                },
+            ),
             Connection::new(
                 "warehouse",
                 ConnectionDriver::CloudflareQueues(CloudflareQueue {

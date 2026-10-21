@@ -21,6 +21,7 @@ pub mod config;
 pub mod connections;
 pub mod constants;
 pub mod data;
+pub mod databases;
 pub mod declines;
 pub mod emails;
 pub mod events;

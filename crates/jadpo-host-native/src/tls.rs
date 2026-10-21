@@ -30,10 +30,26 @@ pub fn config() -> io::Result<Arc<ClientConfig>> {
 /// A configuration trusting only `authority`, one certificate in DER: a
 /// test's own, which its server's certificate is signed by.
 pub fn trusting(authority: &[u8]) -> io::Result<Arc<ClientConfig>> {
+    trusting_all(std::slice::from_ref(&authority.to_vec()))
+}
+
+/// A configuration trusting only `authorities`, each certificate in DER:
+/// the private authority a database connection names (area 5,
+/// "PostgreSQL over TLS"; chunk 8.1n). One that isn't a certificate an
+/// authority could sign with is [`io::ErrorKind::InvalidInput`].
+pub fn trusting_all(authorities: &[Vec<u8>]) -> io::Result<Arc<ClientConfig>> {
     let mut roots = RootCertStore::empty();
-    roots
-        .add(authority.to_vec().into())
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+    for authority in authorities {
+        roots
+            .add(authority.clone().into())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+    }
+    if roots.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "no authority to trust",
+        ));
+    }
     built(roots)
 }
 

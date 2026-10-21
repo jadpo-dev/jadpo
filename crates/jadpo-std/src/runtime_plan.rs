@@ -111,7 +111,7 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 4\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 5\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding, then, with the `testing` feature, its dev

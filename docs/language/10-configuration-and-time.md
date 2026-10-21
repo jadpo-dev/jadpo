@@ -519,6 +519,14 @@ A project that declares no database has one called `main` on PostgreSQL, and
 it opens at `config.database_url` when the project declares one (and it is a
 `PostgresUrl`).
 
+A `PostgresUrl` may not set TLS itself (`sslmode` and libpq's other `ssl…`
+settings), since its connection in `app.jadpo` decides (area 5, "PostgreSQL
+over TLS"; chunk 8.1n): such a value is `configuration.value_invalid`,
+saying so. `Certificate`, the type of the setting a database connection's
+`authority:` reads, holds a server's authority as PEM, one certificate or
+several, on many lines or one (a `\n` written out counts as a line's end);
+it is public, so not secret, and never stored by an entity.
+
 A connection to a provider package (area 11, "Connecting in `app.jadpo`")
 reads its settings the same way, never a value written in source:
 `credential:` a `secret: true` setting, `environment:` a
@@ -6289,6 +6297,7 @@ surface and the publishing bar.
 | Variables (chosen in chunk 5.1) | A variable is capitals, digits and `_` starting with a capital (`configuration.binding_invalid`, `configuration.binding_empty`); no two settings share one, and a `SigningKey`'s `_PREVIOUS` counts as taken (`configuration.duplicate_binding`) | 2026-10-16 |
 | `default:` and `test:` (chosen in chunk 5.1) | A literal of the setting's type, checked against every rule of the type and its parents (`configuration.default_literal_required`, `configuration.default_type`, `configuration.default_invalid`, the same three for `test:` and a test's `config:`); an enum's variant is written `Type.value`. A secret has neither (`configuration.secret_default`), and `secret:` is `true` or `false` (`configuration.secret_invalid`) | 2026-10-16 |
 | Built-in connection types (chosen in chunk 5.1) | `Url` accepts only `http://` and `https://`. `PostgresUrl` (`postgres://`, `postgresql://`), `RedisUrl` (`redis://`, `rediss://`) and `SigningKey` (at least 32 visible characters) are built in, text underneath, always secret and never stored by an entity | 2026-10-16 |
+| A database's authority (chosen in chunk 8.1n) | `Certificate` is built in: PEM certificates, text underneath, public, never stored by an entity, read by a database connection's `authority:` (area 5, "PostgreSQL over TLS"); a `PostgresUrl` that sets `sslmode` or another `ssl…` setting is invalid | 2026-10-21 |
 | Where a secret may go (chosen in chunk 5.1) | The value of a `url:`, `credential:`, `signing_key:` or `secret:` member of `application { }` or `authentication { }`, and nowhere else: no function, action, query, fixture or test is a place the compiler owns, so any read of a secret there is `configuration.secret_flow`, which needs no tracking through variables and calls, and covers comparing | 2026-10-16 |
 | Connection addresses (chosen in chunk 5.1) | A connection's `url: config.<name>` reads a setting of the type its driver needs (`configuration.url_type`); an address written in source is refused the same way. A project with no database declared opens `main` at `config.database_url` when it declares one (of the right type) | 2026-10-16 |
 | Values in tests (chosen in chunk 5.1) | A test reads each setting's `test:` value, then its default; a secret is a fresh random hexadecimal value for each run (a `PostgresUrl` or `RedisUrl` an address at `127.0.0.1:1`); the environment is never read. A test's `config:` changes non-secret settings for that test and the code it calls; a secret there is `configuration.secret_default`. A setting a test reaches through calls with none of the three is `configuration.test_value_missing` (a request through a route is not followed; the run's fault names it) | 2026-10-16 |

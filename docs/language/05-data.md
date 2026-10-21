@@ -80,6 +80,200 @@ A database connection's address is a setting of the type its driver needs,
 the environment over `.env.local`, or take the database's URL with `--url`.
 The other settings of a connection come with area 11.
 
+### PostgreSQL over TLS
+
+> Decided on 2026-10-21 (Richard), as area 16 decides for SMTP. Built in
+> chunk 8.1n.
+
+A database connection always uses TLS, the server's certificate checked
+against Mozilla's root certificates compiled into Jadpo and for the name
+its address gives, except to this machine: a Unix socket, `localhost`,
+`127.0.0.1` or `::1`, which are reached without it. The connection decides,
+in `app.jadpo` where a review sees it, never its address:
+
+- `authority: config.<name>`, a `Certificate` setting holding the private
+  authority its server's certificate is signed by (Amazon RDS's bundle,
+  Cloud SQL's server CA) as PEM, one certificate or several. Only that
+  authority is trusted, and the connection uses TLS to this machine too,
+  but for a Unix socket, which PostgreSQL never secures.
+- `tls: false`, for a server elsewhere that offers no TLS, on a private
+  network. The network report (area 11) lists the connection as reached
+  without TLS.
+
+```jadpo check project=database-tls file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+            authority: config.database_authority
+        }
+        legacy: {
+            driver: Driver.postgres
+            url: config.legacy_url
+            tls: false
+        }
+    }
+}
+```
+
+```jadpo check project=database-tls file=config.jadpo
+config {
+    database_authority: Certificate
+    database_url: PostgresUrl
+    legacy_url: PostgresUrl
+}
+```
+
+An address that sets TLS itself, `sslmode`, `sslrootcert` or another of
+libpq's `ssl…` settings, is refused as the app starts, by `jadpo config
+check` and by `jadpo migrate` (area 10's `configuration.value_invalid`),
+and a `Certificate` that isn't PEM the same way. A server elsewhere that
+offers no TLS, or whose certificate the check refuses, is a fault naming
+the server, never retried as a database that is down for now. `jadpo
+migrate`, `jadpo schedules`, `jadpo runs`, `jadpo deliveries` and `jadpo
+ai usage` reach a database as its connection says, with `--url` too.
+
+A database connection takes no other setting
+(`connection.key_invalid`):
+
+```jadpo check project=e-database-key file=config.jadpo hidden
+config {
+    database_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-database-key file=app.jadpo expect=connection.key_invalid
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+            sslmode: "require"
+        }
+    }
+}
+```
+
+```text output
+error: A connection with `driver: Driver.postgres` takes no `sslmode:`
+ --> app.jadpo:6:13
+  |
+6 |             sslmode: "require"
+  |             ^^^^^^^ not a database setting
+  reason: A connection to a PostgreSQL database gives `url:`, a `PostgresUrl` setting, and may give `authority:`, a `Certificate` setting its server's certificate is checked against, or `tls: false` for a server elsewhere that offers no TLS.
+  next: Remove `sslmode:` (agent)
+  rule: connection.key_invalid
+  help: docs/language/11-integrations.html#connection-key-invalid
+
+check failed: 1 error, 2 files
+```
+
+`authority:` reads a `Certificate` setting (`connection.value_invalid`):
+
+```jadpo check project=e-database-authority file=config.jadpo hidden
+config {
+    database_authority: Text
+    database_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-database-authority file=app.jadpo expect=connection.value_invalid
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+            authority: config.database_authority
+        }
+    }
+}
+```
+
+```text output
+error: `main`'s `authority:` must be a `Certificate` setting
+ --> app.jadpo:6:24
+  |
+6 |             authority: config.database_authority
+  |                        ^^^^^^^^^^^^^^^^^^^^^^^^^ `database_authority` is `Text`
+  reason: `authority:` is the authority its server's certificate is checked against, as PEM: a `Certificate` setting, `config.<name>`, read from each deployment's environment.
+  next: Declare `database_authority: Certificate` in `config.jadpo` (agent)
+  rule: connection.value_invalid
+  help: docs/language/11-integrations.html#connection-value-invalid
+
+check failed: 1 error, 2 files
+```
+
+`tls:` is only ever written `false` (`connection.value_invalid`):
+
+```jadpo check project=e-database-tls-true file=config.jadpo hidden
+config {
+    database_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-database-tls-true file=app.jadpo expect=connection.value_invalid
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+            tls: true
+        }
+    }
+}
+```
+
+```text output
+error: `main`'s `tls:` is written only as `false`
+ --> app.jadpo:6:18
+  |
+6 |             tls: true
+  |                  ^^^^ the default already
+  reason: A database connection uses TLS unless it says `tls: false`, for a server elsewhere that offers none; it is decided in `app.jadpo`, where a review sees it, never by a setting.
+  next: Remove `tls: true` (agent)
+  rule: connection.value_invalid
+  help: docs/language/11-integrations.html#connection-value-invalid
+
+check failed: 1 error, 2 files
+```
+
+An authority is never checked without TLS (`connection.key_invalid`):
+
+```jadpo check project=e-database-both file=config.jadpo hidden
+config {
+    database_authority: Certificate
+    database_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-database-both file=app.jadpo expect=connection.key_invalid
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+            authority: config.database_authority
+            tls: false
+        }
+    }
+}
+```
+
+```text output
+error: `main` names an authority and goes without TLS
+ --> app.jadpo:6:13
+  |
+6 |             authority: config.database_authority
+  |             ^^^^^^^^^ never checked
+  reason: `authority:` is what the server's certificate is checked against, and a connection with `tls: false` never asks for one.
+  next: Remove `authority:`, or `tls: false` (human)
+  rule: connection.key_invalid
+  help: docs/language/11-integrations.html#connection-key-invalid
+
+check failed: 1 error, 2 files
+```
+
 ## Entities and the `id`
 
 An entity is a stored record with a lasting identity, in its own file under
@@ -2791,6 +2985,11 @@ Built in chunk 3.1 (run, with the examples above and `crates/jadpo-check`,
   `JADPO_TEST_DATABASE_URL` names or a disposable one, with copies
   prepared in the background; `--keep-failed` keeps a failed test's.
 
+Built in chunk 8.1n: **PostgreSQL over TLS**, as its section under Stores
+says: the SSL request and the host's TLS upgrade in the driver, checked
+against servers on this machine the tests start, one with a certificate
+an authority the test makes signed.
+
 Built in chunk 3.4: **lifecycles**, as the Lifecycle section says. Each
 lifecycle and transition is a node in the manifest (`lifecycle Todo`,
 `transition Todo.delete`, with its `when:`, whether it can refuse a record
@@ -2962,7 +3161,7 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 
 | Topic | Decision | Date |
 |---|---|---|
-| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a `Certificate` setting holding its server's private authority (Amazon RDS, Cloud SQL); a server elsewhere without TLS is reached only when the connection says so in `app.jadpo`, which the review report lists; `sslmode` in the URL is refused, since the connection decides; as area 16 decides for SMTP (Richard; built in chunk 8.1n) | 2026-10-21 |
+| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a `Certificate` setting holding its server's private authority (Amazon RDS, Cloud SQL); a server elsewhere without TLS is reached only when the connection says so in `app.jadpo`, which the review report lists; `sslmode` in the URL is refused, since the connection decides; as area 16 decides for SMTP (Richard; built in chunk 8.1n: the authority is `authority: config.<name>`, a `Certificate` setting, trusted alone and used to this machine too but over a Unix socket; the opt-out is `tls: false`, listed in the network report, chosen as the narrowest form, a word written in source and never a setting; a local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check) | 2026-10-21 |
 | Layout | Carried from area 1: an entity lives in its own file under its domain's `entities/` folder; `database/` holds `identities.json` (one sorted entry per line), timestamped migration folders and `seeds/` | 2026-10-12 |
 | Keyword | Carried from area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` | 2026-10-12 |
 | Field settings | Carried from area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` | 2026-10-12 |

@@ -1697,7 +1697,10 @@ dependencies = [
  "jadpo-host-native",
  "jadpo-interp",
  "jadpo-runtime",
+ "jadpo-std",
  "jadpo-term",
+ "rcgen",
+ "rustls",
  "serde_json",
 ]
 
