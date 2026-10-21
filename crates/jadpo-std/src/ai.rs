@@ -99,7 +99,9 @@ pub const LATER_KEYS: [(&str, &str); 1] = [(
 
 /// How far a provider's structured-output mode goes (area 21, "How a
 /// provider fills it", `schema: { mode: }`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum SchemaMode {
     /// It enforces a subset of JSON Schema: the schema is sent cut to the
     /// keywords it enforces, and the rest is checked by decoding.
@@ -112,7 +114,7 @@ pub enum SchemaMode {
 }
 
 /// Where a connection's address comes from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AiUrl {
     /// The setting numbered here, a `Url`.
     Setting(u32),
@@ -121,7 +123,7 @@ pub enum AiUrl {
 }
 
 /// The application's `ai:` (area 21, "Connecting a provider").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct AiPlan {
     /// The connection every `ai` call goes through, `local_model`.
     pub connection: String,
@@ -144,7 +146,7 @@ pub struct AiPlan {
 /// application sets it, overriding its package's table: the numbers of
 /// the `Money` settings its input, cached and output prices are read
 /// from, the cached price the input's when it gives none.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct AiPriceSetting {
     /// The model's name in `ai: { models: }`, `default`.
     pub model: String,
@@ -158,7 +160,7 @@ pub const PRICES: &str = "prices";
 
 /// `ai: { limits: }` (area 21, "Budgets"; chunk 5.5v5), in tokens, with
 /// the store its counts are kept in.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct AiLimits {
     /// The database the day's counts are kept in: `limits: { store: }`,
     /// or the application's only one.
@@ -180,7 +182,7 @@ pub struct AiLimits {
 /// it", `models: { prices: }`): what a model costs per million tokens
 /// from a day on, in millionths of its currency's major unit, so `0.40`
 /// USD a million is `400_000`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct AiPrice {
     /// The model's name after its provider, `gpt-4.1-mini`.
     pub model: String,
@@ -194,7 +196,7 @@ pub struct AiPrice {
 }
 
 /// What fills `ai` (area 21, "How a provider fills it").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AiDriver {
     /// The built-in `Driver.openai_compatible { url: }`, the base its
     /// `/chat/completions` is under (chunk 5.5v3).
@@ -207,7 +209,7 @@ pub enum AiDriver {
 /// `generate:`, the operation it calls, what its input is made of, and
 /// where the answer and what it says about it are in the operation's
 /// output; its `stream:` and `embed:`, where it maps them.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackageAi {
     /// `chat.completions.create`, one of the connection's operations.
     pub operation: String,
@@ -254,7 +256,7 @@ pub const EACH: &str = "*";
 /// What says something of an answer (`refused_when:`): a place holding
 /// anything but `none`, blank text or `false`, or a member of the answer
 /// as sent equal to a JSON value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AiMarker {
     /// By field names in a decoded answer (`generate:`), or by spellings
     /// on the wire in a streamed event (`stream:`); `0` a list's first.
@@ -266,7 +268,9 @@ pub enum AiMarker {
 
 /// The shape of the envelope a structured mode is sent in (`schema: {
 /// envelope: }`; chunk 5.5v7).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum AiEnvelope {
     /// OpenAI's `{"type": "json_schema", "json_schema": {"name": <prompt>,
     /// "strict": true, "schema": ...}}`, or `{"type": "json_object"}`.
@@ -283,7 +287,7 @@ pub enum AiEnvelope {
 /// by spellings on the wire. A stream is whole at `data: [DONE]` or at an
 /// event `done_when:` marks; an `error` event, or one with an `error`
 /// member, breaks it.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackageStream {
     pub operation: String,
     pub input: Vec<(String, AiInput)>,
@@ -298,7 +302,7 @@ pub struct PackageStream {
 /// A package's `provide ai { embed: }`, as data (chunk 5.5v7): the
 /// operation, its input, and where the answer as sent holds each vector,
 /// by spellings on the wire.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PackageEmbed {
     pub operation: String,
     pub input: Vec<(String, AiInput)>,
@@ -337,7 +341,7 @@ impl PackageAi {
 
 /// A value a package's mapping gives a member of its operation's
 /// input: data, never code.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AiInput {
     /// `request.model`: the model's name after its provider.
     Model,
@@ -366,7 +370,7 @@ pub enum AiInput {
 
 /// Where a package's answer says how many tokens it used, by field
 /// names; `None` for one written as `0`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct AiUsage {
     pub input: Option<Vec<String>>,
     pub output: Option<Vec<String>>,

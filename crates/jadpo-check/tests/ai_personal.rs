@@ -173,7 +173,8 @@ fn a_marked_field_reaching_a_prompt_unlisted_fails() {
 }
 
 /// The value is followed through variables, text built from it, lists
-/// and the functions it passes through; what decided it isn't sent.
+/// and the functions it passes through, and what decided it is sent
+/// with it.
 #[test]
 fn a_marked_field_is_followed_through_the_body() {
     let check = |before: &str, notes: &str, after: &str| {
@@ -208,14 +209,14 @@ fn a_marked_field_is_followed_through_the_body() {
         ),
         [NOTES_UNLISTED]
     );
-    // What decided a value isn't sent with it.
+    // What decided a value is sent with it (Richard, 2026-10-21).
     assert_eq!(
         check(
             "    var mut said: ClinicalNote = ClinicalNote(\"short\")\n    if (text.length(patient.notes) > 100) {\n        said = ClinicalNote(\"long\")\n    }\n",
             "said",
             ""
         ),
-        NONE
+        [NOTES_UNLISTED]
     );
     // Through a function, called with the field.
     assert_eq!(
@@ -478,6 +479,259 @@ fn a_marked_field_of_a_personal_type_is_one_problem() {
         ),
         [
             "domains/clinic/actions/summarise.jadpo semantic.ai_personal_data_not_allowed: `Patient.patient_nhs_number` reaches a model, and `ai:` doesn't allow `government_id` and `health` data"
+        ]
+    );
+}
+
+/// The clinic's patient with a diagnosis, marked `health`, and a remark
+/// marked as `remark` says: nothing, or one of its marks.
+fn patient_with(remark: &str) -> String {
+    format!(
+        "use clinic/types {{ ClinicalNote, Diagnosis, WardName }}\n\n/// A patient of the clinic.\nentity Patient {{\n    id: Uuid\n    ward: WardName\n    patient_nhs_number: NhsNumber {{\n        personal: PersonalData.government_id\n        to_models: false\n    }}\n    notes: ClinicalNote {{\n        personal: PersonalData.health\n    }}\n    diagnosis: Diagnosis {{\n        personal: PersonalData.health\n    }}\n    remark: ClinicalNote?{remark}\n\n    policy: {{\n        read: [Access.public]\n        update: [Access.public]\n    }}\n}}\n"
+    )
+}
+
+const DIAGNOSIS: (&str, &str) = (
+    "domains/clinic/types/diagnosis.jadpo",
+    "/// What a patient was diagnosed with.\ntype Diagnosis = Enum {\n    hiv\n    flu\n}\n",
+);
+
+/// [`action_asking`] for the patient of [`patient_with`], with
+/// `SummariseNotes { notes: <notes> }`.
+fn diagnosed(before: &str, notes: &str, after: &str) -> Vec<String> {
+    let patient = patient_with("");
+    let summarise = action_asking(
+        before,
+        &format!("SummariseNotes {{ notes: {notes} }}"),
+        after,
+    )
+    .replace(
+        "use clinic/types { ClinicalNote, NoteSummary }",
+        "use clinic/types { ClinicalNote, Diagnosis, NoteSummary }",
+    );
+    problems(
+        &[],
+        &[
+            DIAGNOSIS,
+            (PATIENT.0, patient.as_str()),
+            (ACTION_PATH, summarise.as_str()),
+        ],
+    )
+}
+
+const DIAGNOSIS_UNLISTED: &str = "domains/clinic/actions/summarise.jadpo semantic.ai_personal_data_not_allowed: `Patient.diagnosis` reaches a model, and `ai:` doesn't allow `health` data";
+
+/// What a condition decides is sent with it (Richard, 2026-10-21): a
+/// `match` on a marked field sends what it holds, and so does a filter
+/// testing one, an `if`, and what follows a `return` it may have taken.
+#[test]
+fn what_a_condition_decides_reaches_the_model() {
+    assert_eq!(
+        diagnosed(
+            "    var said: ClinicalNote = match patient.diagnosis {\n        Diagnosis.hiv -> ClinicalNote(\"hiv\")\n        Diagnosis.flu -> ClinicalNote(\"flu\")\n    }\n",
+            "said",
+            ""
+        ),
+        [DIAGNOSIS_UNLISTED]
+    );
+    assert_eq!(
+        diagnosed(
+            "    var flagged: List<Text> = list.filter([\"fever\", \"cough\"], word -> text.contains(patient.notes, word))\n",
+            "ClinicalNote(text.join(flagged, \", \"))",
+            ""
+        ),
+        [NOTES_UNLISTED]
+    );
+    // How many a filter kept shows what it tested.
+    assert_eq!(
+        diagnosed(
+            "    var flagged: List<Text> = list.filter([\"fever\", \"cough\"], word -> text.contains(patient.notes, word))\n",
+            "ClinicalNote(text.from(list.count(flagged)))",
+            ""
+        ),
+        [NOTES_UNLISTED]
+    );
+    // A field kept from models decides nothing sent either.
+    assert_eq!(
+        diagnosed(
+            "    var mut said: ClinicalNote = ClinicalNote(\"none\")\n    if (patient.patient_nhs_number == patient.patient_nhs_number) {\n        said = ClinicalNote(\"some\")\n    }\n",
+            "said",
+            ""
+        ),
+        [
+            "domains/clinic/actions/summarise.jadpo semantic.ai_field_refused: `Patient.patient_nhs_number` reaches a model, and is `to_models: false`"
+        ]
+    );
+}
+
+/// What a loop goes through isn't sent with what is made in it: the
+/// records of a `for`'s list, and `list.map`'s and `list.count`'s, show
+/// only what decided which records they are.
+#[test]
+fn what_a_loop_goes_through_stays_unsent() {
+    let query = (
+        "domains/clinic/queries/ward_patients.jadpo",
+        "use clinic/entities { Patient }\n\n/// Every patient, by ward.\nquery ward_patients() -> List<Patient> {\n    from: Patient\n    order: [Patient.ward asc]\n    limit: 50\n}\n",
+    );
+    let check = |before: &str, notes: &str| {
+        let patient = patient_with("");
+        let summarise = action_asking(
+            before,
+            &format!("SummariseNotes {{ notes: {notes} }}"),
+            "",
+        )
+        .replace(
+            "use clinic/types { ClinicalNote, NoteSummary }",
+            "use clinic/queries { ward_patients }\nuse clinic/types { ClinicalNote, NoteSummary }",
+        );
+        problems(
+            &[],
+            &[
+                DIAGNOSIS,
+                query,
+                (PATIENT.0, patient.as_str()),
+                (ACTION_PATH, summarise.as_str()),
+            ],
+        )
+    };
+    let wards = "    var mut wards: List<Text> = []\n    for each in ward_patients() {\n        wards = list.append(wards, text.trim(each.ward))\n    }\n";
+    assert_eq!(check(wards, "ClinicalNote(text.join(wards, \", \"))"), NONE);
+    assert_eq!(
+        check("", "ClinicalNote(text.from(list.count(ward_patients())))"),
+        NONE
+    );
+    // A list a filter kept carries what it tested into the loop.
+    let kept = "    var mut wards: List<Text> = []\n    for each in list.filter(ward_patients(), one -> text.length(one.notes) > 100) {\n        wards = list.append(wards, text.trim(each.ward))\n    }\n";
+    assert_eq!(
+        check(kept, "ClinicalNote(text.join(wards, \", \"))"),
+        [NOTES_UNLISTED]
+    );
+}
+
+const PATIENT_ACTION_PATH: &str = "domains/clinic/actions/note_remark.jadpo";
+
+/// A write storing a marked field's value in a field without its marks
+/// is refused (Richard, 2026-10-21): what reads the field later, a prompt
+/// among them, would send it unchecked.
+#[test]
+fn a_write_storing_marked_content_without_its_marks_fails() {
+    let check = |remark: &str, set: &str, after: &str| {
+        let patient = patient_with(remark);
+        let note = format!(
+            "use clinic/entities {{ Patient, PatientNotFound }}\nuse clinic/types {{ ClinicalNote, Diagnosis }}\n\n/// Notes a remark on a patient.\naction note_remark(patient_id: Patient.id) fails PatientNotFound -> Unit {{\n    var patient: Patient = attempt Patient.get(patient_id)\n    var noted: Patient = Patient.update(patient) {{\n        set: {{\n            remark: {set}\n        }}\n    }}\n}}\n{after}"
+        );
+        let summarise = action("", "ClinicalNote(patient.ward)");
+        problems(
+            &["health"],
+            &[
+                DIAGNOSIS,
+                (PATIENT.0, patient.as_str()),
+                (PATIENT_ACTION_PATH, note.as_str()),
+                (ACTION_PATH, summarise.as_str()),
+            ],
+        )
+    };
+    let marked = " {\n        personal: PersonalData.health\n    }";
+    assert_eq!(check(marked, "patient.notes", ""), NONE);
+    assert_eq!(
+        check("", "patient.notes", ""),
+        [
+            "domains/clinic/actions/note_remark.jadpo semantic.ai_field_unmarked: `Patient.notes` is stored in `Patient.remark`, which isn't marked `health`"
+        ]
+    );
+    // What decided the value is stored with it.
+    assert_eq!(
+        check(
+            "",
+            "match patient.diagnosis {\n                Diagnosis.hiv -> ClinicalNote(\"hiv\")\n                Diagnosis.flu -> ClinicalNote(\"flu\")\n            }",
+            ""
+        ),
+        [
+            "domains/clinic/actions/note_remark.jadpo semantic.ai_field_unmarked: a value decided by `Patient.diagnosis` is stored in `Patient.remark`, which isn't marked `health`"
+        ]
+    );
+    // A field kept from models keeps the field it is stored in from them.
+    assert_eq!(
+        check(
+            marked,
+            "match patient.patient_nhs_number == patient.patient_nhs_number {\n                true -> ClinicalNote(\"same\")\n                false -> ClinicalNote(\"other\")\n            }",
+            ""
+        ),
+        [
+            "domains/clinic/actions/note_remark.jadpo semantic.ai_field_unmarked: a value decided by `Patient.patient_nhs_number` is stored in `Patient.remark`, which isn't marked `government_id` or `to_models: false`"
+        ]
+    );
+    // A parameter stored is checked where the action is called.
+    let keep = "use clinic/entities { Patient }\nuse clinic/types { ClinicalNote }\n\n/// Keeps a remark.\naction keep_remark(patient: Patient, said: ClinicalNote) -> Patient {\n    return Patient.update(patient) {\n        set: {\n            remark: said\n        }\n    }\n}\n";
+    let calling = |passed: &str| {
+        let copy = format!(
+            "use clinic/actions {{ keep_remark }}\nuse clinic/entities {{ Patient, PatientNotFound }}\nuse clinic/types {{ ClinicalNote }}\n\n/// Copies a patient's notes into the remark.\naction copy_notes(patient_id: Patient.id) fails PatientNotFound -> Patient {{\n    var patient: Patient = attempt Patient.get(patient_id)\n    return keep_remark(patient, {passed})\n}}\n"
+        );
+        let patient = patient_with("");
+        let summarise = action("", "ClinicalNote(patient.ward)");
+        problems(
+            &["health"],
+            &[
+                DIAGNOSIS,
+                (PATIENT.0, patient.as_str()),
+                ("domains/clinic/actions/keep_remark.jadpo", keep),
+                ("domains/clinic/actions/copy_notes.jadpo", copy.as_str()),
+                (ACTION_PATH, summarise.as_str()),
+            ],
+        )
+    };
+    assert_eq!(calling("ClinicalNote(patient.ward)"), NONE);
+    assert_eq!(
+        calling("patient.notes"),
+        [
+            "domains/clinic/actions/copy_notes.jadpo semantic.ai_field_unmarked: `copy_notes` passes `Patient.notes` to `keep_remark`, which stores it in `Patient.remark`, which isn't marked `health`"
+        ]
+    );
+}
+
+/// A subscriber passing a marked part of its event to an action that
+/// stores it in a field without its marks is refused at the subscriber.
+#[test]
+fn a_subscriber_storing_its_event_s_marked_part_without_its_marks_fails() {
+    let patient = patient_with("").replace(
+        "        read: [Access.public]\n        update: [Access.public]\n",
+        "        read: [Access.public, Access.system]\n        update: [Access.system]\n",
+    );
+    let event = "use clinic/entities { Patient }\nuse clinic/types { ClinicalNote }\n\n/// Notes were added for a patient.\ntype NotesAdded = Event {\n    patient_id: Patient.id\n    notes: ClinicalNote {\n        personal: PersonalData.health\n    }\n}\n";
+    let announce = "use clinic/entities { Patient, PatientNotFound }\nuse clinic/events { NotesAdded }\nuse clinic/types { ClinicalNote }\n\n/// Tells the clinic about a patient's notes.\naction announce(patient_id: Patient.id, written: ClinicalNote) fails PatientNotFound -> Unit {\n    var patient: Patient = attempt Patient.get(patient_id)\n    emit NotesAdded {\n        patient_id: patient.id\n        notes: written\n    }\n}\n";
+    let remember = "use clinic/entities { Patient, PatientNotFound }\nuse clinic/types { ClinicalNote }\n\n/// Keeps what was said about a patient.\naction remember(patient_id: Patient.id, said: ClinicalNote) fails PatientNotFound -> Unit {\n    var patient: Patient = attempt Patient.get(patient_id)\n    var kept: Patient = Patient.update(patient) {\n        set: {\n            remark: said\n        }\n    }\n}\n";
+    let subscriber = |passed: &str| {
+        format!(
+            "use clinic/actions {{ remember }}\nuse clinic/events {{ NotesAdded }}\n\n/// Keeps each patient's new notes as a remark.\nsubscriber remember_notes {{\n    on: NotesAdded\n    run: remember(event.patient_id, {passed})\n}}\n"
+        )
+    };
+    let app = app(&allowing(&["health"])).replace(
+        "    ai: {",
+        "    events: {\n        store: main\n    }\n    ai: {",
+    );
+    let summarise = action("", "ClinicalNote(patient.ward)");
+    let check = |passed: &str| {
+        let subscriber = subscriber(passed);
+        problems_with(
+            &app,
+            &[
+                DIAGNOSIS,
+                (PATIENT.0, patient.as_str()),
+                ("domains/clinic/events/notes_added.jadpo", event),
+                ("domains/clinic/actions/announce.jadpo", announce),
+                ("domains/clinic/actions/remember.jadpo", remember),
+                (
+                    "domains/clinic/subscribers/remember_notes.jadpo",
+                    subscriber.as_str(),
+                ),
+                (ACTION_PATH, summarise.as_str()),
+            ],
+        )
+    };
+    assert_eq!(
+        check("event.notes"),
+        [
+            "domains/clinic/subscribers/remember_notes.jadpo semantic.ai_field_unmarked: `remember_notes` passes `NotesAdded.notes` to `remember`, which stores it in `Patient.remark`, which isn't marked `health`"
         ]
     );
 }

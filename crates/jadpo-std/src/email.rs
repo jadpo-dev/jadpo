@@ -66,7 +66,7 @@ pub const MESSAGE_REJECTED: &str = "message_rejected";
 pub const SMTP_PORT: u16 = 587;
 
 /// Every email the application sends, and how.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EmailsPlan {
     /// The connection `application { email: { connection: } }` names.
     pub connection: Option<String>,
@@ -93,7 +93,7 @@ pub struct EmailsPlan {
 /// one"; chunk 7.3c): the operation a message is sent through, its input
 /// built from the message as data, where the provider's id for it is, and
 /// how its failures are an email's.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PackageEmail {
     /// `emails.send`.
     pub operation: String,
@@ -111,7 +111,7 @@ pub struct PackageEmail {
 }
 
 /// What a mail package's mapping gives one field of its operation's input.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MailInput {
     /// A part of the message: `from`, `to`, `subject`, `html` or `text`.
     Message(String),
@@ -142,7 +142,7 @@ impl EmailsPlan {
 }
 
 /// Where `email: { from: }` comes from.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Sender {
     /// `config.<name>`, by the setting's number.
     Setting(u32),
@@ -151,7 +151,7 @@ pub enum Sender {
 }
 
 /// One email type: how its delivery renders it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EmailPlan {
     /// Its type's identity key, which its outbox rows name.
     pub key: String,
@@ -209,7 +209,7 @@ pub const MAGIC_LINK_REQUEST_FIELDS: [&str; 5] =
     ["address", "sign_in_link", "code", "expires_at", "locale"];
 
 /// One of Jadpo's own emails, which it writes itself.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BuiltinEmail {
     /// The magic-link email (area 8, "Magic links"), at level 1: Jadpo's
     /// HTML and text in its own wording, which the application may
@@ -218,7 +218,7 @@ pub enum BuiltinEmail {
 }
 
 /// How Jadpo writes and sends its magic-link email.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MagicLinkEmailPlan {
     /// The store `jadpo_sign_in_requests` is in: the user entity's.
     pub store: String,
@@ -261,7 +261,7 @@ impl MagicLinkEmailPlan {
 
 /// A connection with `driver: Driver.smtp` (area 11's settings, chosen in
 /// chunk 7.3): what a host builds its SMTP driver from.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SmtpConnection {
     pub name: String,
     /// The server's name: `host:`.
@@ -274,7 +274,7 @@ pub struct SmtpConnection {
 }
 
 /// Where an SMTP server's name comes from.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SmtpHost {
     /// `config.<name>`, by the setting's number.
     Setting(u32),

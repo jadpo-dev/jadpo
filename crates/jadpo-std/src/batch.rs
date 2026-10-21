@@ -114,7 +114,9 @@ pub fn kept_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
 
 /// The format a file helper reads or writes rows in (area 19, "Data
 /// formats"), named by its namespace.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum RowFormat {
     /// `csv`: comma-separated cells under a header row (RFC 4180).
     Csv,
@@ -276,7 +278,7 @@ pub const CANCELS: &str = crate::system::BATCH_CANCELS.table;
 /// What the plan says of one call starting a run: what the runtime needs
 /// to start it, walk `from:` a page at a time, run `each:` per item, write
 /// what a writer writes, and run `finished:` once.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BatchPlan {
     /// Which call it is, kept with each run, by identity keys that
     /// survive a rename (chunk 6.8): the starting callable's, the query
@@ -317,7 +319,7 @@ pub struct BatchPlan {
 }
 
 /// What a run walks.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BatchFrom {
     /// The named query `from:` calls, which gives a `Page`, walked from
     /// the cursor each page gives.
@@ -339,7 +341,7 @@ impl BatchFrom {
 
 /// How a file helper reads a file's rows (area 19, "Data formats";
 /// chunk 6.4b).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FileRows {
     pub format: RowFormat,
     /// The JSON table's number of `as:`'s type, an `Input`, each row read
@@ -360,7 +362,7 @@ pub struct FileRows {
 /// Where a run's tenant comes from: its saved values holding a tenant's
 /// id, as an event's tenant comes from its field holding one
 /// ([`crate::subscriber::TenantFrom`]).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BatchTenant {
     /// The application has no tenant: nothing limits the system.
     Untenanted,
@@ -372,7 +374,7 @@ pub enum BatchTenant {
 }
 
 /// What `each:` is: an action called per item, or a writer's row.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BatchEach {
     /// `batches.each`'s and a read's: an action, in the item's batch's
     /// transaction.
@@ -397,7 +399,7 @@ impl BatchEach {
 /// the action it reads given the value the run saved for it. An inline
 /// function is pure and can't fail (`attempt` only starts a statement), so
 /// what stops it is a fault.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BatchRow {
     /// The callable whose body holds it: the action starting the run.
     pub callable: u32,
@@ -413,7 +415,7 @@ pub struct BatchRow {
 /// Where a writer writes (chunk 6.4b2): each page's rows put as a piece
 /// of the file once the page's transaction has closed, the pieces joined
 /// into one file once every page is written.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FileWrite {
     pub format: RowFormat,
     /// The `files` connection it writes to.
@@ -433,7 +435,7 @@ pub struct FileWrite {
 
 /// An action `each:` or `finished:` calls, by number, with its
 /// arguments.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BatchCall {
     pub callable: u32,
     pub args: Vec<BatchArg>,
@@ -446,7 +448,7 @@ pub struct BatchCall {
 }
 
 /// Where one argument of a batch's call comes from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BatchArg {
     /// The item, or for `finished:` the summary, or a field inside it:
     /// `row.sku` is `["sku"]`.

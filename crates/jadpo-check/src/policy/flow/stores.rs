@@ -559,6 +559,17 @@ impl Walk<'_> {
         prov: &Prov,
         callee: Option<&str>,
     ) {
+        // What reaches a model: the field keeps the marks of what it
+        // stores, whoever reads it (Richard, 2026-10-21).
+        if self.personal {
+            self.stored_params(dest, field, prov);
+            let span = match at {
+                At::Site(site) => self.span(site),
+                At::Span(span) => span.clone(),
+            };
+            self.stored_marked(flow, (&dest.entity, field), span, prov, callee);
+            return;
+        }
         let readers = readers(flow, &dest.entity, field);
         // A check no client passes: nobody reads what is stored.
         if readers.ways.iter().any(Vec::is_empty) {
@@ -568,6 +579,7 @@ impl Walk<'_> {
         for src in &self.failing {
             prov.add(src.clone());
         }
+        self.stored_params(dest, field, &prov);
         let mut reported = false;
         for src in prov.flat() {
             let (inner, decided) = match shallow(src.clone()) {
@@ -575,17 +587,6 @@ impl Walk<'_> {
                 other => (other, false),
             };
             match &inner {
-                Src::Param(..) => {
-                    let store = Store {
-                        dest: dest.erased(),
-                        field: field.to_string(),
-                        value: erased(&src),
-                        run: self.run.as_ref().map(|run| run.tenant.clone()),
-                    };
-                    if !self.stores.contains(&store) {
-                        self.stores.push(store);
-                    }
-                }
                 Src::Field { .. } | Src::Record { .. } if self.report && !reported => {
                     let Some((entity, from, who)) = self.unread_by(flow, dest, &readers, &inner)
                     else {
@@ -605,6 +606,30 @@ impl Walk<'_> {
                     self.problems.push(problem);
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// Each part of a parameter `prov` holds, or that decided it, stored
+    /// in `field` of `dest`: checked where the action is called, with what
+    /// is passed ([`Store`]).
+    fn stored_params(&mut self, dest: &Dest, field: &str, prov: &Prov) {
+        for src in prov.flat() {
+            let inner = match shallow(src.clone()) {
+                Src::Decided(inner) => shallow(*inner),
+                other => other,
+            };
+            if !matches!(inner, Src::Param(..)) {
+                continue;
+            }
+            let store = Store {
+                dest: dest.erased(),
+                field: field.to_string(),
+                value: erased(&src),
+                run: self.run.as_ref().map(|run| run.tenant.clone()),
+            };
+            if !self.stores.contains(&store) {
+                self.stores.push(store);
             }
         }
     }

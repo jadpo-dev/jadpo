@@ -173,7 +173,9 @@ pub struct Condition {
 }
 
 /// Which operation, for an exhaustive match in each executor.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Op {
     AiDistance,
     ColourContrast,

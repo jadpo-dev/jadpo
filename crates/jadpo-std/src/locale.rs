@@ -6,7 +6,7 @@ use crate::zones::LOCALES;
 
 /// What `locales { default: ... supported: [...] }` says, as places among
 /// `Locale`'s variants.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LocalePlan {
     /// The locale a choice from a header falls back to.
     pub default: u32,

@@ -18,7 +18,9 @@ use crate::types::FailureId;
 /// The type of a SQL parameter or column, as the runtime knows it: one per
 /// column type area 5 maps a field to ("Storage types"), plus the widths of
 /// whole numbers and arrays of the others, for `in` and includes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SqlType {
     Bool,
     Int2,
@@ -39,10 +41,10 @@ pub enum SqlType {
     /// `jsonb`.
     Json,
     /// An array of values of the inner type.
-    Array(&'static SqlType),
+    Array(#[serde(with = "inner")] &'static SqlType),
     /// A range of values of the inner type (area 19, "Ranges"):
     /// `daterange`, `tstzrange`, `int8range` or `numrange` (chunk 5.5w).
-    Range(&'static SqlType),
+    Range(#[serde(with = "inner")] &'static SqlType),
     /// A pgvector `vector` (area 21, "Storing a vector"): single-precision
     /// floats, with or without a fixed length. Its type is the extension's,
     /// whose number each database gives it, so a parameter is sent without
@@ -55,6 +57,46 @@ pub enum SqlType {
     /// `double precision`: only read, as the distance pgvector works out
     /// for a `nearest` query (area 21, chunk 5.5v1b).
     Float8,
+}
+
+/// An array's or a range's inner type, written in the canonical byte
+/// encoding as the type and read back as the static one the plan held
+/// (chunk 8.1a): always a plain column type, never an array or a range.
+mod inner {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::SqlType;
+
+    pub fn serialize<S: Serializer>(inner: &&'static SqlType, s: S) -> Result<S::Ok, S::Error> {
+        inner.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<&'static SqlType, D::Error> {
+        let inner = SqlType::deserialize(d)?;
+        Ok(match inner {
+            SqlType::Bool => &SqlType::Bool,
+            SqlType::Int2 => &SqlType::Int2,
+            SqlType::Int4 => &SqlType::Int4,
+            SqlType::Int8 => &SqlType::Int8,
+            SqlType::Numeric => &SqlType::Numeric,
+            SqlType::Text => &SqlType::Text,
+            SqlType::Bytes => &SqlType::Bytes,
+            SqlType::Uuid => &SqlType::Uuid,
+            SqlType::Timestamp => &SqlType::Timestamp,
+            SqlType::Date => &SqlType::Date,
+            SqlType::Time => &SqlType::Time,
+            SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
+            SqlType::Json => &SqlType::Json,
+            SqlType::Vector => &SqlType::Vector,
+            SqlType::Geography => &SqlType::Geography,
+            SqlType::Float8 => &SqlType::Float8,
+            SqlType::Array(_) | SqlType::Range(_) => {
+                return Err(serde::de::Error::custom(
+                    "an array or range inside an array or range",
+                ));
+            }
+        })
+    }
 }
 
 impl SqlType {
@@ -148,7 +190,9 @@ impl SqlType {
 /// for the runtime and for a literal the compiler writes into a statement
 /// (area 19, chunk 5.5w3b). Ordered, so an include's rows group by their
 /// key.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SqlValue {
     /// `NULL`, with the type a parameter needs.
     Null(SqlType),
@@ -225,7 +269,7 @@ impl SqlValue {
 
 /// How many records a read gives (area 6, "Named queries"), from a
 /// query's result type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Cardinality {
     /// `T`: exactly one, or the read's not-found failure.
     One,
@@ -250,7 +294,7 @@ impl Cardinality {
 }
 
 /// Where a parameter's value comes from when the statement runs.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Source {
     /// The read's argument at `index`, or a field inside it: `filter.status`
     /// is argument 1, path `["status"]`. An optional field left out is
@@ -300,7 +344,7 @@ pub enum Source {
 /// antimeridian is two, from its west to 180 and from -180 to its east;
 /// one that ends on the antimeridian also searches the line at the other
 /// end, -180 being 180; any other box is one, given twice.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum EnvelopePart {
     FirstWest,
     FirstEast,
@@ -335,14 +379,14 @@ impl EnvelopePart {
 }
 
 /// One parameter: `$1` is the first.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Param {
     pub source: Source,
     pub ty: SqlType,
 }
 
 /// What a column's value becomes.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Column {
     Bool,
     Int,
@@ -435,7 +479,7 @@ impl Column {
 /// field's own rules then its type's along its chain, as a write checks
 /// them. A row written around Jadpo that breaks one is a defect naming
 /// the field and the rule, never the value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FieldRules {
     /// `Tool.stars`.
     pub field: String,
@@ -443,7 +487,7 @@ pub struct FieldRules {
 }
 
 /// Where a record's field comes from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Field {
     /// The statement's column at this position.
     Column(u32),
@@ -456,14 +500,14 @@ pub enum Field {
 
 /// How a row becomes a value: the type's name and its fields in the order
 /// the type declares them.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Record {
     pub ty: String,
     pub fields: Vec<(String, Field)>,
 }
 
 /// One statement and what its rows become.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Select {
     pub sql: String,
     /// The statement without the policy compiled into `sql`, when policy
@@ -501,7 +545,7 @@ pub struct Select {
 /// the column holding each row's `id`, and the statement reading their
 /// row versions in that snapshot before it closes, which a write after the
 /// call compares with ([`crate::write::RowCheck`]).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RowVersions {
     pub table: String,
     /// The column of the read's statement holding each row's `id`.
@@ -511,7 +555,7 @@ pub struct RowVersions {
 }
 
 /// How many records an include gives each record it is included in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum IncludeShape {
     /// A required reference's record: always there.
     One,
@@ -524,7 +568,7 @@ pub enum IncludeShape {
 
 /// An include: one more statement, however many records it is included
 /// in (area 6, "Children and parents").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct IncludeRead {
     pub shape: IncludeShape,
     /// The column of the including statement whose values this include
@@ -536,7 +580,7 @@ pub struct IncludeRead {
 }
 
 /// How many records a page holds.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Size {
     /// Written in the query.
     Fixed(u64),
@@ -545,7 +589,7 @@ pub enum Size {
 }
 
 /// A page's parts.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PageRead {
     pub size: Size,
     /// The cursor it continues after, which may be absent.
@@ -558,7 +602,7 @@ pub struct PageRead {
 }
 
 /// A read: a query, or an entity's `get`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ReadPlan {
     /// The store it reads (a connection's name).
     pub store: String,
@@ -602,7 +646,7 @@ pub const GEO_MARGIN_METRES: f64 = 0.001;
 /// 5.5u5): `geo.within(spot, doorstep, distance: max_trip)` is
 /// `GeoWithin` of the column holding `spot`, the read's argument and its
 /// other.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Check {
     pub op: crate::Op,
     /// Its arguments, in the operation's parameter order.
@@ -610,7 +654,7 @@ pub struct Check {
 }
 
 /// One of a [`Check`]'s arguments.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Operand {
     /// The statement's column at this position: a field's stored value. A
     /// record whose field is `none` meets no condition on it.
@@ -629,7 +673,7 @@ pub enum Operand {
 /// the code works it out, then by `id`. The statement orders the rows it
 /// finds by the database's own measure of it, which may differ from the
 /// code's by up to [`GEO_MARGIN_METRES`], the margin a search keeps.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RecheckOrder {
     /// The operation whose result orders the records: a physical quantity,
     /// compared in its kind's base unit with the database's measure.
@@ -650,7 +694,7 @@ pub struct RecheckOrder {
 /// and asks again for four times as many while the checks leave it short,
 /// or while a row it didn't fetch could still come before the last it
 /// keeps.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Recheck {
     pub checks: Vec<Check>,
     pub order: Option<RecheckOrder>,
@@ -662,7 +706,7 @@ pub struct Recheck {
 
 /// The failure a read or a write raises when the record it names isn't
 /// there, with its fields.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct MissingPlan {
     pub failure: FailureId,
     /// Each field given: its place in the failure's fields, and its value.
@@ -670,7 +714,7 @@ pub struct MissingPlan {
 }
 
 /// Where a missing record's failure's field gets its value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MissingValue {
     /// The operation's argument (a write's input), or a field inside it.
     Arg {

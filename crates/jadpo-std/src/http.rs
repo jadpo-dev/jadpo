@@ -44,11 +44,13 @@ pub const HEALTH_READY: [&str; 2] = ["health", "ready"];
 pub const SAFE_INTEGER: i128 = 9_007_199_254_740_991;
 
 /// A codec, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct CodecId(pub u32);
 
 /// How a value of one type is read from JSON and written as JSON.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Codec {
     /// A value of a type built on `builtin`, checked against `validator`.
     /// An `Int` is a JSON number when `int_as_number` (its declared range
@@ -130,7 +132,7 @@ pub enum Codec {
 }
 
 /// How a provider package's field is sent ([`Codec::Wired`]).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum WireCoding {
     /// One of the built-in encodings its `wire:` names; `currency` is the
     /// code of the one currency a `Wire.minor_units` amount is in.
@@ -158,7 +160,7 @@ pub enum WireCoding {
 }
 
 /// One variant of an enum codec.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct VariantCodec {
     pub name: String,
     /// The string a plain variant is sent as: its name, except that a
@@ -172,7 +174,7 @@ pub struct VariantCodec {
 }
 
 /// One segment of a route's full path.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Segment {
     Fixed(String),
     /// A typed placeholder, decoded from the segment's text.
@@ -183,7 +185,7 @@ pub enum Segment {
 }
 
 /// Where a route's `input:` comes from (area 7, "One input").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct InputPlan {
     /// The `Input` object's codec.
     pub codec: CodecId,
@@ -195,7 +197,7 @@ pub struct InputPlan {
 }
 
 /// What a route runs (area 7, "What a route runs").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Run {
     /// An action, by its callable number in the plan.
     Action(u32),
@@ -223,7 +225,9 @@ pub enum Run {
 
 /// The routes `sign_in: { passkey: }` generates (area 8, "Passkeys"),
 /// each under its `path:`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum PasskeyStep {
     /// `POST <path>/sign-in/options`: a challenge to sign in with.
     SignInOptions,
@@ -355,7 +359,7 @@ pub const PASSKEY_VIEW: &str = "PasskeyView";
 
 /// What `passkey:` generates and how the runtime answers it (area 8,
 /// "Passkeys").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PasskeyPlan {
     /// `path:`'s segments.
     pub path: Vec<String>,
@@ -380,7 +384,9 @@ pub struct PasskeyPlan {
 
 /// The routes `sign_in: { magic_link: }` generates (area 8, "Magic
 /// links"), each under its `path:`, each open to anyone.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum MagicLinkStep {
     /// `POST <path>`: an address asks for a link and a code.
     Request,
@@ -489,7 +495,7 @@ pub const RETURN_TO_MAX: usize = 2048;
 
 /// What `magic_link:` generates and how the runtime answers it (area 8,
 /// "Magic links").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MagicLinkPlan {
     /// `path:`'s segments.
     pub path: Vec<String>,
@@ -615,7 +621,7 @@ pub const TEST_PASSKEY: &str = "TestPasskey";
 pub const MAGIC_LINK_REDEEMED: &str = "MagicLinkRedeemed";
 
 /// What one argument of the call is made from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ArgRoot {
     /// A placeholder, by its place among the path's placeholders.
     Param(u32),
@@ -627,7 +633,9 @@ pub enum ArgRoot {
 
 /// Whether a route needs a signed-in caller (area 8, "Routes: signed in
 /// by default").
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum Authentication {
     /// Every route's unless it says otherwise.
     #[default]
@@ -647,7 +655,9 @@ impl Authentication {
 }
 
 /// The two kinds of caller (area 8, "The principal").
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum PrincipalKind {
     /// A person.
     User,
@@ -932,7 +942,7 @@ pub const CSRF_HEADER: &str = "x-jadpo-csrf";
 /// Who can sign in and how (area 8): the cookie a browser session travels
 /// in, which bearer credentials are accepted, and how each kind of caller
 /// is looked up.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IdentityPlan {
     /// The store `jadpo_sessions` lives in: the user entity's, so a
     /// session is read with its user's record.
@@ -971,7 +981,7 @@ pub struct IdentityPlan {
 
 /// Listing, issuing and revoking credentials, limited to holders whose
 /// record the caller may read (to list) or update (to issue or revoke).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GatedStatements {
     /// `sessions.tokens(user_id)`: `$1` the user, `$2` the time now.
     pub tokens: Option<crate::policy::Gated>,
@@ -1018,7 +1028,7 @@ impl IdentityPlan {
 }
 
 /// How one kind of caller is looked up (area 8, "The principal").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PrincipalPlan {
     /// The entity it is: `User`.
     pub entity: String,
@@ -1041,7 +1051,7 @@ pub struct PrincipalPlan {
 }
 
 /// One argument: a placeholder or the input, or a field read through them.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Arg {
     pub root: ArgRoot,
     pub path: Vec<String>,
@@ -1049,7 +1059,7 @@ pub struct Arg {
 
 /// How a route waits for the work its action set off (area 7, "Waiting
 /// for follow-on work"; chunk 6.3): `settle: { answer: within: }`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SettlePlan {
     /// The named query's read it answers with, run as the request's
     /// caller under the query's policy.
@@ -1066,7 +1076,7 @@ pub struct SettlePlan {
 }
 
 /// One route.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RoutePlan {
     /// Its identity key: `route POST /todos`.
     pub key: String,
@@ -1131,7 +1141,7 @@ pub fn path_text(segments: &[Segment]) -> String {
 }
 
 /// An API (area 7, "APIs and versions").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ApiPlan {
     pub name: String,
     /// Its prefix's segments; empty for `/`.
@@ -1146,7 +1156,7 @@ pub struct ApiPlan {
 
 /// A declared failure's client fields as they reach a client (area 4):
 /// each field's name and codec, in declared order.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FailureCodec {
     /// The failure's identity key: `type QuantityUnavailable`.
     pub key: String,
@@ -1179,7 +1189,7 @@ pub const RATE_LIMIT_MEMORY: usize = 16 * 1024 * 1024;
 
 /// How many proxies of the deployment's own sit in front of the app
 /// (area 10, "Client addresses").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Hops {
     /// Written out: a whole number from 1.
     Count(u32),
@@ -1192,7 +1202,7 @@ pub enum Hops {
 /// (area 10, "Client addresses"; chosen in chunk 5.1c). The runtime
 /// chooses the address from it, so every host and executor counts a
 /// client the same way.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ClientAddressPlan {
     pub source: ClientAddressSource,
     /// Present exactly for the sources that count from the right of a
@@ -1201,7 +1211,7 @@ pub struct ClientAddressPlan {
 }
 
 /// Every route of a project, ready to run.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteTable {
     pub apis: Vec<ApiPlan>,
     pub routes: Vec<RoutePlan>,
@@ -1237,7 +1247,7 @@ impl RouteTable {
 /// JSON (area 5, chunks 5.5w2b and 5.9b), a passkey's credential (chunk
 /// 5.9), and each event type, whose payload the outbox keeps (area 12,
 /// chunk 5.9b).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct JsonTable {
     pub codecs: Vec<Codec>,
     /// Each call's type's codec, by the number its site gives it.
@@ -1250,7 +1260,7 @@ pub struct JsonTable {
 
 /// An event type's place in the [`JsonTable`]: its payload is written and
 /// read as its type's contract JSON (area 12; chunk 5.9b).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EventJson {
     /// The event type's identity key, which survives a rename: what the
     /// outbox's `event` column holds.

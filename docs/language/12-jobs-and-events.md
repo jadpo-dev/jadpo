@@ -1479,10 +1479,14 @@ one stated set of tenants, and "no tenant" means one thing for each
 | A schedule's run | Every tenant's records: no tenant's event starts it. A run by hand, and a test's `.run()`, too |
 | A subscriber's delivery | The tenant its event's one field of the tenant's `id` type names (`household_id: Household.id`), so the tenant is written in the event where a reviewer sees it. With no such field, more than one, or `none` in it: no tenant's records, only those every tenant shares |
 | A batch's run | The tenant its saved values of the tenant's `id` type name, values naming the same tenant counting as that one ("Batches, tenants and grants"). With none, `none`, or values naming different tenants: no tenant's records, only those every tenant shares |
+| The magic-link `send:` action | The tenant of its delivery, as a subscriber's: `jadpo.MagicLinkEmail` names none, so no tenant's records, only those every tenant shares (area 8) |
+| A webhook's reply action, and `on_first_sign_in:`'s | No tenant's records, only those every tenant shares: each runs as the system inside a request no tenant's event starts, and "no tenant" is never every tenant for them (area 9; Richard, 2026-10-21) |
 
 A schedule names no tenant by design, so it reaches every one; a
 subscriber and a batch name theirs by a value, and a value that names no
-tenant never widens what they reach. In an application without a
+tenant never widens what they reach. The system's runs inside a request
+(the sign-in email's `send:` action, a webhook's reply action and
+`on_first_sign_in:`'s) reach no tenant's records (chunk 7.9b). In an application without a
 `tenant:`, each reaches every record the system is granted. The value
 naming a subscriber's or a batch's tenant must come from a record of that
 tenant its action reached under its caller's policy, or it is
@@ -5196,3 +5200,4 @@ Not yet:
 | A batch's `key:` with tenants (Phase 6 review) | In an application with a tenant, `key:` is unique per call, run tenant and key, so two tenants' runs with the same key never meet (Richard, as recommended) | 2026-10-19 |
 | Queue messages the store refuses (Phase 7 review, chunk 7.9c) | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again (decided for Richard, the conservative reading) | 2026-10-21 |
 | A delivery's answer closes its breaker (Phase 7 review, chunk 7.9c) | A delivery attempt whose call through a connection its provider answered closes the connection's breaker and releases what it holds, whatever the breaker's state when the delivery was claimed, as "Retries and giving up" says of a delivery already running when the breaker opened. It is one conditional statement after each attempt that called the provider, changing nothing while the breaker is closed with no failures in a run (decided for Richard, as the page reads) | 2026-10-21 |
+| The system's runs inside a request and tenants (Phase 7 review, chunk 7.9b) | "Background work and tenants" gains two rows: the magic-link `send:` action reaches its delivery's tenant, as a subscriber does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s reach no tenant's records, never every tenant's, since only a schedule's "no tenant" is every tenant (Richard, 2026-10-21) | 2026-10-21 |

@@ -278,6 +278,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
+        out.extend(events::system_run_problems(db, project).iter().cloned());
         out.extend(receiving::mappings(db, project).problems.iter().cloned());
         out.extend(mail::mappings(db, project).problems.iter().cloned());
         out.extend(ai_mapping::mappings(db, project).problems.iter().cloned());

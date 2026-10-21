@@ -30,7 +30,7 @@ use jadpo_interp::Program;
 use jadpo_runtime::capability::{Answer, Capability, Fake, Faked, Repeat, Scripted};
 use jadpo_runtime::test_steps::{Undelivered, after_step};
 use jadpo_runtime::{
-    Clock, Ctx, Env, Executor, Frame, LocalFuture, Outcome, Places, RuntimePlan, SqlValue,
+    Clock, Ctx, Env, Executor, Frame, LocalFuture, Outcome, Places, Plan, SqlValue,
 };
 use jadpo_std::subscriber::{EventsPlan, Target};
 use jadpo_term::Environment;
@@ -263,14 +263,14 @@ impl Executor for Stand<'_> {
         Executor::callable(self.program, key)
     }
 
-    fn plan(&self) -> RuntimePlan<'_> {
+    fn plan(&self) -> Plan<'_> {
         let program = Executor::plan(self.program);
-        RuntimePlan {
+        Plan {
             json: program.json,
             events: Some(&self.events),
             event_numbers: program.event_numbers,
             schedules: program.schedules,
-            ..RuntimePlan::NONE
+            ..Plan::NONE
         }
     }
 

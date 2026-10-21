@@ -44,7 +44,7 @@ impl SectionKind {
 }
 
 /// A run of a section's text: words as they are, or a placeholder.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Piece {
     /// Text written as it is, a doubled brace already made single.
     Text(String),
@@ -300,7 +300,7 @@ fn pieces(lines: &[&Line<'_>], problems: &mut Vec<Problem>) -> Vec<Piece> {
 }
 
 /// How a field's value is written where its placeholder stands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Form {
     /// A closed value (an enum, a number, a date, a `Locale`): its text
     /// form, as it is, since it can't carry an instruction. Allowed in
@@ -321,14 +321,14 @@ impl Form {
 }
 
 /// One field a prompt's text writes.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PromptField {
     pub name: String,
     pub form: Form,
 }
 
 /// A prompt as the runtime renders it.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PromptEntry {
     /// Its name as the manifest, `jadpo ai show` and a fake name it: the
     /// type's name in lower_snake_case, `answer_question`.
@@ -358,7 +358,7 @@ impl PromptEntry {
 }
 
 /// Every prompt the project declares, by its type's name.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PromptPlan {
     pub entries: Vec<PromptEntry>,
 }

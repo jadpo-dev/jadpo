@@ -6,7 +6,19 @@
 
 /// How much of what other transactions commit an action's transaction
 /// sees while it runs.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Isolation {
     /// Each statement sees what was committed before it began: for an
     /// action that loads no record, itself or through any action it calls.

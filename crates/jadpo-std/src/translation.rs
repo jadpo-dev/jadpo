@@ -14,7 +14,9 @@
 
 /// What a parameter of a translation call is, which decides how its value
 /// is written into the wording.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum ParamKind {
     /// A value built on `Text` or `PresentationText`: written as it is.
     Text,
@@ -87,7 +89,9 @@ impl ClientFormat {
 }
 
 /// One of CLDR's plural categories.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum PluralCategory {
     Zero,
     One,
@@ -152,7 +156,7 @@ pub fn plural_mask(categories: &[PluralCategory]) -> u8 {
 }
 
 /// A piece of a wording.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Piece {
     Text(String),
     /// `{field}`.
@@ -211,7 +215,7 @@ impl Style {
 }
 
 /// A wording: its pieces in order.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Template {
     pub pieces: Vec<Piece>,
 }
@@ -460,7 +464,7 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
 }
 
 /// What a language says for one message, enum or email subject.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Wording {
     /// One wording.
     Plain(Template),
@@ -472,7 +476,7 @@ pub enum Wording {
 
 /// One parameter of a translation call: a field of the message, or the
 /// enum's value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct TranslationParam {
     pub name: String,
     pub kind: ParamKind,
@@ -480,7 +484,7 @@ pub struct TranslationParam {
 
 /// One message, enum or email subject: the typed call it becomes and its
 /// wording in each locale that has one.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TranslationEntry {
     /// `<domain>.<name>`, or `shared.<name>`, as the call is written.
     pub key: String,

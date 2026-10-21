@@ -589,7 +589,7 @@ pub fn settings_read(connection: &ConnectionPlan) -> Vec<u32> {
 /// operation it calls, and its site.
 #[derive(Clone, Copy)]
 pub struct Calling<'a> {
-    pub plan: crate::RuntimePlan<'a>,
+    pub plan: crate::Plan<'a>,
     /// The connection, `couriers`, and the operation, `bookings.create`.
     pub connection: &'a str,
     pub operation: &'a str,

@@ -812,6 +812,8 @@ rules! {
         "21-ai.html#semantic-ai-dimensions-mismatch", "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
     SEMANTIC_AI_FIELD_REFUSED: "semantic.ai_field_refused", area 21, Error, Agent,
         "21-ai.html#semantic-ai-field-refused", "A field marked `to_models: false` reaches a prompt or an embedded text";
+    SEMANTIC_AI_FIELD_UNMARKED: "semantic.ai_field_unmarked", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-field-unmarked", "A marked field's value is stored in a field without its marks";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,

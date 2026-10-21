@@ -812,10 +812,14 @@ async fn attempt(
                     ctx.fault(FaultKind::Defect(what.into()), Frame::ENTRY),
                 )),
                 Ok(Some(request)) => {
+                    // The tenant of its delivery, as a subscriber's: the
+                    // sign-in email names none (chunk 7.9b).
                     let job = Job {
                         callable: *callable,
                         args: vec![request],
-                        system: System { tenant: None },
+                        system: System {
+                            tenant: outbox::tenant(subscriber, &delivery.value),
+                        },
                     };
                     run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
                 }

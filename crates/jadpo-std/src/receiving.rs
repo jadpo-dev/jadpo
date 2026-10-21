@@ -8,7 +8,7 @@
 //! whose consumer [`wrangler_queues`] writes for the Wrangler file.
 
 /// One queue the application receives.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QueuePlan {
     /// The queue's connection, `warehouse_queue`, which names it.
     pub connection: String,
@@ -29,7 +29,7 @@ pub struct QueuePlan {
 }
 
 /// How a queue's messages arrive.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum QueueSource {
     /// Fetched on the tick through the connection's package, and each
     /// acknowledged once its event is kept (chunk 7.7c).
@@ -51,7 +51,7 @@ impl QueuePlan {
 }
 
 /// An event a queue's messages may be.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QueueEvent {
     /// Its `wire_name:`, which the type at `type_at:` is matched against;
     /// `None` for the one event of a queue of one kind that gives none.
@@ -66,7 +66,7 @@ pub struct QueueEvent {
 /// How a queue's package fetches messages (`receive:` in
 /// `provides/receiving.jadpo`): the operation it calls, its input, and
 /// where the messages, each one's body and its handle are in the answer.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReceivePlan {
     /// `messages.receive_message`.
     pub operation: String,
@@ -81,7 +81,7 @@ pub struct ReceivePlan {
 }
 
 /// How a message is acknowledged once its event is kept (`acknowledge:`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AcknowledgePlan {
     pub operation: String,
     pub input: Vec<(String, Mapped)>,
@@ -89,7 +89,7 @@ pub struct AcknowledgePlan {
 
 /// A value a mapping gives an operation's input: data, never code (area
 /// 11, "How a package provides one").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Mapped {
     /// The value of the setting numbered here, from the connection's
     /// setting of the package (`settings.queue_url`).
@@ -103,7 +103,7 @@ pub enum Mapped {
 
 /// A queue on Cloudflare Queues, as its connection names it
 /// (`driver: Driver.cloudflare_queues`, chunk 7.7c2).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CloudflareQueue {
     /// Its name in Cloudflare, `warehouse-events`, which a batch handed
     /// to the consumer names.

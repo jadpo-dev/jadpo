@@ -8,7 +8,10 @@ macro_rules! std_enum {
         $name:ident: $written:literal { $($(#[$vmeta:meta])* $variant:ident: $word:literal,)* }
     ) => {
         $(#[$meta])*
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[derive(
+            Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord,
+            serde::Serialize, serde::Deserialize,
+        )]
         pub enum $name {
             $($(#[$vmeta])* $variant,)*
         }

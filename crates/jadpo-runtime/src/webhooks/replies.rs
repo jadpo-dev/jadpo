@@ -9,9 +9,10 @@
 //!   is younger than [`CLAIM_MS`] is told the first is still being
 //!   answered (`409`), and a claim older than that, left by a process
 //!   that stopped, is taken over.
-//! - The action runs as the system, in its own transaction, as a first
-//!   sign-in's does; the event isn't kept in the outbox, so no subscriber
-//!   receives it.
+//! - The action runs as the system, reaching no tenant's records, in its
+//!   own transaction, as a first sign-in's does; the event isn't kept in
+//!   the outbox, so no subscriber receives it. What its reply may carry
+//!   the checker proves, as an output to `Access.public` (chunk 7.9b).
 //! - Its reply, encoded with the package's type, is kept over the claim
 //!   once the action has committed, and sent as JSON. A failure gives the
 //!   claim back, so the provider's retry runs the action again: the
@@ -96,7 +97,7 @@ pub(crate) async fn answer(
         Claimed::Kept(reply) => return with_reply(reply),
         Claimed::Busy => return failure(STILL_ANSWERING, request_id, None),
     }
-    ctx.become_system(System { tenant: None });
+    ctx.become_system(System::NO_TENANT);
     let outcome = executor.run(ctx, callable, vec![value]).await;
     ctx.set_caller(None);
     let answered = match outcome {

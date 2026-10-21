@@ -148,7 +148,7 @@ pub const NOT_FOUND: &str = "not_found";
 /// A files connection, as the plan gives the hosts: its name, its driver,
 /// and, for the disk driver, the folder it keeps files under in
 /// production (`jadpo dev` keeps them under `.jadpo/files/<name>`).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FilesConnection {
     pub name: String,
     pub driver: Driver,

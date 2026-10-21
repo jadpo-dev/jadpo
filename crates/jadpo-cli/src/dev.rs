@@ -38,10 +38,11 @@ use jadpo_host_native::files::DiskFiles;
 use jadpo_host_native::http::{AppHandler, Handler, MakeHandler, Server};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
+use jadpo_runtime::Executor;
 use jadpo_runtime::Host;
 use jadpo_runtime::config::{ConfigValues, Mode, Variables};
 use jadpo_runtime::schedules::Ticked;
-use jadpo_runtime::serve::{Answered, Application, Observer};
+use jadpo_runtime::serve::{Answered, Observer};
 use jadpo_term::{
     Block, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token, envelope,
 };
@@ -276,7 +277,7 @@ impl Observer for Lines {
 
     /// A line for each run, and for each alert the tick raised (chunk
     /// 6.2b; raised by the tick since chunk 6.9).
-    fn ticked(&self, program: &dyn Application, ticked: &Ticked, now: i64) {
+    fn ticked(&self, program: &dyn Executor, ticked: &Ticked, now: i64) {
         let Some(plan) = program.plan().schedules() else {
             return;
         };
@@ -974,7 +975,7 @@ pub fn serve_to(
             paused: RefCell::new(Default::default()),
         };
         Box::new(
-            AppHandler::new(host, move || current.program() as Rc<dyn Application>)
+            AppHandler::new(host, move || current.program() as Rc<dyn Executor>)
                 .observed_by(Rc::new(lines)),
         ) as Box<dyn Handler>
     });
