@@ -1505,7 +1505,7 @@ impl Walk<'_> {
                             self.collection(flow, &collection, *value, &prov);
                         }
                         if self.report && self.reply && !self.personal {
-                            self.replied(flow, *value, &prov);
+                            self.reply_output(flow, *value, &prov);
                         }
                         self.returns.union(&prov);
                     }
@@ -2783,7 +2783,7 @@ impl Walk<'_> {
     /// whoever sent the webhook, so it is an output to `Access.public`, and
     /// every field it carries, or that decided it, is one anyone at all may
     /// read. A record the action created holds what it set, or is new.
-    fn replied(&mut self, flow: &Flow<'_>, value: SiteId, prov: &Prov) {
+    fn reply_output(&mut self, flow: &Flow<'_>, value: SiteId, prov: &Prov) {
         for src in prov.flat() {
             let (src, decided) = match shallow(src) {
                 Src::Decided(inner) => (shallow(*inner), true),
