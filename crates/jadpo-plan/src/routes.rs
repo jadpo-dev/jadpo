@@ -73,14 +73,28 @@ pub struct StandardCodecs {
     pub ids: Vec<CodecId>,
 }
 
-/// The route table of a project whose routes checked cleanly.
+/// The route table of a project whose routes checked cleanly; with
+/// `pruning`, a deployable's, holding only the APIs it serves and their
+/// routes, numbered as if no other API were declared (chunk 8.1o3).
 pub(crate) fn table(
     db: &dyn Db,
     project: Project,
     types: &mut Types,
     callable: &dyn Fn(&Key) -> Option<u32>,
     queries: &[QueryPlan],
+    pruning: Option<&crate::deployable::Pruning<'_>>,
 ) -> RouteTable {
+    let serving = |api: &str| pruning.is_none_or(|pruning| pruning.keep.serves(api));
+    // A query a kept route answers with, by name, noted when it isn't kept.
+    let query_named = |name: &str| {
+        let found = queries.iter().find(|query| query.name == name);
+        if found.is_none()
+            && let Some(pruning) = pruning
+        {
+            pruning.unkept(format!("the query `{name}`"));
+        }
+        found
+    };
     let groups = routes::groups(db, project);
     let apis = routes::api_table(db, project);
     let identity = jadpo_check::identity::identity(db, project);
@@ -121,6 +135,9 @@ pub(crate) fn table(
     stores.dedup();
     out.stores = stores;
     for (group, route) in groups.routes() {
+        if !serving(&group.api) {
+            continue;
+        }
         let Some(api) = out.apis.iter().position(|api| api.name == group.api) else {
             continue;
         };
@@ -186,7 +203,7 @@ pub(crate) fn table(
                 None,
             )
         } else if route.run.query {
-            let Some(query) = queries.iter().find(|query| query.name == route.run.name) else {
+            let Some(query) = query_named(&route.run.name) else {
                 continue;
             };
             (Run::Query(Box::new(query.read.clone())), None)
@@ -226,10 +243,7 @@ pub(crate) fn table(
         // "Waiting for follow-on work"; chunk 6.3).
         let settle = match &route.settle {
             Some(settle) => {
-                let Some(query) = queries
-                    .iter()
-                    .find(|query| query.name == settle.answer.name)
-                else {
+                let Some(query) = query_named(&settle.answer.name) else {
                     continue;
                 };
                 Some(SettlePlan {
@@ -320,6 +334,7 @@ pub(crate) fn table(
     });
     if identity.exchanges()
         && let Some(api) = exchange_api
+        && serving(&out.apis[api].name)
     {
         out.routes.push(RoutePlan {
             key: format!("route POST /{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
@@ -353,6 +368,7 @@ pub(crate) fn table(
     });
     if let Some(passkey) = identity.passkeys()
         && let Some(api) = passkey_api
+        && serving(&out.apis[api].name)
     {
         let id = codecs.codec(&TypeRef::Builtin(jadpo_std::Builtin::Uuid));
         for step in jadpo_std::http::PasskeyStep::ALL {
@@ -395,6 +411,7 @@ pub(crate) fn table(
     // in the same API; the redemption only with API tokens.
     if let Some(magic) = identity.magic_link_routes()
         && let Some(api) = passkey_api
+        && serving(&out.apis[api].name)
     {
         let api_tokens = identity.built(jadpo_std::AuthenticationMethod::ApiToken);
         for step in jadpo_std::http::MagicLinkStep::ALL {
@@ -430,6 +447,9 @@ pub(crate) fn table(
         let title = jadpo_check::routes::openapi::title(db, project);
         let documents = jadpo_check::routes::openapi::documents(db, project, &title);
         for served in served {
+            if !serving(&served.api) {
+                continue;
+            }
             let Some(api) = out.apis.iter().position(|api| api.name == served.api) else {
                 continue;
             };
@@ -463,6 +483,29 @@ pub(crate) fn table(
         }
     }
     out.codecs = codecs.codecs;
+    // A deployable's routes in the APIs it serves, numbered among those.
+    if pruning.is_some() {
+        let places: Vec<Option<u32>> = {
+            let mut next = 0u32;
+            out.apis
+                .iter()
+                .map(|api| {
+                    serving(&api.name).then(|| {
+                        next += 1;
+                        next - 1
+                    })
+                })
+                .collect()
+        };
+        for route in &mut out.routes {
+            route.api = places
+                .get(route.api as usize)
+                .copied()
+                .flatten()
+                .unwrap_or(u32::MAX);
+        }
+        out.apis.retain(|api| serving(&api.name));
+    }
     out
 }
 

@@ -5,8 +5,6 @@
 //! one leaves a delivery that sends it once its action commits. Jadpo's own
 //! magic-link email is one of them, written by the runtime (chunk 7.3b).
 
-use std::collections::HashMap;
-
 use jadpo_check::lookups::Name;
 use jadpo_db::{Db, Project};
 use jadpo_graph::Key;
@@ -32,20 +30,24 @@ pub(crate) fn template_keys(db: &dyn Db, project: Project) -> Vec<(String, Key)>
 /// Every email, and the subscriber each has, which hands it to the
 /// connection `email:` names: none when nothing sends email, which the
 /// checker refuses for an email that is emitted. A mail package's
-/// operation is named by its number in `numbering`.
+/// operation is named by its number in `numbering`. A deployable that
+/// doesn't run the subscribers (`running` false) sends none, so it holds
+/// no template, sender or mail package, and lists each email's subscriber
+/// without what it runs (chunk 8.1o3).
 pub(crate) fn plan(
     db: &dyn Db,
     project: Project,
-    by_key: &HashMap<Key, u32>,
+    callable: &dyn Fn(&Key) -> Option<u32>,
     numbering: &crate::providers::Numbering,
     setting: &dyn Fn(&str) -> Option<u32>,
+    running: bool,
 ) -> (EmailsPlan, Vec<SubscriberPlan>) {
     let settings = jadpo_check::emails::settings(db, project);
     let analysis = jadpo_check::emails::analysis(db, project);
     let callable_of = |path: &Option<String>| {
-        let path = path.as_ref()?;
+        let path = path.as_ref().filter(|_| running)?;
         let checked = jadpo_check::types::template_body(db, project, Name::new(db, path.clone()));
-        by_key.get(checked.key.as_ref()?).copied()
+        callable(checked.key.as_ref()?)
     };
     let translations = jadpo_check::translations::plan(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
@@ -96,7 +98,9 @@ pub(crate) fn plan(
                 .as_ref()
                 .and_then(|name| jadpo_check::graph::declaration_key(&lookup, name))
                 .map(|key| key.as_str().to_string());
-            magic.send = sign_in_send(db, project).and_then(|key| by_key.get(&key).copied());
+            magic.send = sign_in_send(db, project)
+                .filter(|_| running)
+                .and_then(|key| callable(&key));
         }
         emails.push(builtin);
     }
@@ -105,31 +109,41 @@ pub(crate) fn plan(
     let emails: Vec<EmailPlan> = emails.into_iter().map(|(email, _)| email).collect();
     // A mail package's mapping (chunk 7.3c), each setting it reads by the
     // number of the app's setting its connection gives.
-    let package = settings.connection.as_deref().and_then(|connection| {
-        let mapping = jadpo_check::mail::mapping_of(db, project, connection)?;
-        let given = &jadpo_check::connections::package_connections(db, project)
-            .connections
-            .iter()
-            .find(|known| known.name == connection)?
-            .settings;
-        Some(PackageEmail {
-            operation: mapping.operation.clone(),
-            called: numbering
-                .number(connection, &mapping.operation)
-                .unwrap_or(u32::MAX),
-            input: mail_inputs(&mapping.input, given, setting)?,
-            receipt: mapping.receipt.clone(),
-            failures: mapping.failures.clone(),
-            attachments: mapping.attachments,
-        })
-    });
+    let package = settings
+        .connection
+        .as_deref()
+        .filter(|_| running)
+        .and_then(|connection| {
+            let mapping = jadpo_check::mail::mapping_of(db, project, connection)?;
+            let given = &jadpo_check::connections::package_connections(db, project)
+                .connections
+                .iter()
+                .find(|known| known.name == connection)?
+                .settings;
+            Some(PackageEmail {
+                operation: mapping.operation.clone(),
+                called: numbering
+                    .number(connection, &mapping.operation)
+                    .unwrap_or(u32::MAX),
+                input: mail_inputs(&mapping.input, given, setting)?,
+                receipt: mapping.receipt.clone(),
+                failures: mapping.failures.clone(),
+                attachments: mapping.attachments,
+            })
+        });
     let plan = EmailsPlan {
         package,
         connection: settings.connection.clone(),
-        from: settings.from.as_ref().and_then(|from| match from {
-            jadpo_check::emails::Sender::Setting(name) => setting(name).map(Sender::Setting),
-            jadpo_check::emails::Sender::Address(address) => Some(Sender::Address(address.clone())),
-        }),
+        from: settings
+            .from
+            .as_ref()
+            .filter(|_| running)
+            .and_then(|from| match from {
+                jadpo_check::emails::Sender::Setting(name) => setting(name).map(Sender::Setting),
+                jadpo_check::emails::Sender::Address(address) => {
+                    Some(Sender::Address(address.clone()))
+                }
+            }),
         emails,
         layout_html: callable_of(&analysis.layout_html),
         layout_text: callable_of(&analysis.layout_text),
@@ -151,7 +165,9 @@ pub(crate) fn plan(
         .zip(files)
         .filter_map(|(email, file)| {
             let sends_itself = match &email.builtin {
-                Some(BuiltinEmail::MagicLink(magic)) => magic.send.zip(send.clone()),
+                // Where it isn't sent, the action isn't held either.
+                Some(BuiltinEmail::MagicLink(magic)) if running => magic.send.zip(send.clone()),
+                Some(BuiltinEmail::MagicLink(_)) => send.clone().map(|key| (u32::MAX, key)),
                 None => None,
             };
             let (target, store, connections) = match (sends_itself, &plan.connection) {
@@ -181,7 +197,7 @@ pub(crate) fn plan(
                 ),
                 (None, None) => return None,
             };
-            Some(SubscriberPlan {
+            let subscriber = SubscriberPlan {
                 key: format!("email {}", email.name),
                 name: format!("send {}", email.name),
                 event: email.key.clone(),
@@ -197,6 +213,11 @@ pub(crate) fn plan(
                 through: None,
                 file,
                 line: 1,
+            };
+            Some(if running {
+                subscriber
+            } else {
+                subscriber.elsewhere()
             })
         })
         .collect();

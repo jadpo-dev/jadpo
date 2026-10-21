@@ -562,13 +562,15 @@ impl CallerBind for After {
     }
 }
 
-/// Who may call each action listed under root `policy { actions: }` as it
-/// starts, by action name, where its line says without a record.
+/// Who may call each action listed under root `policy { actions: }` that
+/// `keeps` keeps as it starts, by action name, where its line says without
+/// a record.
 pub(crate) fn gates(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
     types: &mut crate::types::Types,
     json: &std::cell::RefCell<Vec<jadpo_graph::TypeRef>>,
+    keeps: &dyn Fn(&str) -> bool,
 ) -> std::collections::HashMap<String, Gate> {
     let model = jadpo_check::data::data_model(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
@@ -585,6 +587,7 @@ pub(crate) fn gates(
         .root
         .actions
         .iter()
+        .filter(|line| keeps(&line.action))
         .filter_map(|line| {
             let gate = jadpo_check::policy::reach::line_gate(db, project, &line.action)
                 .unwrap_or(LineGate::Nobody);

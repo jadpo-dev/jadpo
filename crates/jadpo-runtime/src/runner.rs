@@ -693,6 +693,12 @@ async fn attempt(
         ctx.set_call_key("sign-in link", jadpo_value::encoding::to_hex(&fresh));
     }
     let ran = match &subscriber.target {
+        // Another deployable's to deliver (chunk 8.1o3): one that runs no
+        // subscribers delivers nothing, so this is a defect.
+        Target::Elsewhere => Ok(Outcome::Fault(ctx.fault(
+            FaultKind::Defect("a subscriber another deployable runs".into()),
+            Frame::ENTRY,
+        ))),
         // A capability's operation is handed the event whole (chunk 7.0c).
         Target::Capability {
             connection,

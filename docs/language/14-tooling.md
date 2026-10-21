@@ -854,7 +854,7 @@ leave a choice open; declared `deployables:` (question 14) and `jadpo
 check` refusing a driver a deployable's target can't run (area 11,
 question 24) were built in chunk 8.1o2 ([Declared
 deployables](#declared-deployables)), and each compiled from only what it
-reaches is chunk 8.1o3.
+reaches in chunk 8.1o3.
 
 - **One deployable, `app`.** An app with no `deployables:` has one
   deployable, called `app`, which serves every API and runs everything,
@@ -877,8 +877,10 @@ reaches is chunk 8.1o3.
   `toolchain.artifact_write_failed`. This Jadpo compiles a deployable
   against the runtime crates it was built from, in its own checkout.
 - **The build stamp** (area 18): the build id, `b_` and the first twelve
-  hex digits of a SHA-256 over the digest of every node of the graph
-  (with a declared deployable's declaration since chunk 8.1o2),
+  hex digits of a SHA-256 over the deployable's program (since chunk
+  8.1o3, what it is compiled from: its Rust and its plan, its name and
+  its stores' migrations; the digest of every node of the graph before,
+  with a declared deployable's declaration since chunk 8.1o2),
   the compiler's version, the target and `jadpo.lock`; the commit `git`
   says the project is at, and whether its tree holds changes the commit
   doesn't (`build/` and `.jadpo/` aside), a project git doesn't track
@@ -986,6 +988,18 @@ application {
   connections they use: a store of files, a provider's operation, a
   package's action, `ai:`'s model; with its polls, the webhooks it
   receives, the queues `receiving:` reads and `email:`'s connection.
+  Since chunk 8.1o3 it also reaches what Jadpo runs by name: the action
+  `on_first_sign_in:` names where it serves an API, the action
+  `magic_link: { send: }` names and every email's templates where it
+  runs subscribers, and every provider package's `decode:` and
+  `encode:`.
+- **What each holds** (chunk 8.1o3). Its program holds only what it
+  reaches: those callables, the routes of the APIs it serves, its
+  schedules and the subscribers' actions only where it runs them, the
+  connections it reaches with every database, and the settings those
+  read, so it reads no other setting as it starts. A subscriber it
+  doesn't run is still listed, so what it emits waits for the deployable
+  that does. An app's wording, its sign-in and its stores are kept whole.
 - **Its target, checked** (area 11, question 24). A deployable that
   declares a target is refused each connection it reaches whose driver
   that target can't run, naming the alternative
@@ -1010,11 +1024,12 @@ application {
   declare is `cli.build_arguments`, with the nearest; a deployable built
   for `Target.wasm` is built for Workers since chunk 8.2b ([A Workers
   deployable](#a-workers-deployable)). Each binary's stamp names it, and
-  its build id is its own: the
-  build id digests the deployable's declaration with the graph's digest
-  (area 18), the whole project's until a deployable is compiled from only
-  what it reaches (roadmap chunk 8.1o3), and `jadpo check` writes each
-  deployable's target and build id in the manifest.
+  its build id is its own: since chunk 8.1o3 it digests the deployable's
+  program, so a change it doesn't reach leaves it alone (area 18, "A
+  build id is a digest"; the declaration with the whole graph's digest
+  before), and `jadpo check` writes each deployable's target and build
+  id in the manifest, with no build id while the project has errors.
+  `settings` lists the variables the deployables read, each once.
 
 ```text
 $ jadpo build
@@ -1042,10 +1057,13 @@ Until chunk 8.2b, `web`, built for `Target.wasm`, was refused as
 
 ### A Workers deployable
 
-Built in chunk 8.2b, and its `fetch` serving each request in chunk 8.2d,
-each the most conservative reading where the pages leave a choice open
-(Decisions, "A Workers deployable" and "A Worker's start"). The cron's
-`scheduled` handler comes with chunk 8.2f and the queue's with 8.2k.
+Built in chunk 8.2b, its `fetch` serving each request in chunk 8.2d and
+its `scheduled` ticking at the minute's cron in chunk 8.2f, its work
+handed on and its streamed answers in chunk 8.2h, each the most
+conservative reading where the pages leave a choice open (Decisions, "A
+Workers deployable" and "A Worker's start"; area 12, "The tick on
+Workers" and Decisions, "Work handed on, on Workers"). The queue's
+handler comes with 8.2k.
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
@@ -1079,13 +1097,15 @@ each the most conservative reading where the pages leave a choice open
   variable or a secret, and a required secret is Wrangler's one way to
   name a binding that must be set without giving its value, so `wrangler
   deploy` refuses until each is set; a setting with a default is left to
-  it. A Worker that runs subscribers or schedules is bound to its own
+  it. `triggers: { crons: ["* * * * *"] }`, the minute's cron trigger,
+  runs its tick when the tick has a store to keep or sweep (chunk 8.2f).
+  A Worker that runs subscribers or schedules is bound to its own
   `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
   service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
   hands what one invocation's 30 seconds didn't reach on to a fresh one
-  (chunk 8.2h; area 12, "Running background work"). The cron trigger
-  (chunk 8.2f) and the queues' consumers (8.2k) join the file with their
-  chunks, and 8.2k checks it against Wrangler itself.
+  (chunk 8.2h; area 12, "Running background work"). The queues'
+  consumers (8.2k) join the file with their chunk, which checks it
+  against Wrangler itself.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
   target as `wasm`.
@@ -1129,6 +1149,17 @@ each the most conservative reading where the pages leave a choice open
   A streamed answer (`ai.stream`) is a `ReadableStream`, each event sent
   as it is read, and a client that goes away ends the request and with
   it the model's call (chunk 8.2h).
+- **The tick.** Each run of the minute's cron trigger calls the Worker's
+  `scheduled`, which starts the isolate as a request does and, once its
+  databases are current, runs the runtime's tick (area 12, "The tick"):
+  the schedules due, the outbox's sweep and the deletions, and the
+  queues `receiving:` reads through a package. While the app receives a
+  queue it ticks again at each 10-second mark of the cron's minute, one
+  tick after another, so a queue is read as often as natively; the
+  invocation ends with the minute and its ticks share the cron's 15
+  minutes. Out of date, it logs why as a request does and ticks nothing.
+  An `every:` under a minute is refused for a Worker that runs the
+  schedules ([`deployable.target_unsupported`](#deployable-target-unsupported)).
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,
@@ -1163,6 +1194,9 @@ $ jadpo build kiosk
   ],
   "secrets": {
     "required": ["DATABASE_URL"]
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
   }
 }
 ```
@@ -1970,8 +2004,11 @@ A deployable that declares a target is held to the connections it
 reaches, from the routes of the APIs it serves and the background work it
 runs: the disk and a service Jadpo runs (`runs:`) without `host:` aren't
 on Workers, SMTP on port 25 is blocked there, and only a Worker receives
-a Cloudflare queue (area 11, question 24). Each refusal names what to use
-instead. A bakery keeps its suppliers' price sheets on its disk:
+a Cloudflare queue (area 11, question 24). One built for Workers that
+runs the schedules is held to them too: its tick is the minute's cron, so
+a schedule more often than once a minute is refused at its `every:`
+(area 12, decided 2026-10-19; chunk 8.2f). Each refusal names what to
+use instead. A bakery keeps its suppliers' price sheets on its disk:
 
 ```jadpo check project=e-deployable-target-unsupported file=app.jadpo hidden
 application {
@@ -2136,6 +2173,67 @@ error: `edge` can't use `sheets` on Workers, which has no disk
   help: docs/language/14-tooling.html#deployable-target-unsupported
 
 check failed: 1 error, 8 files
+```
+
+Another bakery checks its ovens' temperatures twice a minute:
+
+```jadpo check project=e-deployable-schedule-workers file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers file=domains/bakery/actions/check_ovens.jadpo hidden
+/// Checks the ovens' temperatures, which changes nothing here.
+action check_ovens() -> Unit {
+    assert 1 == 1
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers file=domains/bakery/schedules/oven_check.jadpo migrate=initial
+use bakery/actions { check_ovens }
+
+/// Checks the ovens twice a minute.
+schedule oven_check {
+    every: 30s
+    run: check_ovens()
+}
+```
+
+and runs its schedules on Workers:
+
+```jadpo check project=e-deployable-schedule-workers expect=deployable.target_unsupported file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    deployables: {
+        edge: {
+            runs: [Trigger.schedules, Trigger.subscribers]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```text output
+error: `edge` can't run `oven_check` every 30 seconds on Workers, whose cron runs once a minute
+ --> domains/bakery/schedules/oven_check.jadpo:5:12
+  |
+5 |     every: 30s
+  |            ^^^ more often than once a minute
+  reason: A Worker ticks when Cloudflare's cron trigger runs it, once a minute at most, so a schedule due every 30 seconds would run late; `edge` runs `oven_check` because its `runs:` lists `Trigger.schedules`.
+  next: Give `oven_check` `every: 1m` or longer, or run `Trigger.schedules` in a `Target.native` deployable (agent)
+  rule: deployable.target_unsupported
+  help: docs/language/14-tooling.html#deployable-target-unsupported
+
+check failed: 1 error, 3 files
 ```
 
 ## Review

@@ -294,6 +294,13 @@ impl Lexer<'_> {
                 let trimmed = self.text[start..self.pos].trim_end().len();
                 self.pos = start + trimmed;
                 self.push(COMMENT, start);
+                // Tight after a `/`, `//` would make `///`, a doc comment:
+                // a space keeps it the comment read here.
+                let slashes = if self.text[..start].ends_with('/') {
+                    " //"
+                } else {
+                    "//"
+                };
                 self.habit(
                     start,
                     start + 1,
@@ -301,7 +308,7 @@ impl Lexer<'_> {
                         habit: &habits::HASH_COMMENT,
                         written: "#".into(),
                         jadpo: "//".into(),
-                        edits: vec![TextEdit::replace(start as u32, start as u32 + 1, "//")],
+                        edits: vec![TextEdit::replace(start as u32, start as u32 + 1, slashes)],
                         clean: true,
                         next: None,
                     },

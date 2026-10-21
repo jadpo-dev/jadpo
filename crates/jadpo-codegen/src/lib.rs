@@ -191,7 +191,7 @@ fn module_name(place: usize) -> String {
 
 /// The crate `plan`, a checked project's, compiles to.
 pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
-    let mut generated = project(plan, &Layout::Crate)?;
+    let mut generated = project(plan, &Layout::Crate, printed)?;
     generated
         .files
         .insert("Cargo.toml".to_string(), manifest(options).into_bytes());
@@ -203,7 +203,18 @@ pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
 /// under `src/p<place>/`, its plan's bytes among them. [`holding`] writes
 /// the crate's manifest and root.
 pub fn module(plan: &Plan, place: usize) -> Result<Generated, Error> {
-    project(plan, &Layout::Module(place))
+    project(plan, &Layout::Module(place), printed)
+}
+
+/// The files [`generate`] writes for `plan` but its manifest, each Rust
+/// file as the text of its tokens rather than printed (roadmap chunk
+/// 8.1o3): what a deployable's build id digests, worked out without
+/// parsing and printing what it writes. Printing is a function of the
+/// tokens, so the same text means the same Rust.
+pub fn unprinted(plan: &Plan) -> Result<Generated, Error> {
+    project(plan, &Layout::Crate, |_, tokens| {
+        Ok(tokens.to_string().into_bytes())
+    })
 }
 
 /// The manifest and root of a crate holding a project compiled by
@@ -233,8 +244,12 @@ pub fn holding(places: &[usize], options: &Options) -> Result<Generated, Error> 
 }
 
 /// The files of the project `plan` is, laid out as `layout` says, but a
-/// crate's manifest.
-fn project(plan: &Plan, layout: &Layout) -> Result<Generated, Error> {
+/// crate's manifest, each Rust file written by `print`.
+fn project(
+    plan: &Plan,
+    layout: &Layout,
+    print: fn(&str, TokenStream) -> Result<Vec<u8>, Error>,
+) -> Result<Generated, Error> {
     let callables = plan.callables();
     let numbers = 0..u32::try_from(callables.len()).unwrap_or(u32::MAX);
     // Each callable's module, and its function as another module names it:
@@ -350,10 +365,10 @@ fn project(plan: &Plan, layout: &Layout) -> Result<Generated, Error> {
         .collect();
     let root_file = layout.root();
     let root_tokens = root(plan, &module_names, &table, &rows, included);
-    files.insert(root_file.clone(), printed(&root_file, root_tokens)?);
+    files.insert(root_file.clone(), print(&root_file, root_tokens)?);
     let source = layout.source();
     let path = format!("{source}/entries.rs");
-    files.insert(path.clone(), printed(&path, entries::module(plan))?);
+    files.insert(path.clone(), print(&path, entries::module(plan))?);
     for (module, functions) in code {
         let path = format!("{source}/{module}.rs");
         let doc = Literal::string(&format!(
@@ -369,7 +384,7 @@ fn project(plan: &Plan, layout: &Layout) -> Result<Generated, Error> {
 
             #(#functions)*
         };
-        files.insert(path.clone(), printed(&path, tokens)?);
+        files.insert(path.clone(), print(&path, tokens)?);
     }
     Ok(Generated { files })
 }

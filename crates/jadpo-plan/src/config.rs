@@ -11,8 +11,14 @@ use jadpo_std::config::{ConfigConnection, ConfigField, ConfigPlan, Spelling};
 use crate::routes::Codecs;
 use crate::types::Types;
 
-/// The settings of `project`, and the connections' addresses.
-pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> ConfigPlan {
+/// The settings of `project` that `keeps` keeps, every one but in a
+/// deployable's plan (chunk 8.1o3), and the connections' addresses.
+pub(crate) fn plan(
+    db: &dyn Db,
+    project: Project,
+    types: &mut Types,
+    keeps: &dyn Fn(&str) -> bool,
+) -> ConfigPlan {
     let model = config(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
     let mut codecs =
@@ -20,6 +26,7 @@ pub(crate) fn plan(db: &dyn Db, project: Project, types: &mut Types) -> ConfigPl
     let fields = model
         .settings
         .iter()
+        .filter(|setting| keeps(&setting.name))
         .map(|setting| ConfigField {
             name: setting.name.clone(),
             variable: setting.variable.clone(),

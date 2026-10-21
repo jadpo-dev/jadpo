@@ -108,26 +108,20 @@ pub fn providers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(Stri
 /// What the manifest says of the check that wrote it (area 18): the
 /// compiler, how many errors it found, the commit the project is at and
 /// whether its tree was modified, and each deployable's target and build
-/// id ([`crate::stamp`]; chunk 8.1o2).
+/// id ([`crate::stamp`]; chunks 8.1o2 and 8.1o3), which a project with
+/// errors has none of.
 pub fn stamp(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
     root: &Path,
-    graph: &Graph,
     errors: usize,
 ) -> Stamp {
     let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
-    let digest = graph.digest();
     Stamp {
         compiler: VERSION.to_string(),
         errors,
         source: Some(crate::stamp::commit(root)),
-        deployables: crate::stamp::deployables(
-            &jadpo_check::deployables::deployables(db, project).list,
-            &digest,
-            VERSION,
-            &lock,
-        ),
+        deployables: crate::stamp::deployables(db, project, errors, VERSION, &lock),
     }
 }
 

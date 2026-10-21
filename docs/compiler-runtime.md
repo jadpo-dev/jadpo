@@ -2161,8 +2161,8 @@ handler that serves an application is `jadpo_host_native::http::AppHandler`,
 `Serving` on a `NativeHost` with that host's deferred work, tracked ticks
 and drain; Workers' fetch event calls the same `Serving`, one a request
 on that invocation's host sharing the isolate's `http::Worker`
-(`Serving::sharing`; chunk 8.2d), and its scheduled event will (chunk
-8.2f). `jadpo dev` runs the interpreter on it, swapping in each
+(`Serving::sharing`; chunk 8.2d), and its scheduled event ticks
+through it (chunk 8.2f, "The cron on Workers"). `jadpo dev` runs the interpreter on it, swapping in each
 save that checks cleanly, and only observes it to print its lines. Since chunk
 6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
 its timer starts no more ticks, and each worker waits, at most
@@ -2737,8 +2737,9 @@ record raises what newly holds (`Ticked::raised`), once until it stops
 holding. Readers (`jadpo schedules`, `jadpo why`) still work the alerts
 out from the rows when they read, since a stopped application raises
 nothing; `jadpo why`'s answer is decided by the runtime as data
-(`schedules::why`), which the CLI says in words. On Workers the cron trigger calls the same function
-(chunk 8.2f).
+(`schedules::why`), which the CLI says in words. On Workers the minute's
+cron trigger calls the same function (chunk 8.2f, "The cron on
+Workers").
 
 **Batch runs** (chunk 6.4, area 12's "How a run is kept"). The
 checker reads `batches.each(from:, each:, finished:, key:)`
@@ -3143,11 +3144,11 @@ connections they use (a store of files, a provider's operation, a
 package's action, `ai:`'s model) and those its polls, webhooks, queues
 and email go through. A deployable that declares a target is refused
 each one `ConnectionDriver::targets` and the SMTP port rule it can't run
-(`deployable.target_unsupported`). The plan a deployable runs is the
-project's with `Plan::for_deployable`: the route table keeps only the
-routes of the APIs it serves, the webhooks go unless it serves
-`webhooks`, and `RuntimePlan::runs` (plan format 9) says whether it runs
-`Trigger.schedules` and `Trigger.subscribers`. The runtime holds to it
+(`deployable.target_unsupported`). The plan a deployable runs held
+only the routes of the APIs it serves, the webhooks only where it
+serves `webhooks`, and `RuntimePlan::runs` (plan format 9) says whether
+it runs `Trigger.schedules` and `Trigger.subscribers`; since chunk 8.1o3
+it holds only what it reaches (below). The runtime holds to it
 where work joins a runner (`runner::split` drops a delivery or a batch
 run the program doesn't run, which waits, committed, for a deployable
 that runs it) and on the tick (the schedules, polls and batch runs, or
@@ -3159,9 +3160,9 @@ name and its path in its workspace, so several workspaces' `program`
 would share one), all into one cargo target with the paths remapped
 alike, so the runtime crates compile once; it places each binary as a
 new file, since macOS kills a binary copied over one it has run. The
-build id digests a declared deployable's declaration with the graph's
-digest (`jadpo_cli::stamp`), and `jadpo check` writes each deployable's
-target and build id in the manifest. Proved live
+build id digested a declared deployable's declaration with the graph's
+digest (`jadpo_cli::stamp`) until chunk 8.1o3, and `jadpo check` writes
+each deployable's target and build id in the manifest. Proved live
 (`crates/jadpo-cli/tests/deployable.rs`): teaching example 23 declared as
 a kiosk serving `main` and running the subscribers and an office serving
 a `staff` API and running a schedule each second, both built by `jadpo
@@ -3169,9 +3170,82 @@ build`; the kiosk books a repair and answers 404 for the staff's route,
 and runs no schedule while it ticks; the office lists the repair's notes,
 answers 404 for a booking, and runs its schedule. *Rejected:* filtering
 the routes in the trie with the whole table kept, which leaves a route
-nobody serves in the binary; and a deployable's plan built only from the
-callables it reaches, which needs every number the runtime names a
-callable by to stay right (chunk 8.1o3).
+nobody serves in the binary.
+
+**A deployable compiled from what it reaches** (chunk 8.1o3; area 14,
+"Declared deployables"; area 18, "A build id is a digest").
+`Plan::for_deployable` plans the project from what the deployable
+reaches (`jadpo_plan::Keep`): the callables
+`jadpo_check::deployables::reached` follows, which since this chunk
+adds those the runtime runs by key or number rather than because a body
+calls them (the action `on_first_sign_in:` names wherever an API is
+served; where subscribers run, the action `magic_link: { send: }` names
+and every email template; and every provider package's `decode:` and
+`encode:`, kept whole); the queries they reach and the entities whose
+`get` they call; the routes of the APIs it serves, those APIs alone and
+numbered among themselves, the runtime's own routes only in the API that
+holds them; the schedules, purges and polls only where it runs
+schedules; the queues and the emails' templates, sender and mail package
+only where it runs subscribers, every subscriber still listed, without
+its action (`Target::Elsewhere`, plan format 10), since an action that
+emits writes a delivery for each subscriber that hears it; the webhooks
+where it serves `webhooks`; the connections it reaches and every
+database and Redis connection, which every tick sweeps; `ai:` where it
+reaches the model; the prompts its callables ask for; the event types
+they emit and those of the subscribers it runs; the steps' key where it
+keeps an action with several changing calls; and the settings what it
+keeps reads. Each table is built from what is kept, so its numbers
+depend on nothing else. The settings are found by planning twice: once
+with every setting, noting each one a kept part asks for, with those the
+runtime reads by name (signing in's keys and origin, a `client_address:`
+setting; `RuntimePlan::setting_names`), then with only those. What a
+kept part names that isn't kept, a callable, a query, a setting, an
+operation's connection or a prompt, or by key a package's function or a
+webhook's reply action, is noted and the plan refused
+(`jadpo_plan::Unkept`), which `jadpo build` reports as
+`toolchain.build_failed`: a gap between what the checker follows and
+what the plan holds is Jadpo's own mistake, never a program that faults
+where it reaches the gap. Kept whole: the app's translations, since any
+enum value formatted may read its wording, its identity, its locales and
+its stores. A Worker links SMTP's driver when its plan holds an SMTP
+connection, which it does only where it reaches one. The build id
+(`jadpo_cli::stamp::program`) digests the program as compiled: the Rust
+its callables become, as the text of its tokens
+(`jadpo_codegen::unprinted`, the files `generate` writes but unprinted,
+since printing is a function of the tokens), its plan's deployable
+bytes, its name and each store's migrations, with the compiler, the
+target and `jadpo.lock` as before; `jadpo check` works it out for each
+deployable, none for a project with errors, which builds nothing, and
+`jadpo build` from the plan it compiles. So a change it doesn't reach
+leaves it alone, and one that moves what it reaches to other lines
+doesn't, since its frames name them; the application's name, its
+folder's unless `app.jadpo` gives one, is part of the program (its
+OpenAPI title), so a build is explained from a folder of the same name.
+Proved by `crates/jadpo-plan/tests/deployable.rs` (a café's kiosk and
+office each holding only its own callables, routes, schedules, settings
+and connections, the office listing the kiosk's subscriber without its
+action; and every project of the corpus, each deployable naming nothing
+it doesn't hold and an app that declares none running everything the
+whole plan runs), `crates/jadpo-cli/tests/manifest.rs` (an office's
+action, route and setting and a test leaving a kiosk's id alone, its own
+action changing it) and live (`deployable.rs`: the kiosk's binary holds
+no sweeping, the office's no booking). Measured on teaching example 23,
+release, aarch64 macOS, against the whole program each held before: the
+café's `app` 21,103,600 bytes to 21,085,888 (17.19 to 17.17 MB
+stripped: it reaches all but its tests and fixture, which the `testing`
+feature already left out); declared as the kiosk and office above, the
+kiosk 21,123,920 to 21,086,144 bytes and the office 21,085,776 to
+20,507,088 (17.21 to 17.17 MB and 17.17 to 16.68 MB stripped); and the
+kiosk on Workers 12,808,367 to 12,800,144 bytes (3.98 MB gzipped either
+way). A program is a small part of a deployable beside the runtime and
+its locale data. *Rejected:* keeping the whole plan
+and leaving out only the code of the callables a deployable doesn't
+reach, whose sites, settings and tables would still be in every
+deployable and in its id; digesting the graph's nodes it reaches, which
+hold nothing of what `app.jadpo` says of connections and settings; and
+digesting the printed Rust, which costs every `jadpo check` the printing
+(25 to 110 ms a deployable on the largest teaching examples, debug,
+against 5 to 18 ms for the tokens).
 
 **A Workers deployable** (chunk 8.2b; area 14, "A Workers deployable").
 `jadpo build` builds a deployable with `target: Target.wasm` the way it
@@ -3285,6 +3359,46 @@ its isolates were recycled; and one `Serving` an isolate over a host
 standing for whichever request is current, which an isolate serving
 requests at once would mix up.
 
+**The cron on Workers** (chunk 8.2f; area 12, "The tick"; area 14, "A
+Workers deployable"). `jadpo check` refuses, for a Workers deployable
+that runs `Trigger.schedules`, each schedule whose `every:` is under a
+minute (`deployable.target_unsupported` at its `every:`, naming it,
+beside 8.1o2's refusals in `jadpo_check::deployables::target_problems`),
+since the minute's cron can't run it. `jadpo build` writes the cron,
+`triggers: { crons: ["* * * * *"] }`, into a Workers deployable's
+Wrangler file when its tick has a store to keep or sweep
+(`SchedulesPlan::ticks`), as every native deployable ticks; the
+generated crate exports `scheduled` beside `fetch` and the shim hands
+it the controller, `env` and `ctx`.
+`jadpo_host_workers::deployable::scheduled` starts the isolate as
+`fetch` does and, once its stores are current (out of date, logging
+why as a request does and ticking nothing), runs `Serving::tick` on a
+`WorkersHost` of its own made `for_cron`, whose tick budget is what is
+left of the cron's 15 minutes (`cron_left`). While the program ticks
+more often than once a minute (`Serving::tick_every_ms`: every 10
+seconds while it receives a queue, as the native timer does) it ticks
+again at each such mark of the cron's minute, from its
+`scheduledTime`, one tick after the last ends (`next_tick`), so an
+invocation holds no more connections than one tick does and a mark a
+long tick passed isn't made up; it ends with the minute. Proved under
+workerd (`crates/jadpo-cli/tests/workers.rs`, the `wasm32` group): a
+depot built for Workers that serves nothing, reads a local SQS through
+the SQS package and takes stock every minute, its Wrangler file naming
+the cron and `jadpo check` refusing the schedule at `every: 30s`; its
+`scheduled` run as the cron trigger runs it, through a service
+binding's `scheduled()` (workerd's `service_binding_extra_handlers`,
+`--experimental`, in the test alone): out of date, logging the
+migration and leaving the queue alone; then, current, a cron 40
+seconds into its minute keeping the queue's message as its event and
+delivering it, then ticking again at the 50-second mark and receiving
+a message sent between the two, the schedule's first run due a minute
+after the first tick; and, the schedule due, a cron at the end of its
+minute running it once. *Rejected:* a tick at each mark started
+whether or not the last had ended, as the native timer starts one,
+which on Workers would hold the connections of several ticks in one
+invocation; and a schedule refused in `jadpo build` rather than by
+`jadpo check`, where an agent sees it as it writes the schedule.
+
 **After the response on Workers** (chunk 8.2h; area 12, "Running
 background work"; area 7, "Streaming a model's answer"). Work an
 invocation's 30 seconds didn't reach goes on in a fresh invocation of the
@@ -3327,8 +3441,8 @@ away closing the model's connection once the model writes again,
 eighteen stories filed in one request each summarised
 by a subscriber in two seconds, and a batch run over eighteen clippings
 the same, both past one invocation's budget and finished by the
-invocation each handed on to, at most one summary the budget's end cut
-short left `pending` for the cron; natively, `tests/background_budget.rs` carries
+invocation each handed on to, then the minute's cron (chunk 8.2f)
+telling the at most one summary the budget's end cut short; natively, `tests/background_budget.rs` carries
 work on from its message alone, a delivery run meanwhile left out.
 *Rejected:* a queue (area 12, Decisions, "Work handed on, on Workers");
 a request to the Worker's own URL, which reaches its public `fetch`; and a
@@ -4308,8 +4422,10 @@ separate command, not the gate.
   Since chunk 8.1o2 a declared deployable's declaration joins the graph's
   digest, so two deployables of one app never share an id, and `jadpo
   check` writes each deployable's target and build id, with the commit
-  and whether the tree was modified, in the manifest. The source is the
-  whole graph, not yet the subgraph the deployable reaches (chunk 8.1o3).
+  and whether the tree was modified, in the manifest. Since chunk 8.1o3
+  the source is the deployable's program as it is compiled from what it
+  reaches, its Rust and its plan's bytes, with its name and its stores'
+  migrations (§2.6, "A deployable compiled from what it reaches").
   Bit-identical binaries are not checked yet.
 
 ### 2.9 Risks and the first chunks

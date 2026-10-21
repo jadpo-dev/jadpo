@@ -12,7 +12,8 @@
 //! server's handler wraps it (`jadpo_host_native::http::AppHandler`);
 //! Workers' fetch event calls the same (chunk 8.2d), one `Serving` a
 //! request on that invocation's host, sharing the isolate's [`Worker`]
-//! ([`Serving::sharing`]), and its scheduled event will (chunk 8.2f).
+//! ([`Serving::sharing`]), and its scheduled event ticks through it
+//! (chunk 8.2f).
 //!
 //! What it serves is any [`Executor`]: the interpreter, or compiled code
 //! (Phase 8). The route table and codecs a request is answered with come

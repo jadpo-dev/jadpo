@@ -9,18 +9,19 @@
 //! The four files sit side by side in `build/target/<deployable>/`:
 //!
 //! - `worker.mjs`, the shim: the module instantiated once per isolate and
-//!   the Worker's handlers handed to the ones the module exports, with the
-//!   `JadpoHandOn` entrypoint a fresh invocation takes work handed on
-//!   through;
+//!   the Worker's handlers, `fetch` and `scheduled`, handed to the ones the
+//!   module exports, with the `JadpoHandOn` entrypoint a fresh invocation
+//!   takes work handed on through;
 //! - `<deployable>.js`, the JavaScript wasm-bindgen writes for the module
 //!   (its `web` form, which takes the module it is given);
 //! - `<deployable>.wasm`, the module;
 //! - `wrangler.json`: the shim as the main module, uploaded as it is with
 //!   the others beside it (no bundling, each kind by an explicit rule), the
 //!   compatibility date Jadpo's Workers host is run under, each setting
-//!   the deployable needs set, by its variable, and, when it runs
-//!   background work, the service binding to its own `JadpoHandOn`
-//!   through which it hands work on.
+//!   the deployable needs set, by its variable, the minute's cron trigger
+//!   when its tick has something to do, and, when it runs background work,
+//!   the service binding to its own `JadpoHandOn` through which it hands
+//!   work on.
 
 use std::path::Path;
 
@@ -80,8 +81,9 @@ pub const HAND_ON_BINDING: &str = "JADPO_HAND_ON";
 pub const HAND_ON_ENTRYPOINT: &str = "JadpoHandOn";
 
 /// The module Workers runs first: `name`'s module instantiated once per
-/// isolate, the Worker's `fetch` the module's, and its [`HAND_ON_ENTRYPOINT`],
-/// whose `handOn` takes on work another invocation handed on.
+/// isolate, the Worker's `fetch` and `scheduled` the module's, and its
+/// [`HAND_ON_ENTRYPOINT`], whose `handOn` takes on work another invocation
+/// handed on.
 pub fn shim(name: &str) -> String {
     format!(
         "// The deployable `{name}` for Cloudflare Workers, written by `jadpo build`; don't edit it.\n\
@@ -89,13 +91,16 @@ pub fn shim(name: &str) -> String {
          // the module's its event, the Worker's `env` and the invocation's `ctx`.\n\
          import {{ WorkerEntrypoint }} from \"cloudflare:workers\";\n\
          import module from \"./{name}.wasm\";\n\
-         import {{ initSync, fetch as handleFetch, hand_on as handleHandOn }} from \"./{name}.js\";\n\
+         import {{ initSync, fetch as handleFetch, scheduled as handleScheduled, hand_on as handleHandOn }} from \"./{name}.js\";\n\
          \n\
          initSync({{ module }});\n\
          \n\
          export default {{\n\
          \x20 fetch(request, env, ctx) {{\n\
          \x20   return handleFetch(request, env, ctx);\n\
+         \x20 }},\n\
+         \x20 scheduled(controller, env, ctx) {{\n\
+         \x20   return handleScheduled(controller, env, ctx);\n\
          \x20 }},\n\
          }};\n\
          \n\
@@ -110,6 +115,10 @@ pub fn shim(name: &str) -> String {
     )
 }
 
+/// The minute's cron, as Cloudflare's cron triggers write it: every minute
+/// (area 12, "The tick").
+pub const EVERY_MINUTE: &str = "* * * * *";
+
 /// The Worker's name on Cloudflare for deployable `name`: letters, digits
 /// and dashes only, so each `_` becomes `-` (`back_office`,
 /// `back-office`).
@@ -121,9 +130,11 @@ pub fn worker_name(name: &str) -> String {
 /// default are read from `required`, their variables: JSON. Each is a
 /// required secret, Wrangler's one way to name a binding that must be set
 /// without giving its value; a setting with a default is left to it. When
-/// it `hands_on`, running background work, the Worker is bound to its own
+/// it `ticks`, its tick having a store to keep or sweep, the minute's cron
+/// trigger runs its `scheduled` handler (chunk 8.2f). When it `hands_on`,
+/// running background work, the Worker is bound to its own
 /// [`HAND_ON_ENTRYPOINT`] as [`HAND_ON_BINDING`] (chunk 8.2h).
-pub fn wrangler(name: &str, required: &[String], hands_on: bool) -> String {
+pub fn wrangler(name: &str, required: &[String], ticks: bool, hands_on: bool) -> String {
     let quoted = |text: &str| serde_json::Value::from(text).to_string();
     let mut out = format!(
         "{{\n\
@@ -145,6 +156,12 @@ pub fn wrangler(name: &str, required: &[String], hands_on: bool) -> String {
         out.push_str(&format!(
             ",\n  \"secrets\": {{\n    \"required\": [{}]\n  }}",
             secrets.join(", ")
+        ));
+    }
+    if ticks {
+        out.push_str(&format!(
+            ",\n  \"triggers\": {{\n    \"crons\": [{}]\n  }}",
+            quoted(EVERY_MINUTE)
         ));
     }
     if hands_on {
