@@ -50,6 +50,66 @@ fn settings_are_read_from_the_workers_bindings() {
     assert_eq!(bed().get("/variable?name=NOT_GIVEN"), "unset");
 }
 
+/// A setting whose binding is Hyperdrive's is the binding's address
+/// (chunk 8.2i): its user, password and database, percent-encoded, at the
+/// host workerd made for it, and no `sslmode`, which the connection
+/// decides; that host is the platform's pooler, reached in a later request
+/// of the isolate through the service the binding names, here the echo.
+/// An address given as text is no pooler.
+#[test]
+fn a_hyperdrive_binding_is_the_settings_address_and_its_pooler() {
+    let bed = bed();
+    let read = bed.get("/variable?name=DATABASE");
+    let address = read
+        .strip_prefix("set:")
+        .unwrap_or_else(|| panic!("{read}"));
+    let host = address
+        .strip_prefix("postgresql://kiosk:p%40ss%2Fword%21@")
+        .and_then(|rest| rest.strip_suffix(":5432/repair%20cafe"))
+        .unwrap_or_else(|| panic!("{address}"));
+    assert!(
+        host.len() == 32 + ".hyperdrive.local".len()
+            && host.ends_with(".hyperdrive.local")
+            && !address.contains("sslmode"),
+        "{address}"
+    );
+    assert_eq!(bed.get(&format!("/pooler?host={host}&port=5432")), "pooler");
+    assert_eq!(
+        bed.get(&format!("/echo?host={host}&port=5432")),
+        "answer:pong:ping"
+    );
+    assert_eq!(
+        bed.get("/pooler?host=db.example.test&port=5432"),
+        "not a pooler"
+    );
+    assert_eq!(
+        bed.get(&format!("/pooler?host={host}&port=5433")),
+        "not a pooler"
+    );
+}
+
+/// PostgreSQL's driver reaches a server elsewhere over TLS through
+/// `startTls()` after its SSL request, the certificate checked against
+/// workerd's roots for the server's name; one from an authority nobody
+/// vouches for fails the check as the startup's first bytes go out, which
+/// is the fault naming the server it is natively, never a database down
+/// for now (chunk 8.2i).
+#[test]
+fn postgresql_reaches_a_server_elsewhere_over_tls_and_a_failed_check_is_a_fault() {
+    let bed = bed();
+    assert_eq!(
+        bed.get(&format!("/postgres?port={}", bed.postgres_tls)),
+        "ran"
+    );
+    let refused = bed.get(&format!("/postgres?port={}", bed.postgres_untrusted));
+    assert!(
+        refused.starts_with(
+            "fault:the database server at `db.example.test` failed the certificate check against the public authorities Jadpo trusts"
+        ),
+        "{refused}"
+    );
+}
+
 /// Background work has Workers' budgets: 30 seconds for what a response
 /// leaves, and for what is handed on, which runs as such work, and 15
 /// minutes for the cron (area 12, "Running background work").
@@ -262,6 +322,37 @@ fn rate_limits_are_counted_in_the_isolates_memory() {
     assert_eq!(bed.get("/rate?key=one"), "yes yes");
     assert_eq!(bed.get("/rate?key=one"), "no no");
     assert_eq!(bed.get("/rate?key=two"), "yes yes");
+}
+
+/// With Cloudflare's rate-limiting binding as the store, the binding
+/// decides (chunk 8.2m2): the stand-in allows one request a minute where
+/// the limit says two, and a refusal is told to wait the window's length,
+/// since the binding says nothing of when its window ends. A binding that
+/// throws, or one the Worker hasn't got, leaves the count to the
+/// isolate's memory, and no request fails for it.
+#[test]
+fn rate_limits_are_counted_in_cloudflares_binding() {
+    let bed = bed();
+    assert_eq!(
+        bed.get("/rate-binding?binding=LIMITS_2_PER_60S&key=bound"),
+        "yes no:60"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=LIMITS_2_PER_60S&key=another"),
+        "yes no:60"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=BROKEN_2_PER_60S&key=unreached"),
+        "yes yes"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=BROKEN_2_PER_60S&key=unreached"),
+        "no:60 no:60"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=MISSING_2_PER_60S&key=unbound"),
+        "yes yes"
+    );
 }
 
 /// A connection's task, which a driver hands the transport, runs beside

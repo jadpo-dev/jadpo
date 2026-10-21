@@ -2531,7 +2531,10 @@ there is no native default: area 16 keeps counts in memory only where
 memory lasts, and its question 6 requires a Redis connection or
 Cloudflare's rate-limiting binding there, with the isolate's memory
 counting only while that can't be reached, which is the one reading both
-give. Round trips: the sign-in lookup, an idempotency key's claim (one
+give: since chunk 8.2m2 the plan's route table carries the store
+`rate_limits:` names (`RateLimitStore`, with a binding for each limit
+on Cloudflare's), the Workers host counts in it, and `jadpo check`
+refuses a Workers deployable that serves an API without one. Round trips: the sign-in lookup, an idempotency key's claim (one
 `INSERT ... ON CONFLICT` that also gives back what the key is kept with)
 and its release, the response a failed action keeps, and `SELECT 1` each
 run as one statement on their own (`Database::query_once`, autocommit),
@@ -2820,7 +2823,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one (chunk 8.2h), swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2g) | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6), the binding counted in since chunk 8.2m2; the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4); `ai.stream` read piece by piece and sent as server-sent events (chunk 5.5v6) | same, through Workers' `fetch` |
@@ -3482,6 +3485,65 @@ which on Workers would hold the connections of several ticks in one
 invocation; and a schedule refused in `jadpo build` rather than by
 `jadpo check`, where an agent sees it as it writes the schedule.
 
+**PostgreSQL through Hyperdrive** (chunk 8.2i; area 5, "PostgreSQL
+through Hyperdrive"). A database connection's address on Workers is its
+`url:` setting's binding, which `jadpo build` writes into the Wrangler
+file as a Hyperdrive binding (`jadpo_codegen::workers::Hyperdrive`, its
+`id` from `JADPO_HYPERDRIVE_<variable>` in the build's environment, or
+none, which the screen alerts and `wrangler deploy` refuses) in place of
+a required secret. `WorkersHost::variable` reads a Hyperdrive binding (an
+object with a `connectionString` and a `connect` function) as an address
+of its parts, its user, password and database percent-encoded, at the
+host and port the binding names (`<hex>.hyperdrive.local:5432`), never
+the binding's own `connectionString`, which carries `sslmode=disable`
+and the password unencoded; reading the host registers the Workers
+runtime's route to Hyperdrive for the isolate, and the host keeps it as
+the platform's pooler (`jadpo_host_workers::hyperdrive`). The drivers'
+`Transport` gained `is_pooler`, false natively and true on Workers for a
+host and port a Hyperdrive binding gave, and PostgreSQL's driver reaches
+a pooler without its SSL request whatever its connection's security,
+since the binding's socket offers no TLS and its address says
+`sslmode=disable` (workerd's `api/hyperdrive.c++`): the connection stays
+inside Cloudflare, and TLS to the database, with its certificate's
+check, is Hyperdrive's, configured on it (`--sslmode`, `--ca-certificate-id`)
+and checked on the real account by chunk 8.2n. A text binding of the same
+name stays an address the Worker reaches directly, over TLS through
+`startTls()` after the SSL request; Workers checks the certificate as the
+first bytes go out and reports only a broken socket then, so the driver
+wraps an upgraded stream (`Checked`), keeping an `InvalidData` failure of
+its first read or write, and a startup that fails with one is the fault
+naming the server and whom it was checked against (`failed_check`), as
+an upgrade refused natively is, never unavailable. Hyperdrive's caching
+must be off (`--caching-disabled`), since it doesn't invalidate reads on
+a write and Jadpo's reads are current; nothing a Worker sees tells it, so
+it is stated where the binding is written. The driver already keeps no
+session state: statements unnamed (`query_typed`), each transaction's
+level in its own `BEGIN`, held by a live test that finds a reused
+connection at the server's level with no prepared statement after a
+repeatable read transaction; a column of an extension's type (pgvector's
+`vector`, PostGIS's `geography`) is the one exception, tokio-postgres
+describing it once per connection through a named statement, which
+Hyperdrive documents keeping for the client that prepared it and chunk
+8.2n checks. Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`):
+a Hyperdrive binding read as its address, its host the pooler and
+`connect()` to it reaching the binding's service in a later request; a
+store reaching a scripted PostgreSQL elsewhere over TLS through
+`startTls()`, and one signed by an authority workerd doesn't trust
+refused as the fault (without `Checked`, unavailable); and
+(`crates/jadpo-cli/tests/workers.rs`) example 23's kiosk built with its
+Wrangler file's Hyperdrive binding, with and without an id, then served
+through workerd's Hyperdrive binding to the run's PostgreSQL: the
+migrations compared, a repair booked, its thank-you pinned up after the
+answer, the readiness check reaching the database, the log holding no
+address. *Rejected:* TLS from the Worker to Hyperdrive through
+`startTls()`, which the binding's socket doesn't offer and its address
+turns off; a key of its own on the connection (`hyperdrive:`), which
+would put a target's detail in `app.jadpo` both targets read; telling a
+pooler by its name's `.hyperdrive.local` suffix, which natively is an
+mDNS name like any other; and the binding's own `connect()`, which the
+transport would have to hold the binding for when the host's name
+reaches it already.
+
 **After the response on Workers** (chunk 8.2h; area 12, "Running
 background work"; area 7, "Streaming a model's answer"). Work an
 invocation's 30 seconds didn't reach goes on in a fresh invocation of the
@@ -4051,9 +4113,12 @@ never called, so the workspace builds, lints and tests as one.
   invocation waits, never while it computes); timers on `setTimeout`,
   cleared when a wait is dropped; settings from the bindings, a text
   binding being a variable or a secret; `defer` through `ctx.waitUntil`;
-  rate limits in the isolate's memory, one table an isolate, the fallback
-  area 16 allows while no Redis connection or rate-limiting binding counts
-  them; and Workers' budgets (`budget_for`): 30 seconds after a response
+  rate limits in Cloudflare's rate-limiting binding when the plan's store
+  (`RouteTable::rate_limits`, `rate_limits: { store: }`) is one, each
+  limit in the binding of its own the store names (`limit({ key })`, a
+  refusal waiting the window's length), and in the isolate's memory, one
+  table an isolate, while it can't be asked, the fallback area 16 allows
+  (chunk 8.2m2); and Workers' budgets (`budget_for`): 30 seconds after a response
   and for work handed on, 15 minutes for the cron. Work handed on starts
   a fresh invocation of the Worker through its binding to itself (chunk
   8.2h, "After the response on Workers"); a database needs the crate's `postgres`
@@ -4070,7 +4135,8 @@ never called, so the workspace builds, lints and tests as one.
   failure before anything has gone through over TLS is `InvalidData`, as
   a check that fails is natively; a driver that judges a failed check
   only by the upgrade's own answer (PostgreSQL's, chunk 8.1n) learns it
-  at its first write instead, which chunk 8.2i settles. A stream holds
+  at its first write instead, which PostgreSQL's driver keeps since chunk
+  8.2i ("PostgreSQL through Hyperdrive", below). A stream holds
   its streams' locks only while it reads or writes, so it can be
   upgraded between them, and closes its socket when dropped; a Unix
   socket is `Unsupported`.
@@ -4157,7 +4223,9 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
 - PostgreSQL goes through Hyperdrive over `connect()` sockets with
   tokio-postgres, as in workers-rs's
   [example](https://raw.githubusercontent.com/cloudflare/workers-rs/main/examples/tokio-postgres/src/lib.rs),
-  one connection per request. Hyperdrive
+  one connection per request, its address the binding's and reached
+  without TLS (since chunk 8.2i, "PostgreSQL through Hyperdrive", above).
+  Hyperdrive
   [pools by transaction and caches reads](https://developers.cloudflare.com/hyperdrive/concepts/how-hyperdrive-works/)
   without invalidating them on writes, so Jadpo requires its caching off
   (reads are current, area 6), uses unnamed statements (`query_typed`),

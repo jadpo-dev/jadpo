@@ -37,6 +37,7 @@ pub(crate) fn table(
     let smtp = &jadpo_check::emails::smtp_connections(db, project).list;
     let models = &jadpo_check::ai::model_connections(db, project).list;
     let queues = &jadpo_check::receiving::cloudflare_queues(db, project).list;
+    let limits = &jadpo_check::rate_limits::binding_connections(db, project).list;
     let packages = &jadpo_check::connections::package_connections(db, project).connections;
     let mut table: Vec<Connection> = kinds
         .iter()
@@ -96,6 +97,12 @@ pub(crate) fn table(
                         dead_letter_queue: queue.dead_letter_queue.clone(),
                     })
                 }
+                ConnectionKind::CloudflareRateLimits => ConnectionDriver::CloudflareRateLimits {
+                    namespace: limits
+                        .iter()
+                        .find(|connection| connection.name == *name)?
+                        .namespace,
+                },
                 ConnectionKind::Package => {
                     let connection = packages.iter().find(|known| known.name == *name)?;
                     ConnectionDriver::Package(Box::new(crate::providers::connection_plan(

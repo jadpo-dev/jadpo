@@ -94,8 +94,9 @@ fn with_none_declared_the_one_deployable_is_app() {
 
 /// The café declares a kiosk serving `main`, built natively, and an edge
 /// built for Workers (chunk 8.1o2), which `jadpo build` builds since chunk
-/// 8.2b (`workers.rs`).
-const DECLARED: &str = "application {\n    deployables: {\n        kiosk: {\n            serves: [main]\n            target: Target.native\n        }\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n";
+/// 8.2b (`workers.rs`), their rate limits counted in Redis, which both
+/// reach (chunk 8.2m2).
+const DECLARED: &str = "application {\n    connections: {\n        cache: {\n            driver: Driver.redis\n        }\n    }\n    rate_limits: {\n        store: cache\n    }\n    deployables: {\n        kiosk: {\n            serves: [main]\n            target: Target.native\n        }\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n";
 
 #[test]
 fn a_declared_deployable_is_built_by_its_name() {

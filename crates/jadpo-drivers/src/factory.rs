@@ -16,6 +16,8 @@
 //! - `Driver.disk`: what the host's disk gives for its `path:`.
 //! - `Driver.cloudflare_queues`: nothing to build, since Cloudflare pushes
 //!   its batches to the Workers host's consumer, which calls no driver.
+//! - `Driver.cloudflare_rate_limits`: nothing to build, since the Workers
+//!   host counts rate limits in the Worker's bindings itself (chunk 8.2m2).
 //!
 //! A connection whose driver doesn't run on the host's target, or that the
 //! host or the program's settings can't build, is kept as [`Unbuilt`] with
@@ -287,7 +289,9 @@ fn build_one(
             } else {
                 Why::NotInThisBuild
             }),
-        ConnectionDriver::CloudflareQueues(_) => Ok(Built::Nothing),
+        ConnectionDriver::CloudflareQueues(_) | ConnectionDriver::CloudflareRateLimits { .. } => {
+            Ok(Built::Nothing)
+        }
     }
 }
 

@@ -11,11 +11,15 @@
 //!   response leaves run through `ctx.waitUntil` and the work an
 //!   invocation hands on run in a fresh one, a request to the Worker
 //!   itself through a service binding ([`HAND_ON_BINDING`]), rate limits
-//!   counted in the isolate's memory, and Workers' budgets for background
-//!   work (30 seconds after a response and for work handed on, 15 minutes
-//!   for the cron, which the ticks one cron runs share).
+//!   counted in Cloudflare's rate-limiting binding when `rate_limits:`
+//!   names one, and in the isolate's memory while it can't be asked, and
+//!   Workers' budgets for background work (30 seconds after a response and
+//!   for work handed on, 15 minutes for the cron, which the ticks one cron
+//!   runs share).
 //! - [`WorkersTransport`]: the drivers' `Transport` over `connect()` from
-//!   `cloudflare:sockets`, upgraded with `startTls()`.
+//!   `cloudflare:sockets`, upgraded with `startTls()`; a Hyperdrive
+//!   binding's host is the platform's pooler, which PostgreSQL's driver
+//!   reaches without TLS (chunk 8.2i).
 //! - [`WorkersFetch`] and [`WorkersOutbound`]: HTTP out of the Worker
 //!   through `fetch()`, aborted through an `AbortSignal` when its time is
 //!   up and following no redirect, for the package driver and for the
@@ -56,8 +60,10 @@
 
 pub mod deployable;
 mod fetch;
+mod hyperdrive;
 mod js;
 mod passkeys;
+mod ratelimit;
 mod streamed;
 #[cfg(feature = "testing")]
 pub mod testing;
@@ -73,7 +79,7 @@ use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::capability::Capability;
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, Passkeys, RateLimits};
-use jadpo_std::http::RateLimit;
+use jadpo_std::http::{RateLimit, RateLimitStore};
 use js_sys::{Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
 
@@ -147,6 +153,8 @@ pub struct WorkersHost {
     ctx: Option<ExecutionContext>,
     drivers: Drivers,
     outbound: WorkersOutbound,
+    /// Where rate limits are counted: the plan's store, when it names one.
+    rate_limits: Option<Rc<RateLimitStore>>,
     /// When the cron invocation it serves began on the monotonic clock:
     /// each tick it runs has what is left of the cron's 15 minutes.
     cron: Option<u64>,
@@ -173,8 +181,16 @@ impl WorkersHost {
             ctx,
             drivers: Drivers::default(),
             outbound: WorkersOutbound::default(),
+            rate_limits: None,
             cron: None,
         }
+    }
+
+    /// Counts rate limits in `store`, the one `rate_limits:` names: in
+    /// Cloudflare's rate-limiting binding for each limit it has one for.
+    pub fn with_rate_limits(mut self, store: Option<Rc<RateLimitStore>>) -> WorkersHost {
+        self.rate_limits = store;
+        self
     }
 
     /// The host for a run of the cron trigger, which began now: the
@@ -205,8 +221,8 @@ impl WorkersHost {
 
 /// The isolate's rate-limit counters, which last as long as it does and
 /// count every request it serves: on Workers the fallback area 16 allows
-/// while no Redis connection or Cloudflare's rate-limiting binding counts
-/// them.
+/// while no Redis connection or Cloudflare's rate-limiting binding can
+/// count them.
 fn isolate_limits() -> &'static RateLimits {
     static LIMITS: OnceLock<RateLimits> = OnceLock::new();
     LIMITS.get_or_init(RateLimits::default)
@@ -323,12 +339,14 @@ impl Host for WorkersHost {
         }
     }
 
-    /// The Worker's binding of that name, when it is text: a variable or
-    /// a secret.
+    /// The Worker's binding of that name: its text, a variable's or a
+    /// secret's; or, for a Hyperdrive binding, the address it gives, its
+    /// host the platform's pooler (chunk 8.2i).
     fn variable(&self, name: &str) -> Option<String> {
-        Reflect::get(&self.env, &JsValue::from_str(name))
-            .ok()
-            .and_then(|value| value.as_string())
+        let binding = Reflect::get(&self.env, &JsValue::from_str(name)).ok()?;
+        binding
+            .as_string()
+            .or_else(|| hyperdrive::address(&binding))
     }
 
     /// Web Crypto's `getRandomValues` ([`web_crypto_random`]).
@@ -360,15 +378,36 @@ impl Host for WorkersHost {
         wall_clock()
     }
 
-    /// Counted in the isolate's memory ([`isolate_limits`]).
+    /// Counted in the rate-limiting binding the store gives `limit`, and
+    /// in the isolate's memory ([`isolate_limits`]) when there is none or
+    /// it can't be asked. A binding says only whether the request is
+    /// within the limit, so a refusal is told to try again after the
+    /// window's whole length, the longest it can have to wait.
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
         limit: RateLimit,
         now: i64,
     ) -> LocalFuture<'a, Allowed> {
-        let allowed = isolate_limits().allow(key, limit, now);
-        Box::pin(async move { allowed })
+        let binding = self
+            .rate_limits
+            .as_ref()
+            .and_then(|store| store.binding(limit))
+            .map(|binding| binding.name.clone());
+        Box::pin(async move {
+            if let Some(binding) = binding
+                && let Some(within) = ratelimit::within(&self.env, &binding, key).await
+            {
+                return if within {
+                    Allowed::Yes
+                } else {
+                    Allowed::No {
+                        retry_after: u64::from(limit.window_ms.div_ceil(1000).max(1)),
+                    }
+                };
+            }
+            isolate_limits().allow(key, limit, now)
+        })
     }
 }
 

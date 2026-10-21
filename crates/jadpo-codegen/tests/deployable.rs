@@ -260,7 +260,17 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     }
     let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
         "back_office",
-        &["DATABASE_URL".to_string(), "MAIL_SENDER".to_string()],
+        &["MAIL_SENDER".to_string()],
+        &[
+            workers::Hyperdrive {
+                binding: "DATABASE_URL".to_string(),
+                id: Some("c020574a5623407bbe0ccd192bab9545".to_string()),
+            },
+            workers::Hyperdrive {
+                binding: "LEDGER_URL".to_string(),
+                id: None,
+            },
+        ],
         true,
         true,
     ))
@@ -277,7 +287,14 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
                 { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
             ],
-            "secrets": { "required": ["DATABASE_URL", "MAIL_SENDER"] },
+            "secrets": { "required": ["MAIL_SENDER"] },
+            // Each database's address is a Hyperdrive binding (chunk
+            // 8.2i), with the id the build was given; without one, Wrangler
+            // refuses to deploy until it has one.
+            "hyperdrive": [
+                { "binding": "DATABASE_URL", "id": "c020574a5623407bbe0ccd192bab9545" },
+                { "binding": "LEDGER_URL" },
+            ],
             "triggers": { "crons": ["* * * * *"] },
             // Bound to itself, to hand work on to a fresh invocation.
             "services": [
@@ -285,13 +302,60 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
             ],
         })
     );
-    // With no setting to give, there is no secret to require; with no
-    // store for its tick to keep or sweep, no cron to run it; and running
-    // no background work, it hands nothing on.
+    // With no setting to give, there is no secret to require and no
+    // binding to name; with no store for its tick to keep or sweep, no
+    // cron to run it; and running no background work, it hands nothing on.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[], false, false)).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], &[], false, false)).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
+    assert!(bare.get("hyperdrive").is_none(), "{bare}");
     assert!(bare.get("triggers").is_none(), "{bare}");
     assert!(bare.get("services").is_none(), "{bare}");
+}
+
+/// Each limit counted in Cloudflare's rate-limiting binding is a binding
+/// of the Worker's own in its Wrangler file, its namespace id as text and
+/// its window in seconds (chunk 8.2m2).
+#[test]
+fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
+    let bindings =
+        jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
+            .expect("numbered");
+    let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
+        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true, true),
+        &bindings,
+    ))
+    .expect("JSON");
+    assert_eq!(
+        wrangler["ratelimits"],
+        serde_json::json!([
+            {
+                "name": "LIMITS_120_PER_60S",
+                "namespace_id": "1001",
+                "simple": { "limit": 120, "period": 60 },
+            },
+            {
+                "name": "LIMITS_600_PER_60S",
+                "namespace_id": "1002",
+                "simple": { "limit": 600, "period": 60 },
+            },
+        ])
+    );
+    assert_eq!(
+        wrangler["secrets"]["required"],
+        serde_json::json!(["DATABASE_URL"])
+    );
+    assert_eq!(
+        wrangler["triggers"]["crons"],
+        serde_json::json!(["* * * * *"])
+    );
+    // The binding to itself work is handed on through stays beside them
+    // (chunk 8.2h).
+    assert_eq!(
+        wrangler["services"][0]["entrypoint"], "JadpoHandOn",
+        "{wrangler}"
+    );
+    let plain = workers::wrangler("web", &[], &[], false, false);
+    assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }

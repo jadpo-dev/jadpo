@@ -1,18 +1,21 @@
-//! A Workers deployable, built and served by workerd (roadmap chunks 8.2b
-//! and 8.2d; docs/compiler-runtime.md §2.6, "A Workers deployable"; area
-//! 14, "A Workers deployable"): teaching example 23, the repair café,
-//! declared as one kiosk built for `Target.wasm`. `jadpo build` writes it in
-//! `build/target/kiosk/` as a WebAssembly module bound by wasm-bindgen's
-//! library, the JavaScript that binds it, Jadpo's module shim and a
-//! Wrangler file naming them, the setting it needs and the compatibility
-//! date; its stamp's target is `wasm`, the screen shows the module's size
-//! raw and gzipped, and the module links the PostgreSQL driver the café's
+//! A Workers deployable, built and served by workerd (roadmap chunks 8.2b,
+//! 8.2d and 8.2i; docs/compiler-runtime.md §2.6, "A Workers deployable"
+//! and "PostgreSQL through Hyperdrive"; area 14, "A Workers deployable"):
+//! teaching example 23, the repair café, declared as one kiosk built for
+//! `Target.wasm`. `jadpo build` writes it in `build/target/kiosk/` as a
+//! WebAssembly module bound by wasm-bindgen's library, the JavaScript that
+//! binds it, Jadpo's module shim and a Wrangler file naming them, its
+//! database's address as a Hyperdrive binding, with the id the build is
+//! given or, without one, an alert saying so, and the compatibility date;
+//! its stamp's target is `wasm`, the screen shows the module's size raw
+//! and gzipped, and the module links the PostgreSQL driver the café's
 //! database needs, the runtime's HTTP component, and none of the testing
 //! machinery.
 //!
 //! workerd, Cloudflare's own Workers runtime, pinned in `tools/workers/`,
 //! then runs the files as the Wrangler file describes them, against a
-//! PostgreSQL database on this machine reached through `connect()`.
+//! PostgreSQL database on this machine reached through workerd's
+//! Hyperdrive binding, which hands `connect()` to the database's server.
 //! Without its database's address the Worker answers 503 and logs
 //! `runtime.startup_failed` naming the setting's variable, once for its
 //! isolate; against a database that hasn't applied its last migration it
@@ -76,8 +79,9 @@ use crate::deployable::{apply, copy_folder, count, migrations, rows};
 use crate::support::fake_sqs::FakeSqs;
 
 /// The café declares one kiosk, built for Workers, serving its API and
-/// running its subscribers and schedules.
-const DECLARED: &str = "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n    events: {\n        store: main\n    }\n    deployables: {\n        kiosk: {\n            serves: [main]\n            runs: [Trigger.subscribers, Trigger.schedules]\n            target: Target.wasm\n        }\n    }\n}\n";
+/// running its subscribers and schedules, its rate limits counted in
+/// Cloudflare's rate-limiting binding (chunk 8.2m2).
+const DECLARED: &str = "application {\n    connections: {\n        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n        }\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n    events: {\n        store: main\n    }\n    rate_limits: {\n        store: limits\n    }\n    deployables: {\n        kiosk: {\n            serves: [main]\n            runs: [Trigger.subscribers, Trigger.schedules]\n            target: Target.wasm\n        }\n    }\n}\n";
 
 /// Teaching example 23 declared as a kiosk on Workers, copied where its
 /// build is kept between runs.
@@ -97,8 +101,13 @@ fn repair_cafe() -> PathBuf {
 
 /// `jadpo` with `args` in `root`, which must succeed.
 fn jadpo(root: &Path, args: &[&str]) -> jadpo_cli::Output {
+    jadpo_in(root, args, Environment::empty())
+}
+
+/// `jadpo` with `args` in `root` and `environment`, which must succeed.
+fn jadpo_in(root: &Path, args: &[&str], environment: Environment) -> jadpo_cli::Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    let output = run(&args, &Environment::empty().with_cwd(root));
+    let output = run(&args, &environment.with_cwd(root));
     assert_eq!(
         output.code, 0,
         "{args:?}: {}{}",
@@ -169,8 +178,9 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     );
 
     // The Wrangler file: the shim as the main module, uploaded with the
-    // files beside it as they are, the compatibility date, and the setting
-    // the kiosk needs, by its variable.
+    // files beside it as they are, the compatibility date, and the
+    // database's address as a Hyperdrive binding, by its setting's
+    // variable, with no id, since the build was given none.
     let wrangler: Value = serde_json::from_str(
         &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
     )
@@ -182,9 +192,25 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         wrangler["compatibility_date"],
         jadpo_codegen::workers::COMPATIBILITY_DATE
     );
+    assert!(wrangler.get("secrets").is_none(), "{wrangler}");
     assert_eq!(
-        wrangler["secrets"]["required"],
-        serde_json::json!(["DATABASE_URL"]),
+        wrangler["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL" }]),
+        "{wrangler}"
+    );
+    assert_eq!(
+        kiosk["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL", "id": null }]),
+        "{built}"
+    );
+    // A rate-limiting binding for each limit the kiosk counts, numbered
+    // from `limits`' namespace.
+    assert_eq!(
+        wrangler["ratelimits"],
+        serde_json::json!([
+            { "name": "LIMITS_120_PER_60S", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
+            { "name": "LIMITS_600_PER_60S", "namespace_id": "1002", "simple": { "limit": 600, "period": 60 } },
+        ]),
         "{wrangler}"
     );
     // Its tick has a database to sweep, so the minute's cron runs it.
@@ -241,20 +267,49 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         assert!(names(&module, krate, path), "it lacks {krate}::{path}");
     }
 
-    // The screen names the Worker's files and the module's size, and no
-    // longer says the Worker answers nothing.
+    // The screen names the Worker's files, the module's size and its
+    // database's Hyperdrive binding, and says the binding has no id, which
+    // `wrangler deploy` needs, nor its Hyperdrive's caching off.
     let screen = jadpo(&root, &["build", "kiosk"]).stdout;
     for shown in [
         "worker: build/target/kiosk/wrangler.json",
         "module: build/target/kiosk/kiosk.wasm",
         "MB gzipped",
+        "database: DATABASE_URL through Hyperdrive, no id",
         "build: b_",
         "settings: DATABASE_URL",
+        "`DATABASE_URL` has no Hyperdrive id",
+        "caching off",
+        "`JADPO_HYPERDRIVE_DATABASE_URL`",
         "built: kiosk, wasm in ",
     ] {
         assert!(screen.contains(shown), "{shown} isn't in:\n{screen}");
     }
     assert!(!screen.contains("503"), "{screen}");
+
+    // Given its Hyperdrive's id, the build writes it into the Wrangler
+    // file, and the screen names it.
+    const ID: &str = "c020574a5623407bbe0ccd192bab9545";
+    let given = jadpo_in(
+        &root,
+        &["build", "kiosk"],
+        Environment::empty().with_var("JADPO_HYPERDRIVE_DATABASE_URL", ID),
+    )
+    .stdout;
+    assert!(
+        given.contains(&format!("database: DATABASE_URL through Hyperdrive {ID}")),
+        "{given}"
+    );
+    assert!(!given.contains("has no Hyperdrive id"), "{given}");
+    let wrangler: Value = serde_json::from_str(
+        &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
+    )
+    .expect("JSON");
+    assert_eq!(
+        wrangler["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL", "id": ID }]),
+        "{wrangler}"
+    );
 
     if !jadpo_test::live() {
         return;
@@ -288,7 +343,9 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     drop(worker);
 
     // Against a database that hasn't applied its last migration it serves
-    // nothing either, naming the migration.
+    // nothing either, naming the migration. The database is reached
+    // through the Hyperdrive binding the Wrangler file names, which workerd
+    // hands to the database's server, as Cloudflare hands it to Hyperdrive.
     let worker = Workerd::start(&out, &wrangler, &[("DATABASE_URL", &database.worker)]);
     let (status, body) = worker.send("POST", "/repairs", &[], LAMP);
     assert_eq!(status, 503, "{body}\n{}", worker.log());
@@ -300,7 +357,7 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     assert_eq!(problem["store"], "main", "{failed:?}");
     assert_eq!(problem["pending"], serde_json::json!([last.name]));
     assert!(
-        !worker.log().contains(&database.worker),
+        !worker.log().contains(&database.worker) && !worker.log().contains("hyperdrive.local"),
         "the log holds the database's address:\n{}",
         worker.log()
     );
@@ -369,9 +426,9 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     let (status, body) = worker.send("GET", "/health/ready", &[], "");
     assert_eq!(status, 200, "{body}\n{}", worker.log());
 
-    // Each address `CF-Connecting-IP` gives is counted on its own: 120
-    // requests a minute, then 429, while another address still has its
-    // allowance.
+    // Each address `CF-Connecting-IP` gives is counted on its own, in the
+    // rate-limiting binding the Wrangler file names: 120 requests a
+    // minute, then 429, while another address still has its allowance.
     let one = [("CF-Connecting-IP", "203.0.113.9")];
     for _ in 0..120 {
         let (status, body) = worker.send("GET", "/nowhere", &one, "");
@@ -379,6 +436,15 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     }
     let (status, body) = worker.send("GET", "/nowhere", &one, "");
     assert_eq!(status, 429, "{body}");
+    assert_eq!(
+        worker
+            .log()
+            .matches("rate-limiting binding: address 203.0.113.9 ")
+            .count(),
+        121,
+        "{}",
+        worker.log()
+    );
     let (status, body) = worker.send(
         "GET",
         "/nowhere",
@@ -536,12 +602,18 @@ fn a_workers_cron_ticks_runs_schedules_and_receives_a_queue_each_10_seconds() {
     assert_eq!(
         wrangler["secrets"]["required"],
         serde_json::json!([
-            "DATABASE_URL",
             "AWS_KEY_ID",
             "AWS_SECRET_KEY",
             "SQS_ENDPOINT",
             "WAREHOUSE_QUEUE_URL"
         ]),
+        "{wrangler}"
+    );
+    // Its database's address is a Hyperdrive binding (chunk 8.2i), which
+    // the harness gives as workerd's.
+    assert_eq!(
+        wrangler["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL" }]),
         "{wrangler}"
     );
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
@@ -1718,9 +1790,14 @@ const CRON: &str = "export default {\n  async fetch(request, env) {\n    const a
 
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
-    /// the modules beside it by the file's rules, and its compatibility
-    /// date, given the text bindings `bindings`, its outbound network
-    /// reaching this machine.
+    /// the modules beside it by the file's rules, its compatibility date
+    /// and its rate-limiting bindings, each a stand-in for Cloudflare's
+    /// (tools/workers/ratelimit-binding.mjs), given `bindings`, its
+    /// outbound network reaching this machine. A binding the Wrangler file
+    /// names as Hyperdrive's is given as workerd's Hyperdrive binding for
+    /// the database at that address, which hands `connect()` to its server,
+    /// as `wrangler dev` does with a local connection string; any other is
+    /// text.
     fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
         // A folder of its own, config and log, since this module's tests
         // run side by side, each with its workerd.
@@ -1757,9 +1834,31 @@ impl Workerd {
                 fs::copy(&path, dir.join(path.file_name().expect("a name"))).expect("copied");
             }
         }
+        let pooled: Vec<&str> = wrangler["hyperdrive"]
+            .as_array()
+            .map(|bindings| {
+                bindings
+                    .iter()
+                    .filter_map(|binding| binding["binding"].as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut services = Vec::new();
         let mut bindings: Vec<String> = bindings
             .iter()
-            .map(|(name, value)| format!("(name = \"{name}\", text = \"{value}\")"))
+            .map(|(name, value)| {
+                if !pooled.contains(name) {
+                    return format!("(name = \"{name}\", text = \"{value}\")");
+                }
+                let (user, password, server, database) = parts(value);
+                let service = format!("hyperdrive-{}", name.to_ascii_lowercase());
+                services.push(format!(
+                    "(name = \"{service}\", external = (address = \"{server}\", tcp = ())),"
+                ));
+                format!(
+                    "(name = \"{name}\", hyperdrive = (designator = \"{service}\", database = \"{database}\", user = \"{user}\", password = \"{password}\", scheme = \"postgresql\"))"
+                )
+            })
             .collect();
         // A service binding to the Worker itself, to the entrypoint it
         // names (chunk 8.2h).
@@ -1769,6 +1868,20 @@ impl Workerd {
                 "(name = \"{}\", service = (name = \"kiosk\", entrypoint = \"{}\"))",
                 service["binding"].as_str().expect("a binding"),
                 service["entrypoint"].as_str().expect("an entrypoint"),
+            ));
+        }
+        let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers");
+        fs::copy(
+            tools.join("ratelimit-binding.mjs"),
+            dir.join("ratelimit-binding.mjs"),
+        )
+        .expect("the stand-in rate-limiting binding");
+        for binding in wrangler["ratelimits"].as_array().into_iter().flatten() {
+            bindings.push(format!(
+                "(name = \"{}\", wrapped = (moduleName = \"jadpo-test:ratelimit\", innerBindings = [(name = \"limit\", json = \"{}\"), (name = \"period\", json = \"{}\"), (name = \"log\", json = \"true\")]))",
+                binding["name"].as_str().expect("a binding's name"),
+                binding["simple"]["limit"],
+                binding["simple"]["period"],
             ));
         }
         let free = || {
@@ -1789,11 +1902,13 @@ impl Workerd {
                  \x20   (name = \"kiosk\", worker = .kiosk),\n\
                  \x20   (name = \"cron\", worker = .cron),\n\
                  \x20   (name = \"machine\", network = (allow = [\"public\", \"private\", \"local\"])),\n\
+                 \x20   {}\n\
                  \x20 ],\n\
                  \x20 sockets = [\n\
                  \x20   (name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\"),\n\
                  \x20   (name = \"cron\", address = \"127.0.0.1:{cron}\", http = (), service = \"cron\"),\n\
                  \x20 ],\n\
+                 \x20 extensions = [(modules = [(name = \"jadpo-test:ratelimit\", internal = true, esModule = embed \"ratelimit-binding.mjs\")])],\n\
                  );\n\n\
                  const kiosk :Workerd.Worker = (\n\
                  \x20 modules = [{}],\n\
@@ -1807,6 +1922,7 @@ impl Workerd {
                  \x20 compatibilityFlags = [\"service_binding_extra_handlers\"],\n\
                  \x20 bindings = [(name = \"WORKER\", service = \"kiosk\")],\n\
                  );\n",
+                services.join("\n    "),
                 modules.join(", "),
                 bindings.join(", "),
             ),
@@ -1963,6 +2079,83 @@ impl Drop for Workerd {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A PostgreSQL address's user, password, server (`host:port`) and
+/// database, each percent-decoded, as libpq reads a URL: a `dbname=` in
+/// its query names the database over its path, the last one winning, as
+/// the run's server's addresses do (`…/postgres?dbname=jadpo_…`).
+fn parts(url: &str) -> (String, String, String, String) {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let (rest, query) = rest.split_once('?').unwrap_or((rest, ""));
+    let (user_info, rest) = rest.rsplit_once('@').unwrap_or(("", rest));
+    let (user, password) = user_info.split_once(':').unwrap_or((user_info, ""));
+    let (server, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let database = query
+        .split('&')
+        .rev()
+        .find_map(|pair| pair.strip_prefix("dbname="))
+        .unwrap_or(path);
+    (
+        decoded(user),
+        decoded(password),
+        server.to_string(),
+        decoded(database),
+    )
+}
+
+/// `text` with each `%XX` read as its byte.
+fn decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let hex = text
+            .get(at + 1..at + 3)
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match (bytes[at], hex) {
+            (b'%', Some(byte)) => {
+                out.push(byte);
+                at += 3;
+            }
+            (byte, _) => {
+                out.push(byte);
+                at += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[test]
+fn an_address_is_read_into_its_parts_as_libpq_reads_it() {
+    assert_eq!(
+        parts("postgresql://jadpo:jadpo@127.0.0.1:5432/postgres?dbname=jadpo_1_2_workers"),
+        (
+            "jadpo".to_string(),
+            "jadpo".to_string(),
+            "127.0.0.1:5432".to_string(),
+            "jadpo_1_2_workers".to_string()
+        )
+    );
+    assert_eq!(
+        parts("postgres://app:p%40ss@db.test:6543/repair%20cafe?sslmode=x&dbname=a&dbname=b"),
+        (
+            "app".to_string(),
+            "p@ss".to_string(),
+            "db.test:6543".to_string(),
+            "b".to_string()
+        )
+    );
+    assert_eq!(
+        parts("postgresql://jadpo@127.0.0.1:55432/jadpo_workers"),
+        (
+            "jadpo".to_string(),
+            String::new(),
+            "127.0.0.1:55432".to_string(),
+            "jadpo_workers".to_string()
+        )
+    );
 }
 
 /// A chunked body's text.

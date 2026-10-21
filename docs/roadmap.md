@@ -2675,14 +2675,32 @@ whose entry names them.
   each handed on to, then the minute's cron telling a summary the
   budget's end cut short; natively, work carried on from its message
   alone (`tests/background_budget.rs`).
-- [ ] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d:
-  PostgreSQL through Cloudflare's pooling: a database connection's
-  address from a Hyperdrive binding on Workers, its caching required off,
-  unnamed statements and no session state kept (§2.6), TLS to it through
-  `startTls()`, a check that fails at the first write after it, where
-  Workers reports one, classified as natively; how a connection names
-  its binding is decided here, or asked. Proved under workerd's Hyperdrive binding against the run's
-  PostgreSQL.
+- [x] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d.
+  Built (area 5, "PostgreSQL through Hyperdrive"; §2.6): a connection
+  names its binding through its `url:` setting, whose variable is a
+  Hyperdrive binding on Workers, so `app.jadpo` gains nothing (decided in
+  the chunk, 2026-10-21; a text binding stays a direct address);
+  `WorkersHost::variable` reads one as its address, of its parts
+  percent-encoded, never its `connectionString` with `sslmode=disable`,
+  its host the platform's pooler (`Transport::is_pooler`), which the
+  driver reaches without TLS: the binding's socket offers none (workerd's
+  source), so TLS to the database is Hyperdrive's, by default against the
+  public authorities, and the entry's TLS through `startTls()` holds for a
+  direct connection only; a certificate Workers refuses at the first
+  write after `startTls()` the fault naming the server it is natively
+  (`Checked`; unavailable before). `jadpo build` writes each database's
+  address as a Hyperdrive binding in the Wrangler file, its id from
+  `JADPO_HYPERDRIVE_<variable>`, else none, which `wrangler deploy`
+  refuses, the screen's `database` line saying `no id` with an alert to
+  create one with caching off, which a Worker can't check (area 14, "A
+  Worker's database"). No session state, held by a live test. Proved
+  under workerd: a Hyperdrive binding's address and pooler reached in a
+  later request; PostgreSQL over TLS through `startTls()` and a refused
+  certificate's fault; example 23's kiosk served through workerd's
+  Hyperdrive binding to the run's PostgreSQL. Left for 8.2n on the real
+  account: the Worker-to-Hyperdrive leg without TLS on Cloudflare's
+  network, and tokio-postgres's named statement describing a `vector` or
+  `geography` column through Hyperdrive.
 - [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
   and 8.2i: the six connections an invocation may hold, counted across
   `Transport` and `Fetch` and shared with `waitUntil`, a seventh waiting
@@ -2721,11 +2739,27 @@ whose entry names them.
   `max_concurrent:` counted per isolate said on `jadpo build`'s screen
   (decided 2026-10-21; `jadpo check`'s "On Workers" says it since 8.1o2,
   which also refuses SMTP on port 25 on Workers).
-- [ ] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d:
-  area 16's counters on Workers kept in the store `rate_limits: { store: }`
-  names, Cloudflare's rate-limiting binding taken as a driver, in place of
-  8.2a's count in the isolate's memory, which the page allows only as a
-  fallback.
+- [x] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d.
+  Built (area 16, "Rate limits"; "Chosen in chunk 8.2m2"):
+  `application { rate_limits: { store: } }` naming a `Driver.redis` or
+  `Driver.cloudflare_rate_limits` connection (`rate_limits.store_invalid`),
+  the latter on Workers only with a `namespace:`; the plan's route table
+  carrying the store (`RateLimitStore`), one binding a limit, named for
+  the connection and the limit (`LIMITS_120_PER_60S`) and numbered from
+  `namespace:`, which `jadpo build` writes into the Wrangler file's
+  `ratelimits`; the Workers host asking the limit's binding
+  (`limit({ key })`), a refusal waiting the window's length, and counting
+  in the isolate's memory only while the binding is missing or throws;
+  `jadpo check` refusing a Workers deployable that serves an API with no
+  store (`rate_limits.store_required`), the binding in a native one
+  (`deployable.target_unsupported`); every limit counted now is a
+  minute's, so the error for another window on the binding comes with a
+  route's own `rate_limit:`. Proved under workerd with a
+  stand-in binding (`tools/workers/ratelimit-binding.mjs`), since workerd
+  has none: the binding deciding in the probe, a broken or missing one
+  falling back, and example 23's kiosk counting 120 a minute an address
+  in it. Its windows and Wrangler entries are checked on the real edge in
+  8.2n.
 - [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
   Richard** (his Cloudflare account): a teaching example deployed with
   Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
@@ -2733,10 +2767,13 @@ whose entry names them.
   the one-second limit, its module against the plan's size limit, and
   the client's address and the six connections on the real edge,
   measured; whether the outbound guard's names can reach a private
-  address there checked; a Worker's binding to its own `JadpoHandOn`
-  accepted, each invocation handed on given its own 30 seconds once the
-  one that called it has ended, and a client leaving a streamed answer
-  ending the model's call (chunk 8.2h).
+  address there checked. From 8.2i: the Worker reaching Hyperdrive
+  without TLS as its binding's address says, Hyperdrive's default TLS
+  checking the database's certificate, and a `vector` column read through
+  it (tokio-postgres describes one through a named statement). From 8.2h:
+  a Worker's binding to its own `JadpoHandOn` accepted, each invocation
+  handed on given its own 30 seconds once the one that called it has
+  ended, and a client leaving a streamed answer ending the model's call.
 
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and

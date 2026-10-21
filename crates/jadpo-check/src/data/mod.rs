@@ -73,6 +73,9 @@ pub enum ConnectionKind {
     /// A queue on Cloudflare Queues, `Driver.cloudflare_queues`, which
     /// `receiving:` reads on Workers (area 11; chunk 7.7c2).
     CloudflareQueue,
+    /// Cloudflare's rate-limiting binding, `Driver.cloudflare_rate_limits`,
+    /// which `rate_limits:` counts in on Workers (area 16; chunk 8.2m2).
+    CloudflareRateLimits,
     /// A provider package (area 11).
     Package,
     /// Neither a built-in driver nor a package: area 11 reports it.
@@ -230,6 +233,7 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::Smtp) => ConnectionKind::Smtp,
                         Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
                         Some(Driver::CloudflareQueues) => ConnectionKind::CloudflareQueue,
+                        Some(Driver::CloudflareRateLimits) => ConnectionKind::CloudflareRateLimits,
                         None => ConnectionKind::Other,
                     },
                     _ => ConnectionKind::Other,

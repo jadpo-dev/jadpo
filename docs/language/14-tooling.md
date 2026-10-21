@@ -948,6 +948,14 @@ application {
             prefix: /backstage
         }
     }
+    connections: {
+        cache: {
+            driver: Driver.redis
+        }
+    }
+    rate_limits: {
+        store: cache
+    }
     deployables: {
         web: {
             serves: [main]
@@ -1007,7 +1015,10 @@ application {
   S3's API, such as Cloudflare R2), a service Jadpo runs without `host:`
   (`host:` with where it is hosted), and SMTP on port 25 (port 587);
   natively, a Cloudflare queue, which only a Worker receives (a package
-  over Cloudflare's HTTP pull API). A deployable built for Workers that
+  over Cloudflare's HTTP pull API), and Cloudflare's rate-limiting
+  binding as the store of its rate limits (Redis). One built for Workers
+  that serves an API needs that store, `rate_limits: { store: }` (area
+  16, "Rate limits"; `rate_limits.store_required`). A deployable built for Workers that
   reaches a connection with `max_concurrent:` is listed under "On
   Workers" once `jadpo check` passes: Workers runs as many instances as
   traffic needs, and each counts the cap on its own (area 11, Decisions).
@@ -1092,19 +1103,27 @@ handler comes with 8.2k.
   the workerd pinned in `tools/workers/` (2026-10-01); `no_bundle` and
   `find_additional_modules`, with a rule for each kind of file (`.mjs` and
   `.js` as ES modules, `.wasm` as compiled WebAssembly), so the files are
-  uploaded as they are written; and `secrets: { required: [ ] }`, the
-  variable of each setting without a `default:`. A binding on Workers is a
-  variable or a secret, and a required secret is Wrangler's one way to
-  name a binding that must be set without giving its value, so `wrangler
-  deploy` refuses until each is set; a setting with a default is left to
-  it. `triggers: { crons: ["* * * * *"] }`, the minute's cron trigger,
-  runs its tick when the tick has a store to keep or sweep (chunk 8.2f).
-  A Worker that runs subscribers or schedules is bound to its own
+  uploaded as they are written; `secrets: { required: [ ] }`, the
+  variable of each setting without a `default:`; and, since chunk 8.2i,
+  `hyperdrive: [ ]`, each database's address setting as a Hyperdrive
+  binding by its variable, with its configuration's `id` when the build's
+  environment gives one in `JADPO_HYPERDRIVE_<variable>`
+  (`JADPO_HYPERDRIVE_DATABASE_URL`), and none otherwise, which `wrangler
+  deploy` refuses (area 5, "PostgreSQL through Hyperdrive"). A binding on
+  Workers is a variable or a secret, and a required secret is Wrangler's
+  one way to name a binding that must be set without giving its value, so
+  `wrangler deploy` refuses until each is set; a setting with a default is
+  left to it. `triggers: { crons: ["* * * * *"] }`, the minute's cron
+  trigger, runs its tick when the tick has a store to keep or sweep
+  (chunk 8.2f). With rate limits counted in Cloudflare's binding,
+  `ratelimits`: a binding for each limit, its name, its `namespace_id` and
+  `simple: { limit, period }` (area 16, "Rate limits"; chunk 8.2m2). A
+  Worker that runs subscribers or schedules is bound to its own
   `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
   service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
   hands what one invocation's 30 seconds didn't reach on to a fresh one
-  (chunk 8.2h; area 12, "Running background work"). The queues'
-  consumers (8.2k) join the file with their chunk, which checks it
+  (chunk 8.2h; area 12, "Running background work"). The
+  queues' consumers (8.2k) join the file with their chunk, which checks it
   against Wrangler itself.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
@@ -1112,9 +1131,12 @@ handler comes with 8.2k.
 - **The screen.** For each Worker, `worker`, its Wrangler file; `module`,
   the module; `size`, the module's bytes raw and gzipped at zlib's default
   level, as Wrangler reports an upload, in decimal units, as Cloudflare
-  states its limits; then its build id and what it serves and runs. The
-  `--json` data gives `wrangler` and the module's `path`, `bytes` and
-  `gzip_bytes`, with `binary` null.
+  states its limits; `database`, each database's address binding through
+  Hyperdrive with its id, or `no id` and an alert saying how to give one
+  and that its Hyperdrive must keep no cache; then its build id and what
+  it serves and runs. The `--json` data gives `wrangler`, the module's
+  `path`, `bytes` and `gzip_bytes`, and `hyperdrive`, each binding and its
+  `id` or null, with `binary` null.
 - **Starting.** A Worker has no start of its own, so an isolate starts
   at its first request, as a native binary starts as its process does:
   it makes its program once, reads only the variables its settings name
@@ -1127,7 +1149,11 @@ handler comes with 8.2k.
   other bindings replaces it.
 - **Its database.** Each request builds its connections' drivers through
   the factory, over `connect()` and `fetch()`, since a socket belongs to
-  the request that opened it. Until each database the project keeps
+  the request that opened it. A database's address is its Hyperdrive
+  binding's, reached without TLS inside Cloudflare, Hyperdrive using TLS
+  to the database (area 5, "PostgreSQL through Hyperdrive"); a text
+  binding of that name is reached directly, over TLS through
+  `startTls()`. Until each database the project keeps
   migrations in has been compared with the build's migrations and found
   current, each request compares them first: one not applied, or one
   applied that the build doesn't have or that changed since, is logged as
@@ -1144,11 +1170,12 @@ handler comes with 8.2k.
   the work a response leaves runs after it in `waitUntil`, within its 30
   seconds, and what that doesn't reach is handed on to a fresh invocation
   of the Worker through its binding to itself, which carries it on with
-  30 seconds of its own (chunk 8.2h); rate limits are counted in the
-  isolate's memory until area 16's store on Workers comes (chunk 8.2m2).
-  A streamed answer (`ai.stream`) is a `ReadableStream`, each event sent
-  as it is read, and a client that goes away ends the request and with
-  it the model's call (chunk 8.2h).
+  30 seconds of its own (chunk 8.2h); rate limits are counted in the store
+  `rate_limits:` names, Cloudflare's rate-limiting binding, and in the
+  isolate's memory only while it can't be asked (area 16, "Rate limits";
+  chunk 8.2m2). A streamed answer (`ai.stream`) is a `ReadableStream`,
+  each event sent as it is read, and a client that goes away ends the
+  request and with it the model's call (chunk 8.2h).
 - **The tick.** Each run of the minute's cron trigger calls the Worker's
   `scheduled`, which starts the isolate as a request does and, once its
   databases are current, runs the runtime's tick (area 12, "The tick"):
@@ -1171,6 +1198,7 @@ $ jadpo build kiosk
   worker    build/target/kiosk/wrangler.json
   module    build/target/kiosk/kiosk.wasm
   size      12.8 MB, 4.0 MB gzipped
+  database  DATABASE_URL through Hyperdrive c020574a5623407bbe0ccd192bab9545
   build     b_1c5e09d2a7f3
   serves    main
   runs      schedules, subscribers
@@ -1179,6 +1207,16 @@ $ jadpo build kiosk
 
 ✓ built  kiosk · wasm in 42.3 s
 → jadpo migrate apply  it starts only once its database has every migration
+```
+
+Built with no id in `JADPO_HYPERDRIVE_DATABASE_URL`, its database line
+says so, and an alert says what to do:
+
+```text
+  database  DATABASE_URL through Hyperdrive, no id
+  …
+▲ alert  `DATABASE_URL` has no Hyperdrive id: create one with caching off and
+  build with it in `JADPO_HYPERDRIVE_DATABASE_URL`
 ```
 
 ```json
@@ -2004,7 +2042,8 @@ A deployable that declares a target is held to the connections it
 reaches, from the routes of the APIs it serves and the background work it
 runs: the disk and a service Jadpo runs (`runs:`) without `host:` aren't
 on Workers, SMTP on port 25 is blocked there, and only a Worker receives
-a Cloudflare queue (area 11, question 24). One built for Workers that
+a Cloudflare queue or counts in Cloudflare's rate-limiting binding (area
+11, question 24; area 16, "Rate limits"). One built for Workers that
 runs the schedules is held to them too: its tick is the minute's cron, so
 a schedule more often than once a minute is refused at its `every:`
 (area 12, decided 2026-10-19; chunk 8.2f). Each refusal names what to
@@ -2145,6 +2184,10 @@ and its edge, which serves the API that keeps them, is built for Workers:
 ```jadpo check project=e-deployable-target-unsupported expect=deployable.target_unsupported file=app.jadpo
 application {
     connections: {
+        limits: {
+            driver: Driver.cloudflare_rate_limits
+            namespace: 1001
+        }
         sheets: {
             driver: Driver.disk
             path: "/var/lib/bakery/sheets"
@@ -2156,16 +2199,19 @@ application {
             target: Target.wasm
         }
     }
+    rate_limits: {
+        store: limits
+    }
 }
 ```
 
 ```text output
 error: `edge` can't use `sheets` on Workers, which has no disk
- --> app.jadpo:11:21
+ --> app.jadpo:15:21
    |
- 3 |         sheets: {
+ 7 |         sheets: {
    |         ------ `Driver.disk`
-11 |             target: Target.wasm
+15 |             target: Target.wasm
    |                     ^^^^^^^^^^^ built for Workers
   reason: `sheets` keeps files on the server's own disk (`Driver.disk`), and a Worker has none; `edge` uses it through `keep_prices`.
   next: Keep `sheets`'s files through a package over S3's API, such as Cloudflare R2, or use them from a `Target.native` deployable (agent)
@@ -2442,6 +2488,7 @@ what other areas carried here and where this page answers it.
 |---|---|---|
 | A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answered every request 503 until chunk 8.2d built its `fetch` (decided for Richard, the conservative reading) | 2026-10-21 |
 | A Worker's start | Chosen in chunk 8.2d, each reversible: an isolate starts at its first request, reading its settings from the bindings and checking `client_address:` once, a failure logged once and every request of the isolate answered 503 `unavailable`, since a Worker's bindings change only with a new version; its stores' migrations compared at each request until they are current and not again for the isolate, a store behind, ahead or out of reach answered 503 and logged each time, so a migration applied after a deploy is picked up without one; `runtime.started` logged once an isolate is current; the log on the console, one JSON line an event; the HTTP component's per-worker state (request numbers, the readiness check reused for a second) kept per isolate; a streamed answer sent whole until chunk 8.2h; a `client_address:` source other than `cloudflare` stopping the start as `client_address_refused` until `jadpo check` refuses it (chunk 8.2m) | 2026-10-21 |
+| A Worker's database | Chosen in chunk 8.2i, each reversible: the Wrangler file writes each database's address setting as a Hyperdrive binding in place of a required secret (area 5, "PostgreSQL through Hyperdrive"); its `id` is read from the build's environment, `JADPO_HYPERDRIVE_<variable>`, a tool's variable as `JADPO_WORKERD` is, since the id differs for each Cloudflare account and environment and isn't the app's to hold in source; without one the binding is written without an id, which `wrangler deploy` refuses, and the screen's `database` line says `no id` with an alert to create one with caching off, the one thing a Worker can't check itself | 2026-10-21 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |
