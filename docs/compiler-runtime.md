@@ -259,7 +259,7 @@ Rust 1.88 or later).
 | `jadpo-codegen` | Rust source from graph and plan; drives cargo | |
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
-| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL and the package driver (JSON over HTTP, chunk 7.2c) now; Redis, SMTP and S3 with their areas | yes |
+| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP, chunk 7.2c) and SMTP (chunks 7.3 and 8.1b) now; Redis and S3 with their areas | yes |
 | `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with (chunk 6.4b), HTTP for the package driver (chunk 7.2c); the inbox with email | |
 | `jadpo-host-workers` | workers-rs: fetch, scheduled, `waitUntil`, sockets, bindings | only |
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
@@ -1342,9 +1342,40 @@ or column, class 22, class 0A, a not-null or check violation) a
 `Statement` error, which the runtime reports as a defect in Jadpo rather
 than asking a person to check the database; anything else a fault with its
 SQLSTATE and message.
-Connections are unencrypted until TLS is built. `jadpo-host-native` gives
-`Runtime` (one current-thread tokio runtime with a `LocalSet`),
-`NativeTransport` over tokio's TCP and Unix sockets, and `postgres(url)`.
+PostgreSQL's connections are unencrypted until chunk 8.1n.
+`jadpo-host-native` gives `Runtime` (one current-thread tokio runtime
+with a `LocalSet`), `NativeTransport` over tokio's TCP and Unix sockets,
+and `postgres(url)`.
+
+**TLS through the transport** (chunk 8.1b). A host secures a driver's
+connection and the driver keeps its protocol: `Transport::upgrade` turns
+a stream the transport opened into TLS, as its client, checking the
+server's certificate and that it was issued for the name given, at the
+point the protocol says (SMTP's `STARTTLS`, PostgreSQL's answer to its
+SSL request in 8.1n), or before anything is written for a protocol that
+speaks TLS from the start. A check that fails is `InvalidData`, a name
+that can't be checked `InvalidInput`, a host without TLS `Unsupported`
+(the trait's default); anything else is the connection's. The transport
+also gives the driver its timer (`sleep`, which `jadpo_drivers::within`
+bounds a wait with), the clock (`now_ms`) and the local address of a
+stream it opened (`local_address`, reading `Stream`'s `Any`). The SMTP
+conversation (`EHLO`, `STARTTLS`, `AUTH PLAIN`, the message, area 16's
+rules) is `jadpo_drivers::smtp::relay` over it, every line read a byte
+at a time so nothing sent after `STARTTLS`'s reply is read as the
+conversation; a TLS check that fails is `misconfigured`, a handshake the
+connection broke off `unavailable`. Natively it is rustls
+(`jadpo_host_native::tls`), the one TLS stack on the request path, the
+package driver's HTTPS and the runtime's own outward fetches included;
+OpenSSL stays only for `webauthn-rs` and the test authenticator, and
+`jadpo`'s own client for HQ. Its cryptography is `ring`, built with only
+a C compiler; aws-lc-rs would add the post-quantum key exchange for a
+far larger C build, and is one provider value away. Servers are checked
+against Mozilla's roots compiled in (`webpki-roots`), not the platform's
+verifier: a deployable trusts the same servers on every machine,
+container images without a CA bundle included, and a test can't pass on
+what a developer's keychain trusts; new roots come with a rebuild.
+`tls::trusting` builds a configuration trusting one authority, what a
+test's server on this machine is checked with.
 
 Built in chunk 3.2: the runtime runs a read plan (one statement,
 then one per include, each with the keys of the records it is included in
@@ -2514,7 +2545,8 @@ members it doesn't declare (`ShapePlan::open`), or raises the package
 failure the provider's code names, which the interpreter maps by code
 at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
 in `FaultKind::Provider`. Natively the host's `Fetch` is
-`jadpo_host_native::fetch::NativeFetch`: HTTPS through OpenSSL, or plain
+`jadpo_host_native::fetch::NativeFetch`: HTTPS through rustls (since
+chunk 8.1b), or plain
 HTTP to this machine, each exchange on tokio's blocking pool within the
 call's timeout.
 

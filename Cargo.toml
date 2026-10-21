@@ -237,6 +237,23 @@ serde_cbor_2 = { version = "=0.13.0", default-features = false, features = ["std
 # `test-authenticator`, for tests only): the OpenSSL bindings `webauthn-rs`
 # already links.
 openssl = { version = "=0.10.81", default-features = false }
+# TLS for the native host (jadpo-host-native only; chunk 8.1b): the one
+# stack every connection a deployable makes is secured with, rustls, so no
+# OpenSSL on the request path. `ring` is its cryptography: built with only
+# a C compiler, where aws-lc-rs wants a much larger C build for the
+# post-quantum key exchange it would add, which one provider value can
+# switch on later. No `logging`. `tokio-rustls` turns a driver's stream
+# into TLS (`Transport::upgrade`). The roots are Mozilla's, compiled in
+# (`webpki-roots`, CDLA-Permissive-2.0), not the platform's verifier: a
+# deployable checks a server the same way on every machine, a container
+# image with no CA bundle included, and a test can't pass because of what
+# a developer's keychain trusts.
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = { version = "=1.0.10", default-features = false }
+# A test's own certificates (jadpo-host-native's tests only): an authority
+# and a server's certificate it signs, made as the test runs.
+rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
 # HTTP for the native host (jadpo-host-native only; docs/compiler-runtime.md §2.6).
 hyper = { version = "=1.12.0", default-features = false }
 hyper-util = { version = "=0.1.21", default-features = false }
