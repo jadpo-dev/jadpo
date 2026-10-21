@@ -490,22 +490,7 @@ impl<'a> Prover<'a> {
         let Some(policy) = self.policies.entity(entity) else {
             return "nobody may read".to_string();
         };
-        let record = || {
-            let grants = policy.grants(Effect::Read);
-            if grants.is_empty() {
-                "nobody may read".to_string()
-            } else {
-                format!(
-                    "only {} may read",
-                    crate::and_list(
-                        &grants
-                            .iter()
-                            .map(|grant| self.described(grant))
-                            .collect::<Vec<_>>()
-                    )
-                )
-            }
-        };
+        let record = || self.record_readers(entity);
         match policy.field(field) {
             Some(own) if own.server_only => {
                 "no client may read it, as it is `FieldAccess.server_only`".to_string()
@@ -525,6 +510,25 @@ impl<'a> Prover<'a> {
                 None => record(),
             },
             None => record(),
+        }
+    }
+
+    /// Who may read a record of `entity`, for a reason: "only schedules
+    /// and subscribers may read".
+    pub fn record_readers(&self, entity: &str) -> String {
+        let grants = self.grants(entity, Effect::Read);
+        if grants.is_empty() {
+            "nobody may read".to_string()
+        } else {
+            format!(
+                "only {} may read",
+                crate::and_list(
+                    &grants
+                        .iter()
+                        .map(|grant| self.described(grant))
+                        .collect::<Vec<_>>()
+                )
+            )
         }
     }
 }

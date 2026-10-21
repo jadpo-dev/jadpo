@@ -35,9 +35,11 @@
 //! gives back) and what decides a value: whatever an `if`, a `match` or a
 //! loop branched on, and a filter's predicate, is carried by every value
 //! made under it ([`Src::Decided`]). A function or library call carries
-//! all of its arguments into its result, and a count only what decided
-//! which items it counts. A local holds everything ever assigned to it,
-//! worked out until nothing changes.
+//! all of its arguments into its result, a model's answer everything its
+//! prompt was built from, and a count only what decided which items it
+//! counts, and whether they are there ([`Src::Present`]), which only a
+//! webhook's reply is held to. A local holds everything ever assigned to
+//! it, worked out until nothing changes.
 //!
 //! Each action and function is its own query (chunk 4.11): its summary
 //! ([`flow_summary`]) holds no positions, so a caller reads it again only
@@ -110,9 +112,15 @@ enum Src {
     Param(usize, Vec<String>),
     /// What decided which value this is, not the value itself: a condition
     /// an `if`, a `match` or a loop branched on, or a filter's predicate.
-    /// Never a whole record: whether a record is there shows only what
-    /// its reader may see.
+    /// Never a whole record, but whether one is there ([`Src::Present`]).
     Decided(Box<Src>),
+    /// Whether a record of `entity`, reached as `reached`, is there: only
+    /// ever inside [`Src::Decided`], for what a condition, a loop or a
+    /// count over records decided. A caller is given only the records it
+    /// may read, so whether one is there shows it nothing it may not see;
+    /// only a webhook's reply action, which runs as the system and is
+    /// answered to whoever sent the webhook, is held to it (chunk 7.9g).
+    Present { entity: String, reached: Reached },
     /// This, anywhere inside the value: a part a summary in a cycle
     /// followed deeper than [`DEPTH`], widened to all of it. Following a
     /// field keeps it, and a record stays whole, so nothing it holds is
@@ -172,6 +180,10 @@ fn as_held_by(src: &Src, reached: &Reached) -> Src {
             reached: reached.clone(),
             origin: *origin,
         },
+        Src::Present { entity, .. } => Src::Present {
+            entity: entity.clone(),
+            reached: reached.clone(),
+        },
         Src::Decided(inner) => Src::Decided(Box::new(as_held_by(inner, reached))),
         Src::Deep(inner) => Src::Deep(Box::new(as_held_by(inner, reached))),
         other => other.clone(),
@@ -223,10 +235,14 @@ fn param_in(src: &Src) -> Option<usize> {
     }
 }
 
-/// `src` as what decided a value; nothing for a whole record.
+/// `src` as what decided a value; for a whole record, whether it is
+/// there.
 fn decided(src: Src) -> Option<Src> {
     match src {
-        Src::Record { .. } => None,
+        Src::Record {
+            entity, reached, ..
+        } => Some(Src::Decided(Box::new(Src::Present { entity, reached }))),
+        Src::Present { .. } => Some(Src::Decided(Box::new(src))),
         Src::Decided(_) => Some(src),
         Src::Deep(inner) => decided(*inner).map(deep),
         other => Some(Src::Decided(Box::new(other))),
@@ -1027,6 +1043,18 @@ impl<'a> Flow<'a> {
     }
 }
 
+/// What a webhook's reply action shows whoever sent the webhook
+/// ([`Walk::reply_shows`]).
+#[derive(Clone, Copy)]
+enum Shown<'a> {
+    /// Its reply.
+    Reply,
+    /// The client fields of the failure named.
+    Failure(&'a str),
+    /// Whether it fails.
+    Fails,
+}
+
 /// The kind of caller a parameter's type is: `Principal.user`.
 fn caller_kind(ty: &TypeRef) -> Option<PrincipalKind> {
     match ty {
@@ -1151,6 +1179,9 @@ struct Walk<'b> {
     /// Whether it is an action a connection's `webhooks: { replies: }`
     /// names, whose reply goes to whoever sent the webhook (chunk 7.9b).
     reply: bool,
+    /// What a reply action's problems named, each once: a field, or with
+    /// none whether a record of the entity is there ([`Walk::reply_shows`]).
+    replied: BTreeSet<(String, Option<String>)>,
     /// The parts of its parameters that reach a model ([`Summary::prompted`]).
     prompted: BTreeSet<(usize, Vec<String>, String)>,
     /// What reaches a model that `ai:` doesn't allow ([`models`]).
@@ -1216,6 +1247,7 @@ impl<'b> Walk<'b> {
             tenant_ids: Vec::new(),
             personal: false,
             reply: false,
+            replied: BTreeSet::new(),
             prompted: BTreeSet::new(),
             exposures: Vec::new(),
             exposed: BTreeSet::new(),
@@ -1344,10 +1376,13 @@ impl Walk<'_> {
         prov
     }
 
-    /// The body may fail here, decided by what decided that the
-    /// statements being walked run and by `also` ([`Summary::fails`]).
-    fn may_fail(&mut self, also: &[Src]) {
+    /// The body may fail at `site`, decided by what decided that the
+    /// statements being walked run and by `also` ([`Summary::fails`]). A
+    /// reply action's failure is answered to whoever sent the webhook
+    /// (chunk 7.9g).
+    fn may_fail(&mut self, flow: &Flow<'_>, site: SiteId, also: &[Src]) {
         let srcs: Vec<Src> = self.pc.iter().chain(also).cloned().collect();
+        self.reply_shows(flow, site, &srcs, Shown::Fails);
         for src in srcs {
             let src = self.unturned_src(&src);
             if !self.fails.contains(&src) {
@@ -1711,7 +1746,7 @@ impl Walk<'_> {
             }
             Expr::Attempt { inner, arms } => {
                 // Whether it fails is decided by whether it runs.
-                self.may_fail(&[]);
+                self.may_fail(flow, site, &[]);
                 for arm in &arms {
                     self.failure(flow, &arm.failure, &arm.fields, None);
                 }
@@ -1729,7 +1764,7 @@ impl Walk<'_> {
                         self.failing.push(src);
                     }
                 }
-                self.may_fail(&[]);
+                self.may_fail(flow, site, &[]);
                 match &failure {
                     Some(failure) => self.failure(flow, failure, &fields, Some(site)),
                     None => {
@@ -1780,6 +1815,26 @@ impl Walk<'_> {
                         .and_then(|target| stores::loaded(&entity, &target.whole)),
                 }
                 .or_else(|| self.mint(site));
+                // A change by `id` fails when no record has it, and a
+                // write with `conflict:` arms when another holds the same
+                // value: whether one is there decides it (chunk 7.9g).
+                let by_id = matches!(op, WriteOp::Update | WriteOp::Delete)
+                    && !target.as_ref().is_some_and(|target| {
+                        target.whole.iter().any(|src| {
+                            matches!(shallow(src.clone()), Src::Record { entity: of, .. } if of == entity)
+                        })
+                    });
+                if by_id || !conflicts.is_empty() {
+                    let reached = self.gated(flow.prover.read(&entity));
+                    self.may_fail(
+                        flow,
+                        site,
+                        &[Src::Decided(Box::new(Src::Present {
+                            entity: entity.clone(),
+                            reached,
+                        }))],
+                    );
+                }
                 let outer = self.stored.replace((entity.clone(), ways.clone(), origin));
                 let mut values: Vec<(String, SiteId, Prov)> = Vec::new();
                 for (key, value) in &set {
@@ -2059,6 +2114,15 @@ impl Walk<'_> {
                         .next(format!("Give `{entity}.id`'s `read:` everyone who may read the record")),
                     );
                 }
+                // It fails when no record has that `id`.
+                self.may_fail(
+                    flow,
+                    site,
+                    &[Src::Decided(Box::new(Src::Present {
+                        entity: entity.clone(),
+                        reached: reached.clone(),
+                    }))],
+                );
                 // The record it reads is the one with that `id`.
                 let origin = self.mint(site);
                 if let Some(origin) = origin {
@@ -2116,6 +2180,20 @@ impl Walk<'_> {
                 let mut out = provs.get(1).cloned().unwrap_or_default();
                 for src in self.iterated(&first) {
                     out.add(src);
+                }
+                out
+            }
+            // A model's answer is made from its prompt, so each part of it
+            // carries everything the prompt was built from: a field read
+            // off it is checked like those when stored or sent again
+            // (chunk 7.9g).
+            Callee::Generate { .. } | Callee::Stream { .. } => {
+                let mut out = Prov::default();
+                for src in all().flat() {
+                    out.add(match src {
+                        Src::Record { .. } | Src::Param(..) => deep(src),
+                        other => other,
+                    });
                 }
                 out
             }
@@ -2505,7 +2583,7 @@ impl Walk<'_> {
         }
         if here && !summary.fails.is_empty() {
             let fails = decide(&failed(summary, provs));
-            self.may_fail(&fails);
+            self.may_fail(flow, site, &fails);
         }
         summary.returns.substitute(provs)
     }
@@ -2586,6 +2664,8 @@ impl Walk<'_> {
                 client = true;
                 if self.report {
                     self.output(flow, failure.name(), &field_name(key), *value, &prov);
+                    let named = flow.lookup.canonical_name(failure.name());
+                    self.reply_shows(flow, *value, &prov.flat(), Shown::Failure(&named));
                 } else {
                     self.params_in(&prov);
                 }
@@ -2784,10 +2864,35 @@ impl Walk<'_> {
     /// every field it carries, or that decided it, is one anyone at all may
     /// read. A record the action created holds what it set, or is new.
     fn reply_output(&mut self, flow: &Flow<'_>, value: SiteId, prov: &Prov) {
-        for src in prov.flat() {
-            let (src, decided) = match shallow(src) {
+        self.reply_shows(flow, value, &prov.flat(), Shown::Reply);
+    }
+
+    /// What `srcs` show whoever sent the webhook at `site`, as `shown`
+    /// says, held to what anyone at all may read: each field they carry or
+    /// that decided them, and whether the records they counted or tested
+    /// are there, since the reply action runs as the system and finds
+    /// every one (chunk 7.9g). The first problem found, once for each
+    /// field and entity in the action.
+    fn reply_shows(&mut self, flow: &Flow<'_>, site: SiteId, srcs: &[Src], shown: Shown<'_>) {
+        if !(self.report && self.reply && !self.personal) {
+            return;
+        }
+        // Fields first, then whether records are there.
+        let mut found: Option<(String, Option<String>, bool)> = None;
+        let mut present: Option<String> = None;
+        for src in srcs {
+            let (src, decided) = match shallow(src.clone()) {
                 Src::Decided(inner) => (shallow(*inner), true),
                 other => (other, false),
+            };
+            let anyone = |reached: &Reached| {
+                let mut anyone = vec![Fact::Grant(Grant::Public)];
+                if reached.ways.iter().any(|way| {
+                    !way.is_empty() && way.iter().all(|facts| facts.contains(&Fact::Fresh))
+                }) {
+                    anyone.push(Fact::Fresh);
+                }
+                anyone
             };
             let (entity, fields, reached) = match src {
                 Src::Field {
@@ -2816,52 +2921,117 @@ impl Walk<'_> {
                         .unwrap_or_default();
                     (entity, fields, reached)
                 }
+                Src::Present { entity, reached } => {
+                    let facts = anyone(&reached);
+                    if present.is_none()
+                        && !facts.contains(&Fact::Fresh)
+                        && !flow.prover.readable(&entity, &facts)
+                        && !self.replied.contains(&(entity.clone(), None))
+                    {
+                        present = Some(entity);
+                    }
+                    continue;
+                }
                 _ => continue,
             };
-            let mut anyone = vec![Fact::Grant(Grant::Public)];
-            if reached
-                .ways
-                .iter()
-                .any(|way| !way.is_empty() && way.iter().all(|facts| facts.contains(&Fact::Fresh)))
-            {
-                anyone.push(Fact::Fresh);
-            }
-            let Some(from) = fields
-                .into_iter()
-                .find(|field| !flow.prover.field_readable(&entity, field, &anyone))
-            else {
+            if found.is_some() {
                 continue;
-            };
-            let readers = flow.prover.readers(&entity, &from);
-            let (label, keeps, next) = if decided {
-                (
-                    format!("decided by `{entity}.{from}`"),
-                    "Which reply is sent shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.",
-                    "Decide the reply by what anyone at all may read".to_string(),
-                )
-            } else {
-                (
-                    format!("from `{entity}.{from}`"),
-                    "A value passed through a variable or another type keeps its field's rules.",
-                    format!("Leave `{entity}.{from}` out of the reply"),
-                )
-            };
-            self.problems.push(
+            }
+            let facts = anyone(&reached);
+            if let Some(from) = fields.into_iter().find(|field| {
+                !flow.prover.field_readable(&entity, field, &facts)
+                    && !self
+                        .replied
+                        .contains(&(entity.clone(), Some(field.clone())))
+            }) {
+                found = Some((entity, Some(from), decided));
+            }
+        }
+        let (entity, from, decided) = match (found, present) {
+            (Some(found), _) => found,
+            (None, Some(entity)) => (entity, None, true),
+            (None, None) => return,
+        };
+        self.replied.insert((entity.clone(), from.clone()));
+        let name = self.name.clone();
+        let goes = "A webhook's reply action answers whoever sent the webhook, with its reply or a failure, so each is an output to `Access.public`";
+        let problem = match &from {
+            Some(from) => {
+                let readers = flow.prover.readers(&entity, from);
+                let (headline, label, keeps, next) = match (shown, decided) {
+                    (Shown::Reply, false) => (
+                        format!("`{name}`'s reply carries `{entity}.{from}`"),
+                        format!("from `{entity}.{from}`"),
+                        "A value passed through a variable or another type keeps its field's rules.",
+                        format!("Leave `{entity}.{from}` out of the reply"),
+                    ),
+                    (Shown::Reply, true) => (
+                        format!("`{name}`'s reply carries `{entity}.{from}`"),
+                        format!("decided by `{entity}.{from}`"),
+                        "Which reply is sent shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.",
+                        "Decide the reply by what anyone at all may read".to_string(),
+                    ),
+                    (Shown::Failure(failure), _) => (
+                        format!("`{name}`'s failure `{failure}` carries `{entity}.{from}`"),
+                        if decided {
+                            format!("decided by `{entity}.{from}`")
+                        } else {
+                            format!("from `{entity}.{from}`")
+                        },
+                        "A failure's client fields are sent as an output's are, and keep the rules of the fields they hold or that decided them.",
+                        format!("Leave `{entity}.{from}` out of `{failure}`"),
+                    ),
+                    (Shown::Fails, _) => (
+                        format!("whether `{name}` fails shows `{entity}.{from}`"),
+                        format!("decided by `{entity}.{from}`"),
+                        "Whether it fails shows what decided it, so a failure is raised only on what anyone at all may read.",
+                        "Decide whether it fails by what anyone at all may read".to_string(),
+                    ),
+                };
                 Diagnostic::new(
                     &rule::POLICY_OUTPUT_FIELD_UNPROVED,
-                    format!(
-                        "`{}`'s reply carries `{entity}.{from}`, which not everyone may read",
-                        self.name
-                    ),
+                    format!("{headline}, which not everyone may read"),
                 )
-                .at(self.span(value), label)
+                .at(self.span(site), label)
+                .reason(format!("{goes}, and {readers} `{from}`. {keeps}"))
+                .next(next)
+            }
+            None => {
+                let readers = flow.prover.record_readers(&entity);
+                let (headline, label, shows, next) = match shown {
+                    Shown::Reply => (
+                        format!("`{name}`'s reply shows whether a `{entity}` is there"),
+                        format!("decided by whether a `{entity}` is there"),
+                        "Which reply is sent shows whether the records it counted or tested are there",
+                        format!("Decide the reply without counting or testing for a `{entity}`"),
+                    ),
+                    Shown::Failure(failure) => (
+                        format!(
+                            "`{name}`'s failure `{failure}` shows whether a `{entity}` is there"
+                        ),
+                        format!("decided by whether a `{entity}` is there"),
+                        "What a failure sends shows whether the records it counted or tested are there",
+                        format!("Leave what counts or tests for a `{entity}` out of `{failure}`"),
+                    ),
+                    Shown::Fails => (
+                        format!("whether `{name}` fails shows whether a `{entity}` is there"),
+                        format!("fails as a `{entity}` is there or not"),
+                        "Whether it fails shows whether the records it looked for, counted or tested are there",
+                        format!("Answer the same whether a `{entity}` is there or not"),
+                    ),
+                };
+                Diagnostic::new(
+                    &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                    format!("{headline}, which not everyone may read"),
+                )
+                .at(self.span(site), label)
                 .reason(format!(
-                    "A webhook's reply goes back to whoever sent the webhook, so it is an output to `Access.public`, and {readers} `{from}`. {keeps}"
+                    "{goes}, and {readers} a `{entity}`. {shows}, since the action runs as the system and finds every one."
                 ))
-                .next(next),
-            );
-            return;
-        }
+                .next(next)
+            }
+        };
+        self.problems.push(problem);
     }
 
     /// A call passing `value` to the action `callee`, whose parameter
@@ -3136,6 +3306,7 @@ fn unread(flow: &Flow<'_>, prov: &Prov) -> Vec<(String, String, Reached, bool)> 
             | Src::Param(..)
             | Src::Decided(_)
             | Src::Deep(_)
+            | Src::Present { .. }
             | Src::Typed { .. }
             | Src::Marked { .. } => {}
         }
@@ -3155,7 +3326,9 @@ fn among(flow: &Flow<'_>, entity: &str, field: &str, reached: &Reached) -> Strin
 }
 
 /// Whether the failure field `key` is one of its `client:` fields, which
-/// the caller is sent: read from that one failure's declaration.
+/// the caller is sent: read from that one failure's declaration, by the
+/// name the failure table knows it by (`CallerBlocked` for
+/// `support.CallerBlocked`; chunk 7.9g).
 fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
     let Some((failure, field)) = key.name().rsplit_once('.') else {
         return false;
@@ -3163,7 +3336,7 @@ fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
     crate::failures::client_fields(
         flow.db,
         flow.project,
-        Name::new(flow.db, failure.to_string()),
+        Name::new(flow.db, flow.lookup.canonical_name(failure)),
     )
     .iter()
     .any(|name| name == field)

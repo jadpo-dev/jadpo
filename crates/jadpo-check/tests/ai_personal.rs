@@ -735,3 +735,91 @@ fn a_subscriber_storing_its_event_s_marked_part_without_its_marks_fails() {
         ]
     );
 }
+
+/// The clinic's action asking the model for a summary of the patient's
+/// notes, then running `after` with the `answer`.
+fn answered(after: &str) -> String {
+    format!(
+        "use clinic/entities {{ Patient, PatientNotFound }}\nuse clinic/failures {{ SummaryUnavailable }}\nuse clinic/prompts {{ SummariseNotes }}\nuse clinic/types {{ ClinicalNote, NoteSummary }}\n\n/// Summarises a patient's notes.\naction summarise(patient_id: Patient.id) fails PatientNotFound, SummaryUnavailable -> NoteSummary {{\n    var patient: Patient = attempt Patient.get(patient_id)\n    var answer: NoteSummary = attempt ai.generate(SummariseNotes {{ notes: patient.notes }}, as: NoteSummary) {{\n{ARMS}    }}\n{after}    return answer\n}}\n"
+    )
+}
+
+const KEEP_SUMMARY: &str = "    var kept: Patient = Patient.update(patient) {\n        set: {\n            remark: ClinicalNote(answer.summary)\n        }\n    }\n";
+
+/// A model's answer carries what its prompt was built from (chunk
+/// 7.9g): a field read off it, the summary of a patient's notes, is
+/// checked like the notes when it is stored or sent again.
+#[test]
+fn a_model_s_answer_carries_what_its_prompt_was_built_from() {
+    let stored = |remark: &str| {
+        let patient = patient_with(remark);
+        let summarise = answered(KEEP_SUMMARY);
+        problems(
+            &["health"],
+            &[
+                DIAGNOSIS,
+                (PATIENT.0, patient.as_str()),
+                (ACTION_PATH, summarise.as_str()),
+            ],
+        )
+    };
+    assert_eq!(
+        stored(""),
+        [
+            "domains/clinic/actions/summarise.jadpo semantic.ai_field_unmarked: `Patient.notes` is stored in `Patient.remark`, which isn't marked `health`"
+        ]
+    );
+    assert_eq!(
+        stored(" {\n        personal: PersonalData.health\n    }"),
+        NONE
+    );
+    // Sent again, from another action given the answer.
+    let patient = patient_with("");
+    let summarise = answered("");
+    let again = format!(
+        "use clinic/actions {{ summarise }}\nuse clinic/entities {{ Patient, PatientNotFound }}\nuse clinic/failures {{ SummaryUnavailable }}\nuse clinic/prompts {{ SummariseNotes }}\nuse clinic/types {{ ClinicalNote, NoteSummary }}\n\n/// Summarises a patient's summary again.\naction resummarise(patient_id: Patient.id) fails PatientNotFound, SummaryUnavailable -> NoteSummary {{\n    var first: NoteSummary = attempt summarise(patient_id)\n    return attempt ai.generate(SummariseNotes {{ notes: ClinicalNote(first.summary) }}, as: NoteSummary) {{\n{ARMS}    }}\n}}\n"
+    );
+    let mut sent = problems(
+        &[],
+        &[
+            DIAGNOSIS,
+            (PATIENT.0, patient.as_str()),
+            (ACTION_PATH, summarise.as_str()),
+            ("domains/clinic/actions/resummarise.jadpo", again.as_str()),
+        ],
+    );
+    sent.sort();
+    assert_eq!(
+        sent,
+        [
+            "domains/clinic/actions/resummarise.jadpo semantic.ai_personal_data_not_allowed: `Patient.notes` reaches a model, and `ai:` doesn't allow `health` data",
+            NOTES_UNLISTED,
+        ]
+    );
+}
+
+/// Stored where more callers read it than may read the notes, the
+/// answer is refused as the notes would be (area 9, "What a write
+/// stores").
+#[test]
+fn a_model_s_answer_keeps_its_sources_read_rules() {
+    let patient = patient_with(" {\n        personal: PersonalData.health\n    }").replace(
+        "    notes: ClinicalNote {\n        personal: PersonalData.health\n    }",
+        "    notes: ClinicalNote {\n        personal: PersonalData.health\n        policy: {\n            read: [Access.authenticated]\n        }\n    }",
+    );
+    assert!(patient.contains("Access.authenticated"));
+    let summarise = answered(KEEP_SUMMARY);
+    let found: Vec<String> = problems(
+        &["health"],
+        &[
+            DIAGNOSIS,
+            (PATIENT.0, patient.as_str()),
+            (ACTION_PATH, summarise.as_str()),
+        ],
+    )
+    .into_iter()
+    .filter(|problem| problem.contains("policy.output_field_unproved"))
+    .collect();
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("`Patient.notes`"), "{found:?}");
+}
