@@ -143,6 +143,12 @@ pub(crate) async fn comes_from(ctx: &mut Ctx<'_>, asking: Asking<'_>) -> Result<
 /// replayed run's tape, the action's record or an earlier run's answers.
 pub(crate) fn given_back(ctx: &mut Ctx<'_>, call: &Call, answer: &Answer) {
     let now = ctx.now();
+    if let Some(record) = ctx.host().record() {
+        record.call(
+            call,
+            &format!("given back {}", crate::record::answer(answer)),
+        );
+    }
     let capabilities = ctx.capabilities_mut();
     let place = capabilities.sent(call, Source::Replayed, now);
     capabilities.ended(place, answer, Some(0));
@@ -456,6 +462,12 @@ pub(crate) async fn exchange(
         Form::Streamed => driver.stream(call).await,
     };
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
+    if let Some(record) = host.record() {
+        match &answer {
+            Streamed::Whole(answer) => record.call(call, &crate::record::answer(answer)),
+            Streamed::Coming(_) => record.call(call, "streamed"),
+        }
+    }
     match &answer {
         Streamed::Whole(answer) => ctx.capabilities_mut().ended(place, answer, took),
         // A stream that has started is logged as answered, never with its

@@ -875,6 +875,9 @@ pub struct TestHost<'d> {
     /// The authenticators `test_passkeys.register` made, each holding one
     /// passkey, by number (area 8; chunk 5.5z2).
     authenticators: TestPasskeyAuthenticators,
+    /// The record its stores keep each statement in, when the run keeps
+    /// one (chunk 8.1c).
+    record: Option<std::rc::Rc<jadpo_runtime::record::Record>>,
 }
 
 /// A test's software authenticators: one device per passkey
@@ -886,10 +889,15 @@ struct TestPasskeyAuthenticators(
 
 impl jadpo_runtime::TestAuthenticators for TestPasskeyAuthenticators {
     fn create(&self, origin: &str, options: &str) -> Result<(u32, String), String> {
-        let mut device = jadpo_host_native::test_authenticator::TestAuthenticator::new(origin);
-        let answer = device.create(options)?;
         let mut authenticators = self.0.borrow_mut();
         let number = u32::try_from(authenticators.len()).map_err(|e| e.to_string())?;
+        // Its passkeys the same every run, so a test's record is (chunk
+        // 8.1c); each device of a test its own.
+        let mut device = jadpo_host_native::test_authenticator::TestAuthenticator::seeded(
+            origin,
+            u64::from(number),
+        );
+        let answer = device.create(options)?;
         authenticators.push(device);
         Ok((number, answer))
     }
@@ -906,10 +914,109 @@ impl jadpo_runtime::TestAuthenticators for TestPasskeyAuthenticators {
 enum Held {
     Holding {
         copy: Copy,
-        stores: BTreeMap<String, jadpo_host_native::Postgres>,
+        stores: BTreeMap<String, Store>,
     },
     /// No database could be had: every store says why.
     Failed(Unready),
+}
+
+/// One of a test's stores: its own copy, whose statements are kept in the
+/// run's record when it keeps one (chunk 8.1c).
+enum Store {
+    Plain(jadpo_host_native::Postgres),
+    Recorded(jadpo_runtime::record::Recorded<jadpo_host_native::Postgres>),
+}
+
+impl Store {
+    fn database(&self) -> &dyn jadpo_runtime::Database {
+        match self {
+            Store::Plain(database) => database,
+            Store::Recorded(recorded) => recorded,
+        }
+    }
+
+    /// The copy itself, whose statements no record keeps.
+    fn raw(&self) -> &jadpo_host_native::Postgres {
+        match self {
+            Store::Plain(database) => database,
+            Store::Recorded(recorded) => recorded.inner(),
+        }
+    }
+}
+
+/// What a test's database holds when it ends (chunk 8.1c): the rows of
+/// each of the application's and the runtime's tables, but the migrations'
+/// own and an extension's, by table and in column order, as JSON; a
+/// `bytea` column by its length only, since it holds what is sealed, hashed
+/// or encrypted. The tables in name order, each table's rows in their
+/// text's order, so the same data always reads the same.
+const TABLES: &str = "SELECT c.relname::text, a.attname::text, format_type(a.atttypid, a.atttypmod)::text \
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped \
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition \
+    AND c.relname <> 'jadpo_migrations' \
+    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass \
+    AND d.objid = c.oid AND d.deptype = 'e') \
+    ORDER BY c.relname, a.attnum";
+
+/// Each row `database` holds, as [`TABLES`] reads them: `<store>.<table>
+/// <row as JSON>`.
+async fn rows_of(
+    store: &str,
+    database: &dyn jadpo_runtime::Database,
+) -> Result<Vec<String>, String> {
+    use jadpo_runtime::SqlValue;
+    let mut transaction = database.begin().await.map_err(|e| format!("{e:?}"))?;
+    // Times read the same whatever zone the server is in.
+    transaction
+        .batch("SET LOCAL TIME ZONE 'UTC'")
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let columns = transaction
+        .query(TABLES, &[])
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let mut tables: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for column in &columns {
+        let [
+            SqlValue::Text(table),
+            SqlValue::Text(name),
+            SqlValue::Text(ty),
+        ] = column.as_slice()
+        else {
+            continue;
+        };
+        let quoted = format!("\"{}\"", name.replace('"', "\"\""));
+        let read = if ty == "bytea" {
+            format!("'<' || octet_length({quoted}) || ' bytes>' AS {quoted}")
+        } else {
+            quoted
+        };
+        tables.entry(table.clone()).or_default().push(read);
+    }
+    let mut out = Vec::new();
+    for (table, columns) in &tables {
+        let sql = format!(
+            "SELECT row_to_json(r)::text FROM (SELECT {} FROM \"{}\") r",
+            columns.join(", "),
+            table.replace('"', "\"\"")
+        );
+        let read = transaction
+            .query(&sql, &[])
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+        let mut rows: Vec<String> = read
+            .into_iter()
+            .filter_map(|row| match row.into_iter().next() {
+                Some(SqlValue::Text(json)) => Some(json),
+                _ => None,
+            })
+            .collect();
+        rows.sort();
+        out.extend(rows.into_iter().map(|row| format!("{store}.{table} {row}")));
+    }
+    let _ = transaction.rollback().await;
+    Ok(out)
 }
 
 /// A store that refuses with the reason the test's database couldn't be
@@ -939,7 +1046,35 @@ impl<'d> TestHost<'d> {
             mail: jadpo_runtime::capability::Fake::new(),
             mail_connection: None,
             authenticators: TestPasskeyAuthenticators::default(),
+            record: None,
         }
+    }
+
+    /// Keeps each statement its stores run in `record` (chunk 8.1c).
+    pub fn with_record(
+        mut self,
+        record: Option<std::rc::Rc<jadpo_runtime::record::Record>>,
+    ) -> TestHost<'d> {
+        self.record = record;
+        self
+    }
+
+    /// The rows its stores hold now, each `<store>.<table> <row as
+    /// JSON>`, tables in name order and each table's rows in order (chunk
+    /// 8.1c); none when the test used no store. A store that can't be read
+    /// says why in a row of its own.
+    pub fn rows(&self, runtime: &jadpo_host_native::Runtime) -> Vec<String> {
+        let Some(Held::Holding { stores, .. }) = self.held.get() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (name, store) in stores {
+            match runtime.block_on(rows_of(name, store.raw())) {
+                Ok(rows) => out.extend(rows),
+                Err(error) => out.push(format!("{name} unread {error}")),
+            }
+        }
+        out
     }
 
     /// Catches every email sent through `connection`, the one `email:`
@@ -966,6 +1101,15 @@ impl<'d> TestHost<'d> {
                 for (store, (_, url)) in &copy.stores {
                     match jadpo_host_native::postgres(url) {
                         Ok(database) => {
+                            let database = match &self.record {
+                                Some(record) => {
+                                    Store::Recorded(jadpo_runtime::record::Recorded::new(
+                                        database,
+                                        std::rc::Rc::clone(record),
+                                    ))
+                                }
+                                None => Store::Plain(database),
+                            };
                             stores.insert(store.clone(), database);
                         }
                         Err(error) => {
@@ -1013,9 +1157,7 @@ impl jadpo_runtime::Host for TestHost<'_> {
 
     fn database(&self, store: &str) -> Option<&dyn jadpo_runtime::Database> {
         match self.held() {
-            Held::Holding { stores, .. } => stores
-                .get(store)
-                .map(|database| database as &dyn jadpo_runtime::Database),
+            Held::Holding { stores, .. } => stores.get(store).map(Store::database),
             Held::Failed(unready) => Some(unready),
         }
     }

@@ -2082,17 +2082,20 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   certificate the test makes (STARTTLS, port 465, a wrong name, roots
   that don't vouch for it, no TLS elsewhere, no greeting). Why these
   roots and this provider is §2.6's "TLS through the transport".
-- [ ] **8.1c The outcome-and-effect record** `opus · high`, after 8.1a:
-  what each invocation did, written by the runtime whichever executor
-  runs it, in the order it happened: each statement's SQL text, its
-  parameters' types and its row count, each event written with its
-  payload, each outside call's connection, operation and answer, and the
-  outcome (a value, a failure's code and fields, a fault's kind and site,
-  a failed assertion's values); `jadpo test` keeps it per test in a
-  canonical form with the final database's rows, and
-  `jadpo_test::differential` compares two runs' records and prints both
-  sides of the first difference. Proved by the corpus run twice with no
-  difference, and a perturbed run whose difference it names.
+- [x] **8.1c The outcome-and-effect record** `opus · high`, after 8.1a.
+  Built: `jadpo_runtime::record`, written by the runtime whichever
+  executor runs a test, in order: each statement's SQL text, parameter
+  types and rows read or changed (a test's stores wrapped by
+  `record::Recorded`), each transaction's end, each event written to the
+  outbox with its payload, each outside call's connection, operation and
+  answer (through `Host::record`, which only a test's `Faked` answers),
+  and the outcome (`record::outcome`); `Options::record` keeps each
+  test's `TestRecord` on its result, in canonical form with the final
+  database's rows and identities numbered as they first appear, and
+  `jadpo_test::differential` names the first differing line with both
+  sides. Proved by the corpus run twice with no difference (473 tests)
+  and perturbed runs named at an assertion and at a row (§2.5,
+  "Differential test").
 - [ ] **8.1d One connections table and the driver factory** `opus ·
   high`, after 8.1a and 8.1b: the plan's connections table (each
   connection's name, driver, settings and the targets its driver runs
