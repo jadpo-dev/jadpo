@@ -57,6 +57,7 @@ pub mod ops;
 pub mod order;
 pub mod present;
 pub mod prompt;
+pub mod public_key;
 pub mod random;
 pub mod range;
 mod rounding;

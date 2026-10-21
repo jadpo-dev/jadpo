@@ -134,12 +134,6 @@ const SHA1_DIGEST_INFO: [u8; 15] = [
     0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14,
 ];
 
-/// The same before a SHA-256 digest.
-const SHA256_DIGEST_INFO: [u8; 19] = [
-    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
-    0x00, 0x04, 0x20,
-];
-
 /// The fewest bits an RSA key that signs a webhook may have.
 const RSA_BITS_MIN: usize = 2048;
 
@@ -186,7 +180,7 @@ pub fn rsa_signed(pem: &str, now: i64, digest: RsaDigest, signed: &[u8], signatu
         RsaDigest::Sha256 => (
             rsa::Pkcs1v15Sign {
                 hash_len: Some(32),
-                prefix: Box::from(&SHA256_DIGEST_INFO[..]),
+                prefix: Box::from(&crate::public_key::SHA256_DIGEST_INFO[..]),
             },
             crate::hash::sha256(signed).to_vec(),
         ),

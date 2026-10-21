@@ -3689,7 +3689,7 @@ never called, so the workspace builds, lints and tests as one.
   dropped, the tick taking it up, until chunk 8.2h decides how a Worker
   starts a fresh invocation; a database needs the crate's `postgres`
   feature, so a deployable that keeps none links no driver for one; the
-  passkey ceremonies are 8.2l's.
+  passkey ceremonies are `WorkersPasskeys`, below.
 - **`WorkersTransport`** opens every connection with `secureTransport:
   "starttls"`, since a driver says it will upgrade only once its
   conversation has begun, waits for it to open, and upgrades with
@@ -3722,6 +3722,20 @@ never called, so the workspace builds, lints and tests as one.
   first, since a Worker has no resolver; whether Cloudflare's network
   reaches a private address a name resolves to is for the real deploy
   (chunk 8.2n) to check.
+- **`WorkersPasskeys`** (chunk 8.2l) is `Host::passkeys` on Workers:
+  `webauthn-rs` 0.5's passkey ceremonies written again in pure Rust,
+  since it verifies with OpenSSL. The options are its own member for
+  member, the challenge 32 bytes from `getRandomValues`; an answer is
+  read as it reads one (client data's type, challenge, origin and, when
+  registering, `crossOrigin`; the authenticator data's relying party,
+  presence, verification, backup flags and counter; byte strings in the
+  four base64 forms it reads, CBOR through the same `serde_cbor_2`) and
+  its signature checked with `jadpo_value::public_key`'s ES256, its DER
+  read strictly, and RS256 on RustCrypto's `p256` and `rsa`. A key is
+  kept as the same COSE bytes the native host writes, so a passkey's
+  record reads the same on either. Attestation must be `none` or packed
+  self-attestation (area 8, chosen in chunk 8.2l). Its state is JSON of
+  its own, the challenge and the passkeys excluded.
 
 Proved under workerd, Cloudflare's own Workers runtime
 (`crates/jadpo-host-workers/tests/workerd.rs`): a probe Worker
@@ -3744,7 +3758,16 @@ more (without the abort it is held until the invocation ends, which the
 test was checked against), a streamed answer read piece by piece and
 stopped at a piece's timeout the same way, the outbound guard, work run
 after the response through `waitUntil`, rate limits kept across an
-isolate's requests, a connection's task run, and the factory's supplies.
+isolate's requests, a connection's task run, and the factory's supplies;
+since chunk 8.2l a seventeenth registers a passkey made by the test
+authenticator and signs in with it twice, keeping what the native host
+keeps of the same device's passkey, an answer from another site and a
+counter gone back refused. Natively, `tests/passkeys.rs` holds
+`WorkersPasskeys` to `webauthn-rs`: each ceremony run on both, with the
+test authenticator and with answers made by hand to break one check at a
+time (about sixty cases: origins, types, challenges, relying parties,
+flags, keys off the curve or of other kinds, attestation, counters, user
+handles, a high S), each kept or refused the same on both.
 The gate runs them as a step of its `wasm32` group, in cargo's lane since
 the test builds the probe; `compiler tests` leaves them out. *Rejected:*
 workers-rs, whose `Socket::start_tls` unwraps (a panic aborts the

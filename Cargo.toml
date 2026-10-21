@@ -274,7 +274,9 @@ getrandom = { version = "=0.4.3", default-features = false }
 # database, server-side and single-use, never in a cookie; and
 # `danger-credential-internals` loads a stored `WebAuthnCredential` part by
 # part, whose types `webauthn-rs-core` names; `serde_cbor_2` reads and
-# writes its COSE key. Both are already under `webauthn-rs`.
+# writes its COSE key. Both are already under `webauthn-rs`. The Workers
+# host reads a device's CBOR with the same `serde_cbor_2`, pure Rust, so
+# both hosts read an answer alike (chunk 8.2l).
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["conditional-ui", "danger-allow-state-serialisation", "danger-credential-internals"] }
 webauthn-rs-core = { version = "=0.5.5", default-features = false }
 serde_cbor_2 = { version = "=0.13.0", default-features = false, features = ["std"] }

@@ -544,3 +544,7 @@ late
 # The Fetch standard's `redirect: "manual"`, which the Workers host sends
 # with every request so no redirect is followed (chunk 8.2a)
 manual
+
+# WebAuthn's `packed` attestation statement format, which the Workers
+# host's passkey ceremonies read (chunk 8.2l); ordinary English.
+packed
