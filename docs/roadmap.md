@@ -2020,6 +2020,13 @@ side by side, then 7.9d, then 7.9e).
   `embed::embed` each taking the context, the site (`provider::Calling`,
   `ai::Calling`) and the input, the runtime's own calls too.
 
+- [ ] **7.9g Privacy gaps found in 7.9b** `opus · high` (backlog): a
+  model's answer carries what its prompt was built from, so a field read
+  off it (`.summary` of health notes) is checked like its sources when
+  stored or sent again; and a webhook reply that counts or tests for
+  records only the system may read is held to the output proof, since
+  whether a record exists reaches whoever sent the webhook.
+
 ## Phase 8 — Compiled deployables
 
 - [ ] **8.1 Native:** `opus · xhigh` graph to Rust; every test passes interpreted and
