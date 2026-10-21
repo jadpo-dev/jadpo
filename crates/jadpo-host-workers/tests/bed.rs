@@ -19,9 +19,6 @@ use std::time::{Duration, Instant};
 
 use crate::authority::Authority;
 
-/// Where workerd is pinned (`package-lock.json`) and installed.
-const TOOLS: &str = "tools/workers";
-
 /// The probe under workerd, and the servers it reaches.
 pub struct Bed {
     /// workerd's port, which serves the probe.
@@ -88,7 +85,7 @@ impl Bed {
 
         let log = dir.join("workerd.log");
         let out = std::fs::File::create(&log).expect("workerd's log");
-        let child = Command::new(workerd(&root))
+        let child = Command::new(workerd())
             .args(["serve", "config.capnp"])
             .current_dir(&dir)
             .stdin(Stdio::null())
@@ -250,40 +247,15 @@ fn probe(root: &Path) -> PathBuf {
         .expect("cargo names the probe's module")
 }
 
-/// workerd: `JADPO_WORKERD`, else the one pinned in tools/workers/,
-/// installed there by `npm ci` when it isn't yet.
-fn workerd(root: &Path) -> PathBuf {
-    if let Ok(path) = std::env::var("JADPO_WORKERD") {
-        return PathBuf::from(path);
-    }
-    let tools = root.join(TOOLS);
-    if let Some(found) = installed(&tools) {
-        return found;
-    }
-    // No install scripts: the platform's package carries the binary.
-    let output = Command::new("npm")
-        .args(["ci", "--ignore-scripts", "--no-audit", "--no-fund"])
-        .current_dir(&tools)
-        .output()
-        .expect("npm runs: workerd is installed with Node's npm, into tools/workers/");
-    assert!(
-        output.status.success(),
-        "`npm ci` in tools/workers/ failed:\n{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    installed(&tools).expect("npm installed workerd for this platform")
-}
+/// The one installer of workerd every test that runs a Worker shares,
+/// which installs it once across processes.
+#[path = "../../jadpo-test/src/workerd_install.rs"]
+mod workerd_install;
 
-/// The binary of the platform's own workerd package: npm's `workerd`
-/// command is a wrapper that would run it as a child of its own, which
-/// stopping the wrapper doesn't stop.
-fn installed(tools: &Path) -> Option<PathBuf> {
-    std::fs::read_dir(tools.join("node_modules/@cloudflare"))
-        .ok()?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with("workerd-"))
-        .map(|entry| entry.path().join("bin/workerd"))
-        .find(|binary| binary.is_file())
+/// workerd: `JADPO_WORKERD`, else the one pinned in tools/workers/,
+/// installed there by `npm ci` when it isn't yet, one process at a time.
+fn workerd() -> PathBuf {
+    workerd_install::workerd().unwrap_or_else(|why| panic!("{why}"))
 }
 
 /// A process that stops workerd and removes the bed's folder once this

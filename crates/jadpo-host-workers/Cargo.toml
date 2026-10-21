@@ -59,6 +59,11 @@ smtp = ["jadpo-drivers/smtp"]
 # A test's server on this machine reached over HTTPS by the outbound guard
 # (`WorkersOutbound::reaching`): never built outside a test.
 test-outbound = []
+# A test Worker (chunk 8.2e): the handler that runs one test of compiled
+# programs built with the runtime's `testing` feature, against copies of
+# their databases over `connect()`. Only `jadpo-test` turns it on, for its
+# test Worker and the run's JSON; no deployable does.
+testing = ["postgres", "jadpo-runtime/testing"]
 
 [[test]]
 name = "integration"

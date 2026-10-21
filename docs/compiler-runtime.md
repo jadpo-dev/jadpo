@@ -261,9 +261,9 @@ Rust 1.88 or later).
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
 | `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP, chunk 7.2c) and SMTP (chunks 7.3 and 8.1b) now; Redis and S3 with their areas | yes |
 | `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with (chunk 6.4b), HTTP for the package driver (chunk 7.2c); the inbox with email | |
-| `jadpo-host-workers` | wasm-bindgen and Jadpo's own bindings to Workers: `connect()` sockets, `fetch()`, timers, `waitUntil`, bindings (§2.6, "The Workers host") | yes |
+| `jadpo-host-workers` | wasm-bindgen and Jadpo's own bindings to Workers: `connect()` sockets, `fetch()`, timers, `waitUntil`, bindings (§2.6, "The Workers host"); with `testing`, a test Worker's handler (§2.6, "Route tests on workerd") | yes |
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
-| `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code | |
+| `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code, natively and inside workerd | |
 | `jadpo-lsp` | Language server | |
 | `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales (chunk 8.2c) | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
@@ -1814,6 +1814,24 @@ executor's chunks. Since chunk 8.1f
 `jadpo_test::compiled` runs a project's tests both ways and compares
 their records this way (above, "Compiled code").
 
+Since chunk 8.2e a test's run is one function whichever executor runs it
+and on whichever host, `jadpo_runtime::test_run::once` (the `testing`
+feature): the test's seed from its key and its clock from its `clock:`,
+every provider connection answered by the package fake and the `ai:`
+connection by the `ai` fake, each outside call kept in the record, its
+settings, and for a test with a database the delivery between its steps
+and its crash points; then its outcome kept, and the batch runs it
+started run to their end at its clock (`test_run::AtClock`). What a
+test's host gives besides its stores (`test_run::Caught`: every store of
+files in memory, the email connection's mail caught), the rows its
+database holds when it ends (`test_run::rows`), and its seed and delivery
+order moved there with it. The runner keeps choosing the tests, making
+their databases, crashing a run at each step it reached
+(`run::crash_runs`) and judging it (`outcome::Ending` and `fake_rule`),
+so a run made elsewhere is judged as one made here: `jadpo_test::workerd`
+runs a project's route tests that way inside workerd (§2.6, "Route tests
+on workerd").
+
 ### 2.6 The runtime
 
 Built so far (chunk 2.1): what pure execution needs from the context,
@@ -3008,6 +3026,9 @@ and a build without the feature refuses bytes that hold one
 `jadpo-test`, `jadpo-cli`) turn it on, each runtime crate's own tests
 through a dev-dependency on itself, and no shared or runtime crate turns
 it on by default or for another (`no_runtime_crate_turns_on_testing`).
+Since chunk 8.2e `jadpo-host-workers` has one too, its test Worker's
+handler (§2.6, "Route tests on workerd"), which only `jadpo-test` turns
+on.
 The gate builds the native host's deployable example
 (`crates/jadpo-host-native/examples/deployable.rs`: a plan read from its
 bytes, its drivers built by the factory, served through `Serving` on
@@ -3359,6 +3380,68 @@ would leave a deploy made before `jadpo migrate apply` refusing until
 its isolates were recycled; and one `Serving` an isolate over a host
 standing for whichever request is current, which an isolate serving
 requests at once would mix up.
+
+**Route tests on workerd** (chunk 8.2e, the vertical slice's proof).
+`jadpo_test::workerd::differential_all` runs a project's route tests on
+its compiled program inside workerd and compares each test's record with
+the interpreter's, as `jadpo_test::compiled` compares compiled code's run
+natively (§2.5, "Differential test"). It writes each project as a module
+of one crate with the `testing` feature, as the native harness does,
+beside a test Worker's crate, `jadpo-test-worker`, a `cdylib` whose
+`fetch` is `jadpo_host_workers::testing::fetch` over the crate's
+`PROGRAMS` (the Workers host's `testing` feature, which turns the
+runtime's on; only `jadpo-test` turns it on, and no deployable), builds
+it for `wasm32-unknown-unknown` in the dev profile without debug
+information (`jadpo_codegen::cargo::build_module`), offline, in a
+workspace kept under `target/jadpo-compiled/workerd/`, binds it with
+`jadpo_codegen::workers::bind`, and serves it under the pinned workerd
+with a shim of its own, its outbound network `local` alone. Every test
+that runs a Worker finds workerd through one installer,
+`jadpo_test::workerd_install` (the Workers host's tests include it by
+its path): the pinned release, installed by `npm ci` under a lock across
+processes (`tools/workers/.install.lock`) only when it isn't there, and
+tried again when npm leaves no binary, as it does without a word when it
+couldn't fetch the platform's package, an optional dependency. Each request
+is one run of one test, `Asked` posted as JSON: the program, the test's
+key, the run's order seed for a test with a database, a copy of each
+store's database by its address over TCP, a crash to make, and whether
+to run the batches it started and keep a record. The Worker makes the
+program once per isolate with the settings a test run reads (`test:`
+values, defaults, throwaway secrets from Web Crypto) on
+`Target::Workers`, and runs the test through `test_run::once` on a host
+of its own: each copy reached over `connect()` by the PostgreSQL driver,
+its statements kept in the record; `test_run::Caught`; Workers' passkey
+ceremonies; no randomness, timer or clock, as a test's host has none.
+It answers `Answered`: the record's lines, the rows its stores held when
+it used one (`test_run::rows`, over the same connections), how the run
+ended, whether a delivery between its steps failed for good, the fakes'
+use, the steps it reached and what its keyed calls did. The runner
+judges that as it judges a run of its own (`outcome::Ending`,
+`fake_rule`), crashes it again at each step it reached
+(`run::crash_runs`), each run on a fresh copy, and builds the record
+(`TestRecord::of_lines`), which `differential::compare` holds to the
+interpreter's. The copies are made on the run's server when it is named
+by a URL, as CI's is, and otherwise on one the process starts on
+`127.0.0.1` (`Server::tcp_url`; `TestDatabases::on`, its templates kept
+per server), since a local run's listens on a Unix socket, which
+`connect()` can't open. A test's software authenticator
+(`test_passkeys`) is the native host's, over OpenSSL, so a test Worker
+has none: a route test that makes passkeys differs there until one is
+written in pure Rust. Proved (`crates/jadpo-cli/tests/compiled.rs`, the
+`compiled` group): area 7's `todos` (3 route tests) and teaching example
+23's repair café (4, through `settle:`'s subscribers, a request's work
+after its answer delivered before the next line, and its fixtures), every
+test passing with the interpreter's records, statements, events and rows
+among them. The module is 44.6 MB bound (42.5 MB as cargo built it,
+every locale's data and the dev profile); on the ten-core Mac, under a
+load average of 150 to 330, the test took 226 s from nothing, nearly all
+of it building, and 24 s warm, of which binding is 15 s and the seven
+tests 2 s; its target folder is 918 MB. *Rejected:* the release profile,
+which would build every runtime crate optimised for tests that run in
+seconds unoptimised; one target folder with
+the native harness, whose builds would then wait on each other's lock;
+and a test Worker's run of its own beside `jadpo test`'s, which would be
+a second copy of what a test runs under.
 
 **The cron on Workers** (chunk 8.2f; area 12, "The tick"; area 14, "A
 Workers deployable"). `jadpo check` refuses, for a Workers deployable
@@ -4320,7 +4403,16 @@ costs less to find before its pull request than after; there the step
 took 136 and 149 s of gates of 161 and 197 s (load average up to 52), the
 longest step; `--profile quick` leaves it out, as it leaves out every
 live step, and `--group compiled` runs it alone, as CI does (90 s with
-the harness built from nothing, 69 s of it the step).
+the harness built from nothing, 69 s of it the step). Since chunk 8.2e
+the step also runs area 7's `todos` and teaching example 23's route
+tests inside workerd (§2.6, "Route tests on workerd"), a test beside the
+corpus's in the same process, so its build of the runtime crates for
+wasm32 runs while the corpus compares; the job installs workerd into
+`tools/workers/` with the runner's `npm`, as the `wasm32` job does. What
+it adds to the job is that build, about 250 crates for wasm32 in the dev
+profile from nothing and the workspace's own crates with the cache,
+which keeps the registry crates' builds, on the runner's four cores
+beside the corpus's; the seven tests take seconds.
 
 **CI.** GitHub Actions on Linux runs the gate's five groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
