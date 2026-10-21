@@ -735,7 +735,7 @@ rules! {
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-value-unsupported", "Query value is computed rather than a parameter, literal or enum value";
     RATE_LIMITS_STORE_INVALID: "rate_limits.store_invalid", area 16, Error, Agent,
-        "16-built-in-services.html#rate-limits-store-invalid", "`rate_limits:` doesn't name a store that can count rate limits";
+        "16-built-in-services.html#rate-limits-store-invalid", "Rate limits' store isn't a connection that can count them";
     RATE_LIMITS_STORE_REQUIRED: "rate_limits.store_required", area 16, Error, Agent,
         "16-built-in-services.html#rate-limits-store-required", "Deployable built for Workers has nowhere to count its rate limits";
     RECEIVING_INVALID: "receiving.invalid", area 12, Error, Agent,
