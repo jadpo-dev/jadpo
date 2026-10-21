@@ -429,7 +429,7 @@ fn as_url(connection: &str) -> String {
 }
 
 /// The migrations of the project at `root`, store `main`'s, in order.
-fn migrations(root: &Path) -> Vec<jadpo_std::Migration> {
+pub(crate) fn migrations(root: &Path) -> Vec<jadpo_std::Migration> {
     let loaded = jadpo_db::load(root);
     let steps = jadpo_check::data::migrations::store_steps(
         jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
@@ -438,7 +438,7 @@ fn migrations(root: &Path) -> Vec<jadpo_std::Migration> {
 }
 
 /// Applies `migrations` to the database at `connection`.
-fn apply(connection: &str, migrations: &[jadpo_std::Migration]) {
+pub(crate) fn apply(connection: &str, migrations: &[jadpo_std::Migration]) {
     let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
     let database = jadpo_host_native::postgres(connection).expect("a store");
     runtime
@@ -557,7 +557,7 @@ fn deployable<'a>(built: &'a Value, name: &str) -> &'a Value {
 
 /// The rows `sql` gives against the database at `connection`, each cell
 /// as text.
-fn rows(connection: &str, sql: &str) -> Vec<Vec<String>> {
+pub(crate) fn rows(connection: &str, sql: &str) -> Vec<Vec<String>> {
     use jadpo_runtime::Database;
     let store = jadpo_host_native::postgres(connection).expect("a store");
     let runtime = jadpo_host_native::Runtime::new().expect("a runtime");
@@ -580,7 +580,7 @@ fn rows(connection: &str, sql: &str) -> Vec<Vec<String>> {
 }
 
 /// How many rows the table `table` holds.
-fn count(connection: &str, table: &str) -> i64 {
+pub(crate) fn count(connection: &str, table: &str) -> i64 {
     rows(connection, &format!("SELECT count(*) FROM {table}"))[0][0]
         .parse()
         .expect("a count")

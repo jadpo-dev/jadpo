@@ -10,8 +10,9 @@
 //! answered and each tick: `jadpo dev` prints its lines from them, and a
 //! deployable's log comes with the hosts' log sink (area 16). The native
 //! server's handler wraps it (`jadpo_host_native::http::AppHandler`);
-//! Workers' fetch and scheduled events call the same two (chunks 8.2d
-//! and 8.2f).
+//! Workers' fetch event calls the same (chunk 8.2d), one `Serving` a
+//! request on that invocation's host, sharing the isolate's [`Worker`]
+//! ([`Serving::sharing`]), and its scheduled event will (chunk 8.2f).
 //!
 //! What it serves is any [`Executor`]: the interpreter, or compiled code
 //! (Phase 8). The route table and codecs a request is answered with come
@@ -55,7 +56,7 @@ pub trait Observer {
 pub struct Serving {
     program: Box<dyn Fn() -> Rc<dyn Executor>>,
     host: Rc<dyn Host>,
-    worker: Worker,
+    worker: Rc<Worker>,
     observer: Option<Rc<dyn Observer>>,
 }
 
@@ -85,9 +86,18 @@ impl Serving {
         Serving {
             program: Box::new(program),
             host,
-            worker: Worker::default(),
+            worker: Rc::default(),
             observer: None,
         }
+    }
+
+    /// Keeps what the HTTP component keeps between requests in `worker`,
+    /// which other `Serving`s share: a Workers isolate serves each request
+    /// on a host of its own, since a socket belongs to the request that
+    /// opened it, and counts and checks readiness once for them all.
+    pub fn sharing(mut self, worker: Rc<Worker>) -> Serving {
+        self.worker = worker;
+        self
     }
 
     /// Tells `observer` about each request and tick.

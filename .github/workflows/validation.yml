@@ -190,17 +190,40 @@ jobs:
   wasm32:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # The Workers deployable's test serves teaching example 23 under
+    # workerd against a PostgreSQL server the Worker reaches over TCP
+    # (chunk 8.2d), named by JADPO_TEST_DATABASE_URL.
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it,
+      # built and started in the background while the toolchain installs.
+      - name: Start PostgreSQL
+        run: |
+          (docker build --quiet --tag jadpo-postgres tools/postgres &&
+            docker run --detach --name postgres --publish 5432:5432 \
+              --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres \
+              jadpo-postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+              -c max_connections=300) > "$RUNNER_TEMP/postgres.log" 2>&1 &
       # Everything rust-toolchain.toml lists, which rustup would add anyway.
       - name: Install the pinned Rust toolchain
         run: |
           channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Wait for PostgreSQL
+        timeout-minutes: 6
+        run: |
+          for _ in $(seq 300); do
+            docker exec postgres pg_isready -h 127.0.0.1 -U jadpo -d postgres 2>/dev/null && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/postgres.log"
+          exit 1
       - name: The shared and runtime crates for wasm32
+        env:
+          JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
         run: python3 tools/verify.py --group wasm32
 
   supported-language:

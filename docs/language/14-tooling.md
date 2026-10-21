@@ -1020,7 +1020,7 @@ application {
 $ jadpo build
   worker    build/target/web/wrangler.json
   module    build/target/web/web.wasm
-  size      9.5 MB, 3.0 MB gzipped
+  size      12.8 MB, 4.0 MB gzipped
   build     b_1c5e09d2a7f3
   serves    main
   runs      subscribers
@@ -1033,8 +1033,6 @@ $ jadpo build
   commit    8d113e6
   settings  DATABASE_URL
 
-▲ alert  `web` answers 503 to every request: serving on Workers is chunk 8.2d
-
 ✓ built  web and back_office · wasm and native in 61.3 s
 → jadpo migrate apply  they start only once their database has every migration
 ```
@@ -1044,10 +1042,10 @@ Until chunk 8.2b, `web`, built for `Target.wasm`, was refused as
 
 ### A Workers deployable
 
-Built in chunk 8.2b, each the most conservative reading where the pages
-leave a choice open (Decisions, "A Workers deployable"). The Worker's
-handlers come with their chunks: `fetch` serving a request with 8.2d, the
-cron's `scheduled` with 8.2f and the queue's with 8.2k.
+Built in chunk 8.2b, and its `fetch` serving each request in chunk 8.2d,
+each the most conservative reading where the pages leave a choice open
+(Decisions, "A Workers deployable" and "A Worker's start"). The cron's
+`scheduled` handler comes with chunk 8.2f and the queue's with 8.2k.
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
@@ -1089,24 +1087,53 @@ cron's `scheduled` with 8.2f and the queue's with 8.2k.
   states its limits; then its build id and what it serves and runs. The
   `--json` data gives `wrangler` and the module's `path`, `bytes` and
   `gzip_bytes`, with `binary` null.
-- **What it answers for now.** Until chunk 8.2d builds the Worker's
-  `fetch` (the settings read from the bindings, the stores' migrations
-  compared, each request served through the runtime), the module makes its
-  program once per isolate, so its plan is read, and answers every request
-  `503` with `unavailable`; the screen says so in an alert.
+- **Starting.** A Worker has no start of its own, so an isolate starts
+  at its first request, as a native binary starts as its process does:
+  it makes its program once, reads only the variables its settings name
+  from the Worker's bindings, through the runtime's `config::load`, and
+  refuses a `client_address:` source other than `cloudflare` (area 10,
+  "Client addresses"). A problem there is logged once, as
+  `runtime.startup_failed` naming each setting by its variable and never
+  its value, and the isolate answers every request `503` with
+  `unavailable` and a request id, as it would until a new version with
+  other bindings replaces it.
+- **Its database.** Each request builds its connections' drivers through
+  the factory, over `connect()` and `fetch()`, since a socket belongs to
+  the request that opened it. Until each database the project keeps
+  migrations in has been compared with the build's migrations and found
+  current, each request compares them first: one not applied, or one
+  applied that the build doesn't have or that changed since, is logged as
+  `runtime.startup_failed` and the request answered `503`; one it can't
+  reach yet is logged as `runtime.waiting` and answered the same. So a
+  migration applied after the Worker is deployed is picked up by its next
+  request, with no restart; once current, an isolate doesn't compare
+  again, and logs `runtime.started` with each connection whose driver
+  wasn't built.
+- **Serving.** Each request goes through the runtime as a native one
+  does: the route table, input, policy, transactions, `settle:`, rate
+  limits and the failure envelope. The client's address is
+  `CF-Connecting-IP`, which Cloudflare sets on every request (area 10);
+  the work a response leaves runs after it in `waitUntil`, within its 30
+  seconds; rate limits are counted in the isolate's memory until area
+  16's store on Workers comes (chunk 8.2m2). A streamed answer
+  (`ai.stream`) is sent whole once it ends until chunk 8.2h sends it as
+  it comes.
+- **What it logs.** One JSON object a line on the console, which Workers
+  Logs and `wrangler tail` read, with the same events and stamp fields as
+  a native binary's: `runtime.startup_failed`, `runtime.waiting`,
+  `runtime.started` and `operation.failed` for a fault behind a 500 with
+  its `.jadpo` frames.
 
 ```text
 $ jadpo build kiosk
   worker    build/target/kiosk/wrangler.json
   module    build/target/kiosk/kiosk.wasm
-  size      9.5 MB, 3.0 MB gzipped
+  size      12.8 MB, 4.0 MB gzipped
   build     b_1c5e09d2a7f3
   serves    main
   runs      schedules, subscribers
   commit    8d113e6
   settings  DATABASE_URL
-
-▲ alert  `kiosk` answers 503 to every request: serving on Workers is chunk 8.2d
 
 ✓ built  kiosk · wasm in 42.3 s
 → jadpo migrate apply  it starts only once its database has every migration
@@ -2304,7 +2331,8 @@ what other areas carried here and where this page answers it.
 
 | Topic | Decision | Date |
 |---|---|---|
-| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answers every request 503 until chunk 8.2d (decided for Richard, the conservative reading) | 2026-10-21 |
+| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answered every request 503 until chunk 8.2d built its `fetch` (decided for Richard, the conservative reading) | 2026-10-21 |
+| A Worker's start | Chosen in chunk 8.2d, each reversible: an isolate starts at its first request, reading its settings from the bindings and checking `client_address:` once, a failure logged once and every request of the isolate answered 503 `unavailable`, since a Worker's bindings change only with a new version; its stores' migrations compared at each request until they are current and not again for the isolate, a store behind, ahead or out of reach answered 503 and logged each time, so a migration applied after a deploy is picked up without one; `runtime.started` logged once an isolate is current; the log on the console, one JSON line an event; the HTTP component's per-worker state (request numbers, the readiness check reused for a second) kept per isolate; a streamed answer sent whole until chunk 8.2h; a `client_address:` source other than `cloudflare` stopping the start as `client_address_refused` until `jadpo check` refuses it (chunk 8.2m) | 2026-10-21 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |

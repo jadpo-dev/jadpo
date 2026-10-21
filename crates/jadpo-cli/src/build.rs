@@ -509,23 +509,6 @@ fn shown(built: Built) -> Reply {
             None => "Built from files git doesn't track: no commit explains its events".to_string(),
         });
     }
-    let workers: Vec<String> = built
-        .binaries
-        .iter()
-        .filter(|binary| matches!(binary.artifact, Artifact::Worker { .. }))
-        .map(|binary| format!("`{}`", binary.name))
-        .collect();
-    if !workers.is_empty() {
-        alerts.push(format!(
-            "{} {} 503 to every request: serving on Workers is chunk 8.2d",
-            joined(&workers),
-            if workers.len() == 1 {
-                "answers"
-            } else {
-                "answer"
-            }
-        ));
-    }
     if !alerts.is_empty() {
         screen.push(Block::Alerts(alerts));
     }

@@ -2530,18 +2530,42 @@ whose entry names them.
   module running every operation (`jadpo-value`'s `formats` example,
   release) 18.5 MB to 8.5 MB, 6.1 to 2.7 MB gzipped, 0.9 MB of it every
   locale's collation.
-- [ ] **8.2d One route on workerd** `opus · xhigh`, after 8.2b: the
-  Worker's `fetch` handler, as 8.1o's native one: settings read from the
-  bindings through `config::load`, every problem logged as
-  `runtime.startup_failed`, the stores' migrations compared once per
-  isolate, the program made once per isolate and its drivers per request
-  (a socket belongs to the request that opened it), each request through
-  `Serving` with the client's address from `CF-Connecting-IP`
-  (`ClientAddress::read` with `Target::Workers`, built in 5.1c), and its
-  events as JSON lines with the stamp; a database on this machine over
-  `connect()`. Proved by a teaching example built for Workers and served
-  by workerd against the run's PostgreSQL, a record created and read
-  back (§2.7's Phase 8 row).
+- [x] **8.2d One route on workerd** `opus · xhigh`, after 8.2b. Built
+  (area 14, "A Workers deployable"; §2.6, "Serving on Workers"): the
+  Worker's `fetch` as 8.1o's native handler, a promise of the `Response`.
+  An isolate starts at its first request: the program made once, its
+  settings read from the bindings through `config::load`, and a
+  `client_address:` source other than `cloudflare` refused
+  (`client_address_refused`); a failure is logged once as
+  `runtime.startup_failed` and every request answered 503 `unavailable`.
+  Each request builds its drivers through the factory on a `WorkersHost`
+  of its own and, until the isolate has found every store current,
+  compares the stores with the build's migrations first, a store behind,
+  ahead or out of reach answered 503 and logged, so a migration applied
+  after a deploy is picked up with no restart; then `runtime.started`.
+  Each request goes through `Serving`, sharing the isolate's
+  `http::Worker` (`Serving::sharing`), the client's address from
+  `CF-Connecting-IP` (`Program::with_config_on(values,
+  Target::Workers)`), what it leaves run in `waitUntil` and a fault
+  behind a 500 logged as `operation.failed`; events are JSON lines on
+  the console with the stamp; a streamed answer is sent whole until
+  8.2h. The log, the start-up problems, the migrations' comparison and
+  the fault observer are shared with the native host
+  (`jadpo_runtime::deployable`), and `jadpo build`'s 503 alert is gone.
+  Decided in the chunk (area 14, "A Worker's start", 2026-10-21). Proved
+  (`crates/jadpo-cli/tests/workers.rs`, the `wasm32` group, now given
+  the run's PostgreSQL, which CI's `wasm32` job starts): example 23's
+  kiosk under workerd without `DATABASE_URL` answering 503 and logging
+  its variable once; against a database missing its last migration
+  answering 503 and naming it; then, the migration applied, the same
+  isolate booking a repair through `settle:`'s subscribers and answering
+  the ticket read back, a thank-you pinned up in `waitUntil` after its
+  202, its readiness check reaching the database, and 120 requests a
+  minute for each `CF-Connecting-IP`; checked locally against a server
+  asking for a SCRAM password too. Its module, now serving, 12.8 MB
+  bound and 4.0 MB gzipped (9.5 and 3.0 MB before): past the 3 MB
+  Cloudflare documents for its Free plan, inside the Paid plan's 10 MB
+  (8.2n measures it on the real plan; 9.2 tunes it).
 - [ ] **8.2e Route tests on workerd with the same records** `opus ·
   xhigh`, after 8.2d: the vertical slice's proof: a project's route
   tests run on its compiled program inside workerd and each test's

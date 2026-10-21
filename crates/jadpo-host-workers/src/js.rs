@@ -66,6 +66,16 @@ extern "C" {
     /// The global `fetch`, a Worker's rather than a window's.
     #[wasm_bindgen(catch, js_name = fetch)]
     pub(crate) fn fetch(input: &str, init: &web_sys::RequestInit) -> Result<Promise, JsValue>;
+
+    /// `console.log`: a line of the Worker's log, which Workers Logs and
+    /// `wrangler tail` read, and workerd writes on its standard output.
+    #[wasm_bindgen(catch, js_namespace = console, js_name = log)]
+    fn console_log(line: &str) -> Result<(), JsValue>;
+}
+
+/// Writes `line` to the Worker's log: a deployable's sink (chunk 8.2d).
+pub(crate) fn log(line: &str) {
+    let _ = console_log(line);
 }
 
 /// What a JavaScript error says: its message, or the value itself.

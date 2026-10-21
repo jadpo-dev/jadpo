@@ -19,8 +19,10 @@
 //!   runtime's own fetches.
 //! - [`deployable`]: what a module `jadpo build` writes for a
 //!   `Target.wasm` deployable calls from the handlers it exports (chunk
-//!   8.2b), and [`wasm_bindgen`], re-exported so that crate exports them
-//!   through this one's.
+//!   8.2b): `fetch` serving each request through the runtime, the settings
+//!   read from the bindings and the stores' migrations compared once per
+//!   isolate (chunk 8.2d); and [`wasm_bindgen`], re-exported so that crate
+//!   exports them through this one's.
 //!
 //! The crate builds for wasm32-unknown-unknown, which is what it is for,
 //! and natively, where its bindings compile but are never called, so the
@@ -52,7 +54,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
-use jadpo_drivers::factory::{Drivers, Supplies};
+use jadpo_drivers::factory::{Drivers, Supplies, Unbuilt};
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::capability::Capability;
 use jadpo_runtime::http::address::Target;
@@ -149,6 +151,11 @@ impl WorkersHost {
     pub fn with_outbound(mut self, outbound: WorkersOutbound) -> WorkersHost {
         self.outbound = outbound;
         self
+    }
+
+    /// Each connection whose driver the factory couldn't build, and why.
+    pub fn unbuilt(&self) -> &[Unbuilt] {
+        self.drivers.unbuilt()
     }
 }
 
