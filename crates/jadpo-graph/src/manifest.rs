@@ -57,8 +57,9 @@ pub struct DeployableStamp {
     pub name: String,
     /// `native` or `wasm`: what `jadpo build` builds it for.
     pub target: String,
-    /// Its build id, `b_` and twelve hex digits.
-    pub build: String,
+    /// Its build id, `b_` and twelve hex digits; `None` for a project
+    /// with errors, which builds nothing (chunk 8.1o3).
+    pub build: Option<String>,
 }
 
 /// The manifest of `graph`.
@@ -78,7 +79,7 @@ pub fn manifest(graph: &Graph, stamp: &Stamp) -> Value {
         for deployable in &stamp.deployables {
             let mut entry = Value::object();
             entry.set("target", deployable.target.as_str());
-            entry.set("build", deployable.build.as_str());
+            entry.set_some("build", deployable.build.as_deref());
             deployables.set(&deployable.name, entry);
         }
         out.set("deployables", deployables);

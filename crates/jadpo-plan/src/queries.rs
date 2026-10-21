@@ -1158,12 +1158,14 @@ fn tag(key: &Key) -> u64 {
     u64::from_be_bytes(bytes)
 }
 
-/// Every query's plan and every entity's, by key.
+/// The plan of every query and every entity's `get` that `keeps` keeps,
+/// each by key: every one but in a deployable's plan (chunk 8.1o3).
 pub(crate) fn plans(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
     types: &mut Types,
     json: &RefCell<Vec<TypeRef>>,
+    keeps: &dyn Fn(&Key) -> bool,
 ) -> (
     Vec<QueryPlan>,
     Vec<EntityPlan>,
@@ -1184,12 +1186,22 @@ pub(crate) fn plans(
     let mut query_plans: Vec<QueryPlan> = queries
         .queries
         .iter()
+        .filter(|query| keeps(&query.key))
         .filter_map(|query| planner.query(query))
         .collect();
     query_plans.sort_by(|a, b| a.key.cmp(&b.key));
-    let mut entity_plans: Vec<EntityPlan> = model
+    let kept: Vec<&EntityModel> = model
         .entities
         .iter()
+        .filter(|entity| {
+            planner
+                .types
+                .named(&entity.name)
+                .is_some_and(|key| keeps(&key))
+        })
+        .collect();
+    let mut entity_plans: Vec<EntityPlan> = kept
+        .into_iter()
         .filter_map(|entity| planner.entity(entity))
         .collect();
     entity_plans.sort_by(|a, b| a.key.cmp(&b.key));

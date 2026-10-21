@@ -198,7 +198,7 @@ pub(crate) fn checked(call: &Call, target: &std::path::Path) -> Checked {
         let mut surfaces = derived::surfaces(db, loaded.project);
         surfaces.extend(derived::network(db, loaded.project));
         surfaces.extend(derived::providers(db, loaded.project));
-        let stamp = derived::stamp(db, loaded.project, &loaded.root, graph, errors);
+        let stamp = derived::stamp(db, loaded.project, &loaded.root, errors);
         match derived::write(
             &loaded.root,
             graph,

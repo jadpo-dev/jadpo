@@ -257,7 +257,14 @@ fn a_deployables_plan_holds_only_the_routes_it_serves() {
         schedules: false,
         subscribers: true,
     };
-    let kiosk = Plan::build(&db, project).for_deployable(&["main".to_string()], runs);
+    let deployable = jadpo_check::deployables::Deployable {
+        name: "kiosk".to_string(),
+        at: None,
+        serves: vec!["main".to_string()],
+        runs,
+        target: None,
+    };
+    let kiosk = Plan::for_deployable(&db, project, &deployable).expect("planned");
     assert_eq!(paths(&kiosk), ["/front"]);
     assert_eq!(kiosk.runtime().runs, runs);
     let read = RuntimePlan::decode(&kiosk.runtime().encode_deployable().expect("encodes"))
