@@ -2531,13 +2531,23 @@ whose entry names them.
   Wrangler file, its setting names and Jadpo's queue-name form checked
   against Wrangler's own (Wrangler pinned in `tools/workers/`, its
   `deploy --dry-run`, no account). Proved through workerd's queue entry.
-- [ ] **8.2l Passkeys on Workers** `opus · high`, after 8.2a: passkeys
-  built on jadpo-value's pure-Rust ES256 and RSA checks (decided
-  2026-10-21): registration with no attestation and discoverable sign-in,
-  the challenge, origin, relying party, flags and counter checked as
-  `webauthn-rs` checks them, given by the Workers host; held to
-  `webauthn-rs`'s answers natively through the test authenticator, and a
-  passkey registered and signed in with under workerd.
+- [x] **8.2l Passkeys on Workers** `opus · high`, after 8.2a. Built:
+  `WorkersPasskeys`, the Workers host's `Host::passkeys`: `webauthn-rs`
+  0.5's passkey ceremonies in pure Rust, its options member for member
+  with a 32-byte challenge from `getRandomValues`, an answer read and
+  checked as it checks one (type, challenge, origin, `crossOrigin` when
+  registering, relying party, presence, verification, backup flags,
+  counter; CBOR through the same `serde_cbor_2`) and signed with
+  `jadpo_value::public_key`'s ES256, DER read strictly, and RS256, the
+  key kept as the same COSE bytes the native host writes; attestation
+  `none` or packed self-attestation, one signed by a certificate refused
+  (area 8, chosen in chunk 8.2l). Held to `webauthn-rs` natively
+  (`tests/passkeys.rs`): every ceremony run on both, through the test
+  authenticator and about sixty answers made to break one check each,
+  kept or refused the same; under workerd a passkey made by the test
+  authenticator registered and signed in with twice, keeping what the
+  native host keeps of it, another site's answer and a counter gone back
+  refused. §2.6's "The Workers host".
 - [ ] **8.2m What `jadpo check` and `jadpo build` say for Workers**
   `opus · high`, after 8.2b: a `client_address:` source other than
   `cloudflare` refused for a Workers deployable (area 10, "Client

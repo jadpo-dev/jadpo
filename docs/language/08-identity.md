@@ -744,7 +744,7 @@ output MagicLinkToken
 > Decided 2026-10-18 (Richard). Registering, signing in and managing
 > passkeys built in chunk 5.5z; recovery through a magic link, the check
 > that magic links are on, the route-test helpers and the events built in
-> chunk 5.5z2.
+> chunk 5.5z2; the ceremonies on Workers built in chunk 8.2l.
 
 A passkey (WebAuthn, FIDO2) is the third built-in way to check a person,
 beside magic links and providers. The person unlocks a key held on their
@@ -3886,7 +3886,11 @@ person's address; a passkey's sign-in publishes `SignedIn` and
 `SignInRefused`, and adding and removing one `PasskeyAdded` and
 `PasskeyRemoved`; and a route test drives the routes with
 `test_passkeys` ("Passkey recovery, events and route tests (chosen in
-chunk 5.5z2)" below).
+chunk 5.5z2)" below). Since chunk 8.2l the Workers host answers the
+ceremonies too, `webauthn-rs`'s checks written in pure Rust on
+jadpo-value's ES256 and RS256 and held to `webauthn-rs`'s answers, a
+device's attestation `none` or packed self-attestation there ("Passkeys
+on Workers' attestation (chosen in chunk 8.2l)" below).
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
@@ -3894,10 +3898,6 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   after the first build, and with them `on_first_sign_in:` for those
   ways in.
 - A setting loosened past its limit, until acceptances (area 18).
-- Passkeys on Workers: `webauthn-rs` 0.5 verifies with OpenSSL, which
-  doesn't build for wasm32, so the Workers host checks them with
-  jadpo-value's pure-Rust ES256 and RSA (decided 2026-10-21; roadmap
-  8.2l).
 - OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting
   routes and `on_behalf_of:` (decided 2026-10-16, area 11); no roadmap chunk
   yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers,
@@ -4113,7 +4113,8 @@ builds it.
 
 | Topic | Decision | Date |
 |---|---|---|
-| Passkeys on Workers | Built for Workers on jadpo-value's pure-Rust ES256 and RSA checks (signature, challenge, origin, counter), since the WebAuthn library runs only natively; `passkey:` and its magic-link recovery work on both targets (Richard; built in chunk 8.2) | 2026-10-21 |
+| Passkeys on Workers | Built for Workers on jadpo-value's pure-Rust ES256 and RSA checks (signature, challenge, origin, counter), since the WebAuthn library runs only natively; `passkey:` and its magic-link recovery work on both targets (Richard; built in chunk 8.2l) | 2026-10-21 |
+| Passkeys on Workers' attestation (chosen in chunk 8.2l) | Registration asks for no attestation, and on Workers a device's statement must be `none` or packed self-attestation, whose signature by the new key is checked; one signed by a certificate (packed with `x5c`, TPM, Android key, Apple, FIDO U2F) is `passkey_rejected` rather than taken unchecked, since the Workers host reads no certificate chains and browsers send `none` when none is asked for. The native host's `webauthn-rs` checks those statements and accepts a good one, keeping no attestation either way. Every other check is `webauthn-rs`'s, on both hosts | 2026-10-21 |
 | Unnamed singletons | Carried from area 1 (and the owner's 2026-10-04 selection): `application { }` and `principal { }` carry no name; the application's principal setting is removed | 2026-10-12 |
 | Root files | Carried from area 1: `app.jadpo` holds the application and principal; `authentication.jadpo` holds the methods | 2026-10-12 |
 | Colon rule | Carried from area 3: every member is `name: value`, so `user: { }`, `browser_session: { }` | 2026-10-12 |
