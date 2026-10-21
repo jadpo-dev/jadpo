@@ -344,3 +344,71 @@ fn the_interpreter_runs_identity_and_batches_only_through_the_runtime() {
         );
     }
 }
+
+/// What the runtime's entry points for a body's sites of areas 10, 11, 16
+/// and 21 run (chunk 8.1i, `jadpo_runtime::calls`), each with what it
+/// does: compiled code calls the same entry points, so no interpreter
+/// source may run one itself.
+const CALLS_ONLY: &[(&str, &str)] = &[
+    ("files::put", "puts a file in a store"),
+    ("files::read_whole", "reads a stored file whole"),
+    ("Done::Broke", "turns a call's condition into what stops it"),
+    ("present::translate", "writes a translation"),
+    ("prompt::render", "renders a prompt"),
+    ("escape_html", "escapes what an email template writes out"),
+    ("fakes::script", "scripts a provider's fake"),
+    ("ai::script", "scripts the `ai` fake"),
+    ("embed::script", "scripts an embedding's failure"),
+    ("ai::requests", "reads what a prompt was asked with"),
+    ("answer_at", "fills a prompt's recorded answer"),
+    ("as_sent", "writes a scripted value as the model sends it"),
+    ("op.failures", "reads a provider operation's failures"),
+    (
+        "\"runtime timed_out\"",
+        "tells a provider call's `timed_out`",
+    ),
+    (
+        "which its call maps to nothing",
+        "faults on a provider's failure no arm maps",
+    ),
+];
+
+#[test]
+fn the_interpreter_runs_translations_providers_files_and_models_only_through_the_runtime() {
+    let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut sources: Vec<_> = std::fs::read_dir(crates.join("jadpo-interp/src"))
+        .expect("the interpreter's sources")
+        .map(|entry| entry.expect("a source").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
+    sources.sort();
+    let mut found = Vec::new();
+    for path in &sources {
+        let code = code_of(&std::fs::read_to_string(path).expect("a source file"));
+        let file = path.file_name().unwrap_or_default().to_string_lossy();
+        for (name, what) in CALLS_ONLY {
+            if code.contains(name) {
+                found.push(format!("{file}: `{name}` {what}"));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "the interpreter runs a translation, a prompt, a template's value, a \
+         store's file, a provider's operation, a model's call or a test's fake \
+         of its own; call `jadpo_runtime::calls` instead, which compiled code \
+         calls too:\n{}",
+        found.join("\n")
+    );
+    // Each name is still the entry points', so the list can't go stale.
+    let entry = code_of(
+        &std::fs::read_to_string(crates.join("jadpo-runtime/src/calls.rs"))
+            .expect("the runtime's entry points for a body's calls"),
+    );
+    for (name, _) in CALLS_ONLY {
+        assert!(
+            entry.contains(name),
+            "`{name}` is no longer calls.rs's: update CALLS_ONLY"
+        );
+    }
+}

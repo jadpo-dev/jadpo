@@ -50,6 +50,11 @@
 //!   each claim it takes a [`lease`] of the same length (chunk 6.7).
 //! - [`serve`]: what every host does with a request and a tick (chunk
 //!   6.9), which a host's server handler wraps.
+//! - [`calls`]: one entry point each for a body's sites of areas 10, 11,
+//!   16 and 21 (chunk 8.1i), which both executors call: a translation, a
+//!   prompt rendered, a template's value escaped, a store's `put` and
+//!   `read`, a provider's operation and how an `attempt` maps its failure
+//!   by code, a model's call, and a test's fakes of them.
 //! - [`files`]: the `files` capability on the seam (chunk 6.4b): a store's
 //!   `put` and ranged `read` of a `File`, with an in-memory fake, and
 //!   [`rows`], a stored file's CSV, TSV and JSON Lines rows, which a file
@@ -87,6 +92,7 @@ mod boundary;
 pub mod breaker;
 pub mod budget;
 pub mod call_log;
+pub mod calls;
 pub mod capability;
 pub mod compiled;
 pub mod config;

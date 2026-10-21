@@ -2217,13 +2217,28 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   one for 8.1i's forms (translations, provider operations and package
   actions, a test's `fakes:`, a store's `put` and `read`, prompts, `ai.*`
   and email templates). §2.5's "Compiled code".
-- [ ] **8.1i Compiled code: events, packages and the rest** `opus ·
-  xhigh`, after 8.1h: areas 10 to 12, 16 and 19 to 21: settings and a
-  test's `config:`, translations, `emit` and the deliveries between a
-  test's steps, schedules, provider calls with
-  their fakes and recordings, files, email and `email.sent`,
-  `ai.generate`, `ai.stream` and `ai.embed` with the `ai` fake, prompts,
-  magic links and webhook replies.
+- [x] **8.1i Compiled code: events, packages and the rest** `opus ·
+  xhigh`, after 8.1h. Built: `translations.<message>` (an email
+  template's wordings among them), `prompts.render`, an email template's
+  `{{ value }}`, a store's `put` and `read`, provider operations with
+  their failures mapped by code in an `attempt`, a package's action
+  through the connection named, `ai.generate`, `ai.stream`, `ai.embed`
+  and `ai.embed_all`, a test's `fakes:` and `fakes: { ai: }` (a
+  recording's answer among them) and `ai.<prompt>.requests`, each through
+  one runtime entry point that the interpreter calls too
+  (`jadpo_runtime::calls`, giving a `Called`), its copies gone and a test
+  keeping them gone; the translations in the runtime plan, and the
+  runtime's view of it carrying them, the locales and the outside calls'
+  sites (plan format 8). Settings, a test's `config:`, `emit` and the
+  deliveries between steps, schedules, email, magic links and webhook
+  replies were compiled by 8.1f to 8.1h. All 206 of the corpus's projects
+  that check without migrations compile (190 before), and the gate's
+  compiled step requires every project and teaching example to compile
+  and give the same records both ways and every example's tests to pass:
+  258 projects and 525 tests, all 28 teaching examples with their 334
+  tests (22 before, 276). A project whose migrations need an extension
+  the server lacks is skipped on a developer's machine and fails under
+  CI. §2.5's "Compiled code".
 - [ ] **8.1j The corpus compiled** `opus · xhigh`, after 8.1i: every
   page's project and teaching example compiled as modules of one
   generated crate, one rustc invocation in the dev profile (§2.5), in a

@@ -1,11 +1,11 @@
-//! Compiled code (roadmap chunks 8.1f to 8.1h; docs/compiler-runtime.md
+//! Compiled code (roadmap chunks 8.1f to 8.1i; docs/compiler-runtime.md
 //! §2.5, "Compiled code" and "Differential test"). Every project of the
-//! specification corpus that compiles, the language pages' and the
-//! teaching examples', written by `jadpo-codegen` as crates of one harness
-//! built with cargo and run beside the interpreter: every test gives the
-//! same record both ways, a failed assertion's values among them. Area 7's
-//! `todos` project, a route that creates a todo and one that reads it
-//! back, is the first route.
+//! specification corpus, the language pages' and the teaching examples',
+//! written by `jadpo-codegen` as crates of one harness built with cargo
+//! and run beside the interpreter: every test gives the same record both
+//! ways, a failed assertion's values among them. Area 7's `todos` project,
+//! a route that creates a todo and one that reads it back, is the first
+//! route.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use jadpo_cli::{Output, run};
 use jadpo_term::Environment;
-use jadpo_test::compiled::{Compared, differential_all};
+use jadpo_test::compiled::{Compared, Problem, differential_all};
 
 use crate::support;
 use crate::syntax_examples as examples;
@@ -147,27 +147,30 @@ fn corpus_projects(prefixes: &[&str]) -> Vec<(String, PathBuf)> {
 }
 
 /// Every project in `projects` compiled into one harness kept at `work`
-/// and compared: each one's name with what it compared, or, when it has
-/// forms not compiled yet, those forms; every other problem fails the
-/// test, named by its project.
-fn compared(
-    projects: &[(String, PathBuf)],
-    work: &str,
-) -> Vec<(String, Result<Compared, Vec<String>>)> {
+/// and compared: each one's name with what it compared, and the names of
+/// those a developer's server can't migrate (an extension missing or too
+/// old: skipped, saying so, but never under CI). Any other problem fails
+/// the test, named by its project, a form the generator refused among
+/// them (chunk 8.1i).
+fn compared(projects: &[(String, PathBuf)], work: &str) -> (Vec<(String, Compared)>, Vec<String>) {
     let folders: Vec<PathBuf> = projects.iter().map(|(_, folder)| folder.clone()).collect();
     let results = differential_all(&folders, &harness_folder(work))
         .unwrap_or_else(|problem| panic!("{problem}"));
     let mut problems = Vec::new();
     let mut done = Vec::new();
+    let mut skipped = Vec::new();
     for ((name, _), result) in projects.iter().zip(results) {
         match result {
-            Ok(compared) => done.push((name.clone(), Ok(compared))),
-            Err(problem) if problem.refused() => done.push((name.clone(), Err(problem.forms()))),
+            Ok(compared) => done.push((name.clone(), compared)),
+            Err(Problem::Unserved(why)) => {
+                jadpo_test::skip_for_version(format_args!("{name}: {why}"));
+                skipped.push(name.clone());
+            }
             Err(problem) => problems.push(format!("{name}: {problem}")),
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n\n"));
-    done
+    (done, skipped)
 }
 
 /// A `return` inside an inline function, which the checker allows in a
@@ -267,41 +270,15 @@ fn export_project() -> PathBuf {
     corpus_project(&files, "compiled-export").expect("it checks")
 }
 
-/// The forms chunk 8.1i compiles, as the generator names them when it
-/// refuses one: what a project of areas 5 to 9 and 13 may still be refused
-/// for, its own forms all compiled.
-fn later(form: &str) -> bool {
-    [
-        "a provider's operation",
-        "a package's action",
-        "a test's `fakes:`",
-        "a test's `fakes: { ai: }`",
-        "`<store>.put`",
-        "`<store>.read`",
-        "`translations.<message>`",
-        "`ai.<prompt>.requests`",
-        "`prompts.render`",
-        "an email template's `{{ value }}`",
-    ]
-    .contains(&form)
-        || form.starts_with("`ai.")
-}
-
-/// Every project of the specification corpus that compiles, the pages'
-/// and the teaching examples', built as crates of one harness and
-/// compared (chunks 8.1f to 8.1h). Every project of the pages for areas 1
-/// to 4 compiles (functions, failures, `attempt`, outcome `match`,
-/// constructions, collections and inline functions, constants, the
-/// standard library and assertions with their values), though those pages'
-/// projects declare no tests: the corpus's tests run their forms. So does
-/// every project of areas 5 to 9 and 13 but those that also use a form of
-/// 8.1i's (chunk 8.1h: queries, `get`, writes and transitions, callers and
-/// `call_as`, sessions, tokens and keys, route, fixture and seed tests,
-/// batches and an export's rows, a test's clock and a schedule run by
-/// hand), and the projects that run them pass compiled. Area 7's first
-/// routes pass as they did. A project with a form not compiled yet is
-/// listed with its forms; chunk 8.1j gives the corpus as one crate a CI
-/// job of its own.
+/// Every project of the specification corpus, the pages' and the
+/// teaching examples', built as crates of one harness and compared (chunks
+/// 8.1f to 8.1i): every one compiles (since chunk 8.1i, translations,
+/// provider operations with their fakes and a package's actions, a store's
+/// files, prompts, `ai.*` with the `ai` fake and email templates among
+/// them), gives the same records both ways, and every teaching example's
+/// tests pass. Area 7's first routes pass as they did, and named projects
+/// of each area pass compiled. Chunk 8.1j gives the corpus as one crate a
+/// CI job of its own.
 #[test]
 fn the_corpus_passes_compiled_with_the_interpreters_records() {
     if !jadpo_test::live() {
@@ -318,40 +295,14 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     ));
     let export = export_project();
     projects.push(("an export run to its end".into(), export.clone()));
-    let results = compared(&projects, "corpus");
-    let mut done = Vec::new();
-    let mut refused = Vec::new();
-    for (name, result) in results {
-        match result {
-            Ok(compared) => done.push((name, compared)),
-            Err(forms) => refused.push((name, forms)),
-        }
-    }
-    let early: Vec<&(String, Vec<String>)> = refused
-        .iter()
-        .filter(|(name, _)| {
-            ["01-", "02-", "03-", "04-"]
-                .iter()
-                .any(|area| name.starts_with(&format!("docs/language/{area}")))
-        })
-        .collect();
-    assert!(early.is_empty(), "areas 1 to 4 not compiled: {early:?}");
-    let data: Vec<&(String, Vec<String>)> = refused
-        .iter()
-        .filter(|(name, forms)| {
-            ["05-", "06-", "07-", "08-", "09-", "13-"]
-                .iter()
-                .any(|area| name.starts_with(&format!("docs/language/{area}")))
-                && !forms.iter().all(|form| later(form))
-        })
-        .collect();
-    assert!(
-        data.is_empty(),
-        "areas 5 to 9 and 13 not compiled: {data:?}"
-    );
+    let (done, skipped) = compared(&projects, "corpus");
     // Sessions, tokens and keys, a test's passkeys, callers made from
-    // their records, a test's clock, and a batch started, read and run to
-    // its end with a schedule run by hand, each passing compiled.
+    // their records, a test's clock, a batch started, read and run to its
+    // end with a schedule run by hand (chunk 8.1h); translations, provider
+    // operations with a test's fakes and their failures mapped by code, a
+    // package's action, a store's put and read, `ai.*` with the `ai` fake
+    // and `.requests`, email templates and prompts (chunk 8.1i): each
+    // passing compiled.
     for name in [
         "docs/language/08-identity.md sign-in",
         "docs/language/08-identity.md tokens-and-keys",
@@ -360,10 +311,23 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         "docs/language/09-policy.md tenant-references",
         "docs/language/10-configuration-and-time.md deliveries",
         "docs/language/13-testing.md events-in-tests",
+        "docs/language/10-configuration-and-time.md translation-messages",
+        "docs/language/12-jobs-and-events.md several-steps",
+        "docs/language/13-testing.md fakes-in-tests",
+        "docs/language/21-ai.md ai-embed",
         "examples 11-cake-shop",
         "examples 12-recipe-book",
+        "examples 15-parcel-tracker",
+        "examples 22-plant-helpline",
+        "examples 24-seed-library",
         "examples 25-allotment-rents",
+        "examples 26-delivery-desk",
+        "examples 27-guest-house",
+        "examples 28-lost-property",
     ] {
+        if skipped.iter().any(|skipped| skipped == name) {
+            continue;
+        }
         let compared = done
             .iter()
             .find(|(done, _)| done == name)
@@ -374,11 +338,19 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
             "{name}: {compared:?}"
         );
     }
+    // Every teaching example's tests pass, both ways.
+    let failing: Vec<&(String, Compared)> = done
+        .iter()
+        .filter(|(name, compared)| {
+            name.starts_with("examples ") && compared.passed != compared.tests
+        })
+        .collect();
+    assert!(failing.is_empty(), "{failing:?}");
     let pages = done
         .iter()
-        .filter(|(name, _)| name.starts_with("docs/language/0"))
+        .filter(|(name, _)| name.starts_with("docs/language/"))
         .count();
-    assert!(pages > 60, "{done:?}");
+    assert!(pages > 200, "{done:?}");
     let todos = done
         .iter()
         .find(|(name, _)| name == "docs/language/07-http.md todos")
@@ -414,11 +386,11 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     );
     exported_to_its_end(&export);
     let tests: usize = done.iter().map(|(_, compared)| compared.tests).sum();
-    assert!(tests > 400, "{done:?}");
+    assert!(tests > 500, "{done:?}");
     println!(
-        "compared {} projects, {tests} tests; not compiled yet: {}",
+        "compared {} projects, {tests} tests; skipped for the server's extensions: {}",
         done.len(),
-        refused.len()
+        skipped.len()
     );
     // The teaching examples on their own: how many pass both ways.
     let examples: Vec<&Compared> = done
@@ -427,7 +399,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         .map(|(_, compared)| compared)
         .collect();
     println!(
-        "teaching examples: {} compared, {} with every test passing both ways ({} tests); not compiled yet: {}",
+        "teaching examples: {} compared, {} with every test passing both ways ({} tests)",
         examples.len(),
         examples
             .iter()
@@ -437,13 +409,9 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
             .iter()
             .map(|compared| compared.tests)
             .sum::<usize>(),
-        refused
-            .iter()
-            .filter(|(name, _)| name.starts_with("examples "))
-            .count()
     );
-    for (name, forms) in &refused {
-        println!("  {name}: {}", forms.join(", "));
+    for name in &skipped {
+        println!("  skipped: {name}");
     }
 }
 

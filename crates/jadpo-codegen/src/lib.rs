@@ -156,6 +156,7 @@ pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
         let tokens = Emitter {
             plan,
             callable,
+            number,
             shape,
             paths: &paths,
             refusals: &mut refusals,
@@ -201,6 +202,7 @@ pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
         let tokens = Emitter {
             plan,
             callable,
+            number: row.callable,
             shape: Shape::Function,
             paths: &paths,
             refusals: &mut refusals,

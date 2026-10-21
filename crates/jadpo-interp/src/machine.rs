@@ -30,11 +30,13 @@ use jadpo_graph::body::{
     RuleArm, Site, SiteId, Stmt, UnaryOp,
 };
 use jadpo_plan::{ArmPattern, CallablePlan, Decoded};
+use jadpo_runtime::calls;
 use jadpo_runtime::effects::{self, Effect, Refused};
 use jadpo_runtime::{Assertion, AssertionDetail, Ctx, Failure, Fault, FaultKind, Frame, Got};
 use jadpo_std::{Kind as ParamKind, Op, RuleKey};
 use jadpo_value::{Value, ops};
 
+use crate::drive::called;
 use crate::program::Program;
 
 /// What ends a body before its last statement.
@@ -551,12 +553,10 @@ impl<'p> Machine<'p> {
     }
 
     /// Gives the fake of the connection the `fakes:` answer at `at`
-    /// scripts its answer (chunk 7.2d): a value, on top, written as the
-    /// provider sends it where the operation's `output_at:` reads it, so
-    /// it is read back through the operation's real decoding.
-    fn script_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<(), &'static str> {
+    /// scripts its answer (chunk 7.2d), through the runtime's entry point,
+    /// which compiled code calls too: a value, on top.
+    fn script_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<Value, Stop> {
         use jadpo_graph::body::{FakeAnswer, FakeCondition};
-        use jadpo_runtime::fakes::Script;
         let Some(Node::Expr(Expr::Call {
             callee:
                 Callee::Fake {
@@ -567,124 +567,57 @@ impl<'p> Machine<'p> {
             ..
         })) = self.site(at).map(|site| &site.node)
         else {
-            return Err("a scripted answer the plan doesn't have");
+            return Err(self.defect(ctx, "a scripted answer the plan doesn't have", at));
         };
-        let given = match answer {
-            FakeAnswer::Value => Script::Value(self.pop()),
-            FakeAnswer::Failed(code) => Script::Failed(code.clone()),
+        let answer = match answer {
+            FakeAnswer::Value => calls::FakeAnswer::Value(self.pop()),
+            FakeAnswer::Failed(code) => calls::FakeAnswer::Failed(code.clone()),
             FakeAnswer::Condition(FakeCondition::Unavailable | FakeCondition::InUse) => {
-                Script::Unavailable
+                calls::FakeAnswer::Unavailable
             }
-            FakeAnswer::Condition(FakeCondition::Lost) => Script::Lost,
-            FakeAnswer::Condition(FakeCondition::Misconfigured) => Script::Misconfigured,
+            FakeAnswer::Condition(FakeCondition::Lost) => calls::FakeAnswer::Lost,
+            FakeAnswer::Condition(FakeCondition::Misconfigured) => calls::FakeAnswer::Misconfigured,
         };
-        ctx.at(at.0);
-        let Some(providers) = self.program.providers() else {
-            return Err("a scripted answer in a program with no provider plan");
-        };
-        jadpo_runtime::fakes::script(
+        let program = self.program;
+        let plan = program.runtime_plan();
+        called(calls::fake(
             ctx,
-            &providers,
-            (self.program, at.0),
+            plan,
+            program,
             (connection, operation),
-            given,
-        )
+            answer,
+            at.0,
+        ))
     }
 
     /// Gives the `ai` fake the next answer to the prompt the `fakes:`
-    /// answer at `at` scripts (area 21; chunk 5.5v3): a value written as
-    /// its call's type's JSON, `raw(...)`'s text, or a condition.
-    fn script_ai_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<(), &'static str> {
+    /// answer at `at` scripts (area 21; chunk 5.5v3), through the
+    /// runtime's entry point, which compiled code calls too: a value,
+    /// `raw(...)`'s text or `partial(...)`'s, on top.
+    fn script_ai_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<Value, Stop> {
         use jadpo_graph::body::AiFakeAnswer;
-        use jadpo_runtime::ai::Script;
         let Some(Node::Expr(Expr::Call {
             callee: Callee::AiFake { prompt, answer },
             ..
         })) = self.site(at).map(|site| &site.node)
         else {
-            return Err("a scripted answer the plan doesn't have");
+            return Err(self.defect(ctx, "a scripted answer the plan doesn't have", at));
         };
-        let program = self.program;
-        let Some(ai) = program.ai() else {
-            return Err("a model's scripted answer in a program that asks none");
-        };
-        // An embedding's failure (chunk 5.5v4).
-        if prompt == jadpo_std::embed::OPERATION {
-            let AiFakeAnswer::Failed(word) = answer else {
-                return Err("an embedding scripted with what isn't a failure");
-            };
-            let Some(rule) = jadpo_std::RuleKey::from_word(word) else {
-                return Err("a scripted failure an embedding has none of");
-            };
-            ctx.at(at.0);
-            return jadpo_runtime::embed::script(ctx, &ai, rule);
-        }
-        let given = match answer {
+        let answer = match answer {
             AiFakeAnswer::Value => {
-                let value = self.pop();
-                let Some(Decoded::Json(number)) = self.decoded(at) else {
-                    return Err("a scripted value with no codec");
+                let number = match self.decoded(at) {
+                    Some(Decoded::Json(number)) => Some(*number),
+                    _ => None,
                 };
-                let Some(codec) = ai.json.codec_of(*number) else {
-                    return Err("a scripted value with no codec");
-                };
-                let json = ai.json.codecs.write_value(codec, &value);
-                // As the model sends it: a text answer as its text, a
-                // value that isn't an object wrapped as a strict mode asks.
-                match program.generate_site_of(prompt) {
-                    Some(generate) => {
-                        Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json))
-                    }
-                    // A streamed prompt's text, as it is (chunk 5.5v6).
-                    None => match value {
-                        Value::Text(text) => Script::Content(text.to_string()),
-                        _ => return Err("a scripted value of a prompt no call asks"),
-                    },
-                }
+                calls::AiAnswer::Value(self.pop(), number)
             }
-            AiFakeAnswer::Partial(word) => {
-                match (self.pop(), jadpo_std::RuleKey::from_word(word)) {
-                    (Value::Text(text), Some(rule)) => Script::Partial(text.to_string(), rule),
-                    _ => return Err("`partial(...)` given no text or condition"),
-                }
-            }
-            AiFakeAnswer::Raw => match self.pop() {
-                Value::Text(text) => Script::Content(text.to_string()),
-                _ => return Err("`raw(...)` given no text"),
-            },
-            AiFakeAnswer::Failed(word) => match jadpo_std::RuleKey::from_word(word) {
-                Some(rule) => Script::Condition(rule),
-                None => return Err("a scripted failure `ai.generate` has none of"),
-            },
-            // The prompt's recording, its placeholders filled, sent as the
-            // model sends an answer (chunk 5.5v4).
-            AiFakeAnswer::Recorded(name) => {
-                let Some(generate) = program.generate_site_of(prompt) else {
-                    return Err("a recorded answer of a prompt no call asks");
-                };
-                let Some(recording) = program
-                    .plan()
-                    .prompt_recordings()
-                    .iter()
-                    .find(|recording| recording.prompt == *prompt && recording.name == *name)
-                else {
-                    return Err("a recording the plan doesn't have");
-                };
-                match jadpo_runtime::prompt_recordings::answer_at(
-                    ctx,
-                    &ai.json,
-                    generate.answer,
-                    &recording.text,
-                ) {
-                    Some(json) => Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json)),
-                    // One that keeps no answer, which its own test reports,
-                    // answers with nothing to decode.
-                    None => Script::Condition(jadpo_std::RuleKey::Malformed),
-                }
-            }
+            AiFakeAnswer::Raw => calls::AiAnswer::Raw(self.pop()),
+            AiFakeAnswer::Partial(word) => calls::AiAnswer::Partial(self.pop(), word),
+            AiFakeAnswer::Failed(word) => calls::AiAnswer::Failed(word),
+            AiFakeAnswer::Recorded(name) => calls::AiAnswer::Recorded(name),
         };
-        ctx.at(at.0);
-        jadpo_runtime::ai::script(ctx, &ai, prompt, given)
+        let plan = self.program.runtime_plan();
+        called(calls::ai_fake(ctx, plan, prompt, answer, at.0))
     }
 
     /// The `ai.embed` or `ai.embed_all` call at `at`, decoded.
@@ -739,22 +672,12 @@ impl<'p> Machine<'p> {
             .then_some((connection, name))
     }
 
-    /// Whether `key` is a failure of the provider operation the call at
-    /// `at` makes, by its number: its package's, which its call maps.
+    /// Whether `key` is a failure the provider call at `at` gives that its
+    /// `attempt` maps by its code: its operation's own, its package's, or
+    /// `timed_out`, as the runtime decides it for compiled code too.
     fn provider_failure(&self, at: SiteId, key: &str) -> bool {
-        let Some(jadpo_std::provider::CallSite {
-            called: jadpo_std::provider::Called::Operation(number),
-            ..
-        }) = self.provider_site(at)
-        else {
-            return false;
-        };
-        self.program
-            .plan()
-            .providers()
-            .operations
-            .get(*number as usize)
-            .is_some_and(|op| op.failures.iter().any(|known| known == key))
+        self.provider_site(at)
+            .is_some_and(|site| calls::provider_maps(self.program.runtime_plan(), site, key))
     }
 
     /// Whether the call it paused at is caught, its failure handled by an
@@ -962,22 +885,6 @@ impl<'p> Machine<'p> {
         Stop::Fault(ctx.fault(kind, at.0))
     }
 
-    /// A prompt's value as the messages a model is sent, each field it
-    /// writes given as its type's JSON (area 21).
-    fn render_prompt(&self, prompt: &Value, at: SiteId) -> Option<Value> {
-        let Some(Decoded::Prompt { entry, fields }) = self.decoded(at) else {
-            return None;
-        };
-        let plan = self.program.plan();
-        let entry = plan.prompts().entries.get(*entry as usize)?;
-        let codecs = self.program.json_codecs();
-        jadpo_value::prompt::render(entry, prompt, &mut |place, value| {
-            let number = fields.get(place)?;
-            let codec = plan.json().codec_of(*number)?;
-            Some(codecs.write_value(codec, value))
-        })
-    }
-
     fn defect(&self, ctx: &mut Ctx<'_>, what: &str, at: SiteId) -> Stop {
         self.fault(ctx, FaultKind::Defect(what.to_string()), at)
     }
@@ -1100,44 +1007,28 @@ impl<'p> Machine<'p> {
             Task::PushUnit => self.values.push(Value::Unit),
             Task::PushNone => self.values.push(Value::None),
             Task::PushKey(setting) => self.values.push(Value::Int(i64::from(setting))),
+            // A translation, a value an email's HTML template writes out
+            // and a prompt rendered, through the runtime's entry points,
+            // which compiled code calls too (chunk 8.1i).
             Task::Translate { key, count, at } => {
                 let values = self.take(count);
-                let Some((locale, rest)) = values.split_first() else {
-                    return Err(self.defect(ctx, "a translation without its locale", at));
-                };
-                let plan = self.program.plan();
-                let Some((_, entry)) = plan.translations().entry(key) else {
-                    return Err(self.defect(ctx, "a translation key the plan doesn't have", at));
-                };
-                let Some(locales) = plan.locales() else {
-                    return Err(self.defect(ctx, "a translation in a project with no locales", at));
-                };
-                match jadpo_value::present::translate(entry, locale, rest, locales) {
-                    Ok(text) => self.values.push(text),
-                    Err(fault) => return Err(self.value_fault(ctx, fault, at)),
-                }
+                let plan = self.program.runtime_plan();
+                let text = called(calls::translate(ctx, plan, key, &values, at.0))?;
+                self.values.push(text);
             }
-            Task::Escape(at) => match self.pop() {
-                Value::Text(text) => self
-                    .values
-                    .push(Value::text(&jadpo_std::email::escape_html(&text))),
-                _ => {
-                    return Err(self.defect(
-                        ctx,
-                        "a template writing out something that isn't text",
-                        at,
-                    ));
-                }
-            },
+            Task::Escape(at) => {
+                let value = self.pop();
+                let text = called(calls::escape(ctx, &value, at.0))?;
+                self.values.push(text);
+            }
             Task::RenderPrompt(at) => {
                 let prompt = self.pop();
-                let rendered = self.render_prompt(&prompt, at);
-                match rendered {
-                    Some(messages) => self.values.push(messages),
-                    None => {
-                        return Err(self.defect(ctx, "a prompt the plan can't render", at));
-                    }
-                }
+                let Some(Decoded::Prompt { entry, fields }) = self.decoded(at) else {
+                    return Err(self.defect(ctx, "a prompt the plan can't render", at));
+                };
+                let plan = self.program.runtime_plan();
+                let rendered = calls::render_prompt(ctx, plan, *entry, fields, &prompt, at.0);
+                self.values.push(called(rendered)?);
             }
             Task::IfCheck {
                 arms,
@@ -1197,16 +1088,12 @@ impl<'p> Machine<'p> {
                 }
             }
             Task::Fake(at) => {
-                if let Err(why) = self.script_fake(ctx, at) {
-                    return Err(self.defect(ctx, why, at));
-                }
-                self.values.push(Value::Unit);
+                let scripted = self.script_fake(ctx, at)?;
+                self.values.push(scripted);
             }
             Task::AiFake(at) => {
-                if let Err(why) = self.script_ai_fake(ctx, at) {
-                    return Err(self.defect(ctx, why, at));
-                }
-                self.values.push(Value::Unit);
+                let scripted = self.script_ai_fake(ctx, at)?;
+                self.values.push(scripted);
             }
             Task::Caller { kind, at } => {
                 let record = self.pop();
@@ -1755,29 +1642,23 @@ impl<'p> Machine<'p> {
                     // A package action's failure the same (chunk 7.6); a
                     // package action's own operation's passes on.
                     if let Stop::Failed(failure) = &stop
-                        && let Some((connection, operation)) = self
+                        && let Some(called) = self
                             .provider_call(inner)
                             .filter(|(connection, _)| {
                                 *connection != jadpo_graph::body::OWN_CONNECTION
-                                    && (self.provider_failure(inner, &failure.key)
-                                        || failure.key == "runtime timed_out")
+                                    && self.provider_failure(inner, &failure.key)
                             })
                             .or_else(|| self.package_action_failure(inner, &failure.key))
                     {
-                        let code = failure.code.clone();
                         self.values.truncate(base);
-                        let Some(index) = arms
-                            .iter()
-                            .position(|arm| arm.named.as_deref() == Some(code.as_str()))
-                        else {
-                            stop = self.fault(
-                                ctx,
-                                FaultKind::Provider(format!(
-                                    "`{connection}.{operation}` was refused with `{code}`, which its call maps to nothing"
-                                )),
-                                inner,
-                            );
-                            continue;
+                        let named: Vec<Option<&str>> =
+                            arms.iter().map(|arm| arm.named.as_deref()).collect();
+                        let index = match calls::mapped(ctx, &named, failure, called, inner.0) {
+                            Ok(index) => index as usize,
+                            Err(fault) => {
+                                stop = Stop::Fault(fault);
+                                continue;
+                            }
                         };
                         let Stop::Failed(cause) =
                             std::mem::replace(&mut stop, Stop::Return(Value::Unit))
@@ -2357,15 +2238,8 @@ impl<'p> Machine<'p> {
             }
             // What a test's code asked a model with (area 21).
             Callee::AiRequests { prompt } => {
-                let program = self.program;
-                let Some(ai) = program.ai() else {
-                    return Err(self.defect(
-                        ctx,
-                        "`.requests` in a program that asks no model",
-                        id,
-                    ));
-                };
-                let sent = jadpo_runtime::ai::requests(ctx, &ai, prompt);
+                let plan = self.program.runtime_plan();
+                let sent = called(calls::ai_requests(ctx, plan, prompt, id.0))?;
                 self.values.push(sent);
             }
             // A model asked for embeddings: an outside call (area 21,

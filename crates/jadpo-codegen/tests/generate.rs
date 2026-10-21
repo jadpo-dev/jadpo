@@ -4,7 +4,7 @@
 //! beside them, the same crate every time, and a body form not compiled
 //! yet refused by name, so what is left shows.
 
-use jadpo_codegen::{Error, Generated, Options, generate};
+use jadpo_codegen::{Generated, Options, generate};
 use jadpo_db::{Database, File, Layout, Project};
 use jadpo_plan::Plan;
 use jadpo_std::RuntimePlan;
@@ -296,11 +296,12 @@ schedule tidy_up {
     }
 }
 
-/// A body form the generator doesn't compile yet is refused by its name
-/// and place, every one of them, rather than written as code that faults
-/// when a test reaches it.
+/// A translation (area 10) is compiled as a call of the runtime's entry
+/// point for it, which the interpreter calls too (chunk 8.1i), by its key,
+/// its values in order with the locale first: the last form chunk 8.1h's
+/// generator refused by name.
 #[test]
-fn a_body_form_not_compiled_yet_is_refused_by_name() {
+fn a_translation_is_the_runtimes_to_write() {
     let planned = plan(&[
         (
             "app.jadpo",
@@ -329,14 +330,10 @@ action confirm_discount(reduction: DiscountRate) -> PresentationText {
 "#,
         ),
     ]);
-    let Err(Error::Refused(refusals)) = generate(&planned, &options()) else {
-        panic!("refused");
-    };
-    let shown: Vec<String> = refusals.iter().map(ToString::to_string).collect();
-    assert_eq!(
-        shown,
-        [
-            "`translations.<message>` isn't compiled yet: domains/orders/actions/confirm_discount.jadpo:5, in action confirm_discount"
-        ]
+    let generated = generate(&planned, &options()).expect("it compiles");
+    let module = text(&generated, "src/orders.rs");
+    assert!(
+        module.contains("rt::translate(cx, p, \"orders.order_discount\", &[a0, a1], 1)"),
+        "{module}"
     );
 }

@@ -1,9 +1,9 @@
-//! The generator over the specification corpus (roadmap chunk 8.1f): every
-//! language page's project and teaching example that checks is either
-//! written as a crate whose every file parses as Rust, or refused, each
-//! form not compiled yet named where it is written, which is the work
-//! chunks 8.1g to 8.1i have left. Nothing panics, and no file is written
-//! that isn't Rust.
+//! The generator over the specification corpus (roadmap chunks 8.1f to
+//! 8.1i): every language page's project and teaching example that checks
+//! is written as a crate whose every file parses as Rust. Since chunk 8.1i
+//! none is refused; a form the generator didn't compile would be named
+//! where it is written. Nothing panics, and no file is written that isn't
+//! Rust.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -144,5 +144,10 @@ fn every_corpus_project_is_compiled_or_refused_by_name() {
     for project in &refused_projects {
         println!("  {project}");
     }
-    assert!(compiled > 0, "no project compiled");
+    assert!(compiled > 200, "no project compiled");
+    assert!(
+        refused_projects.is_empty(),
+        "refused: {}",
+        refused_projects.join("\n")
+    );
 }
