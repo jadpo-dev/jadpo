@@ -684,6 +684,11 @@ pub async fn take(
     match keep(executor, &kept, ctx, &id, value, payload).await {
         Ok(Some(deliveries)) => Taken::Kept(deliveries),
         Ok(None) => Taken::Repeat,
+        // The store refused the statement itself, as it would every time
+        // the queue sent it (a text holding `\u0000`, which `jsonb` can't
+        // hold): parked, not left to be sent again until the queue drops
+        // it (chunk 7.9c). One it can't reach now is left.
+        Err(StoreError::Statement(_)) => parked.park(ctx, UNREADABLE).await,
         Err(error) => Taken::Left(error),
     }
 }

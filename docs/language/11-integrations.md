@@ -8940,7 +8940,10 @@ most conservative reading:
   again with the build running then, keeping it or parking it again;
   `dismiss` sets it aside, deleted by the tick 30 days later. A message the
   store can't take now is left on the queue, which sends it again, and the
-  queue's own dead-letter queue takes one that keeps failing.
+  queue's own dead-letter queue takes one that keeps failing; one whose
+  event the store refuses as a statement, as it would every time, is
+  parked `unreadable` (since chunk 7.9c: area 12, "Queue messages the
+  store refuses").
 - **Reading a message.** Its body is JSON; its id is the text or whole
   number at `id_at:`, its type the text at `type_at:`, matched against
   each listed event's `wire_name:`; a queue of one kind has no type. The
@@ -9251,7 +9254,10 @@ most conservative reading:
 - **Running it.** On each tick, after the queues, one statement takes a
   poll that is due, or has never run, and moves it on by its interval, so
   of several instances only one calls it; one due later than a whole new
-  interval away, since shortened, is due at once. The operation is called
+  interval away, since shortened, is due at once. (Since chunk 7.9c the
+  row keeps the interval it was claimed under, so only a poll claimed
+  under another interval counts as shortened: "Polls claimed once" in
+  Decisions.) The operation is called
   as the runtime's own work, through the connection, with no request and
   no function of the package's, logged and retried as any call is. The
   event is made from the answer's fields, written with its codec and
@@ -9861,3 +9867,4 @@ packages and extension points, as each note says; 26 was decided then.
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
 | Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |
 | Default timeouts (Richard, 2026-10-20) | A connection's `timeout:` defaults to 3s, its attempts staying 3, so one call's 9 seconds fit a route's 10-second default deadline; `ai.generate`'s to 25s and `ai.embed`'s to 5s (area 21). At 10s a call could take 30 seconds, and the deadline sum refused almost every route that calls out (option A, Richard) | 2026-10-20 |
+| Polls claimed once (Phase 7 review, chunk 7.9c) | A poll's row keeps the interval it was last claimed under, `jadpo_polls.every_ms`. One statement claims it when it is due or has never run, or when it was claimed under another interval than the connection's now and is due later than a whole new interval away, the interval shortened since; the claim records the interval it was made under. So a second tick at the same moment, or an instance whose clock is behind, never calls the provider again within the interval. The column may be `NULL`, since a migration adds it to a table that may hold rows, and a row without it counts once as claimed under another interval (decided for Richard, the conservative reading) | 2026-10-21 |

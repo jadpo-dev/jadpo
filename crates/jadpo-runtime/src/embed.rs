@@ -274,7 +274,7 @@ pub async fn embed(
         max_output: 0,
         attempts: 1,
     };
-    let taken = match crate::ai_budget::take(ctx, ai, asked, &model, input, settings).await {
+    let mut taken = match crate::ai_budget::take(ctx, ai, asked, &model, input, settings).await {
         Ok(taken) => taken,
         Err(crate::ai_budget::Refused::OverBudget) => {
             let now = ctx.now();
@@ -291,13 +291,26 @@ pub async fn embed(
     let began = ctx.host().monotonic_ms();
     let mut call = made.clone();
     call.step = step_at;
-    let (answer, source) =
-        match crate::ai::sent(ctx, call, request, (began, site.timeout_ms), None).await {
-            Ok(sent) => sent,
-            Err(done) => {
-                return crate::ai_budget::debited(ctx, taken, texts_used(input), done).await;
-            }
-        };
+    // The sends a provider's error asked for again, each charged what it
+    // sent (chunk 7.9c).
+    let mut sent_again = crate::ai_budget::Used::default();
+    let resend = crate::ai_budget::Resend {
+        taken: &mut taken,
+        used: &mut sent_again,
+        input,
+    };
+    let sent = crate::ai::sent(ctx, call, request, (began, site.timeout_ms), None, resend).await;
+    let texts_used = |tokens: u64| {
+        let mut used = texts_used(tokens);
+        used.add(sent_again);
+        used
+    };
+    let (answer, source) = match sent {
+        Ok(sent) => sent,
+        Err(done) => {
+            return crate::ai_budget::debited(ctx, taken, texts_used(input), done).await;
+        }
+    };
     // A fake's own: the vectors made from each text and the seed.
     let answer = match answer {
         Answer::Generated => {

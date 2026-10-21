@@ -182,13 +182,14 @@ fn development_counts_each_caller_and_the_sandbox_and_shows_the_usage() {
     let provider = FakeProvider::start();
     let root = desk("budget-dev", &provider.url, STRICT, SANDBOXED);
     write(&root, ".env.local", "ACME_KEY=ak_test_3\n");
-    // A call of the desk's takes about 644 tokens before it is sent (its
-    // prompt and `max_output:`, for each of two attempts); the provider
-    // says the first used 39, so a second from the same address would
-    // pass 660 for the caller, while the day's 2000000 is far off.
+    // A call of the desk's takes about 1008 tokens before it is sent (its
+    // prompt and `max_output:` for each of two attempts, and the repair's
+    // answer and correction resent: chunk 7.9c); the provider says the
+    // first used 39, so a second from the same address would pass 1020
+    // for the caller, while the day's 2000000 is far off.
     limited(
         &root,
-        "        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n            per_caller_per_day: 660\n        }\n",
+        "        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n            per_caller_per_day: 1020\n        }\n",
     );
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);

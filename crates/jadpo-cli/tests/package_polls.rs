@@ -296,6 +296,66 @@ fn a_poll_keeps_only_the_changes_it_sees() {
     });
 }
 
+/// A poll is claimed once per interval: a second tick right after, or one
+/// on an instance whose clock is a minute behind, calls nothing, since
+/// the interval it was claimed under is kept on its row; only an interval
+/// shortened since makes it due at once (Phase 7 review, chunk 7.9c).
+#[test]
+fn a_poll_is_claimed_once_however_the_ticks_overlap() {
+    let provider = FakeProvider::start();
+    let Some(loaded) = load("overlap", files(&provider.url, 2, &[])) else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = host(&loaded.url);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        provider.answer(200, &prices(150, "2026-10-19T08:59:00Z"));
+        let first = tick_at(program, &host, T0).await;
+        assert_eq!(first.polled, Some((1, 1)), "{:?}", first.problems);
+        let state = host
+            .host()
+            .rows("SELECT \"every_ms\" FROM \"jadpo_polls\"")
+            .await;
+        assert_eq!(state, vec![vec![SqlValue::Int8(6 * HOUR)]]);
+
+        // The same moment again, and a minute before it on a slower clock.
+        for now in [T0, T0 - 60_000] {
+            let again = tick_at(program, &host, now).await;
+            assert_eq!(again.polled, None, "at {now}");
+        }
+        assert_eq!(provider.requests().len(), 1);
+        assert_eq!(kept(&host).await.len(), 1);
+
+        // Claimed under a longer interval than the connection's now: due
+        // at once, and claimed under the new one.
+        host.host()
+            .rows(&format!(
+                "UPDATE \"jadpo_polls\" SET \"every_ms\" = {}, \"next_at\" = to_timestamp({}) RETURNING 1",
+                12 * HOUR,
+                (T0 + 12 * HOUR) / 1000
+            ))
+            .await;
+        provider.answer(200, &prices(152, "2026-10-19T10:00:00Z"));
+        let shortened = tick_at(program, &host, T0 + HOUR).await;
+        assert_eq!(shortened.polled, Some((1, 1)), "{:?}", shortened.problems);
+        let again = tick_at(program, &host, T0 + HOUR).await;
+        assert_eq!(again.polled, None);
+        assert_eq!(provider.requests().len(), 2);
+        let state = host
+            .host()
+            .rows("SELECT \"next_at\", \"every_ms\" FROM \"jadpo_polls\"")
+            .await;
+        assert_eq!(
+            state,
+            vec![vec![
+                SqlValue::Timestamp((T0 + 7 * HOUR) * 1000),
+                SqlValue::Int8(6 * HOUR),
+            ]]
+        );
+    });
+}
+
 /// With nothing subscribed to `PricesPublished`, the poll never runs: no
 /// call, and no state kept.
 #[test]
