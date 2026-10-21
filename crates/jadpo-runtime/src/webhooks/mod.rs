@@ -71,16 +71,6 @@ pub struct Webhooks<'a> {
     pub json: JsonCodecs<'a>,
 }
 
-impl<'a> Webhooks<'a> {
-    /// The webhook whose route is `segments`, with its place in the plan.
-    pub fn route(&self, segments: &[String]) -> Option<(usize, &'a WebhookPlan)> {
-        self.plan
-            .iter()
-            .enumerate()
-            .find(|(_, plan)| plan.segments == segments)
-    }
-}
-
 /// Why a webhook's signature was refused: for the host's log, never sent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -418,7 +408,7 @@ pub(crate) async fn answer(
     request_id: &str,
 ) -> Response {
     use crate::http::{METHOD_NOT_ALLOWED, runtime_failure as failure};
-    let mut response = match request.method.as_str() {
+    match request.method.as_str() {
         "POST" => {
             receive(
                 app,
@@ -443,17 +433,7 @@ pub(crate) async fn answer(
                 .push(("allow".to_string(), "OPTIONS, POST".to_string()));
             refused
         }
-    };
-    response.route = Some(format!("POST {}", path(plan)));
-    response
-}
-
-/// `/webhooks/payments`.
-fn path(plan: &WebhookPlan) -> String {
-    plan.segments
-        .iter()
-        .map(|segment| format!("/{segment}"))
-        .collect()
+    }
 }
 
 async fn receive(

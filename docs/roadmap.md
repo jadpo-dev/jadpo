@@ -2185,12 +2185,15 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   CI job of its own with a time budget, every test passing interpreted
   and compiled with the same records; the gate's Phase 8 differential
   step (§2.7).
-- [ ] **8.1k The route trie** `opus · high`, after 8.1a: decided in §2.5
-  first, routes matched through a trie built once from the route table
-  (a fixed segment before a placeholder, as now), webhooks a
-  `Run::Webhook` entry in it rather than answered before routing, and no
-  allocation per request for paths, labels or failure lookups, counted by
-  a test's allocator.
+- [x] **8.1k The route trie** `opus · high`, after 8.1a. Built (§2.5,
+  "The route trie"): `jadpo_runtime::http::Routes`, built once as a plan
+  is loaded from the route table, health's paths and the webhooks, walked
+  fixed segment before placeholder as before; health and each webhook an
+  entry of the trie (`Found::Health`, `Found::Webhook`) rather than a
+  `Run` in the route table, no longer matched in front of it; and no
+  allocation per request for paths, labels or the cursor failure's
+  lookup, counted by a test binary's allocator
+  (`crates/jadpo-runtime/tests/route_allocations/main.rs`).
 - [x] **8.1l Native accept and one rate-limit count** `opus · xhigh`,
   after 8.1d. Built: the native acceptor a thread of its own awaiting the
   listener on a current-thread runtime and handing each connection to the

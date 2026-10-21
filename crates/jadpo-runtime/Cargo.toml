@@ -32,10 +32,19 @@ testing = ["jadpo-std/testing"]
 # The crate's own tests run with `testing` on.
 [dev-dependencies]
 jadpo-runtime = { path = ".", features = ["testing"] }
+stats_alloc.workspace = true
 
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+# Its own binary, with no harness, so its counting allocator sees only
+# what routing a request allocates (chunk 8.1k): in a folder, so it is no
+# file of the one integration binary's (§2.7).
+[[test]]
+name = "route_allocations"
+path = "tests/route_allocations/main.rs"
+harness = false
 
 [lints]
 workspace = true
