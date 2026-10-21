@@ -58,12 +58,12 @@ pub mod codes {
     type Codes = &'static [(&'static str, &'static str)];
 
     pub fn serialize<S: Serializer>(codes: &Codes, s: S) -> Result<S::Ok, S::Error> {
-        let owner = crate::STANDARD_TYPES.iter().find(|entry| {
+        let holding = crate::STANDARD_TYPES.iter().find(|entry| {
             entry
                 .codes()
                 .is_some_and(|held| std::ptr::eq(held, *codes) || held == *codes)
         });
-        match owner {
+        match holding {
             Some(entry) => entry.name.serialize(s),
             None => Err(serde::ser::Error::custom("codes no standard enum holds")),
         }

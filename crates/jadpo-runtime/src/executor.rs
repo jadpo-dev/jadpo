@@ -32,8 +32,9 @@ pub trait Executor {
     /// The number of the callable with identity key `key`.
     fn callable(&self, key: &str) -> Option<u32>;
 
-    /// What the runtime reads of the program's plan (chunk 7.9e): nothing,
-    /// for an executor that only runs callables.
+    /// What the runtime reads of the program's plan (chunk 7.9e), borrowed
+    /// from its one loaded runtime plan ([`crate::Loaded::plan`], chunk
+    /// 8.1a): nothing, for an executor that only runs callables.
     fn plan(&self) -> Plan<'_> {
         Plan::NONE
     }
