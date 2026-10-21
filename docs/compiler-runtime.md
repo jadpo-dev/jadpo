@@ -3137,11 +3137,11 @@ connections they use (a store of files, a provider's operation, a
 package's action, `ai:`'s model) and those its polls, webhooks, queues
 and email go through. A deployable that declares a target is refused
 each one `ConnectionDriver::targets` and the SMTP port rule it can't run
-(`deployable.target_unsupported`). The plan a deployable runs is the
-project's with `Plan::for_deployable`: the route table keeps only the
-routes of the APIs it serves, the webhooks go unless it serves
-`webhooks`, and `RuntimePlan::runs` (plan format 9) says whether it runs
-`Trigger.schedules` and `Trigger.subscribers`. The runtime holds to it
+(`deployable.target_unsupported`). The plan a deployable runs held
+only the routes of the APIs it serves, the webhooks only where it
+serves `webhooks`, and `RuntimePlan::runs` (plan format 9) says whether
+it runs `Trigger.schedules` and `Trigger.subscribers`; since chunk 8.1o3
+it holds only what it reaches (below). The runtime holds to it
 where work joins a runner (`runner::split` drops a delivery or a batch
 run the program doesn't run, which waits, committed, for a deployable
 that runs it) and on the tick (the schedules, polls and batch runs, or
@@ -3153,9 +3153,9 @@ name and its path in its workspace, so several workspaces' `program`
 would share one), all into one cargo target with the paths remapped
 alike, so the runtime crates compile once; it places each binary as a
 new file, since macOS kills a binary copied over one it has run. The
-build id digests a declared deployable's declaration with the graph's
-digest (`jadpo_cli::stamp`), and `jadpo check` writes each deployable's
-target and build id in the manifest. Proved live
+build id digested a declared deployable's declaration with the graph's
+digest (`jadpo_cli::stamp`) until chunk 8.1o3, and `jadpo check` writes
+each deployable's target and build id in the manifest. Proved live
 (`crates/jadpo-cli/tests/deployable.rs`): teaching example 23 declared as
 a kiosk serving `main` and running the subscribers and an office serving
 a `staff` API and running a schedule each second, both built by `jadpo
@@ -3163,9 +3163,82 @@ build`; the kiosk books a repair and answers 404 for the staff's route,
 and runs no schedule while it ticks; the office lists the repair's notes,
 answers 404 for a booking, and runs its schedule. *Rejected:* filtering
 the routes in the trie with the whole table kept, which leaves a route
-nobody serves in the binary; and a deployable's plan built only from the
-callables it reaches, which needs every number the runtime names a
-callable by to stay right (chunk 8.1o3).
+nobody serves in the binary.
+
+**A deployable compiled from what it reaches** (chunk 8.1o3; area 14,
+"Declared deployables"; area 18, "A build id is a digest").
+`Plan::for_deployable` plans the project from what the deployable
+reaches (`jadpo_plan::Keep`): the callables
+`jadpo_check::deployables::reached` follows, which since this chunk
+adds those the runtime runs by key or number rather than because a body
+calls them (the action `on_first_sign_in:` names wherever an API is
+served; where subscribers run, the action `magic_link: { send: }` names
+and every email template; and every provider package's `decode:` and
+`encode:`, kept whole); the queries they reach and the entities whose
+`get` they call; the routes of the APIs it serves, those APIs alone and
+numbered among themselves, the runtime's own routes only in the API that
+holds them; the schedules, purges and polls only where it runs
+schedules; the queues and the emails' templates, sender and mail package
+only where it runs subscribers, every subscriber still listed, without
+its action (`Target::Elsewhere`, plan format 10), since an action that
+emits writes a delivery for each subscriber that hears it; the webhooks
+where it serves `webhooks`; the connections it reaches and every
+database and Redis connection, which every tick sweeps; `ai:` where it
+reaches the model; the prompts its callables ask for; the event types
+they emit and those of the subscribers it runs; the steps' key where it
+keeps an action with several changing calls; and the settings what it
+keeps reads. Each table is built from what is kept, so its numbers
+depend on nothing else. The settings are found by planning twice: once
+with every setting, noting each one a kept part asks for, with those the
+runtime reads by name (signing in's keys and origin, a `client_address:`
+setting; `RuntimePlan::setting_names`), then with only those. What a
+kept part names that isn't kept, a callable, a query, a setting, an
+operation's connection or a prompt, or by key a package's function or a
+webhook's reply action, is noted and the plan refused
+(`jadpo_plan::Unkept`), which `jadpo build` reports as
+`toolchain.build_failed`: a gap between what the checker follows and
+what the plan holds is Jadpo's own mistake, never a program that faults
+where it reaches the gap. Kept whole: the app's translations, since any
+enum value formatted may read its wording, its identity, its locales and
+its stores. A Worker links SMTP's driver when its plan holds an SMTP
+connection, which it does only where it reaches one. The build id
+(`jadpo_cli::stamp::program`) digests the program as compiled: the Rust
+its callables become, as the text of its tokens
+(`jadpo_codegen::unprinted`, the files `generate` writes but unprinted,
+since printing is a function of the tokens), its plan's deployable
+bytes, its name and each store's migrations, with the compiler, the
+target and `jadpo.lock` as before; `jadpo check` works it out for each
+deployable, none for a project with errors, which builds nothing, and
+`jadpo build` from the plan it compiles. So a change it doesn't reach
+leaves it alone, and one that moves what it reaches to other lines
+doesn't, since its frames name them; the application's name, its
+folder's unless `app.jadpo` gives one, is part of the program (its
+OpenAPI title), so a build is explained from a folder of the same name.
+Proved by `crates/jadpo-plan/tests/deployable.rs` (a café's kiosk and
+office each holding only its own callables, routes, schedules, settings
+and connections, the office listing the kiosk's subscriber without its
+action; and every project of the corpus, each deployable naming nothing
+it doesn't hold and an app that declares none running everything the
+whole plan runs), `crates/jadpo-cli/tests/manifest.rs` (an office's
+action, route and setting and a test leaving a kiosk's id alone, its own
+action changing it) and live (`deployable.rs`: the kiosk's binary holds
+no sweeping, the office's no booking). Measured on teaching example 23,
+release, aarch64 macOS, against the whole program each held before: the
+café's `app` 21,085,280 bytes to 21,084,096 (17.17 MB stripped either
+way: it reaches all but its tests and fixture, which the `testing`
+feature already left out); declared as the kiosk and office above, the
+kiosk 21,105,600 to 21,084,320 bytes and the office 21,067,472 to
+20,505,248 (17.19 to 17.17 MB and 17.16 to 16.68 MB stripped); and the
+kiosk on Workers 9,490,137 to 9,482,030 bytes (3.05 MB gzipped either
+way). A program is a small part of a deployable beside the runtime and
+its locale data. *Rejected:* keeping the whole plan
+and leaving out only the code of the callables a deployable doesn't
+reach, whose sites, settings and tables would still be in every
+deployable and in its id; digesting the graph's nodes it reaches, which
+hold nothing of what `app.jadpo` says of connections and settings; and
+digesting the printed Rust, which costs every `jadpo check` the printing
+(25 to 110 ms a deployable on the largest teaching examples, debug,
+against 5 to 18 ms for the tokens).
 
 **A Workers deployable** (chunk 8.2b; area 14, "A Workers deployable").
 `jadpo build` builds a deployable with `target: Target.wasm` the way it
@@ -4190,8 +4263,10 @@ separate command, not the gate.
   Since chunk 8.1o2 a declared deployable's declaration joins the graph's
   digest, so two deployables of one app never share an id, and `jadpo
   check` writes each deployable's target and build id, with the commit
-  and whether the tree was modified, in the manifest. The source is the
-  whole graph, not yet the subgraph the deployable reaches (chunk 8.1o3).
+  and whether the tree was modified, in the manifest. Since chunk 8.1o3
+  the source is the deployable's program as it is compiled from what it
+  reaches, its Rust and its plan's bytes, with its name and its stores'
+  migrations (§2.6, "A deployable compiled from what it reaches").
   Bit-identical binaries are not checked yet.
 
 ### 2.9 Risks and the first chunks

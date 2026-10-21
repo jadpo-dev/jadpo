@@ -13,10 +13,12 @@
 //! Then the café declares two deployables (chunk 8.1o2): a kiosk serving
 //! the `main` API and running the subscribers, and an office serving a
 //! `staff` API and running a schedule that sweeps every second. `jadpo
-//! build` writes both, each beside only its own API's document; the kiosk
-//! books a repair but doesn't know the staff's route and, ticking, runs no
-//! schedule; the office lists the repair's notes but doesn't book, and
-//! runs its schedule.
+//! build` writes both, each beside only its own API's document and each
+//! compiled from only what it reaches (chunk 8.1o3): the kiosk's binary
+//! holds no sweeping, the office's no booking. The kiosk books a repair
+//! but doesn't know the staff's route and, ticking, runs no schedule; the
+//! office lists the repair's notes but doesn't book, and runs its
+//! schedule.
 //!
 //! A deployable carries the locale data of its app's supported locales
 //! only (chunk 8.2c; area 10, "Locales"): a shop supporting `en_gb` and
@@ -839,6 +841,15 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         serde_json::json!(["build/target/office/openapi/staff.json"]),
         "{built}"
     );
+    // Each is compiled from only what it reaches (chunk 8.1o3): the
+    // kiosk holds the booking but not the office's sweeping, the office
+    // the other way round.
+    let kiosk_binary = fs::read(root.join("build/target/kiosk/kiosk")).expect("the kiosk");
+    let office_binary = fs::read(root.join("build/target/office/office")).expect("the office");
+    assert!(holds(&kiosk_binary, b"action book_repair"));
+    assert!(!holds(&kiosk_binary, b"action sweep_up"));
+    assert!(holds(&office_binary, b"action sweep_up"));
+    assert!(!holds(&office_binary, b"action book_repair"));
     apply(&connection, &self::migrations(&root));
 
     // The kiosk books, waiting for its subscribers, but has no staff

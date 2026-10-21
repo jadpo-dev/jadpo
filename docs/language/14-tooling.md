@@ -854,7 +854,7 @@ leave a choice open; declared `deployables:` (question 14) and `jadpo
 check` refusing a driver a deployable's target can't run (area 11,
 question 24) were built in chunk 8.1o2 ([Declared
 deployables](#declared-deployables)), and each compiled from only what it
-reaches is chunk 8.1o3.
+reaches in chunk 8.1o3.
 
 - **One deployable, `app`.** An app with no `deployables:` has one
   deployable, called `app`, which serves every API and runs everything,
@@ -877,8 +877,10 @@ reaches is chunk 8.1o3.
   `toolchain.artifact_write_failed`. This Jadpo compiles a deployable
   against the runtime crates it was built from, in its own checkout.
 - **The build stamp** (area 18): the build id, `b_` and the first twelve
-  hex digits of a SHA-256 over the digest of every node of the graph
-  (with a declared deployable's declaration since chunk 8.1o2),
+  hex digits of a SHA-256 over the deployable's program (since chunk
+  8.1o3, what it is compiled from: its Rust and its plan, its name and
+  its stores' migrations; the digest of every node of the graph before,
+  with a declared deployable's declaration since chunk 8.1o2),
   the compiler's version, the target and `jadpo.lock`; the commit `git`
   says the project is at, and whether its tree holds changes the commit
   doesn't (`build/` and `.jadpo/` aside), a project git doesn't track
@@ -986,6 +988,18 @@ application {
   connections they use: a store of files, a provider's operation, a
   package's action, `ai:`'s model; with its polls, the webhooks it
   receives, the queues `receiving:` reads and `email:`'s connection.
+  Since chunk 8.1o3 it also reaches what Jadpo runs by name: the action
+  `on_first_sign_in:` names where it serves an API, the action
+  `magic_link: { send: }` names and every email's templates where it
+  runs subscribers, and every provider package's `decode:` and
+  `encode:`.
+- **What each holds** (chunk 8.1o3). Its program holds only what it
+  reaches: those callables, the routes of the APIs it serves, its
+  schedules and the subscribers' actions only where it runs them, the
+  connections it reaches with every database, and the settings those
+  read, so it reads no other setting as it starts. A subscriber it
+  doesn't run is still listed, so what it emits waits for the deployable
+  that does. An app's wording, its sign-in and its stores are kept whole.
 - **Its target, checked** (area 11, question 24). A deployable that
   declares a target is refused each connection it reaches whose driver
   that target can't run, naming the alternative
@@ -1010,11 +1024,12 @@ application {
   declare is `cli.build_arguments`, with the nearest; a deployable built
   for `Target.wasm` is built for Workers since chunk 8.2b ([A Workers
   deployable](#a-workers-deployable)). Each binary's stamp names it, and
-  its build id is its own: the
-  build id digests the deployable's declaration with the graph's digest
-  (area 18), the whole project's until a deployable is compiled from only
-  what it reaches (roadmap chunk 8.1o3), and `jadpo check` writes each
-  deployable's target and build id in the manifest.
+  its build id is its own: since chunk 8.1o3 it digests the deployable's
+  program, so a change it doesn't reach leaves it alone (area 18, "A
+  build id is a digest"; the declaration with the whole graph's digest
+  before), and `jadpo check` writes each deployable's target and build
+  id in the manifest, with no build id while the project has errors.
+  `settings` lists the variables the deployables read, each once.
 
 ```text
 $ jadpo build
