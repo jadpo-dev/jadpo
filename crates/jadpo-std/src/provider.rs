@@ -228,6 +228,13 @@ pub struct ProviderPlan {
     /// Each connection's polls whose event the app subscribes to (area
     /// 11, "Polls"; chunk 7.6c), called by the tick through it.
     pub polls: Vec<PollPlan>,
+    /// Each connection's first operation's number in `operations`, by the
+    /// connection's number in the plan's connections table; `u32::MAX`
+    /// for one that isn't a package's. A connection's operations follow
+    /// its first in its package's order, so a package action's own
+    /// operation is found from the connection it was called through
+    /// ([`Called::Own`]; chunk 8.1d2).
+    pub first: Vec<u32>,
 }
 
 /// One poll the tick runs (area 11, "Polls"; chunk 7.6c): a connection's
@@ -241,6 +248,9 @@ pub struct PollPlan {
     pub name: String,
     /// The operation it calls, `prices.latest`, which takes nothing.
     pub operation: String,
+    /// That operation's number in the plan's provider operations (chunk
+    /// 8.1d2).
+    pub called: u32,
     /// How often it is called: the connection's interval, or its
     /// package's `every:`.
     pub every_ms: u64,
@@ -281,6 +291,34 @@ pub struct RecordedPlan {
 }
 
 impl ProviderPlan {
+    /// The operation numbered `number`, with how calls through its
+    /// connection are made, from the plan's connections table `table`.
+    pub fn numbered<'a>(
+        &'a self,
+        table: &'a [crate::connections::Connection],
+        number: u32,
+    ) -> Option<(&'a ConnectionPlan, &'a OperationPlan)> {
+        let found = self.operations.get(number as usize)?;
+        Some((crate::connections::package(table, found.connection)?, found))
+    }
+
+    /// The number of operation `operation` (`bookings.create`) of
+    /// connection `connection`, by their names: for a call named from
+    /// outside the plan, as `jadpo package record` names one.
+    pub fn number_of(
+        &self,
+        table: &[crate::connections::Connection],
+        connection: &str,
+        operation: &str,
+    ) -> Option<u32> {
+        let (at, _) = crate::connections::named(table, connection)?;
+        let found = self
+            .operations
+            .iter()
+            .position(|op| op.name == operation && op.connection == at)?;
+        u32::try_from(found).ok()
+    }
+
     /// Operation `operation` (`bookings.create`) of connection
     /// `connection`, with the connection, from the plan's connections
     /// table `table`.
@@ -290,12 +328,23 @@ impl ProviderPlan {
         connection: &str,
         operation: &str,
     ) -> Option<(&'a ConnectionPlan, &'a OperationPlan)> {
-        let (at, _) = crate::connections::named(table, connection)?;
-        let found = self
-            .operations
-            .iter()
-            .find(|op| op.name == operation && op.connection == at)?;
-        Some((crate::connections::package(table, at)?, found))
+        self.numbered(table, self.number_of(table, connection, operation)?)
+    }
+
+    /// The number of the operation a call's site calls: its own, or for
+    /// a package action's own operation, the one at its place among the
+    /// operations of `through`, the connection the action was called
+    /// through, by its number.
+    pub fn called(&self, called: Called, through: Option<u32>) -> Option<u32> {
+        match called {
+            Called::Operation(number) => Some(number),
+            Called::Own(place) => {
+                let first = *self.first.get(through? as usize)?;
+                let number = first.checked_add(place)?;
+                let op = self.operations.get(number as usize)?;
+                (op.connection == through?).then_some(number)
+            }
+        }
     }
 }
 
@@ -464,17 +513,37 @@ pub struct OperationPlan {
     pub recording: Option<String>,
 }
 
-/// What the call at one site needs besides its operation (chunk 7.2c2):
-/// the fields of its output its code reads, the only ones decoded, and
-/// whether its `attempt` maps `timed_out:`.
+/// What the call at one site needs (chunk 7.2c2): the operation it calls,
+/// by number (chunk 8.1d2), the fields of its output its code reads, the
+/// only ones decoded, and whether its `attempt` maps `timed_out:`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CallSite {
+    pub called: Called,
     /// The output's fields read, by name; `None` when the whole value is
     /// used (returned, passed on, or anything but a field read).
     pub reads: Option<Vec<String>>,
     /// Whether a timeout is the call's `timed_out` failure, which its
     /// `attempt` maps, rather than the runtime's `unavailable`.
     pub timed_out: bool,
+}
+
+/// The operation a call's site calls (chunk 8.1d2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Called {
+    /// Its number in the plan's provider operations.
+    Operation(u32),
+    /// A package action's call of its package's own operation (chunk
+    /// 7.6): the operation's place among its package's operations, which
+    /// goes through the connection the action was called through, from
+    /// that connection's first ([`ProviderPlan::first`]).
+    Own(u32),
+}
+
+impl Default for Called {
+    /// No operation the plan has.
+    fn default() -> Called {
+        Called::Operation(u32::MAX)
+    }
 }
 
 /// How a provider signs its webhooks (area 11, "Receiving from outside";
@@ -698,5 +767,45 @@ mod tests {
         assert_eq!(wire_parts("Point"), Some(vec!["latitude", "longitude"]));
         assert_eq!(wire_parts("InstantRange"), Some(vec!["start", "end"]));
         assert_eq!(wire_parts("Email"), None);
+    }
+
+    /// A call's site names its operation by number, and a package action's
+    /// own operation by its place, from the first of the connection the
+    /// action was called through (chunk 8.1d2).
+    #[test]
+    fn a_call_finds_its_operation_by_number() {
+        let op = |connection: u32, name: &str| OperationPlan {
+            connection,
+            name: name.into(),
+            method: HttpMethod::Get,
+            path: Vec::new(),
+            input: None,
+            output: None,
+            decode: None,
+            output_at: None,
+            failed_when: None,
+            repeat: Repeat::Safe,
+            changes: false,
+            failures: Vec::new(),
+            recording: None,
+        };
+        let plan = ProviderPlan {
+            operations: vec![
+                op(2, "a.list"),
+                op(2, "a.get"),
+                op(0, "a.list"),
+                op(0, "a.get"),
+            ],
+            first: vec![2, u32::MAX, 0],
+            ..ProviderPlan::default()
+        };
+        assert_eq!(plan.called(Called::Operation(1), None), Some(1));
+        assert_eq!(plan.called(Called::Own(1), Some(0)), Some(3));
+        assert_eq!(plan.called(Called::Own(1), Some(2)), Some(1));
+        // Past the connection's own, through no connection, or one that
+        // isn't a package's.
+        assert_eq!(plan.called(Called::Own(2), Some(2)), None);
+        assert_eq!(plan.called(Called::Own(0), None), None);
+        assert_eq!(plan.called(Called::Own(0), Some(1)), None);
     }
 }
