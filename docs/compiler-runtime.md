@@ -1274,7 +1274,7 @@ boundary needs of each action and fixture), the build id and the steps
 key: plan format 5. The interpreter reads the same plans from the
 compiler's `Plan`, built in the same pass. The application's locales
 joined the runtime plan when compiled code first called the standard
-library (`RuntimePlan::locales`, chunk 8.1g, plan format 6), and the
+library (`RuntimePlan::locales`, chunk 8.1g, plan format 7), and the
 compiler's `Plan::locales` reads them there; translations join it with
 their first compiled call (8.1i).
 
@@ -2887,7 +2887,7 @@ package find theirs by number too: a package's `generate:`, `stream:` and
 what is logged, recorded and faked. The plan's format was `jadpo runtime
 plan 4`; it is 5 since chunk 8.1f added compiled code's site plans
 (§2.5, "Compiled code"), and 6 since chunk 8.1n added a database
-connection's `tls`.
+connection's `tls`, and 7 since chunk 8.1g added the locales.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
