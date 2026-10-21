@@ -81,13 +81,33 @@ pub trait Handler {
     }
 }
 
+/// A host a worker serves on: the runtime's `Host`, over the worker's
+/// [`NativeHost`], which keeps the work left for after a response and the
+/// background work a drain waits for. The native host itself, or it with
+/// fakes in front (`jadpo dev`'s, chunk 8.1d).
+pub trait Served: jadpo_runtime::Host {
+    fn native(&self) -> &NativeHost;
+}
+
+impl Served for NativeHost {
+    fn native(&self) -> &NativeHost {
+        self
+    }
+}
+
+impl<H: Served> Served for jadpo_runtime::capability::Faked<H> {
+    fn native(&self) -> &NativeHost {
+        self.host().native()
+    }
+}
+
 /// The handler that serves an application on one worker (chunk 6.9): the
-/// runtime's [`Serving`] on the worker's [`NativeHost`], whose work left
-/// for after a response, and whose ticks, run as tasks on the worker's
-/// thread and are given back as the server drains.
+/// runtime's [`Serving`] on the worker's host, whose work left for after
+/// a response, and whose ticks, run as tasks on the worker's thread and
+/// are given back as the server drains.
 pub struct AppHandler {
     serving: Serving,
-    host: Rc<NativeHost>,
+    host: Rc<dyn Served>,
 }
 
 impl std::fmt::Debug for AppHandler {
@@ -98,8 +118,11 @@ impl std::fmt::Debug for AppHandler {
 
 impl AppHandler {
     /// Serves on `host` the program `program` gives each time it is asked.
-    pub fn new(host: NativeHost, program: impl Fn() -> Rc<dyn Executor> + 'static) -> AppHandler {
-        let host = Rc::new(host);
+    pub fn new(
+        host: impl Served + 'static,
+        program: impl Fn() -> Rc<dyn Executor> + 'static,
+    ) -> AppHandler {
+        let host: Rc<dyn Served> = Rc::new(host);
         AppHandler {
             serving: Serving::new(Rc::clone(&host) as Rc<dyn jadpo_runtime::Host>, program),
             host,
@@ -119,14 +142,14 @@ impl Handler for AppHandler {
     }
 
     fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
-        self.host.take_deferred()
+        self.host.native().take_deferred()
     }
 
     /// Counted as the host's background work, so stopping waits for it to
     /// give back what it holds (chunk 6.7).
     fn tick(&self) -> Option<LocalFuture<'static, ()>> {
         let tick = self.serving.tick();
-        Some(self.host.track(Box::pin(async move {
+        Some(self.host.native().track(Box::pin(async move {
             let _ = tick.await;
         })))
     }
@@ -136,7 +159,7 @@ impl Handler for AppHandler {
     }
 
     fn drain(&self) -> LocalFuture<'static, ()> {
-        self.host.drain()
+        self.host.native().drain()
     }
 }
 

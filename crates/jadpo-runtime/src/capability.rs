@@ -527,6 +527,10 @@ impl Capability for Fake {
 pub struct Faked<H> {
     host: H,
     fakes: Vec<(String, Rc<dyn Capability>)>,
+    /// Fakes chosen for a connection as it is asked (`jadpo dev`'s, whose
+    /// connections change as the project is saved), and what chooses.
+    chosen: Vec<Rc<dyn Capability>>,
+    choose: Option<Rc<dyn Fn(&str) -> Option<usize>>>,
     /// The record a test keeps of what it did (chunk 8.1c), when it keeps
     /// one.
     record: Option<Rc<crate::record::Record>>,
@@ -546,6 +550,8 @@ impl<H: Host> Faked<H> {
         Faked {
             host,
             fakes: Vec::new(),
+            chosen: Vec::new(),
+            choose: None,
             record: None,
         }
     }
@@ -562,6 +568,21 @@ impl<H: Host> Faked<H> {
         self
     }
 
+    /// Gives `fakes[choose(connection)]` in place of the driver of each
+    /// connection `choose` picks one for, decided each time a connection
+    /// is asked for: `jadpo dev`'s fakes, chosen from the program it runs
+    /// now, whose connections change as the project is saved. A fake
+    /// given by name ([`Faked::with`]) comes first.
+    pub fn choosing(
+        mut self,
+        fakes: Vec<Rc<dyn Capability>>,
+        choose: impl Fn(&str) -> Option<usize> + 'static,
+    ) -> Faked<H> {
+        self.chosen = fakes;
+        self.choose = Some(Rc::new(choose));
+        self
+    }
+
     /// The host it wraps.
     pub fn host(&self) -> &H {
         &self.host
@@ -570,8 +591,16 @@ impl<H: Host> Faked<H> {
 
 impl<H: Host> Host for Faked<H> {
     fn capability(&self, connection: &str) -> Option<&dyn Capability> {
-        match self.fakes.iter().find(|(name, _)| name == connection) {
-            Some((_, fake)) => Some(fake.as_ref()),
+        if let Some((_, fake)) = self.fakes.iter().find(|(name, _)| name == connection) {
+            return Some(fake.as_ref());
+        }
+        let chosen = self
+            .choose
+            .as_ref()
+            .and_then(|choose| choose(connection))
+            .and_then(|at| self.chosen.get(at));
+        match chosen {
+            Some(fake) => Some(fake.as_ref()),
             None => self.host.capability(connection),
         }
     }

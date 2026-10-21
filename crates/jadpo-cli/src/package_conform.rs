@@ -419,11 +419,13 @@ fn conformed(call: &Call) -> Reply {
     let filled: PackageAi = (**filled).clone();
     let log = Rc::new(Log::default());
     let host = jadpo_host_native::NativeHost::new()
-        .with_providers(
-            Rc::new(jadpo_host_native::JsonHttp::new(
-                jadpo_host_native::fetch::NativeFetch,
-            )),
-            |asked| asked == CONNECTION,
+        .with_drivers(
+            jadpo_host_native::Drivers::build(
+                program.runtime_plan().connections,
+                program.started(),
+                &jadpo_host_native::supplies(),
+            )
+            .keeping(|asked| asked == CONNECTION),
         )
         .with_call_log(Rc::clone(&log) as Rc<dyn CallLog>);
     let runtime = match jadpo_host_native::Runtime::new() {

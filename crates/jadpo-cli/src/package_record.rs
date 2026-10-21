@@ -210,14 +210,13 @@ pub fn record(call: &Call) -> Reply {
     // The call, through the package driver, its answer as sent kept.
     let seen = Rc::new(Kept::default());
     let host = jadpo_host_native::NativeHost::new()
-        .with_providers(
-            Rc::new(jadpo_host_native::JsonHttp::new(
-                jadpo_host_native::fetch::NativeFetch,
-            )),
-            {
-                let connection = connection.clone();
-                move |asked| asked == connection
-            },
+        .with_drivers(
+            jadpo_host_native::Drivers::build(
+                program.runtime_plan().connections,
+                program.started(),
+                &jadpo_host_native::supplies(),
+            )
+            .keeping(|asked| asked == connection.as_str()),
         )
         .with_call_log(Rc::clone(&seen) as Rc<dyn CallLog>);
     let runtime = match jadpo_host_native::Runtime::new() {
