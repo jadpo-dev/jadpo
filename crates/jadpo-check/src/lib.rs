@@ -35,6 +35,7 @@ pub mod lookups;
 pub mod mail;
 pub mod mail_health;
 mod naming;
+mod not_type;
 mod not_value;
 pub mod package_code;
 pub mod packages;

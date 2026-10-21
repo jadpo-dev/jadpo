@@ -668,6 +668,14 @@ Reading through a nested object gives the inner object's field type:
 `customer.billing_address.postal_code` has type `Address.postal_code`, whether
 it came from the billing or the shipping address.
 
+A field's type is always a type: a type's name, a field type such as
+`Customer.email`, a package's type, `List<T>`, `T?`, or a type with rules in
+a block. A value written there, whether a call (`TicketStatus("open")`), a
+literal or an enum's variant (`TicketStatus.open`), is `type.not_a_type`,
+naming the field, in every block of fields: an object's, an input's, an
+event's, a failure's, a variant's, an entity's and `config { }`'s settings
+(chunk 7.9f).
+
 ### Rules across fields
 
 > **Decided on 2026-10-17 (area 19, question 15), built in chunk 5.5t.**
@@ -1017,7 +1025,8 @@ fields is an object with a `tag` naming the variant plus its fields. Enums have
 no methods or display labels. Wording for people comes from translations: a
 domain's language files may give each value of an enum a wording, which a
 template then writes out (area 10, "Enums with wording", decided
-2026-10-16).
+2026-10-16). A variant is a name, or a name with a block of its fields;
+one given a label, `open: "Open"`, is `type.enum_label` (chunk 7.9f).
 
 ## Collections
 
@@ -1981,6 +1990,33 @@ error: `TicketStatus` has no variants
 check failed: 1 error, 1 file
 ```
 
+### `type.enum_label`
+
+Enums have no display labels: a variant is a name, or a name with a block
+of its fields. Its wording lives in the domain's translations (area 10,
+"Enums with wording"):
+
+```jadpo check project=e-enum-label expect=type.enum_label
+type TicketStatus = Enum {
+    open: "Open"
+    closed
+}
+```
+
+```text output
+error: `TicketStatus.open` is given a label
+ --> main.jadpo:2:11
+  |
+2 |     open: "Open"
+  |           ^^^^^^ a label
+  reason: Enums have no display labels: a variant is a name, or a name with a block of its fields. Wording for readers lives in the domain's translations, which give each value of `TicketStatus` its wording in every locale.
+  next: Write `open` alone, and give its wording in the domain's translations: `ticket_status: { open: "Open" }` (agent)
+  rule: type.enum_label
+  help: docs/language/02-values-and-types.html#type-enum-label
+
+check failed: 1 error, 1 file
+```
+
 ### `type.duplicate_variant`
 
 ```jadpo check project=e-duplicate-variant expect=type.duplicate_variant
@@ -2277,6 +2313,37 @@ error: `Object` is used as a type
   next: Declare `type Name = Object { ... }` and use its name here (agent)
   rule: type.base_outside_declaration
   help: docs/language/02-values-and-types.html#type-base-outside-declaration
+
+check failed: 1 error, 1 file
+```
+
+### `type.not_a_type`
+
+A field's type is a type, never a value: a call, a literal or an enum's
+variant written where the type goes is refused, naming the field. Every
+block of fields is held to it, an entity's and `config { }`'s settings too:
+
+```jadpo check project=e-not-a-type expect=type.not_a_type
+type TicketStatus = Enum {
+    open
+    closed
+}
+
+type NewTicket = Input {
+    status: TicketStatus.open
+}
+```
+
+```text output
+error: `status`'s type is written as a value, `TicketStatus.open`
+ --> main.jadpo:7:13
+  |
+7 |     status: TicketStatus.open
+  |             ^^^^^^^^^^^^^^^^^ a value of `TicketStatus`, not a type
+  reason: A field's type says which values it may hold, such as `TicketStatus`; `TicketStatus.open` is one of those values, given where a value is built.
+  next: Write `TicketStatus` (agent)
+  rule: type.not_a_type
+  help: docs/language/02-values-and-types.html#type-not-a-type
 
 check failed: 1 error, 1 file
 ```
