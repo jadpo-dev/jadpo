@@ -3708,15 +3708,17 @@ of its own, `compiled`, whose budget is its timeout: 12 minutes from
 start to end, about twice what it took with no cargo cache at all, 5 min
 31 s and 5 min 41 s in two runs (110 to 119 s building `jadpo-cli`'s
 tests, 170 to 174 s for the step, all 258 projects and 525 tests
-compared, the 28 teaching examples' 334 tests passing both ways); the
-`tests` job beside it took 8 min 11 s and 8 min 23 s. The projects the
+compared, the 28 teaching examples' 334 tests passing both ways), and 4
+min 11 s with its cache (76 s and 127 s). The `tests` job's gate beside
+it took 420, 432 and 764 s in those three runs, against 739 to 873 s in
+the five runs before them, which ran the step too. The projects the
 step writes into `target/tmp/` are removed before the cache is saved,
 since the cache action takes their `tests` folders for cargo's own and
-fails on each. Locally,
-`python3 tools/verify.py` still runs every group, this one among them,
-since a chunk that breaks compiled code costs less to find before its
-pull request than after; there the step took 149 s of a 197 s gate (load
-average 52); `--profile quick` leaves it out, as it leaves out every
+fails on each. Locally, `python3 tools/verify.py` still runs every
+group, this one among them, since a chunk that breaks compiled code
+costs less to find before its pull request than after; there the step
+took 136 and 149 s of gates of 161 and 197 s (load average up to 52), the
+longest step; `--profile quick` leaves it out, as it leaves out every
 live step, and `--group compiled` runs it alone, as CI does (90 s with
 the harness built from nothing, 69 s of it the step).
 
