@@ -364,6 +364,33 @@ fn an_enums_variants_are_offered_after_its_name() {
 }
 
 #[test]
+fn a_types_fields_are_offered_after_its_name_where_a_type_goes() {
+    // `item_id: FoundItem.` in a block of fields (chunk 7.9f): the
+    // fields, as field types, as in a signature.
+    let items = complete_file(
+        "lsp-completion-field-type",
+        "use shared/types { Note }\n\n/// A note was pinned.\ntype NotePinned = Event {\n    body: Note.|\n}\n",
+    );
+    assert_eq!(labels(&items), set(&["body", "pinned"]));
+    let items = complete_file(
+        "lsp-completion-field-type-nullable",
+        "use shared/types { Note }\n\n/// A note, maybe.\ntype MaybeNote = Object {\n    body: Note.|?\n}\n",
+    );
+    assert_eq!(labels(&items), set(&["body", "pinned"]));
+    let items = complete_file(
+        "lsp-completion-param-field-type",
+        "use shared/types { Note }\n\naction work(body: Note.|) -> Note {\n    return body\n}\n",
+    );
+    assert_eq!(labels(&items), set(&["body", "pinned"]));
+    // An enum's plain variants are values, never a field's type.
+    let items = complete_file(
+        "lsp-completion-field-type-enum",
+        "use shared/types { Shade }\n\n/// A shade was chosen.\ntype ShadeChosen = Event {\n    shade: Shade.|\n}\n",
+    );
+    assert!(items.is_empty(), "{:?}", labels(&items));
+}
+
+#[test]
 fn a_numbers_units_are_offered_for_the_type_it_goes_into() {
     let items = complete("lsp-completion-units", "    return 2|");
     assert_eq!(labels(&items), set(&["d", "h", "m", "s", "ms"]));

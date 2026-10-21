@@ -39,6 +39,7 @@ mod events;
 mod examples;
 mod exports;
 mod failures;
+mod field_types;
 mod files;
 mod fixes;
 mod formats;

@@ -2006,6 +2006,23 @@ side by side, then 7.9d, then 7.9e).
   and `row`; `provider::call`, `ai::generate`, `stream::stream` and
   `embed::embed` each taking the context, the site (`provider::Calling`,
   `ai::Calling`) and the input, the runtime's own calls too.
+- [x] **7.9f Fixes Richard found in the editor** `opus · high` (found
+  2026-10-21): a field's type written as a value or a call (`Test.a`,
+  `Test("x")`) refused, naming the field, in every object type (an input,
+  a failure's fields, an event's, an entity's, a setting's), never
+  silently dropped; an enum member given a label (`a: "A"`) refused,
+  pointing at translations; the language server completing an entity's
+  fields after `FoundItem.` in a type position. Built: `type.not_a_type`
+  (area 2) for a call, a literal, a block of fields or an enum's variant
+  where a field's or setting's type goes, in every block of fields, an
+  entity and `config { }`, and for a variant anywhere a type goes (a
+  signature, `List<Status.open>`), with the edit writing the type; such a
+  field kept with a type that absorbs, so it is never dropped; `[Tag]`
+  in a field is `syntax.collection_type`; `type.enum_label` (area 2) for
+  a variant given a label or value, its next step the translation; after
+  `Owner.` in a type position, written as a member's value or in a
+  signature, the language server offers its fields, an enum's variants
+  with fields, or a variant's fields, never a plain variant.
 
 ## Phase 8 — Compiled deployables
 

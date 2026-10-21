@@ -752,6 +752,16 @@ impl Reader<'_> {
                             self.spans.fields.push(key_span.clone());
                         }
                     }
+                    // `status: Status("open")`: a field whose type is
+                    // written as a call or a value (area 2, chunk 7.9f),
+                    // unless the name is a section's, misspelt.
+                    Some(value)
+                        if nearest(&word, SECTIONS.iter().copied()).is_none()
+                            && !matches!(value, Expr::ListExpr(_) | Expr::RecordExpr(_))
+                            && let Some(found) = crate::not_type::in_value(path, &value, None) =>
+                    {
+                        self.out.push(found.diagnostic(Some(("field", &word))));
+                    }
                     _ => self.unknown_section(path, key.syntax(), &word, &name),
                 },
             }
