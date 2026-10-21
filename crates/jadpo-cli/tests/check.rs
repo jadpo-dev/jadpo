@@ -316,3 +316,83 @@ fn a_long_else_if_chain_checks_and_formats() {
     let formatted = jadpo(&root, &["fmt", "--check"]);
     assert_eq!(formatted.code, 0, "{}", formatted.stdout);
 }
+
+/// A deployable built for Workers that reaches a connection with
+/// `max_concurrent:` passes, and the check says the cap counts per
+/// instance there (area 11, Decisions, 2026-10-21; chunk 8.1o2).
+#[test]
+fn a_cap_on_calls_from_workers_is_said_to_count_per_instance() {
+    let root = folder("per-instance");
+    let files = [
+        (
+            "app.jadpo",
+            "application {\n    connections: {\n        pdf: {\n            package: AcmePdf.v1\n            domains: [desk]\n            host: config.pdf_url\n            max_concurrent: 2\n        }\n    }\n    deployables: {\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n",
+        ),
+        ("config.jadpo", "config {\n    pdf_url: Url\n}\n"),
+        (
+            "shared/providers/acme_pdf/v1/package.jadpo",
+            "/// Acme's PDF service.\npackage AcmePdf.v1 {\n    licence: Licence.proprietary\n    jadpo: \"1.0\"\n}\n",
+        ),
+        (
+            "shared/providers/acme_pdf/v1/provider.jadpo",
+            "/// Acme's PDF service, run beside the app.\nprovider {\n    protocol: Protocol.json_http\n    runs: {\n        image: \"acme/pdf:1\"\n        port: 3000\n    }\n}\n",
+        ),
+        (
+            "shared/providers/acme_pdf/v1/types/page_text.jadpo",
+            "/// A page's text.\npublic type PageText = Text {\n    max_length: 200\n}\n",
+        ),
+        (
+            "shared/providers/acme_pdf/v1/types/sheet.jadpo",
+            "/// A sheet.\npublic type Sheet = Object {\n    text: PageText\n}\n",
+        ),
+        (
+            "shared/providers/acme_pdf/v1/resources/documents.jadpo",
+            "/// Rendered documents.\npublic resource documents {\n    render: {\n        method: HttpMethod.post\n        path: \"/render\"\n        input: Sheet\n        output: Sheet\n        source: PackageSource.written\n    }\n}\n",
+        ),
+        (
+            "domains/desk/types/line.jadpo",
+            "/// A line of text.\ntype Line = Text {\n    max_length: 200\n}\n",
+        ),
+        (
+            "domains/desk/types/words.jadpo",
+            "use desk/types { Line }\n\n/// What is said.\ntype Words = Input {\n    line: Line\n}\n",
+        ),
+        (
+            "domains/desk/types/said.jadpo",
+            "use desk/types { Line }\n\n/// What is said back.\ntype Said = Output {\n    line: Line\n}\n",
+        ),
+        (
+            "domains/desk/actions/render.jadpo",
+            "use app { pdf }\nuse desk/types { Said, Words }\nuse shared/providers/acme_pdf\n\n/// Renders the words.\naction render(input: Words) -> Said {\n    var sheet: AcmePdf.Sheet = pdf.documents.render(AcmePdf.Sheet {\n        text: AcmePdf.PageText(input.line)\n    })\n    assert sheet.text == sheet.text\n    return Said {\n        line: input.line\n    }\n}\n",
+        ),
+        (
+            "policy.jadpo",
+            "use desk\n\npolicy {\n    actions: {\n        desk.render: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/desk/routes/pages.jadpo",
+            "use desk/types { Said, Words }\nuse desk/actions { render }\n\n/// Pages.\nroutes Pages {\n    prefix: /pages\n\n    /// Renders a page.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Words\n        output: Said\n        run: render(input)\n    }\n}\n",
+        ),
+    ];
+    for (path, text) in files {
+        write(&root, path, text);
+    }
+    jadpo(&root, &["api", "update"]);
+    let output = jadpo(&root, &["check"]);
+    assert_eq!(output.code, 0, "{}", output.stdout);
+    assert!(output.stdout.contains("On Workers"), "{}", output.stdout);
+    assert!(
+        output
+            .stdout
+            .contains("pdf  2 at once in each instance of `edge`"),
+        "{}",
+        output.stdout
+    );
+    let json = jadpo(&root, &["check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(
+        document["data"]["per_instance"],
+        serde_json::json!([{ "connection": "pdf", "max_concurrent": 2, "deployable": "edge" }]),
+        "{document}"
+    );
+}

@@ -413,7 +413,14 @@ fn on_workers_a_cap_on_calls_counts_per_instance() {
         let project = support::project(&db, Layout::Project, &all);
         jadpo_check::deployables::per_instance(&db, project)
     };
-    assert_eq!(caps(WASM), [("pdf".to_string(), 2, "kiosk".to_string())]);
+    assert_eq!(
+        caps(WASM),
+        [jadpo_check::deployables::PerInstance {
+            connection: "pdf".to_string(),
+            cap: 2,
+            deployable: "kiosk".to_string(),
+        }]
+    );
     assert_eq!(caps(NATIVE), []);
 }
 

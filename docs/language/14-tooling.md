@@ -1030,7 +1030,7 @@ $ jadpo build
   commit    8d113e6
   settings  DATABASE_URL
 
-✓ built  web, back_office · native in 61.3 s
+✓ built  web and back_office · native in 61.3 s
 → jadpo migrate apply  they start only once their database has every migration
 ```
 

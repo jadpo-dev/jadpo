@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use jadpo_check::deployables::PerInstance;
 use jadpo_db::Layout;
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
@@ -109,17 +110,22 @@ pub(crate) fn reported(
 /// What `jadpo check` says once it passes of each `max_concurrent:` a
 /// deployable built for Workers reaches: Workers runs as many instances as
 /// traffic needs, and each counts the cap on its own.
-fn per_instance_block(caps: &[(String, u32, String)]) -> Block {
+fn per_instance_block(caps: &[PerInstance]) -> Block {
     let mut lines = vec![
-        "`max_concurrent:` caps calls in each instance, and Workers runs as".to_string(),
-        "many as traffic needs; a provider's own rate limit holds them to a total.".to_string(),
+        "Workers runs as many instances as traffic needs, and each counts".to_string(),
+        "`max_concurrent:` on its own; only the provider's rate limit caps the total.".to_string(),
     ];
     let width = caps
         .iter()
-        .map(|(name, _, _)| name.len())
+        .map(|cap| cap.connection.len())
         .max()
         .unwrap_or(0);
-    for (connection, cap, deployable) in caps {
+    for PerInstance {
+        connection,
+        cap,
+        deployable,
+    } in caps
+    {
         lines.push(format!(
             "  {connection:width$}  {cap} at once in each instance of `{deployable}`"
         ));
@@ -226,7 +232,7 @@ fn report(
         Layout,
         Vec<String>,
         &[jadpo_check::review::ProviderReview],
-        &[(String, u32, String)],
+        &[PerInstance],
     ),
     (elapsed, failed): (Duration, &str),
 ) -> Reply {
@@ -283,11 +289,11 @@ fn report(
         ("providers", crate::provider_review::json(reviews)),
         (
             "per_instance",
-            Json::array(per_instance.iter().map(|(connection, cap, deployable)| {
+            Json::array(per_instance.iter().map(|cap| {
                 Json::object([
-                    ("connection", connection.as_str().into()),
-                    ("max_concurrent", (*cap).into()),
-                    ("deployable", deployable.as_str().into()),
+                    ("connection", cap.connection.as_str().into()),
+                    ("max_concurrent", cap.cap.into()),
+                    ("deployable", cap.deployable.as_str().into()),
                 ])
             })),
         ),

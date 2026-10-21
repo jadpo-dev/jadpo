@@ -834,11 +834,11 @@ fn reach(
                 }
                 // A file's rows are read and written by the batch run,
                 // which carries on where schedules run.
-                Callee::Batch(BatchOp::Read(_) | BatchOp::Write(_)) => {
-                    if deployable.runs.schedules {
-                        for store in &files {
-                            connection(&mut out, store, Via::Batches);
-                        }
+                Callee::Batch(BatchOp::Read(_) | BatchOp::Write(_))
+                    if deployable.runs.schedules =>
+                {
+                    for store in &files {
+                        connection(&mut out, store, Via::Batches);
                     }
                 }
                 _ => {}
@@ -991,11 +991,20 @@ fn connection_spans(db: &dyn Db, project: Project) -> BTreeMap<String, Span> {
     out
 }
 
+/// A connection's `max_concurrent:` cap that a deployable built for
+/// Workers counts per instance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PerInstance {
+    pub connection: String,
+    pub cap: u32,
+    pub deployable: String,
+}
+
 /// Each connection with a `max_concurrent:` cap that a deployable built
 /// for Workers reaches, with the cap and that deployable: on Workers it
 /// counts per instance, since Workers runs as many as traffic needs
 /// (Richard, 2026-10-21; area 11, "Decisions").
-pub fn per_instance(db: &dyn Db, project: Project) -> Vec<(String, u32, String)> {
+pub fn per_instance(db: &dyn Db, project: Project) -> Vec<PerInstance> {
     let deployables = deployables(db, project);
     let packages = &crate::connections::package_connections(db, project).connections;
     let mut out = Vec::new();
@@ -1008,7 +1017,11 @@ pub fn per_instance(db: &dyn Db, project: Project) -> Vec<(String, u32, String)>
                 continue;
             }
             if let Some(cap) = package.max_concurrent.or(package.reach.max_concurrent) {
-                out.push((package.name.clone(), cap, deployable.name.clone()));
+                out.push(PerInstance {
+                    connection: package.name.clone(),
+                    cap,
+                    deployable: deployable.name.clone(),
+                });
             }
         }
     }

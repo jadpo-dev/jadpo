@@ -383,11 +383,17 @@ fn shown(built: Built) -> Reply {
         .iter()
         .map(|binary| binary.name.as_str())
         .collect();
+    // `kiosk`, `kiosk and office`, `kiosk, office and edge`: one fact,
+    // which plain output joins to the next with a comma.
+    let named = match names.as_slice() {
+        [rest @ .., last] if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => names.join(""),
+    };
     screen.push(Block::summary(
         Outcome::Success,
         "built",
         [
-            Fact::plain(names.join(", ")),
+            Fact::plain(named),
             Fact::plain(format!("native in {:.1} s", built.seconds)),
         ],
     ));
