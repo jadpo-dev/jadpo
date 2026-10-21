@@ -1311,7 +1311,11 @@ subject gave. An inline function is a closure `standard_each` calls per
 item, setting its parameters, which are the callable's locals, and
 working its body out with `?` going out of the closure, never to a label
 outside it; a site that waits there is the interpreter's defect, which
-the checker rules out. A call to a function
+the checker rules out. A `return` there (the checker allows one in a
+`match` arm's block) or inside a labelled block leaves as a stop,
+`Stop::Returned`, ending what it passes through as any stop does, and
+the callable's end (`left`) gives its value, as the interpreter's
+`return` unwinds to its frame's end. A call to a function
 enters its frame, runs it and leaves the frame whatever it gave (`left`
 turns a broken rule no `attempt` caught into the interpreter's defect at
 the callee's entry); a call that pauses goes through `invoke`. In a test,
@@ -1369,7 +1373,8 @@ harness per project). The gate's compiled step
 that checks, the pages' and the teaching examples', and requires every
 one that compiles to give the same records both ways and every project of
 areas 1 to 4 to compile: 208 projects, 332 tests, 41 left with a form not
-compiled yet. On the ten-core Mac, lightly loaded, it takes 60 s the
+compiled yet, and a project of its own whose `return` inside an inline
+function leaves its function. On the ten-core Mac, lightly loaded, it takes 60 s the
 first time, most of it building the runtime crates, as one project's
 harness did, and 22 s after. One crate per project for now; 8.1j
 compiles the corpus as one crate, in one rustc invocation, in a CI job of

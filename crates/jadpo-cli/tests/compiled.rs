@@ -130,6 +130,32 @@ fn compared(projects: &[(String, PathBuf)], work: &str) -> Vec<(String, Result<C
     done
 }
 
+/// A `return` inside an inline function, which the checker allows in a
+/// `match` arm's block there: it leaves the function, as it does anywhere
+/// else, rather than giving the item's value.
+const RETURNS: &str = r#"type Count = Int {}
+
+function picked(counts: List<Count>) -> List<Count> {
+    return list.map(counts, count -> match count > 3 {
+        true -> {
+            return counts
+        }
+        false -> count
+    })
+}
+"#;
+
+/// Its tests, one failing so its assertion's values are compared too.
+const RETURNS_TEST: &str = r#"test "a return inside an inline function leaves the function" {
+    assert picked([1, 5]) == [1, 5]
+    assert picked([1, 2]) == [1, 2]
+}
+
+test "a failed assertion shows its values" {
+    assert picked([1, 2]) == [2, 1]
+}
+"#;
+
 /// Every project of the specification corpus that compiles, the pages'
 /// and the teaching examples', built as crates of one harness and
 /// compared (chunks 8.1f and 8.1g). Every project of the pages for areas 1
@@ -145,7 +171,15 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     if !jadpo_test::live() {
         return;
     }
-    let projects = corpus_projects(&["docs/language/", "examples "]);
+    let mut projects = corpus_projects(&["docs/language/", "examples "]);
+    let returns = [
+        ("main.jadpo".to_string(), RETURNS.to_string()),
+        ("main.test.jadpo".to_string(), RETURNS_TEST.to_string()),
+    ];
+    projects.push((
+        "a return inside an inline function".into(),
+        corpus_project(&returns, "compiled-returns").expect("it checks"),
+    ));
     let results = compared(&projects, "corpus");
     let mut done = Vec::new();
     let mut refused = Vec::new();
@@ -178,6 +212,17 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         Some(Compared {
             tests: 3,
             passed: 3
+        })
+    );
+    let returned = done
+        .iter()
+        .find(|(name, _)| name == "a return inside an inline function")
+        .map(|(_, compared)| *compared);
+    assert_eq!(
+        returned,
+        Some(Compared {
+            tests: 2,
+            passed: 1
         })
     );
     let tests: usize = done.iter().map(|(_, compared)| compared.tests).sum();

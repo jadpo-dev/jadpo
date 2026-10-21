@@ -343,13 +343,25 @@ impl Emitter<'_> {
                     }
                 }
             }
-            Stmt::Return { value } => match value {
-                Some(value) => {
-                    let value = self.expr(value);
+            Stmt::Return { value } => {
+                let value = match value {
+                    Some(value) => self.expr(value),
+                    None => quote!(Value::Unit),
+                };
+                // Inside a block that catches stops, or an inline
+                // function's closure, the value leaves as a stop, so what
+                // it passes through ends as it would (an assertion's
+                // recording among them); the callable's end gives it.
+                if self.label.is_some() || self.inline.is_some() {
+                    let stop = self.fail(quote!(Stop::Returned(value)));
+                    quote!({
+                        let value = #value;
+                        #stop;
+                    })
+                } else {
                     quote!(return Ok(#value);)
                 }
-                None => quote!(return Ok(Value::Unit);),
-            },
+            }
             Stmt::If {
                 arms, otherwise, ..
             } => {
@@ -969,8 +981,13 @@ impl Emitter<'_> {
                         Some(self.plan.query(*query).and_then(|plan| plan.caller)),
                     ),
                     Some(Decoded::Get(Some(entity))) => (quote!(rt::get), *entity, Some(None)),
+                    // Something a later area builds, named as the
+                    // interpreter names it.
                     _ => {
-                        let written = text(&self.written(id));
+                        let written = match self.decoded(id) {
+                            Some(Decoded::Written(written)) => text(written),
+                            _ => text(""),
+                        };
                         return quote!(Err::<Value, Stop>(rt::not_built_yet(cx, #written, #at)));
                     }
                 };

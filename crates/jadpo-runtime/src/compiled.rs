@@ -59,6 +59,11 @@ pub enum Stop {
     /// `arm` maps, for the write's site to raise that arm's failure with
     /// the refusal as its cause (area 6).
     Refused { arm: u32, cause: Box<Failure> },
+    /// A `return` inside an inline function, or inside a block that
+    /// catches stops, on its way out of what it is in: the callable's end
+    /// ([`left`]) gives its value, as the interpreter's `return` unwinds to
+    /// its frame's end.
+    Returned(Value),
 }
 
 /// What a compiled body, or one of its sites, gives.
@@ -371,6 +376,7 @@ pub fn outcome(ran: Ran) -> Outcome {
         Err(Stop::Assertion(assertion)) => Outcome::Assertion(assertion),
         Err(Stop::Invalid { .. }) => defect("a construction failed outside an `attempt`"),
         Err(Stop::Refused { .. }) => defect("a refused write outside its own site"),
+        Err(Stop::Returned(value)) => Outcome::Value(value),
     }
 }
 
@@ -446,7 +452,8 @@ pub fn enter(cx: &mut Ctx<'_>, p: &Program, callee: u32, at: u32) -> Result<(), 
 }
 
 /// Leaves the callable on top of `cx`, which gave `ran`: a broken rule no
-/// `attempt` caught is a defect at its entry, as the interpreter has it.
+/// `attempt` caught is a defect at its entry, as the interpreter has it,
+/// and a `return` that left as a stop its value.
 pub fn left(cx: &mut Ctx<'_>, ran: Ran) -> Ran {
     let ran = match ran {
         Err(Stop::Invalid { .. }) => Err(defect(
@@ -454,6 +461,7 @@ pub fn left(cx: &mut Ctx<'_>, ran: Ran) -> Ran {
             "a construction failed outside an `attempt`",
             Frame::ENTRY,
         )),
+        Err(Stop::Returned(value)) => Ok(value),
         other => other,
     };
     cx.leave();
