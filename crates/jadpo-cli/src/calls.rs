@@ -393,7 +393,7 @@ fn script(root: &Path, operation: &str, answer: &str) -> Reply {
             },
         ));
     };
-    let failures = prepared.plan().types().failures();
+    let failures = prepared.plan().failures();
     let codes: Vec<String> = op
         .failures
         .iter()

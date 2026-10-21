@@ -38,9 +38,10 @@ use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::{TokioIo, TokioTimer};
+use jadpo_runtime::Executor;
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
-use jadpo_runtime::serve::{Application, Observer, Serving};
+use jadpo_runtime::serve::{Observer, Serving};
 
 use crate::{NativeHost, Runtime};
 
@@ -97,10 +98,7 @@ impl std::fmt::Debug for AppHandler {
 
 impl AppHandler {
     /// Serves on `host` the program `program` gives each time it is asked.
-    pub fn new(
-        host: NativeHost,
-        program: impl Fn() -> Rc<dyn Application> + 'static,
-    ) -> AppHandler {
+    pub fn new(host: NativeHost, program: impl Fn() -> Rc<dyn Executor> + 'static) -> AppHandler {
         let host = Rc::new(host);
         AppHandler {
             serving: Serving::new(Rc::clone(&host) as Rc<dyn jadpo_runtime::Host>, program),
@@ -627,14 +625,12 @@ mod tests {
     /// An application with no routes, which the runtime answers itself.
     struct Bare {
         places: jadpo_runtime::Places,
-        table: jadpo_std::http::RouteTable,
     }
 
     impl Bare {
         fn new() -> Bare {
             Bare {
                 places: jadpo_runtime::Places::default(),
-                table: jadpo_std::http::RouteTable::default(),
             }
         }
     }
@@ -658,22 +654,6 @@ mod tests {
         }
     }
 
-    impl Application for Bare {
-        fn app(&self) -> jadpo_runtime::http::App<'_> {
-            jadpo_runtime::http::App {
-                table: &self.table,
-                codecs: jadpo_value::json::Codecs {
-                    codecs: &[],
-                    validators: &[],
-                    shapes: &[],
-                    coder: None,
-                },
-                failures: &[],
-                json: jadpo_runtime::JsonCodecs::NONE,
-            }
-        }
-    }
-
     /// Hears each request answered and each tick.
     struct Heard(Arc<Mutex<mpsc::Sender<String>>>);
 
@@ -688,7 +668,7 @@ mod tests {
 
         fn ticked(
             &self,
-            _program: &dyn Application,
+            _program: &dyn Executor,
             ticked: &jadpo_runtime::schedules::Ticked,
             _now: i64,
         ) {
@@ -710,7 +690,7 @@ mod tests {
         let heard_by = Arc::clone(&said);
         let make: MakeHandler = Arc::new(move || {
             let said = &heard_by;
-            let program: Rc<dyn Application> = Rc::new(Bare::new());
+            let program: Rc<dyn Executor> = Rc::new(Bare::new());
             Box::new(
                 AppHandler::new(NativeHost::new(), move || Rc::clone(&program))
                     .observed_by(Rc::new(Heard(Arc::clone(said)))),
@@ -766,7 +746,7 @@ mod tests {
 
     /// An application handler for [`Bare`] heard by `said`.
     fn make_tick(said: &Arc<Mutex<mpsc::Sender<String>>>) -> AppHandler {
-        let program: Rc<dyn Application> = Rc::new(Bare::new());
+        let program: Rc<dyn Executor> = Rc::new(Bare::new());
         AppHandler::new(NativeHost::new(), move || Rc::clone(&program))
             .observed_by(Rc::new(Heard(Arc::clone(said))))
     }

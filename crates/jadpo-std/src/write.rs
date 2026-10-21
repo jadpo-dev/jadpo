@@ -221,7 +221,7 @@ pub struct FieldProbe {
 pub const PURGE_BATCH: u32 = 500;
 
 /// Where a purge statement's parameter comes from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PurgeSource {
     /// The run's time less the lifecycle's `after:`: a record hidden since
     /// before it goes.
@@ -234,7 +234,7 @@ pub enum PurgeSource {
 }
 
 /// One purge parameter: `$1` is the first.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PurgeParam {
     pub source: PurgeSource,
     pub ty: SqlType,
@@ -244,7 +244,7 @@ pub struct PurgeParam {
 /// been hidden for its lifecycle's `after:` (area 5, "Lifecycle"): the
 /// compiler's own operation, outside every action and policy (area 9),
 /// which the built-in hourly purge schedule runs (area 12).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PurgePlan {
     /// The entity's name.
     pub entity: String,

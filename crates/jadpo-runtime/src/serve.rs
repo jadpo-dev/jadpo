@@ -11,19 +11,16 @@
 //! deployable's log comes with the hosts' log sink (area 16). The native
 //! server's handler wraps it (`jadpo_host_native::http::AppHandler`);
 //! Workers' fetch and scheduled events call the same two (chunk 8.2).
+//!
+//! What it serves is any [`Executor`]: the interpreter, or compiled code
+//! (Phase 8). The route table and codecs a request is answered with come
+//! from the executor's plan ([`crate::Plan::app`], chunk 8.1a).
 
 use std::rc::Rc;
 
-use crate::http::{App, Request, Response, Worker, serve_request};
+use crate::http::{Request, Response, Worker, serve_request};
 use crate::schedules::{self, Ticked};
 use crate::{Executor, Host, LocalFuture, runner};
-
-/// A program a host can serve: an executor and what answering a request
-/// reads besides, its route table and codecs. The interpreter is one, and
-/// compiled code another (Phase 8).
-pub trait Application: Executor {
-    fn app(&self) -> App<'_>;
-}
 
 /// One request answered, as an [`Observer`] hears it.
 pub struct Answered<'a> {
@@ -31,7 +28,7 @@ pub struct Answered<'a> {
     /// The response as it is sent; the work it left has been handed on.
     pub response: &'a Response,
     /// The program that answered it, whose places a fault's frames name.
-    pub program: &'a dyn Application,
+    pub program: &'a dyn Executor,
     /// How long answering it took, in milliseconds on the host's monotonic
     /// clock; 0 on a host without one.
     pub ms: u64,
@@ -46,7 +43,7 @@ pub trait Observer {
 
     /// A tick at `now` has ended on `program`: the schedules it ran and
     /// the alerts it raised.
-    fn ticked(&self, program: &dyn Application, ticked: &Ticked, now: i64) {
+    fn ticked(&self, program: &dyn Executor, ticked: &Ticked, now: i64) {
         let _ = (program, ticked, now);
     }
 }
@@ -55,7 +52,7 @@ pub trait Observer {
 /// now, the host, what the runtime keeps between that host's requests, and
 /// who hears about it.
 pub struct Serving {
-    program: Box<dyn Fn() -> Rc<dyn Application>>,
+    program: Box<dyn Fn() -> Rc<dyn Executor>>,
     host: Rc<dyn Host>,
     worker: Worker,
     observer: Option<Rc<dyn Observer>>,
@@ -83,7 +80,7 @@ impl Serving {
     /// Serves on `host` the program `program` gives each time it is asked:
     /// always the same one for a deployable, the latest version that
     /// checked cleanly under `jadpo dev`.
-    pub fn new(host: Rc<dyn Host>, program: impl Fn() -> Rc<dyn Application> + 'static) -> Serving {
+    pub fn new(host: Rc<dyn Host>, program: impl Fn() -> Rc<dyn Executor> + 'static) -> Serving {
         Serving {
             program: Box::new(program),
             host,
@@ -99,7 +96,7 @@ impl Serving {
     }
 
     /// The version of the program being served now.
-    pub fn program(&self) -> Rc<dyn Application> {
+    pub fn program(&self) -> Rc<dyn Executor> {
         (self.program)()
     }
 
@@ -110,7 +107,7 @@ impl Serving {
         let began = self.host.monotonic_ms();
         let program = self.program();
         let mut response = {
-            let app = program.app();
+            let app = program.plan().app();
             serve_request(
                 &app,
                 program.as_ref(),
@@ -126,7 +123,7 @@ impl Serving {
             stream.attach(Rc::clone(&self.host));
         }
         runner::after_response(
-            Rc::clone(&program) as Rc<dyn Executor>,
+            Rc::clone(&program),
             Rc::clone(&self.host),
             std::mem::take(&mut response.deferred),
         );

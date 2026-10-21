@@ -156,7 +156,7 @@ pub use migrate::{
 };
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
-pub use plan::RuntimePlan;
+pub use plan::{Loaded, Plan, RuntimePlan};
 pub use policy::{admit, call_as};
 pub use purge::{PURGE_BATCHES, Purged, purge, purge_after};
 pub use ratelimit::{Allowed, RateLimits};

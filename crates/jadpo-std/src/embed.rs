@@ -58,7 +58,7 @@ pub const VERSION: &str = "version";
 /// which a test's `fakes: { ai.<prompt>: [recorded("<name>")] }` answers
 /// with, and every build decodes through each type the prompt is asked
 /// for as.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PromptRecording {
     /// Its path in the project.
     pub file: String,

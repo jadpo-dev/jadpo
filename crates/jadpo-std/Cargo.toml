@@ -13,10 +13,14 @@ license.workspace = true
 # idna checks a domain name by UTS 46, and spdx holds the SPDX licence list
 # (area 19, "Web and software"); ammonia is the HTML sanitiser `Html` is
 # built with, over html5ever (area 19, "Text formats"); serde_json writes a
-# queue's consumer for the Wrangler file (chunk 7.7c2).
+# queue's consumer for the Wrangler file (chunk 7.7c2). serde's traits and
+# derives write the runtime's plan in the canonical byte encoding, which
+# is jadpo-std's own format on serde's data model (chunk 8.1a); serde and
+# serde_derive are already in the lock under serde_json and webauthn-rs.
 [dependencies]
 regex.workspace = true
 serde_json.workspace = true
+serde = { workspace = true, features = ["derive"] }
 idna.workspace = true
 spdx.workspace = true
 ammonia.workspace = true

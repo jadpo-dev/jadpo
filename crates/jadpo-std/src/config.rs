@@ -15,7 +15,7 @@ use crate::http::{Codec, CodecId};
 
 /// How a setting's environment spelling, and the wire, differ from the
 /// name its enum codec reads.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Spelling {
     /// The codec reads the text as it is: numbers, text, durations, a
     /// declared enum's variant name.
@@ -25,7 +25,7 @@ pub enum Spelling {
     /// (`europe_london`), a BCP 47 tag for a `Locale`, a media type for a
     /// `FileType`, an ISO 4217 code (`GBP`) for a `Currency`; read
     /// ignoring case.
-    Codes(&'static [(&'static str, &'static str)]),
+    Codes(#[serde(with = "crate::standard::named::codes")] &'static [(&'static str, &'static str)]),
     /// A duration as source writes it (`5m`), which the codec reads as the
     /// wire's ISO 8601 (`PT5M`, area 10).
     Duration,
@@ -72,7 +72,7 @@ impl Spelling {
 
 /// What `jadpo test` makes for a secret, which a test run is given at
 /// random and never writes anywhere (area 10, question 11).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TestSecret {
     /// Hexadecimal digits: at least `min` and at most `max` of them.
     Hex { min: u32, max: Option<u32> },
@@ -86,7 +86,7 @@ pub enum TestSecret {
 }
 
 /// One setting.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ConfigField {
     /// Its name in `config { }` and in code, `config.<name>`.
     pub name: String,
@@ -111,7 +111,7 @@ pub struct ConfigField {
 }
 
 /// A database connection and the setting holding its address.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ConfigConnection {
     /// The connection's name, which an entity's `store:` names.
     pub connection: String,
@@ -121,7 +121,7 @@ pub struct ConfigConnection {
 }
 
 /// The settings of a project, with the codecs their values are read by.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ConfigPlan {
     /// In the order `config { }` declares them; a setting's number is its
     /// place here.

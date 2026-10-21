@@ -230,7 +230,6 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
                     |arm| format!("{}, mapped in conflict:", arm.failure.written()),
                 ),
                 Raises::NotFound(missing) => plan
-                    .types()
                     .failure(missing.failure)
                     .map_or_else(|| "not found".to_string(), |f| f.name.clone()),
                 Raises::Gone(what) => format!("a fault: {what}"),
@@ -249,7 +248,7 @@ fn render_action(plan: &Plan, action: &CallablePlan, file: &str) -> Reply {
             .plan
             .missing
             .as_ref()
-            .and_then(|missing| plan.types().failure(missing.failure))
+            .and_then(|missing| plan.failure(missing.failure))
             .map(|failure| failure.name.clone());
         if let Some(failure) = &not_found {
             fields.push(("no row".to_string(), failure.clone()));

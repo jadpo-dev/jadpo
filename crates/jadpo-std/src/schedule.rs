@@ -5,7 +5,7 @@
 
 /// Every schedule, where their state and leases are kept, and the stores
 /// the tick sweeps.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SchedulesPlan {
     /// In key order.
     pub schedules: Vec<SchedulePlan>,
@@ -64,7 +64,7 @@ impl SchedulesPlan {
 }
 
 /// One schedule (area 12, "Schedules").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SchedulePlan {
     /// Its identity key, which its state row and run records name:
     /// `schedule planning.overdue_reminders`.
@@ -81,7 +81,7 @@ pub struct SchedulePlan {
 }
 
 /// What a schedule runs.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleRun {
     /// An action, by callable number, with no arguments.
     Action(u32),

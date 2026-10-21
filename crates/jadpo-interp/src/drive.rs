@@ -241,7 +241,7 @@ fn store<'a, 'p: 'a>(
                 ctx.fault(FaultKind::Defect(what.to_string()), at),
             ));
         };
-        let failures = plan.types().failures();
+        let failures = plan.failures();
         match jadpo_runtime::store(ctx, op, failures, program.stored_json(), &args, at).await {
             Stored::Value(value) => Ok(value),
             Stored::Failed(failure) => Err(Stop::Failed(failure)),

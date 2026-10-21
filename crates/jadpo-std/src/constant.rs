@@ -7,7 +7,7 @@
 
 use crate::{Builtin, Dur, Literal, Num};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Constant {
     Unit,
     None,
@@ -51,7 +51,8 @@ pub enum Constant {
     /// in a test or a fixture: the standard type it is (`Password`) and
     /// its text, which is held so it is never printed.
     Secret {
-        kind: &'static str,
+        #[serde(with = "crate::standard::named::name")]
+        kind: crate::standard::named::Name,
         text: Hidden,
     },
     /// Text written where a standard object type goes, such as
@@ -60,14 +61,15 @@ pub enum Constant {
     /// which the checker proved the type reads, read through the type's
     /// contract where it becomes a value (chunk 5.7).
     Standard {
-        ty: &'static str,
+        #[serde(with = "crate::standard::named::name")]
+        ty: crate::standard::named::Name,
         text: String,
     },
 }
 
 /// A secret value's text in a plan, printed by `{:?}` as `Hidden(..)` so
 /// a plan's dump never shows it (chunk 5.5r2).
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Hidden(pub String);
 
 impl std::fmt::Debug for Hidden {

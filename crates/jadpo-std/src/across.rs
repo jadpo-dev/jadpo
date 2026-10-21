@@ -18,7 +18,7 @@ use crate::{Constant, Op, Rounding};
 
 /// One rule: its name, the most locals its condition uses, and the
 /// condition.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CrossRule {
     /// As written after `rule`: what an `attempt`'s arm and a failure's
     /// report call it.
@@ -28,7 +28,7 @@ pub struct CrossRule {
 }
 
 /// A condition, or a part of one.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum RuleExpr {
     /// A field, by its place among the object's fields, or a name a
     /// `match` arm binds after them.
@@ -72,7 +72,7 @@ pub enum RuleExpr {
 }
 
 /// One arm of a `match` in a condition.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RuleArm {
     pub pattern: RulePattern,
     /// The local the arm binds: `some(count)`'s `count`.
@@ -80,7 +80,7 @@ pub struct RuleArm {
     pub body: RuleExpr,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum RulePattern {
     Some,
     None,
@@ -93,7 +93,7 @@ pub enum RulePattern {
 }
 
 /// The operators a condition uses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum RuleOp {
     Or,
     And,

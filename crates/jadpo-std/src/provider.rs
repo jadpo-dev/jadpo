@@ -34,7 +34,7 @@ pub const RETRY_BASE_MS: u64 = 200;
 
 /// A connection's `retry:`: how many times a call that may be sent again is
 /// tried, the first included, and within how long of the first.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RetryPlan {
     pub attempts: u32,
     pub within_ms: u64,
@@ -49,7 +49,7 @@ impl Default for RetryPlan {
 /// The built-in encodings a provider package's field names with `wire:`
 /// (area 11, "Decoding"; chunk 7.2c2): a fixed list, extended by Jadpo
 /// releases. A field without one is sent as the contract writes its type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum WireEncoding {
     /// An `Instant` as a whole number of seconds since 1970.
     UnixSeconds,
@@ -205,7 +205,7 @@ pub fn time_named(name: &str) -> bool {
 
 /// Every connection to a provider package an application calls, and the
 /// operations it calls through them.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProviderPlan {
     /// The application's name, which every derived idempotency key is
     /// made from (area 12, "Keys").
@@ -232,7 +232,7 @@ pub struct ProviderPlan {
 /// One poll the tick runs (area 11, "Polls"; chunk 7.6c): a connection's
 /// call of its package's operation, at its interval, whose answer is made
 /// into the package's event and kept only when it changed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PollPlan {
     /// The connection it calls through, `fuel`.
     pub connection: String,
@@ -263,7 +263,7 @@ impl PollPlan {
 
 /// One recording, `recordings/<resource>.<operation>.json`, of a package
 /// the app's own integration holds (chunk 7.2d2).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RecordedPlan {
     /// Its path in the project.
     pub file: String,
@@ -300,7 +300,7 @@ impl ProviderPlan {
 
 /// How a credential is sent (area 11, `credential:`): the scheme the
 /// package names, with the secret setting the connection reads it from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CredentialScheme {
     /// `Authorization: Bearer <secret>`.
     Bearer,
@@ -318,7 +318,7 @@ pub enum CredentialScheme {
 }
 
 /// How a provider's bodies are sent (area 11, `protocol:`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Protocol {
     /// JSON over HTTP, each operation at its method and path.
     #[default]
@@ -332,14 +332,14 @@ pub enum Protocol {
 /// A provider's `aws: { service: target: }` (chunk 7.7c): the service
 /// name its requests are signed for, `sqs`, and the prefix its operations
 /// are named under in `X-Amz-Target`, `AmazonSQS`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AwsPlan {
     pub service: String,
     pub target: Option<String>,
 }
 
 /// Where a connection's API is (area 11, "Where an API is").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Address {
     /// The package's `hosts:`, chosen by the `ProviderEnvironment` setting
     /// numbered `environment`.
@@ -355,7 +355,7 @@ pub enum Address {
 }
 
 /// A provider's `idempotency:` as a call needs it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyPlan {
     /// The header the key goes in.
     pub header: String,
@@ -379,7 +379,7 @@ pub struct IdempotencyPlan {
 }
 
 /// One connection to a provider package.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ConnectionPlan {
     /// Its name in `connections:`, `couriers`.
     pub name: String,
@@ -416,7 +416,7 @@ pub struct ConnectionPlan {
 }
 
 /// One part of an operation's path.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PathPart {
     Fixed(String),
     /// A placeholder: the input's member of this spelling on the wire.
@@ -424,7 +424,7 @@ pub enum PathPart {
 }
 
 /// An operation an application calls.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OperationPlan {
     /// Its connection's place in [`ProviderPlan::connections`].
     pub connection: u32,
@@ -479,7 +479,7 @@ pub struct CallSite {
 /// How a provider signs its webhooks (area 11, "Receiving from outside";
 /// chunk 7.7): the built-in schemes, extended by Jadpo releases, each
 /// checked over the request's raw body.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SignatureScheme {
     /// Stripe's `Stripe-Signature: t=<seconds>,v1=<hex>`: HMAC-SHA-256 of
     /// `<t>.<body>` under the secret as written.
@@ -549,7 +549,7 @@ impl SignatureScheme {
 
 /// How a provider checks an address before it sends to it (area 11,
 /// "Handshakes"; chunk 7.7b): built-in rules the runtime answers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum WebhookHandshake {
     /// AWS SNS's `SubscriptionConfirmation`: signed as every SNS message
     /// is, from the connection's topic, and confirmed by visiting its
@@ -591,7 +591,7 @@ impl WebhookHandshake {
 /// One connection's webhooks: where the runtime receives them, how they
 /// are signed, where each event's id, type and time are in its body, the
 /// events its package declares, and the store they are kept in.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WebhookPlan {
     /// The connection's name in `connections:`, `payments`.
     pub connection: String,
@@ -617,7 +617,7 @@ pub struct WebhookPlan {
 }
 
 /// An event a provider's webhook carries (chunk 7.7).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WebhookEvent {
     /// The type the provider names it with in `event_type:`'s place,
     /// `payment_intent.succeeded`.
@@ -635,7 +635,7 @@ pub struct WebhookEvent {
 
 /// How a webhook that needs a reply is answered (area 11, "Webhooks that
 /// need a reply"; chunk 7.7b).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WebhookReply {
     /// The identity key of the app's action the connection's `replies:`
     /// names, which takes the event and returns the reply.

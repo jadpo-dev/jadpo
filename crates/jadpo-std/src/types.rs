@@ -20,19 +20,25 @@
 use crate::{Builtin, Constant, Rules};
 
 /// A type's rules ready to compile into a validator, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct ValidatorId(pub u32);
 
 /// An object's, entity's or variant's shape, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct ShapeId(pub u32);
 
 /// A declared failure's plan, by number.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct FailureId(pub u32);
 
 /// A type's rules along its chain.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ValidatorPlan {
     /// What the chain is built on; `None` for an object, an enum or a
     /// container.
@@ -53,7 +59,7 @@ impl ValidatorPlan {
 }
 
 /// A failure's fields are sent to the caller or kept for the log (area 4).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Section {
     Client,
     Internal,
@@ -69,7 +75,7 @@ impl Section {
 }
 
 /// One field of an object, entity, variant or failure.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FieldPlan {
     /// Its identity key: `field PaymentOutcome.paid.receipt`.
     pub key: String,
@@ -97,7 +103,7 @@ pub struct FieldPlan {
 }
 
 /// A variant: its name and where it stands among its enum's variants.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct VariantPlan {
     pub name: String,
     /// From 0, in the order the enum declares its variants.
@@ -105,7 +111,7 @@ pub struct VariantPlan {
 }
 
 /// What an object, entity or variant is made of.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ShapePlan {
     /// The object's type or entity, or the variant's enum, by its name now.
     pub ty: String,
@@ -133,7 +139,7 @@ impl ShapePlan {
 }
 
 /// A declared failure (area 4).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FailurePlan {
     /// Its identity key: `type QuantityUnavailable`.
     pub key: String,

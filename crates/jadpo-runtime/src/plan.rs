@@ -1,15 +1,20 @@
-//! The parts of a program's plan the runtime reads (chunk 7.9e): one
-//! borrowed view, [`RuntimePlan`], which an [`crate::Executor`] gives
-//! through [`crate::Executor::plan`], so the runtime builds what each of
-//! its parts runs with (a delivery's subscribers, a batch's codecs, a
-//! provider call's connections and credentials) itself, rather than each
+//! The runtime's plan (chunks 7.9e and 8.1a). What the runtime reads of a
+//! program is one owned value, [`RuntimePlan`] (`jadpo-std`'s), which
+//! `jadpo-plan` builds and compiled code holds in its canonical bytes.
+//! [`Loaded`] is it on one thread: its validators compiled, once for every
+//! thread, and its shapes made, since values never cross threads (§2.6).
+//! [`Plan`] is the view an [`crate::Executor`] gives through
+//! [`crate::Executor::plan`], borrowed from one loaded plan, from which the
+//! runtime builds what each of its parts runs with (a delivery's
+//! subscribers, a batch's codecs, a provider call's connections and
+//! credentials, the HTTP component's [`App`]) itself, rather than each
 //! executor bundling them. What the program started with besides, its
 //! settings' values and the secrets held apart from them, is
 //! [`crate::Started`], reached through the context.
-//!
-//! Phase 8 (chunk 8.1) makes it one plan with a canonical byte encoding,
-//! which compiled code holds as constants.
 
+use std::sync::{Arc, OnceLock};
+
+pub use jadpo_std::RuntimePlan;
 use jadpo_std::ai::AiPlan;
 use jadpo_std::batch::BatchPlan;
 use jadpo_std::config::ConfigPlan;
@@ -22,13 +27,103 @@ use jadpo_std::schedule::SchedulesPlan;
 use jadpo_std::subscriber::EventsPlan;
 use jadpo_std::types::FailurePlan;
 use jadpo_std::write::PurgePlan;
+use jadpo_value::Validator;
+use jadpo_value::shape::Shape;
 
+use crate::http::App;
 use crate::{JsonCodecs, Started};
 
-/// What the runtime reads of a program's plan, borrowed from its executor:
-/// `None` (or nothing) for a part an executor has none of.
+/// A runtime plan loaded on one thread: see the module.
+#[derive(Debug)]
+pub struct Loaded {
+    plan: Arc<RuntimePlan>,
+    validators: Arc<[Validator]>,
+    /// Each shape with its names as values hold them, by number.
+    shapes: Vec<Shape>,
+}
+
+impl Loaded {
+    /// Each of `plan`'s validators, compiled, by number: what every
+    /// thread's [`Loaded`] shares, so a project's patterns are compiled
+    /// once.
+    pub fn compile(plan: &RuntimePlan) -> Arc<[Validator]> {
+        plan.validators
+            .iter()
+            .map(|plan| {
+                Validator::new(plan.builtin, plan.rules.clone()).with_across(plan.across.clone())
+            })
+            .collect()
+    }
+
+    /// `plan` loaded on this thread, its validators compiled.
+    pub fn new(plan: Arc<RuntimePlan>) -> Loaded {
+        let validators = Loaded::compile(&plan);
+        Loaded::sharing(plan, validators)
+    }
+
+    /// `plan` loaded on this thread with `validators`, which
+    /// [`Loaded::compile`] made from it, on this thread or another.
+    pub fn sharing(plan: Arc<RuntimePlan>, validators: Arc<[Validator]>) -> Loaded {
+        let shapes = plan.shapes.iter().map(Shape::new).collect();
+        Loaded {
+            plan,
+            validators,
+            shapes,
+        }
+    }
+
+    /// The plan it loaded.
+    pub fn runtime(&self) -> &Arc<RuntimePlan> {
+        &self.plan
+    }
+
+    /// Its validators, compiled, by number: what another thread's
+    /// [`Loaded::sharing`] takes.
+    pub fn validators(&self) -> &Arc<[Validator]> {
+        &self.validators
+    }
+
+    /// Its shapes, by number.
+    pub fn shapes(&self) -> &[Shape] {
+        &self.shapes
+    }
+
+    /// The view the runtime's parts read: every part of the plan, with
+    /// this thread's validators and shapes.
+    pub fn plan(&self) -> Plan<'_> {
+        let plan = &*self.plan;
+        Plan {
+            json: JsonCodecs {
+                codecs: jadpo_value::json::Codecs {
+                    codecs: &plan.json.codecs,
+                    validators: &self.validators,
+                    shapes: &self.shapes,
+                    coder: None,
+                },
+                types: &plan.json.types,
+            },
+            failures: &plan.failures,
+            config: Some(&plan.config),
+            routes: Some(&plan.routes),
+            events: Some(&plan.events),
+            event_numbers: &plan.json.events,
+            batches: &plan.batches,
+            schedules: Some(&plan.schedules),
+            purges: &plan.purges,
+            file_stores: &plan.file_stores,
+            providers: Some(&plan.providers),
+            ai: plan.ai.as_ref(),
+            prompts: Some(&plan.prompts),
+            prompt_recordings: &plan.prompt_recordings,
+        }
+    }
+}
+
+/// What the runtime reads of a program's plan, borrowed from its
+/// executor's [`Loaded`]: `None` (or nothing) for a part an executor has
+/// none of.
 #[derive(Clone, Copy)]
-pub struct RuntimePlan<'a> {
+pub struct Plan<'a> {
     /// The plan's JSON table with the program's validators and shapes:
     /// what a JSON-held column, an event's payload, a provider's input and
     /// answer, and a prompt's fields are written and read with.
@@ -38,7 +133,8 @@ pub struct RuntimePlan<'a> {
     /// The settings, which [`Started::new`] reads the values of.
     pub config: Option<&'a ConfigPlan>,
     /// The route table, whose sign-in and `client_address:` settings
-    /// [`Started::new`] reads.
+    /// [`Started::new`] reads, and whose routes and codecs the HTTP
+    /// component answers with ([`Plan::app`]).
     pub routes: Option<&'a RouteTable>,
     /// The program's subscribers, and each event type's number in the JSON
     /// table.
@@ -63,9 +159,9 @@ pub struct RuntimePlan<'a> {
     pub prompt_recordings: &'a [PromptRecording],
 }
 
-impl std::fmt::Debug for RuntimePlan<'_> {
+impl std::fmt::Debug for Plan<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RuntimePlan")
+        f.debug_struct("Plan")
             .field("events", &self.events.is_some())
             .field("batches", &self.batches.len())
             .field("purges", &self.purges.len())
@@ -73,9 +169,9 @@ impl std::fmt::Debug for RuntimePlan<'_> {
     }
 }
 
-impl RuntimePlan<'static> {
+impl Plan<'static> {
     /// A plan with nothing in it: an executor's that only runs callables.
-    pub const NONE: RuntimePlan<'static> = RuntimePlan {
+    pub const NONE: Plan<'static> = Plan {
         json: JsonCodecs::NONE,
         failures: &[],
         config: None,
@@ -93,7 +189,26 @@ impl RuntimePlan<'static> {
     };
 }
 
-impl<'a> RuntimePlan<'a> {
+impl<'a> Plan<'a> {
+    /// What the HTTP component answers the program's routes with (area 7):
+    /// the route table and its codecs, with this thread's validators and
+    /// shapes; a program with no routes answers every path `404`.
+    pub fn app(self) -> App<'a> {
+        static NO_ROUTES: OnceLock<RouteTable> = OnceLock::new();
+        let table = self
+            .routes
+            .unwrap_or_else(|| NO_ROUTES.get_or_init(RouteTable::default));
+        App {
+            table,
+            codecs: jadpo_value::json::Codecs {
+                codecs: &table.codecs,
+                ..self.json.codecs
+            },
+            failures: self.failures,
+            json: self.json,
+        }
+    }
+
     /// The program's subscribers and the codecs its events' payloads are
     /// read with (area 12, chunk 6.1b): what the runner delivers an event
     /// with. `None` for a program that has none to deliver to.

@@ -7,7 +7,7 @@
 //! runs on (area 10, "Client addresses"), and how long each purge waits
 //! (area 5, "Lifecycle").
 //!
-//! [`Started::new`] reads it from the plan ([`crate::RuntimePlan`]) and
+//! [`Started::new`] reads it from the plan ([`crate::Plan`]) and
 //! the values; the context reaches it ([`crate::Ctx::started`]), so a
 //! setting is read one way wherever it is read: a test's own value (its
 //! `config:`, area 13), else the one the program started with
@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 use jadpo_value::Value;
 
-use crate::RuntimePlan;
+use crate::Plan;
 use crate::config::ConfigValues;
 use crate::effects::Keys;
 use crate::http::address::{ClientAddress, Target};
@@ -61,7 +61,7 @@ impl Started {
     /// given `values`: what the application started with, or a test run's.
     /// With no values, no setting has one, and each purge waits only as
     /// long as its own `after:` says.
-    pub fn new(plan: &RuntimePlan<'_>, values: Option<&ConfigValues>, target: Target) -> Started {
+    pub fn new(plan: &Plan<'_>, values: Option<&ConfigValues>, target: Target) -> Started {
         let validators = plan.json.codecs.validators;
         let purge_after = plan
             .purges

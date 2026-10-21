@@ -1660,6 +1660,7 @@ dependencies = [
  "html5ever",
  "idna",
  "regex",
+ "serde",
  "serde_json",
  "spdx",
 ]
