@@ -437,9 +437,9 @@ mod tests {
         Value::record(
             "EmailMessage",
             vec![
-                (Rc::from("from"), Value::text("hello@acme.test")),
+                (Rc::from("from"), Value::text("orders@grocer.test")),
                 (Rc::from("to"), Value::text("ana@example.test")),
-                (Rc::from("subject"), Value::text("Welcome, Ana")),
+                (Rc::from("subject"), Value::text("Your tide table for May")),
                 (Rc::from("html"), Value::None),
                 (Rc::from("text"), Value::text("Hi")),
                 (Rc::from("attachments"), Value::List(Vec::new().into())),
