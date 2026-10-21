@@ -233,6 +233,52 @@ fn check_as_json_is_the_same_list() {
     assert!(!output.stdout.contains(SECRET));
 }
 
+/// A database's address may not set TLS itself, since its connection in
+/// `app.jadpo` decides, and the authority a connection names must be PEM
+/// (area 5, "PostgreSQL over TLS"; chunk 8.1n).
+#[test]
+fn a_database_address_that_sets_tls_itself_and_an_authority_that_isnt_pem_are_refused() {
+    let root = folder("check-tls");
+    write(
+        &root,
+        "app.jadpo",
+        "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n            authority: config.database_authority\n        }\n    }\n}\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "config {\n    database_authority: Certificate\n    database_url: PostgresUrl\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let env = Environment::empty()
+        .with_var(
+            "DATABASE_URL",
+            "postgresql://app:pw@db.example.test/app?sslmode=require",
+        )
+        .with_var("DATABASE_AUTHORITY", "not a certificate");
+    let output = jadpo_with(env, &root, &["config", "check"]);
+    assert_eq!(output.code, 1);
+    assert!(
+        output
+            .stdout
+            .contains("error: `DATABASE_URL` sets TLS itself")
+            && output
+                .stdout
+                .contains("which the database's connection in `app.jadpo` decides"),
+        "{}",
+        output.stdout
+    );
+    assert!(
+        output
+            .stdout
+            .contains("error: `DATABASE_AUTHORITY` isn't a valid value for `database_authority`"),
+        "{}",
+        output.stdout
+    );
+    assert!(!output.stdout.contains("db.example.test") && !output.stdout.contains("pw@"));
+}
+
 #[test]
 fn a_project_without_settings_says_so() {
     let root = folder("check-none");

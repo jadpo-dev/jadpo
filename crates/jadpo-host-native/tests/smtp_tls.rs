@@ -229,6 +229,7 @@ impl Transport for ToTheTestServer {
         &'a self,
         stream: Box<dyn Stream>,
         name: &'a str,
+        _: jadpo_drivers::Trust<'a>,
     ) -> LocalFuture<'a, std::io::Result<Box<dyn Stream>>> {
         Box::pin(tls::upgrade(Arc::clone(&self.config), stream, name))
     }

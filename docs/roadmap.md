@@ -2263,20 +2263,26 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   `NoAnswer`. Proved deterministically by a server that drops every
   kept connection's second request: a `GET` and a keyed `POST` answered
   on a fresh connection, an unkeyed `POST` not sent again.
-- [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m:
-  PostgreSQL's TLS through
-  `Transport::upgrade`, live-tested against a server the harness starts
-  with a certificate it makes. The pages don't say when a database
-  connection must use TLS, nor how one names a private certificate
-  authority (Amazon RDS's and Cloud SQL's aren't in the public roots).
-  *Decided (Richard, 2026-10-21), area 5's decisions table:* as area 16
-  decides for SMTP: TLS always, checked
-  against Mozilla's roots compiled in, except to this machine (a Unix
-  socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a
-  `Certificate` setting holding its server's authority; a server
-  elsewhere without TLS is reached only when the connection says so in
-  `app.jadpo`, which the review report lists; `sslmode` in the URL is
-  refused, since the connection decides.
+- [x] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m. Built:
+  as area 5 decides (Richard, 2026-10-21), a database connection always
+  over TLS, checked against Mozilla's roots compiled in, but to this
+  machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`), through
+  PostgreSQL's SSL request and `Transport::upgrade`, which now takes whom
+  it trusts (`Trust`); `authority: config.<name>`, a setting of area 19's
+  `Certificate`, read from its PEM, trusted alone and to this machine too;
+  `tls: false` for a server elsewhere that offers none, listed in the
+  network report; an address setting `sslmode` or another `ssl…` refused
+  by the driver, `PostgresUrl`'s check and `jadpo migrate`; a refusal a
+  fault naming the server, never unavailable. The plan carries it
+  (`DatabaseTls`, plan format 6), the factory builds it
+  (`Postgres::secured`), and `jadpo dev`, `migrate`, `schedules`, `runs`,
+  `deliveries` and `ai usage` open a database as its connection says.
+  `jadpo check` refuses another key on a database connection, an
+  `authority:` that isn't a `Certificate` setting, `tls:` written other
+  than `false`, and both together. Proved against a scripted server and
+  live against servers the harness starts on `127.0.0.1`, one with a
+  certificate a test authority signed (`Server::start_on_tcp`). §2.6's
+  "PostgreSQL over TLS".
 - [ ] **8.1o A native deployable** `opus · xhigh`, after 8.1j and 8.1n:
   `deployables: { }` read from `app.jadpo` (area 14, question 14; with
   none declared, one deployable runs everything) and `jadpo build`

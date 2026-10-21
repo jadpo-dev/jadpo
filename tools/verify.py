@@ -129,8 +129,10 @@ class TestBinary:
 # isn't listed here gets a step of its own (live_test_files), so leaving
 # one out can't make its live tests skip.
 POSTGRES = [
-    # The driver, the test database's template and copies.
-    ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
+    # The driver, the test database's template and copies; and TLS to
+    # servers of its own on this machine, one given a certificate the
+    # test makes (chunk 8.1n).
+    ('live PostgreSQL', [('jadpo-test', 'postgres'), ('jadpo-test', 'postgres_tls')], ['--nocapture']),
     # Each test's outcome-and-effect record: the corpus run twice with the
     # same records, and a perturbed run named where it differs (chunk 8.1c).
     ('live PostgreSQL: outcome-and-effect records', [('jadpo-test', 'records')], []),

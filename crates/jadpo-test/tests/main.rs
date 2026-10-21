@@ -6,5 +6,12 @@
 #[path = "../../jadpo-syntax/tests/support/examples.rs"]
 mod syntax_examples;
 
+// The certificate authority jadpo-host-native's tests make (chunk 8.1b),
+// for a server offering TLS (chunk 8.1n).
+#[path = "../../jadpo-host-native/tests/authority.rs"]
+#[allow(dead_code)]
+mod authority;
+
 mod postgres;
+mod postgres_tls;
 mod records;

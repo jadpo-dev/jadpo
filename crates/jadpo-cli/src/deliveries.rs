@@ -49,6 +49,7 @@ use jadpo_runtime::schedules::watch::Declared;
 use jadpo_runtime::unfinished::{self, Record};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table, Token};
 
+use crate::database::Address;
 use crate::run::{Call, Reply, quoted};
 use crate::schedules::{clock, now, plural, store_error, tick_every, url_of};
 
@@ -359,7 +360,7 @@ impl Project {
 
     /// Each store with its database's address: all of them, or with
     /// `--url`, the one it names.
-    fn databases(&self, call: &Call) -> Result<Vec<(String, Holds, String)>, Reply> {
+    fn databases(&self, call: &Call) -> Result<Vec<(String, Holds, Address)>, Reply> {
         if call.value("--url").is_some() {
             let chosen = match call.value("--store") {
                 Some(store) => match self.stores.iter().find(|(name, _)| name == store) {
@@ -394,6 +395,7 @@ impl Project {
                 },
             };
             let url = call.value("--url").unwrap_or_default().to_string();
+            let url = Address::of(call, &self.loaded, &chosen.0, url)?;
             return Ok(vec![(chosen.0, chosen.1, url)]);
         }
         if let Some(store) = call.value("--store") {
@@ -466,7 +468,7 @@ impl Project {
 /// it is `deliveries.unavailable`.
 fn with_database<T>(
     store: &str,
-    url: &str,
+    url: &Address,
     work: impl for<'d> FnOnce(
         &'d dyn jadpo_runtime::Database,
     )
@@ -485,7 +487,7 @@ fn with_database<T>(
         )
     };
     let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = jadpo_host_native::postgres(url).map_err(|error| failed(store_error(&error)))?;
+    let database = url.open().map_err(|error| failed(store_error(&error)))?;
     runtime
         .block_on(work(&database))
         .map_err(|error| failed(store_error(&error)))
@@ -1178,7 +1180,7 @@ fn list_screen(
 // --- actions ----------------------------------------------------------------
 
 /// Each store's database, with what it holds and its address.
-type Databases = Vec<(String, Holds, String)>;
+type Databases = Vec<(String, Holds, Address)>;
 
 /// The one item whose id ends with `suffix` at `now`, with the store it
 /// is in and its database's address, and every store's database:
@@ -1191,9 +1193,9 @@ fn locate(
     suffix: &str,
     command: &str,
     now: i64,
-) -> Result<(Databases, String, String, Item), Reply> {
+) -> Result<(Databases, String, Address, Item), Reply> {
     let databases = project.databases(call)?;
-    let mut found: Vec<(String, String, Item)> = Vec::new();
+    let mut found: Vec<(String, Address, Item)> = Vec::new();
     for (store, holds, url) in &databases {
         let items = with_database(store, url, |database| {
             let holds = *holds;
@@ -1244,9 +1246,9 @@ fn locate(
 fn record_of(
     databases: &Databases,
     store: &str,
-    url: &str,
+    url: &Address,
     item: &Item,
-) -> Result<Option<(String, String, Record)>, Reply> {
+) -> Result<Option<(String, Address, Record)>, Reply> {
     match item.kind {
         Kind::ScheduleRun | Kind::Message => Ok(None),
         Kind::Request => {
@@ -1254,7 +1256,7 @@ fn record_of(
             let found = with_database(store, url, |database| {
                 Box::pin(async move { unfinished::by_id(database, &id).await })
             })?;
-            Ok(found.map(|record| (store.to_string(), url.to_string(), record)))
+            Ok(found.map(|record| (store.to_string(), url.clone(), record)))
         }
         Kind::Delivery => {
             for (other, holds, other_url) in databases {

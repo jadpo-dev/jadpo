@@ -25,6 +25,7 @@ use std::path::PathBuf;
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table};
 
+use crate::database::Address;
 use crate::run::{Call, Reply, quoted};
 use crate::schedules::{clock, now, plural, store_error, url_of};
 
@@ -362,7 +363,7 @@ fn databases(
     call: &Call,
     root: &std::path::Path,
     loaded: &jadpo_db::Loaded,
-) -> Result<Vec<(String, String, Keeps)>, Reply> {
+) -> Result<Vec<(String, Address, Keeps)>, Reply> {
     let schema = jadpo_check::data::schema(&loaded.db, loaded.project);
     let kept: BTreeMap<String, Keeps> = schema
         .stores
@@ -407,7 +408,8 @@ fn databases(
             }
         };
         let keeps = kept[&chosen];
-        return Ok(vec![(chosen, url.to_string(), keeps)]);
+        let url = Address::of(call, loaded, &chosen, url.to_string())?;
+        return Ok(vec![(chosen, url, keeps)]);
     }
     if let Some(store) = call.value("--store") {
         return Err(Reply::failed(arguments(
@@ -440,7 +442,7 @@ fn databases(
 /// it is `runs.unavailable`.
 fn with_database<T>(
     store: &str,
-    url: &str,
+    url: &Address,
     work: impl for<'d> FnOnce(
         &'d dyn jadpo_runtime::Database,
     )
@@ -459,7 +461,7 @@ fn with_database<T>(
         )
     };
     let runtime = jadpo_host_native::Runtime::new().map_err(|error| failed(error.to_string()))?;
-    let database = jadpo_host_native::postgres(url).map_err(|error| failed(store_error(&error)))?;
+    let database = url.open().map_err(|error| failed(store_error(&error)))?;
     runtime
         .block_on(work(&database))
         .map_err(|error| failed(store_error(&error)))

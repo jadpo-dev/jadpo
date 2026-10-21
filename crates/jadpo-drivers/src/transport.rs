@@ -53,6 +53,17 @@ impl fmt::Display for Endpoint {
     }
 }
 
+/// Whom a TLS upgrade trusts to vouch for the server's certificate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Trust<'a> {
+    /// The host's roots: natively Mozilla's, compiled in.
+    Roots,
+    /// Only these authorities, each certificate in DER: the private one a
+    /// database connection names (area 5, "PostgreSQL over TLS"; chunk
+    /// 8.1n).
+    Authorities(&'a [Vec<u8>]),
+}
+
 /// What a host gives a driver: connections, TLS over them, somewhere to
 /// run the task each connection needs, a timer and the clock. Nothing
 /// here is `Send`: the runtime is single-threaded by design.
@@ -61,21 +72,24 @@ pub trait Transport {
     fn connect(&self, endpoint: &Endpoint) -> LocalFuture<'_, io::Result<Box<dyn Stream>>>;
 
     /// Turns `stream` into TLS, as its client, checking the server's
-    /// certificate against the host's roots and that it was issued for
-    /// `name`, a host name or an address (chunk 8.1b). Nothing may be
+    /// certificate against whom `trust` names (the host's roots, or a
+    /// connection's own authority since chunk 8.1n) and that it was
+    /// issued for `name`, a host name or an address (chunk 8.1b). Nothing
+    /// may be
     /// waiting to be read on `stream`: a protocol upgrades where its
     /// conversation says to (SMTP's `STARTTLS`, PostgreSQL's answer to its
     /// SSL request), or before anything is written for one that speaks TLS
     /// from the start. A certificate or name that fails the check is
-    /// [`io::ErrorKind::InvalidData`], a name that can't be checked
-    /// [`io::ErrorKind::InvalidInput`], and a host with no TLS
+    /// [`io::ErrorKind::InvalidData`], a name or an authority that can't
+    /// be checked [`io::ErrorKind::InvalidInput`], and a host with no TLS
     /// [`io::ErrorKind::Unsupported`]; anything else is the connection's.
     fn upgrade<'a>(
         &'a self,
         stream: Box<dyn Stream>,
         name: &'a str,
+        trust: Trust<'a>,
     ) -> LocalFuture<'a, io::Result<Box<dyn Stream>>> {
-        let _ = (stream, name);
+        let _ = (stream, name, trust);
         Box::pin(async {
             Err(io::Error::new(
                 io::ErrorKind::Unsupported,

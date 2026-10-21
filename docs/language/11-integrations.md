@@ -1463,7 +1463,10 @@ one-line change in review. For the app above:
 | `ledger` | the address in `config.ledger_address` | always | `Ledger.v1` | `billing` |
 
 A database or cache connection is listed at the address in its `url:`
-setting, for the domains whose entities it stores; a store of files on
+setting, for the domains whose entities it stores, a database's `For`
+saying `without TLS` when its connection says `tls: false` and the setting
+its server's certificate is checked against when it names an `authority:`
+(area 5, "PostgreSQL over TLS"; chunk 8.1n); a store of files on
 the disk driver reaches no host and isn't listed. A package Jadpo runs
 (`runs:`) is listed as the service it runs from its image; the hosts a
 service asks for join the report with services (not yet on the roadmap).

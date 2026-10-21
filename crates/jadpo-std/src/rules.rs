@@ -655,6 +655,12 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
         Builtin::PostgresUrl if !is_connection_url(text, &["postgres", "postgresql"]) => {
             Err("isn't a PostgreSQL address, which starts `postgres://` or `postgresql://`".into())
         }
+        Builtin::PostgresUrl => match crate::database_tls::tls_parameter(text) {
+            Some(key) => Err(format!(
+                "sets `{key}`, which the database's connection in `app.jadpo` decides: TLS always, but to this machine (area 5, \"PostgreSQL over TLS\")"
+            )),
+            None => Ok(()),
+        },
         Builtin::RedisUrl if !is_connection_url(text, &["redis", "rediss"]) => {
             Err("isn't a Redis address, which starts `redis://` or `rediss://`".into())
         }

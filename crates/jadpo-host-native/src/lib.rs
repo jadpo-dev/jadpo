@@ -77,7 +77,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use jadpo_drivers::{Endpoint, Stream, Transport};
+use jadpo_drivers::{Endpoint, Stream, Transport, Trust};
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, RateLimits, StoreError};
 use jadpo_std::http::RateLimit;
 use tokio::task::LocalSet;
@@ -86,7 +86,7 @@ pub use signals::stop_signals;
 
 pub use jadpo_drivers::factory::{Drivers, Supplies};
 pub use jadpo_drivers::package::JsonHttp;
-pub use jadpo_drivers::postgres::Postgres;
+pub use jadpo_drivers::postgres::{Postgres, Security};
 
 /// One current-thread tokio runtime and the `LocalSet` its tasks run in.
 /// Everything a store connects is driven by [`Runtime::block_on`], so a
@@ -144,8 +144,15 @@ impl Transport for NativeTransport {
         &'a self,
         stream: Box<dyn Stream>,
         name: &'a str,
+        trust: Trust<'a>,
     ) -> LocalFuture<'a, io::Result<Box<dyn Stream>>> {
-        Box::pin(async move { tls::upgrade(tls::config()?, stream, name).await })
+        Box::pin(async move {
+            let config = match trust {
+                Trust::Roots => tls::config()?,
+                Trust::Authorities(authorities) => tls::trusting_all(authorities)?,
+            };
+            tls::upgrade(config, stream, name).await
+        })
     }
 
     fn spawn(&self, task: LocalFuture<'static, ()>) {
@@ -186,9 +193,18 @@ async fn unix(endpoint: &Endpoint) -> io::Result<Box<dyn Stream>> {
 }
 
 /// A PostgreSQL store for `url` over [`NativeTransport`]. It connects when
-/// its first transaction begins, inside [`Runtime::block_on`].
+/// its first transaction begins, inside [`Runtime::block_on`], over TLS
+/// checked against Mozilla's roots to any server but this machine (chunk
+/// 8.1n).
 pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
     Postgres::new(url, Rc::new(NativeTransport))
+}
+
+/// A PostgreSQL store for `url` over [`NativeTransport`], secured as its
+/// connection in `app.jadpo` says (area 5, "PostgreSQL over TLS"; chunk
+/// 8.1n).
+pub fn postgres_secured(url: &str, security: Security) -> Result<Postgres, StoreError> {
+    Postgres::secured(url, Rc::new(NativeTransport), security)
 }
 
 /// What a native host gives the driver factory (chunk 8.1d): tokio's
