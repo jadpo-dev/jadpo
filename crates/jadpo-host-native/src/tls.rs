@@ -7,12 +7,11 @@
 //! `ring`'s cryptography.
 
 use std::io;
-use std::net::TcpStream;
 use std::sync::{Arc, OnceLock};
 
 use jadpo_drivers::Stream;
 use rustls::pki_types::ServerName;
-use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+use rustls::{ClientConfig, RootCertStore};
 
 /// The configuration every connection is secured with: Mozilla's roots.
 pub fn config() -> io::Result<Arc<ClientConfig>> {
@@ -50,7 +49,7 @@ fn built(roots: RootCertStore) -> io::Result<Arc<ClientConfig>> {
 
 /// `name`, a host name or an address (an IPv6 one with or without its
 /// brackets), as the certificate must name it.
-fn server_name(name: &str) -> io::Result<ServerName<'static>> {
+pub(crate) fn server_name(name: &str) -> io::Result<ServerName<'static>> {
     let bare = name.trim_start_matches('[').trim_end_matches(']');
     ServerName::try_from(bare.to_string()).map_err(|_| {
         io::Error::new(
@@ -73,20 +72,6 @@ pub async fn upgrade(
         .connect(name, stream)
         .await?;
     Ok(Box::new(secure))
-}
-
-/// A blocking socket as TLS to `name`, its handshake done: what a provider
-/// call's HTTPS is sent over (chunk 7.2c).
-pub fn blocking(
-    mut stream: TcpStream,
-    name: &str,
-) -> io::Result<StreamOwned<ClientConnection, TcpStream>> {
-    let mut connection = ClientConnection::new(config()?, server_name(name)?)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    while connection.is_handshaking() {
-        connection.complete_io(&mut stream)?;
-    }
-    Ok(StreamOwned::new(connection, stream))
 }
 
 #[cfg(test)]

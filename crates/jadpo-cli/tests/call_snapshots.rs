@@ -396,7 +396,7 @@ fn a_call_holds_no_transaction_and_a_change_meanwhile_reruns_the_action() {
     let (_, url) = copy.stores.get("main").expect("main").clone();
     let runtime = Runtime::new().expect("a runtime");
     let store = jadpo_host_native::postgres(&url).expect("a store");
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
         .with("couriers", driver);
 
@@ -543,7 +543,7 @@ fn a_record_deleted_while_the_call_is_out_reruns_the_action() {
     let (_, url) = copy.stores.get("main").expect("main").clone();
     let runtime = Runtime::new().expect("a runtime");
     let store = jadpo_host_native::postgres(&url).expect("a store");
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
         .with("couriers", driver);
     let added = run(

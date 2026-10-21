@@ -1,341 +1,203 @@
-//! HTTP for the package driver natively (area 11, "Calling"; chunk 7.2c):
-//! [`NativeFetch`] sends a provider call's request over a socket of its
-//! own, HTTPS through rustls with the certificate and the host checked
-//! against Mozilla's roots ([`crate::tls`], since chunk 8.1b),
-//! or plain HTTP to this machine, which is how a test reaches its server.
-//! Each exchange runs on tokio's blocking pool, so the worker's thread
-//! goes on serving while a provider answers, and is given up once the
-//! call's timeout passes.
+//! HTTP out of the process natively (area 11, "Calling"; chunks 7.2c and
+//! 8.1m): [`NativeFetch`], what the package driver sends a provider's call
+//! with, and [`Outward`], what the runtime fetches on its own account, each
+//! a `Client` of its own per worker: hyper's HTTP/1.1 over tokio's
+//! sockets on the worker's thread, HTTPS through rustls with the
+//! certificate and the host checked against Mozilla's roots
+//! ([`crate::tls`]), its connector made once.
+//!
+//! - **Connections are kept per host.** An answer read to its end gives
+//!   its connection back, and the next call to that host takes it, with at
+//!   most [`MOST_IDLE`] waiting for each host, none longer than [`IDLE`].
+//!   One the server closed, or said it would close, is let go before
+//!   anything is written on it, and a request a kept connection hands back
+//!   unsent goes out on a fresh one, so keeping connections never turns a
+//!   call that never left into one that may have acted.
+//! - **A call ends with its timeout or its future.** Its timeout ends its
+//!   exchange, and so does its future dropped: the connection it was on
+//!   is closed at once and never kept, so nothing goes on reading for a
+//!   call no one waits for.
+//! - **A streamed answer is read as it comes**, each piece waited for at
+//!   most the call's timeout; dropping its body closes its connection.
+//! - **A name is looked up only when a connection is opened**, with the
+//!   system's resolver on tokio's blocking pool (so `/etc/hosts` and the
+//!   platform's own configuration count), within the call's timeout.
+//! - **No redirect is followed**: a `3xx` is an answer like any other.
 
-use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::io;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
+use hyper::client::conn::http1;
+use hyper::header::{self, HeaderMap};
+use hyper_util::rt::TokioIo;
 use jadpo_drivers::package::{Fetch, FetchError, Opened};
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::provider::{MOST_ANSWER, Request, Response};
 use jadpo_runtime::stream::{Chunk, Coming};
+use rustls::ClientConfig;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::net::TcpStream;
+use tokio::time::Instant;
 
 /// The longest a connection is waited for, within the call's timeout.
 const CONNECT: Duration = Duration::from_secs(5);
 
-/// The package driver's HTTP natively.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NativeFetch;
+/// How long a kept connection waits for its next call before it is let go.
+pub const IDLE: Duration = Duration::from_secs(30);
+
+/// The most connections kept waiting for one host, per client.
+pub const MOST_IDLE: usize = 8;
+
+/// The package driver's HTTP natively, one per worker
+/// ([`crate::supplies`]): HTTPS checked against Mozilla's roots, or plain
+/// HTTP, to any address the request names (the package driver keeps plain
+/// HTTP to this machine).
+#[derive(Clone)]
+pub struct NativeFetch {
+    client: Client,
+}
+
+impl NativeFetch {
+    /// A client checking servers against Mozilla's roots.
+    pub fn new() -> NativeFetch {
+        NativeFetch {
+            client: Client::new(crate::tls::config().ok(), Guard::Open),
+        }
+    }
+
+    /// A client checking servers against `config` alone: a test's own
+    /// authority ([`crate::tls::trusting`]).
+    pub fn trusting(config: Arc<ClientConfig>) -> NativeFetch {
+        NativeFetch {
+            client: Client::new(Some(config), Guard::Open),
+        }
+    }
+}
+
+impl Default for NativeFetch {
+    fn default() -> NativeFetch {
+        NativeFetch::new()
+    }
+}
+
+impl std::fmt::Debug for NativeFetch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("NativeFetch")
+    }
+}
 
 impl Fetch for NativeFetch {
     fn fetch<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Response, FetchError>> {
-        let request = request.clone();
         Box::pin(async move {
-            let timeout = Duration::from_millis(request.timeout_ms.max(1));
-            let exchange = tokio::task::spawn_blocking(move || exchange(&request, timeout));
-            match tokio::time::timeout(timeout, exchange).await {
-                Ok(Ok(answered)) => answered,
-                Ok(Err(_)) => Err(FetchError::NoAnswer("the exchange stopped".into())),
-                Err(_) => Err(FetchError::TimedOut),
-            }
+            let deadline = Instant::now() + wait(request.timeout_ms);
+            let target = target(&request.url).ok_or_else(unsendable)?;
+            let (answer, lease) = self
+                .client
+                .send(&target, outgoing(request, &target)?, deadline)
+                .await?;
+            let (head, body) = answer.into_parts();
+            let body = tokio::time::timeout_at(deadline, whole(body, MOST_ANSWER))
+                .await
+                .map_err(|_| FetchError::TimedOut)??;
+            lease.give_back(keeps(&head.headers));
+            Ok(Response {
+                status: head.status.as_u16(),
+                headers: headers(&head.headers),
+                body,
+            })
         })
     }
 
-    /// The answer's head once it comes, its body read on a thread of its
-    /// own and handed over as it arrives (chunk 5.5v6): what a model's
-    /// streamed answer is read with. Dropping the body closes the
-    /// connection at once, so a client that went away stops the reading.
+    /// The answer's head once it comes, within the call's timeout, and its
+    /// body as it comes (chunk 5.5v6): what a model's streamed answer is
+    /// read with.
     fn open<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Opened, FetchError>> {
-        let request = request.clone();
         Box::pin(async move {
-            let timeout = Duration::from_millis(request.timeout_ms.max(1));
-            let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-            let (closer_sender, closer) = std::sync::mpsc::channel::<TcpStream>();
-            std::thread::spawn(move || streamed(&request, timeout, &sender, &closer_sender));
-            let head = tokio::time::timeout(timeout, receiver.recv()).await;
-            let closing = closer.try_recv().ok();
-            match head {
-                Ok(Some(Part::Head(status, headers))) => Ok(Opened {
-                    status,
-                    headers,
-                    body: Box::new(Body { receiver, closing }),
+            let wait = wait(request.timeout_ms);
+            let target = target(&request.url).ok_or_else(unsendable)?;
+            let (answer, lease) = self
+                .client
+                .send(&target, outgoing(request, &target)?, Instant::now() + wait)
+                .await?;
+            let (head, body) = answer.into_parts();
+            Ok(Opened {
+                status: head.status.as_u16(),
+                headers: headers(&head.headers),
+                body: Box::new(Body {
+                    body,
+                    lease: Some(lease),
+                    keep: keeps(&head.headers),
+                    wait,
+                    read: 0,
                 }),
-                Ok(Some(Part::Failed(error))) => Err(error),
-                Ok(_) => Err(FetchError::NoAnswer("the exchange stopped".into())),
-                Err(_) => {
-                    if let Some(stream) = closing {
-                        let _ = stream.shutdown(std::net::Shutdown::Both);
-                    }
-                    Err(FetchError::TimedOut)
-                }
-            }
+            })
         })
     }
 }
 
-/// What the thread reading a streamed answer hands over.
-enum Part {
-    Head(u16, Vec<(String, String)>),
-    Failed(FetchError),
-    Chunk(Chunk),
-}
-
-/// A streamed answer's body as its thread hands it over; dropped, it
-/// shuts its connection, which ends the thread's read.
+/// A streamed answer's body, read as it comes. Read to its end, it gives
+/// its connection back; dropped before, or broken off, it closes it.
 struct Body {
-    receiver: tokio::sync::mpsc::UnboundedReceiver<Part>,
-    closing: Option<TcpStream>,
+    body: Incoming,
+    /// Its connection, until the body ends.
+    lease: Option<Lease>,
+    /// Whether the server keeps the connection open after it.
+    keep: bool,
+    /// The longest each piece is waited for.
+    wait: Duration,
+    /// How much has been read.
+    read: usize,
 }
 
 impl Coming for Body {
     fn next(&mut self) -> LocalFuture<'_, Chunk> {
         Box::pin(async move {
-            match self.receiver.recv().await {
-                Some(Part::Chunk(chunk)) => chunk,
-                _ => Chunk::Broken,
+            if self.lease.is_none() {
+                return Chunk::Broken;
             }
-        })
-    }
-}
-
-impl Drop for Body {
-    fn drop(&mut self) {
-        if let Some(stream) = self.closing.take() {
-            let _ = stream.shutdown(std::net::Shutdown::Both);
-        }
-    }
-}
-
-/// One streamed exchange, blocking, on its own thread: connect, send the
-/// request whole, hand over the head, then each part of the body as it is
-/// read, a chunked body's framing taken off, until it ends or no one is
-/// reading.
-fn streamed(
-    request: &Request,
-    timeout: Duration,
-    out: &tokio::sync::mpsc::UnboundedSender<Part>,
-    closer: &std::sync::mpsc::Sender<TcpStream>,
-) {
-    let failed = |error: FetchError| {
-        let _ = out.send(Part::Failed(error));
-    };
-    let Some(target) = target(&request.url) else {
-        return failed(FetchError::Refused("an address it can't send to".into()));
-    };
-    let bare = target.host.trim_start_matches('[').trim_end_matches(']');
-    let Ok(addresses) = (bare, target.port).to_socket_addrs() else {
-        return failed(FetchError::NotSent(format!(
-            "`{}` couldn't be found",
-            target.host
-        )));
-    };
-    let mut stream = None;
-    let mut last = String::from("nothing to connect to");
-    for address in addresses {
-        match TcpStream::connect_timeout(&address, CONNECT.min(timeout)) {
-            Ok(connected) => {
-                stream = Some(connected);
-                break;
-            }
-            Err(error) => last = error.to_string(),
-        }
-    }
-    let Some(stream) = stream else {
-        return failed(FetchError::NotSent(format!("no connection: {last}")));
-    };
-    let _ = stream.set_nodelay(true);
-    if let Err(error) = stream
-        .set_read_timeout(Some(timeout))
-        .and_then(|()| stream.set_write_timeout(Some(timeout)))
-    {
-        return failed(FetchError::NotSent(error.to_string()));
-    }
-    if let Ok(copy) = stream.try_clone() {
-        let _ = closer.send(copy);
-    }
-    let bytes = request_bytes(request, &target);
-    let reading = if target.secure {
-        match crate::tls::blocking(stream, bare) {
-            Ok(tls) => read_streamed(tls, &bytes, out),
-            Err(error) => {
-                return failed(FetchError::NotSent(format!(
-                    "no secure connection: {error}"
-                )));
-            }
-        }
-    } else {
-        read_streamed(stream, &bytes, out)
-    };
-    if let Err(error) = reading {
-        failed(error);
-    }
-}
-
-/// Writes `request` and hands over the answer's head, then its body as it
-/// is read. `Err` only before the head came.
-fn read_streamed<S: Read + Write>(
-    mut stream: S,
-    request: &[u8],
-    out: &tokio::sync::mpsc::UnboundedSender<Part>,
-) -> Result<(), FetchError> {
-    stream
-        .write_all(request)
-        .and_then(|()| stream.flush())
-        .map_err(|error| FetchError::NoAnswer(error.to_string()))?;
-    let mut raw = Vec::new();
-    let mut buffer = [0; 8192];
-    let start = loop {
-        if let Some((start, _)) = head(&raw) {
-            break start;
-        }
-        match stream.read(&mut buffer) {
-            Ok(0) => return Err(FetchError::NoAnswer("an answer that isn't HTTP".into())),
-            Ok(n) => raw.extend_from_slice(buffer.get(..n).unwrap_or_default()),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                return Err(FetchError::TimedOut);
-            }
-            Err(error) => return Err(FetchError::NoAnswer(error.to_string())),
-        }
-        if raw.len() > MOST_ANSWER {
-            return Err(FetchError::NoAnswer("an answer too long".into()));
-        }
-    };
-    let Some((_, lines)) = head(&raw) else {
-        return Err(FetchError::NoAnswer("an answer that isn't HTTP".into()));
-    };
-    let mut status_line = lines
-        .first()
-        .into_iter()
-        .flat_map(|line| line.split_whitespace());
-    let status = match (status_line.next(), status_line.next()) {
-        (Some(version), Some(code)) if version.starts_with("HTTP/1.") => code.parse().ok(),
-        _ => None,
-    }
-    .ok_or_else(|| FetchError::NoAnswer("an answer that isn't HTTP".into()))?;
-    let headers: Vec<(String, String)> = lines
-        .iter()
-        .skip(1)
-        .filter_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            Some((name.trim().to_ascii_lowercase(), value.trim().to_string()))
-        })
-        .collect();
-    let chunked =
-        header(&lines, "transfer-encoding").is_some_and(|v| v.eq_ignore_ascii_case("chunked"));
-    let mut left = header(&lines, "content-length").and_then(|v| v.parse::<usize>().ok());
-    if out.send(Part::Head(status, headers)).is_err() {
-        return Ok(());
-    }
-    let mut body = Chunking::new(chunked);
-    let mut pending: Vec<u8> = raw.get(start..).unwrap_or_default().to_vec();
-    let mut total = 0usize;
-    loop {
-        if !pending.is_empty() {
-            let mut data = body.take(&mut pending);
-            if let Some(length) = left.as_mut() {
-                data.truncate(*length);
-                *length -= data.len();
-            }
-            total += data.len();
-            if total > MOST_ANSWER {
-                let _ = out.send(Part::Chunk(Chunk::Broken));
-                return Ok(());
-            }
-            if !data.is_empty() && out.send(Part::Chunk(Chunk::Bytes(data))).is_err() {
-                return Ok(());
-            }
-            if body.ended || left == Some(0) {
-                let _ = out.send(Part::Chunk(Chunk::End));
-                return Ok(());
-            }
-        }
-        match stream.read(&mut buffer) {
-            Ok(0) => {
-                let ended = !chunked && left.is_none();
-                let _ = out.send(Part::Chunk(if ended { Chunk::End } else { Chunk::Broken }));
-                return Ok(());
-            }
-            Ok(n) => pending.extend_from_slice(buffer.get(..n).unwrap_or_default()),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                let _ = out.send(Part::Chunk(Chunk::TimedOut));
-                return Ok(());
-            }
-            Err(_) => {
-                let _ = out.send(Part::Chunk(Chunk::Broken));
-                return Ok(());
-            }
-        }
-    }
-}
-
-/// How a streamed body is framed, and how far its chunks have been read.
-struct Chunking {
-    chunked: bool,
-    /// Bytes left of the chunk being read, or `None` before a size line.
-    in_chunk: Option<usize>,
-    ended: bool,
-}
-
-impl Chunking {
-    fn new(chunked: bool) -> Chunking {
-        Chunking {
-            chunked,
-            in_chunk: None,
-            ended: false,
-        }
-    }
-
-    /// The body's data in `pending`, its chunks' framing taken off; what
-    /// can't be read yet stays.
-    fn take(&mut self, pending: &mut Vec<u8>) -> Vec<u8> {
-        if !self.chunked {
-            return std::mem::take(pending);
-        }
-        let mut data = Vec::new();
-        loop {
-            match self.in_chunk {
-                Some(0) => {
-                    // The line ending after a chunk's data.
-                    if pending.len() < 2 {
-                        return data;
-                    }
-                    pending.drain(..2);
-                    self.in_chunk = None;
-                }
-                Some(left) => {
-                    if pending.is_empty() {
-                        return data;
-                    }
-                    let n = left.min(pending.len());
-                    data.extend(pending.drain(..n));
-                    self.in_chunk = Some(left - n);
-                }
-                None => {
-                    let Some(end) = pending.windows(2).position(|w| w == b"\r\n") else {
-                        return data;
-                    };
-                    let size = std::str::from_utf8(pending.get(..end).unwrap_or_default())
-                        .ok()
-                        .and_then(|line| line.split(';').next())
-                        .and_then(|size| usize::from_str_radix(size.trim(), 16).ok());
-                    pending.drain(..end + 2);
-                    match size {
-                        Some(0) | None => {
-                            self.ended = true;
-                            pending.clear();
-                            return data;
+            loop {
+                let frame = match tokio::time::timeout(self.wait, self.body.frame()).await {
+                    Ok(Some(Ok(frame))) => frame,
+                    Ok(None) => {
+                        if let Some(lease) = self.lease.take() {
+                            lease.give_back(self.keep);
                         }
-                        Some(size) => self.in_chunk = Some(size),
+                        return Chunk::End;
                     }
+                    Ok(Some(Err(_))) => {
+                        self.lease = None;
+                        return Chunk::Broken;
+                    }
+                    Err(_) => {
+                        self.lease = None;
+                        return Chunk::TimedOut;
+                    }
+                };
+                // Trailers, and empty frames, carry nothing to hand over.
+                let Ok(data) = frame.into_data() else {
+                    continue;
+                };
+                if data.is_empty() {
+                    continue;
                 }
+                self.read += data.len();
+                if self.read > MOST_ANSWER {
+                    self.lease = None;
+                    return Chunk::Broken;
+                }
+                return Chunk::Bytes(data.to_vec());
             }
-        }
+        })
     }
 }
 
@@ -346,36 +208,41 @@ impl Chunking {
 /// address that is public (never loopback, private, link-local, shared,
 /// reserved or multicast, IPv4 inside IPv6 included) and only to the
 /// address checked, so a name that resolves again elsewhere can't move
-/// it; no redirect followed; at most the bytes asked for.
-#[derive(Clone, Debug, Default)]
+/// it; no redirect followed; at most the bytes asked for. Its connections
+/// are kept apart from [`NativeFetch`]'s, which reach any address.
+#[derive(Clone)]
 pub struct Outward {
-    /// A test's server on this machine, reached over plain HTTP for the
-    /// one host named: what a test reaches AWS's host with, never built
-    /// outside a test.
-    #[cfg(feature = "test-outbound")]
-    reach: Option<(String, std::net::SocketAddr)>,
+    client: Client,
+}
+
+impl Default for Outward {
+    fn default() -> Outward {
+        Outward {
+            client: Client::new(crate::tls::config().ok(), Guard::Public { reach: None }),
+        }
+    }
+}
+
+impl std::fmt::Debug for Outward {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Outward")
+    }
 }
 
 impl Outward {
     /// Requests for `host` go over plain HTTP to `at`, a server on this
-    /// machine: a test's stand-in for AWS's SNS host.
-    #[cfg(feature = "test-outbound")]
-    pub fn reaching(host: &str, at: std::net::SocketAddr) -> Outward {
+    /// machine: a test's stand-in for AWS's SNS host, never built outside
+    /// a test.
+    #[cfg(any(test, feature = "test-outbound"))]
+    pub fn reaching(host: &str, at: SocketAddr) -> Outward {
         Outward {
-            reach: Some((host.to_string(), at)),
+            client: Client::new(
+                crate::tls::config().ok(),
+                Guard::Public {
+                    reach: Some((host.to_string(), at)),
+                },
+            ),
         }
-    }
-
-    /// The test's server for `host`, when it is the one reached.
-    fn reached(&self, host: &str) -> Option<std::net::SocketAddr> {
-        #[cfg(feature = "test-outbound")]
-        if let Some((reached, at)) = &self.reach
-            && reached == host
-        {
-            return Some(*at);
-        }
-        let _ = host;
-        None
     }
 }
 
@@ -386,64 +253,465 @@ impl jadpo_runtime::Outbound for Outward {
         limit: usize,
         timeout_ms: u64,
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
-        let url = url.to_string();
-        let this = self.clone();
         Box::pin(async move {
-            let timeout = Duration::from_millis(timeout_ms.max(1));
-            let exchange = tokio::task::spawn_blocking(move || this.exchange(&url, limit, timeout));
-            match tokio::time::timeout(timeout, exchange).await {
-                Ok(Ok(answered)) => answered,
-                Ok(Err(_)) => Err("the exchange stopped".into()),
-                Err(_) => Err("no answer in time".into()),
-            }
+            let deadline = Instant::now() + wait(timeout_ms);
+            let target = target(url)
+                .filter(|target| target.secure)
+                .ok_or("not HTTPS")?;
+            let request = hyper::Request::get(target.path.as_str())
+                .header(header::HOST, target.authority())
+                .header(header::ACCEPT, "*/*")
+                .body(Full::default())
+                .map_err(|error| format!("a request it can't send: {error}"))?;
+            let (answer, lease) = self
+                .client
+                .send(&target, request, deadline)
+                .await
+                .map_err(said)?;
+            let (head, body) = answer.into_parts();
+            let body = tokio::time::timeout_at(deadline, whole(body, limit.min(MOST_ANSWER)))
+                .await
+                .map_err(|_| said(FetchError::TimedOut))?
+                .map_err(said)?;
+            lease.give_back(keeps(&head.headers));
+            Ok((head.status.as_u16(), body))
         })
     }
 }
 
-impl Outward {
-    fn exchange(
-        &self,
-        url: &str,
-        limit: usize,
-        timeout: Duration,
-    ) -> Result<(u16, Vec<u8>), String> {
-        let target = target(url)
-            .filter(|target| target.secure)
-            .ok_or("not HTTPS")?;
-        let bare = target.host.trim_start_matches('[').trim_end_matches(']');
-        let reached = self.reached(bare);
-        let address = match reached {
-            Some(at) => at,
-            None => (bare, target.port)
-                .to_socket_addrs()
-                .map_err(|_| format!("`{bare}` couldn't be found"))?
-                .find(|address| public(address.ip()))
-                .ok_or_else(|| format!("`{bare}` has no public address"))?,
-        };
-        let stream = TcpStream::connect_timeout(&address, CONNECT.min(timeout))
-            .map_err(|error| format!("no connection: {error}"))?;
-        stream
-            .set_read_timeout(Some(timeout))
-            .and_then(|()| stream.set_write_timeout(Some(timeout)))
-            .map_err(|error| error.to_string())?;
-        let head = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nAccept: */*\r\nConnection: close\r\n\r\n",
-            target.path, target.host
-        );
-        let raw = if reached.is_some() {
-            send(stream, head.as_bytes())
-        } else {
-            let tls = crate::tls::blocking(stream, bare)
-                .map_err(|error| format!("no secure connection: {error}"))?;
-            send(tls, head.as_bytes())
+/// Which addresses a client connects to.
+#[derive(Clone, Debug)]
+enum Guard {
+    /// Any the request's address names.
+    Open,
+    /// Public ones only ([`public`]); `reach` a test's server standing in
+    /// for one host, over plain HTTP, which only a test sets.
+    Public { reach: Option<(String, SocketAddr)> },
+}
+
+impl Guard {
+    /// The test's server for `host`, when it is the one reached.
+    fn reached(&self, host: &str) -> Option<SocketAddr> {
+        match self {
+            Guard::Public {
+                reach: Some((reached, at)),
+            } if reached == host => Some(*at),
+            _ => None,
         }
-        .map_err(|error| format!("{error:?}"))?;
-        let answer = parse(&raw).ok_or("an answer that isn't HTTP")?;
-        if answer.body.len() > limit {
-            return Err("an answer too long".into());
-        }
-        Ok((answer.status, answer.body))
     }
+}
+
+/// HTTP/1.1 with its connections kept per host, on one worker's thread.
+#[derive(Clone)]
+struct Client(Rc<Shared>);
+
+struct Shared {
+    /// rustls with its roots, made once; `None` when no configuration
+    /// could be made, and then HTTPS is refused.
+    tls: Option<tokio_rustls::TlsConnector>,
+    guard: Guard,
+    /// The connections waiting for their next call, oldest first.
+    idle: RefCell<HashMap<Key, Vec<Idle>>>,
+}
+
+/// Which connections can carry a call: those to the same host and port,
+/// over the same scheme, driven by the same runtime.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Key {
+    runtime: tokio::runtime::Id,
+    secure: bool,
+    host: String,
+    port: u16,
+}
+
+/// A connection waiting for its next call, and since when.
+struct Idle {
+    connection: Connection,
+    since: Instant,
+}
+
+/// One connection: its side for sending requests, and the task reading
+/// and writing it, which is ended (closing its socket) when it is dropped.
+struct Connection {
+    sender: http1::SendRequest<Full<Bytes>>,
+    task: tokio::task::AbortHandle,
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// A connection out for one exchange: given back once its answer is read
+/// to the end, and closed if dropped before.
+struct Lease {
+    client: Client,
+    key: Key,
+    connection: Connection,
+}
+
+impl Lease {
+    /// Keeps the connection for the host's next call, unless `keep` is
+    /// false (the server said it would close it), or it has closed.
+    fn give_back(self, keep: bool) {
+        if keep {
+            self.client.keep(self.key, self.connection);
+        }
+    }
+}
+
+impl Client {
+    fn new(tls: Option<Arc<ClientConfig>>, guard: Guard) -> Client {
+        Client(Rc::new(Shared {
+            tls: tls.map(tokio_rustls::TlsConnector::from),
+            guard,
+            idle: RefCell::new(HashMap::new()),
+        }))
+    }
+
+    /// Sends `request` to `target` on a kept connection or a new one, and
+    /// gives its answer's head, with the connection to give back once its
+    /// body is read. Before the request may have left, a failure is
+    /// [`FetchError::NotSent`]; after, [`FetchError::NoAnswer`] or, past
+    /// `deadline`, [`FetchError::TimedOut`].
+    async fn send(
+        &self,
+        target: &Target,
+        mut request: hyper::Request<Full<Bytes>>,
+        deadline: Instant,
+    ) -> Result<(hyper::Response<Incoming>, Lease), FetchError> {
+        let runtime = tokio::runtime::Handle::try_current()
+            .map_err(|_| FetchError::Refused("no runtime to send it on".into()))?;
+        let key = Key {
+            runtime: runtime.id(),
+            secure: target.secure,
+            host: target.host.clone(),
+            port: target.port,
+        };
+        loop {
+            let kept = self.take(&key);
+            let reused = kept.is_some();
+            let mut connection = match kept {
+                Some(connection) => connection,
+                None => {
+                    let by = deadline.min(Instant::now() + CONNECT);
+                    tokio::time::timeout_at(by, self.connect(target, &runtime))
+                        .await
+                        .map_err(|_| FetchError::NotSent("no connection in time".into()))??
+                }
+            };
+            // A kept connection the server has closed since is let go
+            // before anything is written on it.
+            match tokio::time::timeout_at(deadline, connection.sender.ready()).await {
+                Ok(Ok(())) => {}
+                Ok(Err(_)) if reused => continue,
+                Ok(Err(error)) => {
+                    return Err(FetchError::NotSent(format!("no connection: {error}")));
+                }
+                Err(_) => return Err(FetchError::NotSent("no connection in time".into())),
+            }
+            let sent = connection.sender.try_send_request(request);
+            match tokio::time::timeout_at(deadline, sent).await {
+                Ok(Ok(answer)) => {
+                    let lease = Lease {
+                        client: self.clone(),
+                        key,
+                        connection,
+                    };
+                    return Ok((answer, lease));
+                }
+                Ok(Err(mut error)) => match error.take_message() {
+                    // Handed back unwritten: a kept connection that closed
+                    // as the request reached it. It never left.
+                    Some(unsent) if reused => request = unsent,
+                    Some(_) => {
+                        return Err(FetchError::NotSent(format!(
+                            "no connection: {}",
+                            error.error()
+                        )));
+                    }
+                    None => return Err(no_answer(error.error())),
+                },
+                Err(_) => return Err(FetchError::TimedOut),
+            }
+        }
+    }
+
+    /// A new connection to `target`, its task reading and writing it on
+    /// `runtime`.
+    async fn connect(
+        &self,
+        target: &Target,
+        runtime: &tokio::runtime::Handle,
+    ) -> Result<Connection, FetchError> {
+        let (addresses, secure) = self.addresses(target).await?;
+        let mut last = String::from("nothing to connect to");
+        let mut opened = None;
+        for address in addresses {
+            match TcpStream::connect(address).await {
+                Ok(stream) => {
+                    opened = Some(stream);
+                    break;
+                }
+                Err(error) => last = error.to_string(),
+            }
+        }
+        let stream = opened.ok_or_else(|| FetchError::NotSent(format!("no connection: {last}")))?;
+        let _ = stream.set_nodelay(true);
+        let io = if secure {
+            let unsecured =
+                |error: io::Error| FetchError::NotSent(format!("no secure connection: {error}"));
+            let tls = self
+                .0
+                .tls
+                .clone()
+                .ok_or_else(|| FetchError::Refused("no TLS configuration".into()))?;
+            let name = crate::tls::server_name(&target.host).map_err(unsecured)?;
+            Io::Secure(Box::new(
+                tls.connect(name, stream).await.map_err(unsecured)?,
+            ))
+        } else {
+            Io::Plain(stream)
+        };
+        let (sender, connection) = http1::Builder::new()
+            .title_case_headers(true)
+            .handshake(TokioIo::new(io))
+            .await
+            .map_err(|error| FetchError::NotSent(format!("no connection: {error}")))?;
+        let task = runtime.spawn(connection).abort_handle();
+        Ok(Connection { sender, task })
+    }
+
+    /// The addresses `target` may be reached at, as the guard allows, and
+    /// whether to secure the connection.
+    async fn addresses(&self, target: &Target) -> Result<(Vec<SocketAddr>, bool), FetchError> {
+        let bare = target.bare();
+        if let Some(at) = self.0.guard.reached(bare) {
+            return Ok((vec![at], false));
+        }
+        let found: Vec<SocketAddr> = tokio::net::lookup_host((bare, target.port))
+            .await
+            .map_err(|_| FetchError::NotSent(format!("`{bare}` couldn't be found")))?
+            .collect();
+        match self.0.guard {
+            Guard::Open => Ok((found, target.secure)),
+            Guard::Public { .. } => {
+                let public: Vec<SocketAddr> = found
+                    .into_iter()
+                    .filter(|address| public(address.ip()))
+                    .collect();
+                if public.is_empty() {
+                    return Err(FetchError::Refused(format!(
+                        "`{bare}` has no public address"
+                    )));
+                }
+                Ok((public, target.secure))
+            }
+        }
+    }
+
+    /// The newest connection kept for `key` that is still open, letting go
+    /// of any that closed or waited too long.
+    fn take(&self, key: &Key) -> Option<Connection> {
+        let mut idle = self.0.idle.borrow_mut();
+        let waiting = idle.get_mut(key)?;
+        let now = Instant::now();
+        let mut found = None;
+        while let Some(kept) = waiting.pop() {
+            if fresh(&kept, now) {
+                found = Some(kept.connection);
+                break;
+            }
+        }
+        if waiting.is_empty() {
+            idle.remove(key);
+        }
+        found
+    }
+
+    /// Keeps `connection` for `key`'s next call, letting go of the oldest
+    /// past [`MOST_IDLE`], and of every one that closed or waited too long.
+    fn keep(&self, key: Key, connection: Connection) {
+        if connection.sender.is_closed() {
+            return;
+        }
+        let now = Instant::now();
+        let mut idle = self.0.idle.borrow_mut();
+        idle.retain(|_, waiting| {
+            waiting.retain(|kept| fresh(kept, now));
+            !waiting.is_empty()
+        });
+        let waiting = idle.entry(key).or_default();
+        if waiting.len() >= MOST_IDLE {
+            waiting.remove(0);
+        }
+        waiting.push(Idle {
+            connection,
+            since: now,
+        });
+    }
+}
+
+/// Whether a kept connection may still carry a call.
+fn fresh(kept: &Idle, now: Instant) -> bool {
+    !kept.connection.sender.is_closed() && now.duration_since(kept.since) < IDLE
+}
+
+/// A connection's socket, in the clear or over TLS.
+enum Io {
+    Plain(TcpStream),
+    Secure(Box<tokio_rustls::client::TlsStream<TcpStream>>),
+}
+
+impl AsyncRead for Io {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Io::Plain(stream) => Pin::new(stream).poll_read(cx, buf),
+            // A peer that closes without TLS's notice has still sent what
+            // it sent: hyper decides whether that is a whole answer, as it
+            // does by an answer's length or its chunks.
+            Io::Secure(stream) => match Pin::new(stream.as_mut()).poll_read(cx, buf) {
+                Poll::Ready(Err(error)) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                    Poll::Ready(Ok(()))
+                }
+                read => read,
+            },
+        }
+    }
+}
+
+impl AsyncWrite for Io {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            Io::Plain(stream) => Pin::new(stream).poll_write(cx, buf),
+            Io::Secure(stream) => Pin::new(stream.as_mut()).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            Io::Plain(stream) => Pin::new(stream).poll_write_vectored(cx, bufs),
+            Io::Secure(stream) => Pin::new(stream.as_mut()).poll_write_vectored(cx, bufs),
+        }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        match self {
+            Io::Plain(stream) => stream.is_write_vectored(),
+            Io::Secure(stream) => stream.is_write_vectored(),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Io::Plain(stream) => Pin::new(stream).poll_flush(cx),
+            Io::Secure(stream) => Pin::new(stream.as_mut()).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Io::Plain(stream) => Pin::new(stream).poll_shutdown(cx),
+            Io::Secure(stream) => Pin::new(stream.as_mut()).poll_shutdown(cx),
+        }
+    }
+}
+
+/// A call's timeout, never none.
+fn wait(timeout_ms: u64) -> Duration {
+    Duration::from_millis(timeout_ms.max(1))
+}
+
+fn unsendable() -> FetchError {
+    FetchError::Refused("an address it can't send to".into())
+}
+
+/// Why a request that may have left got no answer.
+fn no_answer(error: &hyper::Error) -> FetchError {
+    if error.is_parse() {
+        FetchError::NoAnswer("an answer that isn't HTTP".into())
+    } else {
+        FetchError::NoAnswer(error.to_string())
+    }
+}
+
+/// A failure as [`Outward`] reports it, for the host's log.
+fn said(error: FetchError) -> String {
+    match error {
+        FetchError::NotSent(why) | FetchError::NoAnswer(why) | FetchError::Refused(why) => why,
+        FetchError::TimedOut => "no answer in time".into(),
+    }
+}
+
+/// `request` as hyper sends it to `target`: its headers as made, `Host`
+/// first, and `Content-Length` with a body.
+fn outgoing(request: &Request, target: &Target) -> Result<hyper::Request<Full<Bytes>>, FetchError> {
+    let mut built = hyper::Request::builder()
+        .method(request.method.word())
+        .uri(target.path.as_str())
+        .header(header::HOST, target.authority());
+    for (name, value) in &request.headers {
+        built = built.header(name.as_str(), value.as_str());
+    }
+    let body = request.body.clone().unwrap_or_default();
+    if request.body.is_some() {
+        built = built.header(header::CONTENT_LENGTH, body.len());
+    }
+    built
+        .body(Full::new(Bytes::from(body)))
+        .map_err(|error| FetchError::Refused(format!("a request it can't send: {error}")))
+}
+
+/// The whole of a body, at most `limit` bytes.
+async fn whole(mut body: Incoming, limit: usize) -> Result<Vec<u8>, FetchError> {
+    let mut read = Vec::new();
+    while let Some(frame) = body.frame().await {
+        let frame = frame.map_err(|error| FetchError::NoAnswer(error.to_string()))?;
+        if let Some(data) = frame.data_ref() {
+            if read.len() + data.len() > limit {
+                return Err(FetchError::NoAnswer("an answer too long".into()));
+            }
+            read.extend_from_slice(data);
+        }
+    }
+    Ok(read)
+}
+
+/// Each header's name in lowercase, and its value.
+fn headers(map: &HeaderMap) -> Vec<(String, String)> {
+    map.iter()
+        .map(|(name, value)| {
+            (
+                name.as_str().to_string(),
+                String::from_utf8_lossy(value.as_bytes()).trim().to_string(),
+            )
+        })
+        .collect()
+}
+
+/// Whether the server keeps the connection open after this answer: not
+/// when it says `Connection: close`.
+fn keeps(headers: &HeaderMap) -> bool {
+    !headers.get_all(header::CONNECTION).iter().any(|value| {
+        value.to_str().is_ok_and(|value| {
+            value
+                .split(',')
+                .any(|token| token.trim().eq_ignore_ascii_case("close"))
+        })
+    })
 }
 
 /// Whether `ip` is an address on the public internet: not loopback,
@@ -485,12 +753,32 @@ pub fn public(ip: std::net::IpAddr) -> bool {
 }
 
 /// Where a request goes.
+#[derive(Debug, PartialEq, Eq)]
 struct Target {
     secure: bool,
+    /// As the address writes it, an IPv6 address in its brackets.
     host: String,
     port: u16,
     /// Its path and query.
     path: String,
+}
+
+impl Target {
+    /// The host without an IPv6 address's brackets.
+    fn bare(&self) -> &str {
+        self.host.trim_start_matches('[').trim_end_matches(']')
+    }
+
+    /// The host as `Host` names it: its port only when it isn't the
+    /// scheme's own.
+    fn authority(&self) -> String {
+        let default = if self.secure { 443 } else { 80 };
+        if self.port == default {
+            self.host.clone()
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
 }
 
 fn target(url: &str) -> Option<Target> {
@@ -530,195 +818,12 @@ fn target(url: &str) -> Option<Target> {
     })
 }
 
-/// One exchange, blocking: connect, send the request whole, read the
-/// whole answer.
-fn exchange(request: &Request, timeout: Duration) -> Result<Response, FetchError> {
-    let Some(target) = target(&request.url) else {
-        return Err(FetchError::Refused("an address it can't send to".into()));
-    };
-    let bare = target.host.trim_start_matches('[').trim_end_matches(']');
-    let addresses = (bare, target.port)
-        .to_socket_addrs()
-        .map_err(|_| FetchError::NotSent(format!("`{}` couldn't be found", target.host)))?;
-    let mut stream = None;
-    let mut last = String::from("nothing to connect to");
-    for address in addresses {
-        match TcpStream::connect_timeout(&address, CONNECT.min(timeout)) {
-            Ok(connected) => {
-                stream = Some(connected);
-                break;
-            }
-            Err(error) => last = error.to_string(),
-        }
-    }
-    let stream = stream.ok_or_else(|| FetchError::NotSent(format!("no connection: {last}")))?;
-    let _ = stream.set_nodelay(true);
-    stream
-        .set_read_timeout(Some(timeout))
-        .and_then(|()| stream.set_write_timeout(Some(timeout)))
-        .map_err(|error| FetchError::NotSent(error.to_string()))?;
-    let bytes = request_bytes(request, &target);
-    let raw = if target.secure {
-        let tls = crate::tls::blocking(stream, bare)
-            .map_err(|error| FetchError::NotSent(format!("no secure connection: {error}")))?;
-        send(tls, &bytes)?
-    } else {
-        send(stream, &bytes)?
-    };
-    parse(&raw).ok_or_else(|| FetchError::NoAnswer("an answer that isn't HTTP".into()))
-}
-
-/// `request` as it is written to `target`: its head, then its body.
-fn request_bytes(request: &Request, target: &Target) -> Vec<u8> {
-    let default = if target.secure { 443 } else { 80 };
-    let port = if target.port == default {
-        String::new()
-    } else {
-        format!(":{}", target.port)
-    };
-    let body = request.body.as_deref().unwrap_or_default();
-    let mut head = format!(
-        "{} {} HTTP/1.1\r\nHost: {}{port}\r\n",
-        request.method.word(),
-        target.path,
-        target.host
-    );
-    for (name, value) in &request.headers {
-        head.push_str(name);
-        head.push_str(": ");
-        head.push_str(value);
-        head.push_str("\r\n");
-    }
-    if request.body.is_some() {
-        head.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    }
-    head.push_str("Connection: close\r\n\r\n");
-    let mut bytes = head.into_bytes();
-    bytes.extend_from_slice(body.as_bytes());
-    bytes
-}
-
-/// Writes `request` and reads the answer until it is whole or the other
-/// end closes.
-fn send<S: Read + Write>(mut stream: S, request: &[u8]) -> Result<Vec<u8>, FetchError> {
-    // Once a byte may have left, a failure is an answer that may have
-    // acted.
-    stream
-        .write_all(request)
-        .and_then(|()| stream.flush())
-        .map_err(|error| FetchError::NoAnswer(error.to_string()))?;
-    let mut raw = Vec::new();
-    let mut buffer = [0; 8192];
-    loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => {
-                raw.extend_from_slice(buffer.get(..n).unwrap_or_default());
-                if raw.len() > MOST_ANSWER {
-                    return Err(FetchError::NoAnswer("an answer too long".into()));
-                }
-                if complete(&raw) {
-                    break;
-                }
-            }
-            // A TLS peer that closes without notice has still sent what
-            // it sent; parsing decides whether that is a whole answer.
-            Err(_) if !raw.is_empty() => break,
-            // The socket's own timeout, the call's: no answer in time.
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                return Err(FetchError::TimedOut);
-            }
-            Err(error) => return Err(FetchError::NoAnswer(error.to_string())),
-        }
-    }
-    Ok(raw)
-}
-
-/// The end of the head, and its lines.
-fn head(raw: &[u8]) -> Option<(usize, Vec<String>)> {
-    let end = raw.windows(4).position(|w| w == b"\r\n\r\n")?;
-    let text = std::str::from_utf8(raw.get(..end)?).ok()?;
-    Some((end + 4, text.split("\r\n").map(str::to_string).collect()))
-}
-
-fn header<'a>(lines: &'a [String], name: &str) -> Option<&'a str> {
-    lines.iter().skip(1).find_map(|line| {
-        let (key, value) = line.split_once(':')?;
-        key.trim()
-            .eq_ignore_ascii_case(name)
-            .then_some(value.trim())
-    })
-}
-
-/// Whether the whole answer has arrived, by its `Content-Length`.
-fn complete(raw: &[u8]) -> bool {
-    let Some((start, lines)) = head(raw) else {
-        return false;
-    };
-    match header(&lines, "content-length").and_then(|v| v.parse::<usize>().ok()) {
-        Some(length) => raw.len() >= start + length,
-        None => false,
-    }
-}
-
-fn parse(raw: &[u8]) -> Option<Response> {
-    let (start, lines) = head(raw)?;
-    let mut status_line = lines.first()?.split_whitespace();
-    if !status_line.next()?.starts_with("HTTP/1.") {
-        return None;
-    }
-    let status = status_line.next()?.parse().ok()?;
-    let rest = raw.get(start..)?;
-    let body =
-        if header(&lines, "transfer-encoding").is_some_and(|v| v.eq_ignore_ascii_case("chunked")) {
-            unchunk(rest)?
-        } else if let Some(length) =
-            header(&lines, "content-length").and_then(|v| v.parse::<usize>().ok())
-        {
-            rest.get(..length)?.to_vec()
-        } else {
-            rest.to_vec()
-        };
-    let headers = lines
-        .iter()
-        .skip(1)
-        .filter_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            Some((name.trim().to_ascii_lowercase(), value.trim().to_string()))
-        })
-        .collect();
-    Some(Response {
-        status,
-        headers,
-        body,
-    })
-}
-
-fn unchunk(mut rest: &[u8]) -> Option<Vec<u8>> {
-    let mut body = Vec::new();
-    loop {
-        let end = rest.windows(2).position(|w| w == b"\r\n")?;
-        let size = std::str::from_utf8(rest.get(..end)?).ok()?;
-        let size = usize::from_str_radix(size.split(';').next()?.trim(), 16).ok()?;
-        rest = rest.get(end + 2..)?;
-        if size == 0 {
-            return Some(body);
-        }
-        body.extend_from_slice(rest.get(..size)?);
-        rest = rest.get(size + 2..)?;
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::TcpListener;
 
+    use jadpo_runtime::Outbound;
     use jadpo_runtime::provider::Reading;
     use jadpo_std::HttpMethod;
 
@@ -726,7 +831,7 @@ mod tests {
 
     /// A server on this machine that answers one request with `answer`,
     /// handing back what it was sent.
-    fn serve_once(answer: &'static str) -> (String, std::thread::JoinHandle<String>) {
+    fn serve_once(answer: String) -> (String, std::thread::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let thread = std::thread::spawn(move || {
@@ -771,13 +876,21 @@ mod tests {
     #[test]
     fn a_request_is_sent_and_its_answer_read() {
         let runtime = crate::Runtime::new().unwrap();
+        let fetch = NativeFetch::new();
         let (base, server) = serve_once(
-            "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"id\":\"b1\"}",
+            "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"id\":\"b1\"}".into(),
         );
         let sent = request(format!("{base}/v1/bookings?x=1"));
-        let answer = runtime.block_on(NativeFetch.fetch(&sent)).unwrap();
+        let answer = runtime.block_on(fetch.fetch(&sent)).unwrap();
         assert_eq!(answer.status, 201);
         assert_eq!(answer.body, b"{\"id\":\"b1\"}");
+        assert!(
+            answer
+                .headers
+                .contains(&("content-type".into(), "application/json".into())),
+            "{:?}",
+            answer.headers
+        );
         let seen = server.join().unwrap();
         assert!(
             seen.starts_with("POST /v1/bookings?x=1 HTTP/1.1\r\n"),
@@ -791,15 +904,44 @@ mod tests {
         assert!(seen.ends_with("{\"slot\":\"am\"}"), "{seen}");
 
         let (base, _server) = serve_once(
-            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\n{\"a\"\r\n3\r\n:1}\r\n0\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\n{\"a\"\r\n3\r\n:1}\r\n0\r\n\r\n".into(),
         );
-        let answer = runtime.block_on(NativeFetch.fetch(&request(base))).unwrap();
+        let answer = runtime.block_on(fetch.fetch(&request(base))).unwrap();
         assert_eq!(answer.body, b"{\"a\":1}");
+
+        // An answer that isn't HTTP may have acted.
+        let (base, _server) = serve_once("SMTP ready\r\n\r\n".into());
+        let garbled = runtime.block_on(fetch.fetch(&request(base)));
+        assert!(
+            matches!(&garbled, Err(FetchError::NoAnswer(why)) if why == "an answer that isn't HTTP"),
+            "{garbled:?}"
+        );
     }
 
-    /// Only a public address is reached on the runtime's own account.
+    /// An address is split into where it goes, an IPv6 address in its
+    /// brackets, and `Host` names a port only when it isn't the scheme's.
     #[test]
-    fn only_a_public_address_is_reached() {
+    fn an_address_is_read_as_where_it_goes() {
+        let ipv6 = target("http://[::1]:8080?a=1").unwrap();
+        assert_eq!(
+            (ipv6.bare(), ipv6.port, ipv6.path.as_str()),
+            ("::1", 8080, "/?a=1")
+        );
+        assert_eq!(ipv6.authority(), "[::1]:8080");
+        let named = target("https://api.example.com/v1/x").unwrap();
+        assert_eq!(
+            (named.port, named.authority()),
+            (443, "api.example.com".to_string())
+        );
+        assert_eq!(target("ftp://example.com/"), None);
+        assert_eq!(target("https://example.com:port/"), None);
+    }
+
+    /// The runtime's own fetches reach only public addresses, over HTTPS,
+    /// and follow no redirect; a test's stand-in for AWS is reached in its
+    /// place over plain HTTP.
+    #[test]
+    fn the_runtimes_own_fetches_keep_to_https_and_public_addresses() {
         for private in [
             "127.0.0.1",
             "10.1.2.3",
@@ -821,13 +963,56 @@ mod tests {
         for open in ["52.94.236.248", "2600:1f18::1"] {
             assert!(public(open.parse().unwrap()), "{open}");
         }
-        // Plain HTTP and a name with only a private address are refused.
         let runtime = crate::Runtime::new().unwrap();
-        use jadpo_runtime::Outbound;
-        let plain = runtime.block_on(Outward::default().get("http://example.com/a.pem", 100, 1000));
-        assert!(plain.is_err(), "{plain:?}");
-        let local = runtime.block_on(Outward::default().get("https://localhost/a.pem", 100, 1000));
+        let outward = Outward::default();
+        // Plain HTTP, and a name or an address that is only private, are
+        // refused, nothing connected to.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let plain = runtime.block_on(outward.get("http://example.com/a.pem", 100, 1000));
+        assert_eq!(plain, Err("not HTTPS".to_string()));
+        let local = runtime.block_on(outward.get("https://localhost/a.pem", 100, 1000));
         assert_eq!(local, Err("`localhost` has no public address".to_string()));
+        let loopback = format!("https://127.0.0.1:{port}/a.pem");
+        let refused = runtime.block_on(outward.get(&loopback, 100, 1000));
+        assert_eq!(
+            refused,
+            Err("`127.0.0.1` has no public address".to_string())
+        );
+        let ipv6 = format!("https://[::1]:{port}/");
+        let refused = runtime.block_on(outward.get(&ipv6, 100, 1000));
+        assert_eq!(refused, Err("`::1` has no public address".to_string()));
+        assert!(listener.accept().is_err(), "nothing connected");
+
+        // A redirect is an answer, not followed: the place it names is
+        // never reached.
+        let elsewhere = TcpListener::bind("127.0.0.1:0").unwrap();
+        elsewhere.set_nonblocking(true).unwrap();
+        let (base, server) = serve_once(format!(
+            "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{}/a.pem\r\nContent-Length: 0\r\n\r\n",
+            elsewhere.local_addr().unwrap().port()
+        ));
+        let at = base.strip_prefix("http://").unwrap().parse().unwrap();
+        let aws = Outward::reaching("sns.eu-west-2.amazonaws.com", at);
+        let answer =
+            runtime.block_on(aws.get("https://sns.eu-west-2.amazonaws.com/cert.pem", 100, 1000));
+        assert_eq!(answer, Ok((302, Vec::new())));
+        let seen = server.join().unwrap();
+        assert!(seen.starts_with("GET /cert.pem HTTP/1.1\r\n"), "{seen}");
+        assert!(
+            seen.contains("Host: sns.eu-west-2.amazonaws.com\r\n"),
+            "{seen}"
+        );
+        assert!(elsewhere.accept().is_err(), "the redirect wasn't followed");
+
+        // At most the bytes asked for.
+        let (base, _server) =
+            serve_once("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n0123456789".into());
+        let at = base.strip_prefix("http://").unwrap().parse().unwrap();
+        let aws = Outward::reaching("sns.eu-west-2.amazonaws.com", at);
+        let long = runtime.block_on(aws.get("https://sns.eu-west-2.amazonaws.com/a", 4, 1000));
+        assert_eq!(long, Err("an answer too long".to_string()));
     }
 
     /// Nothing listening is a call that never left; a server that never
@@ -835,11 +1020,11 @@ mod tests {
     #[test]
     fn a_call_that_never_left_differs_from_one_never_answered() {
         let runtime = crate::Runtime::new().unwrap();
+        let fetch = NativeFetch::new();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
-        let refused =
-            runtime.block_on(NativeFetch.fetch(&request(format!("http://127.0.0.1:{port}"))));
+        let refused = runtime.block_on(fetch.fetch(&request(format!("http://127.0.0.1:{port}"))));
         assert!(
             matches!(refused, Err(FetchError::NotSent(_))),
             "{refused:?}"
@@ -849,7 +1034,7 @@ mod tests {
         let port = silent.local_addr().unwrap().port();
         let mut slow = request(format!("http://127.0.0.1:{port}"));
         slow.timeout_ms = 200;
-        let unanswered = runtime.block_on(NativeFetch.fetch(&slow));
+        let unanswered = runtime.block_on(fetch.fetch(&slow));
         // No answer within its timeout is told apart (chunk 7.2c2).
         assert!(
             matches!(unanswered, Err(FetchError::TimedOut)),

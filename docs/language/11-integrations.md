@@ -8378,9 +8378,11 @@ Provider calls, each choice the most conservative reading:
   credential as `Authorization`, and the key in the package's header.
 - **The package driver** is one driver for every package connection,
   `jadpo_drivers::package::JsonHttp`, over the `Fetch` its host gives:
-  natively `jadpo_host_native::fetch::NativeFetch`, a socket of its own
-  on tokio's blocking pool, rustls checking the certificate and the host
-  against Mozilla's roots for HTTPS (OpenSSL until chunk 8.1b). It classifies what came back: a `2xx` as sent, unless
+  natively `jadpo_host_native::fetch::NativeFetch`, hyper's HTTP/1.1
+  client on the worker's thread with its connections kept per host
+  (chunk 8.1m; a socket of its own per call on tokio's blocking pool
+  before), rustls checking the certificate and the host against
+  Mozilla's roots for HTTPS (OpenSSL until chunk 8.1b). It classifies what came back: a `2xx` as sent, unless
   `failed_when:` marks it, then the code at `error_code:`; a redirect,
   `401` or `403` `misconfigured`; `408`, `429` or the package's `in_use:`
   code `unavailable`; any other `4xx` the code at `error_code:`, a fault

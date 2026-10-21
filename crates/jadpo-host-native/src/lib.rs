@@ -23,8 +23,9 @@
 //!   handing them connections in turn (chunk 8.1l).
 //! - [`files`]: the disk driver, which keeps `jadpo dev`'s stores of files
 //!   under `.jadpo/files/` (chunk 6.4b).
-//! - [`fetch`]: HTTP for the package driver (chunk 7.2c), HTTPS through
-//!   rustls or plain HTTP to this machine.
+//! - [`fetch`]: HTTP out of the process (chunks 7.2c and 8.1m), the
+//!   package driver's and the runtime's own: hyper's client on the
+//!   worker's thread, its connections kept per host, HTTPS through rustls.
 //! - [`tls`]: rustls with Mozilla's roots, the one TLS stack on the
 //!   request path (chunk 8.1b); the SMTP driver's conversation runs over
 //!   the transport's upgrade, in `jadpo-drivers`.
@@ -191,15 +192,16 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
 }
 
 /// What a native host gives the driver factory (chunk 8.1d): tokio's
-/// sockets with rustls ([`NativeTransport`]) and HTTPS through rustls
-/// ([`fetch::NativeFetch`]). It gives no disk: a deployable's disk driver
+/// sockets with rustls ([`NativeTransport`]) and HTTP with its connections
+/// kept per host ([`fetch::NativeFetch`], chunk 8.1m), one of each per
+/// worker, since each worker builds its own. It gives no disk: a deployable's disk driver
 /// at a connection's `path:` comes with the rest of the files capability,
 /// and `jadpo dev` keeps its stores of files on its own
 /// ([`NativeHost::with_files`]).
 pub fn supplies() -> Supplies {
     Supplies::on(jadpo_runtime::http::address::Target::Native)
         .with_transport(Rc::new(NativeTransport))
-        .with_fetch(Rc::new(fetch::NativeFetch))
+        .with_fetch(Rc::new(fetch::NativeFetch::new()))
 }
 
 /// The runtime's host natively, one per worker thread: each connection's

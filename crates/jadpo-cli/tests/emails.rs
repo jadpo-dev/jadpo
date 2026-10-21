@@ -867,7 +867,7 @@ fn load_resend(name: &str, host: &str) -> Option<Loaded> {
 /// store of cards in memory.
 fn through_resend<'b>(harness: &'b Harness, cards: &Rc<MemoryFiles>) -> Faked<&'b Harness> {
     let driver: Rc<dyn Capability> = Rc::new(jadpo_drivers::package::JsonHttp::new(
-        jadpo_host_native::fetch::NativeFetch,
+        jadpo_host_native::fetch::NativeFetch::new(),
     ));
     Faked::new(harness)
         .with("resend", driver)

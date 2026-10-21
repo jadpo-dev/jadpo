@@ -187,7 +187,7 @@ fn load(name: &str, files: Vec<(String, String)>) -> Option<Loaded> {
 /// The host a tick runs on: the test's database and clock, with the
 /// package driver, over this machine's HTTP, for `fuel`.
 fn host(url: &str) -> Faked<Harness<jadpo_host_native::Postgres>> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(Harness::postgres(url).at(T0).random_from(0)).with("fuel", driver)
 }
 

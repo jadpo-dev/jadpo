@@ -2211,12 +2211,28 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   before it, closes an idle one at once and accepts nothing more. §2.5's
   "Native accept and one rate-limit count"; §2.6's "Single-threaded by
   design" rewritten for it.
-- [ ] **8.1m A pooled HTTP client** `opus · xhigh`, after 8.1l:
-  `NativeFetch` replaced by a pooled, cancellable hyper client with one
-  rustls connector per worker: connections kept per host, a call's
-  timeout or a dropped future ending its exchange, streamed answers read
-  as they come, the outbound guard kept (HTTPS, public addresses, no
-  redirect).
+- [x] **8.1m A pooled HTTP client** `opus · xhigh`, after 8.1l. Built:
+  `jadpo_host_native::fetch::Client`, hyper's HTTP/1.1 client over
+  tokio's sockets on the worker's thread with rustls's connector made
+  once, behind both `NativeFetch` (one per worker, `NativeFetch::new`,
+  or `trusting` a test's authority) and `Outward`, in place of a blocking
+  exchange per call on tokio's blocking pool, a thread per stream and a
+  second copy of the client: connections kept per host in a pool on the
+  worker (at most 8 waiting per host, for 30 seconds), one the server
+  closed or said it would close never written to, a request one hands
+  back unwritten sent on a fresh one; a call's timeout or its future
+  dropped closing its connection at once; a streamed answer read as it
+  comes; a name looked up only when a connection opens; `Outward`'s
+  guard kept (HTTPS only, public addresses only, no redirect, at most the
+  bytes asked for, `Outward::reaching` for a test). Proved against
+  servers on this machine: five calls to one host on one connection and
+  another host on its own, three HTTPS calls on one handshake, a closed
+  or closing connection never used again, a timeout and a dropped call
+  or stream closing its connection within a second, a streamed answer's
+  first piece before the server goes on, and the guard refusing plain
+  HTTP and loopback names and addresses, following no redirect and
+  refusing an answer longer than asked for. §2.6's "A pooled HTTP
+  client".
 - [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m:
   PostgreSQL's TLS through
   `Transport::upgrade`, live-tested against a server the harness starts
