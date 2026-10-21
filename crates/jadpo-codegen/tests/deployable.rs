@@ -309,7 +309,7 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
             .expect("numbered");
     let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
-        workers::wrangler("web", &["DATABASE_URL".to_string()], true),
+        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true),
         &bindings,
     ))
     .expect("JSON");
@@ -336,6 +336,6 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         wrangler["triggers"]["crons"],
         serde_json::json!(["* * * * *"])
     );
-    let plain = workers::wrangler("web", &[], false);
+    let plain = workers::wrangler("web", &[], &[], false);
     assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }
