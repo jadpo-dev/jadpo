@@ -419,7 +419,7 @@ impl<H: Host> Host for AtClock<H> {
         self.host.stopping()
     }
 
-    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+    fn hand_on(&self, work: crate::runner::HandOn) {
         self.host.hand_on(work);
     }
 

@@ -250,6 +250,9 @@ pub fn build(call: &Call) -> Reply {
                             .any(|binding| &binding.binding == variable)
                     })
                     .collect();
+                // A Worker that runs background work hands what one
+                // invocation doesn't reach on to a fresh one of itself.
+                let hands_on = deployable.runs.subscribers || deployable.runs.schedules;
                 let module = format!("{out}/{name}.wasm");
                 let wrangler = format!("{out}/{}", workers::WRANGLER);
                 let (bytes, gzip) = (bound.wasm.len(), gzipped(&bound.wasm));
@@ -268,6 +271,7 @@ pub fn build(call: &Call) -> Reply {
                                 &required,
                                 &hyperdrive,
                                 plan.schedules().ticks(),
+                                hands_on,
                             ),
                             plan.routes()
                                 .rate_limits

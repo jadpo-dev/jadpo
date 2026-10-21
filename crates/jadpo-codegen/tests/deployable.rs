@@ -208,6 +208,8 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
         "jadpo_host_workers::deployable::fetch(&DEPLOYABLE, request, env, ctx)",
         "pub fn scheduled(controller: JsValue, env: JsValue, ctx: JsValue) -> JsValue",
         "jadpo_host_workers::deployable::scheduled(&DEPLOYABLE, controller, env, ctx)",
+        "pub fn hand_on(work: String, env: JsValue, ctx: JsValue) -> JsValue",
+        "jadpo_host_workers::deployable::hand_on(&DEPLOYABLE, work, env, ctx)",
         "program: jadpo_program::program",
         "build: \"b_3c41d07a9e12\"",
         "deployable: \"kiosk\"",
@@ -241,12 +243,18 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     let shim = workers::shim("back_office");
     for held in [
         "import module from \"./back_office.wasm\";",
-        "import { initSync, fetch as handleFetch, scheduled as handleScheduled } from \"./back_office.js\";",
+        "import { initSync, fetch as handleFetch, scheduled as handleScheduled, hand_on as handleHandOn } from \"./back_office.js\";",
         "initSync({ module });",
         "export default {",
         "return handleFetch(request, env, ctx);",
         "scheduled(controller, env, ctx) {",
         "return handleScheduled(controller, env, ctx);",
+        // Work handed on reaches a named entrypoint, never the default
+        // export a request from outside reaches.
+        "import { WorkerEntrypoint } from \"cloudflare:workers\";",
+        "export class JadpoHandOn extends WorkerEntrypoint {",
+        "handOn(work) {",
+        "return handleHandOn(work, this.env, this.ctx);",
     ] {
         assert!(shim.contains(held), "{held} isn't in:\n{shim}");
     }
@@ -263,6 +271,7 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 id: None,
             },
         ],
+        true,
         true,
     ))
     .expect("JSON");
@@ -287,17 +296,22 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "binding": "LEDGER_URL" },
             ],
             "triggers": { "crons": ["* * * * *"] },
+            // Bound to itself, to hand work on to a fresh invocation.
+            "services": [
+                { "binding": "JADPO_HAND_ON", "service": "back-office", "entrypoint": "JadpoHandOn" },
+            ],
         })
     );
     // With no setting to give, there is no secret to require and no
-    // binding to name, and with no store for its tick to keep or sweep, no
-    // cron to run it.
+    // binding to name; with no store for its tick to keep or sweep, no
+    // cron to run it; and running no background work, it hands nothing on.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[], &[], false)).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], &[], false, false)).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
     assert!(bare.get("hyperdrive").is_none(), "{bare}");
     assert!(bare.get("triggers").is_none(), "{bare}");
+    assert!(bare.get("services").is_none(), "{bare}");
 }
 
 /// Each limit counted in Cloudflare's rate-limiting binding is a binding
@@ -309,7 +323,7 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
             .expect("numbered");
     let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
-        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true),
+        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true, true),
         &bindings,
     ))
     .expect("JSON");
@@ -336,6 +350,12 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         wrangler["triggers"]["crons"],
         serde_json::json!(["* * * * *"])
     );
-    let plain = workers::wrangler("web", &[], &[], false);
+    // The binding to itself work is handed on through stays beside them
+    // (chunk 8.2h).
+    assert_eq!(
+        wrangler["services"][0]["entrypoint"], "JadpoHandOn",
+        "{wrangler}"
+    );
+    let plain = workers::wrangler("web", &[], &[], false, false);
     assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }

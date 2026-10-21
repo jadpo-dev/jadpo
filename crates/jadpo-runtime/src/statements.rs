@@ -256,6 +256,7 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::outbox::FIND_HANDLED.to_string(),
         ),
         ("outbox::GIVE_UP", crate::outbox::GIVE_UP.to_string()),
+        ("outbox::HANDED_ON", crate::outbox::HANDED_ON.to_string()),
         (
             "outbox::MARK_SENDING",
             crate::outbox::MARK_SENDING.to_string(),

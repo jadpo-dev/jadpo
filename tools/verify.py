@@ -249,9 +249,12 @@ WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd')]
 # by the same workerd against PostgreSQL over `connect()`: the run's server
 # when it is named by a URL (CI's, on 127.0.0.1), else one the test starts
 # on 127.0.0.1, since a local run's listens on a Unix socket, which a
-# Worker can't open. The `wasm32` group, in cargo's lane beside the step
-# above, since both install workerd into tools/workers/ the first time; it
-# prints the module's size.
+# Worker can't open. Since chunk 8.2h a news desk of its own beside it,
+# whose model is a server the test starts: a streamed answer, and a
+# subscriber's deliveries and a batch run each longer than an invocation's
+# 30 seconds, handed on to a fresh one. The `wasm32` group, in cargo's
+# lane beside the step above, since both install workerd into
+# tools/workers/ the first time; it prints the module's size.
 WORKERS_DEPLOYABLE = ('a Workers deployable built and served by workerd', [('jadpo-cli', 'workers')])
 WORKERS_SHOWN = ('skipped:', 'measured:')
 
