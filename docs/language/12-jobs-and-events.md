@@ -75,9 +75,9 @@ schedule chore_census {
 - Each schedule's state and lease live in the store
   `schedules: { store: }` names (area 5), or the only database when there
   is one; with several and none named, or none at all, each schedule is
-  `schedule.store_required`. `schedules:` holds only `store:` until the
-  `trigger:` adapter (question 16) comes with Workers (roadmap 8.2g). The
-  state and run tables are in the migration snapshot only when a schedule
+  `schedule.store_required`. `schedules:` also holds `trigger:`, what
+  ticks a native deployable ("The tick"; question 16, built in chunk
+  8.2g). The state and run tables are in the migration snapshot only when a schedule
   is declared or an entity purges.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
   started, the tick's, so the action does not need the time passed in.
@@ -113,7 +113,9 @@ schedule chore_census {
 `jadpo_runtime::schedules::tick` is the one entry point every host calls:
 once a minute, or as often as the shortest `every:` when that is shorter,
 at least once a second. Natively it is the server's timer on its first
-worker's thread, at each whole period of UTC; `jadpo dev` ticks, and a
+worker's thread, at each whole period of UTC, unless `schedules: {
+trigger: ScheduleTrigger.external }` leaves it to another scheduler
+(below); `jadpo dev` ticks on its timer whichever is written, and a
 test's or a tool's host doesn't. On Workers it is the minute's cron
 trigger, which `jadpo build` writes into the Wrangler file (built in
 chunk 8.2f): each run ticks, and while the app receives a queue ticks
@@ -121,8 +123,33 @@ again at each 10-second mark of its minute, so a queue is read as often
 as natively. There an `every:` under a minute is an error naming the
 schedule, since a minute's cron can't run it (decided 2026-10-19;
 `deployable.target_unsupported`, area 14). Each state row keeps the last
-tick that reached it. Then, each step starting
-only while the tick's budget lasts, the tick:
+tick that reached it.
+
+`trigger:` names what ticks a native deployable (question 16, built in
+chunk 8.2g): `ScheduleTrigger.native`, the server's own timer, unless it
+is written, or `ScheduleTrigger.external`, another scheduler (a
+Kubernetes CronJob, an ECS scheduled task, a systemd timer) running the
+deployable's `tick` command, `<deployable> tick`, which reads its
+settings and compares its stores' migrations as serving does, runs one
+tick and ends (area 14, "A native deployable"). The server then never
+ticks. There is no HTTP endpoint and no tick secret: a scheduler that can
+only call a URL needs a wrapper of its own (Richard, 2026-10-21). A
+Worker always ticks on its cron, whichever is written. The scheduler runs
+`tick` as often as the server's timer would tick, which `jadpo build`
+says beside the binary; one running it less often runs schedules and
+reads queues late, which the ticks-stopped alert says ("Watching
+schedules"). Two ticks at once, or a `tick` beside a server's timer, are
+harmless, since the lease decides.
+
+```jadpo check project=external-tick file=app.jadpo
+application {
+    schedules: {
+        trigger: ScheduleTrigger.external
+    }
+}
+```
+
+Then, each step starting only while the tick's budget lasts, the tick:
 
 - runs the schedules due, and any run asked for by hand ("Running a
   schedule by hand"), and delivers what they emit;
@@ -2934,6 +2961,30 @@ error: `store: archive` isn't a database
 check failed: 1 error, 1 file
 ```
 
+`trigger:` is a `ScheduleTrigger`:
+
+```jadpo check project=e-schedules-trigger file=app.jadpo expect=schedule.settings_invalid
+application {
+    schedules: {
+        trigger: ScheduleTrigger.cron
+    }
+}
+```
+
+```text output
+error: `ScheduleTrigger.cron` isn't a schedule trigger
+ --> app.jadpo:3:18
+  |
+3 |         trigger: ScheduleTrigger.cron
+  |                  ^^^^^^^^^^^^^^^^^^^^ not a `ScheduleTrigger`
+  reason: A native deployable ticks on the server's own timer, `ScheduleTrigger.native`, or when another scheduler runs its `tick` command, `ScheduleTrigger.external`; a Worker always ticks on Cloudflare's cron.
+  next: Use `ScheduleTrigger.external` instead (agent)
+  rule: schedule.settings_invalid
+  help: docs/language/12-jobs-and-events.html#schedule-settings-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `schedule.store_required`
 
 With several databases, `schedules: { store: }` says which keeps every schedule's state and lease; with one, it is that one:
@@ -5108,6 +5159,8 @@ Not yet:
     systemd timer runs it each minute. No HTTP endpoint and no tick
     secret; a scheduler that can only call a URL needs its own wrapper.
     On Workers the cron trigger calls the Worker's scheduled handler.
+    Built in chunk 8.2g ("The tick"; "The `trigger:` adapter" in
+    Decisions).
 17. **Can a request's whole effect be traced through events?** Raised by
     Richard (2026-10-13). *Recommendation:* yes, always on. An event is
     stored with the trace context of the action that emitted it (W3C
@@ -5223,6 +5276,7 @@ Not yet:
 | Work handed on, on Workers (chosen in chunk 8.2h) | `Host::hand_on` on Workers is a request to the Worker itself, through a service binding (`JADPO_HAND_ON`, which `jadpo build` writes into the Wrangler file of a Worker that runs background work) to a named entrypoint of its own shim (`JadpoHandOn`), never its default export, so nothing from outside reaches it. It is sent JSON naming each piece by its record and store, never an event's value; the fresh invocation reads each delivery back from its record, leaving out one run or given up since, and each batch run from its row, and carries them on in its own `waitUntil` with Workers' 30 seconds, handing on in turn; the invocation that handed it on is kept until that call returns. A hand-on that fails, as past the platform's limit on invocations one request chains, leaves the work in the store for the minute's cron. Rejected: a queue, which needs a queue made in the account and a consumer for every Worker, delays each hand-on by its batching, and would tie background work to chunk 8.2k's consumer; and a request to the Worker's own URL, which would reach its public `fetch` and need a secret to tell itself from a caller. Whether Cloudflare gives each handed-on invocation its own 30 seconds once the one that called it has ended is checked on the real deploy (chunk 8.2n) (decided for Richard, the conservative reading) | 2026-10-21 |
 | An `every:` under a minute on Workers (Phase 6 review) | An error naming the schedule when a Workers deployable reaches it, since a minute's cron can't run it and Jadpo has no warnings (Richard, as recommended) | 2026-10-19 |
 | The tick on Workers (chunk 8.2f) | Chosen in the chunk, each reversible: a Workers deployable reaches a schedule when its `runs:` lists `Trigger.schedules`, and one more often than once a minute is `deployable.target_unsupported` (area 14), at its `every:`, rather than a rule of its own, since it is one more thing a target can't run; the Wrangler file names the cron `* * * * *` for every Workers deployable whose tick has a store to keep or sweep, as every native deployable ticks; each run of the cron ticks once its stores are current (out of date, it logs why as a request does and ticks nothing), then, while the app ticks more often than once a minute (a received queue, every 10 seconds, as natively), again at each such mark of the cron's minute, one tick after the last ends, never two at once, so a Worker holds no more connections than one tick does, and a mark a long tick passed is not made up; the invocation ends with its minute, and each of its ticks has what is left of the cron's 15 minutes | 2026-10-21 |
+| The `trigger:` adapter (chunk 8.2g) | Chosen in the chunk, each reversible, around Richard's decision (question 16): `trigger:` takes `ScheduleTrigger.native`, the default, or `ScheduleTrigger.external`, and changes only a native deployable, a Worker ticking on its cron whichever is written, so an app with a server and a Worker can write either; `<deployable> tick` (and `serve`, the same as no command; anything else ends with code 2, `command_unknown`) doesn't wait for a database it can't reach, ending with code 1 (`store_unreachable`), since the scheduler's next run is the next try and the ticks missed become one run; it logs `runtime.ticked` (each run by its schedule's name, deliveries, what it received and polled, rows deleted, alerts, each store it couldn't work in) and ends with code 1 only when a store couldn't be worked in, a failed run being recorded, alerted and retried at its next due time as a server's is; the first SIGTERM drains it as a server drains its background work; `tick` runs whatever is written, the lease deciding; nothing refuses an `every:` under a minute with `external`, since a scheduler can run `tick` each second: `jadpo build` says how often to run it, and the ticks-stopped alert says when it runs less often | 2026-10-21 |
 | Schedule and batch defaults (Phase 6 review) | What the code does is decided: a schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` (Richard, as recommended) | 2026-10-19 |
 | A batch's `key:` with tenants (Phase 6 review) | In an application with a tenant, `key:` is unique per call, run tenant and key, so two tenants' runs with the same key never meet (Richard, as recommended) | 2026-10-19 |
 | Queue messages the store refuses (Phase 7 review, chunk 7.9c) | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again (decided for Richard, the conservative reading) | 2026-10-21 |

@@ -45,6 +45,11 @@ pub struct SchedulesPlan {
     /// (`jadpo_ai_usage`), whose old days the tick deletes (area 21,
     /// "Budgets"; chunk 5.5v5); `None` when the app asks no model.
     pub ai_usage: Option<String>,
+    /// What ticks a native deployable, `schedules: { trigger: }` (area 12,
+    /// question 16; chunk 8.2g): the server's own timer, or another
+    /// scheduler running its `tick` command. `jadpo dev` ticks on its
+    /// timer and a Worker on its cron whichever it is.
+    pub trigger: crate::ScheduleTrigger,
 }
 
 impl SchedulesPlan {

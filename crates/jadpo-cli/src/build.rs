@@ -215,13 +215,21 @@ pub fn build(call: &Call) -> Reply {
         if let Err(error) = cleared(&root.join(&out)) {
             return Reply::failed(write_failed(&format!("{out}/"), &error));
         }
+        // Another scheduler runs a native deployable's `tick` command
+        // when `schedules: { trigger: }` leaves its ticks to one (chunk
+        // 8.2g), as often as the server's timer would tick.
+        let schedules = plan.schedules();
+        let tick = (host == Host::Native
+            && schedules.trigger == jadpo_std::ScheduleTrigger::External
+            && schedules.ticks())
+        .then(|| jadpo_runtime::schedules::tick_every_ms(Some(schedules)));
         let artifact = match host {
             Host::Native => {
                 let binary = format!("{out}/{name}");
                 if let Err(error) = place(&root, &compiled, &binary) {
                     return Reply::failed(write_failed(&binary, &error));
                 }
-                Artifact::Native { binary }
+                Artifact::Native { binary, tick }
             }
             Host::Workers(_) => {
                 say(&format!("Binding `{name}`"));
@@ -489,8 +497,10 @@ struct Binary {
 
 /// What a deployable is deployed from, by path from the project's root.
 enum Artifact {
-    /// A server's binary.
-    Native { binary: String },
+    /// A server's binary, and how often another scheduler runs its `tick`
+    /// command, in milliseconds, when the server's own timer doesn't tick
+    /// it.
+    Native { binary: String, tick: Option<u64> },
     /// A Worker: its Wrangler file and its module, beside the module's
     /// JavaScript and Jadpo's shim, the module's size, raw and gzipped,
     /// and its databases' Hyperdrive bindings.
@@ -536,7 +546,16 @@ fn shown(built: Built) -> Reply {
     let one = built.binaries.len() == 1;
     for binary in &built.binaries {
         let mut fields = match &binary.artifact {
-            Artifact::Native { binary } => vec![("binary".to_string(), binary.clone())],
+            Artifact::Native { binary, tick } => {
+                let mut fields = vec![("binary".to_string(), binary.clone())];
+                if let Some(every) = tick {
+                    fields.push((
+                        "tick".to_string(),
+                        format!("{binary} tick · {}", how_often(*every)),
+                    ));
+                }
+                fields
+            }
             Artifact::Worker {
                 wrangler,
                 module,
@@ -635,7 +654,7 @@ fn shown(built: Built) -> Reply {
         .binaries
         .iter()
         .find_map(|binary| match &binary.artifact {
-            Artifact::Native { binary } => Some(binary.as_str()),
+            Artifact::Native { binary, .. } => Some(binary.as_str()),
             Artifact::Worker { .. } => None,
         });
     if built.migrations {
@@ -657,10 +676,19 @@ fn shown(built: Built) -> Reply {
         (
             "deployables",
             Json::array(built.binaries.iter().map(|binary| {
-                let (native, wrangler, module, hyperdrive) = match &binary.artifact {
-                    Artifact::Native { binary } => {
-                        (binary.as_str().into(), Json::Null, Json::Null, Json::Null)
-                    }
+                let (native, tick, wrangler, module, hyperdrive) = match &binary.artifact {
+                    Artifact::Native { binary, tick } => (
+                        binary.as_str().into(),
+                        tick.map_or(Json::Null, |every| {
+                            Json::object([
+                                ("command", format!("{binary} tick").into()),
+                                ("every_ms", i64::try_from(every).unwrap_or(i64::MAX).into()),
+                            ])
+                        }),
+                        Json::Null,
+                        Json::Null,
+                        Json::Null,
+                    ),
                     Artifact::Worker {
                         wrangler,
                         module,
@@ -668,6 +696,7 @@ fn shown(built: Built) -> Reply {
                         gzipped,
                         hyperdrive,
                     } => (
+                        Json::Null,
                         Json::Null,
                         wrangler.as_str().into(),
                         Json::object([
@@ -687,6 +716,7 @@ fn shown(built: Built) -> Reply {
                     ("deployable", binary.name.as_str().into()),
                     ("target", binary.target.into()),
                     ("binary", native),
+                    ("tick", tick),
                     ("wrangler", wrangler),
                     ("module", module),
                     ("hyperdrive", hyperdrive),
@@ -732,6 +762,16 @@ fn joined(names: &[String]) -> String {
     match names {
         [rest @ .., last] if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
         _ => names.join(""),
+    }
+}
+
+/// How often a scheduler runs a tick every `ms` milliseconds: `each
+/// minute`, `every 10 s`.
+fn how_often(ms: u64) -> String {
+    match ms {
+        60_000 => "each minute".to_string(),
+        ms if ms % 60_000 == 0 => format!("every {} min", ms / 60_000),
+        ms => format!("every {} s", ms.div_ceil(1_000)),
     }
 }
 
@@ -974,6 +1014,64 @@ mod tests {
         let (none, data) = shown_as(Vec::new(), jadpo_term::Mode::Rich);
         assert!(!none.contains("calls"), "{none}");
         assert!(data.contains(r#""per_instance":[]"#), "{data}");
+    }
+
+    #[test]
+    fn a_deployable_another_scheduler_ticks_says_how_often_to_run_its_tick() {
+        assert_eq!(how_often(60_000), "each minute");
+        assert_eq!(how_often(10_000), "every 10 s");
+        assert_eq!(how_often(1_000), "every 1 s");
+        assert_eq!(how_often(120_000), "every 2 min");
+        let built = |tick: Option<u64>| Built {
+            binaries: vec![Binary {
+                name: "office".into(),
+                declared: true,
+                target: "native",
+                artifact: Artifact::Native {
+                    binary: "build/target/office/office".into(),
+                    tick,
+                },
+                openapi: Vec::new(),
+                build: "b_e20fc10f5474".into(),
+                serves: vec!["staff".into()],
+                runs: vec!["schedules"],
+                per_instance: Vec::new(),
+            }],
+            commit: Some("8d113e6".into()),
+            modified: false,
+            settings: vec!["DATABASE_URL".into()],
+            migrations: true,
+            seconds: 20.0,
+        };
+        let Reply::Done {
+            text: crate::run::Text::Screen(screen),
+            data,
+        } = shown(built(Some(60_000)))
+        else {
+            panic!("a screen");
+        };
+        let text = screen.render(&jadpo_term::Style::new(jadpo_term::Mode::Plain));
+        assert!(
+            text.contains("  tick: build/target/office/office tick · each minute\n"),
+            "{text}"
+        );
+        let data = data.to_line();
+        assert!(
+            data.contains(
+                r#""tick":{"command":"build/target/office/office tick","every_ms":60000}"#
+            ),
+            "{data}"
+        );
+        let Reply::Done {
+            text: crate::run::Text::Screen(screen),
+            data,
+        } = shown(built(None))
+        else {
+            panic!("a screen");
+        };
+        let text = screen.render(&jadpo_term::Style::new(jadpo_term::Mode::Plain));
+        assert!(!text.contains("tick:"), "{text}");
+        assert!(data.to_line().contains(r#""tick":null"#));
     }
 
     #[test]

@@ -3485,6 +3485,41 @@ which on Workers would hold the connections of several ticks in one
 invocation; and a schedule refused in `jadpo build` rather than by
 `jadpo check`, where an agent sees it as it writes the schedule.
 
+**The `trigger:` adapter** (chunk 8.2g; area 12, question 16 and "The
+tick"; area 14, "A native deployable"). `jadpo_check::schedules::
+schedules_settings` reads `schedules: { trigger: }`, a `ScheduleTrigger`
+(`jadpo_std::ScheduleTrigger`: `native`, the default, or `external`),
+anything else `schedule.settings_invalid` with the nearest, and the plan
+carries it (`SchedulesPlan::trigger`, plan format 11). It changes only a
+native deployable: `jadpo_host_native::deployable::run` reads its one
+argument (`Command::read`: none or `serve`, `tick`, anything else
+`command_unknown` and code 2), and serving with `external` makes each
+worker's `AppHandler::untimed`, whose `Handler::tick` is `None`, so the
+first worker's timer ends at its first wake and the server never ticks.
+`tick` starts as serving does (`configured`: the plan, `config::load`,
+the factory's drivers, each store compared with `Then::NextTick`) but
+waits for no database, an unreachable one `store_unreachable`; then one
+`Serving::tick` on a `NativeHost`, spawned as the host's tracked work so
+the first SIGTERM drains it (`NativeHost::drain`) as a server drains its
+background work, logged as `runtime.ticked` (`ticked_fields`: each run
+by its schedule's name, the deliveries, what was received and polled,
+the rows deleted, the alerts as their own events, each store it couldn't
+work in and the unbuilt connections), code 1 when a store couldn't be
+worked in. `jadpo dev` keeps its timer and a Worker its cron whichever
+is written. `jadpo build` gives a native deployable whose ticks another
+scheduler starts a `tick` line, the command and how often to run it
+(`tick_every_ms`), and `--json` its `tick`. Proved live
+(`crates/jadpo-cli/tests/deployable.rs`): example 23's office, once
+`trigger: ScheduleTrigger.external`, serving for 2.5 s without running
+its every-second schedule, `office tick` refusing to start without
+`DATABASE_URL`, then running the schedule once, logging it by name and
+ending with code 0, and `office ticks` ending with code 2. *Rejected:*
+an HTTP endpoint for the tick and its secret (Richard, 2026-10-21); a
+`tick` that waits for its database, which stacks a scheduler's runs up
+behind an outage that the next minute's run would see past; and
+`ScheduleTrigger.native` refused for a Worker, which would bar an app
+with a server and a Worker from writing the default down.
+
 **PostgreSQL through Hyperdrive** (chunk 8.2i; area 5, "PostgreSQL
 through Hyperdrive"). A database connection's address on Workers is its
 `url:` setting's binding, which `jadpo build` writes into the Wrangler

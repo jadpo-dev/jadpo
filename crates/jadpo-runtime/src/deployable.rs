@@ -241,6 +241,9 @@ pub enum Then {
     Restart,
     /// A Worker checks again at its next request.
     NextRequest,
+    /// A native deployable's `tick` command runs again at the scheduler's
+    /// next run (chunk 8.2g).
+    NextTick,
 }
 
 impl Then {
@@ -248,6 +251,7 @@ impl Then {
         match self {
             Then::Restart => "then start the app again",
             Then::NextRequest => "and the Worker serves from its next request",
+            Then::NextTick => "and the next tick runs",
         }
     }
 }
@@ -300,7 +304,7 @@ pub fn diverged(store: &str, error: &MigrateError) -> Value {
 }
 
 /// A store's error in words, never an address.
-fn store_error(error: &StoreError) -> String {
+pub fn store_error(error: &StoreError) -> String {
     match error {
         StoreError::Fault(why) | StoreError::Statement(why) => why.clone(),
         StoreError::Unavailable => "it can't be reached".into(),

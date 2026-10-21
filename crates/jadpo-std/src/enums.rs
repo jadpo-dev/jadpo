@@ -347,6 +347,22 @@ std_enum! {
 }
 
 std_enum! {
+    /// What ticks a native deployable (area 12, question 16; chunk 8.2g):
+    /// `schedules: { trigger: ScheduleTrigger.external }`. A Worker's tick
+    /// is always Cloudflare's minute cron, whichever is written.
+    #[derive(Default)]
+    ScheduleTrigger: "ScheduleTrigger" {
+        /// The server's own timer, at each whole period of UTC: the
+        /// default.
+        #[default]
+        Native: "native",
+        /// Another scheduler running the deployable's `tick` command, one
+        /// tick and exit (Richard, 2026-10-21): the server never ticks.
+        External: "external",
+    }
+}
+
+std_enum! {
     /// Which of a provider package's hosts a connection reaches (area 11,
     /// "Connecting in `app.jadpo`"): the `environment:` setting a
     /// connection to a package with `hosts:` reads (chunk 7.1c).
@@ -710,6 +726,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Driver::NAME, Driver::NAMES.to_vec()),
         (DeployTarget::NAME, DeployTarget::NAMES.to_vec()),
         (Trigger::NAME, Trigger::NAMES.to_vec()),
+        (ScheduleTrigger::NAME, ScheduleTrigger::NAMES.to_vec()),
         (
             ProviderEnvironment::NAME,
             ProviderEnvironment::NAMES.to_vec(),
@@ -793,6 +810,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Driver::NAME => position(Driver::NAMES),
         DeployTarget::NAME => position(DeployTarget::NAMES),
         Trigger::NAME => position(Trigger::NAMES),
+        ScheduleTrigger::NAME => position(ScheduleTrigger::NAMES),
         ProviderEnvironment::NAME => position(ProviderEnvironment::NAMES),
         SuccessStatus::NAME => position(SuccessStatus::NAMES),
         HttpMethod::NAME => position(HttpMethod::NAMES),
