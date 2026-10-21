@@ -184,7 +184,25 @@ mod tests {
             body: Some("{}".into()),
             timeout_ms: 1000,
             reading: Reading::default(),
+            repeatable: false,
         })
+    }
+
+    /// A call's request may be sent again once it has left exactly when
+    /// the call may: a change under its key, or one that changes nothing,
+    /// never a change with no key.
+    #[test]
+    fn a_request_may_be_sent_again_as_its_call_may() {
+        let repeatable = |repeat: Repeat| {
+            let request = call().request.expect("a request");
+            Call::new("couriers", "bookings.create", Value::Unit, repeat)
+                .with_request(*request)
+                .request
+                .is_some_and(|request| request.repeatable)
+        };
+        assert!(repeatable(Repeat::Keyed));
+        assert!(repeatable(Repeat::Safe));
+        assert!(!repeatable(Repeat::Unkeyed));
     }
 
     /// What never left is safe to send again; what left with no answer may

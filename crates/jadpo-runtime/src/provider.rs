@@ -116,6 +116,15 @@ pub struct Request {
     /// How long it waits for its answer.
     pub timeout_ms: u64,
     pub reading: Reading,
+    /// Whether it may be sent again once it has left: its operation
+    /// changes nothing, or is sent under its package's key (area 11,
+    /// "What is sent again"). Set from its call's [`Repeat`] when the call
+    /// takes it ([`crate::capability::Call::with_request`]); a host's HTTP
+    /// sends only such a request again when a kept connection is dropped
+    /// under it before any answer.
+    ///
+    /// [`Repeat`]: crate::capability::Repeat
+    pub repeatable: bool,
 }
 
 impl Request {
@@ -1419,6 +1428,8 @@ fn request(
             body,
             timeout_ms: plan.timeout_ms,
             reading,
+            // Set when the call takes it.
+            repeatable: false,
         },
         fields,
         keying,
@@ -1731,6 +1742,7 @@ mod tests {
             body: Some("{\"postcode\":\"N1\"}".into()),
             timeout_ms: 1000,
             reading,
+            repeatable: false,
         }
     }
 

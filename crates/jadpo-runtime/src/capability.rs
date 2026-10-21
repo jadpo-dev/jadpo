@@ -121,8 +121,10 @@ impl Call {
         }
     }
 
-    /// The same call, sent as `request` by the package driver.
-    pub fn with_request(mut self, request: crate::provider::Request) -> Call {
+    /// The same call, sent as `request` by the package driver: which may
+    /// be sent again once it has left exactly when the call may.
+    pub fn with_request(mut self, mut request: crate::provider::Request) -> Call {
+        request.repeatable = self.repeat != Repeat::Unkeyed;
         self.request = Some(Box::new(request));
         self
     }

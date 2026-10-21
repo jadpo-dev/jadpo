@@ -30,6 +30,11 @@ const PACKAGE: &str = "shared/providers/acme_couriers/v1";
 fn files(sandbox: &str) -> Vec<(String, String)> {
     let package = |path: &str, text: &str| (format!("{PACKAGE}/{path}"), text.to_string());
     let app = |path: &str, text: &str| (path.to_string(), text.to_string());
+    // A call that times out on a safe operation is sent again, and the
+    // fake answers the second request with the answer scripted after the
+    // first, or `200 {}`: so a timeout only a loaded machine reaches turns
+    // into a wrong answer. `couriers` waits far longer than any answer
+    // here takes; only `quick` is timed out, by answers held well past it.
     vec![
         app(
             "app.jadpo",
@@ -40,7 +45,7 @@ fn files(sandbox: &str) -> Vec<(String, String)> {
             domains: [shipping]
             credential: config.couriers_api_key
             environment: config.couriers_environment
-            timeout: 300ms
+            timeout: 5s
             retry: {
                 attempts: 3
                 within: 10s
@@ -51,7 +56,7 @@ fn files(sandbox: &str) -> Vec<(String, String)> {
             domains: [shipping]
             credential: config.couriers_api_key
             environment: config.couriers_environment
-            timeout: 300ms
+            timeout: 1s
             retry: {
                 attempts: 1
             }

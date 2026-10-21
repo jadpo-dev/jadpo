@@ -2807,6 +2807,13 @@ before anything is written on it (hyper's `ready` fails), and a request
 one hands back unwritten (`try_send_request`) goes out on a fresh one,
 so keeping connections never turns a call that never left into one that
 may have acted; one whose answer says `Connection: close` is never kept.
+A server may still close or reset a kept connection as a request reaches
+it, after the request is written and before any answer (chunk 8.1m2):
+no client can see that coming. The request goes out once more, on a
+fresh connection, only when `provider::Request::repeatable` says it may
+be sent again once it has left, which `Call::with_request` sets from the
+call's `Repeat` (`Safe` or `Keyed`; `Outward`'s `GET`s always); a change
+with no key is `NoAnswer`, as any call that may have acted.
 Requests go out with hyper's title-cased header names, `Host` first and
 no `Connection: close`. A call's timeout bounds the whole exchange: a
 connection not made within it, or within five seconds, is `NotSent`, an

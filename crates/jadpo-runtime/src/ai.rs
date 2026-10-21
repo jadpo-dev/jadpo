@@ -797,6 +797,8 @@ fn prepared(
                     error_code: Some("error.code".to_string()),
                     ..Reading::default()
                 },
+                // Set when the call takes it.
+                repeatable: false,
             });
         }
         Via::Package { package, providers } => (package, providers),
