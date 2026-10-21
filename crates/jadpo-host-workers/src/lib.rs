@@ -10,7 +10,8 @@
 //!   on `setTimeout`, settings from the Worker's bindings, the work a
 //!   response leaves run through `ctx.waitUntil`, rate limits counted in
 //!   the isolate's memory, and Workers' budgets for background work (30
-//!   seconds after a response, 15 minutes for the cron).
+//!   seconds after a response, 15 minutes for the cron, which the ticks
+//!   one cron runs share).
 //! - [`WorkersTransport`]: the drivers' `Transport` over `connect()` from
 //!   `cloudflare:sockets`, upgraded with `startTls()`.
 //! - [`WorkersFetch`] and [`WorkersOutbound`]: HTTP out of the Worker
@@ -21,8 +22,9 @@
 //!   `Target.wasm` deployable calls from the handlers it exports (chunk
 //!   8.2b): `fetch` serving each request through the runtime, the settings
 //!   read from the bindings and the stores' migrations compared once per
-//!   isolate (chunk 8.2d); and [`wasm_bindgen`], re-exported so that crate
-//!   exports them through this one's.
+//!   isolate (chunk 8.2d), and `scheduled` ticking at each run of the
+//!   minute's cron trigger (chunk 8.2f); and [`wasm_bindgen`], re-exported
+//!   so that crate exports them through this one's.
 //! - `testing`, with the `testing` feature: a test Worker's handler, which
 //!   runs one test of compiled programs built with the runtime's `testing`
 //!   feature by its key, so `jadpo-test` compares route tests run inside
@@ -96,6 +98,13 @@ pub fn budget_for(invocation: Invocation) -> u64 {
     }
 }
 
+/// What is left at `now` of a cron invocation's 15 minutes, begun at
+/// `began`, both on the monotonic clock: a tick it starts later in its
+/// minute has only that (chunk 8.2f).
+pub fn cron_left(began: u64, now: u64) -> u64 {
+    CRON_MS.saturating_sub(now.saturating_sub(began))
+}
+
 /// What the driver factory builds a Worker's drivers over: the target,
 /// `connect()` and `fetch()`, and no disk, which a Worker hasn't got.
 pub fn supplies() -> Supplies {
@@ -122,12 +131,16 @@ pub struct WorkersHost {
     ctx: Option<ExecutionContext>,
     drivers: Drivers,
     outbound: WorkersOutbound,
+    /// When the cron invocation it serves began on the monotonic clock:
+    /// each tick it runs has what is left of the cron's 15 minutes.
+    cron: Option<u64>,
 }
 
 impl std::fmt::Debug for WorkersHost {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WorkersHost")
             .field("ctx", &self.ctx.is_some())
+            .field("cron", &self.cron)
             .finish_non_exhaustive()
     }
 }
@@ -144,7 +157,15 @@ impl WorkersHost {
             ctx,
             drivers: Drivers::default(),
             outbound: WorkersOutbound::default(),
+            cron: None,
         }
+    }
+
+    /// The host for a run of the cron trigger, which began now: the
+    /// ticks it runs share the cron's 15 minutes ([`cron_left`]).
+    pub fn for_cron(mut self) -> WorkersHost {
+        self.cron = self.monotonic_ms();
+        self
     }
 
     /// Gives each connection the driver `drivers` built for it from the
@@ -240,8 +261,13 @@ impl Host for WorkersHost {
         let _ = ctx.wait_until(&promise);
     }
 
+    /// Workers' budgets; a cron's tick has what is left of its
+    /// invocation's 15 minutes.
     fn budget_ms(&self, invocation: Invocation) -> u64 {
-        budget_for(invocation)
+        match (invocation, self.cron, self.monotonic_ms()) {
+            (Invocation::Tick, Some(began), Some(now)) => cron_left(began, now),
+            _ => budget_for(invocation),
+        }
     }
 
     /// The Worker's binding of that name, when it is text: a variable or
@@ -299,6 +325,18 @@ mod tests {
 
     /// Background work has Workers' budgets, none past the 15-minute limit
     /// of a run.
+    /// A tick a cron starts later in its invocation has only what is left
+    /// of its 15 minutes, and none once they are spent.
+    #[test]
+    fn a_crons_later_tick_has_what_is_left_of_its_minutes() {
+        assert_eq!(cron_left(1_000, 1_000), CRON_MS);
+        assert_eq!(cron_left(1_000, 51_000), CRON_MS - 50_000);
+        assert_eq!(cron_left(1_000, 1_000 + CRON_MS), 0);
+        assert_eq!(cron_left(1_000, 2_000 + CRON_MS), 0);
+        // A clock that went back gives the whole budget, never more.
+        assert_eq!(cron_left(5_000, 1_000), CRON_MS);
+    }
+
     #[test]
     fn background_work_has_the_workers_budgets() {
         assert_eq!(budget_for(Invocation::AfterResponse), 30_000);
