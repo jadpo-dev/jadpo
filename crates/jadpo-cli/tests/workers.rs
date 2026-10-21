@@ -51,6 +51,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use jadpo_cli::run;
@@ -759,7 +760,14 @@ impl Workerd {
     /// date, given the text bindings `bindings`, its outbound network
     /// reaching this machine.
     fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("workers-workerd");
+        // A folder of its own, config and log, since this module's tests
+        // run side by side, each with its workerd.
+        static STARTED: AtomicUsize = AtomicUsize::new(0);
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+            "workers-workerd/{}-{}",
+            wrangler["name"].as_str().unwrap_or("worker"),
+            STARTED.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("the folder");
         let main = wrangler["main"].as_str().expect("a main module");
