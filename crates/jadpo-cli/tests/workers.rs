@@ -66,8 +66,9 @@ use crate::deployable::{apply, copy_folder, count, migrations, rows};
 use crate::support::fake_sqs::FakeSqs;
 
 /// The café declares one kiosk, built for Workers, serving its API and
-/// running its subscribers and schedules.
-const DECLARED: &str = "application {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n    events: {\n        store: main\n    }\n    deployables: {\n        kiosk: {\n            serves: [main]\n            runs: [Trigger.subscribers, Trigger.schedules]\n            target: Target.wasm\n        }\n    }\n}\n";
+/// running its subscribers and schedules, its rate limits counted in
+/// Cloudflare's rate-limiting binding (chunk 8.2m2).
+const DECLARED: &str = "application {\n    connections: {\n        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n        }\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n    }\n    events: {\n        store: main\n    }\n    rate_limits: {\n        store: limits\n    }\n    deployables: {\n        kiosk: {\n            serves: [main]\n            runs: [Trigger.subscribers, Trigger.schedules]\n            target: Target.wasm\n        }\n    }\n}\n";
 
 /// Teaching example 23 declared as a kiosk on Workers, copied where its
 /// build is kept between runs.
@@ -188,6 +189,16 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         kiosk["hyperdrive"],
         serde_json::json!([{ "binding": "DATABASE_URL", "id": null }]),
         "{built}"
+    );
+    // A rate-limiting binding for each limit the kiosk counts, numbered
+    // from `limits`' namespace.
+    assert_eq!(
+        wrangler["ratelimits"],
+        serde_json::json!([
+            { "name": "LIMITS_120_PER_60S", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
+            { "name": "LIMITS_600_PER_60S", "namespace_id": "1002", "simple": { "limit": 600, "period": 60 } },
+        ]),
+        "{wrangler}"
     );
     // Its tick has a database to sweep, so the minute's cron runs it.
     assert_eq!(
@@ -402,9 +413,9 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     let (status, body) = worker.send("GET", "/health/ready", &[], "");
     assert_eq!(status, 200, "{body}\n{}", worker.log());
 
-    // Each address `CF-Connecting-IP` gives is counted on its own: 120
-    // requests a minute, then 429, while another address still has its
-    // allowance.
+    // Each address `CF-Connecting-IP` gives is counted on its own, in the
+    // rate-limiting binding the Wrangler file names: 120 requests a
+    // minute, then 429, while another address still has its allowance.
     let one = [("CF-Connecting-IP", "203.0.113.9")];
     for _ in 0..120 {
         let (status, body) = worker.send("GET", "/nowhere", &one, "");
@@ -412,6 +423,15 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     }
     let (status, body) = worker.send("GET", "/nowhere", &one, "");
     assert_eq!(status, 429, "{body}");
+    assert_eq!(
+        worker
+            .log()
+            .matches("rate-limiting binding: address 203.0.113.9 ")
+            .count(),
+        121,
+        "{}",
+        worker.log()
+    );
     let (status, body) = worker.send(
         "GET",
         "/nowhere",
@@ -808,12 +828,14 @@ const CRON: &str = "export default {\n  async fetch(request, env) {\n    const a
 
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
-    /// the modules beside it by the file's rules, and its compatibility
-    /// date, given `bindings`, its outbound network reaching this machine.
-    /// A binding the Wrangler file names as Hyperdrive's is given as
-    /// workerd's Hyperdrive binding for the database at that address, which
-    /// hands `connect()` to its server, as `wrangler dev` does with a local
-    /// connection string; any other is text.
+    /// the modules beside it by the file's rules, its compatibility date
+    /// and its rate-limiting bindings, each a stand-in for Cloudflare's
+    /// (tools/workers/ratelimit-binding.mjs), given `bindings`, its
+    /// outbound network reaching this machine. A binding the Wrangler file
+    /// names as Hyperdrive's is given as workerd's Hyperdrive binding for
+    /// the database at that address, which hands `connect()` to its server,
+    /// as `wrangler dev` does with a local connection string; any other is
+    /// text.
     fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
         // A folder of its own, config and log, since this module's tests
         // run side by side, each with its workerd.
@@ -860,7 +882,7 @@ impl Workerd {
             })
             .unwrap_or_default();
         let mut services = Vec::new();
-        let bindings: Vec<String> = bindings
+        let mut bindings: Vec<String> = bindings
             .iter()
             .map(|(name, value)| {
                 if !pooled.contains(name) {
@@ -876,6 +898,20 @@ impl Workerd {
                 )
             })
             .collect();
+        let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers");
+        fs::copy(
+            tools.join("ratelimit-binding.mjs"),
+            dir.join("ratelimit-binding.mjs"),
+        )
+        .expect("the stand-in rate-limiting binding");
+        for binding in wrangler["ratelimits"].as_array().into_iter().flatten() {
+            bindings.push(format!(
+                "(name = \"{}\", wrapped = (moduleName = \"jadpo-test:ratelimit\", innerBindings = [(name = \"limit\", json = \"{}\"), (name = \"period\", json = \"{}\"), (name = \"log\", json = \"true\")]))",
+                binding["name"].as_str().expect("a binding's name"),
+                binding["simple"]["limit"],
+                binding["simple"]["period"],
+            ));
+        }
         let free = || {
             TcpListener::bind("127.0.0.1:0")
                 .and_then(|listener| listener.local_addr())
@@ -900,6 +936,7 @@ impl Workerd {
                  \x20   (name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\"),\n\
                  \x20   (name = \"cron\", address = \"127.0.0.1:{cron}\", http = (), service = \"cron\"),\n\
                  \x20 ],\n\
+                 \x20 extensions = [(modules = [(name = \"jadpo-test:ratelimit\", internal = true, esModule = embed \"ratelimit-binding.mjs\")])],\n\
                  );\n\n\
                  const kiosk :Workerd.Worker = (\n\
                  \x20 modules = [{}],\n\

@@ -18,8 +18,9 @@
 //!   the others beside it (no bundling, each kind by an explicit rule), the
 //!   compatibility date Jadpo's Workers host is run under, each setting
 //!   the deployable needs set, by its variable, each database's address
-//!   as a Hyperdrive binding (chunk 8.2i), and the minute's cron trigger
-//!   when its tick has something to do.
+//!   as a Hyperdrive binding (chunk 8.2i), the minute's cron trigger when
+//!   its tick has something to do, and the rate-limiting bindings its rate
+//!   limits are counted in ([`rate_limited`]).
 
 use std::path::Path;
 
@@ -171,4 +172,34 @@ pub fn wrangler(name: &str, required: &[String], hyperdrive: &[Hyperdrive], tick
     }
     out.push_str("\n}\n");
     out
+}
+
+/// `wrangler`, a Wrangler file [`wrangler`] wrote, with Cloudflare's
+/// rate-limiting bindings `bindings` (area 16, "Rate limits"; chunk
+/// 8.2m2): each its name, its namespace id, as text as Wrangler takes it,
+/// and the limit it counts, `simple: { limit, period }`, the period in
+/// seconds. With none, `wrangler` as it is.
+pub fn rate_limited(wrangler: String, bindings: &[jadpo_std::http::RateLimitBinding]) -> String {
+    let Some(body) = wrangler.strip_suffix("\n}\n") else {
+        return wrangler;
+    };
+    if bindings.is_empty() {
+        return wrangler;
+    }
+    let entries: Vec<String> = bindings
+        .iter()
+        .map(|binding| {
+            format!(
+                "    {{ \"name\": {}, \"namespace_id\": {}, \"simple\": {{ \"limit\": {}, \"period\": {} }} }}",
+                serde_json::Value::from(binding.name.as_str()),
+                serde_json::Value::from(binding.namespace.to_string()),
+                binding.limit.requests,
+                binding.limit.window_ms / 1000
+            )
+        })
+        .collect();
+    format!(
+        "{body},\n  \"ratelimits\": [\n{}\n  ]\n}}\n",
+        entries.join(",\n")
+    )
 }

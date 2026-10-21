@@ -15,6 +15,8 @@ rules:
   - email.template_missing
   - email.template_not_allowed
   - email.template_value_invalid
+  - rate_limits.store_invalid
+  - rate_limits.store_required
   - type.file_read_too_large
 ---
 
@@ -220,16 +222,58 @@ POST / {
   its own API, area 11), so servers share one count of calls to a provider
   instead of each spending the whole allowance.
 - On Cloudflare Workers, Cloudflare's rate-limiting binding can be the
-  store, for the limits it can count: short windows only (10 or 60
-  seconds; Cloudflare's current windows still to check). A limit with any
-  other window on that store is a compile error naming Redis as the store
-  that can count it (decided 2026-10-16).
+  store, for the limits it can count: windows of 10 or 60 seconds. A limit
+  with any other window on that store is a compile error naming Redis as
+  the store that can count it (decided 2026-10-16), which comes with a
+  route's own `rate_limit:`, since every limit counted until then is a
+  minute's. A Worker's instances share no memory,
+  so a deployable built for Workers that serves an API needs a store
+  (`rate_limits.store_required`).
 - A refused request gets area 7's `429` with `Retry-After` and the
   standard `RateLimit` headers, its wording from translations like any
   failure.
 - Area 8's generated magic-link routes get their limits by address without
   anything written.
 - The limit appears in the route's OpenAPI entry and in `jadpo routes`.
+
+Built in chunk 8.2m2 ("Chosen in chunk 8.2m2" below): the store on
+Workers. An edge built for Workers counts its rate limits in Cloudflare's
+binding:
+
+```jadpo check project=rate-limits-on-workers file=app.jadpo
+application {
+    connections: {
+        limits: {
+            driver: Driver.cloudflare_rate_limits
+            namespace: 1001
+        }
+    }
+    rate_limits: {
+        store: limits
+    }
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+A connection with `driver: Driver.cloudflare_rate_limits` runs only on
+Workers and gives `namespace:`, the first of the namespace ids in the
+Cloudflare account its bindings take. A binding counts one limit over one
+window, so each limit the app counts there is a binding of its own,
+`LIMITS_120_PER_60S` for 120 a minute, numbered from `namespace:` in the
+order of window then requests, and `jadpo build` writes each into the
+Wrangler file's `ratelimits`. A refusal is told to try again after the
+window's whole length, since the binding says only whether a request is
+within the limit; a binding the Worker hasn't got, or one that throws,
+leaves the count to the instance's memory, and no request fails for it.
+`rate_limits: { store: }` names a connection with `driver: Driver.redis`
+or `driver: Driver.cloudflare_rate_limits` (`rate_limits.store_invalid`);
+Redis's driver comes with caches, and until then a deployable counts in
+its own memory.
 
 ## Caches: drivers and what they hold
 
@@ -2418,6 +2462,69 @@ error: `email.sent` is read outside a test
 check failed: 1 error, 2 files
 ```
 
+### `rate_limits.store_invalid`
+
+`rate_limits: { store: }` names the connection rate limits are counted
+in: a Redis connection, or on Workers Cloudflare's rate-limiting binding.
+A database can't count them:
+
+```jadpo check project=e-rate-limits-store-invalid expect=rate_limits.store_invalid file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    rate_limits: {
+        store: main
+    }
+}
+```
+
+```text output
+error: `store: main` can't count rate limits
+ --> app.jadpo:8:16
+  |
+8 |         store: main
+  |                ^^^^ not Redis or a rate-limiting binding
+  reason: Rate limits are counted in one store the servers or a Worker's instances share: a Redis connection (`Driver.redis`), or on Workers Cloudflare's rate-limiting binding (`Driver.cloudflare_rate_limits`). `rate_limits: { store: <connection> }` names it. `main` is a PostgreSQL database.
+  next: Name a connection with `driver: Driver.redis` or `driver: Driver.cloudflare_rate_limits` (agent)
+  rule: rate_limits.store_invalid
+  help: docs/language/16-built-in-services.html#rate-limits-store-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `rate_limits.store_required`
+
+A Worker's instances share no memory, so a deployable built for Workers
+that serves an API counts its rate limits in a store. An edge with none:
+
+```jadpo check project=e-rate-limits-store-required expect=rate_limits.store_required file=app.jadpo
+application {
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```text output
+error: `edge` has nowhere to count its rate limits on Workers
+ --> app.jadpo:5:21
+  |
+5 |             target: Target.wasm
+  |                     ^^^^^^^^^^^ built for Workers
+  reason: Every route is rate-limited, and a Worker's instances share no memory, so on Workers the counts are kept in a store: Cloudflare's rate-limiting binding, or Redis. `app.jadpo` names none in `rate_limits: { store: }`.
+  next: Declare a connection with `driver: Driver.cloudflare_rate_limits` and a `namespace:` in `connections:`, and add `rate_limits: { store: <its name> }` to `application { }` (agent)
+  rule: rate_limits.store_required
+  help: docs/language/16-built-in-services.html#rate-limits-store-required
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -2437,7 +2544,8 @@ SpamAssassin's rules in the score ("Chosen in chunk 7.3c3" below). In chunk
 8.1b the SMTP conversation moved into the driver, over the host's
 transport and its TLS upgrade (docs/compiler-runtime.md §2.6, "TLS
 through the transport"), these rules unchanged. Default rate limits came with routes (chunk
-4.1); flags, the rest of files (multipart slots, and image variants and
+4.1), and their store on Workers, Cloudflare's rate-limiting binding,
+with chunk 8.2m2 ("Chosen in chunk 8.2m2" below); flags, the rest of files (multipart slots, and image variants and
 scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
 monitoring thresholds come after the first build ("Remaining built-in
@@ -2461,6 +2569,51 @@ the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
 `max_size:`, `types:` and `store:` as it is written come with the rest
 of the files capability.
+
+### Chosen in chunk 8.2m2
+
+The store rate limits are counted in on Workers, each the most
+conservative reading where the page leaves a choice open (2026-10-21):
+
+- **`rate_limits: { store: }`** in `application { }` names one
+  connection, `Driver.redis` or `Driver.cloudflare_rate_limits`, and
+  nothing else (`rate_limits.store_invalid`). Redis's driver comes with
+  caches; until then a deployable whose store is Redis counts in its own
+  memory, the fallback the page allows while the store can't be reached.
+- **`Driver.cloudflare_rate_limits`** runs only on Workers, so a native
+  deployable that serves an API with that store is refused
+  (`deployable.target_unsupported`), naming Redis. It gives `namespace:`,
+  a whole number of at least 1.
+- **One binding a limit.** A binding counts one limit over one window, so
+  each limit the app counts is a binding of its own, named for the
+  connection and the limit (`LIMITS_120_PER_60S`) and numbered from
+  `namespace:` in the order of window then requests; `jadpo build` writes
+  each into the Wrangler file as `ratelimits: [{ name, namespace_id,
+  simple: { limit, period } }]`. Adding a limit can renumber the ones
+  after it, which costs at most a window's counts, harmless to lose.
+- **Windows.** 10 and 60 seconds, as the page has it; the workerd pinned
+  in `tools/workers/` has no binding of its own to check against and its
+  types give only `limit({ key })` and `success`, so chunk 8.2n checks the
+  windows and the Wrangler entries against the real edge. Every limit
+  counted now is a minute's (600 a signed-in caller, 120 an address), so
+  all map onto the binding; the error for any other window comes with a
+  route's own `rate_limit:`, which is the first thing that can write one,
+  rather than as a rule nothing can reach.
+- **Retry-After** is the window's whole length, since the binding says
+  only whether a request is within the limit, not when its window ends.
+- **Required on Workers.** A deployable built for Workers that serves an
+  API needs a store (`rate_limits.store_required`); one that serves none
+  has no routes to limit, and the requests it refuses beside its health
+  checks are counted in its own memory.
+- **Falling back.** A binding the Worker hasn't got, or one that throws
+  or rejects, leaves the count to the isolate's memory, so no request
+  fails for it.
+
+Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`,
+`crates/jadpo-cli/tests/workers.rs`) against a stand-in for Cloudflare's
+binding (`tools/workers/ratelimit-binding.mjs`, a wrapped binding), since
+workerd has none: the binding decides where it is given, a refusal waits
+the window, and a broken or missing binding falls back to memory.
 
 ### Chosen in chunk 7.3c2
 

@@ -85,6 +85,11 @@ impl Bed {
             .expect("wasm-bindgen binds the probe");
         std::fs::write(dir.join("worker.mjs"), SHIM).expect("the shim");
         std::fs::write(dir.join("authority.pem"), &trusted.root_pem).expect("the authority");
+        std::fs::copy(
+            root.join("tools/workers").join("ratelimit-binding.mjs"),
+            dir.join("ratelimit-binding.mjs"),
+        )
+        .expect("the stand-in rate-limiting binding");
         let port = free_port();
         std::fs::write(dir.join("config.capnp"), config(port, https, plain)).expect("the config");
 
@@ -152,8 +157,10 @@ impl Bed {
 
 /// workerd's configuration: the probe, served on `port`, reaching this
 /// machine through a network that trusts the test's authority, given two
-/// text bindings and a Hyperdrive binding whose service is the echo on
-/// `echo`, as a database's would be its server.
+/// text bindings, a Hyperdrive binding whose service is the echo on
+/// `echo`, as a database's would be its server, and two stand-ins for
+/// Cloudflare's rate-limiting binding (tools/workers/ratelimit-binding.mjs):
+/// one allowing a request a minute, and one that throws.
 fn config(port: u16, https: u16, echo: u16) -> String {
     format!(
         r#"using Workerd = import "/workerd/workerd.capnp";
@@ -168,6 +175,9 @@ const config :Workerd.Config = (
     (name = "pooled", external = (address = "127.0.0.1:{echo}", tcp = ())),
   ],
   sockets = [(name = "http", address = "127.0.0.1:{port}", http = (), service = "probe")],
+  extensions = [(modules = [
+    (name = "jadpo-test:ratelimit", internal = true, esModule = embed "ratelimit-binding.mjs"),
+  ])],
 );
 
 const probe :Workerd.Worker = (
@@ -187,6 +197,15 @@ const probe :Workerd.Worker = (
       password = "p@ss/word!",
       scheme = "postgresql",
     )),
+    (name = "LIMITS_2_PER_60S", wrapped = (moduleName = "jadpo-test:ratelimit", innerBindings = [
+      (name = "limit", json = "1"),
+      (name = "period", json = "60"),
+    ])),
+    (name = "BROKEN_2_PER_60S", wrapped = (moduleName = "jadpo-test:ratelimit", innerBindings = [
+      (name = "limit", json = "1"),
+      (name = "period", json = "60"),
+      (name = "broken", json = "true"),
+    ])),
   ],
   globalOutbound = "internet",
 );

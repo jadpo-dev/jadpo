@@ -18,7 +18,7 @@ use jadpo_runtime::provider::{Reading, Request};
 use jadpo_runtime::stream::Chunk;
 use jadpo_runtime::{Allowed, Host, PasskeyError, PasskeyParts};
 use jadpo_std::HttpMethod;
-use jadpo_std::http::RateLimit;
+use jadpo_std::http::{RateLimit, RateLimitBinding, RateLimitStore};
 use jadpo_value::encoding::{from_base64url, to_base64url};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use wasm_bindgen::prelude::*;
@@ -136,6 +136,35 @@ pub async fn fetch(
                 seen.push(match host.rate_limit(&key, limit, now).await {
                     Allowed::Yes => "yes",
                     _ => "no",
+                });
+            }
+            seen.join(" ")
+        }
+        "/rate-binding" => {
+            // Two a minute, counted in the binding the test names: what
+            // `rate_limits:` gives a host when its store is Cloudflare's
+            // rate-limiting binding (chunk 8.2m2).
+            let limit = RateLimit {
+                requests: 2,
+                window_ms: 60_000,
+            };
+            let store = RateLimitStore {
+                connection: "limits".to_string(),
+                bindings: vec![RateLimitBinding {
+                    limit,
+                    name: param("binding"),
+                    namespace: 1001,
+                }],
+            };
+            let host = WorkersHost::new(env.clone(), JsValue::UNDEFINED)
+                .with_rate_limits(Some(Rc::new(store)));
+            let key = param("key");
+            let mut seen = Vec::new();
+            for _ in 0..2 {
+                let now = host.now_ms().unwrap_or(0);
+                seen.push(match host.rate_limit(&key, limit, now).await {
+                    Allowed::Yes => "yes".to_string(),
+                    Allowed::No { retry_after } => format!("no:{retry_after}"),
                 });
             }
             seen.join(" ")
