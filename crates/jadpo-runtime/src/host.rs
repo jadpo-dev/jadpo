@@ -462,8 +462,8 @@ pub trait Host {
     /// Counts a request against `limit` for `key` (`address <ip>`, `user
     /// <id>` or `service <id>`) at `now`, milliseconds since the epoch,
     /// and says whether it may go ahead (area 16, "Rate limits"). Natively
-    /// the counters are in bounded memory, each worker's own
-    /// ([`crate::RateLimits`]); on Workers the deployable counts in a Redis
+    /// the counters are in bounded memory, one table for all of a server's
+    /// workers ([`crate::RateLimits`]; chunk 8.1l); on Workers the deployable counts in a Redis
     /// connection or Cloudflare's rate-limiting binding, and in the
     /// isolate's memory only while that can't be reached (area 16,
     /// question 6). A host that counts nothing, as a test's, lets every

@@ -12,13 +12,15 @@
 //!   each connection's driver as the factory built it from the plan
 //!   ([`supplies`], chunk 8.1d), the operating system's
 //!   randomness, tokio's timer and the monotonic clock for deadlines
-//!   (chunks 4.2 and 4.9), the system clock, rate limits counted in the
-//!   worker's own bounded memory (chunk 4.10), and the work a response
+//!   (chunks 4.2 and 4.9), the system clock, rate limits counted in
+//!   bounded memory (chunk 4.10), one table for all of a server's workers
+//!   (chunk 8.1l), and the work a response
 //!   leaves, run as a task on the worker's thread once the response is
 //!   handed back (chunk 6.1a); it drains when the server stops, its
 //!   background work giving back what it holds (chunk 6.7).
-//! - [`http`]: the listener and its worker threads, each a current-thread
-//!   runtime answering with its own handler (chunk 4.1).
+//! - [`http`]: the acceptor and its worker threads, each a current-thread
+//!   runtime answering with its own handler (chunk 4.1), the acceptor
+//!   handing them connections in turn (chunk 8.1l).
 //! - [`files`]: the disk driver, which keeps `jadpo dev`'s stores of files
 //!   under `.jadpo/files/` (chunk 6.4b).
 //! - [`fetch`]: HTTP for the package driver (chunk 7.2c), HTTPS through
@@ -64,13 +66,14 @@ pub mod spamassassin;
 #[cfg(feature = "test-authenticator")]
 pub mod test_authenticator;
 pub mod tls;
+mod tracked;
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
 use std::rc::Rc;
-use std::task::{Poll, Waker};
+use std::sync::Arc;
 use std::time::Duration;
 
 use jadpo_drivers::{Endpoint, Stream, Transport};
@@ -202,9 +205,10 @@ pub fn supplies() -> Supplies {
 /// The runtime's host natively, one per worker thread: each connection's
 /// driver as the factory built it ([`NativeHost::with_drivers`]), a store
 /// given in place of one, the operating system's randomness for new identities
-/// and request ids, the system clock, the worker's rate-limit counters in
-/// bounded memory, the native default until a Redis connection is named
-/// (area 16), and the work responses leave for after they are sent
+/// and request ids, the system clock, rate-limit counters in bounded
+/// memory, the native default until a Redis connection is named (area 16),
+/// shared by all of a server's workers ([`http::WorkerThread::host`];
+/// chunk 8.1l) and a host's own otherwise, and the work responses leave for after they are sent
 /// ([`Host::defer`]), which the HTTP worker takes as each response is
 /// handed back ([`NativeHost::take_deferred`]) and runs as tasks of its
 /// own on the worker's thread (chunk 6.1a). Each invocation of background
@@ -226,9 +230,13 @@ pub struct NativeHost {
     /// `jadpo dev`'s call log, which keeps each provider call with its
     /// values (chunk 7.2d).
     call_log: Option<CallLog>,
-    limits: RateLimits,
+    /// The rate-limit counters: the server's one table, which its workers
+    /// share (chunk 8.1l).
+    limits: Arc<RateLimits>,
     deferred: Deferred,
-    background: Rc<Background>,
+    /// The background work it has running (deferred work, ticks, work
+    /// handed on), and whether it is shutting down (chunk 6.7).
+    background: Rc<tracked::Tracked>,
     /// What the runtime fetches on its own account (chunk 7.7b).
     outbound: fetch::Outward,
 }
@@ -257,54 +265,9 @@ impl std::fmt::Debug for CallLog {
 /// How long a host draining waits for its background work to give back
 /// what it holds before the process ends without it: each piece stops at
 /// once, so this only bounds the statements that give its claims back.
+/// A stopping server's worker waits as long for its connections to give
+/// the answers they owe first (chunk 8.1l).
 pub const DRAIN_GRACE: Duration = Duration::from_secs(10);
-
-/// The background work a host has running (deferred work, ticks, work
-/// handed on), and whether it is shutting down (chunk 6.7).
-struct Background {
-    stop: tokio::sync::watch::Sender<bool>,
-    /// What each budget's look at the shutdown is cloned from.
-    stopping: tokio::sync::watch::Receiver<bool>,
-    running: Cell<usize>,
-    /// Who waits for the last of it to end: a drain.
-    idle: RefCell<Vec<Waker>>,
-}
-
-impl Default for Background {
-    fn default() -> Background {
-        let (stop, stopping) = tokio::sync::watch::channel(false);
-        Background {
-            stop,
-            stopping,
-            running: Cell::new(0),
-            idle: RefCell::new(Vec::new()),
-        }
-    }
-}
-
-impl std::fmt::Debug for Background {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Background")
-            .field("stopping", &*self.stop.borrow())
-            .field("running", &self.running.get())
-            .finish()
-    }
-}
-
-/// One piece of background work, counted until it ends or is dropped.
-struct Counted(Rc<Background>);
-
-impl Drop for Counted {
-    fn drop(&mut self) {
-        let left = self.0.running.get().saturating_sub(1);
-        self.0.running.set(left);
-        if left == 0 {
-            for waiting in self.0.idle.borrow_mut().drain(..) {
-                waiting.wake();
-            }
-        }
-    }
-}
 
 /// Work given to run after a response, until the worker takes it.
 #[derive(Default)]
@@ -350,6 +313,13 @@ impl NativeHost {
         self
     }
 
+    /// Counts rate limits in `limits`: the table every worker of a server
+    /// shares (chunk 8.1l).
+    pub(crate) fn with_rate_limits(mut self, limits: Arc<RateLimits>) -> NativeHost {
+        self.limits = limits;
+        self
+    }
+
     /// Keeps each provider call with its values in `log` (chunk 7.2d).
     pub fn with_call_log(mut self, log: Rc<dyn jadpo_runtime::call_log::CallLog>) -> NativeHost {
         self.call_log = Some(CallLog(log));
@@ -370,13 +340,7 @@ impl NativeHost {
     /// `work` counted as the host's background work until it ends or is
     /// dropped, so a drain waits for it: what the runtime's tick runs as.
     pub fn track(&self, work: LocalFuture<'static, ()>) -> LocalFuture<'static, ()> {
-        let background = Rc::clone(&self.background);
-        background.running.set(background.running.get() + 1);
-        let counted = Counted(background);
-        Box::pin(async move {
-            let _counted = counted;
-            work.await;
-        })
+        self.background.track(work)
     }
 
     /// Shuts its background work down (chunk 6.7): every budget it runs
@@ -384,19 +348,7 @@ impl NativeHost {
     /// back what it held, and it takes nothing more. The future waits for
     /// that work to end, at most [`DRAIN_GRACE`].
     pub fn drain(&self) -> LocalFuture<'static, ()> {
-        self.background.stop.send_replace(true);
-        let background = Rc::clone(&self.background);
-        Box::pin(async move {
-            let idle = std::future::poll_fn(|cx| {
-                if background.running.get() == 0 {
-                    Poll::Ready(())
-                } else {
-                    background.idle.borrow_mut().push(cx.waker().clone());
-                    Poll::Pending
-                }
-            });
-            let _ = tokio::time::timeout(DRAIN_GRACE, idle).await;
-        })
+        self.background.stop(DRAIN_GRACE)
     }
 }
 
@@ -449,7 +401,7 @@ impl Host for NativeHost {
     /// store for the next process. Called only from work this thread's
     /// `LocalSet` runs, as everything a worker defers is.
     fn hand_on(&self, work: LocalFuture<'static, ()>) {
-        if *self.background.stop.borrow() {
+        if self.background.stopped() {
             return;
         }
         tokio::task::spawn_local(self.track(work));
@@ -457,10 +409,7 @@ impl Host for NativeHost {
 
     /// Finishes once [`NativeHost::drain`] begins.
     fn stopping(&self) -> LocalFuture<'_, ()> {
-        let mut stop = self.background.stopping.clone();
-        Box::pin(async move {
-            let _ = stop.wait_for(|stopping| *stopping).await;
-        })
+        self.background.stopping()
     }
 
     /// The process's environment.
@@ -501,7 +450,8 @@ impl Host for NativeHost {
         i64::try_from(elapsed.as_millis()).ok()
     }
 
-    /// Counted in this worker's memory.
+    /// Counted in memory: the server's one table, which its workers share
+    /// (chunk 8.1l).
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
