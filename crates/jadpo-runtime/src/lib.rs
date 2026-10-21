@@ -113,6 +113,7 @@ mod race;
 mod ratelimit;
 mod read;
 pub mod receiving;
+pub mod record;
 pub mod recorded;
 mod report;
 pub mod rows;

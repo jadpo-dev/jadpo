@@ -527,6 +527,9 @@ impl Capability for Fake {
 pub struct Faked<H> {
     host: H,
     fakes: Vec<(String, Rc<dyn Capability>)>,
+    /// The record a test keeps of what it did (chunk 8.1c), when it keeps
+    /// one.
+    record: Option<Rc<crate::record::Record>>,
 }
 
 impl<H> std::fmt::Debug for Faked<H> {
@@ -543,7 +546,14 @@ impl<H: Host> Faked<H> {
         Faked {
             host,
             fakes: Vec::new(),
+            record: None,
         }
+    }
+
+    /// Keeps each outside call in `record` (chunk 8.1c).
+    pub fn with_record(mut self, record: Rc<crate::record::Record>) -> Faked<H> {
+        self.record = Some(record);
+        self
     }
 
     /// Gives `fake` in place of connection `connection`'s driver.
@@ -568,6 +578,10 @@ impl<H: Host> Host for Faked<H> {
 
     fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
         self.host.call_log()
+    }
+
+    fn record(&self) -> Option<&crate::record::Record> {
+        self.record.as_deref().or_else(|| self.host.record())
     }
 
     fn passkeys(&self) -> Option<&dyn Passkeys> {

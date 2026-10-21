@@ -17,25 +17,39 @@ use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::config::Mode;
 use jadpo_runtime::crashes::{Boundary, Reached};
 use jadpo_runtime::fakes::ProviderFake;
+use jadpo_runtime::record::{Entry, Record};
 use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Host, Outcome, Sources, block_on};
 
 use crate::database::{TestDatabases, TestHost};
 use crate::env::{TestDatabase, TestEnv};
 use crate::outcome::CrashPoint;
 use crate::outcome::{self, TestFailure};
-use crate::{Rerun, Test, TestKind};
+use crate::{Rerun, Test, TestKind, TestRecord};
 
 /// A test run reads no environment variable.
 const NO_VARIABLES: fn(&str) -> Option<String> = |_| None;
 
-/// Runs `tests`, in order, on the interpreter: what each failed with, by
-/// its place in `tests`.
+/// How one test went: what it failed with, `None` when it passed, and its
+/// record when the run keeps them (chunk 8.1c).
+pub(crate) type Done = (Option<Box<TestFailure>>, Option<TestRecord>);
+
+/// What a test's run kept of what it did, for its record: the runtime's
+/// entries and its database's rows when it ended.
+#[derive(Default)]
+struct Kept {
+    entries: Vec<Entry>,
+    rows: Vec<String>,
+}
+
+/// Runs `tests`, in order, on the interpreter: how each went, by its place
+/// in `tests`, with its record when `record` asks for one.
 pub(crate) fn run_all(
     prepared: &Arc<Prepared>,
     tests: &[Test],
     rerun: &Rerun,
     databases: Option<&TestDatabases>,
-) -> Vec<Option<Box<TestFailure>>> {
+    record: bool,
+) -> Vec<Done> {
     let sources = prepared.plan().files();
     // Every test reads the same settings: each field's `test:` value, its
     // default, and throwaway secrets made for this run (area 10).
@@ -56,6 +70,7 @@ pub(crate) fn run_all(
         rerun,
         sources,
         databases,
+        record,
     )
 }
 
@@ -67,15 +82,16 @@ fn workers(count: usize) -> usize {
         .min(count)
 }
 
-/// Runs `tests` on executors `make` gives, one per thread, and gives each
-/// test's failure in the tests' own order.
+/// Runs `tests` on executors `make` gives, one per thread, and gives how
+/// each went in the tests' own order.
 fn spread<E: Executor>(
     make: impl Fn() -> E + Sync,
     tests: &[Test],
     rerun: &Rerun,
     sources: &(dyn Sources + Sync),
     databases: Option<&TestDatabases>,
-) -> Vec<Option<Box<TestFailure>>> {
+    record: bool,
+) -> Vec<Done> {
     let next = AtomicUsize::new(0);
     let work = || {
         let executor = make();
@@ -92,11 +108,11 @@ fn spread<E: Executor>(
             let Some(test) = tests.get(index) else {
                 break;
             };
-            done.push((index, one(&executor, test, rerun, sources, &stores)));
+            done.push((index, one(&executor, test, rerun, sources, &stores, record)));
         }
         done
     };
-    let mut results: Vec<(usize, Option<Box<TestFailure>>)> = if workers(tests.len()) <= 1 {
+    let mut results: Vec<(usize, Done)> = if workers(tests.len()) <= 1 {
         work()
     } else {
         std::thread::scope(|scope| {
@@ -135,13 +151,48 @@ struct Stores<'a> {
     runtime: Option<&'a jadpo_host_native::Runtime>,
 }
 
-/// Runs one test: `None` when it passed.
+/// Runs one test, keeping its record when `record` asks for one.
 fn one<E: Executor>(
     executor: &E,
     test: &Test,
     rerun: &Rerun,
     sources: &dyn Sources,
     stores: &Stores<'_>,
+    record: bool,
+) -> Done {
+    let mut kept = record.then(Kept::default);
+    let failure = tested(executor, test, rerun, sources, stores, kept.as_mut());
+    let record =
+        kept.map(|kept| TestRecord::new(&kept.entries, &verdict(failure.as_deref()), &kept.rows));
+    (failure, record)
+}
+
+/// How a test ended, as its record says: `passed`, or the code it failed
+/// with and the crash its failing run was made with.
+fn verdict(failure: Option<&TestFailure>) -> String {
+    match failure {
+        None => "passed".to_string(),
+        Some(failure) => match &failure.crash {
+            Some(crash) => format!("{} {}", failure.rule.id, crash.text()),
+            None => failure.rule.id.to_string(),
+        },
+    }
+}
+
+/// The record `kept` asks for, when it asks for one.
+fn recording(kept: Option<&Kept>) -> Option<Rc<Record>> {
+    kept.map(|_| Rc::new(Record::new()))
+}
+
+/// Runs one test: `None` when it passed. What it did goes into `kept`,
+/// when given.
+fn tested<E: Executor>(
+    executor: &E,
+    test: &Test,
+    rerun: &Rerun,
+    sources: &dyn Sources,
+    stores: &Stores<'_>,
+    kept: Option<&mut Kept>,
 ) -> Option<Box<TestFailure>> {
     // A recording of one of the app's own integrations, read by its
     // operation's decoders (chunk 7.2d2).
@@ -223,7 +274,7 @@ fn one<E: Executor>(
             callable,
             env: &env,
         };
-        let first = stored.run(None);
+        let first = stored.run(None, kept);
         if first.failure.is_some() {
             return first.failure;
         }
@@ -233,7 +284,7 @@ fn one<E: Executor>(
         // without one (area 13; chunk 7.5d).
         for (at, step) in first.reached.iter().enumerate() {
             for boundary in Boundary::ALL {
-                let ran = stored.run(Some((at + 1, boundary)));
+                let ran = stored.run(Some((at + 1, boundary)), None);
                 if !ran.crashed {
                     continue;
                 }
@@ -260,7 +311,8 @@ fn one<E: Executor>(
         return None;
     }
     let host = env.host();
-    let host = faked(&host, &connections, &fake, models, &ai);
+    let record = recording(kept.as_deref());
+    let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);
     let mut ctx = Ctx::of(executor, &host, env.env);
     ctx.set_settings(executor.settings(callable));
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
@@ -270,6 +322,12 @@ fn one<E: Executor>(
             Frame::ENTRY,
         ))
     });
+    if let (Some(record), Some(kept)) = (&record, kept) {
+        record.push(Entry::Outcome(jadpo_runtime::record::outcome(
+            &outcome, places,
+        )));
+        kept.entries = record.entries();
+    }
     let failure = match outcome {
         Outcome::Value(_) => None,
         other => Some(Box::new(outcome::failure(
@@ -320,8 +378,9 @@ struct Ran {
 
 impl<E: Executor> Stored<'_, E> {
     /// Runs the test on its own copy of the database, with its own fake,
-    /// crashing at `crash` (the step, from 1, and the boundary) when given.
-    fn run(&self, crash: Option<(usize, Boundary)>) -> Ran {
+    /// crashing at `crash` (the step, from 1, and the boundary) when given,
+    /// keeping what it did and the rows it left in `kept` when given.
+    fn run(&self, crash: Option<(usize, Boundary)>, kept: Option<&mut Kept>) -> Ran {
         let (executor, test) = (self.executor, self.test);
         let places = executor.places();
         let fake = Rc::new(ProviderFake::new());
@@ -332,11 +391,13 @@ impl<E: Executor> Stored<'_, E> {
         env.database = TestDatabase::Copied {
             stores: self.databases.stores(),
         };
+        let record = recording(kept.as_deref());
         let host = TestHost::new(self.databases)
+            .with_record(record.clone())
             .with_file_stores(executor.plan().file_stores())
             .with_mail(executor.plan().mail_connection().map(str::to_string));
         let (outcome, undelivered, reached, crashed) = {
-            let host = faked(&host, &connections, &fake, models, &ai);
+            let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);
             let mut ctx = Ctx::of(executor, &host, env.env);
             ctx.set_settings(executor.settings(self.callable));
             // What each step emits is delivered before the next statement,
@@ -349,6 +410,11 @@ impl<E: Executor> Stored<'_, E> {
             let outcome = self
                 .runtime
                 .block_on(executor.run(&mut ctx, self.callable, Vec::new()));
+            if let Some(record) = &record {
+                record.push(Entry::Outcome(jadpo_runtime::record::outcome(
+                    &outcome, places,
+                )));
+            }
             (
                 outcome,
                 ctx.undelivered().cloned(),
@@ -384,10 +450,14 @@ impl<E: Executor> Stored<'_, E> {
         } else {
             failure
         };
-        let kept = host.finish(failure.is_some());
+        if let (Some(record), Some(kept)) = (&record, kept) {
+            kept.entries = record.entries();
+            kept.rows = host.rows(self.runtime);
+        }
+        let databases = host.finish(failure.is_some());
         Ran {
             failure: failure.map(|mut failure| {
-                failure.kept = kept;
+                failure.kept = databases;
                 failure
             }),
             reached,
@@ -415,6 +485,14 @@ fn faked<H: Host>(
     connections.iter().fold(faked, |faked, connection| {
         faked.with(connection, Rc::clone(fake) as Rc<dyn Capability>)
     })
+}
+
+/// `host`, keeping each outside call in `record` when there is one.
+fn recorded<H: Host>(host: Faked<H>, record: &Option<Rc<Record>>) -> Faked<H> {
+    match record {
+        Some(record) => host.with_record(Rc::clone(record)),
+        None => host,
+    }
 }
 
 /// How each scripted operation and prompt was used.
@@ -496,10 +574,11 @@ mod tests {
             &rerun,
             &sources,
             None,
+            false,
         )
         .iter()
         .enumerate()
-        .filter(|(_, failure)| failure.is_some())
+        .filter(|(_, (failure, _))| failure.is_some())
         .map(|(n, _)| n)
         .collect();
         let expected: Vec<usize> = (0..40).filter(|n: &usize| n.is_multiple_of(3)).collect();

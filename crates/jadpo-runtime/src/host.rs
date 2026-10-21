@@ -320,6 +320,13 @@ pub trait Host {
         None
     }
 
+    /// The outcome-and-effect record each outside call is kept in (chunk
+    /// 8.1c): only a test's host keeps one ([`crate::capability::Faked`]),
+    /// so everywhere else a call pays only this asking.
+    fn record(&self) -> Option<&crate::record::Record> {
+        None
+    }
+
     /// The passkey ceremonies (area 8, "Passkeys"): `None` on a host that
     /// carries no WebAuthn implementation, whose passkey routes answer
     /// `authentication_misconfigured`.
@@ -491,6 +498,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn call_log(&self) -> Option<&dyn crate::call_log::CallLog> {
         (**self).call_log()
+    }
+
+    fn record(&self) -> Option<&crate::record::Record> {
+        (**self).record()
     }
 
     fn passkeys(&self) -> Option<&dyn Passkeys> {

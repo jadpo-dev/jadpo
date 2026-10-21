@@ -131,6 +131,9 @@ class TestBinary:
 POSTGRES = [
     # The driver, the test database's template and copies.
     ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
+    # Each test's outcome-and-effect record: the corpus run twice with the
+    # same records, and a perturbed run named where it differs (chunk 8.1c).
+    ('live PostgreSQL: outcome-and-effect records', [('jadpo-test', 'records')], []),
     # `jadpo migrate apply` and `status`; computed backfills, in batches,
     # resumed, and worked out in Jadpo where SQL can't (area 5); stored
     # structured values checked or rewritten when their type reads less
