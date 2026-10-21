@@ -2265,11 +2265,20 @@ application {
         source: ClientAddressSource.forwarded_for
         hops: 1
     }
+    connections: {
+        limits: {
+            driver: Driver.cloudflare_rate_limits
+            namespace: 1001
+        }
+    }
     deployables: {
         edge: {
             serves: [main]
             target: Target.wasm
         }
+    }
+    rate_limits: {
+        store: limits
     }
 }
 ```
@@ -2277,11 +2286,11 @@ application {
 ```text output
 error: `edge` can't read the client's address from `X-Forwarded-For` on Workers
  --> app.jadpo:3:17
-  |
-3 |         source: ClientAddressSource.forwarded_for
-  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not read on Workers
-9 |             target: Target.wasm
-  |                     ----------- built for Workers
+   |
+ 3 |         source: ClientAddressSource.forwarded_for
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not read on Workers
+15 |             target: Target.wasm
+   |                     ----------- built for Workers
   reason: Cloudflare writes the client's address in `CF-Connecting-IP` on every request, overwriting a caller's, and a Worker has no connection address of its own, so `cloudflare` is the only source a Worker reads; `edge` would refuse to start.
   next: Use `ClientAddressSource.cloudflare` without `hops:`, or build `edge` with `Target.native` (agent)
   rule: deployable.target_unsupported
