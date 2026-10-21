@@ -17,9 +17,10 @@
 //! - `wrangler.json`: the shim as the main module, uploaded as it is with
 //!   the others beside it (no bundling, each kind by an explicit rule), the
 //!   compatibility date Jadpo's Workers host is run under, each setting
-//!   the deployable needs set, by its variable, the minute's cron trigger
-//!   when its tick has something to do, and the rate-limiting bindings its
-//!   rate limits are counted in ([`rate_limited`]).
+//!   the deployable needs set, by its variable, each database's address
+//!   as a Hyperdrive binding (chunk 8.2i), the minute's cron trigger when
+//!   its tick has something to do, and the rate-limiting bindings its rate
+//!   limits are counted in ([`rate_limited`]).
 
 use std::path::Path;
 
@@ -102,13 +103,27 @@ pub fn worker_name(name: &str) -> String {
     name.replace('_', "-")
 }
 
+/// A database's address on Workers (area 5, "PostgreSQL through
+/// Hyperdrive"; chunk 8.2i): its setting's variable, bound to a Hyperdrive
+/// configuration, and that configuration's id when the build was given
+/// one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hyperdrive {
+    pub binding: String,
+    pub id: Option<String>,
+}
+
 /// The Wrangler file of deployable `name`, whose settings without a
-/// default are read from `required`, their variables: JSON. Each is a
-/// required secret, Wrangler's one way to name a binding that must be set
-/// without giving its value; a setting with a default is left to it. When
-/// it `ticks`, its tick having a store to keep or sweep, the minute's cron
-/// trigger runs its `scheduled` handler (chunk 8.2f).
-pub fn wrangler(name: &str, required: &[String], ticks: bool) -> String {
+/// default are read from `required`, their variables, and whose
+/// databases' addresses from `hyperdrive`: JSON. Each required setting is
+/// a required secret, Wrangler's one way to name a binding that must be
+/// set without giving its value; a setting with a default is left to it.
+/// Each database's address is a Hyperdrive binding, with its id when it
+/// has one; without one, Wrangler refuses to deploy until it is given
+/// (chunk 8.2i). When it `ticks`, its tick having a store to keep or
+/// sweep, the minute's cron trigger runs its `scheduled` handler (chunk
+/// 8.2f).
+pub fn wrangler(name: &str, required: &[String], hyperdrive: &[Hyperdrive], ticks: bool) -> String {
     let quoted = |text: &str| serde_json::Value::from(text).to_string();
     let mut out = format!(
         "{{\n\
@@ -130,6 +145,23 @@ pub fn wrangler(name: &str, required: &[String], ticks: bool) -> String {
         out.push_str(&format!(
             ",\n  \"secrets\": {{\n    \"required\": [{}]\n  }}",
             secrets.join(", ")
+        ));
+    }
+    if !hyperdrive.is_empty() {
+        let bindings: Vec<String> = hyperdrive
+            .iter()
+            .map(|binding| match &binding.id {
+                Some(id) => format!(
+                    "    {{ \"binding\": {}, \"id\": {} }}",
+                    quoted(&binding.binding),
+                    quoted(id)
+                ),
+                None => format!("    {{ \"binding\": {} }}", quoted(&binding.binding)),
+            })
+            .collect();
+        out.push_str(&format!(
+            ",\n  \"hyperdrive\": [\n{}\n  ]",
+            bindings.join(",\n")
         ));
     }
     if ticks {

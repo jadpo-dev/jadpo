@@ -14,7 +14,9 @@
 //!   for background work (30 seconds after a response, 15 minutes for the
 //!   cron, which the ticks one cron runs share).
 //! - [`WorkersTransport`]: the drivers' `Transport` over `connect()` from
-//!   `cloudflare:sockets`, upgraded with `startTls()`.
+//!   `cloudflare:sockets`, upgraded with `startTls()`; a Hyperdrive
+//!   binding's host is the platform's pooler, which PostgreSQL's driver
+//!   reaches without TLS (chunk 8.2i).
 //! - [`WorkersFetch`] and [`WorkersOutbound`]: HTTP out of the Worker
 //!   through `fetch()`, aborted through an `AbortSignal` when its time is
 //!   up and following no redirect, for the package driver and for the
@@ -53,6 +55,7 @@
 
 pub mod deployable;
 mod fetch;
+mod hyperdrive;
 mod js;
 mod passkeys;
 mod ratelimit;
@@ -282,12 +285,14 @@ impl Host for WorkersHost {
         }
     }
 
-    /// The Worker's binding of that name, when it is text: a variable or
-    /// a secret.
+    /// The Worker's binding of that name: its text, a variable's or a
+    /// secret's; or, for a Hyperdrive binding, the address it gives, its
+    /// host the platform's pooler (chunk 8.2i).
     fn variable(&self, name: &str) -> Option<String> {
-        Reflect::get(&self.env, &JsValue::from_str(name))
-            .ok()
-            .and_then(|value| value.as_string())
+        let binding = Reflect::get(&self.env, &JsValue::from_str(name)).ok()?;
+        binding
+            .as_string()
+            .or_else(|| hyperdrive::address(&binding))
     }
 
     /// Web Crypto's `getRandomValues` ([`web_crypto_random`]).
