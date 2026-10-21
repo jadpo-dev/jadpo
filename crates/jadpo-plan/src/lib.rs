@@ -348,6 +348,7 @@ fn schedules_plan(
         steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
         ai_usage: holding(jadpo_std::system::AI_USAGE.table).next(),
+        trigger: jadpo_check::schedules::schedules_settings(db, project).trigger,
     }
 }
 

@@ -256,11 +256,62 @@ fn several_databases_need_schedules_store_named() {
         problems(&[("app.jadpo", wrong.as_str()), ("config.jadpo", config)]),
         ["app.jadpo schedule.settings_invalid: `store: archives` isn't a database"]
     );
-    let unknown = "application {\n    schedules: {\n        trigger: native\n    }\n}\n";
+    let unknown = "application {\n    schedules: {\n        tick: native\n    }\n}\n";
     assert_eq!(
         problems(&[("app.jadpo", unknown)]),
-        ["app.jadpo schedule.settings_invalid: `trigger` isn't a schedules setting"]
+        ["app.jadpo schedule.settings_invalid: `tick` isn't a schedules setting"]
     );
+}
+
+/// `schedules: { trigger: }` (area 12, question 16; chunk 8.2g): the
+/// server's own timer by default, or `ScheduleTrigger.external`, the
+/// native deployable's `tick` command; anything else is refused with the
+/// nearest.
+#[test]
+fn a_schedule_trigger_is_the_servers_timer_or_an_external_tick() {
+    use jadpo_std::ScheduleTrigger;
+    let trigger = |db: &Database, app: &str| {
+        let project = support::project(db, Layout::Project, &files(&[("app.jadpo", app)]));
+        jadpo_check::schedules::schedules_settings(db, project).trigger
+    };
+    let db = Database::default();
+    assert_eq!(trigger(&db, "application {}\n"), ScheduleTrigger::Native);
+    let external =
+        "application {\n    schedules: {\n        trigger: ScheduleTrigger.external\n    }\n}\n";
+    assert_eq!(problems(&[("app.jadpo", external)]), Vec::<String>::new());
+    let db = Database::default();
+    assert_eq!(trigger(&db, external), ScheduleTrigger::External);
+    let native = "application {\n    schedules: {\n        store: main\n        trigger: ScheduleTrigger.native\n    }\n}\n";
+    assert_eq!(problems(&[("app.jadpo", native)]), Vec::<String>::new());
+    let db = Database::default();
+    assert_eq!(trigger(&db, native), ScheduleTrigger::Native);
+    for (written, near) in [
+        ("ScheduleTrigger.externl", "ScheduleTrigger.external"),
+        ("native", "ScheduleTrigger.native"),
+        ("ScheduleTrigger.cron", "ScheduleTrigger.external"),
+    ] {
+        let app =
+            format!("application {{\n    schedules: {{\n        trigger: {written}\n    }}\n}}\n");
+        let db = Database::default();
+        let project =
+            support::project(&db, Layout::Project, &files(&[("app.jadpo", app.as_str())]));
+        let found = jadpo_check::check(&db, project);
+        let [problem] = found.as_slice() else {
+            panic!("one problem for `{written}`: {found:?}");
+        };
+        assert_eq!(problem.rule.id, "schedule.settings_invalid");
+        assert_eq!(
+            problem.message,
+            format!("`{written}` isn't a schedule trigger")
+        );
+        assert!(
+            problem
+                .next
+                .as_ref()
+                .is_some_and(|next| next.text.contains(&format!("`{near}`"))),
+            "{problem:?}"
+        );
+    }
 }
 
 #[test]
