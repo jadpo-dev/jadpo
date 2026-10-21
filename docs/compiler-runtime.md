@@ -2881,7 +2881,8 @@ The gate builds the native host's deployable example
 bytes, its drivers built by the factory, served through `Serving` on
 `NativeHost`) on its own, so without the feature, and reads its symbols
 for any of the above (`tools/deployable.py`); its wasm32 build of the
-runtime crates is without it too. Measured on that example, a release
+runtime crates is without it too. Since chunk 8.1o the binary `jadpo
+build` writes is read the same way, in the live test that runs it. Measured on that example, a release
 build on aarch64 macOS: 30,513,808 bytes without the feature and
 30,629,520 with it (26,698,936 and 26,865,496 stripped), about 0.4%, as
 most of a deployable is the standard library's locale and time-zone
@@ -2907,7 +2908,7 @@ name). Each driver's targets are recorded now
 (`ConnectionDriver::targets`: the disk and a service Jadpo runs, `runs:`,
 natively only; Cloudflare's queues on Workers only; every network driver
 and an HTTP package everywhere), for `jadpo check` to refuse a
-deployable's mismatch in 8.1o. The parts of the plan that use a
+deployable's mismatch in 8.1o2. The parts of the plan that use a
 connection keep only what is their own and name it: `ai:` how it fills
 `ai` (an `AiPlan`, whose built-in driver's `url:` its requests are
 built from, so it is kept there too), `receiving:` how a queue's messages
@@ -2928,8 +2929,8 @@ queue, whose batches come to the Workers consumer. A connection it can't
 build (a target its driver doesn't run on, a part the host doesn't
 supply, a setting with no value, a driver this build lacks) is kept as
 `factory::Unbuilt` with why, for the deployable to report as it starts
-(8.1o); its driver is then none, which the runtime answers
-`misconfigured`. Natively `jadpo_host_native::supplies()` gives tokio's
+(since chunk 8.1o, in its `runtime.started` event); its driver is then
+none, which the runtime answers `misconfigured`. Natively `jadpo_host_native::supplies()` gives tokio's
 sockets with rustls and `NativeFetch` (no disk yet: a deployable's disk
 at `path:` comes with the files capability), and `NativeHost::
 with_drivers` takes what it builds, where `with_providers`, `with_models`
@@ -2951,6 +2952,51 @@ kind from the table (the in-memory files, the mail fake, a package's and
 `ai`'s fakes through `Faked`), as before. *Rejected:* a closure per
 driver kind on the host, which is what grew to four; building drivers
 inside the runtime, which would tie it to the transports the hosts own.
+
+**A native deployable** (chunk 8.1o; area 14, "A native deployable").
+`jadpo build` checks the project as `jadpo check` does and, with no
+errors, builds the plan (`jadpo_plan::Plan::with_build` giving the
+runtime plan area 18's build id in place of the graph's digest) and
+writes a cargo workspace into `build/rust/`
+(`jadpo_codegen::deployable::workspace`): the program's crate as
+`generate` writes it (`jadpo-program`), a binary package
+(`jadpo-deployable`) whose binary is named after the deployable and
+depends on it and on `jadpo-host-native` without the `testing` feature,
+the toolchain file and the runtime crates' `Cargo.lock` this Jadpo
+pins. Its `main` is one call, `jadpo_host_native::deployable::run`,
+given the program, the build stamp and each store's migrations (their
+names and digests) as constants. `jadpo_codegen::deployable::build` adds
+the two packages to the lock (`cargo update --workspace`) and builds in
+release, `--locked` and offline, with `--remap-path-prefix` for the
+workspace, the runtime crates and cargo's home, and `SOURCE_DATE_EPOCH`
+fixed; the binary is copied to `build/target/<deployable>/` beside the
+APIs' documents and failure files. The runtime's half is
+`jadpo_host_native::deployable`: `config::load` over the process's
+environment (`Mode::Environment`, with the program's compiled
+validators, `compiled::Program::validators`), every problem logged as
+`runtime.startup_failed` before anything listens; the factory's drivers
+built once on the main thread to compare each store with its migrations
+(`migrate::standing`), a pending, unknown, changed or out-of-order
+migration stopping the start and an unreachable database waited for;
+then `http::serve` with a worker per core, each making the program on
+its thread with the settings read (`Program::with_config`) and its own
+drivers, served through `AppHandler`, so the tick runs on the first
+worker's timer as `jadpo dev`'s does; `stop_signals` turns SIGTERM into
+`Server::stop`'s drain. Its events are JSON lines on standard output,
+each carrying the stamp; a fault behind a 500 is logged through an
+`Observer` with its `.jadpo` frames (`Fault::stack`). Proved live
+(`crates/jadpo-cli/tests/deployable.rs`): teaching example 23 built,
+its binary holding none of the `testing` symbols, refusing to start
+without `DATABASE_URL` and with its last migration not applied, then
+booking a repair, answering its readiness check, answering a request
+whose body arrived after SIGTERM, and ending with code 0. The build is
+kept under `target/jadpo-compiled/deployable/`, 49 s cold in release
+on the ten-core Mac and seconds warm; the gate runs it in the `compiled`
+group. *Rejected:* the runtime's own entry point reading `PORT` and the
+stores generated into the program's crate, which would put a
+deployment's concerns in every compiled program the differential run
+builds; and checking migrations once the port is open, which serves
+requests against a schema nobody confirmed.
 
 **Provider call sites by number** (chunk 8.1d2, split from 8.1d). A
 provider call's site plan (`jadpo_std::provider::CallSite`) names the
@@ -3762,6 +3808,12 @@ separate command, not the gate.
   incidents.
 - **The stamp** (build id, commit, modified flag, compiler version,
   deployable, target) is a constant in the binary and on every log event.
+  Built in chunk 8.1o for a native deployable (§2.6, "A native
+  deployable"): the build id is `b_` and the first twelve hex digits of a
+  SHA-256 over the graph's digest, the compiler, the target and
+  `jadpo.lock`; `jadpo build` writes the toolchain file, builds
+  `--locked` and offline, remaps the paths and fixes `SOURCE_DATE_EPOCH`.
+  Bit-identical binaries are not checked yet.
 
 ### 2.9 Risks and the first chunks
 

@@ -116,6 +116,8 @@ rules! {
         "14-tooling.html#command-errors", "AI command has invalid arguments";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Api command has invalid arguments";
+    CLI_BUILD_ARGUMENTS: "cli.build_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Build command has invalid arguments";
     CLI_CALLS_ARGUMENTS: "cli.calls_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Calls command has invalid arguments";
     CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
@@ -1056,6 +1058,8 @@ rules! {
         "13-testing.html#test-unexpected-failure", "Test ended in a failure it did not expect";
     TOOLCHAIN_ARTIFACT_WRITE_FAILED: "toolchain.artifact_write_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Generated file could not be written";
+    TOOLCHAIN_BUILD_FAILED: "toolchain.build_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Rust compiler couldn't build the deployable";
     TOOLCHAIN_EMPTY_PROJECT: "toolchain.empty_project", area 1, Error, Agent,
         "01-project-layout-and-modules.html#toolchain-empty-project", "Project declares nothing";
     TOOLCHAIN_NOT_BUILT_YET: "toolchain.not_built_yet", area 3, Error, Agent,

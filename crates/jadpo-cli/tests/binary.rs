@@ -109,6 +109,7 @@ fn bash_completes_commands_and_values() {
             "check",
             "test",
             "dev",
+            "build",
             "fmt",
             "package",
             "migrate",

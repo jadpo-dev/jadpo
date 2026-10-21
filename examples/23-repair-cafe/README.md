@@ -29,6 +29,8 @@ it isn't finished.
 9. **The event record.** `jadpo records update` writes `domains/cafe/events/events.jadpo_record`, what each event carries, so a change to an event shows as a diff of one file, and an event still waiting in the outbox is read with the shape it was written in. See [area 12, The event record](../../docs/language/12-jobs-and-events.md#the-event-record).
 10. **Tests see the follow-on work.** A route test sends its request through the real boundary, `settle:` included, so it sees the ticket the kiosk would; what a step leaves for later, such as pinning a note up after a 202, is delivered before the test's next line, so the test reads the note on the board. See `domains/cafe/routes/repairs.test.jadpo` and [area 13, Caches and events](../../docs/language/13-testing.md#caches-and-events).
 
+11. **Building it to deploy.** `main` names its address with `url: config.database_url`, so `jadpo build` can write the café as one native binary that reads `DATABASE_URL` from the environment as it starts, refuses to start against a database that hasn't applied every migration, and drains on SIGTERM. See `app.jadpo`, `config.jadpo` and [area 14, The `jadpo` command](../../docs/language/14-tooling.md#the-jadpo-command).
+
 ## Run it
 
 From the repository root, build `jadpo` once, then run each command on
@@ -40,11 +42,13 @@ target/release/jadpo check examples/23-repair-cafe
 target/release/jadpo test examples/23-repair-cafe
 target/release/jadpo fmt --check examples/23-repair-cafe
 cd examples/23-repair-cafe && ../../target/release/jadpo records
+cd examples/23-repair-cafe && ../../target/release/jadpo build
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
 - `test` needs PostgreSQL, and ends with `tested: 4 passed, 4 route tests`.
 - `records` lists the API record and the event record, each up to date.
+- `build` ends with `built: app, native` and writes the binary to `build/target/app/app`; run it with `DATABASE_URL` set once `jadpo migrate apply` has brought that database up to date.
 
 ## Try next
 
@@ -53,7 +57,7 @@ cd examples/23-repair-cafe && ../../target/release/jadpo records
 - In `no_fixer_free.jadpo`, make the failure `FailureKind.rejected`. The toaster's route test fails with `test.assertion_failed`: a delivery that fails for good has settled, so the kiosk is told 201, not 202.
   <!-- try {"file": "domains/cafe/failures/no_fixer_free.jadpo", "replace": "kind: FailureKind.unavailable", "with": "kind: FailureKind.rejected", "test": ["test.assertion_failed"], "failed": 1} -->
 - In `app.jadpo`, delete `events:`. `jadpo check` reports `event.store_required`: `leave_thanks` writes no store, so its event has no outbox.
-  <!-- try {"file": "app.jadpo", "replace": "application {\n    events: {\n        store: main\n    }\n}", "with": "application {}", "check": ["event.store_required"]} -->
+  <!-- try {"file": "app.jadpo", "replace": "    events: {\n        store: main\n    }\n", "with": "", "check": ["event.store_required"]} -->
 - In `repair.jadpo`, let `Access.public` change a repair instead of `Access.system`. `jadpo check` reports `policy.system_grant_missing`: a subscriber is nobody's request, so a grant to anyone at all never lets it in.
   <!-- try {"file": "domains/cafe/entities/repair.jadpo", "replace": "update: [Access.system]", "with": "update: [Access.public]", "check": ["policy.system_grant_missing"]} -->
 - In `repair_booked.jadpo`, add `symptom: SymptomNote` to the event. `jadpo check` reports `type.missing_field` at the `emit`, and `record.out_of_date`: the event record no longer says what the event carries.

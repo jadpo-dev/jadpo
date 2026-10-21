@@ -1236,6 +1236,14 @@ impl Plan {
         &self.build
     }
 
+    /// The same plan built as `build`, area 18's build id, which a
+    /// deployable records in place of the graph's digest (chunk 8.1o).
+    pub fn with_build(mut self, build: String) -> Plan {
+        Arc::make_mut(&mut self.runtime).build = build.clone();
+        self.build = build;
+        self
+    }
+
     /// The `SigningKey` setting a record's answers are encrypted with, by
     /// its number (area 12; chunk 7.5b).
     pub fn steps_key(&self) -> Option<u32> {

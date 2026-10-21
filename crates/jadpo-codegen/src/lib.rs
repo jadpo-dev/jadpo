@@ -34,6 +34,7 @@
 
 mod body;
 pub mod cargo;
+pub mod deployable;
 mod names;
 
 use std::collections::BTreeMap;

@@ -34,6 +34,9 @@
 //!   off, for the dev inbox's health score (chunk 7.3c3).
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
+//! - [`deployable`]: a compiled deployable from its `main` to its last
+//!   log line: its settings read, its databases' migrations checked, its
+//!   workers serving and ticking until a stop drains them (chunk 8.1o).
 //!
 //! Built so far: the runtime and the transport the PostgreSQL driver needs
 //! (chunk 3.1), serving HTTP (chunk 4.1), running a response's
@@ -57,6 +60,7 @@
     )
 )]
 
+pub mod deployable;
 pub mod dns;
 pub mod fetch;
 pub mod files;

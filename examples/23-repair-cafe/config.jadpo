@@ -1,0 +1,9 @@
+// What an operator sets for each deployment, read from the environment
+// and checked before the app starts: here only where the database is.
+// `database_url` reads `DATABASE_URL`.
+
+config {
+    /// The kiosk's database. A `PostgresUrl` holds a password, so it is
+    /// always secret.
+    database_url: PostgresUrl
+}

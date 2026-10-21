@@ -264,6 +264,12 @@ impl Program {
             .unwrap_or_else(|| NONE.get_or_init(|| Validator::new(None, Vec::new())))
     }
 
+    /// Every validator, compiled once for the process: what a deployable
+    /// checks its settings with as it starts (`config::load`, chunk 8.1o).
+    pub fn validators(&self) -> &[Validator] {
+        &self.process.validators
+    }
+
     fn shape(&self, n: u32) -> Option<&Shape> {
         self.loaded.shapes().get(n as usize)
     }

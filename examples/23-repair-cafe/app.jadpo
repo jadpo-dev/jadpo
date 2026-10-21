@@ -1,9 +1,20 @@
+// The kiosk's database is the connection `main`, its address read from
+// the `database_url` setting, so the app `jadpo build` writes knows where
+// it is as it starts. `jadpo dev` and `jadpo test` give it a database of
+// their own.
+//
 // `events: { store: }` names the database whose outbox keeps an event
 // until its subscribers have it. An event is normally kept in the store
 // its action writes, in the same transaction, so this is only needed for
 // an action that emits and writes nothing: `leave_thanks`.
 
 application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
     events: {
         store: main
     }
