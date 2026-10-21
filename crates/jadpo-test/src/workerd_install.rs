@@ -85,7 +85,7 @@ fn pinned(tools: &Path) -> Result<String, String> {
         .and_then(|dependencies| dependencies.get("workerd"))
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| "tools/workers/package.json pins no workerd".to_string())
+        .ok_or_else(|| "tools/workers/package.json names no workerd release".to_string())
 }
 
 /// The binary of the platform's own workerd package at release `pinned`,
