@@ -163,12 +163,20 @@ pub fn deployables(db: &dyn Db, project: Project) -> Deployables {
                 );
                 continue;
             };
+            let entries = tree::members(Some(block));
+            if entries.is_empty() {
+                out.problems.push(
+                    invalid("`deployables:` names no deployable", at.clone(), "empty")
+                        .reason("With `deployables:` declared, the app is built into exactly the deployables it names, so an empty one would build nothing; without it, the app has one deployable, `app`, which serves every API and runs everything.")
+                        .next("Name a deployable, `deployables: { api: { serves: [main] } }`, or remove `deployables:`"),
+                );
+            }
             let mut reader = Reader {
                 path: &found.path,
                 apis: &apis,
                 problems: &mut out.problems,
             };
-            for (name, entry) in tree::members(Some(block)) {
+            for (name, entry) in entries {
                 let Some(text) = tree::name_text(&name) else {
                     continue;
                 };
@@ -862,6 +870,13 @@ fn connection(out: &mut Reached, name: &str, via: Via) {
 /// driver that target can't run (area 11, question 24).
 pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let deployables = deployables(db, project);
+    if deployables
+        .list
+        .iter()
+        .all(|deployable| deployable.target.is_none())
+    {
+        return Vec::new();
+    }
     let reaches = reaches(db, project);
     let kinds = crate::data::connections(db, project);
     let packages = &crate::connections::package_connections(db, project).connections;
@@ -1006,10 +1021,15 @@ pub struct PerInstance {
 /// (Richard, 2026-10-21; area 11, "Decisions").
 pub fn per_instance(db: &dyn Db, project: Project) -> Vec<PerInstance> {
     let deployables = deployables(db, project);
+    let workers =
+        |deployable: &Deployable| matches!(deployable.target, Some((DeployTarget::Wasm, _)));
+    if !deployables.list.iter().any(workers) {
+        return Vec::new();
+    }
     let packages = &crate::connections::package_connections(db, project).connections;
     let mut out = Vec::new();
     for (deployable, reached) in deployables.list.iter().zip(reaches(db, project)) {
-        if deployable.builds_for() != DeployTarget::Wasm || deployable.target.is_none() {
+        if !workers(deployable) {
             continue;
         }
         for package in packages {

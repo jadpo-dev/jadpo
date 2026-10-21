@@ -279,6 +279,10 @@ fn what_a_deployable_lists_is_checked() {
         problems("    deployables: [kiosk]\n"),
         ["app.jadpo deployable.invalid: `deployables:` isn't a block"]
     );
+    assert_eq!(
+        problems("    deployables: {}\n"),
+        ["app.jadpo deployable.invalid: `deployables:` names no deployable"]
+    );
 }
 
 #[test]

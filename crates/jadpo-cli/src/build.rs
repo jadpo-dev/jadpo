@@ -397,6 +397,9 @@ fn shown(built: Built) -> Reply {
             Fact::plain(format!("native in {:.1} s", built.seconds)),
         ],
     ));
+    let Some(first) = built.binaries.first() else {
+        return Reply::screen(screen, Json::Null);
+    };
     screen.push(if built.migrations {
         Block::hint(
             "jadpo migrate apply",
@@ -408,7 +411,7 @@ fn shown(built: Built) -> Reply {
         )
     } else {
         Block::hint(
-            format!("./{}", built.binaries[0].binary),
+            format!("./{}", first.binary),
             "runs it, reading its settings from the environment",
         )
     });
