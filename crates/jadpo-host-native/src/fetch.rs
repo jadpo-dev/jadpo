@@ -1,7 +1,7 @@
 //! HTTP out of the process natively (area 11, "Calling"; chunks 7.2c and
 //! 8.1m): [`NativeFetch`], what the package driver sends a provider's call
 //! with, and [`Outward`], what the runtime fetches on its own account, each
-//! a [`Client`] of its own per worker: hyper's HTTP/1.1 over tokio's
+//! a `Client` of its own per worker: hyper's HTTP/1.1 over tokio's
 //! sockets on the worker's thread, HTTPS through rustls with the
 //! certificate and the host checked against Mozilla's roots
 //! ([`crate::tls`]), its connector made once.
