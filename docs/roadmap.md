@@ -2052,15 +2052,19 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   HTTP component's `App` built from the plan (`Plan::app`), so
   `serve::Application` is gone. How compiled code holds it is §2.5's "The
   plan compiled code holds".
-- [ ] **8.1b The upgrade hook and SMTP over it** `opus · high`, after
-  7.9e: `Transport::upgrade`, rustls natively, turning a driver's stream
-  into TLS with the server's name checked; the SMTP conversation
-  (`EHLO`, `STARTTLS`, `AUTH`, the message) moved from
-  `jadpo_host_native::smtp` into `jadpo_drivers::smtp` over `Transport`,
-  so a host supplies only the socket and the upgrade, area 16's rules
-  kept (TLS always but to this machine, port 465 speaking TLS from the
-  start); proved against a server on this machine with a certificate the
-  test makes.
+- [x] **8.1b The upgrade hook and SMTP over it** `opus · high`. Built:
+  `Transport::upgrade`, turning a stream the transport opened into TLS
+  with the server's certificate and name checked, shaped for
+  PostgreSQL's SSL request too, and the transport's timer, clock and
+  local address; natively rustls on `ring` against Mozilla's roots
+  compiled in (`jadpo_host_native::tls`), the one TLS stack on the
+  request path, the package driver's HTTPS moved to it from OpenSSL; the
+  SMTP conversation moved from `jadpo_host_native::smtp` (gone) into
+  `jadpo_drivers::smtp::relay` over `Transport`, area 16's rules kept;
+  proved against a server on this machine with an authority and
+  certificate the test makes (STARTTLS, port 465, a wrong name, roots
+  that don't vouch for it, no TLS elsewhere, no greeting). Why these
+  roots and this provider is §2.6's "TLS through the transport".
 - [ ] **8.1c The outcome-and-effect record** `opus · high`, after 8.1a:
   what each invocation did, written by the runtime whichever executor
   runs it, in the order it happened: each statement's SQL text, its
