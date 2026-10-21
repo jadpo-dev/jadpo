@@ -738,7 +738,7 @@ fn each_items_call_goes_out_with_no_transaction_open_and_commits_with_the_positi
     let Loaded { program, url, .. } = &loaded;
     let runtime = Runtime::new().expect("a runtime");
     let (harness, _) = harness(url);
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(&harness).with("couriers", driver);
     add(
         &runtime,
@@ -828,7 +828,7 @@ fn a_crash_after_an_items_call_resends_it_under_its_first_key() {
     let Loaded { program, url, .. } = &loaded;
     let runtime = Runtime::new().expect("a runtime");
     let (harness, crash_in) = harness(url);
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(&harness).with("couriers", driver);
     add(&runtime, program, &harness, &host, &["a", "b", "c"]);
     // The provider replays the second item's answer under its key.
@@ -917,7 +917,7 @@ fn an_item_whose_call_fails_is_a_problem_and_the_run_carries_on() {
     let Loaded { program, url, .. } = &loaded;
     let runtime = Runtime::new().expect("a runtime");
     let (harness, _) = harness(url);
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(&harness).with("couriers", driver);
     add(&runtime, program, &harness, &host, &["a", "b", "c"]);
     provider.answer(201, r#"{"data": {"id": "b-1"}}"#);
@@ -974,7 +974,7 @@ fn a_files_rows_that_call_are_each_a_batch_of_their_own() {
     let Loaded { program, url, .. } = &loaded;
     let runtime = Runtime::new().expect("a runtime");
     let (harness, crash_in) = harness(url);
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let files: Rc<dyn Capability> = Rc::new(jadpo_runtime::files::MemoryFiles::new());
     let host = Faked::new(&harness)
         .with("couriers", driver)

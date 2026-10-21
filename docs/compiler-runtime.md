@@ -2708,9 +2708,48 @@ failure the provider's code names, which the interpreter maps by code
 at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
 in `FaultKind::Provider`. Natively the host's `Fetch` is
 `jadpo_host_native::fetch::NativeFetch`: HTTPS through rustls (since
-chunk 8.1b), or plain
-HTTP to this machine, each exchange on tokio's blocking pool within the
-call's timeout.
+chunk 8.1b), or plain HTTP to this machine, over a connection kept for
+its host ("A pooled HTTP client" below).
+
+**A pooled HTTP client** (chunk 8.1m, from the Phase 7 review). Natively
+every request that leaves the process, a provider's call
+(`fetch::NativeFetch`) and the runtime's own fetch (`fetch::Outward`),
+goes through one client, `fetch::Client`, of which each worker has its
+own (`supplies()` is called per worker): hyper's HTTP/1.1 client
+connection (`hyper::client::conn::http1`) over tokio's sockets, its task
+spawned on the worker's runtime, and rustls's connector made once from
+Mozilla's roots. An answer read to its end gives its connection back to
+a pool held in an `Rc` on the worker, keyed by the runtime driving it,
+the scheme, the host and the port; the next call to that host takes the
+newest one kept, at most `fetch::MOST_IDLE` (8) waiting per host, none
+older than `fetch::IDLE` (30 seconds), looked at as connections are
+taken and kept. A kept connection the server has closed since is let go
+before anything is written on it (hyper's `ready` fails), and a request
+one hands back unwritten (`try_send_request`) goes out on a fresh one,
+so keeping connections never turns a call that never left into one that
+may have acted; one whose answer says `Connection: close` is never kept.
+Requests go out with hyper's title-cased header names, `Host` first and
+no `Connection: close`. A call's timeout bounds the whole exchange: a
+connection not made within it, or within five seconds, is `NotSent`, an
+answer not whole within it `TimedOut`. Dropping a call's future, or a
+streamed answer's body before its end, drops its connection, whose
+drop aborts the connection's task and so closes its socket at once,
+where the blocking exchange it replaces went on reading until its own
+timeout. A streamed answer is hyper's body read frame by frame, each
+waited for at most the call's timeout. A name is looked up with tokio's
+`lookup_host`, the system's resolver on tokio's blocking pool, only when
+a connection is opened, so the platform's own configuration
+(`/etc/hosts`, a VPN's resolvers) counts and a kept connection asks for
+none. `Outward` is the same client with a guard: HTTPS only, connected
+only to the public addresses the name gave (`fetch::public`), its pool
+apart from `NativeFetch`'s, no redirect followed (hyper's client follows
+none), at most the bytes asked for. *Rejected:* hyper-util's pooled
+`legacy::Client`, whose pool sits behind a lock shared across threads,
+the one kind §2.6 keeps off the request path, and whose connector must
+be `Send`; reqwest, which wraps that client and brings its own
+configuration of TLS and redirects to turn off; and a resolver of our
+own or a resolver crate, which would read `resolv.conf` and skip the
+platform's configuration, for a lookup a kept connection rarely makes.
 
 **Fakes and the call log** (chunk 7.2d; area 11, "Chosen in chunk 7.2d";
 area 13, "Fakes for integrations"). A package's fake is a capability,
@@ -2814,8 +2853,8 @@ digest. Once the action commits, the HTTP component takes it into
 `Serving` attaches its host to. The native host sends it as a chunked body
 fed by a task on the worker's thread, which stops when hyper drops the body
 for a client that went away; `NativeFetch::open` reads the provider's
-answer on a thread of its own and shuts its socket when the body is
-dropped. `JsonHttp::stream` hands over a success's body as it comes;
+answer as it comes on the worker's thread and closes its connection when
+the body is dropped (chunk 8.1m). `JsonHttp::stream` hands over a success's body as it comes;
 `Fetch::open` defaults to the whole body. A route test reads every event
 (`http::route_test`), giving `pieces` and `code`. The `ai` fake answers a
 stream from its script in the driver's own form (`stream::faked`).
@@ -2878,7 +2917,7 @@ reads `reply:` as a setting of an `Event`, never a field
 every scheme but SNS's, whose `webhooks::sns::check` fetches the signing
 certificate through the host's `Outbound` (`Host::outbound`; natively
 `jadpo_host_native::fetch::Outward`: HTTPS only, public addresses only,
-no redirect) and keeps it per thread for a day, verified with
+no redirect, through the pooled client since chunk 8.1m) and keeps it per thread for a day, verified with
 `jadpo_value::certificate::rsa_signed`. `webhooks::handshake` answers
 Graph's validation before the signature, Slack's challenge and SNS's
 confirmation after it, and `webhooks::replies::answer` claims the id in

@@ -299,7 +299,7 @@ impl DevProviders {
     pub(crate) fn new(root: &Path, setup: Arc<Mutex<Setup>>) -> DevProviders {
         DevProviders {
             setup,
-            sandbox: jadpo_host_native::JsonHttp::new(jadpo_host_native::fetch::NativeFetch),
+            sandbox: jadpo_host_native::JsonHttp::new(jadpo_host_native::fetch::NativeFetch::new()),
             script: root.join(SCRIPT),
             keys: jadpo_runtime::fakes::KeptKeys::new(),
         }

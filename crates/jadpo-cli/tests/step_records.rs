@@ -510,7 +510,7 @@ pub(crate) fn load(name: &str, sandbox: &str, replays: bool) -> Option<Loaded> {
 pub(crate) fn faked(
     harness: &Harness<jadpo_host_native::Postgres>,
 ) -> (Faked<&Harness<jadpo_host_native::Postgres>>, Rc<Fake>) {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let sheets = Rc::new(Fake::new());
     let files: Rc<dyn Capability> = Rc::clone(&sheets) as Rc<dyn Capability>;
     (

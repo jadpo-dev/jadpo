@@ -545,7 +545,7 @@ fn root(name: &str) -> std::path::PathBuf {
 /// The package driver over the native host's HTTP. The host has no
 /// timer, so a retry is sent again at once.
 fn host() -> Faked<MemoryHost> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(MemoryHost::new())
         .with("couriers", Rc::clone(&driver))
         .with("quick", driver)

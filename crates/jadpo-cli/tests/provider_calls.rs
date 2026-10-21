@@ -452,7 +452,7 @@ fn root(name: &str) -> std::path::PathBuf {
 
 /// The package driver, over the native host's HTTP, for both connections.
 fn host() -> Faked<MemoryHost> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(MemoryHost::new())
         .with("couriers", Rc::clone(&driver))
         .with("ledger", driver)
@@ -991,7 +991,7 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
     let (_, url) = copy.stores.get("main").expect("main").clone();
     let runtime = Runtime::new().expect("a runtime");
     let store = jadpo_host_native::postgres(&url).expect("a store");
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
         .with("couriers", driver);
     provider.answer(

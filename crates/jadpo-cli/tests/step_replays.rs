@@ -603,7 +603,7 @@ fn load(name: &str, sandbox: &str) -> Option<Loaded> {
 
 /// The package driver, over the native host's HTTP, for `pay`.
 fn faked<H: Host>(host: H) -> Faked<H> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(host).with("pay", driver)
 }
 

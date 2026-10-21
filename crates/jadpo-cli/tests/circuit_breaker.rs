@@ -332,7 +332,7 @@ const FOUND: &str = r#"{"id": "p-1", "status": "out_for_delivery"}"#;
 fn faked(
     harness: &Harness<jadpo_host_native::Postgres>,
 ) -> Faked<&Harness<jadpo_host_native::Postgres>> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(harness).with("couriers", driver)
 }
 

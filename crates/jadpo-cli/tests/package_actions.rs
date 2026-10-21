@@ -128,7 +128,7 @@ fn root(name: &str) -> std::path::PathBuf {
 }
 
 fn host() -> Faked<MemoryHost> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(MemoryHost::new()).with("pay", driver)
 }
 

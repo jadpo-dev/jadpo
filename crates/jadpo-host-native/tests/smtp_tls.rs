@@ -18,58 +18,8 @@ use jadpo_host_native::{NativeTransport, Runtime, tls};
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability};
 use jadpo_value::Value;
-use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, KeyUsagePurpose};
-use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
-/// An authority made for one test, and a server certificate it signed.
-struct Authority {
-    root: Vec<u8>,
-    certificate: Vec<u8>,
-    key: Vec<u8>,
-}
-
-impl Authority {
-    /// An authority, and a certificate it signs for `name`.
-    fn signing(name: &str) -> Authority {
-        let authority_key = KeyPair::generate().expect("a key");
-        let mut params = CertificateParams::new(Vec::<String>::new()).expect("params");
-        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        params
-            .distinguished_name
-            .push(DnType::CommonName, "Jadpo test authority");
-        params.key_usages = vec![
-            KeyUsagePurpose::KeyCertSign,
-            KeyUsagePurpose::DigitalSignature,
-        ];
-        let root = params.self_signed(&authority_key).expect("the authority");
-        let issuer = Issuer::new(params, &authority_key);
-        let key = KeyPair::generate().expect("a key");
-        let certificate = CertificateParams::new(vec![name.to_string()])
-            .expect("params")
-            .signed_by(&key, &issuer)
-            .expect("the server's certificate");
-        Authority {
-            root: root.der().to_vec(),
-            certificate: certificate.der().to_vec(),
-            key: key.serialize_der(),
-        }
-    }
-
-    fn server_config(&self) -> Arc<rustls::ServerConfig> {
-        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
-            rustls::crypto::ring::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .expect("versions")
-        .with_no_client_auth()
-        .with_single_cert(
-            vec![self.certificate.clone().into()],
-            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(self.key.clone())),
-        )
-        .expect("a server configuration");
-        Arc::new(config)
-    }
-}
+use crate::authority::Authority;
 
 /// How the server secures its conversation.
 #[derive(Clone, Copy, PartialEq, Eq)]

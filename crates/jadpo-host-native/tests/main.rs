@@ -2,4 +2,6 @@
 //! each file beside this one is a module, and `cargo test -p
 //! jadpo-host-native --test integration <module>::` runs one.
 
+mod authority;
+mod fetch;
 mod smtp_tls;
