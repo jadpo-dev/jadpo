@@ -3703,13 +3703,18 @@ test run interpreted and compiled with the same records, and its counts
 shown under the step. It builds the compiler a second time, into the
 harness's own target folder, and inside the `tests` job it shared a
 four-core runner with sixty other steps: the step took 628 s there and
-the job 13 minutes (chunk 8.1i's pull request). So CI runs it as a job
-of its own, `compiled`, whose budget is its timeout, 15 minutes from
-start to end, a cold cargo cache included. Locally, `python3
-tools/verify.py` still runs every group, this one among them, since a
-chunk that breaks compiled code costs less to find before its pull
-request than after; `--profile quick` leaves it out, as it leaves out
-every live step, and `--group compiled` runs it alone, as CI does.
+the job 13 min 20 s (chunk 8.1i's pull request). So CI runs it as a job
+of its own, `compiled`, whose budget is its timeout: 12 minutes from
+start to end, about twice what it took with no cargo cache at all, 5 min
+41 s (119 s building `jadpo-cli`'s tests, 170 s for the step, all 258
+projects and 525 tests compared, the 28 teaching examples' 334 tests
+passing both ways); the `tests` job beside it took 8 min 11 s. Locally,
+`python3 tools/verify.py` still runs every group, this one among them,
+since a chunk that breaks compiled code costs less to find before its
+pull request than after; there the step took 149 s of a 197 s gate (load
+average 52); `--profile quick` leaves it out, as it leaves out every
+live step, and `--group compiled` runs it alone, as CI does (90 s with
+the harness built from nothing, 69 s of it the step).
 
 **CI.** GitHub Actions on Linux runs the gate's five groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`

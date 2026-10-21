@@ -2239,12 +2239,23 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   tests (22 before, 276). A project whose migrations need an extension
   the server lacks is skipped on a developer's machine and fails under
   CI. §2.5's "Compiled code".
-- [ ] **8.1j The corpus compiled** `opus · xhigh`, after 8.1i: every
-  page's project and teaching example compiled as modules of one
-  generated crate, one rustc invocation in the dev profile (§2.5), in a
-  CI job of its own with a time budget, every test passing interpreted
-  and compiled with the same records; the gate's Phase 8 differential
-  step (§2.7).
+- [x] **8.1j The corpus compiled** `opus · xhigh`, after 8.1i. Built:
+  every page's project and teaching example compiled as modules of one
+  generated crate (`jadpo_codegen::module`, `src/p<n>/` with its plan's
+  bytes, and `holding`, the crate's manifest and root listing each
+  `program` in `PROGRAMS`; generated code naming its callables from its
+  project's root, so a project reads the same as a crate of its own),
+  one rustc invocation in the dev profile: 177,642 lines in 258 modules,
+  10 s of rustc on this machine, starting beside the compiler crates the
+  harness needs; the gate's differential step its group of its own,
+  `compiled`, which CI runs as a job of its own against its own
+  PostgreSQL container, its cache keeping the harness's registry crates,
+  with a budget of 12 minutes (5 min 41 s with no cache at all, every
+  one of 258 projects and 525 tests giving the same records both ways
+  and all 28 teaching examples' 334 tests passing; the `tests` job 8 min
+  11 s, from 13 min 20 s); a run of that group alone building only the
+  tests it runs. Locally the full gate still runs it; `--profile quick`
+  doesn't. §2.5's "Compiled code" and §2.7's "The differential run".
 - [x] **8.1k The route trie** `opus · high`, after 8.1a. Built (§2.5,
   "The route trie"): `jadpo_runtime::http::Routes`, built once as a plan
   is loaded from the route table, health's paths and the webhooks, walked

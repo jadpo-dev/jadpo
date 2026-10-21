@@ -137,11 +137,11 @@ jobs:
   # every test run interpreted and compiled with the same records, against
   # a PostgreSQL container of its own. A job of its own, so the `tests`
   # job doesn't share its runner with a second build of the compiler.
-  # Its budget is the job's timeout: 15 minutes from start to end, cold
-  # cargo cache included.
+  # Its budget is the job's timeout: 12 minutes from start to end, about
+  # twice what it took with no cargo cache at all (5 min 41 s).
   compiled:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
         with:

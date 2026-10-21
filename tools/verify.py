@@ -725,7 +725,7 @@ def main() -> int:
         # The workspace, or only what the steps chosen need.
         packages = packages_for(chosen, server=not os.environ.get('JADPO_TEST_DATABASE_URL', '').strip())
         built = Step('build the workspace and its tests' if packages is None
-                     else f'build {", ".join(packages)} and their tests', 'tests')
+                     else f'build the tests of {", ".join(packages)}', 'tests')
         built.ok, built.output, binaries, tools = build_tests(packages)
         if not built.ok and 'jadpo' not in tools and any(step.jadpo for step in chosen):
             # The tests don't build, but the pages and examples may still
