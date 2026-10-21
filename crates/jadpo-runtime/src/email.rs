@@ -423,8 +423,7 @@ pub async fn send_package(
     if total > plan.attachments {
         return rejected(jadpo_std::email::MESSAGE_REJECTED);
     }
-    let Some((_, op)) = providers.operation(program.connections, connection, &plan.operation)
-    else {
+    let Some((_, op)) = providers.numbered(program.connections, plan.called) else {
         return defect(ctx, "an email package's operation this build doesn't have");
     };
     let Some(number) = op.input else {
@@ -460,11 +459,9 @@ pub async fn send_package(
     // media type, is left out of the provider's input rather than sent as
     // `null`, which a provider needn't take.
     let input = left_out_when_none(input);
-    let site = jadpo_std::provider::CallSite::default();
+    let site = crate::provider::whole_site(plan.called);
     let calling = crate::provider::Calling {
         plan: program,
-        connection,
-        operation: &plan.operation,
         site: crate::provider::Site {
             call: &site,
             functions: &crate::receiving::NoFunctions,

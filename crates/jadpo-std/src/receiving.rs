@@ -70,6 +70,8 @@ pub struct QueueEvent {
 pub struct ReceivePlan {
     /// `messages.receive_message`.
     pub operation: String,
+    /// Its number in the plan's provider operations (chunk 8.1d2).
+    pub called: u32,
     /// Each member of its input, by its spelling on the wire.
     pub input: Vec<(String, Mapped)>,
     /// Where the list of messages is in its output, by field names.
@@ -84,6 +86,8 @@ pub struct ReceivePlan {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AcknowledgePlan {
     pub operation: String,
+    /// Its number in the plan's provider operations (chunk 8.1d2).
+    pub called: u32,
     pub input: Vec<(String, Mapped)>,
 }
 
@@ -171,6 +175,7 @@ mod tests {
         let package = QueueSource::Package {
             receive: ReceivePlan {
                 operation: "messages.receive_message".into(),
+                called: 0,
                 input: Vec::new(),
                 messages: vec!["messages".into()],
                 body: vec!["body".into()],
@@ -178,6 +183,7 @@ mod tests {
             },
             acknowledge: AcknowledgePlan {
                 operation: "messages.delete_message".into(),
+                called: 1,
                 input: Vec::new(),
             },
         };

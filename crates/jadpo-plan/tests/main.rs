@@ -6,6 +6,7 @@
 #[path = "../../jadpo-syntax/tests/support/examples.rs"]
 mod syntax_examples;
 
+mod call_sites;
 mod plan;
 mod runtime_plan;
 mod sql;

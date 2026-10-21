@@ -149,9 +149,14 @@ async fn taken(
     let Some(events) = executor.plan().events() else {
         return Err(StoreError::Fault("a program with no events".into()));
     };
-    let answer =
-        crate::receiving::call_through(executor, (&plan.connection, &plan.operation), ctx, None)
-            .await?;
+    let answer = crate::receiving::call_through(
+        executor,
+        plan.called,
+        (&plan.connection, &plan.operation),
+        ctx,
+        None,
+    )
+    .await?;
     let named = format!("`{}.{}`", plan.connection, plan.operation);
     let Value::Record(record) = &answer else {
         return Err(StoreError::Fault(format!("{named} gave no object")));

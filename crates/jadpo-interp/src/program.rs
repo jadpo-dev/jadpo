@@ -434,11 +434,14 @@ impl Program {
     ) -> jadpo_runtime::provider::Done {
         use jadpo_runtime::provider;
         self.start_in(ctx);
-        let whole = jadpo_std::provider::CallSite::default();
+        let plan = self.plan();
+        let number = plan
+            .providers()
+            .number_of(plan.connections(), connection, operation)
+            .unwrap_or(u32::MAX);
+        let whole = provider::whole_site(number);
         let calling = provider::Calling {
             plan: self.runtime_plan(),
-            connection,
-            operation,
             site: provider::Site {
                 call: &whole,
                 functions: self,

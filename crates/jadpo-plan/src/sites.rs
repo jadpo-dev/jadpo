@@ -185,9 +185,9 @@ pub(crate) struct WriteSite {
     pub each: jadpo_std::batch::BatchRow,
 }
 
-/// What the provider call at `call` needs (area 11, chunk 7.2c2): the
-/// fields of its answer its code reads, decoded lazily, and whether its
-/// `attempt` maps `timed_out:`.
+/// What the provider call at `call` needs besides its operation (area 11,
+/// chunk 7.2c2): the fields of its answer its code reads, decoded lazily,
+/// and whether its `attempt` maps `timed_out:`.
 ///
 /// The fields read are known when the call's value, or its `attempt`'s, is
 /// a variable's, and every read of that variable is a field of it
@@ -240,7 +240,11 @@ fn provider_site(types: &Types, body: &Body, call: SiteId) -> jadpo_std::provide
         }
         Some(fields)
     });
-    jadpo_std::provider::CallSite { reads, timed_out }
+    jadpo_std::provider::CallSite {
+        reads,
+        timed_out,
+        ..Default::default()
+    }
 }
 
 /// The path from the inline parameter `item` to the value at `site`: the
@@ -323,6 +327,10 @@ pub(crate) struct Decoder<'a> {
     /// calls so far, which its own are added to (area 12).
     pub starter: &'a Key,
     pub batches: &'a mut Vec<BatchSite>,
+    /// The operation a provider call's site calls, by its connection's
+    /// and its own name: by its number in the plan's provider operations,
+    /// or its place among its package's (chunk 8.1d2).
+    pub called: &'a dyn Fn(&str, &str) -> jadpo_std::provider::Called,
 }
 
 impl Decoder<'_> {
@@ -896,9 +904,13 @@ impl Decoder<'_> {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
                 Callee::Batch(op) if op.starts() => self.batch(body, args, *op),
-                Callee::Provider { .. } => {
-                    Decoded::Provider(provider_site(self.types, body, SiteId(index)))
-                }
+                Callee::Provider {
+                    connection,
+                    operation,
+                } => Decoded::Provider(jadpo_std::provider::CallSite {
+                    called: (self.called)(connection, operation),
+                    ..provider_site(self.types, body, SiteId(index))
+                }),
                 Callee::Std(_)
                 | Callee::Object(_)
                 | Callee::Variant(_)

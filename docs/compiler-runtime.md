@@ -2471,8 +2471,9 @@ test's `settings` and `clock`, `recording` (which runs the package's own
 decoders) and `run` and `row`, where it had twenty methods, fourteen of
 them bundling plan parts with the JSON codecs or the credentials. Each
 call kind's site is one entry point taking the context, the site and the
-input: `provider::call(ctx, provider::Calling { plan, connection,
-operation, site }, input)`, and `ai::generate`, `stream::stream` and
+input: `provider::call(ctx, provider::Calling { plan, site }, input)`
+(its site naming its operation by number since chunk 8.1d2, "Provider
+call sites by number" below), and `ai::generate`, `stream::stream` and
 `embed::embed(ctx, ai::Calling { plan, site }, input)`, each finding the
 plan's connection or `ai:`, the settings it reads (its `settings_read`,
 their values through `Ctx::setting`) and the credentials before it builds
@@ -2547,6 +2548,28 @@ kind from the table (the in-memory files, the mail fake, a package's and
 `ai`'s fakes through `Faked`), as before. *Rejected:* a closure per
 driver kind on the host, which is what grew to four; building drivers
 inside the runtime, which would tie it to the transports the hosts own.
+
+**Provider call sites by number** (chunk 8.1d2, split from 8.1d). A
+provider call's site plan (`jadpo_std::provider::CallSite`) names the
+operation it calls by its number in the plan's provider operations
+(`CallSite::called`, `Called::Operation`), so `provider::call` finds it
+there (`Providers::numbered`) rather than scanning for the connection's
+and the operation's names. A package action's own operation is
+`Called::Own`, its place among its package's operations: the runtime
+adds it to the first operation of the connection the action was called
+through (`ProviderPlan::first`, by the connection's number;
+`ProviderPlan::called`), since one action serves every connection to its
+package. `jadpo-plan` numbers the operations before it decodes any site
+(`providers::Numbering`, in the order the provider plan lists them, a
+connection's together in its package's order), and the runtime's own
+calls carry their operations' numbers in their plans the same way
+(`PackageEmail::called`, `ReceivePlan::called`,
+`AcknowledgePlan::called`, `PollPlan::called`), each sent through a site
+that reads the whole answer (`provider::whole_site`). The names stay
+where they are read: in what is logged and faked, a fault's words, and
+the record tools, which name a call from outside the plan
+(`ProviderPlan::number_of`). `ai:`'s calls through a package still find
+its operation by name. The plan's format is `jadpo runtime plan 3`.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read

@@ -41,7 +41,6 @@
 //! Every message is read by the build that receives it, and a parked
 //! message retried is read by the build running then.
 
-use jadpo_std::provider::CallSite;
 use jadpo_std::receiving::{
     AcknowledgePlan, Mapped, QueueEvent, QueuePlan, QueueSource, ReceivePlan,
 };
@@ -388,20 +387,17 @@ impl Functions for NoFunctions {
 
 /// An operation's input from its mapping, as the provider's JSON, read
 /// back with the input's codec as the call writes it; `handle` for
-/// `message.handle`, and each setting it reads as `ctx` reads it.
+/// `message.handle`, and each setting it reads as `ctx` reads it. The
+/// operation by its number in the plan's provider operations and its name.
 fn input(
     ctx: &Ctx<'_>,
     receiving: &Receiving<'_>,
     queue: &QueuePlan,
-    operation: &str,
+    (called, operation): (u32, &str),
     mapped: &[(String, Mapped)],
     handle: Option<&str>,
 ) -> Result<Option<Value>, StoreError> {
-    let Some((_, op)) =
-        receiving
-            .providers
-            .operation(receiving.connections, &queue.connection, operation)
-    else {
+    let Some((_, op)) = receiving.providers.numbered(receiving.connections, called) else {
         return Err(StoreError::Fault(format!(
             "`{}.{operation}`, which the plan doesn't have",
             queue.connection
@@ -454,32 +450,32 @@ fn described(problems: &[Problem]) -> String {
         .join(", ")
 }
 
-/// Calls `operation` of `queue`'s connection with `input`: its output, or
-/// why it gave none.
+/// Calls `operation` of `queue`'s connection with `input`, by its number
+/// and its name: its output, or why it gave none.
 async fn call(
     executor: &dyn Executor,
     queue: &QueuePlan,
     ctx: &mut Ctx<'_>,
-    operation: &str,
+    (called, operation): (u32, &str),
     input: Option<Value>,
 ) -> Result<Value, StoreError> {
-    call_through(executor, (&queue.connection, operation), ctx, input).await
+    call_through(executor, called, (&queue.connection, operation), ctx, input).await
 }
 
-/// Calls `operation` of `connection` with `input` from the runtime's own
-/// work, with no function of the package's: its output, or why it gave
-/// none, never naming a value. A poll's call too (chunk 7.6c).
+/// Calls the operation numbered `called`, `operation` of `connection`,
+/// with `input` from the runtime's own work, with no function of the
+/// package's: its output, or why it gave none, never naming a value. A
+/// poll's call too (chunk 7.6c).
 pub(crate) async fn call_through(
     executor: &dyn Executor,
+    called: u32,
     (connection, operation): (&str, &str),
     ctx: &mut Ctx<'_>,
     input: Option<Value>,
 ) -> Result<Value, StoreError> {
-    let site = CallSite::default();
+    let site = crate::provider::whole_site(called);
     let calling = Calling {
         plan: executor.plan(),
-        connection,
-        operation,
         site: Site {
             call: &site,
             functions: &NoFunctions,
@@ -511,8 +507,9 @@ async fn fetch(
     plan: &ReceivePlan,
     ctx: &mut Ctx<'_>,
 ) -> Result<Vec<(String, String)>, StoreError> {
-    let given = input(ctx, receiving, queue, &plan.operation, &plan.input, None)?;
-    let answer = call(executor, queue, ctx, &plan.operation, given).await?;
+    let operation = (plan.called, plan.operation.as_str());
+    let given = input(ctx, receiving, queue, operation, &plan.input, None)?;
+    let answer = call(executor, queue, ctx, operation, given).await?;
     let list = match at(&answer, &plan.messages) {
         Some(Value::List(items)) => items.to_vec(),
         // A provider that leaves the list out when it is empty.
@@ -554,17 +551,11 @@ async fn acknowledge(
     ctx: &mut Ctx<'_>,
     handle: &str,
 ) {
-    let Ok(given) = input(
-        ctx,
-        receiving,
-        queue,
-        &plan.operation,
-        &plan.input,
-        Some(handle),
-    ) else {
+    let operation = (plan.called, plan.operation.as_str());
+    let Ok(given) = input(ctx, receiving, queue, operation, &plan.input, Some(handle)) else {
         return;
     };
-    let _ = call(executor, queue, ctx, &plan.operation, given).await;
+    let _ = call(executor, queue, ctx, operation, given).await;
 }
 
 /// What a message of `queue` with `body` becomes, in `ctx`.

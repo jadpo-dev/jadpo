@@ -2114,15 +2114,19 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   `Faked::choosing`, and the record tools building their one connection's
   driver the same way. `jadpo test` builds none (no test reaches a real
   driver). §2.6's "One connections table and the driver factory".
-- [ ] **8.1d2 Provider call sites by number** `opus · high`, after 8.1d,
-  before 8.1f (split from 8.1d on 2026-10-21): a provider call's site
-  plan carrying its operation's number in the plan's provider operations
-  (whose plan carries its connection's number in the connections table),
-  so `provider::Calling` and the interpreter's provider calls find it by
-  number rather than by the connection's and operation's names, and the
-  runtime's own calls (an email through a mail package, a queue's receive
-  and acknowledgement, a poll) carry their operations' numbers in their
-  plans too; the names stay in what is logged and faked.
+- [x] **8.1d2 Provider call sites by number** `opus · high`. Built: a
+  provider call's site plan naming its operation by its number in the
+  plan's provider operations (`CallSite::called`), or a package action's
+  own operation by its place among its package's, added to the first
+  operation of the connection the action was called through
+  (`ProviderPlan::first`); `provider::Calling` down to its plan and site,
+  and `provider::call` and the interpreter's failure mapping finding the
+  operation by number; `jadpo-plan` numbering the operations before any
+  site is decoded (`providers::Numbering`); a mail package's email, a
+  queue's receive and acknowledgement and a poll carrying their
+  operations' numbers in their plans. The names stay in what is logged
+  and faked; `ai:`'s package calls still find theirs by name. Plan format
+  3. §2.6's "Provider call sites by number".
 - [ ] **8.1e A smaller executor and the `testing` feature** `opus ·
   high`, after 8.1c and 8.1d: the `Executor` down to its places, its plan
   and running a callable: callables found by key through the plan, each

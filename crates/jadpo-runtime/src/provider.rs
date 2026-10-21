@@ -569,6 +569,17 @@ impl<'a> Providers<'a> {
         jadpo_std::connections::named(self.connections, connection).map_or(u32::MAX, |(at, _)| at)
     }
 
+    /// The operation numbered `number`, with how calls through its
+    /// connection are made and the connection's name.
+    pub fn numbered(
+        &self,
+        number: u32,
+    ) -> Option<(&'a ConnectionPlan, &'a OperationPlan, &'a str)> {
+        let (plan, op) = self.plan.numbered(self.connections, number)?;
+        let connection = self.connections.get(op.connection as usize)?;
+        Some((plan, op, connection.name.as_str()))
+    }
+
     /// Operation `operation` (`bookings.create`) of connection
     /// `connection`, with how calls through the connection are made.
     pub fn operation(
@@ -611,34 +622,41 @@ pub fn settings_read(connection: &ConnectionPlan) -> Vec<u32> {
 }
 
 /// A provider call's site in a program, as an executor hands it to
-/// [`call`] (chunk 7.9e): the plan it is made in, the connection and
-/// operation it calls, and its site.
+/// [`call`] (chunk 7.9e): the plan it is made in and its site, which names
+/// the operation it calls by number (chunk 8.1d2).
 #[derive(Clone, Copy)]
 pub struct Calling<'a> {
     pub plan: crate::Plan<'a>,
-    /// The connection, `couriers`, and the operation, `bookings.create`.
-    pub connection: &'a str,
-    pub operation: &'a str,
     pub site: Site<'a>,
 }
 
 impl fmt::Debug for Calling<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Calling")
-            .field("connection", &self.connection)
-            .field("operation", &self.operation)
             .field("site", &self.site)
             .finish_non_exhaustive()
     }
 }
 
-/// Calls operation `calling.operation` of connection `calling.connection`
-/// with `input`, from `ctx` at `calling.site`: what both executors run at
-/// a call's site, and the runtime's own calls too (an email through a mail
-/// package, a queue's, a poll's). The program's connections come from
-/// `calling.plan`, their credentials and the values of the settings its
-/// address reads from what `ctx` reaches: a test's own, else the ones the
-/// program started with (chunk 7.9e).
+/// A call's site that reads the whole answer of the operation numbered
+/// `number`: the runtime's own calls' (an email through a mail package, a
+/// queue's receive and acknowledgement, a poll) and `jadpo package
+/// record`'s.
+pub fn whole_site(number: u32) -> CallSite {
+    CallSite {
+        called: jadpo_std::provider::Called::Operation(number),
+        ..CallSite::default()
+    }
+}
+
+/// Calls the operation `calling.site` names with `input`, from `ctx` at
+/// that site: what both executors run at a call's site, and the runtime's
+/// own calls too (an email through a mail package, a queue's, a poll's).
+/// A package action's own operation goes through the connection the
+/// action was called through (`Ctx::package_connection`). The program's
+/// connections come from `calling.plan`, their credentials and the values
+/// of the settings its address reads from what `ctx` reaches: a test's
+/// own, else the ones the program started with (chunk 7.9e).
 pub async fn call(ctx: &mut Ctx<'_>, calling: Calling<'_>, input: Option<Value>) -> Done {
     let started = ctx.started();
     let Some(providers) = calling.plan.providers(&started) else {
@@ -646,38 +664,40 @@ pub async fn call(ctx: &mut Ctx<'_>, calling: Calling<'_>, input: Option<Value>)
             "a provider called in a program with no provider plan".into(),
         ));
     };
-    let settings = match providers.operation(calling.connection, calling.operation) {
-        Some((plan, _)) => ctx.settings_of(settings_read(plan)),
+    let through = ctx
+        .package_connection()
+        .and_then(|connection| jadpo_std::connections::named(providers.connections, connection))
+        .map(|(at, _)| at);
+    let Some(number) = providers.plan.called(calling.site.call.called, through) else {
+        return Done::Fault(FaultKind::Defect(
+            "a provider's operation the plan doesn't have".into(),
+        ));
+    };
+    let settings = match providers.numbered(number) {
+        Some((plan, _, _)) => ctx.settings_of(settings_read(plan)),
         None => Vec::new(),
     };
-    made(
-        ctx,
-        &providers,
-        (calling.connection, calling.operation),
-        input,
-        &settings,
-        calling.site,
-    )
-    .await
+    made(ctx, &providers, number, input, &settings, calling.site).await
 }
 
-/// [`call`], with `providers` and the values `settings` gives the settings
-/// [`settings_read`] names.
+/// [`call`] of the operation numbered `number`, with `providers` and the
+/// values `settings` gives the settings [`settings_read`] names.
 async fn made(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
-    (connection, operation): (&str, &str),
+    number: u32,
     input: Option<Value>,
     settings: &[(u32, Value)],
     site: Site<'_>,
 ) -> Done {
-    let Some((plan, op)) = providers.operation(connection, operation) else {
-        return Done::Fault(FaultKind::Defect(format!(
-            "`{connection}.{operation}`, which the plan doesn't have"
-        )));
+    let Some((plan, op, connection)) = providers.numbered(number) else {
+        return Done::Fault(FaultKind::Defect(
+            "a provider's operation the plan doesn't have".into(),
+        ));
     };
+    let operation = op.name.as_str();
     let name = format!("{connection}.{operation}");
-    let at = providers.number(connection);
+    let at = op.connection;
     let made = Call::new(
         connection,
         operation,
