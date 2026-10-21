@@ -2238,8 +2238,8 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   over TLS, checked against Mozilla's roots compiled in, but to this
   machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`), through
   PostgreSQL's SSL request and `Transport::upgrade`, which now takes whom
-  it trusts (`Trust`); `authority: config.<name>`, a new built-in
-  `Certificate` setting holding PEM, trusted alone and to this machine too;
+  it trusts (`Trust`); `authority: config.<name>`, a setting of area 19's
+  `Certificate`, read from its PEM, trusted alone and to this machine too;
   `tls: false` for a server elsewhere that offers none, listed in the
   network report; an address setting `sslmode` or another `ssl…` refused
   by the driver, `PostgresUrl`'s check and `jadpo migrate`; a refusal a

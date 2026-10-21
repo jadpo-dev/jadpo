@@ -661,7 +661,6 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             )),
             None => Ok(()),
         },
-        Builtin::Certificate => crate::database_tls::certificates(text).map(|_| ()),
         Builtin::RedisUrl if !is_connection_url(text, &["redis", "rediss"]) => {
             Err("isn't a Redis address, which starts `redis://` or `rediss://`".into())
         }

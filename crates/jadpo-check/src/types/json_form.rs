@@ -75,11 +75,6 @@ pub(crate) fn no_json_form(
                 "a secret, which only a route's `Output` or the setting it is read from ever holds"
                     .to_string(),
             )),
-            Prim::Certificate => Some((
-                found.to_string(),
-                "a database server's authority, which only the setting a connection's `authority:` reads ever holds"
-                    .to_string(),
-            )),
             Prim::SignInCode => Some((
                 found.to_string(),
                 "a sign-in code, which only the email or the sending that carries it ever holds"

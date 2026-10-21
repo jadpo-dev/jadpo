@@ -184,14 +184,18 @@ fn an_authority_mozilla_doesnt_list_is_refused() {
     let port = secure().1.tcp_port().expect("a port");
     let why = fault(over_tls(&store(ELSEWHERE, port, Security::Roots)));
     assert!(
-        why.contains("`db.example.test` isn't vouched for by the public authorities"),
+        why.contains(
+            "`db.example.test` failed the certificate check against the public authorities"
+        ),
         "{why}"
     );
     // Nor is one the connection doesn't name.
     let other = Authority::signing(ELSEWHERE);
     let why = fault(over_tls(&store(ELSEWHERE, port, authorities(&other))));
     assert!(
-        why.contains("isn't vouched for by the authority its connection's `authority:` names"),
+        why.contains(
+            "failed the certificate check against the authority its connection's `authority:` names"
+        ),
         "{why}"
     );
 }
@@ -209,7 +213,7 @@ fn a_certificate_for_another_name_is_refused() {
         authorities(authority),
     )));
     assert!(
-        why.contains("`other.example.test` isn't vouched for"),
+        why.contains("`other.example.test` failed the certificate check"),
         "{why}"
     );
 }

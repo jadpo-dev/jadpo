@@ -91,11 +91,11 @@ its address gives, except to this machine: a Unix socket, `localhost`,
 `127.0.0.1` or `::1`, which are reached without it. The connection decides,
 in `app.jadpo` where a review sees it, never its address:
 
-- `authority: config.<name>`, a `Certificate` setting holding the private
-  authority its server's certificate is signed by (Amazon RDS's bundle,
-  Cloud SQL's server CA) as PEM, one certificate or several. Only that
-  authority is trusted, and the connection uses TLS to this machine too,
-  but for a Unix socket, which PostgreSQL never secures.
+- `authority: config.<name>`, a `Certificate` setting (area 19, read from
+  its PEM) holding the private authority its server's certificate is
+  signed by: Amazon RDS's root for its region, Cloud SQL's server CA. Only
+  that authority is trusted, and the connection uses TLS to this machine
+  too, but for a Unix socket, which PostgreSQL never secures.
 - `tls: false`, for a server elsewhere that offers no TLS, on a private
   network. The network report (area 11) lists the connection as reached
   without TLS.
@@ -128,7 +128,7 @@ config {
 An address that sets TLS itself, `sslmode`, `sslrootcert` or another of
 libpq's `ssl…` settings, is refused as the app starts, by `jadpo config
 check` and by `jadpo migrate` (area 10's `configuration.value_invalid`),
-and a `Certificate` that isn't PEM the same way. A server elsewhere that
+and a `Certificate` that isn't one certificate's PEM the same way. A server elsewhere that
 offers no TLS, or whose certificate the check refuses, is a fault naming
 the server, never retried as a database that is down for now. `jadpo
 migrate`, `jadpo schedules`, `jadpo runs`, `jadpo deliveries` and `jadpo
@@ -3161,7 +3161,7 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 
 | Topic | Decision | Date |
 |---|---|---|
-| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a `Certificate` setting holding its server's private authority (Amazon RDS, Cloud SQL); a server elsewhere without TLS is reached only when the connection says so in `app.jadpo`, which the review report lists; `sslmode` in the URL is refused, since the connection decides; as area 16 decides for SMTP (Richard; built in chunk 8.1n: the authority is `authority: config.<name>`, a `Certificate` setting, trusted alone and used to this machine too but over a Unix socket; the opt-out is `tls: false`, listed in the network report, chosen as the narrowest form, a word written in source and never a setting; a local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check) | 2026-10-21 |
+| PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a `Certificate` setting holding its server's private authority (Amazon RDS, Cloud SQL); a server elsewhere without TLS is reached only when the connection says so in `app.jadpo`, which the review report lists; `sslmode` in the URL is refused, since the connection decides; as area 16 decides for SMTP (Richard; built in chunk 8.1n: the authority is `authority: config.<name>`, a setting of area 19's `Certificate`, one certificate read from its PEM, trusted alone and used to this machine too but over a Unix socket; the opt-out is `tls: false`, listed in the network report, chosen as the narrowest form, a word written in source and never a setting; a local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check) | 2026-10-21 |
 | Layout | Carried from area 1: an entity lives in its own file under its domain's `entities/` folder; `database/` holds `identities.json` (one sorted entry per line), timestamped migration folders and `seeds/` | 2026-10-12 |
 | Keyword | Carried from area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` | 2026-10-12 |
 | Field settings | Carried from area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` | 2026-10-12 |

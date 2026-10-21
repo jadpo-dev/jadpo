@@ -75,7 +75,6 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::SignInToken
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
-            | Builtin::Certificate
             | Builtin::SigningKey
             | Builtin::EncryptionKey
             | Builtin::PrivateKey

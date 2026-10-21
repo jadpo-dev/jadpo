@@ -66,12 +66,6 @@ pub enum Builtin {
     /// A Redis address, `redis://` or `rediss://` (area 10). Always
     /// secret.
     RedisUrl,
-    /// The authority a database server's certificate is checked against,
-    /// as PEM (area 5, "PostgreSQL over TLS"; chunk 8.1n): what a
-    /// connection's `authority:` reads, for a server whose certificate a
-    /// private authority signed (Amazon RDS's, Cloud SQL's). Public, so
-    /// not secret; never stored.
-    Certificate,
     /// A key sessions and tokens are signed with (area 10, "Signing key
     /// rotation"): at least [`SIGNING_KEY_MIN`] characters. Always secret.
     SigningKey,
@@ -133,7 +127,7 @@ static PAGE_SIZE_RULES: crate::Rules = crate::Rules {
 };
 
 impl Builtin {
-    pub const ALL: [Builtin; 49] = [
+    pub const ALL: [Builtin; 48] = [
         Builtin::Bool,
         Builtin::Int,
         Builtin::Decimal,
@@ -177,7 +171,6 @@ impl Builtin {
         Builtin::SignInToken,
         Builtin::PostgresUrl,
         Builtin::RedisUrl,
-        Builtin::Certificate,
         Builtin::SigningKey,
         Builtin::EncryptionKey,
         Builtin::PrivateKey,
@@ -212,7 +205,6 @@ impl Builtin {
             Builtin::SignInToken => "SignInToken",
             Builtin::PostgresUrl => "PostgresUrl",
             Builtin::RedisUrl => "RedisUrl",
-            Builtin::Certificate => "Certificate",
             Builtin::SigningKey => "SigningKey",
             Builtin::EncryptionKey => "EncryptionKey",
             Builtin::PrivateKey => "PrivateKey",
@@ -240,7 +232,6 @@ impl Builtin {
             | Builtin::SignInToken
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
-            | Builtin::Certificate
             | Builtin::SigningKey
             | Builtin::EncryptionKey
             | Builtin::PrivateKey => Builtin::Text,
@@ -267,7 +258,6 @@ impl Builtin {
                 | Builtin::SignInToken
                 | Builtin::PostgresUrl
                 | Builtin::RedisUrl
-                | Builtin::Certificate
                 | Builtin::SigningKey
                 | Builtin::EncryptionKey
                 | Builtin::PrivateKey

@@ -202,8 +202,8 @@ pub enum DatabaseTls {
     #[default]
     Roots,
     /// TLS everywhere but a Unix socket, the server's certificate checked
-    /// against only the authority in the `Certificate` setting numbered
-    /// here: `authority: config.<name>`.
+    /// against only the authority in the `Certificate` setting (area 19)
+    /// numbered here: `authority: config.<name>`.
     Authority(u32),
     /// No TLS anywhere: `tls: false`, which the network report lists.
     Off,

@@ -313,7 +313,7 @@ impl Reader<'_> {
                     )
                     .at(type_span.clone(), "not read from one variable")
                     .reason(format!(
-                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money` and enums. {why}"
+                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money`, `Certificate` and enums. {why}"
                     ))
                     .next(format!("Split `{name}` into settings of those types")),
                 );
@@ -798,6 +798,13 @@ impl Reader<'_> {
             // `ai: { models: }` names (area 21; chunk 5.5v3).
             Ty::Opaque(name, args)
                 if args.is_empty() && name == jadpo_std::standard::records::MODEL_ID =>
+            {
+                Ok(Reads::Text)
+            }
+            // A server's authority, read from its PEM: what a database
+            // connection's `authority:` names (area 5; chunk 8.1n).
+            Ty::Opaque(name, args)
+                if args.is_empty() && name == jadpo_std::standard::certificates::CERTIFICATE =>
             {
                 Ok(Reads::Text)
             }

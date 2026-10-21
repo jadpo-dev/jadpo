@@ -188,7 +188,7 @@ async fn secured(
                 Trust::Authorities(_) => "the authority its connection's `authority:` names",
             };
             Err(StoreError::Fault(format!(
-                "the database server at `{host}` isn't vouched for by {whom}: {error}"
+                "the database server at `{host}` failed the certificate check against {whom}: {error}"
             )))
         }
         Some(Err(_)) | None => Err(StoreError::Unavailable),
@@ -1013,7 +1013,7 @@ mod tests {
         assert_eq!(first, SSL_REQUEST);
         assert_eq!(seen.upgraded, [("db.example.test".to_string(), false)]);
         assert!(
-            fault(&done).contains("isn't vouched for by the public authorities"),
+            fault(&done).contains("failed the certificate check against the public authorities"),
             "{done:?}"
         );
     }

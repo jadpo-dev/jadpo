@@ -13,7 +13,7 @@ use crate::config::{config, singletons};
 use crate::data::ConnectionKind;
 use crate::lookups::Lookup;
 use crate::tree::{self, name_text, node_span};
-use crate::types::{Const, Prim, TypeView};
+use crate::types::{Const, Ty, TypeView};
 
 /// How a database connection is secured.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -103,7 +103,7 @@ pub fn database_connections(db: &dyn Db, project: Project) -> DatabaseConnection
                                 continue;
                             };
                             match config(db, project).setting(&field) {
-                                Some(found) if lookup.base_prim(&found.ty) == Some(Prim::Certificate) => {
+                                Some(found) if is_certificate(&lookup, &found.ty) => {
                                     authority = Some((field, node_span(&path, setting.syntax())));
                                 }
                                 Some(found) => out.problems.push(authority_invalid(
@@ -181,4 +181,13 @@ fn authority_invalid(connection: &str, span: Span, label: &str, next: String) ->
     .at(span, label.to_string())
     .reason("`authority:` is the authority its server's certificate is checked against, as PEM: a `Certificate` setting, `config.<name>`, read from each deployment's environment.")
     .next(next)
+}
+
+/// Whether `ty` is the standard `Certificate` (area 19), read from its PEM.
+fn is_certificate(lookup: &Lookup<'_>, ty: &Ty) -> bool {
+    matches!(
+        lookup.structure(ty),
+        Ty::Opaque(name, args)
+            if args.is_empty() && name == jadpo_std::standard::certificates::CERTIFICATE
+    )
 }
