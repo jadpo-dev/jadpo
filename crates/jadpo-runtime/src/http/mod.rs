@@ -50,6 +50,7 @@ pub(crate) mod passkeys;
 pub(crate) mod sign_in_events;
 pub mod signed;
 pub mod test_passkeys;
+mod trie;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -67,6 +68,7 @@ use crate::race::{First, race};
 use crate::ratelimit::Allowed;
 use crate::{Clock, Ctx, Env, Executor, Failure, Fault, Frame, Host, Outcome, StoreOp, Stored};
 use idempotency::{Claim, Guard};
+pub use trie::{Found, Methods, Routes};
 
 /// A request, as a host hands it over.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -106,8 +108,9 @@ pub struct Response {
     /// The failure code it answers with, for the host's log line; never
     /// sent beyond the body.
     pub code: Option<String>,
-    /// The route it answered by: `POST /todos`.
-    pub route: Option<String>,
+    /// The route it answered by: `POST /todos`, shared with the trie,
+    /// which made it once (chunk 8.1k).
+    pub route: Option<std::sync::Arc<str>>,
     /// The fault behind a 500, for the host's log and a route test's
     /// report; never sent.
     pub fault: Option<Box<crate::Fault>>,
@@ -153,6 +156,9 @@ impl Response {
 #[derive(Clone, Copy, Debug)]
 pub struct App<'a> {
     pub table: &'a RouteTable,
+    /// The trie of the table's routes, health's paths and the program's
+    /// webhooks, built once as the plan is loaded (chunk 8.1k).
+    pub routes: &'a Routes,
     pub codecs: Codecs<'a>,
     pub failures: &'a [FailurePlan],
     /// The codecs a JSON-held column a route's query reads is read with
@@ -384,31 +390,42 @@ async fn respond(
     request_id: &str,
     ready: Option<&health::Readiness>,
 ) -> Response {
-    let segments = split_path(&request.path);
-    if let Some(segments) = &segments
-        && let Some(response) =
-            health::answer(app.table, ctx, request, request_id, segments, ready).await
-    {
+    // What the path is, found once in the trie (chunk 8.1k).
+    let found = app.routes.find(&request.method, &request.path);
+    if let Found::Health { ready: readiness } = found {
+        let mut response =
+            health::answer(app.table, ctx, request, request_id, readiness, ready).await;
+        response.route = Some(app.routes.health_label(readiness));
         return response;
     }
     // A webhook's route is the runtime's own (area 11, "Receiving from
     // outside"; chunk 7.7), counted against its address before anything
     // in it is read, whatever credential it carries.
-    let started = ctx.started();
-    let webhooks = executor.plan().webhooks(&started);
-    let webhook = segments
-        .as_ref()
-        .zip(webhooks.as_ref())
-        .and_then(|(segments, webhooks)| webhooks.route(segments));
-    if let (Some(found), Some(webhooks)) = (webhook, &webhooks) {
-        if let Some(response) = by_address(ctx, request_id).await {
+    if let Found::Webhook(at) = found {
+        let started = ctx.started();
+        let webhooks = executor.plan().webhooks(&started);
+        if let Some(webhooks) = &webhooks
+            && let Some(plan) = webhooks.plan.get(at as usize)
+        {
+            if let Some(response) = by_address(ctx, request_id).await {
+                return response;
+            }
+            if !headers_readable(request) {
+                return runtime_failure(HEADER_UNREADABLE, request_id, None);
+            }
+            let mut response = crate::webhooks::answer(
+                app,
+                executor,
+                webhooks,
+                (at as usize, plan),
+                ctx,
+                request,
+                request_id,
+            )
+            .await;
+            response.route = app.routes.webhook_label(at);
             return response;
         }
-        if !headers_readable(request) {
-            return runtime_failure(HEADER_UNREADABLE, request_id, None);
-        }
-        return crate::webhooks::answer(app, executor, webhooks, found, ctx, request, request_id)
-            .await;
     }
     // A request with a credential counts against its caller once signed
     // in, or against its address if it isn't; every other request against
@@ -417,7 +434,7 @@ async fn respond(
     if !deferred && let Some(response) = by_address(ctx, request_id).await {
         return response;
     }
-    let mut response = route_request(app, executor, ctx, request, request_id).await;
+    let mut response = route_request(app, executor, ctx, request, request_id, found).await;
     if deferred
         && !response.counted
         && let Some(limited) = by_address(ctx, request_id).await
@@ -453,64 +470,41 @@ async fn route_request(
     ctx: &mut Ctx<'_>,
     request: &Request,
     request_id: &str,
+    found: Found,
 ) -> Response {
-    let segments = split_path(&request.path);
-    let Some(segments) = segments else {
+    if found == Found::Unreadable {
         return runtime_failure(INVALID_REQUEST, request_id, None);
-    };
+    }
     if !headers_readable(request) {
         return runtime_failure(HEADER_UNREADABLE, request_id, None);
     }
     if request.too_large || request.body.len() > BODY_LIMIT {
         return runtime_failure(REQUEST_TOO_LARGE, request_id, None);
     }
-    let matching: Vec<&RoutePlan> = app
-        .table
-        .routes
-        .iter()
-        .filter(|route| matches(route, &segments))
-        .collect();
-    if matching.is_empty() {
+    // A fixed segment beats a placeholder: of the routes for this method,
+    // the one with fixed text earliest (the trie's walk).
+    let Found::Route { route, allow } = found else {
         return runtime_failure(ROUTE_NOT_FOUND, request_id, None);
-    }
-    let mut allowed: Vec<&str> = matching.iter().map(|route| route.method.word()).collect();
-    if allowed.contains(&"GET") {
-        allowed.push("HEAD");
-    }
-    allowed.push("OPTIONS");
-    allowed.sort_unstable();
-    allowed.dedup();
-    let allow = allowed.join(", ");
+    };
     if request.method == "OPTIONS" {
         return Response {
             status: 204,
-            headers: vec![("allow".to_string(), allow)],
+            headers: vec![("allow".to_string(), allow.allow())],
             ..Response::default()
         };
     }
-    let method = match request.method.as_str() {
-        "HEAD" => Some(HttpMethod::Get),
-        other => HttpMethod::from_word(other),
-    };
-    // A fixed segment beats a placeholder: of the routes for this method,
-    // the one with fixed text where the others have a placeholder.
-    let route = method.and_then(|method| {
-        matching
-            .iter()
-            .filter(|route| route.method == method)
-            .max_by_key(|route| fixed_mask(route))
-            .copied()
-    });
-    let Some(route) = route else {
+    let Some((number, route)) =
+        route.and_then(|number| Some((number, app.table.routes.get(number as usize)?)))
+    else {
         let mut response = runtime_failure(METHOD_NOT_ALLOWED, request_id, None);
-        response.headers.push(("allow".to_string(), allow));
+        response.headers.push(("allow".to_string(), allow.allow()));
         return response;
     };
     // Work that never waits checks the deadline as it runs.
     ctx.set_deadline(Some(u64::from(route.deadline_ms)));
-    let mut response = run_route(app, executor, ctx, request, request_id, route, &segments).await;
+    let mut response = run_route(app, executor, ctx, request, request_id, route).await;
     ctx.set_deadline(None);
-    response.route = Some(route.label());
+    response.route = app.routes.label(number);
     response
 }
 
@@ -543,32 +537,24 @@ fn json_content(request: &Request) -> bool {
     })
 }
 
-/// Each `1` bit a fixed segment, the first segment highest, so the route
-/// with fixed text earliest wins.
-fn fixed_mask(route: &RoutePlan) -> u64 {
-    route.segments.iter().take(64).fold(0u64, |mask, segment| {
-        (mask << 1) | u64::from(matches!(segment, Segment::Fixed(_)))
-    })
-}
-
-fn matches(route: &RoutePlan, segments: &[String]) -> bool {
-    route.segments.len() == segments.len()
-        && route
-            .segments
-            .iter()
-            .zip(segments)
-            .all(|(segment, written)| match segment {
-                Segment::Fixed(text) => text == written,
-                Segment::Param { .. } => !written.is_empty(),
-            })
-}
-
 /// A path's segments, percent-decoded; `None` when one isn't valid UTF-8.
+#[cfg(test)]
 fn split_path(path: &str) -> Option<Vec<String>> {
     path.split('/')
         .filter(|segment| !segment.is_empty())
         .map(|segment| percent_decode(segment, false))
         .collect()
+}
+
+/// Segment `raw` of a path, percent-decoded: borrowed when it has no
+/// escapes. The trie has refused a path with one that isn't text, which
+/// reads here as empty.
+pub(crate) fn decoded(raw: &str) -> std::borrow::Cow<'_, str> {
+    if raw.contains('%') {
+        std::borrow::Cow::Owned(percent_decode(raw, false).unwrap_or_default())
+    } else {
+        std::borrow::Cow::Borrowed(raw)
+    }
 }
 
 /// `text` with its `%XX` escapes decoded, and `+` read as a space in a
@@ -618,7 +604,6 @@ async fn run_route(
     request: &Request,
     request_id: &str,
     route: &RoutePlan,
-    segments: &[String],
 ) -> Response {
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
@@ -693,7 +678,6 @@ async fn run_route(
                 request,
                 request_id,
                 *step,
-                segments,
                 caller.as_ref(),
             );
             match race(answered, &mut deadline).await {
@@ -720,7 +704,6 @@ async fn run_route(
                 request,
                 request_id,
                 route,
-                segments,
                 (deadline, ends_at),
                 within,
                 caller,
@@ -821,7 +804,6 @@ async fn run_with_caller(
     request: &Request,
     request_id: &str,
     route: &RoutePlan,
-    segments: &[String],
     (deadline, ends_at): (crate::LocalFuture<'_, ()>, Option<u64>),
     mut within: Option<crate::LocalFuture<'_, ()>>,
     caller: Option<crate::Caller>,
@@ -834,9 +816,10 @@ async fn run_with_caller(
     let mut problems: Vec<Problem> = Vec::new();
     // Placeholders, each decoded once and checked.
     let mut params = Vec::new();
-    for (segment, written) in route.segments.iter().zip(segments) {
+    for (segment, written) in route.segments.iter().zip(trie::segments(&request.path)) {
         if let Segment::Param { name, codec } = segment {
-            params.push(codecs.read_text(*codec, written, &Path::field(name), &mut problems));
+            let written = decoded(written);
+            params.push(codecs.read_text(*codec, &written, &Path::field(name), &mut problems));
         }
     }
     // A query string or a body the route doesn't read is refused, as an
@@ -1433,7 +1416,7 @@ fn answer(app: &App<'_>, route: &RoutePlan, request_id: &str, outcome: Outcome) 
         },
         // A page's cursor that isn't one of this query's is bad input in
         // the field it came in (area 6).
-        Outcome::Failed(failure) if failure.key == crate::invalid_cursor().key => invalid_input(
+        Outcome::Failed(failure) if failure.key == crate::read::INVALID_CURSOR => invalid_input(
             request_id,
             &[Problem {
                 field: cursor_field(route),

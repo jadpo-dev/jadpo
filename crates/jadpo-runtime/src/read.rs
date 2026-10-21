@@ -284,11 +284,15 @@ pub(crate) async fn count(
     }
 }
 
+/// The identity key of [`invalid_cursor`]'s failure, which the HTTP
+/// component looks for without making one (chunk 8.1k).
+pub(crate) const INVALID_CURSOR: &str = "runtime invalid_input";
+
 /// What the runtime raises when a page's cursor was made by another query,
 /// or isn't a cursor at all (area 6: "rejected as invalid input"; area 7:
 /// 422 `invalid_input`).
 pub fn invalid_cursor() -> Failure {
-    let mut failure = Failure::new("runtime invalid_input", "InvalidInput", "invalid_input");
+    let mut failure = Failure::new(INVALID_CURSOR, "InvalidInput", "invalid_input");
     failure.kind = Some("invalid_value".to_string());
     failure.status = Some(422);
     failure.internal.push((

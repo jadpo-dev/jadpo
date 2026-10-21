@@ -270,7 +270,7 @@ impl Observer for Lines {
             path: request.path.clone(),
             status: response.status,
             code: response.code.clone(),
-            route: response.route.clone(),
+            route: response.route.as_deref().map(str::to_string),
             millis: u128::from(answered.ms),
             address: response.client.clone(),
             fault: response.fault.as_ref().map(|fault| {

@@ -16,7 +16,7 @@
 use crate::read::{Column, MissingPlan, Record, SqlType};
 
 /// Which operation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum WriteOp {
     Create,
     Update,
@@ -35,7 +35,7 @@ impl WriteOp {
 }
 
 /// Where a write's parameter comes from when it runs.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum WriteSource {
     /// The executor's input at this position.
     Input(u32),
@@ -67,14 +67,14 @@ pub enum WriteSource {
 }
 
 /// One parameter: `$1` is the first.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct WriteParam {
     pub source: WriteSource,
     pub ty: SqlType,
 }
 
 /// What the row a `create` or an `update` returns becomes.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Returned {
     /// What each returned column becomes, in order.
     pub columns: Vec<Column>,
@@ -86,7 +86,7 @@ pub struct Returned {
 
 /// One write: its statement, its parameters, what it returns and the
 /// constraints whose refusal it maps.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct WritePlan {
     /// The store it writes (a connection's name).
     pub store: String,
@@ -132,7 +132,7 @@ pub struct WritePlan {
 /// chunk 7.4): that the row is still the version loaded, by PostgreSQL's
 /// row version, locked as the write would lock it. A row changed or gone
 /// since is a concurrent change, which runs the action again.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RowCheck {
     /// The entity's table, which names the row among those loaded, as
     /// [`crate::read::RowVersions::table`] does.
@@ -146,7 +146,7 @@ pub struct RowCheck {
 
 /// A constraint whose refusal a write maps (area 6, "When a write is
 /// refused"), and what the refusal raises.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Refusal {
     /// The constraint as the store names it, or the transition whose
     /// `when:` refused, `when: Loan.check_in`.
@@ -155,7 +155,7 @@ pub struct Refusal {
 }
 
 /// What a refused write raises.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Raises {
     /// The failure the site's `conflict:` arm at this position names,
     /// whose fields the executor works out only then.
@@ -171,7 +171,7 @@ pub enum Raises {
 /// What a guarded transition asks when it changed no row (area 5,
 /// "Lifecycle"): whether the record is there and visible, in which case
 /// its `when:` refused it.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Guard {
     /// `SELECT 1` of the record by `id`, under the lifecycle's `visible:`
     /// and policy.
@@ -186,7 +186,7 @@ pub struct Guard {
 
 /// What a write that policy limits means when it changed no row (area 9,
 /// "When policy says no").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PolicyRefusal {
     /// A create policy refused, the record's grants or a field's own:
     /// `not_permitted`.
@@ -210,7 +210,7 @@ pub enum PolicyRefusal {
 
 /// The statement that tells a field's policy refusing a write from the
 /// record's (see [`PolicyRefusal::Probe`]).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct FieldProbe {
     pub sql: String,
     pub params: Vec<WriteParam>,

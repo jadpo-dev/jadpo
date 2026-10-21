@@ -2146,20 +2146,32 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   (`tools/deployable.py`). A release build of that example is 30,513,808
   bytes without the feature and 30,629,520 with it. §2.6's "The `testing`
   feature".
-- [ ] **8.1f Compiled code: the first route** `opus · xhigh`, after 8.1c,
-  8.1d2 and 8.1e: `jadpo-codegen` writing a checked project as one Rust crate
-  from its graph and plan (`quote!` into `syn`, printed with
-  `prettyplease`, §2.5): a module per domain, functions as `fn` and
-  actions and queries as `async fn(&mut Ctx, …)` over the interpreter's
-  `jadpo_value::Value`, so only control flow differs (a struct per type
-  comes with 8.1p), checked arithmetic faulting at its site, and the
-  plan's bytes (8.1a) embedded as a constant and decoded once at start,
-  decided in §2.5 first, with its read, write and call sites' plans added
-  to it; the compiled program's `Executor`; a harness running a project's
-  tests through both executors and comparing their records (8.1c); one
-  route that creates a record and one that reads it, with their route
-  tests, passing compiled and interpreted with the same records; a body
-  form not compiled yet refused by name, so what is left shows.
+- [x] **8.1f Compiled code: the first route** `opus · xhigh`. Built:
+  `jadpo-codegen` writing a checked project as one Rust crate from its
+  plan (`generate`: `quote!` into `syn`, printed with prettyplease): a
+  module per domain, each callable a function over the interpreter's
+  `jadpo_value::Value` (a function as `fn`, an action, fixture, test or
+  seed as `async fn(&mut Ctx, &Program, …)`), the frame table as plain
+  data, and the plan's bytes held as a constant, with and without the dev
+  and test section, decoded once per process; compiled code's site plans
+  in the runtime plan (`RuntimePlan::sites`: constants, reads, writes and
+  outside calls' sites by number; `actions`, what the boundary needs;
+  plan format 5); `jadpo_runtime::compiled`, the compiled program's
+  `Executor`, its action body, `invoke` and a function per kind of site
+  raising the interpreter's stop at the same site, and
+  `jadpo_runtime::operators`, the operators both executors run, so
+  arithmetic faults at its site; statements, locals, field reads, calls,
+  reads, writes with their `conflict:` arms, builds, lists, operators,
+  `if`, `assert`, settings, `clock.now` and a route test's `request`
+  compiled, every other form refused by name and place (`Refusal`), 65
+  of the corpus's 205 projects that check compiling; `jadpo_test::run_with`
+  running tests on any executor, and the differential harness
+  (`jadpo_test::compiled`), which builds a project's crate beside a
+  harness binary with cargo, offline, in a folder it keeps (73 s cold,
+  7 s warm), and runs its tests interpreted and compiled in one process,
+  comparing their records; area 7's `todos` project, a route creating a
+  todo and one reading it back, with three route tests added to the
+  page, passing both ways with the same records. §2.5's "Compiled code".
 - [ ] **8.1g Compiled code: areas 1 to 4** `opus · xhigh`, after 8.1f:
   every body form areas 1 to 4 build (functions, failures, `attempt`,
   outcome `match`, constructions, a proven one never checked again,
@@ -2185,12 +2197,15 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   CI job of its own with a time budget, every test passing interpreted
   and compiled with the same records; the gate's Phase 8 differential
   step (§2.7).
-- [ ] **8.1k The route trie** `opus · high`, after 8.1a: decided in §2.5
-  first, routes matched through a trie built once from the route table
-  (a fixed segment before a placeholder, as now), webhooks a
-  `Run::Webhook` entry in it rather than answered before routing, and no
-  allocation per request for paths, labels or failure lookups, counted by
-  a test's allocator.
+- [x] **8.1k The route trie** `opus · high`, after 8.1a. Built (§2.5,
+  "The route trie"): `jadpo_runtime::http::Routes`, built once as a plan
+  is loaded from the route table, health's paths and the webhooks, walked
+  fixed segment before placeholder as before; health and each webhook an
+  entry of the trie (`Found::Health`, `Found::Webhook`) rather than a
+  `Run` in the route table, no longer matched in front of it; and no
+  allocation per request for paths, labels or the cursor failure's
+  lookup, counted by a test binary's allocator
+  (`crates/jadpo-runtime/tests/route_allocations/main.rs`).
 - [x] **8.1l Native accept and one rate-limit count** `opus · xhigh`,
   after 8.1d. Built: the native acceptor a thread of its own awaiting the
   listener on a current-thread runtime and handing each connection to the
@@ -2233,6 +2248,21 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   HTTP and loopback names and addresses, following no redirect and
   refusing an answer longer than asked for. §2.6's "A pooled HTTP
   client".
+- [x] **8.1m2 A flaky test after the pooled client** `opus · high`,
+  after 8.1m: two flakes, two causes. `provider_wire`'s connection gave
+  each call 300 ms, which a loaded gate passed; the timed-out `GET` was
+  sent again and the fake answered the retry with its unscripted `{}`,
+  so "nothing at `data`" (reproduced exactly with an answer held 400
+  ms). Its `couriers` now waits 5 s and `quick`, the only connection
+  whose timeout is tested, 1 s against answers held 1.5 s. And a server
+  closing a kept connection as the next request reaches it, a race no
+  client sees coming, gave `NoAnswer` on Linux CI: a request that may be
+  sent again once it has left (`provider::Request::repeatable`, set by
+  `Call::with_request` from the call's `Repeat`; `Outward`'s `GET`s) now
+  goes out once more on a fresh connection, a change with no key still
+  `NoAnswer`. Proved deterministically by a server that drops every
+  kept connection's second request: a `GET` and a keyed `POST` answered
+  on a fresh connection, an unkeyed `POST` not sent again.
 - [x] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m. Built:
   as area 5 decides (Richard, 2026-10-21), a database connection always
   over TLS, checked against Mozilla's roots compiled in, but to this
@@ -2244,7 +2274,7 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   network report; an address setting `sslmode` or another `ssl…` refused
   by the driver, `PostgresUrl`'s check and `jadpo migrate`; a refusal a
   fault naming the server, never unavailable. The plan carries it
-  (`DatabaseTls`, plan format 5), the factory builds it
+  (`DatabaseTls`, plan format 6), the factory builds it
   (`Postgres::secured`), and `jadpo dev`, `migrate`, `schedules`, `runs`,
   `deliveries` and `ai usage` open a database as its connection says.
   `jadpo check` refuses another key on a database connection, an

@@ -335,6 +335,7 @@ impl Watch {
             &self.options,
             only.as_ref(),
             started,
+            None,
         );
         self.baseline = Some(graph);
         // `--failed` picks the first run only; later runs are what each

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::ai::AiPlan;
 use crate::batch::BatchPlan;
 use crate::canonical;
+use crate::compiled::{ActionPlan, SitesPlan};
 use crate::config::ConfigPlan;
 use crate::connections::Connection;
 use crate::http::{JsonTable, RouteTable};
@@ -73,6 +74,18 @@ pub struct RuntimePlan {
     /// key, a webhook reply's action or a package's own `decode:` and
     /// `encode:` functions.
     pub callables: BTreeMap<String, u32>,
+    /// What compiled code's sites name by number (chunk 8.1f): every
+    /// constant, each query's and entity `get`'s read, each write site's
+    /// plan and each outside call's site.
+    pub sites: SitesPlan,
+    /// What the action boundary needs of each action and fixture, by its
+    /// callable's number (chunk 8.1f).
+    pub actions: BTreeMap<u32, ActionPlan>,
+    /// What a record of several changing calls keeps of the build it
+    /// started under (area 11, "Deploys"; chunk 7.5b), and the
+    /// `SigningKey` setting its answers are sealed with, by number.
+    pub build: String,
+    pub steps_key: Option<u32>,
     /// The dev and test section: each test's key and what it gives
     /// itself, and the recordings (chunk 8.1e). Written after the rest
     /// ([`RuntimePlan::encode`]), not as one of its fields.
@@ -111,7 +124,7 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 5\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 6\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding, then, with the `testing` feature, its dev

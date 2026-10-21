@@ -31,6 +31,10 @@ enum Answers {
     ThenClosed,
     /// `200 hello` with `Connection: close`, then closed.
     Closing,
+    /// `200 hello`, the connection kept open; the next request on it is
+    /// read and the connection closed with no answer: a server whose
+    /// keep-alive ran out as the request reached it, every time.
+    ClosedOnNext,
     /// Never: it reads the request, then waits for the client to close.
     Never,
     /// A head and `first`, then `second` once told to go on, then the end.
@@ -130,10 +134,19 @@ fn serve<S: Read + Write>(
     told: &Mutex<mpsc::Receiver<()>>,
 ) {
     let mut pending = Vec::new();
+    let mut answered = 0;
     while let Some(head) = next_request(&mut link, &mut pending) {
         seen.requests.fetch_add(1, Ordering::SeqCst);
         seen.heads.lock().expect("heads").push(head);
         match answers {
+            Answers::ClosedOnNext if answered > 0 => return,
+            Answers::ClosedOnNext => {
+                answered += 1;
+                let answer = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello";
+                if link.write_all(answer.as_bytes()).is_err() || link.flush().is_err() {
+                    return;
+                }
+            }
             Answers::Kept | Answers::ThenClosed | Answers::Closing => {
                 let close = if answers == Answers::Closing {
                     "Connection: close\r\n"
@@ -248,6 +261,7 @@ fn next_request<S: Read>(link: &mut S, pending: &mut Vec<u8>) -> Option<String> 
     Some(head)
 }
 
+/// A `GET` that changes nothing, so may be sent again.
 fn get(url: String, timeout_ms: u64) -> Request {
     Request {
         method: HttpMethod::Get,
@@ -256,6 +270,7 @@ fn get(url: String, timeout_ms: u64) -> Request {
         body: None,
         timeout_ms,
         reading: Reading::default(),
+        repeatable: true,
     }
 }
 
@@ -377,6 +392,54 @@ fn a_connection_the_server_closes_is_not_used_again() {
         });
         assert_eq!((server.accepted(), server.requests()), (3, 3));
     }
+}
+
+/// A kept connection the server closes as the next request reaches it,
+/// the race every kept connection runs, has written a request that got no
+/// answer. One that may be sent again (it changes nothing, or goes under
+/// its key) goes out again on a fresh connection and is answered; a change
+/// with no key may have acted, and is no answer.
+#[test]
+fn a_repeatable_request_a_kept_connection_drops_is_sent_on_a_fresh_one() {
+    let server = Server::start(Answers::ClosedOnNext);
+    let fetch = NativeFetch::new();
+    let runtime = Runtime::new().expect("a runtime");
+    let url = server.url("http", "127.0.0.1");
+    let post = |key: Option<&str>| {
+        let mut request = get(url.clone(), 5000);
+        request.method = HttpMethod::Post;
+        request.body = Some("{}".into());
+        request.repeatable = key.is_some();
+        if let Some(key) = key {
+            request.headers.push(("Idempotency-Key".into(), key.into()));
+        }
+        request
+    };
+    runtime.block_on(async {
+        // A `GET` on a fresh connection, then on the kept one, which the
+        // server drops: sent again on a fresh one.
+        for _ in 0..2 {
+            let answer = fetch.fetch(&get(url.clone(), 5000)).await;
+            assert_eq!(answer.expect("an answer").body, b"hello");
+        }
+        assert_eq!((server.accepted(), server.requests()), (2, 3));
+        // A `POST` with no key, dropped on the kept connection: it may
+        // have acted, so it isn't sent again.
+        let unkeyed = fetch.fetch(&post(None)).await;
+        assert!(
+            matches!(unkeyed, Err(FetchError::NoAnswer(_))),
+            "{unkeyed:?}"
+        );
+        assert_eq!((server.accepted(), server.requests()), (2, 4));
+        // One with a key, dropped on the kept connection: sent again.
+        fetch
+            .fetch(&get(url.clone(), 5000))
+            .await
+            .expect("an answer");
+        let keyed = fetch.fetch(&post(Some("k-1"))).await;
+        assert_eq!(keyed.expect("an answer").body, b"hello");
+        assert_eq!((server.accepted(), server.requests()), (4, 7));
+    });
 }
 
 /// A call's timeout ends its exchange and closes its connection; so does

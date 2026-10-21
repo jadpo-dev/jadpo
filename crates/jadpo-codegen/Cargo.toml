@@ -1,0 +1,35 @@
+[package]
+name = "jadpo-codegen"
+description = "Writes a checked project as one Rust crate from its plan, for compiled native and WebAssembly deployables"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+# One integration-test binary: tests/main.rs.
+autotests = false
+
+# A compiler crate (docs/compiler-runtime.md §2.1 and §2.5): it reads the
+# plan and writes Rust that depends only on the runtime crates and the
+# shared leaf, so it reaches no runtime crate itself, and drives cargo.
+[dependencies]
+jadpo-graph.workspace = true
+jadpo-plan.workspace = true
+# The plan's dev and test section, which the crate's `testing` build
+# holds (chunk 8.1e).
+jadpo-std = { workspace = true, features = ["testing"] }
+prettyplease.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+jadpo-check.workspace = true
+jadpo-db.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

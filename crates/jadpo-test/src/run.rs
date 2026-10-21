@@ -41,14 +41,22 @@ struct Kept {
     rows: Vec<String>,
 }
 
-/// Runs `tests`, in order, on the interpreter: how each went, by its place
-/// in `tests`, with its record when `record` asks for one.
+/// What makes a thread's executor when tests run on one other than the
+/// interpreter (compiled code, chunk 8.1f), given the settings a test run
+/// reads.
+pub(crate) type Maker<'m> =
+    &'m (dyn Fn(Option<&jadpo_runtime::config::ConfigValues>) -> Box<dyn Executor> + Sync);
+
+/// Runs `tests`, in order, on the interpreter, or on the executors `maker`
+/// makes: how each went, by its place in `tests`, with its record when
+/// `record` asks for one.
 pub(crate) fn run_all(
     prepared: &Arc<Prepared>,
     tests: &[Test],
     rerun: &Rerun,
     databases: Option<&TestDatabases>,
     record: bool,
+    maker: Option<Maker<'_>>,
 ) -> Vec<Done> {
     let sources = prepared.plan().files();
     // Every test reads the same settings: each field's `test:` value, its
@@ -58,6 +66,16 @@ pub(crate) fn run_all(
             jadpo_host_native::NativeHost::new().random(bytes)
         })
         .ok();
+    if let Some(make) = maker {
+        return spread(
+            || Boxed(make(settings.as_ref())),
+            tests,
+            rerun,
+            sources,
+            databases,
+            record,
+        );
+    }
     spread(
         || {
             let program = Program::new(Arc::clone(prepared));
@@ -72,6 +90,52 @@ pub(crate) fn run_all(
         databases,
         record,
     )
+}
+
+/// An executor another crate made, run as any other.
+struct Boxed(Box<dyn Executor>);
+
+impl Executor for Boxed {
+    fn places(&self) -> &jadpo_runtime::Places {
+        self.0.places()
+    }
+
+    fn plan(&self) -> jadpo_runtime::Plan<'_> {
+        self.0.plan()
+    }
+
+    fn started(&self) -> Option<Rc<jadpo_runtime::Started>> {
+        self.0.started()
+    }
+
+    fn run<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        callable: u32,
+        args: Vec<jadpo_interp::Value>,
+    ) -> jadpo_runtime::LocalFuture<'a, Outcome> {
+        self.0.run(ctx, callable, args)
+    }
+
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        callable: u32,
+        args: Vec<jadpo_interp::Value>,
+        at: u32,
+    ) -> Result<jadpo_interp::Value, String> {
+        self.0.function(ctx, callable, args, at)
+    }
+
+    fn row<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        row: &'a jadpo_std::batch::BatchRow,
+        item: jadpo_interp::Value,
+        saved: &'a [jadpo_interp::Value],
+    ) -> jadpo_runtime::LocalFuture<'a, Outcome> {
+        self.0.row(ctx, row, item, saved)
+    }
 }
 
 /// How many threads to spread `count` tests over: one per core, never

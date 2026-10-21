@@ -406,7 +406,7 @@ impl AiPlan {
 
 /// One `ai.generate(prompt, as: T)` call's site, decoded (area 21, "Typed
 /// output").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct GenerateSite {
     /// The prompt's name, `answer_question`, as a test's fakes and the
     /// call log name it.
@@ -450,7 +450,7 @@ pub const AI_STREAM: &str = "AiStream";
 /// One `ai.stream(prompt)` call's site, decoded (area 21; chunk 5.5v6):
 /// the prompt it renders and its options. It asks once (`attempts:` is
 /// always 1), for text, so it has no type and no schema.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct StreamSite {
     /// The prompt's name, `answer_question`.
     pub prompt: String,

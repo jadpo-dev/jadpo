@@ -26,7 +26,7 @@ pub const MOST_DIMENSIONS: u64 = 16_000;
 
 /// One `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` call's
 /// site, decoded (area 21, "The `ai` capability").
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct EmbedSite {
     /// The number of `V` in the JSON table, whose codec reads each vector
     /// the model answers with, its length and direction checked as

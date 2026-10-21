@@ -256,7 +256,7 @@ Rust 1.88 or later).
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
 | `jadpo-plan` | What both executors need besides control flow: numbered callables and their frame tables, type and failure plans, constants, each read and write site's statements with policy compiled in (written by `jadpo-sql`), codecs per type, and the route, settings, JSON, translation and prompt tables; schedule and subscriber tables come with area 12 | |
 | `jadpo-interp` | The interpreter | |
-| `jadpo-codegen` | Rust source from graph and plan; drives cargo | |
+| `jadpo-codegen` | Rust source from graph and plan, one crate per project (§2.5, "Compiled code"); drives cargo | |
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
 | `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP, chunk 7.2c) and SMTP (chunks 7.3 and 8.1b) now; Redis and S3 with their areas | yes |
@@ -267,8 +267,8 @@ Rust 1.88 or later).
 | `jadpo-lsp` | Language server | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
-Built so far: every crate above but `jadpo-codegen` and
-`jadpo-host-workers`, which come with Phase 8.
+Built so far: every crate above but `jadpo-host-workers`, which comes
+with chunk 8.2; `jadpo-codegen` since chunk 8.1f.
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
 (`Rules` and the validators the checker runs on literals and the runtime on
@@ -1192,7 +1192,8 @@ constant in its canonical bytes (`RuntimePlan::encode`: a header naming
 the format, then the plan in `jadpo_std::canonical`, §2.1), decodes it
 once as it starts (`RuntimePlan::decode`) and loads it on each worker the
 same way; the site plans its generated code names (each read's, write's
-and call's) join the same plan with the code generator (roadmap 8.1f).
+and call's) joined the same plan with the code generator (chunk 8.1f,
+"Compiled code" below).
 The same project always gives the same bytes, and the bytes always read
 back to an equal plan that writes them again: a test plans every page's
 project and every teaching example, and plans each example twice from a
@@ -1202,6 +1203,145 @@ plan as Rust literals, which multiplies the code rustc compiles for every
 application against "Keeping rustc time down", and rebuilding it at start
 from the project, which needs the compiler a deployable doesn't carry;
 decoding a few kilobytes once per process costs less than either.
+
+**Compiled code** (chunk 8.1f, decided before it was built).
+`jadpo-codegen` writes a checked project as one Rust crate from its plan
+(`jadpo_plan::Plan`: each callable's typed body and decoded sites, and
+the runtime plan), its Rust built with `quote!`, parsed into a
+`syn::File` and printed by prettyplease (`jadpo_codegen::generate`), so a
+file that doesn't parse is the generator's error and never rustc's. The
+crate is its `Cargo.toml`, a library depending on `jadpo-std`,
+`jadpo-value` and `jadpo-runtime` only, by a path its caller gives, with a
+`testing` feature turning on theirs; `plan.bin` and `plan-testing.bin`,
+the runtime plan's bytes from `encode_deployable` and `encode`, held as
+`const PLAN: &[u8] = include_bytes!(…)`, the second under `testing`;
+`src/lib.rs`, with the frame table (each callable's label, file and line,
+and each site's line, start, end and anchor: plain data in a `const`
+array, "Frames" below), the callables by number (a `match` giving each
+one's function, tests, fixtures and seeds under `testing`) and
+`program()`; and a module per domain (`domains/<domain>/`), per other top
+folder (`shared/`, `tests/`) and `app` for the root's files. Each
+callable is a function named by its number and label,
+`c3_action_make_thing`: a function, a library function and a constant's
+body a plain `fn(&mut Ctx, &Program, Value…) -> Ran`, and an action,
+fixture, test or seed an `async fn` of the same shape, every value the
+interpreter's `jadpo_value::Value` (a struct per type is 8.1p). A
+program decodes its plan once per process, on the first thread that
+asks, and loads it on each thread as the interpreter does
+(`Loaded::sharing`: validators compiled once, shapes and constants per
+thread).
+
+Generated code holds control flow and numbers; everything else goes
+through the entry points the interpreter uses (§2.6, "The start-up state
+and the runtime's plan"): `Ctx` for frames, faults, failures and an
+assertion's parts, `store` for reads and writes, `action` for the
+boundary, `effects::run`, `http::route_test`, `call_as` and
+`test_steps::after_step`. What every compiled program shares is
+`jadpo_runtime::compiled`: `Program`, the compiled `Executor`; the action
+body it gives the boundary, its isolation, gate, outbox and record read
+from the plan; `invoke`, a call by number, through the boundary for an
+action or fixture, its future boxed so a body that calls itself through
+an action has a size; `Stop`, what ends a body early (a failure, a fault,
+an assertion, a broken rule for an `attempt`, a refusal for a `conflict:`
+arm); and a function per kind of site (`binary`, `truth`, `field`,
+`given` and `build`, `kept`, `query`, `get`, `write`, `request`,
+`setting`, `now`, `failure` and `raised`, `assert_true`,
+`assert_compare` and `assertion_end`, `enter` and `left`, `step`), each
+turning what the runtime or `jadpo-value` gives into the stop the
+interpreter's walker raises at the same site, with the same words. The
+operators are one implementation both executors call,
+`jadpo_runtime::operators::operate`. None of it is generic, so a
+generated crate monomorphises nothing of the runtime's.
+
+What compiled code reads of the plan besides the frame table joins the
+runtime plan: `RuntimePlan::sites` (`jadpo_std::compiled::SitesPlan`:
+every constant, each query's and entity `get`'s read, each write site's
+plan, and each outside call's site, a provider operation's,
+`ai.generate`'s, `ai.stream`'s or `ai.embed`'s, numbered in callable and
+site order, `Plan::call_number`), `RuntimePlan::actions` (what the
+boundary needs of each action and fixture), the build id and the steps
+key: plan format 5. The interpreter reads the same plans from the
+compiler's `Plan`, built in the same pass. Locales and translations join
+the runtime plan when compiled code first calls the standard library and
+a translation (8.1g, 8.1i).
+
+A body's sites are numbered as its typed body numbers them (§2.3), and
+generated code passes those numbers, as literals, wherever the
+interpreter passes its own: `Ctx::enter(callee, site)`, `fault`, `fail`,
+`record` and `assertion_failed`, and the store's and the HTTP component's
+site. So a fault, a failure or a failed assertion names the same frames,
+and a record the same sites, whichever executor ran it. Arithmetic is
+`operate` over `jadpo_value::ops`' checked operators: an overflow comes
+back as a value and is raised as `int_overflow` or `decimal_overflow` at
+the operator's site, never a panic.
+
+A body is straight Rust: a local is a `Value` variable, an expression
+that can stop is `?` on a `Ran`, an `if` a Rust `if` whose condition
+`truth` reads, and `and` and `or` stop as soon as their answer is known.
+An `assert` is a labelled block between `assertion_begin` and
+`assertion_end`: a stop in its condition breaks out of the block, so the
+recording always ends, and each value its condition works out, but a
+literal, is recorded as the interpreter records it. A call to a function
+enters its frame, runs it and leaves the frame whatever it gave (`left`
+turns a broken rule no `attempt` caught into the interpreter's defect at
+the callee's entry); a call that pauses goes through `invoke`. In a test,
+fixture or seed each call runs as the caller it passes, and after each
+step of a test what it emitted is delivered (`step`), as in the
+interpreter. A function's recursion runs on the thread's stack, to the
+runtime's depth limit. Work that never waits looks at the request's
+deadline every 4,096 calls, the interpreter's interval in tasks: an
+`async` body gives the thread back there when a request is waiting on
+one, and a function, which can't, stops with `deadline_exceeded` once it
+has passed.
+
+What isn't compiled yet is refused by name: `generate` gives every
+`Refusal` (the form, `` `for` ``, `` `list.count` ``, `` `Type(value)` ``,
+and where it is written) rather than a crate that faults where a test
+happens to reach it, so the generator run over the corpus shows what
+8.1g to 8.1i have left (`crates/jadpo-codegen/tests/corpus.rs`, which
+also holds every crate it writes to parsing as Rust). Built in 8.1f:
+`var`, assignment, `return`, `if`, an expression's statement and
+`assert`; literals, locals, field reads, calls of functions, actions and
+fixtures, queries and `get`, object and variant builds, lists, every
+operator, `not` and `-`, `create`, `update` and `delete` with their
+`conflict:` arms, a route test's `request`, constants, `config.<name>` and
+`clock.now`. Of the corpus's 205 projects that check, 65 compile.
+
+The differential harness is `jadpo_test::compiled`: `differential(project,
+folder)` compiles the project into a workspace kept at `folder` (the
+generated crate as `app/`, and `harness/`, a binary depending on it and
+on `jadpo-test`), with the repository's `Cargo.lock` and `[profile.*]`
+tables copied in, builds the harness with `cargo build --offline` into a
+target folder of its own there, and runs it on the project. The harness
+(`compiled::harness`) runs every test with records, seed 1, on the
+interpreter and then on the compiled program (`jadpo_test::run_with`
+runs tests on any executor), in one process and on one PostgreSQL
+server, and compares the two runs (`jadpo_test::differential`), printing
+how many it compared and how many passed, or the first line that differs
+with both sides. Its files are written only when they change and the
+folder is kept (`target/jadpo-compiled/<project>/` in the gate), so the
+runtime crates and `jadpo-test` are compiled once, and a later run
+compiles the generated crate and links the harness: on the ten-core Mac,
+lightly loaded, 73 s the first time and 7 s after for one project. One
+crate per project for now; 8.1j compiles the corpus as one crate, in one
+rustc invocation, in a CI job of its own.
+
+The first route is area 7's `todos` project: `POST /todos` creates a
+record through an action and `GET /todos/{todo_id}` reads it through a
+query, with three route tests on the page (created, read back by its id,
+not found). They pass compiled and interpreted with the same records
+(`crates/jadpo-cli/tests/compiled.rs`); a value the compiled action
+writes, changed by hand, shows as the first row that differs.
+*Rejected:* a runtime fault for a form not compiled (`not_built_yet`), so
+a partly compiled project runs, which hides what is left until a test
+reaches it; generated code doing what the runtime's site functions do at
+each site, which multiplies what rustc compiles and gives two copies to
+keep in step; the generated crate as a member of the repository's
+workspace, which needs the root manifest changed for each project, or
+built into the workspace's own target folder, where it waits on the
+gate's clippy and wasm32 builds for cargo's lock; and loading compiled
+code into the test's own process, which a separately compiled crate
+can't share values with.
 
 **Native accept and one rate-limit count** (chunk 8.1l, from the Phase 4
 review). A native server is an acceptor and one worker thread per core,
@@ -1264,6 +1404,39 @@ It waits for them at
 most `DRAIN_GRACE` (10 seconds), then drains its handler's background
 work for at most `DRAIN_GRACE` again (chunk 6.7); what is still open after
 that closes as the thread ends.
+
+**The route trie** (chunk 8.1k, from the Phase 4 review). The HTTP
+component finds a request's path in a trie, `jadpo_runtime::http::Routes`,
+built once as a plan is loaded (`Loaded`, beside its validators and
+shapes) from the route table, health's two paths and the program's
+webhooks, and handed to the component on `App::routes`. A node's
+children are its fixed segments in byte order, searched by halving, and
+one placeholder. A path is walked fixed child first and every match
+visited, so the first route found for the method is the one with fixed
+text earliest, as the table's search chose it, and each route the path
+matches adds its method to `Allow`; 404, 405 and `OPTIONS` are as before.
+Health's paths and each webhook's are entries of the trie
+(`Found::Health`, `Found::Webhook`) on paths of fixed segments only, which
+the walk reaches first, so they still answer whatever the method and
+ahead of a placeholder route there, and a webhook is still counted
+against its address before anything in it is read; the component no
+longer matches webhooks in front of the table. A request's routing
+allocates nothing: segments are slices of the path, compared
+percent-decoded byte by byte and checked as UTF-8 a few bytes at a time,
+a placeholder decoded only when its route reads it; each route's,
+webhook's and health path's label (`POST /todos`) is made once and a
+response shares it (`Response::route` an `Arc<str>`); and a page cursor's
+failure is recognised by its key rather than by making one. A dedicated
+test binary counts allocations with a counting global allocator
+(`crates/jadpo-runtime/tests/route_allocations/main.rs`, through `stats_alloc`,
+since the workspace forbids `unsafe`), and a unit test checks the trie
+against the table's search on every method and a spread of paths.
+*Rejected:* a `Run::Webhook` in the route table itself, which would put
+the runtime's own receiving into the plan's routes, the API listing and
+`jadpo dev`'s count and into code generation's per-route entry points,
+when a webhook's plan already lives with its provider and its secrets
+with what the program started with; and a map from whole paths, which
+can't hold placeholders.
 
 **Frames.** Both executors keep a shadow stack of `(callable, site)` in
 the context; each site maps to a `.jadpo` file and line through a table
@@ -1370,7 +1543,9 @@ test's seed and clock decide a record, so the corpus run twice gives the
 same records (`crates/jadpo-test/tests/records.rs`); the test
 authenticator's passkeys are drawn from its device number for it
 (`TestAuthenticator::seeded`). Path numbers are left for the compiled
-executor's chunks.
+executor's chunks. Since chunk 8.1f
+`jadpo_test::compiled` runs a project's tests both ways and compares
+their records this way (above, "Compiled code").
 
 ### 2.6 The runtime
 
@@ -1688,7 +1863,7 @@ against the default rate limits (`RateLimits`: 120 a minute per address,
 and since chunk 4.3 600 a minute per signed-in caller, fixed windows in a bounded amount of memory, the oldest
 counters dropped first; since chunk 4.10 the host counts them,
 `Host::rate_limit`), routes by the route table (a fixed segment beats
-a placeholder; 404 `route_not_found`, 405 `method_not_allowed` with
+a placeholder, found in the route trie since chunk 8.1k, §2.5; 404 `route_not_found`, 405 `method_not_allowed` with
 `Allow`; `HEAD` as `GET` without the body, `OPTIONS` with `Allow`),
 decodes each placeholder and the input with the route's codecs
 (`jadpo_value::json`: each problem as `{ field, rule }` by its path in the
@@ -2655,8 +2830,10 @@ the record tools, which name a call from outside the plan
 package find theirs by number too: a package's `generate:`, `stream:` and
 `embed:` mappings carry their operation's number (`PackageAi::called`,
 `PackageStream::called`, `PackageEmbed::called`), its name kept for
-what is logged, recorded and faked. The plan's format is `jadpo runtime
-plan 5` since chunk 8.1n, which added a database connection's `tls`.
+what is logged, recorded and faked. The plan's format was `jadpo runtime
+plan 4`; it is 5 since chunk 8.1f added compiled code's site plans
+(§2.5, "Compiled code"), and 6 since chunk 8.1n added a database
+connection's `tls`.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -2815,6 +2992,13 @@ before anything is written on it (hyper's `ready` fails), and a request
 one hands back unwritten (`try_send_request`) goes out on a fresh one,
 so keeping connections never turns a call that never left into one that
 may have acted; one whose answer says `Connection: close` is never kept.
+A server may still close or reset a kept connection as a request reaches
+it, after the request is written and before any answer (chunk 8.1m2):
+no client can see that coming. The request goes out once more, on a
+fresh connection, only when `provider::Request::repeatable` says it may
+be sent again once it has left, which `Call::with_request` sets from the
+call's `Repeat` (`Safe` or `Keyed`; `Outward`'s `GET`s always); a change
+with no key is `NoAnswer`, as any call that may have acted.
 Requests go out with hyper's title-cased header names, `Host` first and
 no `Connection: close`. A call's timeout bounds the whole exchange: a
 connection not made within it, or within five seconds, is `NotSent`, an
@@ -2983,8 +3167,9 @@ numbered in the JSON table as every event is, and `jadpo_std::system::
 RECEIVED_EVENTS` joins that store's schema. The runtime reads them from
 the plan with the secrets the program started with (`Plan::webhooks`,
 `provider::Credentials` in `Started`), and the
-HTTP component answers a request at a webhook's path before routing
-(`jadpo_runtime::webhooks::answer`), after its address's rate limit:
+HTTP component answers a request at a webhook's path, an entry of the
+route trie since chunk 8.1k (§2.5, "The route trie"), with
+`jadpo_runtime::webhooks::answer`, after its address's rate limit:
 `webhooks::check` reads the scheme's signature (pure, over the raw body,
 every candidate compared in constant time through
 `jadpo_value::crypto::signed_by` and `same_secret`), the body is read
@@ -3314,7 +3499,9 @@ crate's integration tests are one binary (since chunk 3.11: `autotests =
 false`, one `[[test]]` called `integration`, and `tests/main.rs` declaring
 each test file as a module, which the crate-graph test checks, so no file
 is left out), so the workspace links eleven integration binaries rather
-than fifty-odd; a named step runs its test files by name
+than fifty-odd; jadpo-runtime has one more, `route_allocations` (chunk
+8.1k, its own folder under `tests/`), with no harness, so the counting
+allocator it installs sees no other test's work; a named step runs its test files by name
 filter (`proofs::`), fails if a filter matches no test, and `compiler
 tests` skips those files, so no test runs twice. Each step prints `ok` or
 `FAILED` as it finishes, then the failures' output with a command that

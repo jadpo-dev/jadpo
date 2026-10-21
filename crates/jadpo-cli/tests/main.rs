@@ -4,6 +4,10 @@
 
 mod support;
 
+// The test helpers in crates/jadpo-syntax/tests/support, loaded once.
+#[path = "../../jadpo-syntax/tests/support/examples.rs"]
+mod syntax_examples;
+
 mod accept_language;
 mod across;
 mod aggregates;
@@ -30,6 +34,7 @@ mod circuit_breaker;
 mod cli;
 mod client_address;
 mod cloudflare_queues;
+mod compiled;
 mod config;
 mod connections;
 mod crate_graph;
