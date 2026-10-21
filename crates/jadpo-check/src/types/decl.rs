@@ -3117,7 +3117,7 @@ fn enum_label(host: &str, variant: &str, value: &Expr, at: Span, whole: Span) ->
         )
         .at(at, "a label")
         .reason(format!(
-            "Enums have no display labels: a variant is a name, or a name with a block of its fields. Wording for people lives in the domain's translations, which give each value of `{host}` its wording in every locale."
+            "Enums have no display labels: a variant is a name, or a name with a block of its fields. Wording for readers lives in the domain's translations, which give each value of `{host}` its wording in every locale."
         ))
         .next(format!(
             "Write `{variant}` alone, and give its wording in the domain's translations: `{}: {{ {variant}: {written} }}`",
@@ -3130,7 +3130,7 @@ fn enum_label(host: &str, variant: &str, value: &Expr, at: Span, whole: Span) ->
         )
         .at(at, "not a block of fields")
         .reason(
-            "A variant is a name, or a name with a block of its fields, `paid: { receipt_id: ReceiptId }`; it is given nothing else.",
+            "A variant is a name, or a name with a block of its fields, `name: { field: Type }`; it is given nothing else.",
         )
         .next(format!(
             "Write `{variant}` alone, or give its fields in a block"

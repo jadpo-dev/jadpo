@@ -164,12 +164,12 @@ pub(crate) fn is_enum(types: &dyn TypeView, host: &str) -> bool {
         || (!types.contains(host) && StdNames::get().enums().contains_key(host))
 }
 
-const TYPES_ARE: &str = "a type's name, a field type such as `Customer.email`, `List<T>`, `T?`, or a type with rules in a block, such as `Text { max_length: 80 }`";
+const TYPES_ARE: &str = "a type's name, a field type, `Type.field`, `List<T>`, `T?`, or a type with rules in a block, such as `Text { max_length: 80 }`";
 
 impl Found {
     /// The error, naming `field` when the type is written for one.
     pub(crate) fn diagnostic(&self, field: Option<Field<'_>>) -> Diagnostic {
-        let (word, owner, subject) = match field {
+        let (word, whose, subject) = match field {
             Some((word, name)) => (word, format!("`{name}`'s type"), format!("A {word}'s type")),
             None => ("value", "This type".to_string(), "A type".to_string()),
         };
@@ -195,7 +195,7 @@ impl Found {
                 };
                 Diagnostic::new(
                     &rule::TYPE_NOT_A_TYPE,
-                    format!("{owner} is written as a value, `{written}`"),
+                    format!("{whose} is written as a value, `{written}`"),
                 )
                 .at(span.clone(), label)
                 .reason(format!(
@@ -211,7 +211,7 @@ impl Found {
             } => {
                 let problem = Diagnostic::new(
                     &rule::TYPE_NOT_A_TYPE,
-                    format!("{owner} is written as a call, `{written}`"),
+                    format!("{whose} is written as a call, `{written}`"),
                 )
                 .at(span.clone(), "a call, not a type")
                 .reason(format!(
@@ -238,7 +238,7 @@ impl Found {
             .edit(span.clone(), format!("List<{item}>")),
             Found::Value { span, written } => Diagnostic::new(
                 &rule::TYPE_NOT_A_TYPE,
-                format!("{owner} is written as a value, `{written}`"),
+                format!("{whose} is written as a value, `{written}`"),
             )
             .at(span.clone(), "a value, not a type")
             .reason(format!(
