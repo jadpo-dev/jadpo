@@ -16,8 +16,13 @@
 //!   SMTP conversation over the host's [`Transport`] (chunks 7.3 and
 //!   8.1b).
 //!
-//! Built so far: PostgreSQL (chunk 3.1), the package driver (chunk 7.2c)
-//! and SMTP (chunk 7.3). Redis and S3 come with their areas.
+//! - [`factory`]: each connection's driver built from the plan's
+//!   connections table and what the program started with, over what the
+//!   host supplies (chunk 8.1d).
+//!
+//! Built so far: PostgreSQL (chunk 3.1), the package driver (chunk 7.2c),
+//! SMTP (chunk 7.3) and the factory (chunk 8.1d). Redis and S3 come with
+//! their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
@@ -33,6 +38,7 @@
     )
 )]
 
+pub mod factory;
 #[cfg(feature = "package")]
 pub mod package;
 pub mod postgres;

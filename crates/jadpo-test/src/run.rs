@@ -394,13 +394,7 @@ impl<E: Executor> Stored<'_, E> {
         let record = recording(kept.as_deref());
         let host = TestHost::new(self.databases)
             .with_record(record.clone())
-            .with_file_stores(
-                executor
-                    .plan()
-                    .file_stores
-                    .iter()
-                    .map(|store| store.name.as_str()),
-            )
+            .with_file_stores(executor.plan().file_stores())
             .with_mail(executor.plan().mail_connection().map(str::to_string));
         let (outcome, undelivered, reached, crashed) = {
             let host = recorded(faked(&host, &connections, &fake, models, &ai), &record);

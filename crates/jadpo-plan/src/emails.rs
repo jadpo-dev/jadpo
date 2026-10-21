@@ -12,7 +12,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::Key;
 use jadpo_std::email::{
     BuiltinEmail, EmailPlan, EmailsPlan, MAGIC_LINK_EMAIL, MAGIC_LINK_EMAIL_FIELDS,
-    MagicLinkEmailPlan, MailInput, PackageEmail, Sender, SmtpConnection, SmtpHost,
+    MagicLinkEmailPlan, MailInput, PackageEmail, Sender,
 };
 use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
 use jadpo_std::translation::TranslationParam;
@@ -101,24 +101,6 @@ pub(crate) fn plan(
     emails.sort_by(|a, b| a.0.key.cmp(&b.0.key));
     let files: Vec<String> = emails.iter().map(|(_, path)| path.clone()).collect();
     let emails: Vec<EmailPlan> = emails.into_iter().map(|(email, _)| email).collect();
-    let smtp = jadpo_check::emails::smtp_connections(db, project)
-        .list
-        .iter()
-        .filter_map(|connection| {
-            Some(SmtpConnection {
-                name: connection.name.clone(),
-                host: match connection.host.as_ref()? {
-                    jadpo_check::emails::SmtpHost::Setting(name) => {
-                        SmtpHost::Setting(setting(name)?)
-                    }
-                    jadpo_check::emails::SmtpHost::Written(host) => SmtpHost::Written(host.clone()),
-                },
-                port: connection.port,
-                username: connection.username.as_deref().and_then(setting),
-                password: connection.password.as_deref().and_then(setting),
-            })
-        })
-        .collect();
     // A mail package's mapping (chunk 7.3c), each setting it reads by the
     // number of the app's setting its connection gives.
     let package = settings.connection.as_deref().and_then(|connection| {
@@ -147,7 +129,6 @@ pub(crate) fn plan(
         layout_html: callable_of(&analysis.layout_html),
         layout_text: callable_of(&analysis.layout_text),
         locales: jadpo_check::locales::locales(db, project).plan.clone(),
-        smtp,
     };
     // Each email's delivery: tried and given up as a subscriber's is by
     // default (area 12), sent with no key through the `email:`

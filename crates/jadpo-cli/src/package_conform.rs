@@ -292,16 +292,17 @@ fn conformed(call: &Call) -> Reply {
         Ok(ready) => ready,
         Err((diagnostics, sources)) => return not_run(diagnostics, sources),
     };
-    let providers = ready.prepared.plan().providers();
-    let connection = providers
-        .connections
-        .iter()
-        .find(|known| known.package == package);
+    let connection = ready
+        .prepared
+        .plan()
+        .package_connections()
+        .find(|(_, _, known)| known.package == package)
+        .map(|(_, name, known)| (name, known));
     let through = ready
         .prepared
         .plan()
         .ai()
-        .filter(|ai| connection.is_some_and(|known| known.name == ai.connection));
+        .filter(|ai| connection.is_some_and(|(name, _)| name == ai.connection));
     let app_model = |name: &str| {
         through
             .and_then(|ai| ai.model(name))
@@ -309,7 +310,7 @@ fn conformed(call: &Call) -> Reply {
             .map(str::to_string)
     };
     let takes_key = match connection {
-        Some(known) => known.credential.is_some(),
+        Some((_, known)) => known.credential.is_some(),
         None => keyed(&provider_text, "credential"),
     };
     let live = call.flag("--live");
@@ -418,11 +419,13 @@ fn conformed(call: &Call) -> Reply {
     let filled: PackageAi = (**filled).clone();
     let log = Rc::new(Log::default());
     let host = jadpo_host_native::NativeHost::new()
-        .with_providers(
-            Rc::new(jadpo_host_native::JsonHttp::new(
-                jadpo_host_native::fetch::NativeFetch,
-            )),
-            |asked| asked == CONNECTION,
+        .with_drivers(
+            jadpo_host_native::Drivers::build(
+                program.runtime_plan().connections,
+                program.started(),
+                &jadpo_host_native::supplies(),
+            )
+            .keeping(|asked| asked == CONNECTION),
         )
         .with_call_log(Rc::clone(&log) as Rc<dyn CallLog>);
     let runtime = match jadpo_host_native::Runtime::new() {
@@ -542,7 +545,7 @@ fn doesnt_fill(package: &str, capability: &str, fills: &[String], name: &str) ->
 /// why the live run is refused.
 fn live_target(
     ready: &crate::dev::Ready,
-    connection: Option<&jadpo_std::provider::ConnectionPlan>,
+    connection: Option<(&str, &jadpo_std::provider::ConnectionPlan)>,
     ai_through: bool,
     package: &str,
 ) -> Result<Against, Box<Diagnostic>> {
@@ -553,7 +556,7 @@ fn live_target(
                 .next_marked(next),
         )
     };
-    let Some(chosen) = connection else {
+    let Some((name, chosen)) = connection else {
         return Err(refused(
             format!("The app has no connection to `{package}`"),
             format!(
@@ -564,8 +567,7 @@ fn live_target(
             ),
         ));
     };
-    let name = &chosen.name;
-    if let Some(unset) = ready.unset.get(name.as_str())
+    if let Some(unset) = ready.unset.get(name)
         && !unset.is_empty()
     {
         let variables: Vec<String> = unset.iter().map(|name| format!("`{name}`")).collect();
@@ -1391,7 +1393,8 @@ impl Answers<'_> {
         operation: &str,
     ) -> Result<(J, Option<String>, Option<jadpo_std::http::CodecId>), String> {
         let plan = self.program.plan().providers();
-        let Some((_, op)) = plan.operation(CONNECTION, operation) else {
+        let table = self.program.plan().connections();
+        let Some((_, op)) = plan.operation(table, CONNECTION, operation) else {
             return Err(format!("the package has no operation `{operation}`"));
         };
         let file = self.recordings.join(format!("{operation}.json"));
@@ -1483,7 +1486,7 @@ impl Answers<'_> {
             AiMarker::Holds(path) => {
                 let plan = self.program.plan().providers();
                 let (codec, at) = plan
-                    .operation(CONNECTION, operation)
+                    .operation(self.program.plan().connections(), CONNECTION, operation)
                     .map(|(_, op)| {
                         (
                             op.output.and_then(|number| self.json.codec_of(number)),

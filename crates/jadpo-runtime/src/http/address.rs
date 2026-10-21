@@ -35,16 +35,9 @@ const FORWARDED: &str = "forwarded";
 const CLOUDFLARE: &str = "cf-connecting-ip";
 
 /// What the deployable runs on: it decides the source an application that
-/// declares none takes, and which sources are accepted at all.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Target {
-    /// A native process, or `jadpo dev`: the connection's own address
-    /// unless the application says otherwise.
-    Native,
-    /// Cloudflare Workers: there is no connection address, and only
-    /// `CF-Connecting-IP` is accepted.
-    Workers,
-}
+/// declares none takes, and which sources are accepted at all, and which
+/// drivers it can build (chunk 8.1d).
+pub use jadpo_std::connections::Target;
 
 /// A source the target does not accept.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

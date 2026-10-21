@@ -1,6 +1,6 @@
 [package]
 name = "jadpo-drivers"
-description = "The runtime's capability drivers over a transport the host supplies: PostgreSQL, provider packages and SMTP"
+description = "The runtime's capability drivers over a transport the host supplies, and the factory that builds each connection's: PostgreSQL, provider packages and SMTP"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,11 +20,13 @@ package = []
 # The SMTP driver (area 16, chunk 7.3): a rendered email written as one
 # MIME message and handed to its server in an SMTP conversation over the
 # host's `Transport` (chunk 8.1b).
-smtp = ["dep:jadpo-std", "dep:jadpo-value", "tokio/io-util"]
+smtp = ["dep:jadpo-value", "tokio/io-util"]
 
 [dependencies]
 jadpo-runtime.workspace = true
-jadpo-std = { workspace = true, optional = true }
+# The plan's connections table, which the factory builds drivers from
+# (chunk 8.1d).
+jadpo-std.workspace = true
 jadpo-value = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-postgres = { workspace = true, optional = true }
@@ -36,7 +38,6 @@ bytes = { workspace = true, optional = true }
 tokio-postgres = { workspace = true, optional = true, features = ["js"] }
 
 [dev-dependencies]
-jadpo-std.workspace = true
 jadpo-value.workspace = true
 
 [lints]

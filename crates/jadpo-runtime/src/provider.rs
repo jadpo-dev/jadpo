@@ -369,22 +369,26 @@ impl fmt::Debug for Credentials {
 }
 
 impl Credentials {
-    /// The credentials `values` hold for `plan`'s connections, and the
-    /// secrets for its webhooks.
-    pub fn read(plan: &ProviderPlan, values: &crate::config::ConfigValues) -> Credentials {
+    /// The credentials `values` hold for the package connections in
+    /// `table`, the plan's connections table, by their numbers there, and
+    /// the secrets for `plan`'s webhooks.
+    pub fn read(
+        table: &[jadpo_std::connections::Connection],
+        plan: Option<&ProviderPlan>,
+        values: &crate::config::ConfigValues,
+    ) -> Credentials {
+        let package = |at: usize| {
+            jadpo_std::connections::package(table, u32::try_from(at).unwrap_or(u32::MAX))
+        };
         Credentials {
-            held: plan
-                .connections
-                .iter()
-                .map(|connection| {
-                    let (_, at) = connection.credential?;
+            held: (0..table.len())
+                .map(|at| {
+                    let (_, at) = package(at)?.credential?;
                     values.text_at(at).map(str::to_string)
                 })
                 .collect(),
-            key_ids: plan
-                .connections
-                .iter()
-                .map(|connection| match connection.credential? {
+            key_ids: (0..table.len())
+                .map(|at| match package(at)?.credential? {
                     (CredentialScheme::AwsSigV4 { key_id }, _) => {
                         values.text_at(key_id).map(str::to_string)
                     }
@@ -392,7 +396,8 @@ impl Credentials {
                 })
                 .collect(),
             webhooks: plan
-                .webhooks
+                .map(|plan| plan.webhooks.as_slice())
+                .unwrap_or_default()
                 .iter()
                 .map(|webhook| {
                     let current = values.text_at(webhook.secret)?.to_string();
@@ -547,6 +552,9 @@ impl jadpo_value::json::Coder for SiteCoder<'_, '_> {
 #[derive(Clone, Copy)]
 pub struct Providers<'a> {
     pub plan: &'a ProviderPlan,
+    /// The plan's connections table, whose package connections the
+    /// operations are called through (chunk 8.1d).
+    pub connections: &'a [jadpo_std::connections::Connection],
     pub json: JsonCodecs<'a>,
     pub failures: &'a [FailurePlan],
     pub credentials: &'a Credentials,
@@ -554,10 +562,28 @@ pub struct Providers<'a> {
     pub application: &'a str,
 }
 
+impl<'a> Providers<'a> {
+    /// The number of connection `connection` in the plan's connections
+    /// table; `u32::MAX` for one it doesn't have.
+    pub fn number(&self, connection: &str) -> u32 {
+        jadpo_std::connections::named(self.connections, connection).map_or(u32::MAX, |(at, _)| at)
+    }
+
+    /// Operation `operation` (`bookings.create`) of connection
+    /// `connection`, with how calls through the connection are made.
+    pub fn operation(
+        &self,
+        connection: &str,
+        operation: &str,
+    ) -> Option<(&'a ConnectionPlan, &'a OperationPlan)> {
+        self.plan.operation(self.connections, connection, operation)
+    }
+}
+
 impl fmt::Debug for Providers<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Providers")
-            .field("connections", &self.plan.connections.len())
+            .field("operations", &self.plan.operations.len())
             .finish_non_exhaustive()
     }
 }
@@ -620,10 +646,7 @@ pub async fn call(ctx: &mut Ctx<'_>, calling: Calling<'_>, input: Option<Value>)
             "a provider called in a program with no provider plan".into(),
         ));
     };
-    let settings = match providers
-        .plan
-        .operation(calling.connection, calling.operation)
-    {
+    let settings = match providers.operation(calling.connection, calling.operation) {
         Some((plan, _)) => ctx.settings_of(settings_read(plan)),
         None => Vec::new(),
     };
@@ -648,19 +671,13 @@ async fn made(
     settings: &[(u32, Value)],
     site: Site<'_>,
 ) -> Done {
-    let Some((plan, op)) = providers.plan.operation(connection, operation) else {
+    let Some((plan, op)) = providers.operation(connection, operation) else {
         return Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{operation}`, which the plan doesn't have"
         )));
     };
     let name = format!("{connection}.{operation}");
-    let at = providers
-        .plan
-        .connections
-        .iter()
-        .position(|known| known.name == plan.name)
-        .and_then(|at| u32::try_from(at).ok())
-        .unwrap_or(u32::MAX);
+    let at = providers.number(connection);
     let made = Call::new(
         connection,
         operation,
@@ -674,7 +691,7 @@ async fn made(
     } = match request(
         ctx,
         providers,
-        (plan, op, at),
+        (connection, plan, op, at),
         input.as_ref(),
         settings,
         site,
@@ -1033,19 +1050,22 @@ pub(crate) fn request_adding(
     site: Site<'_>,
     added: Option<(&str, serde_json::Value)>,
 ) -> Result<Request, Unready> {
-    let Some((plan, op)) = providers.plan.operation(connection, operation) else {
+    let Some((plan, op)) = providers.operation(connection, operation) else {
         return Err(Unready::Fault(FaultKind::Defect(format!(
             "`{connection}.{operation}`, which the plan doesn't have"
         ))));
     };
-    let at = providers
-        .plan
-        .connections
-        .iter()
-        .position(|known| known.name == plan.name)
-        .and_then(|at| u32::try_from(at).ok())
-        .unwrap_or(u32::MAX);
-    request(ctx, providers, (plan, op, at), input, settings, site, added).map(|made| made.request)
+    let at = providers.number(connection);
+    request(
+        ctx,
+        providers,
+        (connection, plan, op, at),
+        input,
+        settings,
+        site,
+        added,
+    )
+    .map(|made| made.request)
 }
 
 /// The request `op` sends with `input`, its fields written as the
@@ -1053,7 +1073,7 @@ pub(crate) fn request_adding(
 fn request(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
-    (plan, op, at): (&ConnectionPlan, &OperationPlan, u32),
+    (name, plan, op, at): (&str, &ConnectionPlan, &OperationPlan, u32),
     input: Option<&Value>,
     settings: &[(u32, Value)],
     site: Site<'_>,
@@ -1113,7 +1133,7 @@ fn request(
             if let Some(how) = coder.ended.into_inner() {
                 return Err(Unready::Fault(FaultKind::Provider(format!(
                     "`{}.{}`'s input doesn't encode: {how}",
-                    plan.name, op.name
+                    name, op.name
                 ))));
             }
             match jadpo_value::json::parse(written.as_bytes()) {
@@ -1315,6 +1335,7 @@ fn request(
                 )));
             };
             keying = Some(Keying {
+                connection: name.to_string(),
                 environment,
                 scope: call_key.scope,
                 action: call_key.key,
@@ -1359,6 +1380,8 @@ struct Made {
 /// What a keyed call's key is derived from besides the application, the
 /// connection and the generation ([`key`]).
 struct Keying {
+    /// The connection's name, which the key is derived from.
+    connection: String,
     environment: String,
     scope: String,
     action: String,
@@ -1379,7 +1402,7 @@ impl Keying {
             &KeyParts {
                 application: providers.application,
                 environment: &self.environment,
-                connection: &plan.name,
+                connection: &self.connection,
                 scope: &self.scope,
                 action: &self.action,
                 step: self.step,

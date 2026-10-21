@@ -423,7 +423,8 @@ pub async fn send_package(
     if total > plan.attachments {
         return rejected(jadpo_std::email::MESSAGE_REJECTED);
     }
-    let Some((_, op)) = providers.operation(connection, &plan.operation) else {
+    let Some((_, op)) = providers.operation(program.connections, connection, &plan.operation)
+    else {
         return defect(ctx, "an email package's operation this build doesn't have");
     };
     let Some(number) = op.input else {

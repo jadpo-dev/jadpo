@@ -18,8 +18,8 @@ pub use jadpo_std::RuntimePlan;
 use jadpo_std::ai::AiPlan;
 use jadpo_std::batch::BatchPlan;
 use jadpo_std::config::ConfigPlan;
+use jadpo_std::connections::Connection;
 use jadpo_std::embed::PromptRecording;
-use jadpo_std::files::FilesConnection;
 use jadpo_std::http::{EventJson, RouteTable};
 use jadpo_std::prompt::PromptPlan;
 use jadpo_std::provider::ProviderPlan;
@@ -110,7 +110,7 @@ impl Loaded {
             batches: &plan.batches,
             schedules: Some(&plan.schedules),
             purges: &plan.purges,
-            file_stores: &plan.file_stores,
+            connections: &plan.connections,
             providers: Some(&plan.providers),
             ai: plan.ai.as_ref(),
             prompts: Some(&plan.prompts),
@@ -147,10 +147,11 @@ pub struct Plan<'a> {
     pub schedules: Option<&'a SchedulesPlan>,
     /// Each entity's purge, in the order [`Started`] keeps their periods.
     pub purges: &'a [PurgePlan],
-    /// The connections the program keeps files in.
-    pub file_stores: &'a [FilesConnection],
-    /// The connections to provider packages, their operations, webhooks,
-    /// queues and polls.
+    /// Every connection, with its driver and the targets it runs on
+    /// (chunk 8.1d): what a host builds each connection's driver from.
+    pub connections: &'a [Connection],
+    /// The operations of the connections to provider packages, their
+    /// webhooks, queues and polls.
     pub providers: Option<&'a ProviderPlan>,
     /// The connection `ai:` names, and the prompts.
     pub ai: Option<&'a AiPlan>,
@@ -181,7 +182,7 @@ impl Plan<'static> {
         batches: &[],
         schedules: None,
         purges: &[],
-        file_stores: &[],
+        connections: &[],
         providers: None,
         ai: None,
         prompts: None,
@@ -246,6 +247,7 @@ impl<'a> Plan<'a> {
         let plan = self.providers?;
         Some(crate::provider::Providers {
             plan,
+            connections: self.connections,
             json: self.json,
             failures: self.failures,
             credentials: started.credentials(),
@@ -274,6 +276,7 @@ impl<'a> Plan<'a> {
         (!queues.is_empty()).then_some(crate::receiving::Receiving {
             queues,
             providers,
+            connections: self.connections,
             json: self.json,
         })
     }
@@ -312,14 +315,17 @@ impl<'a> Plan<'a> {
     /// The program's connections to provider packages (area 11; chunk
     /// 7.2d): what a test's host gives a package's fake for.
     pub fn provider_connections(self) -> Vec<&'a str> {
-        self.providers
-            .map(|plan| {
-                plan.connections
-                    .iter()
-                    .map(|connection| connection.name.as_str())
-                    .collect()
-            })
-            .unwrap_or_default()
+        jadpo_std::connections::packages(self.connections)
+            .map(|(_, name, _)| name)
+            .collect()
+    }
+
+    /// The program's stores of files (area 16): every `Driver.disk`
+    /// connection, by name.
+    pub fn file_stores(self) -> Vec<&'a str> {
+        jadpo_std::connections::files(self.connections)
+            .map(|(name, _)| name)
+            .collect()
     }
 
     /// The connection `ai:` names (area 21; chunk 5.5v3): what a test's

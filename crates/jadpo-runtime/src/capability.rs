@@ -521,12 +521,19 @@ impl Capability for Fake {
     }
 }
 
+/// What picks a [`Faked`]'s chosen fake for a connection, by its place.
+type Choose = Rc<dyn Fn(&str) -> Option<usize>>;
+
 /// `host` with fakes in some connections' place (area 13): a test runs on
 /// it, and `jadpo dev` will (chunk 7.2). Every other capability, and
 /// everything else a host gives, is `host`'s own.
 pub struct Faked<H> {
     host: H,
     fakes: Vec<(String, Rc<dyn Capability>)>,
+    /// Fakes chosen for a connection as it is asked (`jadpo dev`'s, whose
+    /// connections change as the project is saved), and what chooses.
+    chosen: Vec<Rc<dyn Capability>>,
+    choose: Option<Choose>,
     /// The record a test keeps of what it did (chunk 8.1c), when it keeps
     /// one.
     record: Option<Rc<crate::record::Record>>,
@@ -546,6 +553,8 @@ impl<H: Host> Faked<H> {
         Faked {
             host,
             fakes: Vec::new(),
+            chosen: Vec::new(),
+            choose: None,
             record: None,
         }
     }
@@ -562,6 +571,21 @@ impl<H: Host> Faked<H> {
         self
     }
 
+    /// Gives `fakes[choose(connection)]` in place of the driver of each
+    /// connection `choose` picks one for, decided each time a connection
+    /// is asked for: `jadpo dev`'s fakes, chosen from the program it runs
+    /// now, whose connections change as the project is saved. A fake
+    /// given by name ([`Faked::with`]) comes first.
+    pub fn choosing(
+        mut self,
+        fakes: Vec<Rc<dyn Capability>>,
+        choose: impl Fn(&str) -> Option<usize> + 'static,
+    ) -> Faked<H> {
+        self.chosen = fakes;
+        self.choose = Some(Rc::new(choose));
+        self
+    }
+
     /// The host it wraps.
     pub fn host(&self) -> &H {
         &self.host
@@ -570,8 +594,16 @@ impl<H: Host> Faked<H> {
 
 impl<H: Host> Host for Faked<H> {
     fn capability(&self, connection: &str) -> Option<&dyn Capability> {
-        match self.fakes.iter().find(|(name, _)| name == connection) {
-            Some((_, fake)) => Some(fake.as_ref()),
+        if let Some((_, fake)) = self.fakes.iter().find(|(name, _)| name == connection) {
+            return Some(fake.as_ref());
+        }
+        let chosen = self
+            .choose
+            .as_ref()
+            .and_then(|choose| choose(connection))
+            .and_then(|at| self.chosen.get(at));
+        match chosen {
+            Some(fake) => Some(fake.as_ref()),
             None => self.host.capability(connection),
         }
     }
@@ -675,6 +707,32 @@ mod tests {
 
     fn send(to: &str, repeat: Repeat) -> Call {
         Call::new("mail", "send", Value::text(to), repeat)
+    }
+
+    /// A fake chosen as each connection is asked stands in for it, as the
+    /// chooser decides then (chunk 8.1d): `jadpo dev`'s, whose program
+    /// changes as the project is saved; a fake given by name comes first.
+    #[test]
+    fn a_chosen_fake_is_decided_as_its_connection_is_asked() {
+        let faked = Rc::new(std::cell::RefCell::new(vec!["couriers".to_string()]));
+        let seen = Rc::clone(&faked);
+        let (named, host) = mail();
+        let chosen = Rc::new(Fake::new());
+        let host = host.choosing(
+            vec![Rc::clone(&chosen) as Rc<dyn Capability>],
+            move |asked| seen.borrow().iter().any(|name| name == asked).then_some(0),
+        );
+        let is = |connection: &str, fake: &Rc<Fake>| {
+            host.capability(connection).is_some_and(|found| {
+                std::ptr::addr_eq(found as *const dyn Capability, Rc::as_ptr(fake))
+            })
+        };
+        assert!(is("couriers", &chosen));
+        assert!(host.capability("rates").is_none());
+        faked.borrow_mut().push("rates".into());
+        faked.borrow_mut().push("mail".into());
+        assert!(is("rates", &chosen));
+        assert!(is("mail", &named));
     }
 
     fn env() -> Env {

@@ -65,16 +65,12 @@ pub fn record(call: &Call) -> Reply {
         Ok(ready) => ready,
         Err((diagnostics, sources)) => return refused_by_errors(diagnostics, sources),
     };
-    let plan = ready.prepared.plan().providers();
-    let Some(chosen) = plan
-        .connections
-        .iter()
-        .find(|known| known.name == *connection)
-    else {
-        let names: Vec<&str> = plan
-            .connections
-            .iter()
-            .map(|known| known.name.as_str())
+    let Some(chosen) = ready.prepared.plan().package_connection(connection) else {
+        let names: Vec<&str> = ready
+            .prepared
+            .plan()
+            .package_connections()
+            .map(|(_, name, _)| name)
             .collect();
         let reason = if names.is_empty() {
             "The app has no connection to a provider package.".to_string()
@@ -97,14 +93,14 @@ pub fn record(call: &Call) -> Reply {
             ),
         });
     };
-    let Some((_, op)) = plan.operation(connection, operation) else {
+    let plan = ready.prepared.plan().providers();
+    let table = ready.prepared.plan().connections();
+    let Some((_, op)) = plan.operation(table, connection, operation) else {
         let names: Vec<&str> = plan
             .operations
             .iter()
             .filter(|op| {
-                plan.connections
-                    .get(op.connection as usize)
-                    .is_some_and(|known| known.name == *connection)
+                ready.prepared.plan().connection_name(op.connection) == Some(connection.as_str())
             })
             .map(|op| op.name.as_str())
             .collect();
@@ -208,20 +204,19 @@ pub fn record(call: &Call) -> Reply {
     };
 
     // Never live, and never with a stand-in for its credential.
-    if let Some(refused) = refusal(&ready, chosen, "jadpo package record") {
+    if let Some(refused) = refusal(&ready, connection, chosen, "jadpo package record") {
         return Reply::failed(*refused);
     }
     // The call, through the package driver, its answer as sent kept.
     let seen = Rc::new(Kept::default());
     let host = jadpo_host_native::NativeHost::new()
-        .with_providers(
-            Rc::new(jadpo_host_native::JsonHttp::new(
-                jadpo_host_native::fetch::NativeFetch,
-            )),
-            {
-                let connection = connection.clone();
-                move |asked| asked == connection
-            },
+        .with_drivers(
+            jadpo_host_native::Drivers::build(
+                program.runtime_plan().connections,
+                program.started(),
+                &jadpo_host_native::supplies(),
+            )
+            .keeping(|asked| asked == connection.as_str()),
         )
         .with_call_log(Rc::clone(&seen) as Rc<dyn CallLog>);
     let runtime = match jadpo_host_native::Runtime::new() {
@@ -397,10 +392,10 @@ pub fn record(call: &Call) -> Reply {
 /// sandbox, never the live API; or no address at all.
 pub(crate) fn refusal(
     ready: &crate::dev::Ready,
+    connection: &str,
     chosen: &jadpo_std::provider::ConnectionPlan,
     command: &str,
 ) -> Option<Box<Diagnostic>> {
-    let connection = &chosen.name;
     let config = ready.prepared.plan().config();
     let variable = |at: u32| {
         config
@@ -408,7 +403,7 @@ pub(crate) fn refusal(
             .get(at as usize)
             .map_or_else(String::new, |field| field.variable.clone())
     };
-    if let Some(unset) = ready.unset.get(connection.as_str())
+    if let Some(unset) = ready.unset.get(connection)
         && !unset.is_empty()
     {
         let variables: Vec<String> = unset.iter().map(|name| format!("`{name}`")).collect();

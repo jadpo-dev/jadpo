@@ -32,6 +32,7 @@
 //! every thread that runs the project.
 
 mod config;
+mod connections;
 mod constant;
 mod emails;
 mod identity;
@@ -904,20 +905,25 @@ impl Plan {
                 });
             }
         }
+        // Every connection, with its driver and the targets it runs on
+        // (area 11; chunk 8.1d).
+        let setting_number = |name: &str| {
+            setting_ids
+                .get(&config::key(
+                    jadpo_check::graph::registry(db, project),
+                    name,
+                ))
+                .copied()
+        };
+        let connections = connections::table(db, project, &setting_number);
         // Each provider operation's input and output (area 11, chunk 7.2c).
         let providers = providers::plan(
             db,
             project,
             &mut types,
-            &|name| {
-                setting_ids
-                    .get(&config::key(
-                        jadpo_check::graph::registry(db, project),
-                        name,
-                    ))
-                    .copied()
-            },
+            &setting_number,
             &mut json_types,
+            &connections,
         );
         let mut json = routes::json_table(db, project, &mut types, &json_types);
         json.events = events;
@@ -1122,7 +1128,7 @@ impl Plan {
             batches,
             schedules,
             purges,
-            file_stores: jadpo_check::data::files_connections(db, project).clone(),
+            connections,
             providers,
             ai,
             prompts,
@@ -1195,8 +1201,8 @@ impl Plan {
         self.runtime.shapes.get(id.0 as usize)
     }
 
-    /// The connections to provider packages and the operations called
-    /// through them (area 11, chunk 7.2c).
+    /// The operations called through the connections to provider
+    /// packages, their webhooks, queues and polls (area 11, chunk 7.2c).
     pub fn providers(&self) -> &jadpo_std::provider::ProviderPlan {
         &self.runtime.providers
     }
@@ -1217,10 +1223,32 @@ impl Plan {
         &self.runtime.batches
     }
 
-    /// The connections that keep files, which a host gives a driver for
-    /// (area 16, chunk 6.4b).
-    pub fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
-        &self.runtime.file_stores
+    /// Every connection, in name order, with its driver, the settings it
+    /// is built from and the targets it runs on (area 11; chunk 8.1d).
+    pub fn connections(&self) -> &[jadpo_std::connections::Connection] {
+        &self.runtime.connections
+    }
+
+    /// The name of the connection numbered `at` in [`Plan::connections`].
+    pub fn connection_name(&self, at: u32) -> Option<&str> {
+        self.runtime
+            .connections
+            .get(at as usize)
+            .map(|connection| connection.name.as_str())
+    }
+
+    /// The connections to provider packages, each with its number and
+    /// name, and how calls through it are made (area 11, chunk 7.2c).
+    pub fn package_connections(
+        &self,
+    ) -> impl Iterator<Item = (u32, &str, &jadpo_std::provider::ConnectionPlan)> {
+        jadpo_std::connections::packages(&self.runtime.connections)
+    }
+
+    /// The connection to a provider package called `name`.
+    pub fn package_connection(&self, name: &str) -> Option<&jadpo_std::provider::ConnectionPlan> {
+        let (at, _) = jadpo_std::connections::named(&self.runtime.connections, name)?;
+        jadpo_std::connections::package(&self.runtime.connections, at)
     }
 
     /// The run of the `batches.each` call whose site decodes `number`.

@@ -53,6 +53,17 @@ pub trait Fetch {
     }
 }
 
+/// A host's HTTP shared between drivers, as the factory holds it.
+impl<F: Fetch + ?Sized> Fetch for std::rc::Rc<F> {
+    fn fetch<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Response, FetchError>> {
+        (**self).fetch(request)
+    }
+
+    fn open<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Opened, FetchError>> {
+        (**self).open(request)
+    }
+}
+
 /// An answer whose head has come, its body still coming.
 pub struct Opened {
     pub status: u16,

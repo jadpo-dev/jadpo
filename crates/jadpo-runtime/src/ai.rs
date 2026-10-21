@@ -127,7 +127,7 @@ pub(crate) fn package_reads(ai: &Ai<'_>, operation: &str, input: &[(String, AiIn
     if let Some((plan, _)) = ai
         .providers
         .as_ref()
-        .and_then(|providers| providers.plan.operation(&ai.plan.connection, operation))
+        .and_then(|providers| providers.operation(&ai.plan.connection, operation))
     {
         read.extend(crate::provider::settings_read(plan));
     }
@@ -742,11 +742,8 @@ pub(crate) fn max_concurrent_of(ai: &Ai<'_>) -> Option<u32> {
     let AiDriver::Package(_) = &ai.plan.driver else {
         return None;
     };
-    ai.providers?
-        .plan
-        .connections
-        .iter()
-        .find(|connection| connection.name == ai.plan.connection)?
+    let providers = ai.providers?;
+    jadpo_std::connections::package(providers.connections, providers.number(&ai.plan.connection))?
         .max_concurrent
 }
 
@@ -823,7 +820,7 @@ pub(crate) fn package_request(
     asking: &str,
 ) -> Result<Request, crate::provider::Unready> {
     use crate::provider::Unready;
-    let Some((_, op)) = providers.plan.operation(connection, operation) else {
+    let Some((_, op)) = providers.operation(connection, operation) else {
         return Err(Unready::Fault(FaultKind::Defect(format!(
             "`{connection}.{operation}`, which the plan doesn't have"
         ))));
@@ -985,7 +982,7 @@ fn package_reply(
     package: &PackageAi,
     text: &str,
 ) -> Result<Reply, Done> {
-    let Some((_, op)) = providers.plan.operation(connection, &package.operation) else {
+    let Some((_, op)) = providers.operation(connection, &package.operation) else {
         return Err(Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{}`, which the plan doesn't have",
             package.operation

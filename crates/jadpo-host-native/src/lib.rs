@@ -9,7 +9,8 @@
 //!   Unix sockets, upgraded to TLS through rustls ([`tls`], chunk 8.1b).
 //! - [`postgres`]: a PostgreSQL store over that transport.
 //! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
-//!   each store by its connection's name, the operating system's
+//!   each connection's driver as the factory built it from the plan
+//!   ([`supplies`], chunk 8.1d), the operating system's
 //!   randomness, tokio's timer and the monotonic clock for deadlines
 //!   (chunks 4.2 and 4.9), the system clock, rate limits counted in the
 //!   worker's own bounded memory (chunk 4.10), and the work a response
@@ -79,6 +80,7 @@ use tokio::task::LocalSet;
 
 pub use signals::stop_signals;
 
+pub use jadpo_drivers::factory::{Drivers, Supplies};
 pub use jadpo_drivers::package::JsonHttp;
 pub use jadpo_drivers::postgres::Postgres;
 
@@ -185,8 +187,21 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
     Postgres::new(url, Rc::new(NativeTransport))
 }
 
-/// The runtime's host natively, one per worker thread: each store by its
-/// connection's name, the operating system's randomness for new identities
+/// What a native host gives the driver factory (chunk 8.1d): tokio's
+/// sockets with rustls ([`NativeTransport`]) and HTTPS through rustls
+/// ([`fetch::NativeFetch`]). It gives no disk: a deployable's disk driver
+/// at a connection's `path:` comes with the rest of the files capability,
+/// and `jadpo dev` keeps its stores of files on its own
+/// ([`NativeHost::with_files`]).
+pub fn supplies() -> Supplies {
+    Supplies::on(jadpo_runtime::http::address::Target::Native)
+        .with_transport(Rc::new(NativeTransport))
+        .with_fetch(Rc::new(fetch::NativeFetch))
+}
+
+/// The runtime's host natively, one per worker thread: each connection's
+/// driver as the factory built it ([`NativeHost::with_drivers`]), a store
+/// given in place of one, the operating system's randomness for new identities
 /// and request ids, the system clock, the worker's rate-limit counters in
 /// bounded memory, the native default until a Redis connection is named
 /// (area 16), and the work responses leave for after they are sent
@@ -199,20 +214,15 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
 /// it holds (chunk 6.7).
 #[derive(Debug, Default)]
 pub struct NativeHost {
+    /// Each connection's driver, as the factory built it from the plan
+    /// (chunk 8.1d).
+    drivers: Drivers,
+    /// Stores given in place of the factory's: `jadpo dev`'s databases,
+    /// which it chooses itself, and a test's.
     stores: BTreeMap<String, Postgres>,
     /// Every store of files, on the local disk (chunk 6.4b), and which
     /// connections are stores of files (chunk 7.1c).
     files: Option<(files::DiskFiles, FileStores)>,
-    /// The driver `jadpo dev` gives every provider package's connection
-    /// (chunk 7.2d), and which connections those are.
-    providers: Option<(Providers, FileStores)>,
-    /// The built-in `Driver.openai_compatible` (area 21; chunk 5.5v3),
-    /// for the connections that are a model's: JSON over HTTP, as the
-    /// package driver sends it.
-    models: Option<(JsonHttp<fetch::NativeFetch>, FileStores)>,
-    /// `jadpo dev`'s inbox (chunk 7.3c2), for the connection `email:`
-    /// names: it catches every mail in place of sending it.
-    mail: Option<(Providers, FileStores)>,
     /// `jadpo dev`'s call log, which keeps each provider call with its
     /// values (chunk 7.2d).
     call_log: Option<CallLog>,
@@ -231,16 +241,6 @@ struct FileStores(Rc<dyn Fn(&str) -> bool>);
 impl std::fmt::Debug for FileStores {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("FileStores")
-    }
-}
-
-/// The driver of every provider package's connection, held for the host.
-#[derive(Clone)]
-struct Providers(Rc<dyn jadpo_runtime::capability::Capability>);
-
-impl std::fmt::Debug for Providers {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Providers")
     }
 }
 
@@ -321,7 +321,17 @@ impl NativeHost {
         NativeHost::default()
     }
 
-    /// Adds store `name`, a PostgreSQL database.
+    /// Gives each connection the driver `drivers` built for it from the
+    /// plan's connections table (chunk 8.1d): what a deployable and `jadpo
+    /// dev` run on, `jadpo dev` with its fakes in front.
+    pub fn with_drivers(mut self, drivers: Drivers) -> NativeHost {
+        self.drivers = drivers;
+        self
+    }
+
+    /// Adds store `name`, a PostgreSQL database, in place of the one the
+    /// factory built for it: `jadpo dev`'s, which it chooses itself, and a
+    /// test's.
     pub fn with_store(mut self, name: impl Into<String>, store: Postgres) -> NativeHost {
         self.stores.insert(name.into(), store);
         self
@@ -337,42 +347,6 @@ impl NativeHost {
         stores: impl Fn(&str) -> bool + 'static,
     ) -> NativeHost {
         self.files = Some((files, FileStores(Rc::new(stores))));
-        self
-    }
-
-    /// Gives `driver` for every connection `connections` says is a
-    /// provider package's (chunk 7.2d): `jadpo dev`'s fakes, letting named
-    /// calls through to the sandbox.
-    pub fn with_providers(
-        mut self,
-        driver: Rc<dyn jadpo_runtime::capability::Capability>,
-        connections: impl Fn(&str) -> bool + 'static,
-    ) -> NativeHost {
-        self.providers = Some((Providers(driver), FileStores(Rc::new(connections))));
-        self
-    }
-
-    /// Gives the built-in `Driver.openai_compatible` for every connection
-    /// `connections` says is a model's (area 21; chunk 5.5v3): the one
-    /// `ai:` names, whose server the runtime sends OpenAI's API to.
-    pub fn with_models(mut self, connections: impl Fn(&str) -> bool + 'static) -> NativeHost {
-        self.models = Some((
-            JsonHttp::new(fetch::NativeFetch),
-            FileStores(Rc::new(connections)),
-        ));
-        self
-    }
-
-    /// Gives `catcher` for the connection `connection` says is the one
-    /// `email:` names (chunk 7.3c2): `jadpo dev`'s inbox, which catches
-    /// every mail, a mail package's included, so nothing leaves the
-    /// machine. It comes before every other driver.
-    pub fn with_mail(
-        mut self,
-        catcher: Rc<dyn jadpo_runtime::capability::Capability>,
-        connection: impl Fn(&str) -> bool + 'static,
-    ) -> NativeHost {
-        self.mail = Some((Providers(catcher), FileStores(Rc::new(connection))));
         self
     }
 
@@ -430,28 +404,16 @@ impl NativeHost {
 static PASSKEYS: passkeys::WebauthnPasskeys = passkeys::WebauthnPasskeys;
 
 impl Host for NativeHost {
-    /// The disk driver, for a connection that is a store of files (chunk
-    /// 6.4b; narrowed to those in chunk 7.1c): the only driver a native
-    /// host carries yet, so any other connection, a package's included,
-    /// has none until its driver is built (chunk 7.2c).
+    /// The disk driver given for a store of files (chunk 6.4b; narrowed
+    /// to those in chunk 7.1c), else the driver the factory built for the
+    /// connection (chunk 8.1d); none for any other.
     fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
-        if let Some((catcher, mail)) = &self.mail
-            && (mail.0)(connection)
-        {
-            return Some(catcher.0.as_ref());
-        }
         if let Some((files, stores)) = &self.files
             && (stores.0)(connection)
         {
             return Some(files as &dyn jadpo_runtime::capability::Capability);
         }
-        if let Some((driver, models)) = &self.models
-            && (models.0)(connection)
-        {
-            return Some(driver as &dyn jadpo_runtime::capability::Capability);
-        }
-        let (driver, connections) = self.providers.as_ref()?;
-        (connections.0)(connection).then_some(driver.0.as_ref())
+        self.drivers.capability(connection)
     }
 
     fn call_log(&self) -> Option<&dyn jadpo_runtime::call_log::CallLog> {
@@ -463,8 +425,12 @@ impl Host for NativeHost {
         Some(&PASSKEYS)
     }
 
+    /// A store given in its place, else the one the factory built.
     fn database(&self, store: &str) -> Option<&dyn Database> {
-        self.stores.get(store).map(|store| store as &dyn Database)
+        self.stores
+            .get(store)
+            .or_else(|| self.drivers.database(store))
+            .map(|store| store as &dyn Database)
     }
 
     /// HTTPS to public addresses only ([`fetch::Outward`]).

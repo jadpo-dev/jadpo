@@ -206,6 +206,14 @@ struct Current {
     program: RefCell<Option<(u64, Rc<Program>)>>,
 }
 
+/// The project version being served now, poisoned or not.
+fn lock_current(shared: &Shared) -> Arc<Prepared> {
+    match shared.current.lock() {
+        Ok(current) => Arc::clone(&current.0),
+        Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
+    }
+}
+
 impl Current {
     fn program(&self) -> Rc<Program> {
         let generation = self.shared.generation.load(Ordering::SeqCst);
@@ -872,7 +880,10 @@ pub fn serve_to(
     // Every store of files on this machine's disk, under `.jadpo/files/`
     // (area 16, "Files"; chunk 6.4b), so nothing leaves it.
     let files = root.join(DEV_FILES);
-    if !first.prepared.plan().file_stores().is_empty() {
+    if jadpo_std::connections::files(first.prepared.plan().connections())
+        .next()
+        .is_some()
+    {
         let _ = crate::suggestions::local_folder(&root);
     }
     let make_setup = Arc::clone(&setup);
@@ -880,30 +891,49 @@ pub fn serve_to(
     let make_root = root.clone();
     let make_inbox_lock = Arc::new(Mutex::new(()));
     let make: MakeHandler = Arc::new(move || {
-        // Only the connections the program running now keeps files in.
+        let current = Current {
+            shared: Arc::clone(&make_shared),
+            program: RefCell::new(None),
+        };
+        // Each connection's driver, built by the factory from the program
+        // running as the worker starts (chunk 8.1d): the model `ai:`
+        // names reached on this machine with no key at all (area 21;
+        // chunk 5.5v3). The fakes below stand in front of the rest.
+        let started = current.program();
+        let drivers = jadpo_host_native::Drivers::build(
+            started.runtime_plan().connections,
+            started.started(),
+            &jadpo_host_native::supplies(),
+        );
+        // Every store of files on this machine's disk, under
+        // `.jadpo/files/`: only the connections the program running now
+        // keeps files in.
         let stores = Arc::clone(&make_shared);
-        let mut host = NativeHost::new().with_files(DiskFiles::under(&files), move |connection| {
-            let current = match stores.current.lock() {
-                Ok(current) => Arc::clone(&current.0),
-                Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
-            };
-            current
-                .plan()
-                .file_stores()
-                .iter()
-                .any(|store| store.name == connection)
-        });
+        let mut native = NativeHost::new()
+            .with_drivers(drivers)
+            .with_files(DiskFiles::under(&files), move |connection| {
+                let current = lock_current(&stores);
+                jadpo_std::connections::files(current.plan().connections())
+                    .any(|(name, _)| name == connection)
+            })
+            .with_call_log(Rc::new(DevCalls {
+                log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
+                shared: Arc::clone(&make_shared),
+            }));
+        for (store, url) in &make_shared.urls {
+            if let Ok(database) = postgres(url) {
+                native = native.with_store(store.clone(), database);
+            }
+        }
         // Every provider connection the program running now has: faked,
         // or let through to the sandbox, each call logged (chunk 7.2d).
-        let providers = Arc::clone(&make_shared);
         let fakes: Rc<dyn jadpo_runtime::capability::Capability> = Rc::new(
             crate::dev_calls::DevProviders::new(&make_root, Arc::clone(&make_setup)),
         );
         // Every mail, through the connection `email:` names, caught in the
         // inbox in place of being sent (chunk 7.3c2).
-        let mail = Arc::clone(&make_shared);
         let told = Arc::clone(&make_shared);
-        host = host.with_mail(
+        let catcher: Rc<dyn jadpo_runtime::capability::Capability> =
             Rc::new(crate::dev_inbox::Catcher {
                 root: make_root.clone(),
                 lock: Arc::clone(&make_inbox_lock),
@@ -920,56 +950,22 @@ pub fn serve_to(
                 // SpamAssassin, when installed, on this machine only
                 // (chunk 7.3c3).
                 spam: Rc::new(crate::spam::SystemSpamAssassin),
-            }),
+            });
+        // The fakes, chosen from the program running now as each
+        // connection is asked for, since saving the project changes them:
+        // the inbox first, so a mail package's connection is caught too.
+        let chosen = Arc::clone(&make_shared);
+        let host = jadpo_runtime::capability::Faked::new(native).choosing(
+            vec![catcher, fakes],
             move |connection| {
-                let current = match mail.current.lock() {
-                    Ok(current) => Arc::clone(&current.0),
-                    Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
-                };
-                current.plan().events().emails.connection.as_deref() == Some(connection)
+                let current = lock_current(&chosen);
+                let plan = current.plan();
+                if plan.events().emails.connection.as_deref() == Some(connection) {
+                    return Some(0);
+                }
+                plan.package_connection(connection).is_some().then_some(1)
             },
         );
-        host = host
-            .with_providers(fakes, move |connection| {
-                let current = match providers.current.lock() {
-                    Ok(current) => Arc::clone(&current.0),
-                    Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
-                };
-                current
-                    .plan()
-                    .providers()
-                    .connections
-                    .iter()
-                    .any(|known| known.name == connection)
-            })
-            .with_call_log(Rc::new(DevCalls {
-                log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
-                shared: Arc::clone(&make_shared),
-            }));
-        // The model `ai:` names, through the built-in driver, a server on
-        // this machine with no key at all (area 21; chunk 5.5v3).
-        let models = Arc::clone(&make_shared);
-        host = host.with_models(move |connection| {
-            let current = match models.current.lock() {
-                Ok(current) => Arc::clone(&current.0),
-                Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
-            };
-            // A package filling `ai` is one of the provider connections
-            // above, faked or let through to its sandbox (chunk 5.5v3b).
-            current.plan().ai().is_some_and(|ai| {
-                ai.connection == connection
-                    && matches!(ai.driver, jadpo_std::ai::AiDriver::OpenAiCompatible(_))
-            })
-        });
-        for (store, url) in &make_shared.urls {
-            if let Ok(database) = postgres(url) {
-                host = host.with_store(store.clone(), database);
-            }
-        }
-        let current = Current {
-            shared: Arc::clone(&make_shared),
-            program: RefCell::new(None),
-        };
         let lines = Lines {
             shared: Arc::clone(&make_shared),
             paused: RefCell::new(Default::default()),
@@ -1375,7 +1371,7 @@ fn start_config(
     }
     // An SMTP connection's settings that nothing gives: the inbox catches
     // every mail, so its server is never reached (chunk 7.3c2).
-    for smtp in &prepared.plan().events().emails.smtp {
+    for (_, smtp) in jadpo_std::connections::smtp(prepared.plan().connections()) {
         let host = match smtp.host {
             jadpo_std::email::SmtpHost::Setting(at) => Some(at),
             jadpo_std::email::SmtpHost::Written(_) => None,

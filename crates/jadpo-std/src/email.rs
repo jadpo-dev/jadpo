@@ -82,8 +82,6 @@ pub struct EmailsPlan {
     /// The locales the application supports, which a subject's wording
     /// falls back through.
     pub locales: Option<LocalePlan>,
-    /// Each connection with `driver: Driver.smtp`, in name order.
-    pub smtp: Vec<SmtpConnection>,
     /// How the mail package `connection` names sends a message, when it
     /// is a package's (`provides/email.jadpo`; chunk 7.3c).
     pub package: Option<PackageEmail>,
@@ -133,11 +131,6 @@ impl EmailsPlan {
     /// The email whose type has identity key `key`.
     pub fn email(&self, key: &str) -> Option<&EmailPlan> {
         self.emails.iter().find(|email| email.key == key)
-    }
-
-    /// The SMTP connection called `name`.
-    pub fn smtp(&self, name: &str) -> Option<&SmtpConnection> {
-        self.smtp.iter().find(|connection| connection.name == name)
     }
 }
 
@@ -257,20 +250,6 @@ impl MagicLinkEmailPlan {
             .iter()
             .find(|entry| entry.key.strip_prefix("jadpo.") == Some(key))
     }
-}
-
-/// A connection with `driver: Driver.smtp` (area 11's settings, chosen in
-/// chunk 7.3): what a host builds its SMTP driver from.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SmtpConnection {
-    pub name: String,
-    /// The server's name: `host:`.
-    pub host: SmtpHost,
-    /// `port:`, [`SMTP_PORT`] when it gives none.
-    pub port: u16,
-    /// `credential: { username: password: }`, by their settings' numbers.
-    pub username: Option<u32>,
-    pub password: Option<u32>,
 }
 
 /// Where an SMTP server's name comes from.

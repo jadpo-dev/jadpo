@@ -742,10 +742,9 @@ impl<'p> Machine<'p> {
     }
 
     fn provider_failure(&self, connection: &str, operation: &str, key: &str) -> bool {
-        self.program
-            .plan()
-            .providers()
-            .operation(connection, operation)
+        let plan = self.program.plan();
+        plan.providers()
+            .operation(plan.connections(), connection, operation)
             .is_some_and(|(_, op)| op.failures.iter().any(|known| known == key))
     }
 

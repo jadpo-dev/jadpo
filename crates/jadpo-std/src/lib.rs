@@ -61,6 +61,7 @@ pub mod batch;
 mod builtin;
 pub mod canonical;
 pub mod config;
+pub mod connections;
 pub mod constant;
 pub mod email;
 pub mod email_health;

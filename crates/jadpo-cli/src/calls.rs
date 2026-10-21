@@ -363,18 +363,15 @@ fn script(root: &Path, operation: &str, answer: &str) -> Reply {
         return script_prompt(root, &prepared, prompt, answer);
     }
     let plan = prepared.plan().providers();
+    let connection_name = |at: u32| prepared.plan().connection_name(at);
     let known: Vec<String> = plan
         .operations
         .iter()
-        .filter_map(|op| {
-            let connection = plan.connections.get(op.connection as usize)?;
-            Some(format!("{}.{}", connection.name, op.name))
-        })
+        .filter_map(|op| Some(format!("{}.{}", connection_name(op.connection)?, op.name)))
         .collect();
     let Some(op) = plan.operations.iter().find(|op| {
-        plan.connections
-            .get(op.connection as usize)
-            .is_some_and(|connection| format!("{}.{}", connection.name, op.name) == operation)
+        connection_name(op.connection)
+            .is_some_and(|connection| format!("{connection}.{}", op.name) == operation)
     }) else {
         let near = jadpo_diag::nearest(operation, known.iter().map(String::as_str));
         return Reply::failed(arguments(

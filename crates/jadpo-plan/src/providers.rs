@@ -20,14 +20,16 @@ use jadpo_std::receiving::{
 use jadpo_std::subscriber::Repeat;
 
 /// The provider plan, numbering each operation's input and output in
-/// `json_types` (the plan's JSON table's types), and reading each setting
-/// through `setting`.
+/// `json_types` (the plan's JSON table's types), each operation's
+/// connection by its number in `table`, the plan's connections table, and
+/// reading each setting through `setting`.
 pub(crate) fn plan(
     db: &dyn Db,
     project: Project,
     types: &mut crate::types::Types,
     setting: &dyn Fn(&str) -> Option<u32>,
     json_types: &mut Vec<TypeRef>,
+    table: &[jadpo_std::connections::Connection],
 ) -> ProviderPlan {
     let lookup = Lookup::new(db, project);
     let operations = jadpo_check::providers::operations(db, project);
@@ -46,85 +48,12 @@ pub(crate) fn plan(
         ..ProviderPlan::default()
     };
     for connection in &jadpo_check::connections::package_connections(db, project).connections {
-        let reach = &connection.reach;
-        let address = if reach.hosts {
-            match connection.environment.as_deref().and_then(setting) {
-                Some(environment) => Address::Hosts {
-                    live: reach.live.clone(),
-                    sandbox: reach.sandbox.clone(),
-                    environment,
-                },
-                None => Address::Unknown,
-            }
-        } else {
-            connection
-                .host
-                .as_deref()
-                .and_then(setting)
-                .map_or(Address::Unknown, Address::Setting)
+        let Some((at, _)) = jadpo_std::connections::named(table, &connection.name) else {
+            continue;
         };
-        let credential = match (
-            reach.credential.as_deref(),
-            connection.credential.as_deref(),
-        ) {
-            (Some(scheme), Some(name)) => {
-                let scheme = match scheme {
-                    "bearer" => Some(CredentialScheme::Bearer),
-                    "basic" => Some(CredentialScheme::Basic),
-                    "header" => Some(CredentialScheme::Header),
-                    "aws_sigv4" => connection
-                        .key_id
-                        .as_deref()
-                        .and_then(setting)
-                        .map(|key_id| CredentialScheme::AwsSigV4 { key_id }),
-                    _ => None,
-                };
-                scheme.zip(setting(name))
-            }
-            _ => None,
-        };
-        let idempotency = reach.idempotency.as_ref().map(|given| IdempotencyPlan {
-            header: given.header.clone(),
-            max_length: given.max_length,
-            in_use: given.in_use.clone(),
-            reused: given.reused.clone(),
-            window_ms: given.window_ms,
-            new_key_on: given.new_key_on.clone(),
-            replays_failures: given.replays_failures,
-        });
-        let keyed = idempotency
-            .as_ref()
+        let keyed = jadpo_std::connections::package(table, at)
+            .and_then(|plan| plan.idempotency.as_ref())
             .is_some_and(|plan| !plan.header.is_empty());
-        let at = u32::try_from(out.connections.len()).unwrap_or(u32::MAX);
-        out.connections.push(ConnectionPlan {
-            name: connection.name.clone(),
-            package: connection.package.clone(),
-            address,
-            credential,
-            credential_header: reach.credential_header.clone(),
-            headers: reach.headers.clone(),
-            protocol: match reach.protocol.as_deref() {
-                Some("aws_json") => Protocol::AwsJson,
-                _ => Protocol::JsonHttp,
-            },
-            aws: reach.aws.as_ref().and_then(|aws| {
-                Some(AwsPlan {
-                    service: aws.service.clone()?,
-                    target: aws.target.clone(),
-                })
-            }),
-            timeout_ms: connection.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
-            retry: connection.retry.unwrap_or_default(),
-            idempotency,
-            error_code: reach.error_code.clone(),
-            sandbox: jadpo_check::connections::sandboxed(db, project, connection),
-            // The package's cap, or the connection's lower one (chunk
-            // 7.6c).
-            max_concurrent: match (reach.max_concurrent, connection.max_concurrent) {
-                (Some(package), Some(own)) => Some(package.min(own)),
-                (package, own) => package.or(own),
-            },
-        });
         // Every operation, public or not: a package's own actions call
         // the ones it keeps to itself (chunk 7.6).
         for operation in operations.of(&connection.folder) {
@@ -285,6 +214,91 @@ pub(crate) fn plan(
         });
     }
     out
+}
+
+/// How calls through package connection `connection` are made: its
+/// entry's driver in the plan's connections table (chunk 8.1d), each
+/// setting read through `setting`.
+pub(crate) fn connection_plan(
+    db: &dyn Db,
+    project: Project,
+    connection: &jadpo_check::connections::PackageConnection,
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> ConnectionPlan {
+    let reach = &connection.reach;
+    let address = if reach.hosts {
+        match connection.environment.as_deref().and_then(setting) {
+            Some(environment) => Address::Hosts {
+                live: reach.live.clone(),
+                sandbox: reach.sandbox.clone(),
+                environment,
+            },
+            None => Address::Unknown,
+        }
+    } else {
+        connection
+            .host
+            .as_deref()
+            .and_then(setting)
+            .map_or(Address::Unknown, Address::Setting)
+    };
+    let credential = match (
+        reach.credential.as_deref(),
+        connection.credential.as_deref(),
+    ) {
+        (Some(scheme), Some(name)) => {
+            let scheme = match scheme {
+                "bearer" => Some(CredentialScheme::Bearer),
+                "basic" => Some(CredentialScheme::Basic),
+                "header" => Some(CredentialScheme::Header),
+                "aws_sigv4" => connection
+                    .key_id
+                    .as_deref()
+                    .and_then(setting)
+                    .map(|key_id| CredentialScheme::AwsSigV4 { key_id }),
+                _ => None,
+            };
+            scheme.zip(setting(name))
+        }
+        _ => None,
+    };
+    let idempotency = reach.idempotency.as_ref().map(|given| IdempotencyPlan {
+        header: given.header.clone(),
+        max_length: given.max_length,
+        in_use: given.in_use.clone(),
+        reused: given.reused.clone(),
+        window_ms: given.window_ms,
+        new_key_on: given.new_key_on.clone(),
+        replays_failures: given.replays_failures,
+    });
+    ConnectionPlan {
+        package: connection.package.clone(),
+        address,
+        credential,
+        credential_header: reach.credential_header.clone(),
+        headers: reach.headers.clone(),
+        protocol: match reach.protocol.as_deref() {
+            Some("aws_json") => Protocol::AwsJson,
+            _ => Protocol::JsonHttp,
+        },
+        aws: reach.aws.as_ref().and_then(|aws| {
+            Some(AwsPlan {
+                service: aws.service.clone()?,
+                target: aws.target.clone(),
+            })
+        }),
+        timeout_ms: connection.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+        retry: connection.retry.unwrap_or_default(),
+        idempotency,
+        error_code: reach.error_code.clone(),
+        sandbox: jadpo_check::connections::sandboxed(db, project, connection),
+        // The package's cap, or the connection's lower one (chunk
+        // 7.6c).
+        max_concurrent: match (reach.max_concurrent, connection.max_concurrent) {
+            (Some(package), Some(own)) => Some(package.min(own)),
+            (package, own) => package.or(own),
+        },
+    }
 }
 
 /// Operation `operation` as a call through connection number `at` sends

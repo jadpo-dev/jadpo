@@ -167,14 +167,8 @@ fn recorded(call: &Call) -> Reply {
     let connection = ai.plan.connection.clone();
     // A package's connection: never live, never a stand-in credential.
     if matches!(ai.plan.driver, AiDriver::Package(_))
-        && let Some(chosen) = ready
-            .prepared
-            .plan()
-            .providers()
-            .connections
-            .iter()
-            .find(|known| known.name == connection)
-        && let Some(refused) = crate::package_record::refusal(&ready, chosen, COMMAND)
+        && let Some(chosen) = ready.prepared.plan().package_connection(&connection)
+        && let Some(refused) = crate::package_record::refusal(&ready, &connection, chosen, COMMAND)
     {
         return Reply::failed(*refused);
     }
@@ -255,14 +249,13 @@ fn recorded(call: &Call) -> Reply {
     // The model asked once, through the connection, as the call asks.
     let seen = Rc::new(Kept::default());
     let host = jadpo_host_native::NativeHost::new()
-        .with_providers(
-            Rc::new(jadpo_host_native::JsonHttp::new(
-                jadpo_host_native::fetch::NativeFetch,
-            )),
-            {
-                let connection = connection.clone();
-                move |asked| asked == connection
-            },
+        .with_drivers(
+            jadpo_host_native::Drivers::build(
+                program.runtime_plan().connections,
+                program.started(),
+                &jadpo_host_native::supplies(),
+            )
+            .keeping(|asked| asked == connection.as_str()),
         )
         .with_call_log(Rc::clone(&seen) as Rc<dyn CallLog>);
     let runtime = match jadpo_host_native::Runtime::new() {

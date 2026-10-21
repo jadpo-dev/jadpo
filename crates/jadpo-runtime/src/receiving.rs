@@ -101,6 +101,9 @@ pub struct Receiving<'a> {
     /// The connections' operations, and the codecs a mapping's input is
     /// read with as the call writes it.
     pub providers: &'a jadpo_std::provider::ProviderPlan,
+    /// The plan's connections table, whose packages' connections the
+    /// queues are read through (chunk 8.1d).
+    pub connections: &'a [jadpo_std::connections::Connection],
     pub json: crate::JsonCodecs<'a>,
 }
 
@@ -394,7 +397,11 @@ fn input(
     mapped: &[(String, Mapped)],
     handle: Option<&str>,
 ) -> Result<Option<Value>, StoreError> {
-    let Some((_, op)) = receiving.providers.operation(&queue.connection, operation) else {
+    let Some((_, op)) =
+        receiving
+            .providers
+            .operation(receiving.connections, &queue.connection, operation)
+    else {
         return Err(StoreError::Fault(format!(
             "`{}.{operation}`, which the plan doesn't have",
             queue.connection
