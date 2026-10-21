@@ -60,6 +60,7 @@ mod magic_links;
 mod manifest;
 mod migrate;
 mod operation_conditions;
+mod outside_calls;
 mod package_actions;
 mod package_conform;
 mod package_import;

@@ -4,9 +4,10 @@
 //!
 //! [`generate`] renders the prompt as `prompts.render` does, asks the
 //! model the call's `model:` names through the connection `ai:` names, on
-//! the capability seam ([`crate::effects::exchange`]), so a call is
-//! refused inside an open transaction, logged without its values and
-//! recorded and replayed with the other effects, and decodes the answer
+//! the one outside-call path ([`crate::outside`]), so a call is refused
+//! inside an open transaction, logged without its values, recorded and
+//! replayed with the other effects, and held to its connection's
+//! `max_concurrent:` where a package fills `ai`, and decodes the answer
 //! through `json.read`'s decoding of `T`, every rule included:
 //!
 //! 1. **The schema.** `T`'s JSON Schema, written at build time with each
@@ -56,6 +57,7 @@ use jadpo_value::json::{Problem, Unread};
 use crate::capability::{Answer, Call, Capability, Source};
 use crate::effects::Unanswered;
 use crate::fakes::Usage;
+use crate::outside::{Asking, Comes, Form, Rerun, Retry, Sending};
 use crate::places::Frame;
 use crate::provider::{Providers, Reading, Request};
 use crate::{Ctx, Failure, FaultKind, JsonCodecs, LocalFuture};
@@ -169,6 +171,37 @@ impl Kept {
                 problem.field,
                 problem.rule
             )),
+        }
+    }
+
+    /// How a call given it back is logged: the answer as sent, or the
+    /// condition as the failure of its word.
+    pub(crate) fn logged(&self) -> Answer {
+        match self {
+            Kept::Answer(text) => Answer::Wire(text.clone()),
+            Kept::Condition(rule) => Answer::Failed(rule.word().to_string()),
+            Kept::Malformed(_) => Answer::Failed(RuleKey::Malformed.word().to_string()),
+        }
+    }
+
+    /// As a step of the action's record keeps it: the answer as sent, or
+    /// the condition by its word.
+    pub(crate) fn answered(&self) -> crate::steps::Answered {
+        match self {
+            Kept::Answer(text) => crate::steps::Answered::Wire(text.clone()),
+            condition => crate::steps::Answered::Failed(condition.word().unwrap_or_default()),
+        }
+    }
+
+    /// What a step of the action's record kept, read back; what is wrong
+    /// with it otherwise.
+    pub(crate) fn recorded(answered: crate::steps::Answered) -> Result<Kept, &'static str> {
+        match answered {
+            crate::steps::Answered::Wire(text) => Ok(Kept::Answer(text)),
+            crate::steps::Answered::Failed(word) => {
+                Kept::from_word(&word).ok_or("a recorded answer of no condition")
+            }
+            crate::steps::Answered::Done => Err("a recorded answer with nothing"),
         }
     }
 
@@ -340,55 +373,46 @@ pub async fn generate(
     // from the first run's answers kept by the invocation.
     let name = format!("{}.{}", ai.plan.connection, site.prompt);
     let fields = vec![("request".to_string(), body.into_bytes())];
-    let stepped = crate::steps::step(
+    let comes = crate::outside::comes_from(
         ctx,
-        crate::steps::Proposed {
-            operation: &name,
-            fields,
-            repeat: Repeat::Safe,
-            changes: false,
-            window_ms: None,
-            did_nothing: &[],
+        Asking {
+            step: Some(crate::steps::Proposed {
+                operation: &name,
+                fields,
+                repeat: Repeat::Safe,
+                changes: false,
+                window_ms: None,
+                did_nothing: &[],
+            }),
+            rerun: Some(Rerun::Answer(digest)),
         },
     )
     .await;
-    let step_at = match stepped {
-        Ok(crate::steps::Stepped::Untracked) => None,
-        Ok(crate::steps::Stepped::Send(at)) => Some(at),
-        Ok(crate::steps::Stepped::Replay(answered)) => {
-            let kept = match answered {
-                crate::steps::Answered::Wire(text) => Kept::Answer(text),
-                crate::steps::Answered::Failed(word) => match Kept::from_word(&word) {
-                    Some(kept) => kept,
-                    None => return defect("a recorded answer of no condition"),
-                },
-                crate::steps::Answered::Done => return defect("a recorded answer with nothing"),
+    let place = match comes {
+        Ok(Comes::Send(place)) => place,
+        Ok(Comes::Recorded { answered, at }) => {
+            let kept = match Kept::recorded(answered) {
+                Ok(kept) => kept,
+                Err(what) => return defect(what),
             };
             // Logged as the step it is (chunk 7.5f).
             let mut made = made;
-            made.step = ctx.steps_at();
+            made.step = at;
             return replayed(ctx, ai, site, &asked, made, kept);
         }
-        Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
-        Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
-        Err(Unanswered::Failed(_)) => return Done::Failed(Box::new(crate::unavailable())),
+        Ok(Comes::Reused(kept)) => return replayed(ctx, ai, site, &asked, made, kept),
+        Ok(Comes::Opened(_)) => return defect("a model's answer given back as a stream"),
+        Err(refused) => return unanswered(refused),
     };
-    let step = if step_at.is_none() {
-        ctx.next_step()
-    } else {
-        None
-    };
-    if let Some(step) = step
-        && let Some(kept) = ctx.reused(step, &digest)
-    {
-        return replayed(ctx, ai, site, &asked, made, kept);
-    }
     // The prompt's values, for a development log alone, where `jadpo ai
     // record` reads the last call's (chunk 5.5v4b).
     let values = ctx
         .host()
         .call_log()
         .and_then(|_| crate::prompt_recordings::values_written(ai, site, &prompt));
+    let logged: crate::outside::Log<'_> =
+        &|ctx, call, answer| log(ctx, call, values.as_deref(), answer);
+    let max_concurrent = max_concurrent_of(ai);
     let host = ctx.host();
     let began = host.monotonic_ms();
     let mut last_problem: Option<Problem> = None;
@@ -451,7 +475,7 @@ pub async fn generate(
             .sum();
         let mut call = made.clone();
         call.attempt = attempt;
-        call.step = step_at;
+        call.step = place.step;
         // A repair longer than its call counted takes the rest before it
         // is sent, and isn't sent when a limit can't cover it (chunk 7.9c).
         let counted = crate::ai_budget::sent_most(input, site.max_output, attempt);
@@ -466,30 +490,32 @@ pub async fn generate(
             ));
             break;
         }
-        let resend = crate::ai_budget::Resend {
-            taken: &mut taken,
-            used: &mut used,
-            input: sent_tokens,
+        let sending = Sending {
+            retry: Retry::timed(began, site.timeout_ms),
+            form: Form::Whole,
+            max_concurrent,
+            resend: Some(crate::ai_budget::Resend {
+                taken: &mut taken,
+                used: &mut used,
+                input: sent_tokens,
+            }),
+            log: Some(logged),
         };
-        let (answer, source) = match sent(
-            ctx,
-            call,
-            request,
-            (began, site.timeout_ms),
-            values.as_deref(),
-            resend,
-        )
-        .await
-        {
-            Ok(sent) => sent,
-            Err(done) => {
-                used.add(crate::ai_budget::Used {
-                    input: sent_tokens,
-                    ..Default::default()
-                });
-                return crate::ai_budget::debited(ctx, taken, used, done).await;
-            }
-        };
+        let (answer, source) =
+            match crate::outside::send(ctx, &call.with_request(request), sending).await {
+                Ok(sent) => {
+                    let source = sent.source;
+                    (sent.whole(), source)
+                }
+                Err(refused) => {
+                    used.add(crate::ai_budget::Used {
+                        input: sent_tokens,
+                        ..Default::default()
+                    });
+                    let done = unanswered(refused);
+                    return crate::ai_budget::debited(ctx, taken, used, done).await;
+                }
+            };
         // A fake answers in the built-in driver's own form, whatever the
         // connection (area 21, "Tests"), and so does its generated
         // default: an answer of the call's type, made as the model would
@@ -627,22 +653,38 @@ pub async fn generate(
             },
         )
     });
-    if let Some(at) = step_at {
-        let answered = match &kept {
-            Kept::Answer(text) => crate::steps::Answered::Wire(text.clone()),
-            condition => crate::steps::Answered::Failed(condition.word().unwrap_or_default()),
-        };
-        match crate::steps::answered(ctx, at, answered).await {
-            Ok(()) => {}
-            Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
-            Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
-            Err(Unanswered::Failed(_)) => return Done::Failed(Box::new(crate::unavailable())),
-        }
-    }
-    if let Some(step) = step {
-        ctx.keep_reused(Reused { step, digest, kept });
+    if let Err(refused) = crate::outside::keep(ctx, place, kept).await {
+        return unanswered(refused);
     }
     done
+}
+
+/// What an `ai` call that couldn't go out, or whose answer couldn't be
+/// kept, gives its site: the runtime's failure or fault, and a
+/// capability's own failure, which an `ai` call has none of, as
+/// `unavailable`.
+pub(crate) fn unanswered(refused: Unanswered) -> Done {
+    match refused {
+        Unanswered::Failure(failure) => Done::Failed(failure),
+        Unanswered::Fault(kind) => Done::Fault(kind),
+        Unanswered::Failed(_) => Done::Failed(Box::new(crate::unavailable())),
+    }
+}
+
+/// The `max_concurrent:` of the connection `ai:` names, when a package
+/// fills it (area 11, "Calling"; chunk 7.9d): its `ai` calls take the
+/// connection's slots as its own operations' calls do. The built-in
+/// driver's connection takes none.
+pub(crate) fn max_concurrent_of(ai: &Ai<'_>) -> Option<u32> {
+    let AiDriver::Package(_) = &ai.plan.driver else {
+        return None;
+    };
+    ai.providers?
+        .plan
+        .connections
+        .iter()
+        .find(|connection| connection.name == ai.plan.connection)?
+        .max_concurrent
 }
 
 /// The model's name as a package is asked for it: what its `ModelId`
@@ -1041,15 +1083,7 @@ fn replayed(
     made: Call,
     kept: Kept,
 ) -> Done {
-    let now = ctx.now();
-    let answer = match &kept {
-        Kept::Answer(text) => Answer::Wire(text.clone()),
-        Kept::Condition(rule) => Answer::Failed(rule.word().to_string()),
-        Kept::Malformed(_) => Answer::Failed(RuleKey::Malformed.word().to_string()),
-    };
-    let capabilities = ctx.capabilities_mut();
-    let place = capabilities.sent(&made, Source::Replayed, now);
-    capabilities.ended(place, &answer, Some(0));
+    crate::outside::given_back(ctx, &made, &kept.logged());
     match kept {
         Kept::Answer(text) => match decode(ai, site, asked, &text) {
             Ok(value) => Done::Value(value),
@@ -1489,105 +1523,20 @@ fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: 
     completion(Some(&content), None, "stop")
 }
 
-/// Sends one attempt's request through the capability seam, and again
-/// while the provider couldn't be reached or asked for it later, as long
-/// as the call's `timeout:` lasts: its last answer and where it came from,
-/// or what the call gives instead. On a host with no clock, as a test's,
-/// it is sent again at once, at most [`jadpo_std::ai::SENDS`] times.
-///
-/// Each send again first takes what it sends from the call's limits, and
-/// isn't made when they can't cover it, the last answer standing; the
-/// send it follows, which nothing answered, is charged what it sent
-/// (chunk 7.9c). The last send is its caller's to charge.
-pub(crate) async fn sent(
-    ctx: &mut Ctx<'_>,
-    made: Call,
-    request: Request,
-    (began, timeout_ms): (Option<u64>, u64),
-    values: Option<&str>,
-    resend: crate::ai_budget::Resend<'_>,
-) -> Result<(Answer, Source), Done> {
-    let host = ctx.host();
-    let mut sends = 1;
-    let mut unanswered: Option<(Answer, Source)> = None;
-    loop {
-        let spent = match (began, host.monotonic_ms()) {
-            (Some(began), Some(now)) => now.saturating_sub(began),
-            _ => 0,
-        };
-        let left = timeout_ms.saturating_sub(spent);
-        if left == 0 {
-            return Ok((Answer::TimedOut, Source::Live));
-        }
-        if let Some((answer, source)) = unanswered.take() {
-            if !crate::ai_budget::top_up(ctx, resend.taken, resend.input).await {
-                return Ok((answer, source));
-            }
-            resend.used.add(crate::ai_budget::Used {
-                input: resend.input,
-                ..Default::default()
-            });
-        }
-        let mut request = request.clone();
-        request.timeout_ms = left;
-        let url = request.url.clone();
-        let body = request.body.clone().unwrap_or_default();
-        let shown = ctx.host().call_log().is_some();
-        let call = made.clone().with_request(request);
-        let answer = match crate::effects::exchange(ctx, call.clone()).await {
-            Ok(answer) => answer,
-            Err(Unanswered::Failure(failure)) => return Err(Done::Failed(failure)),
-            Err(Unanswered::Fault(kind)) => return Err(Done::Fault(kind)),
-            Err(Unanswered::Failed(_)) => {
-                return Err(Done::Failed(Box::new(crate::unavailable())));
-            }
-        };
-        let source = ctx
-            .capabilities()
-            .calls()
-            .last()
-            .map_or(Source::Live, |logged| logged.source);
-        if shown {
-            log(ctx, &call, (&url, &body, values), &answer);
-        }
-        let asked = match &answer {
-            Answer::Unavailable | Answer::Unknown => None,
-            Answer::RetryAfter(millis) => Some(*millis),
-            _ => return Ok((answer, source)),
-        };
-        if sends >= jadpo_std::ai::SENDS {
-            return Ok((answer, source));
-        }
-        sends += 1;
-        if let Some(began) = began {
-            let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
-            let left = timeout_ms.saturating_sub(spent);
-            let mut random = [0u8; 8];
-            let random = host.random(&mut random).then_some(random);
-            let Some(wait) = crate::provider::retry_wait(sends - 1, asked, left, random) else {
-                return Ok((answer, source));
-            };
-            if wait > 0 {
-                host.sleep(wait).await;
-            }
-        }
-        unanswered = Some((answer, source));
-    }
-}
-
 /// Keeps one attempt in `jadpo dev`'s call log, its request and answer in
 /// full (area 21, "Prompts and answers in logs": in development, in
 /// full).
-pub(crate) fn log(
-    ctx: &Ctx<'_>,
-    call: &Call,
-    (url, body, values): (&str, &str, Option<&str>),
-    answer: &Answer,
-) {
+pub(crate) fn log(ctx: &Ctx<'_>, call: &Call, values: Option<&str>, answer: &Answer) {
     let (Some(log), Some(logged)) = (ctx.host().call_log(), ctx.capabilities().calls().last())
     else {
         return;
     };
+    let (url, body) = call.request.as_deref().map_or(("", ""), |request| {
+        (
+            request.url.as_str(),
+            request.body.as_deref().unwrap_or_default(),
+        )
+    });
     let sent = match answer {
         Answer::Wire(text) => Some(text.as_ref()),
         _ => None,

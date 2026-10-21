@@ -37,8 +37,12 @@
 //! - [`effects`]: the one entry point for operations with effects
 //!   (chunk 7.0b): `clock.now`, `random`, `crypto` with its key,
 //!   `json.read` and `json.write` with the plan's codec, and `emit`, which
-//!   both executors call; and since chunk 7.0c every call that leaves the
+//!   both executors call; and since chunk 7.0c a call that leaves the
 //!   process ([`effects::call`]), through the [`capability`] seam.
+//! - `outside`: the one outside-call path (chunk 7.9d) every call kind
+//!   takes: where its answer comes from, the one retrying send, and the
+//!   one exchange through the seam, with its connection's
+//!   `max_concurrent:` slots and never waiting past the invocation's time.
 //! - [`runner`]: the runner (chunk 6.1a), which drives an executor for
 //!   work no request waits on, as the system ([`System`]): deferred until
 //!   after a response, while a route waits for it, or once per item of a
@@ -97,6 +101,7 @@ mod limits;
 mod migrate;
 pub mod outbox;
 mod outcome;
+mod outside;
 mod places;
 mod policy;
 pub mod polls;

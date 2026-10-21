@@ -1,6 +1,6 @@
 //! Provider calls (area 11, "Calling" and "Decoding"; chunk 7.2c): a
 //! provider package's operation called through its connection, on the
-//! capability seam ([`crate::effects::send`]), so it is refused inside an
+//! one outside-call path ([`crate::outside`]), so it is refused inside an
 //! open transaction, logged without its values, and recorded and replayed
 //! with the other effects.
 //!
@@ -37,9 +37,11 @@
 //! site ([`Functions`]); an operation's `wire_output:` is read whole and
 //! turned into its output by its `decode:`. Only the fields of the answer
 //! its site reads are decoded ([`CallSite`]). A call that may be sent again
-//! is retried as its connection's `retry:` allows ([`retry_wait`]), and one
-//! safe to repeat that gets no answer in time is its site's `timed_out`
-//! failure where its `attempt` maps it.
+//! is retried as its connection's `retry:` allows ([`retry_wait`]), by the
+//! one retrying send every outside call takes ([`crate::outside::send`]),
+//! under its connection's `max_concurrent:`; and one safe to repeat that
+//! gets no answer in time is its site's `timed_out` failure where its
+//! `attempt` maps it.
 
 use std::fmt;
 use std::rc::Rc;
@@ -49,7 +51,7 @@ use std::cell::RefCell;
 use jadpo_std::HttpMethod;
 use jadpo_std::provider::{
     Address, CallSite, ConnectionPlan, CredentialScheme, OperationPlan, PathPart, Protocol,
-    ProviderPlan, RETRY_BASE_MS, RetryPlan,
+    ProviderPlan, RETRY_BASE_MS,
 };
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::types::FailurePlan;
@@ -229,11 +231,12 @@ fn retry_after(response: &Response) -> Option<u64> {
 }
 
 /// How long to wait before sending a call again after attempt `attempt`
-/// (1 for the first), with `left` milliseconds of its `retry:` left: the
+/// (1 for the first), with `left` milliseconds left of its `retry:` and of
+/// its invocation's time, whichever ends sooner (chunk 7.9d): the
 /// provider's `Retry-After` when it gave one, otherwise [`RETRY_BASE_MS`]
 /// doubled for each attempt before, drawn evenly from zero to that ceiling
 /// with `random`'s eight bytes (full jitter), or the ceiling itself without
-/// them. `None` when the wait would outlast `retry:`.
+/// them. `None` when the wait would outlast what is left.
 pub fn retry_wait(
     attempt: u32,
     asked: Option<u64>,
@@ -635,29 +638,36 @@ pub async fn call(
     // A step of an action with several changing calls (area 12; chunk
     // 7.5b): given its recorded answer back, or sent at its place.
     let did_nothing = did_nothing(providers, op);
-    let stepped = crate::steps::step(
+    let comes = crate::outside::comes_from(
         ctx,
-        crate::steps::Proposed {
-            operation: &name,
-            fields,
-            repeat: op.repeat,
-            changes: op.changes,
-            window_ms: plan
-                .idempotency
-                .as_ref()
-                .and_then(|idempotency| idempotency.window_ms),
-            did_nothing: &did_nothing,
+        crate::outside::Asking {
+            step: Some(crate::steps::Proposed {
+                operation: &name,
+                fields,
+                repeat: op.repeat,
+                changes: op.changes,
+                window_ms: plan
+                    .idempotency
+                    .as_ref()
+                    .and_then(|idempotency| idempotency.window_ms),
+                did_nothing: &did_nothing,
+            }),
+            rerun: None,
         },
     )
     .await;
-    let step = match stepped {
-        Ok(crate::steps::Stepped::Untracked) => None,
-        Ok(crate::steps::Stepped::Send(at)) => Some(at),
-        Ok(crate::steps::Stepped::Replay(answered)) => {
+    let step = match comes {
+        Ok(crate::outside::Comes::Send(place)) => place.step,
+        Ok(crate::outside::Comes::Recorded { answered, at }) => {
             // Logged as the step it is (chunk 7.5f).
             let mut made = made;
-            made.step = ctx.steps_at();
+            made.step = at;
             return replayed(ctx, providers, op, &name, made, answered, site);
+        }
+        Ok(crate::outside::Comes::Reused(_) | crate::outside::Comes::Opened(_)) => {
+            return Done::Fault(FaultKind::Defect(
+                "a provider's call given back a model's answer".into(),
+            ));
         }
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -691,8 +701,9 @@ pub async fn call(
     made.step = step;
     made.key = sent_key;
     let mut step = step;
-    let mut answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
-        Ok(answer) => answer,
+    let sending = crate::outside::Sending::provider(plan, ctx.host());
+    let mut answer = match crate::outside::send(ctx, &made, sending).await {
+        Ok(sent) => sent.whole(),
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
@@ -731,8 +742,9 @@ pub async fn call(
         }
         step = next;
         made.step = next;
-        answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
-            Ok(answer) => answer,
+        let sending = crate::outside::Sending::provider(plan, ctx.host());
+        answer = match crate::outside::send(ctx, &made, sending).await {
+            Ok(sent) => sent.whole(),
             Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
             Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
             Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
@@ -879,15 +891,12 @@ fn replayed(
     site: Site<'_>,
 ) -> Done {
     use crate::steps::Answered;
-    let now = ctx.now();
     let answer = match &answered {
         Answered::Wire(text) => Answer::Wire(text.clone()),
         Answered::Failed(code) => Answer::Failed(code.clone()),
         Answered::Done => Answer::Value(Value::Unit),
     };
-    let capabilities = ctx.capabilities_mut();
-    let place = capabilities.sent(&made, crate::capability::Source::Replayed, now);
-    capabilities.ended(place, &answer, Some(0));
+    crate::outside::given_back(ctx, &made, &answer);
     match answered {
         Answered::Wire(text) => decode(ctx, providers, op, name, &text, site),
         Answered::Failed(code) => failed(providers, op, name, &code),
@@ -922,62 +931,6 @@ pub fn timed_out() -> Failure {
     failure.kind = Some("timed_out".to_string());
     failure.status = Some(504);
     failure
-}
-
-/// Sends `made` through the capability seam, and again while `retry`
-/// lasts when sending it again is safe (area 11, question 8; chunk
-/// 7.2c2): a call that never left or that the provider said did nothing,
-/// whatever it changes, honouring its `Retry-After`; and one that may have
-/// acted only when it changes nothing or takes its package's key, which it
-/// sends again unchanged. Each attempt is logged as the call it is. On a
-/// host with no timer, as a test's, it is sent again at once, as many
-/// times as `retry:` allows. Under its connection's `max_concurrent:`,
-/// each attempt waits for one of the connection's slots and gives it back
-/// once answered (chunk 7.6c), so no slot is held while it waits to be
-/// sent again. The last attempt's answer.
-async fn retried(
-    ctx: &mut Ctx<'_>,
-    made: &Call,
-    retry: RetryPlan,
-    max_concurrent: Option<u32>,
-) -> Result<Answer, Unanswered> {
-    let host = ctx.host();
-    let began = host.monotonic_ms();
-    let mut attempt = 1;
-    loop {
-        let slot = match max_concurrent {
-            Some(limit) => Some(host.slots().take(&made.connection, limit).await),
-            None => None,
-        };
-        let answer = crate::effects::exchange(ctx, made.clone()).await;
-        drop(slot);
-        let answer = answer?;
-        let asked = match &answer {
-            Answer::Unavailable => None,
-            Answer::RetryAfter(millis) => Some(*millis),
-            Answer::Unknown | Answer::TimedOut if made.repeat != Repeat::Unkeyed => None,
-            _ => return Ok(answer),
-        };
-        if attempt >= retry.attempts {
-            return Ok(answer);
-        }
-        let Some(began) = began else {
-            // No timer: nothing measures `within:` or waits.
-            attempt += 1;
-            continue;
-        };
-        let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
-        let left = retry.within_ms.saturating_sub(spent);
-        let mut random = [0u8; 8];
-        let random = host.random(&mut random).then_some(random);
-        let Some(wait) = retry_wait(attempt, asked, left, random) else {
-            return Ok(answer);
-        };
-        if wait > 0 {
-            host.sleep(wait).await;
-        }
-        attempt += 1;
-    }
 }
 
 /// Why a request couldn't be made.

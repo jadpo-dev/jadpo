@@ -1,5 +1,6 @@
-//! The `files` capability (area 16, "Files"; chunk 6.4b), on the
-//! capability seam ([`crate::effects::call`]): a store's `put` and a ranged
+//! The `files` capability (area 16, "Files"; chunk 6.4b), on the one
+//! outside-call path ([`crate::effects::call`], [`crate::outside`]), sent
+//! once since a store has no `retry:`: a store's `put` and a ranged
 //! `read` of a stored file, each an outside call through the connection
 //! that fills `files`, so each is refused inside an open transaction,
 //! logged without its bytes, and recorded and replayed with the other
@@ -141,27 +142,28 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
     // from its place, so a rerun writes the same object rather than a
     // second one, and an answered one is given back without being sent.
     let operation = format!("{connection}.{PUT}");
-    let stepped = crate::steps::step(
+    let comes = crate::outside::comes_from(
         ctx,
-        crate::steps::Proposed {
-            operation: &operation,
-            fields: vec![
-                ("type".to_string(), media.as_bytes().to_vec()),
-                ("bytes".to_string(), held.to_vec()),
-            ],
-            // Sent again, it writes the same object under the same key.
-            repeat: Repeat::Safe,
-            changes: true,
-            window_ms: None,
-            did_nothing: &[],
+        crate::outside::Asking {
+            step: Some(crate::steps::Proposed {
+                operation: &operation,
+                fields: vec![
+                    ("type".to_string(), media.as_bytes().to_vec()),
+                    ("bytes".to_string(), held.to_vec()),
+                ],
+                // Sent again, it writes the same object under the same key.
+                repeat: Repeat::Safe,
+                changes: true,
+                window_ms: None,
+                did_nothing: &[],
+            }),
+            rerun: None,
         },
     )
     .await;
-    let step = match stepped {
-        Ok(crate::steps::Stepped::Untracked) => None,
-        Ok(crate::steps::Stepped::Send(at)) => Some(at),
-        Ok(crate::steps::Stepped::Replay(answered)) => {
-            let at = ctx.steps_at();
+    let step = match comes {
+        Ok(crate::outside::Comes::Send(place)) => place.step,
+        Ok(crate::outside::Comes::Recorded { answered, at }) => {
             let key = at
                 .and_then(|at| crate::steps::object_id(ctx, at))
                 .map(|id| key_for(&id));
@@ -174,20 +176,18 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
                     let mut made = Call::new(connection, PUT, input, Repeat::Keyed);
                     // Logged as the step it is (chunk 7.5f).
                     made.step = at;
-                    let now = ctx.now();
-                    let capabilities = ctx.capabilities_mut();
-                    let place = capabilities.sent(&made, crate::capability::Source::Replayed, now);
-                    capabilities.ended(
-                        place,
-                        &crate::capability::Answer::Value(Value::Unit),
-                        Some(0),
-                    );
+                    crate::outside::given_back(ctx, &made, &Answer::Value(Value::Unit));
                     Done::Value(file_value(connection, &key, None, size, &variant.name))
                 }
                 _ => Done::Fault(FaultKind::Defect(format!(
                     "`{operation}`'s recorded answer isn't one a store gives"
                 ))),
             };
+        }
+        Ok(_) => {
+            return Done::Fault(FaultKind::Defect(format!(
+                "`{operation}` given back a model's answer"
+            )));
         }
         Err(refused) => return unanswered(refused, &format!("`{operation}`")),
     };

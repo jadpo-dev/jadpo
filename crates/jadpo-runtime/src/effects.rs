@@ -15,14 +15,17 @@
 //! handed over as [`Effects`]: the interpreter builds it from its plan,
 //! compiled code from its statics.
 //!
-//! Since chunk 7.0c a call that leaves the process (a provider's
-//! operation, a store's file, an email) runs here too, through [`call`],
-//! the capability seam's one entry point ([`crate::capability`]): refused
-//! inside an open transaction, logged on its invocation through the
-//! context's capabilities ([`Ctx::capabilities`]), its answer kept by a
-//! recording and given back by a replay, and answered by the driver the
-//! host gives, or a fake a test gives in its place. It is asynchronous,
-//! since a call waits on the outside, where [`run`] never waits.
+//! Since chunk 7.0c a call that leaves the process with no `retry:` of
+//! its own (a store's file, an email, a capability's delivery) runs here
+//! too, through [`call`], on the capability seam ([`crate::capability`]):
+//! refused inside an open transaction, logged on its invocation through
+//! the context's capabilities ([`Ctx::capabilities`]), its answer kept by
+//! a recording and given back by a replay, and answered by the driver the
+//! host gives, or a fake a test gives in its place. Since chunk 7.9d it
+//! goes out the one way every outside call does
+//! ([`crate::outside`]), which a provider's operation and the `ai` calls
+//! take with their own retries. It is asynchronous, since a call waits on
+//! the outside, where [`run`] never waits.
 
 use std::rc::Rc;
 
@@ -202,18 +205,21 @@ pub enum Unanswered {
     Fault(FaultKind),
 }
 
-/// Sends `call` from `ctx`, the one way a call leaves the process (chunk
-/// 7.0c): its value, or why it gave none. What the running action has
-/// only read is a snapshot, closed before the call goes out once the
-/// versions of the rows it loaded are read (chunk 7.4); refused while a
-/// transaction that has written is open (area 6, "Outside calls hold no
-/// transaction"); in a replayed run, answered from the recording without
-/// going out (area 17); otherwise sent through the driver the host gives
-/// for its connection, logged on the invocation as it goes out and again
-/// as it is answered ([`crate::capability::Logged`]), and its answer kept
-/// while recording. The log never holds its input or its answer.
+/// Sends `call` from `ctx`, a call with no `retry:` of its own (a store's
+/// file, an email, a capability's delivery), through the one outside-call
+/// path ([`crate::outside::send`], chunk 7.9d), once: its value, or why it
+/// gave none. What the running action has only read is a snapshot, closed
+/// before the call goes out once the versions of the rows it loaded are
+/// read (chunk 7.4); refused while a transaction that has written is open
+/// (area 6, "Outside calls hold no transaction"); in a replayed run,
+/// answered from the recording without going out (area 17); otherwise
+/// sent through the driver the host gives for its connection, logged on
+/// the invocation as it goes out and again as it is answered
+/// ([`crate::capability::Logged`]), and its answer kept while recording.
+/// The log never holds its input or its answer.
 pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
-    match send(ctx, call).await? {
+    let sent = crate::outside::send(ctx, &call, crate::outside::Sending::once()).await?;
+    match answered(call.repeat, sent.whole())? {
         Given::Value(value) => Ok(value),
         // Only a provider's operation is answered as it was sent, or with
         // its generated default.
@@ -223,7 +229,7 @@ pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
     }
 }
 
-/// What a call that was answered gives ([`send`]).
+/// What a call that was answered gives ([`answered`]).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Given {
     /// Its value: a capability's, or a fake's in a provider's place.
@@ -237,75 +243,6 @@ pub enum Given {
     /// A provider operation's recording, for its site to fill (chunk
     /// 7.2d2).
     Recorded,
-}
-
-/// [`call`], giving a provider's answer as it was sent where its driver
-/// answers so (chunk 7.2c).
-pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
-    let repeat = call.repeat;
-    answered(repeat, exchange(ctx, call).await?)
-}
-
-/// [`send`], giving the driver's answer as it classified it, for a caller
-/// that decides whether to send it again (a provider's call, chunk 7.2c2):
-/// refused inside an open transaction or with no driver, a replayed run's
-/// recorded answer, or the driver's.
-pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswered> {
-    let now = ctx.now();
-    // No transaction stays open while the call is out: one that has only
-    // read closes, and the next store operation begins another (area 6,
-    // "Outside calls hold no transaction"; chunk 7.4).
-    if ctx.close_snapshot().await.is_err() {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(Unanswered::Failure(Box::new(crate::unavailable())));
-    }
-    if ctx.transaction_open() {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(Unanswered::Fault(FaultKind::CallInTransaction(call.name())));
-    }
-    if let Some(replayed) = ctx.capabilities_mut().replayed(&call) {
-        return match replayed {
-            Ok(answer) => {
-                let capabilities = ctx.capabilities_mut();
-                let place = capabilities.sent(&call, crate::capability::Source::Replayed, now);
-                capabilities.ended(place, &answer, Some(0));
-                Ok(answer)
-            }
-            Err(recorded) => {
-                ctx.capabilities_mut().refused(&call, now);
-                Err(Unanswered::Fault(FaultKind::Defect(format!(
-                    "a replayed run calling `{}` where its recording has {recorded}",
-                    call.name()
-                ))))
-            }
-        };
-    }
-    let host = ctx.host();
-    let Some(driver) = host.capability(&call.connection) else {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(Unanswered::Failure(Box::new(crate::misconfigured())));
-    };
-    // A step of an action with several changing calls is recorded before
-    // it is sent (area 12, "The record"; chunk 7.5b).
-    if let Some(at) = call.step
-        && let Err(unsent) = crate::steps::sending(ctx, at).await
-    {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(unsent);
-    }
-    let began = host.monotonic_ms();
-    let place = ctx
-        .capabilities_mut()
-        .sent(&call, driver.source_of(&call), now);
-    let answer = driver.call(&call).await;
-    let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
-    ctx.capabilities_mut().ended(place, &answer, took);
-    // A step answered, its answer not kept yet, which `jadpo test` may
-    // crash after (chunk 7.5d).
-    if call.step.is_some() && crate::crashes::due(ctx, crate::crashes::Boundary::AfterSend) {
-        return Err(Unanswered::Fault(FaultKind::Crashed));
-    }
-    Ok(answer)
 }
 
 /// What `answer` gives a call that may be sent again as `repeat` says.
