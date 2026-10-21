@@ -365,6 +365,59 @@ fn related_column_types_read_as_the_runtimes_types() {
     });
 }
 
+/// A connection keeps no session state between transactions (§2.6; chunk
+/// 8.2i): Hyperdrive pools by transaction, so the next transaction on a
+/// server connection may be another Worker's. The isolation level is the
+/// transaction's own and every statement unnamed, so after a repeatable
+/// read transaction that runs statements with parameters, its connection,
+/// reused for the next statement, is at the server's own level and holds
+/// no prepared statement.
+#[test]
+fn a_connection_keeps_no_session_state_between_transactions() {
+    let Some((runtime, store)) = fresh("session") else {
+        return;
+    };
+    runtime.block_on(async {
+        let mut transaction = store
+            .begin_at(jadpo_runtime::Isolation::RepeatableRead)
+            .await
+            .unwrap();
+        let read = transaction
+            .query(
+                "SELECT current_setting('transaction_isolation'), $1::int8 + 1, pg_backend_pid()",
+                &[SqlValue::Int8(1)],
+            )
+            .await
+            .unwrap();
+        let [level, sum, during] = read[0].as_slice() else {
+            panic!("{read:?}");
+        };
+        assert_eq!(level, &SqlValue::Text("repeatable read".into()));
+        assert_eq!(sum, &SqlValue::Int8(2));
+        transaction
+            .execute("SELECT $1::text", &[SqlValue::Text("again".into())])
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        let after = store
+            .query_once(
+                "SELECT current_setting('transaction_isolation'), (SELECT count(*) FROM pg_prepared_statements), pg_backend_pid()",
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            after,
+            vec![vec![
+                SqlValue::Text("read committed".into()),
+                SqlValue::Int8(0),
+                during.clone()
+            ]],
+            "the same connection, reused"
+        );
+    });
+}
+
 #[test]
 fn a_batch_runs_statements_one_after_another() {
     let Some((runtime, store)) = fresh("batch") else {

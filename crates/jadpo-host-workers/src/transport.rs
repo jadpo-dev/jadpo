@@ -22,6 +22,11 @@
 //!   so a failure before anything has been read or written over TLS is
 //!   `InvalidData`, as a certificate or a name that doesn't check is
 //!   natively: a driver reports it rather than trying again.
+//! - **A Hyperdrive binding's host is the platform's pooler**
+//!   ([`Transport::is_pooler`]; chunk 8.2i): once the binding's host has
+//!   been read, `connect()` to it reaches Hyperdrive inside the platform
+//!   for the isolate's life, without TLS, which Hyperdrive uses to the
+//!   database.
 //! - **No Unix sockets**: a Worker has no file system.
 //! - **A stream holds its streams' locks only while it reads or writes**,
 //!   so it can be upgraded between them, and closes its socket when
@@ -102,6 +107,14 @@ impl Transport for WorkersTransport {
 
     fn now_ms(&self) -> Option<i64> {
         crate::wall_clock()
+    }
+
+    /// A Hyperdrive binding's host, which this isolate has read.
+    fn is_pooler(&self, endpoint: &Endpoint) -> bool {
+        match endpoint {
+            Endpoint::Tcp { host, port } => crate::hyperdrive::is_pooler(host, *port),
+            Endpoint::Unix { .. } => false,
+        }
     }
 }
 

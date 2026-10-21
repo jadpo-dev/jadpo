@@ -2659,14 +2659,32 @@ whose entry names them.
   queue, chosen here); a route's streamed answer (`ai.stream`) sent as a
   `ReadableStream`. Proved under workerd by a subscriber and a batch run
   longer than one invocation's budget.
-- [ ] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d:
-  PostgreSQL through Cloudflare's pooling: a database connection's
-  address from a Hyperdrive binding on Workers, its caching required off,
-  unnamed statements and no session state kept (§2.6), TLS to it through
-  `startTls()`, a check that fails at the first write after it, where
-  Workers reports one, classified as natively; how a connection names
-  its binding is decided here, or asked. Proved under workerd's Hyperdrive binding against the run's
-  PostgreSQL.
+- [x] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d.
+  Built (area 5, "PostgreSQL through Hyperdrive"; §2.6): a connection
+  names its binding through its `url:` setting, whose variable is a
+  Hyperdrive binding on Workers, so `app.jadpo` gains nothing (decided in
+  the chunk, 2026-10-21; a text binding stays a direct address);
+  `WorkersHost::variable` reads one as its address, of its parts
+  percent-encoded, never its `connectionString` with `sslmode=disable`,
+  its host the platform's pooler (`Transport::is_pooler`), which the
+  driver reaches without TLS: the binding's socket offers none (workerd's
+  source), so TLS to the database is Hyperdrive's, by default against the
+  public authorities, and the entry's TLS through `startTls()` holds for a
+  direct connection only; a certificate Workers refuses at the first
+  write after `startTls()` the fault naming the server it is natively
+  (`Checked`; unavailable before). `jadpo build` writes each database's
+  address as a Hyperdrive binding in the Wrangler file, its id from
+  `JADPO_HYPERDRIVE_<variable>`, else none, which `wrangler deploy`
+  refuses, the screen's `database` line saying `no id` with an alert to
+  create one with caching off, which a Worker can't check (area 14, "A
+  Worker's database"). No session state, held by a live test. Proved
+  under workerd: a Hyperdrive binding's address and pooler reached in a
+  later request; PostgreSQL over TLS through `startTls()` and a refused
+  certificate's fault; example 23's kiosk served through workerd's
+  Hyperdrive binding to the run's PostgreSQL. Left for 8.2n on the real
+  account: the Worker-to-Hyperdrive leg without TLS on Cloudflare's
+  network, and tokio-postgres's named statement describing a `vector` or
+  `geography` column through Hyperdrive.
 - [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
   and 8.2i: the six connections an invocation may hold, counted across
   `Transport` and `Fetch` and shared with `waitUntil`, a seventh waiting
@@ -2733,7 +2751,10 @@ whose entry names them.
   the one-second limit, its module against the plan's size limit, and
   the client's address and the six connections on the real edge,
   measured; whether the outbound guard's names can reach a private
-  address there checked.
+  address there checked. From 8.2i: the Worker reaching Hyperdrive
+  without TLS as its binding's address says, Hyperdrive's default TLS
+  checking the database's certificate, and a `vector` column read through
+  it (tokio-postgres describes one through a named statement).
 
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and

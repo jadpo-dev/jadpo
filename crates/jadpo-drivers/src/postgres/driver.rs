@@ -183,15 +183,93 @@ async fn secured(
                 ErrorKind::InvalidData | ErrorKind::InvalidInput | ErrorKind::Unsupported
             ) =>
         {
-            let whom = match trust {
-                Trust::Roots => "the public authorities Jadpo trusts",
-                Trust::Authorities(_) => "the authority its connection's `authority:` names",
-            };
-            Err(StoreError::Fault(format!(
-                "the database server at `{host}` failed the certificate check against {whom}: {error}"
-            )))
+            Err(failed_check(host, trust, &error))
         }
         Some(Err(_)) | None => Err(StoreError::Unavailable),
+    }
+}
+
+/// The fault a certificate check that failed is: the server named, and
+/// whom it was checked against, since trying again changes nothing.
+fn failed_check(host: &str, trust: Trust<'_>, error: &std::io::Error) -> StoreError {
+    let whom = match trust {
+        Trust::Roots => "the public authorities Jadpo trusts",
+        Trust::Authorities(_) => "the authority its connection's `authority:` names",
+    };
+    StoreError::Fault(format!(
+        "the database server at `{host}` failed the certificate check against {whom}: {error}"
+    ))
+}
+
+/// A stream just upgraded to TLS, keeping the certificate check its first
+/// read or write failed, if one did: Workers opens an upgraded socket at
+/// once and checks the server's certificate as the first bytes go out,
+/// saying so only then (chunk 8.2i), where a native host's upgrade has
+/// already refused it.
+struct Checked {
+    inner: Box<dyn Stream>,
+    /// Whether anything has gone through, after which a failure is the
+    /// connection's.
+    through: bool,
+    refused: Rc<RefCell<Option<std::io::Error>>>,
+}
+
+impl Checked {
+    fn note<T>(
+        &mut self,
+        polled: Poll<std::io::Result<T>>,
+        moved: impl Fn(&T) -> bool,
+    ) -> Poll<std::io::Result<T>> {
+        match &polled {
+            Poll::Ready(Ok(done)) if moved(done) => self.through = true,
+            Poll::Ready(Err(error))
+                if !self.through && error.kind() == std::io::ErrorKind::InvalidData =>
+            {
+                *self.refused.borrow_mut() =
+                    Some(std::io::Error::new(error.kind(), error.to_string()));
+            }
+            _ => {}
+        }
+        polled
+    }
+}
+
+impl tokio::io::AsyncRead for Checked {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let polled = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        let read = buf.filled().len() > before;
+        self.note(polled, |_| read)
+    }
+}
+
+impl tokio::io::AsyncWrite for Checked {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let polled = std::pin::Pin::new(&mut self.inner).poll_write(cx, bytes);
+        self.note(polled, |written| *written > 0)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let polled = std::pin::Pin::new(&mut self.inner).poll_flush(cx);
+        self.note(polled, |()| false)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
 
@@ -208,7 +286,9 @@ struct Pool {
 
 impl Pool {
     /// Opens a connection, trying each endpoint in turn, over TLS where
-    /// its security says to.
+    /// its security says to; the platform's own pooler (Hyperdrive, on
+    /// Workers) without, since the pooler uses TLS to the database (chunk
+    /// 8.2i).
     async fn connect(&self) -> Result<Client, StoreError> {
         let mut last = StoreError::Unavailable;
         for endpoint in &self.endpoints {
@@ -216,10 +296,21 @@ impl Pool {
                 last = StoreError::Unavailable;
                 continue;
             };
-            let stream = match (self.security.trust(endpoint), endpoint) {
+            let trust = if self.transport.is_pooler(endpoint) {
+                None
+            } else {
+                self.security.trust(endpoint)
+            };
+            // A check Workers reports at the first write over TLS.
+            let refused = Rc::new(RefCell::new(None));
+            let stream = match (trust, endpoint) {
                 (Some(trust), Endpoint::Tcp { host, .. }) => {
                     match secured(&*self.transport, stream, host, trust).await {
-                        Ok(secure) => secure,
+                        Ok(secure) => Box::new(Checked {
+                            inner: secure,
+                            through: false,
+                            refused: Rc::clone(&refused),
+                        }) as Box<dyn Stream>,
                         Err(StoreError::Unavailable) => {
                             last = StoreError::Unavailable;
                             continue;
@@ -229,7 +320,13 @@ impl Pool {
                 }
                 _ => stream,
             };
-            match self.config.connect_raw(stream, NoTls).await {
+            let connected = self.config.connect_raw(stream, NoTls).await;
+            if let (Err(_), Some(error), Some(trust), Endpoint::Tcp { host, .. }) =
+                (&connected, refused.borrow_mut().take(), trust, endpoint)
+            {
+                return Err(failed_check(host, trust, &error));
+            }
+            match connected {
                 Ok((client, connection)) => {
                     self.transport.spawn(Box::pin(async move {
                         // The connection ends when its client is dropped or
@@ -886,11 +983,16 @@ mod tests {
     }
 
     /// A host whose every connection is one end of a pipe the test holds
-    /// the other end of, and whose upgrade fails the check when told to.
+    /// the other end of, and whose upgrade fails the check when told to:
+    /// at once, as natively, or at the first write over it, as Workers
+    /// reports one.
     struct Scripted {
         seen: RefCell<Seen>,
         server: RefCell<Option<DuplexStream>>,
         refuse_certificate: bool,
+        refuse_at_first_write: bool,
+        /// The host its platform's pooler is at, if any.
+        pooler: Option<&'static str>,
     }
 
     impl Scripted {
@@ -899,7 +1001,53 @@ mod tests {
                 seen: RefCell::default(),
                 server: RefCell::new(None),
                 refuse_certificate,
+                refuse_at_first_write: false,
+                pooler: None,
             })
+        }
+    }
+
+    /// An upgraded stream whose certificate check fails as the first bytes
+    /// go out, as Workers' `startTls()` reports one.
+    struct RefusedAtFirstWrite;
+
+    impl tokio::io::AsyncRead for RefusedAtFirstWrite {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            _: &mut tokio::io::ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "TLS with db.example.test: the socket broke",
+            )))
+        }
+    }
+
+    impl tokio::io::AsyncWrite for RefusedAtFirstWrite {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            _: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "TLS with db.example.test: the socket broke",
+            )))
+        }
+
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
         }
     }
 
@@ -922,12 +1070,15 @@ mod tests {
                 .upgraded
                 .push((name.to_string(), matches!(trust, Trust::Authorities(_))));
             let refuse = self.refuse_certificate;
+            let at_first_write = self.refuse_at_first_write;
             Box::pin(async move {
                 if refuse {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         "invalid peer certificate: UnknownIssuer",
                     ))
+                } else if at_first_write {
+                    Ok(Box::new(RefusedAtFirstWrite) as Box<dyn Stream>)
                 } else {
                     Ok(stream)
                 }
@@ -939,6 +1090,10 @@ mod tests {
         fn sleep(&self, _: u64) -> LocalFuture<'_, ()> {
             Box::pin(std::future::pending())
         }
+
+        fn is_pooler(&self, endpoint: &Endpoint) -> bool {
+            matches!((endpoint, self.pooler), (Endpoint::Tcp { host, .. }, Some(pooler)) if host == pooler)
+        }
     }
 
     /// What the store's first connection sent first, the server answering
@@ -949,7 +1104,16 @@ mod tests {
         answer: u8,
         refuse_certificate: bool,
     ) -> (Result<(), StoreError>, [u8; 8], Seen) {
-        let host = Scripted::new(refuse_certificate);
+        first_words_on(Scripted::new(refuse_certificate), url, security, answer)
+    }
+
+    /// [`first_words`] over `host`.
+    fn first_words_on(
+        host: Rc<Scripted>,
+        url: &str,
+        security: Security,
+        answer: u8,
+    ) -> (Result<(), StoreError>, [u8; 8], Seen) {
         let store = Postgres::secured(url, Rc::clone(&host) as Rc<dyn Transport>, security)
             .expect("a store");
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -1052,6 +1216,57 @@ mod tests {
             fault(&done).contains("the authority its connection's `authority:` names"),
             "{done:?}"
         );
+    }
+
+    /// Workers checks the certificate as the first bytes go out over TLS,
+    /// so its upgrade succeeds and the startup's first write fails: the
+    /// same fault naming the server as natively, never a store down for
+    /// now (chunk 8.2i).
+    #[test]
+    fn a_check_that_fails_at_the_first_write_after_the_upgrade_is_a_fault() {
+        let host = Rc::new(Scripted {
+            refuse_at_first_write: true,
+            ..Rc::into_inner(Scripted::new(false)).expect("one")
+        });
+        let (done, first, seen) = first_words_on(
+            host,
+            "postgres://app@db.example.test/app",
+            Security::Roots,
+            b'S',
+        );
+        assert_eq!(first, SSL_REQUEST);
+        assert_eq!(seen.upgraded, [("db.example.test".to_string(), false)]);
+        assert!(
+            fault(&done).contains(
+                "the database server at `db.example.test` failed the certificate check against the public authorities"
+            ),
+            "{done:?}"
+        );
+    }
+
+    /// The platform's own pooler (Hyperdrive, on Workers) is reached
+    /// without TLS, whatever the connection says, since the pooler is what
+    /// uses TLS to the database (chunk 8.2i).
+    #[test]
+    fn the_platforms_pooler_is_reached_without_tls() {
+        for security in [
+            Security::Roots,
+            Security::Authorities(vec![vec![0x30]]),
+            Security::Plain,
+        ] {
+            let host = Rc::new(Scripted {
+                pooler: Some("5f0c9a7e2b1d4c3e8f6a7b9c0d1e2f3a.hyperdrive.local"),
+                ..Rc::into_inner(Scripted::new(false)).expect("one")
+            });
+            let (_, first, seen) = first_words_on(
+                host,
+                "postgresql://app@5f0c9a7e2b1d4c3e8f6a7b9c0d1e2f3a.hyperdrive.local:5432/app",
+                security.clone(),
+                b'S',
+            );
+            assert_ne!(first, SSL_REQUEST, "{security:?}");
+            assert!(seen.upgraded.is_empty(), "{security:?}");
+        }
     }
 
     #[test]
