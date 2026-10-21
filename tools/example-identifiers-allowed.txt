@@ -540,3 +540,7 @@ outline
 # Area 12's rule `step.late_failure` (chunk 7.5e): a failure that comes
 # late, after a changing call took effect; ordinary English.
 late
+
+# The Fetch standard's `redirect: "manual"`, which the Workers host sends
+# with every request so no redirect is followed (chunk 8.2a)
+manual

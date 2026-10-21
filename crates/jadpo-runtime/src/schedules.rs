@@ -2,7 +2,7 @@
 //! "Watching schedules" and question 16; chunk 6.2).
 //!
 //! A host calls [`tick`] once a minute (natively its own timer, on
-//! Workers the cron trigger, chunk 8.2), more often when a schedule's
+//! Workers the cron trigger, chunk 8.2f), more often when a schedule's
 //! `every:` is shorter. Duplicate ticks, and ticks from several instances,
 //! are harmless: each schedule's state row (`jadpo_schedules`, in
 //! `schedules: { store: }`) decides.

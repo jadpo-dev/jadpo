@@ -2406,21 +2406,30 @@ each other. Two refusals the entry listed, `Driver.disk` on Workers
 and `Driver.cloudflare_queues` in a native deployable, are 8.1o2's,
 whose entry names them.
 
-- [ ] **8.2a The Workers host** `opus · xhigh`, after 8.1o:
-  `jadpo-host-workers`, the runtime's `Host` on Workers over
-  wasm-bindgen with Jadpo's own bindings: randomness from
-  `crypto.getRandomValues`, the wall and monotonic clocks, timers on
-  `setTimeout`, settings from the Worker's bindings, the work a response
-  leaves through `ctx.waitUntil`, rate limits in the isolate's memory,
-  and 6.7's budgets set to Workers' (30 s for `waitUntil`, 15 minutes'
-  wall time for the cron); the drivers' `Transport` over `connect()` and
-  `startTls()`; the package driver's `Fetch` over `fetch()`, aborting
-  through an `AbortSignal` and following no redirect (`redirect:
-  "manual"`), and the outbound guard the same way; the factory's
-  supplies for Workers. Proved under workerd on this machine by a probe
-  Worker built for wasm32, against servers the test starts (an echo,
-  TLS signed by a test authority workerd is told to trust, HTTP), a
-  step of the gate's `wasm32` group.
+- [x] **8.2a The Workers host** `opus · xhigh`, after 8.1o. Built:
+  `jadpo-host-workers` over wasm-bindgen with Jadpo's own bindings to
+  `connect()`, `ctx.waitUntil`, `fetch`, `setTimeout` and `crypto`
+  (workers-rs rejected: its `start_tls` unwraps and its build tool
+  downloads unpinned tools): `WorkersHost`, the runtime's `Host` for one
+  invocation (Web Crypto's randomness, `Date.now()` and a monotonic clock
+  from it, timers on `setTimeout`, settings from the bindings, `defer`
+  through `waitUntil`, rate limits in the isolate's memory, the factory's
+  drivers per invocation, and 6.7's budgets set to Workers': 30 s after a
+  response and for work handed on, 15 minutes for the cron);
+  `WorkersTransport` over `connect()` and `startTls()` (checked for the
+  name, a connection's own authority refused, a failure before anything
+  has gone through over TLS a failed check); `WorkersFetch`, aborted
+  through an `AbortSignal` at its timeout, whole or streamed, following no
+  redirect (`redirect: "manual"`), and `WorkersOutbound`, the outbound
+  guard the same way (HTTPS only, no address written as one that isn't
+  public, `jadpo_runtime::public_address` now shared with the native
+  host); `supplies()` for the factory. Proved by sixteen tests of a probe
+  Worker built for wasm32, bound by wasm-bindgen's library at the lock's
+  release and run under workerd 1.20261007.1, pinned in
+  `tools/workers/` and installed there by `npm ci`, against servers the
+  test starts (TCP, TLS from a trusted and an untrusted authority,
+  HTTP), an aborted call's connection let go while the invocation goes
+  on; a step of the gate's `wasm32` group. §2.6's "The Workers host".
 - [ ] **8.2b A Workers deployable from `jadpo build`** `opus · xhigh`,
   after 8.2a and 8.1o2: `jadpo build <deployable>` for a `Target.wasm`
   deployable: its Rust (the program's crate and a `cdylib` exporting the
@@ -2483,8 +2492,9 @@ whose entry names them.
   PostgreSQL through Cloudflare's pooling: a database connection's
   address from a Hyperdrive binding on Workers, its caching required off,
   unnamed statements and no session state kept (§2.6), TLS to it through
-  `startTls()`; how a connection names its binding is decided here, or
-  asked. Proved under workerd's Hyperdrive binding against the run's
+  `startTls()`, a check that fails at the first write after it, where
+  Workers reports one, classified as natively; how a connection names
+  its binding is decided here, or asked. Proved under workerd's Hyperdrive binding against the run's
   PostgreSQL.
 - [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
   and 8.2i: the six connections an invocation may hold, counted across
@@ -2519,7 +2529,8 @@ whose entry names them.
   its Wrangler file accepted by `wrangler deploy`; its cold start against
   the one-second limit, its module against the plan's size limit, and
   the client's address and the six connections on the real edge,
-  measured.
+  measured; whether the outbound guard's names can reach a private
+  address there checked.
 
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
