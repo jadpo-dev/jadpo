@@ -801,7 +801,13 @@ entity Project {
   it refers to. A webhook's reply (area 11) goes back to whoever sent the
   webhook, so it is an output to `Access.public`: every field it carries,
   or that decided it, is one anyone at all may read, though its action
-  runs as the system (Richard, 2026-10-21).
+  runs as the system (Richard, 2026-10-21). Since the system finds every
+  record its grants name, a reply that counts or tests for records shows
+  whether they are there, so they must be records anyone at all may
+  read; and a failure is answered to the sender too, so what decides
+  whether the action fails (a condition, a `get` or a change by `id`
+  finding nothing, a `conflict:`) and a failure's client fields are held
+  to the same proof (chunk 7.9g).
 - **Conditions and orders.** Which records pass a condition, and the order
   they come in, show the fields they test, so a query, `get`, include or
   write may filter or order on a field only when everyone who may run it
@@ -3935,6 +3941,179 @@ subscriber post_circulated {
 }
 ```
 
+A webhook's reply action runs as the system, which finds every record its
+grants name, and its reply goes back to whoever sent the webhook, so a
+reply that counts or tests for records only the system may read shows
+whether they are there, and so does whether it fails (chunk 7.9g). Each
+is proved as an output to `Access.public`:
+
+```jadpo check project=e-reply-shows-records file=app.jadpo hidden
+use support
+
+application {
+    connections: {
+        phone: {
+            package: AcmeVoice.v1
+            domains: [support]
+            credential: config.phone_key
+            host: config.phone_address
+            webhooks: {
+                secret: config.phone_auth_token
+                replies: {
+                    incoming_call: support.answer_call
+                }
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=config.jadpo hidden
+config {
+    phone_address: Url
+    phone_auth_token: Text {
+        secret: true
+    }
+    phone_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=shared/providers/acme_voice/v1/package.jadpo hidden
+/// Acme Voice's calls API.
+package AcmeVoice.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-reply-shows-records file=shared/providers/acme_voice/v1/provider.jadpo hidden
+/// Acme Voice's API, which signs its webhooks as Twilio does.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.twilio
+        event_id: "CallSid"
+        event_type: "CallStatus"
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=shared/providers/acme_voice/v1/types/call_reply.jadpo hidden
+/// What a caller hears.
+public type CallReply = Object {
+    spoken: Text
+    hang_up: Bool {
+        wire_name: "hangUp"
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=shared/providers/acme_voice/v1/events/incoming_call.jadpo hidden
+/// A call is ringing, and waits to be told what to do.
+public type IncomingCall = Event {
+    wire_name: "ringing"
+    reply: CallReply
+    occurred_at: Instant
+    call_sid: Text {
+        wire_name: "CallSid"
+    }
+    from: Text {
+        wire_name: "From"
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=domains/support/entities/phone_log.jadpo hidden
+/// A call the desk answered.
+entity PhoneLog {
+    id: Uuid
+    call_sid: Text
+    caller: Text
+    rang_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=domains/support/queries/recent_calls.jadpo hidden
+use support/entities { PhoneLog }
+
+/// The last calls the desk answered.
+query recent_calls() -> List<PhoneLog> {
+    from: PhoneLog
+    order: [PhoneLog.rang_at desc]
+    limit: 10
+}
+```
+
+```jadpo check project=e-reply-shows-records file=domains/support/types/call_count.jadpo hidden
+/// How many calls the desk answered.
+type CallCount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=e-reply-shows-records file=domains/support/actions/count_calls.jadpo hidden
+use support/types { CallCount }
+use support/queries { recent_calls }
+
+/// How many of the last calls the desk answered.
+action count_calls() -> CallCount {
+    return CallCount(list.count(recent_calls()))
+}
+```
+
+```jadpo check project=e-reply-shows-records file=domains/support/actions/answer_call.jadpo migrate=initial hidden
+use shared/providers/acme_voice
+
+/// Answers a call Acme Voice rings through.
+action answer_call(event: AcmeVoice.IncomingCall) -> AcmeVoice.CallReply {
+    return AcmeVoice.CallReply {
+        spoken: "Thanks for calling."
+        hang_up: false
+    }
+}
+```
+
+```jadpo check project=e-reply-shows-records file=domains/support/actions/answer_call.jadpo expect=policy.output_field_unproved
+use support/entities { PhoneLog }
+use support/queries { recent_calls }
+use shared/providers/acme_voice
+
+/// Answers a call Acme Voice rings through, welcoming a caller back.
+action answer_call(event: AcmeVoice.IncomingCall) -> AcmeVoice.CallReply {
+    var earlier: List<PhoneLog> = recent_calls()
+    var mut said: Text = "Thanks for calling."
+    if (list.count(earlier) > 0) {
+        said = "Welcome back."
+    }
+    return AcmeVoice.CallReply {
+        spoken: said
+        hang_up: false
+    }
+}
+```
+
+```text output
+error: `answer_call`'s reply shows whether a `PhoneLog` is there, which not everyone may read
+ --> domains/support/actions/answer_call.jadpo:12:12
+   |
+12 |     return AcmeVoice.CallReply {
+   |            ^^^^^^^^^^^^^^^^^^^^^ decided by whether a `PhoneLog` is there
+  reason: A webhook's reply action answers whoever sent the webhook, with its reply or a failure, so each is an output to `Access.public`, and only schedules and subscribers may read a `PhoneLog`. Which reply is sent shows whether the records it counted or tested are there, since the action runs as the system and finds every one.
+  next: Decide the reply without counting or testing for a `PhoneLog` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 11 files
+```
+
 ### `policy.role_field_create_forbidden`
 
 A note's `create:` names only `owner_id`, so a note is only ever created by its owner, and `owner_id` is set from the caller rather than the request:
@@ -4300,4 +4479,5 @@ Not yet:
 | Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |
 | Lines of the actions background work calls (chosen in chunk 6.6b) | Every action a schedule, a subscriber or a batch reaches, itself or through another, is checked against its own line under `actions:`, so a line naming `Access.public` and not `Access.system` is `policy.system_grant_missing` however deep; a listed action's line decides the creates, updates, deletes and transitions of its own body wherever it is called from, as the plan builds them, for a route as for background work (Phase 6 review: before, only the action run was read for its line, and what it called used its entities' grants) | 2026-10-19 |
 | The tenant background work names (Phase 6 review) | The tenant id an event or a batch run names must come from a record of that tenant the action read or wrote under its caller's policy, proved from the provenance 6.1c tracks; otherwise `policy.event_tenant_unproved`, so a caller can't aim system work at a tenant they don't belong to (Richard, as recommended) | 2026-10-19 |
+| Whether a record is there, for a webhook's reply (chunk 7.9g) | A webhook's reply action finds every record its grants name, so what a condition, a loop or a count over records decides shows whether they are there: a reply decided by it, or a failure raised on it, needs records anyone at all may read (`Access.public` in the entity's `read:`), a record the action created being its own. Its failure goes back to whoever sent the webhook as its reply does, so what decides whether it fails (what decided a `reject` or an `attempt`, a `get` or an update or delete by `id` finding nothing, a write's `conflict:` arms) and a failure's client fields are proved as the reply is (`policy.output_field_unproved`). A route's caller still learns nothing from whether a record is there, since it is given only those it may read. A failure's client fields declared in a domain are proved for every caller too: they were looked up by the name the key gives, `support.CallerBlocked`, which the failure table doesn't use, and so never found (decided for Richard, the stricter reading) | 2026-10-21 |
 | The system inside a request, and a webhook's reply (Phase 7 review, chunk 7.9b) | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s run with no tenant, never every tenant; each reaches only records every tenant shares, and what only `Access.public` lets it in to is `policy.system_grant_missing` at where it is named, as for background work. A webhook's reply is an output to `Access.public`: each field it carries, or that decided it, is one anyone at all may read, a record the action created holding what it set (`policy.output_field_unproved`), proved in the checker where routes' outputs are (Richard, 2026-10-21) | 2026-10-21 |

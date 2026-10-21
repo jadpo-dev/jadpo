@@ -41,12 +41,12 @@ use std::time::Duration;
 
 use jadpo_drivers::factory::{Unbuilt, Why};
 use jadpo_runtime::compiled::Program;
-use jadpo_runtime::config::{self, ConfigValues, Mode, ProblemKind, StartProblem};
+use jadpo_runtime::config::{self, ConfigValues, Mode};
+use jadpo_runtime::deployable::{Compared, Faults, Log, Then, compare, problem, setting_problem};
 use jadpo_runtime::http::{Request, Response};
-use jadpo_runtime::serve::{Answered, Observer};
-use jadpo_runtime::{Executor, LocalFuture, MigrateError, StoreError};
+use jadpo_runtime::{Executor, LocalFuture};
 use jadpo_std::Unreadable;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::http::{AppHandler, Handler, MakeHandler, WorkerThread, serve};
 use crate::{Drivers, Runtime, supplies};
@@ -66,9 +66,7 @@ const MOST_WAIT: Duration = Duration::from_secs(10);
 /// Runs `deployable` until it is stopped: its exit code, 1 when it
 /// couldn't start.
 pub fn run(deployable: &Deployable) -> ExitCode {
-    let log = Log {
-        stamp: deployable.stamp,
-    };
+    let log = Log::new(deployable.stamp, standard_output);
     match start(deployable, &log) {
         Ok(()) => ExitCode::SUCCESS,
         Err(problems) => {
@@ -210,33 +208,19 @@ fn check_stores(
     let mut problems = Vec::new();
     for store in deployable.stores {
         let Some(database) = drivers.database(store.name) else {
-            let why = drivers
-                .unbuilt()
-                .iter()
-                .find(|unbuilt| unbuilt.connection == store.name);
-            problems.push(unaddressed(store.name, why));
+            problems.push(unaddressed(store.name, drivers.unbuilt()));
             continue;
         };
-        let migrations: Vec<jadpo_std::Migration> = store
-            .migrations
-            .iter()
-            .map(|migration| jadpo_std::Migration {
-                name: migration.name.to_string(),
-                digest: migration.digest.to_string(),
-                sql: String::new(),
-            })
-            .collect();
         let mut wait = Duration::from_secs(1);
         let mut said = false;
         loop {
-            match runtime.block_on(jadpo_runtime::standing(database, &migrations)) {
-                Ok(standing) => {
-                    if !standing.pending.is_empty() {
-                        problems.push(pending(store.name, &standing.pending));
-                    }
+            match runtime.block_on(compare(database, store, Then::Restart)) {
+                Compared::Current => break,
+                Compared::Refused(problem) => {
+                    problems.push(problem);
                     break;
                 }
-                Err(MigrateError::Store(StoreError::Unavailable)) => {
+                Compared::Unreachable => {
                     if !said {
                         log.event(
                             "runtime.waiting",
@@ -257,10 +241,6 @@ fn check_stores(
                         return Ok(drivers.unbuilt().to_vec());
                     }
                     wait = (wait * 2).min(MOST_WAIT);
-                }
-                Err(error) => {
-                    problems.push(diverged(store.name, &error));
-                    break;
                 }
             }
         }
@@ -311,184 +291,22 @@ pub fn listen_address(host: Option<String>, port: Option<String>) -> Result<Sock
         .ok_or_else(|| format!("`HOST` names no address this machine can listen on: `{host}`."))
 }
 
-/// A problem with its code and what to say about it.
-fn problem(code: &str, message: impl Into<String>) -> Value {
-    json!({ "problem": code, "message": message.into() })
+/// A store whose database has no driver, given the connections the
+/// factory couldn't build: its connection names no address, or the
+/// factory says why not.
+fn unaddressed(store: &str, unbuilt: &[Unbuilt]) -> Value {
+    let why = unbuilt
+        .iter()
+        .find(|unbuilt| unbuilt.connection == store)
+        .filter(|unbuilt| !matches!(unbuilt.why, Why::Unset(None)));
+    jadpo_runtime::deployable::unaddressed(store, why.map(|why| why as &dyn std::fmt::Display))
 }
 
-/// A setting that stops the start, named with its variable, never its
-/// value (area 10).
-fn setting_problem(found: &StartProblem) -> Value {
-    let (code, message) = match &found.kind {
-        ProblemKind::Missing => (
-            "setting_missing",
-            format!(
-                "`{}` isn't set: `{}` is required, so the app can't start without it.",
-                found.variable, found.field
-            ),
-        ),
-        ProblemKind::Invalid { rule } => (
-            "setting_invalid",
-            format!(
-                "`{}` isn't a valid `{}`: it breaks `{rule}`.",
-                found.variable, found.field
-            ),
-        ),
-    };
-    let mut out = Map::new();
-    out.insert("problem".into(), code.into());
-    out.insert("setting".into(), found.field.as_str().into());
-    out.insert("variable".into(), found.variable.as_str().into());
-    if let ProblemKind::Invalid { rule } = &found.kind {
-        out.insert("rule".into(), rule.as_str().into());
-    }
-    out.insert("message".into(), message.into());
-    Value::Object(out)
-}
-
-/// A store whose database has no driver: its connection names no address,
-/// or the factory couldn't build it.
-fn unaddressed(store: &str, why: Option<&Unbuilt>) -> Value {
-    let message = match why.map(|unbuilt| &unbuilt.why) {
-        Some(Why::Unset(None)) | None => format!(
-            "`{store}` names no address: give its connection in `app.jadpo` a `url:` read from a setting."
-        ),
-        Some(_) => why.map_or_else(String::new, |unbuilt| format!("{unbuilt}.")),
-    };
-    json!({ "problem": "store_unbuilt", "store": store, "message": message })
-}
-
-/// A store whose database hasn't applied every migration the build holds.
-fn pending(store: &str, names: &[String]) -> Value {
-    let count = names.len();
-    json!({
-        "problem": "migrations_pending",
-        "store": store,
-        "pending": names,
-        "message": format!(
-            "`{store}` hasn't applied {} the app was built with: run `jadpo migrate apply` against it, then start the app again.",
-            if count == 1 { "1 migration".to_string() } else { format!("{count} migrations") }
-        ),
-    })
-}
-
-/// A store whose database doesn't match the build's migrations, or
-/// couldn't be read.
-fn diverged(store: &str, error: &MigrateError) -> Value {
-    let (code, message) = match error {
-        MigrateError::Unknown { name } => (
-            "migrations_diverged",
-            format!(
-                "`{store}` applied `{name}`, which this build doesn't have: it was built from older code than the database runs."
-            ),
-        ),
-        MigrateError::Changed { name } => (
-            "migrations_diverged",
-            format!(
-                "`{store}` applied `{name}` as it was before it changed: the migration was edited after it ran."
-            ),
-        ),
-        MigrateError::OutOfOrder { name, missing } => (
-            "migrations_diverged",
-            format!("`{store}` applied `{name}` but not `{missing}`, which comes before it."),
-        ),
-        MigrateError::Store(error) => (
-            "store_refused",
-            format!("`{store}` couldn't be read: {}.", store_error(error)),
-        ),
-        other => (
-            "store_refused",
-            format!("`{store}`'s migrations couldn't be checked: {other:?}."),
-        ),
-    };
-    json!({ "problem": code, "store": store, "message": message })
-}
-
-/// A store's error in words, never an address.
-fn store_error(error: &StoreError) -> String {
-    match error {
-        StoreError::Fault(why) | StoreError::Statement(why) => why.clone(),
-        StoreError::Unavailable => "it can't be reached".into(),
-        StoreError::ConcurrentChange => "another change got there first".into(),
-        StoreError::Conflict { constraint } => format!("`{constraint}` refused it"),
-    }
-}
-
-/// The log: one JSON object a line on standard output, each carrying the
-/// build stamp.
-#[derive(Clone, Copy, Debug)]
-struct Log {
-    stamp: Stamp,
-}
-
-impl Log {
-    fn event<const N: usize>(&self, event: &str, fields: [(&str, Value); N]) {
-        let line = self.line(event, fields);
-        let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "{line}");
-        let _ = out.flush();
-    }
-
-    /// `event` with the stamp, then `fields`, as one line of JSON.
-    fn line<const N: usize>(&self, event: &str, fields: [(&str, Value); N]) -> String {
-        let mut out = Map::new();
-        out.insert("event".into(), event.into());
-        out.insert("build".into(), self.stamp.build.into());
-        out.insert(
-            "commit".into(),
-            self.stamp.commit.map_or(Value::Null, Value::from),
-        );
-        out.insert("modified".into(), self.stamp.modified.into());
-        out.insert("compiler".into(), self.stamp.compiler.into());
-        out.insert("deployable".into(), self.stamp.deployable.into());
-        out.insert("target".into(), self.stamp.target.into());
-        for (key, value) in fields {
-            out.insert(key.into(), value);
-        }
-        Value::Object(out).to_string()
-    }
-}
-
-/// Logs each fault behind a 500 with its `.jadpo` frames (areas 4 and 17).
-struct Faults(Log);
-
-impl Observer for Faults {
-    fn answered(&self, answered: &Answered<'_>) {
-        let Some(fault) = &answered.response.fault else {
-            return;
-        };
-        self.0.event(
-            "operation.failed",
-            [
-                ("classification", fault.kind.classification().into()),
-                (
-                    "route",
-                    answered
-                        .response
-                        .route
-                        .as_deref()
-                        .map_or(Value::Null, Value::from),
-                ),
-                (
-                    "request_id",
-                    answered
-                        .response
-                        .header("x-request-id")
-                        .map_or(Value::Null, Value::from),
-                ),
-                (
-                    "stack",
-                    Value::Array(
-                        fault
-                            .stack(answered.program.places())
-                            .into_iter()
-                            .map(Value::from)
-                            .collect(),
-                    ),
-                ),
-            ],
-        );
-    }
+/// Writes `line` to standard output, at once.
+fn standard_output(line: &str) {
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{line}");
+    let _ = out.flush();
 }
 
 /// A worker whose program couldn't be made, which never happens once the
@@ -509,45 +327,6 @@ impl Handler for Unstarted {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const STAMP: Stamp = Stamp {
-        build: "b_3c41d07a9e12",
-        commit: Some("8d113e6"),
-        modified: false,
-        compiler: "0.1.0",
-        deployable: "app",
-        target: "native",
-    };
-
-    #[test]
-    fn every_event_carries_the_stamp() {
-        let line = Log { stamp: STAMP }.line("runtime.stopped", []);
-        let read: Value = serde_json::from_str(&line).unwrap();
-        assert_eq!(
-            read,
-            json!({
-                "event": "runtime.stopped",
-                "build": "b_3c41d07a9e12",
-                "commit": "8d113e6",
-                "modified": false,
-                "compiler": "0.1.0",
-                "deployable": "app",
-                "target": "native",
-            })
-        );
-        let unstamped = Log {
-            stamp: Stamp {
-                commit: None,
-                modified: true,
-                ..STAMP
-            },
-        }
-        .line("runtime.waiting", [("store", Value::from("main"))]);
-        let read: Value = serde_json::from_str(&unstamped).unwrap();
-        assert_eq!(read["commit"], Value::Null);
-        assert_eq!(read["modified"], Value::Bool(true));
-        assert_eq!(read["store"], "main");
-    }
 
     #[test]
     fn it_listens_where_host_and_port_say() {
@@ -573,49 +352,5 @@ mod tests {
                 .contains("`PORT` isn't a port")
         );
         assert!(listen_address(None, Some("70000".into())).is_err());
-    }
-
-    #[test]
-    fn a_setting_is_named_by_its_variable_never_its_value() {
-        let missing = setting_problem(&StartProblem {
-            field: "database_url".into(),
-            variable: "DATABASE_URL".into(),
-            secret: true,
-            kind: ProblemKind::Missing,
-        });
-        assert_eq!(missing["problem"], "setting_missing");
-        assert_eq!(missing["variable"], "DATABASE_URL");
-        let invalid = setting_problem(&StartProblem {
-            field: "database_url".into(),
-            variable: "DATABASE_URL".into(),
-            secret: true,
-            kind: ProblemKind::Invalid {
-                rule: "format".into(),
-            },
-        });
-        assert_eq!(invalid["rule"], "format");
-        assert_eq!(
-            invalid["message"],
-            "`DATABASE_URL` isn't a valid `database_url`: it breaks `format`."
-        );
-    }
-
-    #[test]
-    fn a_store_behind_names_its_pending_migrations() {
-        let one = pending("main", &["20261020T0626_hold_deliveries".to_string()]);
-        assert_eq!(one["pending"], json!(["20261020T0626_hold_deliveries"]));
-        assert!(
-            one["message"]
-                .as_str()
-                .unwrap()
-                .starts_with("`main` hasn't applied 1 migration the app was built with")
-        );
-        let unnamed = unaddressed("main", None);
-        assert!(
-            unnamed["message"]
-                .as_str()
-                .unwrap()
-                .contains("give its connection in `app.jadpo` a `url:`")
-        );
     }
 }

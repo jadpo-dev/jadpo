@@ -146,7 +146,11 @@ impl Walk<'_> {
                     _ => false,
                 }
             }
-            Src::Caller(_) | Src::Deep(_) | Src::Typed { .. } | Src::Marked { .. } => false,
+            Src::Caller(_)
+            | Src::Deep(_)
+            | Src::Present { .. }
+            | Src::Typed { .. }
+            | Src::Marked { .. } => false,
         }
     }
 

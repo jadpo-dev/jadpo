@@ -112,8 +112,9 @@ impl Started {
             drivers: DriverSettings::read(plan.connections, values),
             auth: AuthSettings::read(routes.and_then(|routes| routes.identity.as_ref()), values),
             // A source the target doesn't accept is the deployable's
-            // problem to report as it starts (chunk 8.2d); until then the
-            // connection's own address, never a guess.
+            // problem to report as it starts, which a Workers deployable
+            // does (chunk 8.2d), serving nothing; here the connection's
+            // own address, never a guess.
             client: ClientAddress::read(
                 routes.and_then(|routes| routes.client_address.as_ref()),
                 values,

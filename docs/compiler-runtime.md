@@ -2159,8 +2159,10 @@ hands what the response left to `runner::after_response`, runs the tick,
 and tells an `Observer` of each request and tick. The native server's
 handler that serves an application is `jadpo_host_native::http::AppHandler`,
 `Serving` on a `NativeHost` with that host's deferred work, tracked ticks
-and drain; Workers' fetch and scheduled events call the same `Serving`
-(chunks 8.2d and 8.2f). `jadpo dev` runs the interpreter on it, swapping in each
+and drain; Workers' fetch event calls the same `Serving`, one a request
+on that invocation's host sharing the isolate's `http::Worker`
+(`Serving::sharing`; chunk 8.2d), and its scheduled event will (chunk
+8.2f). `jadpo dev` runs the interpreter on it, swapping in each
 save that checks cleanly, and only observes it to print its lines. Since chunk
 6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
 its timer starts no more ticks, and each worker waits, at most
@@ -2550,7 +2552,8 @@ the response (`Response::client`) before anything else runs, and
 (`Request::address`; natively the peer's), so the Workers host uses the same
 code with `Target::Workers`, where the default is `cloudflare`
 (`CF-Connecting-IP`) and `read` refuses every other source (`NotAccepted`)
-for the deployable to report as a start-up problem (chunk 8.2d). With
+for the deployable to report as a start-up problem, which a Workers
+deployable does (`client_address_refused`; chunk 8.2d). With
 `hops: N` the client is the N-th address from the right of `X-Forwarded-For`
 (every line joined) or of `Forwarded`'s `for` parameters; a header that is
 short, invalid or missing gives the connection's address, never a guess, and
@@ -2930,7 +2933,8 @@ each setting's value decoded (never a secret's), the key settings' keys
 (`provider::Credentials`), what signing in reads
 (`http::signed::AuthSettings`), how a client's address is chosen on that
 target (`http::address::ClientAddress`; the interpreter runs on
-`Target::Native`, and Workers' host makes its own in chunk 8.2d) and how
+`Target::Native`, and the Workers host makes its own with
+`Program::with_config_on(values, Target::Workers)`, chunk 8.2d) and how
 long each purge waits. The context reaches it (`Ctx::started`): the
 runtime gives it to every context it makes for a program
 (`Ctx::of(executor, host, env)`: a request's, a delivery's, a tick's, a
@@ -3269,8 +3273,9 @@ shim as `main`, the compatibility date 2026-10-01, `no_bundle` with a rule
 per kind, and each setting without a default as a required secret).
 The screen gives the module's size raw and gzipped (miniz_oxide's deflate
 at level 6 and gzip's 18 bytes). Until chunk 8.2d,
-`jadpo_host_workers::deployable::fetch` makes the program once per
-isolate and answers every request 503. Proved
+`jadpo_host_workers::deployable::fetch` made the program once per
+isolate and answered every request 503 (since then, "Serving on
+Workers", below). Proved
 (`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group):
 teaching example 23 declared as a kiosk on Workers, built (42 s cold on
 the ten-core Mac, seconds warm), its files and Wrangler file as above,
@@ -3291,6 +3296,65 @@ registering it through an export of its own anyway; a direct dependency
 on `wasm-bindgen`, at a version the generator would have to know; `wasm-opt`, which `binaryen`
 would have to be downloaded for (chunk 9.2 tunes the module); and
 `vars` for settings, which take a value the build doesn't have.
+
+**Serving on Workers** (chunk 8.2d; area 14, "A Workers deployable").
+`jadpo_host_workers::deployable::fetch` is 8.1o's native handler for an
+isolate, returning a promise of the `Response`
+(`wasm_bindgen_futures::future_to_promise`), so the generated export and
+the shim are unchanged. The parts both hosts share moved into
+`jadpo_runtime::deployable`: the log (`Log`, one sorted JSON object a
+line with the stamp, given a sink: standard output natively, the
+console's `log` on Workers), the start-up problems (`setting_problem`,
+`unaddressed`, `client_address_refused`, `pending`, `diverged`), each
+store compared with the build's migrations (`compare`: `Current`,
+`Refused` with its problem, or `Unreachable`, which the native host waits
+for) and `Faults`, the observer logging `operation.failed`. An isolate
+starts at its first request (a thread-local `OnceCell`): the program
+made, `config::load` over the bindings (`HostVariables` of that
+request's `WorkersHost`), `ClientAddress::read` with `Target::Workers`,
+whose refusal is a problem, and `Program::with_config_on(values,
+Target::Workers)`; a failure is logged once and the isolate answers each
+request `http::unavailable` (503 with a request id, as the runtime
+answers). Each request then builds its drivers through the factory over
+`supplies()` on a `WorkersHost` of its own, and, until the isolate has
+found every store current, compares them first through that host's
+databases, answering 503 with `runtime.startup_failed` or
+`runtime.waiting` while one isn't, so a migration applied after a
+deploy is picked up at the next request; the first request to find them
+current logs `runtime.started`. The request is read from Workers'
+`Request` (its path and query as the URL gives them, every header, the
+body read through its stream up to `BODY_LIMIT` or marked too large, and
+no connection address, so the client is `CF-Connecting-IP`) and served
+by `Serving` on that host, sharing the isolate's `http::Worker`, its
+deferred work run through `waitUntil`; the `Response` is built with each
+header appended, no body for a status that has none, and a streamed
+answer read whole until chunk 8.2h. Proved under workerd
+(`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group, now
+given the run's PostgreSQL, which CI's `wasm32` job starts as the others
+do; a local run's listens on a Unix socket, which `connect()` can't
+open, so the test starts one of its own on `127.0.0.1`): teaching
+example 23's kiosk without `DATABASE_URL` answering 503 and logging the
+variable once; against a database missing its last migration answering
+503 and naming it, then, the migration applied, the same isolate booking
+a repair whose subscribers find it a bench and print its ticket while the
+request waits (`settle:`), the ticket read back, a thank-you's note
+pinned up after its 202 in `waitUntil`, its readiness check reaching the
+database, and 120 requests a minute for each `CF-Connecting-IP`, the
+121st 429 while another address is answered; every line one JSON object
+with the stamp, the database's address in none; checked locally against
+a server asking for a SCRAM password too. The module with it, on that
+kiosk: 12,814,132 bytes bound, 4.0 MB gzipped (6.9 MB code, 4.3 MB data,
+1.6 MB names), against 9.5 and 3.0 MB before, now that the module
+reaches the HTTP component (the identity routes among it), the runner,
+the drivers and the Workers host; past the 3 MB Cloudflare documents for
+a compressed Worker on its Free plan and inside the Paid plan's 10 MB,
+which chunk 8.2n measures against the real plan and chunk 9.2 tunes. *Rejected:* reading
+the settings at each request, which a Worker's fixed bindings don't
+need; keeping a failed migration check for the isolate's life, which
+would leave a deploy made before `jadpo migrate apply` refusing until
+its isolates were recycled; and one `Serving` an isolate over a host
+standing for whichever request is current, which an isolate serving
+requests at once would mix up.
 
 **The locale data a deployable carries** (chunk 8.2c; area 10,
 "Locales"). `jadpo test`, `jadpo dev` and the compiled step run with
@@ -4113,7 +4177,7 @@ it), may use them.
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
-| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); the golden todo built for wasm32 and smoke-tested in local workerd |
+| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, a record created and read back, in the `wasm32` group (built: chunks 8.2b and 8.2d); the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace

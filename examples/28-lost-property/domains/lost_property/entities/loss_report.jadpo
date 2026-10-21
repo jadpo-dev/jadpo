@@ -3,6 +3,9 @@
 // each field's kind must be listed in `ai: { personal_data: }`.
 // `to_models: false` keeps the address out of every prompt, whatever is
 // listed: the office writes to the passenger, the model never needs to.
+// A model's answer carries what its prompt was built from, so the reply
+// drafted from the passenger's name is `identifying` too, wherever it is
+// stored.
 //
 // Anyone on the website may report a loss, but only the office reads
 // one: the system, which drafts its reply in a subscriber.
@@ -22,8 +25,12 @@ entity LossReport {
     what_was_lost: ItemDescription
     lost_on: ServiceDay
     reader_locale: Locale
-    likely_found: Bool?
-    drafted_reply: DraftedReply?
+    likely_found: Bool? {
+        personal: PersonalData.identifying
+    }
+    drafted_reply: DraftedReply? {
+        personal: PersonalData.identifying
+    }
 
     policy: {
         create: [Access.public]

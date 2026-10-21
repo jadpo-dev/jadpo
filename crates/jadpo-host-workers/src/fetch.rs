@@ -165,7 +165,13 @@ fn broken(error: &JsValue) -> FetchError {
 
 /// Each header's name in lowercase, and its value.
 fn headers(answer: &web_sys::Response) -> Vec<(String, String)> {
-    let Ok(Some(entries)) = js_sys::try_iter(&answer.headers()) else {
+    listed(&answer.headers())
+}
+
+/// Each of `headers`' names in lowercase, and its value: a request's to a
+/// Worker too (chunk 8.2d).
+pub(crate) fn listed(headers: &Headers) -> Vec<(String, String)> {
+    let Ok(Some(entries)) = js_sys::try_iter(headers) else {
         return Vec::new();
     };
     entries
@@ -180,8 +186,11 @@ fn headers(answer: &web_sys::Response) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The next piece `reader` gives, or `None` at its end.
-async fn piece(reader: &ReadableStreamDefaultReader) -> Result<Option<Vec<u8>>, FetchError> {
+/// The next piece `reader` gives, or `None` at its end: an answer's, or a
+/// request's to a Worker (chunk 8.2d).
+pub(crate) async fn piece(
+    reader: &ReadableStreamDefaultReader,
+) -> Result<Option<Vec<u8>>, FetchError> {
     loop {
         let result = JsFuture::from(reader.read())
             .await
