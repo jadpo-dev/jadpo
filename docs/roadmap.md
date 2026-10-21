@@ -2393,34 +2393,134 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   its type plan, and each route's entry decoding a request straight into
   its input's struct and writing its output from its output's, `Value`
   kept where the runtime and the standard library take one.
-- [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
-  commit, PostgreSQL through Cloudflare's pooling; the client's address from
-  `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
-  5.1c), and a `client_address:` source other than `cloudflare` refused when
-  a project is built for Workers (area 10, "Client addresses"), which needs
-  deployables declared first.
-  From chunk 5.3: a deployable carries locale data only for its
-  application's supported locales (today all 533 are compiled in: about
-  3.5 MB of a 3.9 MB module, 1.2 MB gzipped).
-  From the Phase 6 review: the `trigger:` adapter; an `every:` under a
-  minute an error naming the schedule (area 12, decided 2026-10-19); a
-  batch carried on in a fresh invocation; 6.7's budgets set to Workers'
-  (30 s for `waitUntil`, 15 minutes' wall time for the cron).
-  From chunk 7.7c2: the queue handler calling `receiving::consume` and
+
+Chunk 8.2, WebAssembly on Cloudflare Workers, was split on 2026-10-21
+into the chunks below, taken in this order. All but 8.2n run on this
+machine with no Cloudflare account and no network past it: workerd,
+Cloudflare's own Workers runtime, pinned in `tools/workers/` and
+installed there by `npm ci` (never globally), and wasm-bindgen's Rust
+library at the version the lock holds, so a build downloads nothing.
+8.2a can run beside 8.1o2 and 8.1p; 8.2c beside 8.2a and 8.2b; 8.2l
+beside any chunk after 8.2a; 8.2m beside 8.2d; 8.2f and 8.2i beside
+each other. Two refusals the entry listed, `Driver.disk` on Workers
+and `Driver.cloudflare_queues` in a native deployable, are 8.1o2's,
+whose entry names them.
+
+- [ ] **8.2a The Workers host** `opus · xhigh`, after 8.1o:
+  `jadpo-host-workers`, the runtime's `Host` on Workers over
+  wasm-bindgen with Jadpo's own bindings: randomness from
+  `crypto.getRandomValues`, the wall and monotonic clocks, timers on
+  `setTimeout`, settings from the Worker's bindings, the work a response
+  leaves through `ctx.waitUntil`, rate limits in the isolate's memory,
+  and 6.7's budgets set to Workers' (30 s for `waitUntil`, 15 minutes'
+  wall time for the cron); the drivers' `Transport` over `connect()` and
+  `startTls()`; the package driver's `Fetch` over `fetch()`, aborting
+  through an `AbortSignal` and following no redirect (`redirect:
+  "manual"`), and the outbound guard the same way; the factory's
+  supplies for Workers. Proved under workerd on this machine by a probe
+  Worker built for wasm32, against servers the test starts (an echo,
+  TLS signed by a test authority workerd is told to trust, HTTP), a
+  step of the gate's `wasm32` group.
+- [ ] **8.2b A Workers deployable from `jadpo build`** `opus · xhigh`,
+  after 8.2a and 8.1o2: `jadpo build <deployable>` for a `Target.wasm`
+  deployable: its Rust (the program's crate and a `cdylib` exporting the
+  Worker's handlers through `jadpo-host-workers`, linking only the
+  drivers it reaches) built for `wasm32-unknown-unknown` in release,
+  offline and `--locked`, bound by wasm-bindgen's library, with Jadpo's
+  module shim and a Wrangler file (`wrangler.json`: the main module, no
+  bundling, the compatibility date, the settings it reads) in
+  `build/target/<deployable>/`; the build stamp's target `wasm`; the
+  module's size, raw and compressed, on the build's screen, and the Wasm
+  size measured with and without the `testing` feature.
+- [ ] **8.2c Locale data for the supported locales** `opus · xhigh`,
+  after 8.1o (from chunk 5.3): a deployable carries locale data only for
+  its application's supported locales (today all 533 are compiled in:
+  about 3.5 MB of a 3.9 MB module, 1.2 MB gzipped), chosen as `jadpo
+  build` builds it, native and Workers alike, `jadpo test` and `jadpo
+  dev` keeping every locale; a value written in a locale the deployable
+  doesn't carry falls back as area 10 says, or the chunk asks Richard;
+  the sizes before and after recorded.
+- [ ] **8.2d One route on workerd** `opus · xhigh`, after 8.2b: the
+  Worker's `fetch` handler, as 8.1o's native one: settings read from the
+  bindings through `config::load`, every problem logged as
+  `runtime.startup_failed`, the stores' migrations compared once per
+  isolate, the program made once per isolate and its drivers per request
+  (a socket belongs to the request that opened it), each request through
+  `Serving` with the client's address from `CF-Connecting-IP`
+  (`ClientAddress::read` with `Target::Workers`, built in 5.1c), and its
+  events as JSON lines with the stamp; a database on this machine over
+  `connect()`. Proved by a teaching example built for Workers and served
+  by workerd against the run's PostgreSQL, a record created and read
+  back (§2.7's Phase 8 row).
+- [ ] **8.2e Route tests on workerd with the same records** `opus ·
+  xhigh`, after 8.2d: the vertical slice's proof: a project's route
+  tests run on its compiled program inside workerd and each test's
+  record compared with the interpreter's (`jadpo_test::differential`),
+  the program built for wasm32 with the `testing` feature behind a
+  handler that runs one test by its key, its test database a copy on the
+  run's server reached over `connect()`; area 7's `todos` and a teaching
+  example passing with the same records, in the `compiled` group.
+- [ ] **8.2f The cron tick** `opus · xhigh`, after 8.2d: the Worker's
+  `scheduled` handler calling `schedules::tick` within the cron's 15
+  minutes, the minute's cron trigger written into the Wrangler file; an
+  `every:` under a minute an error naming the schedule when a Workers
+  deployable reaches it (area 12, decided 2026-10-19); SQS through
+  `receiving:` looped inside the minute's cron every 10 seconds, or its
+  delay documented. Proved through workerd's scheduled entry.
+- [ ] **8.2g The `trigger:` adapter** `opus · high`, after 8.2f:
+  `schedules: { trigger: }` (area 12, question 16): the native timer,
+  Cloudflare's cron, or an external tick another scheduler calls. The
+  external tick's surface isn't on the pages, so the chunk starts by
+  asking Richard with a recommendation.
+- [ ] **8.2h After the response** `opus · xhigh`, after 8.2d: outbox
+  delivery after commit in `waitUntil`, within its 30 seconds, the
+  minute's cron sweeping what it leaves; a batch carried on in a fresh
+  invocation (`Host::hand_on`: a request to the Worker itself or a
+  queue, chosen here); a route's streamed answer (`ai.stream`) sent as a
+  `ReadableStream`. Proved under workerd by a subscriber and a batch run
+  longer than one invocation's budget.
+- [ ] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d:
+  PostgreSQL through Cloudflare's pooling: a database connection's
+  address from a Hyperdrive binding on Workers, its caching required off,
+  unnamed statements and no session state kept (§2.6), TLS to it through
+  `startTls()`; how a connection names its binding is decided here, or
+  asked. Proved under workerd's Hyperdrive binding against the run's
+  PostgreSQL.
+- [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
+  and 8.2i: the six connections an invocation may hold, counted across
+  `Transport` and `Fetch` and shared with `waitUntil`, a seventh waiting
+  for one; `max_concurrent:`'s slots per isolate (decided 2026-10-21)
+  handing a free slot to a request waiting on another's without one
+  request's promise settled from another's, which Workers doesn't allow.
+  Proved under workerd.
+- [ ] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
+  (from chunk 7.7c2): the queue handler calling `receiving::consume` and
   answering each message (`ack()`, `retry({ delaySeconds })`), the kept
   events' deliveries in `waitUntil`; `wrangler_queues` written into the
   Wrangler file, its setting names and Jadpo's queue-name form checked
-  against Wrangler's own; `Driver.cloudflare_queues` refused in a native
-  deployable.
-  From the Phase 7 review: the six connections an invocation may hold,
-  counted across `Transport` and `Fetch` and shared with `waitUntil`;
-  `max_concurrent:` per isolate said in the deploy report, or decided
-  otherwise (**needs Richard**); SQS through `receiving:` looped inside
-  the minute's cron or its delay documented; passkeys on Workers built on
-  jadpo-value's pure-Rust checks or `passkey:` refused there (**needs
-  Richard**); `Driver.disk` refused on Workers; the `Fetch` aborting
-  through an `AbortSignal`, `redirect: "manual"` for the outbound guard;
-  the Wasm size measured with and without the `testing` feature.
+  against Wrangler's own (Wrangler pinned in `tools/workers/`, its
+  `deploy --dry-run`, no account). Proved through workerd's queue entry.
+- [ ] **8.2l Passkeys on Workers** `opus · high`, after 8.2a: passkeys
+  built on jadpo-value's pure-Rust ES256 and RSA checks (decided
+  2026-10-21): registration with no attestation and discoverable sign-in,
+  the challenge, origin, relying party, flags and counter checked as
+  `webauthn-rs` checks them, given by the Workers host; held to
+  `webauthn-rs`'s answers natively through the test authenticator, and a
+  passkey registered and signed in with under workerd.
+- [ ] **8.2m What `jadpo check` and `jadpo build` say for Workers**
+  `opus · high`, after 8.2b: a `client_address:` source other than
+  `cloudflare` refused for a Workers deployable (area 10, "Client
+  addresses"); `max_concurrent:` counted per isolate said by `jadpo
+  check` and on `jadpo build`'s screen (decided 2026-10-21); SMTP on port
+  25 refused there (area 11, "Targets").
+- [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m, **needs
+  Richard** (his Cloudflare account): a teaching example deployed with
+  Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
+  its Wrangler file accepted by `wrangler deploy`; its cold start against
+  the one-second limit, its module against the plan's size limit, and
+  the client's address and the six connections on the real edge,
+  measured.
+
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
