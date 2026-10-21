@@ -4,16 +4,17 @@
 //! runtime's fixed set, so executors and targets agree on what happened.
 //!
 //! - [`Transport`], [`Stream`] and [`Endpoint`]: how a driver reaches a
-//!   server, which the host decides (tokio natively, `connect()` sockets on
-//!   Workers).
+//!   server and secures the connection, which the host decides (tokio and
+//!   rustls natively, `connect()` sockets on Workers).
 //! - [`postgres`]: the PostgreSQL driver, behind the `postgres` feature,
 //!   and its error classification.
 //!
 //! - [`package`]: the package driver, behind the `package` feature: JSON
 //!   over HTTP through the [`package::Fetch`] the host gives (chunk 7.2c).
 //! - [`smtp`]: the SMTP driver, behind the `smtp` feature: a rendered
-//!   email written as one MIME message and handed over through the
-//!   [`smtp::Relay`] the host gives (chunk 7.3).
+//!   email written as one MIME message and handed to its server in an
+//!   SMTP conversation over the host's [`Transport`] (chunks 7.3 and
+//!   8.1b).
 //!
 //! Built so far: PostgreSQL (chunk 3.1), the package driver (chunk 7.2c)
 //! and SMTP (chunk 7.3). Redis and S3 come with their areas.
@@ -39,4 +40,4 @@ pub mod postgres;
 pub mod smtp;
 mod transport;
 
-pub use transport::{Endpoint, Stream, Transport};
+pub use transport::{Endpoint, Stream, Transport, within};

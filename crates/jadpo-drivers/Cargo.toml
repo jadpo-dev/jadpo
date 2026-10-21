@@ -18,8 +18,9 @@ postgres = ["dep:tokio-postgres", "dep:bytes"]
 # `Fetch` the host gives; the runtime makes and reads each request.
 package = []
 # The SMTP driver (area 16, chunk 7.3): a rendered email written as one
-# MIME message and handed over through the `Relay` the host gives.
-smtp = ["dep:jadpo-std", "dep:jadpo-value"]
+# MIME message and handed to its server in an SMTP conversation over the
+# host's `Transport` (chunk 8.1b).
+smtp = ["dep:jadpo-std", "dep:jadpo-value", "tokio/io-util"]
 
 [dependencies]
 jadpo-runtime.workspace = true

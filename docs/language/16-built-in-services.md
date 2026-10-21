@@ -2433,7 +2433,10 @@ chunk 7.3c: a mail package as the connection, partials and `email.sent`
 ("Chosen in chunk 7.3c" below); in chunk 7.3c2: the dev inbox, `jadpo
 email`, the health score, `email.health_problem` and `jadpo email
 check-domain` ("Chosen in chunk 7.3c2" below); in chunk 7.3c3:
-SpamAssassin's rules in the score ("Chosen in chunk 7.3c3" below). Default rate limits came with routes (chunk
+SpamAssassin's rules in the score ("Chosen in chunk 7.3c3" below). In chunk
+8.1b the SMTP conversation moved into the driver, over the host's
+transport and its TLS upgrade (docs/compiler-runtime.md §2.6, "TLS
+through the transport"), these rules unchanged. Default rate limits came with routes (chunk
 4.1); flags, the rest of files (multipart slots, and image variants and
 scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and

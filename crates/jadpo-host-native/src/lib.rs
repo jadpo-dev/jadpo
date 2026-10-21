@@ -6,7 +6,7 @@
 //!   the runtime's futures, which are not `Send`, run on the thread that
 //!   made them.
 //! - [`NativeTransport`]: the drivers' [`Transport`] over tokio's TCP and
-//!   Unix sockets.
+//!   Unix sockets, upgraded to TLS through rustls ([`tls`], chunk 8.1b).
 //! - [`postgres`]: a PostgreSQL store over that transport.
 //! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
 //!   each store by its connection's name, the operating system's
@@ -21,9 +21,10 @@
 //! - [`files`]: the disk driver, which keeps `jadpo dev`'s stores of files
 //!   under `.jadpo/files/` (chunk 6.4b).
 //! - [`fetch`]: HTTP for the package driver (chunk 7.2c), HTTPS through
-//!   OpenSSL or plain HTTP to this machine.
-//! - [`smtp`]: SMTP for the email capability (chunk 7.3), upgraded with
-//!   `STARTTLS` through OpenSSL, or in the clear to this machine.
+//!   rustls or plain HTTP to this machine.
+//! - [`tls`]: rustls with Mozilla's roots, the one TLS stack on the
+//!   request path (chunk 8.1b); the SMTP driver's conversation runs over
+//!   the transport's upgrade, in `jadpo-drivers`.
 //! - [`dns`]: `TXT` lookups for `jadpo email check-domain` (chunk 7.3c2).
 //! - [`spamassassin`]: SpamAssassin on this machine, its network tests
 //!   off, for the dev inbox's health score (chunk 7.3c3).
@@ -34,8 +35,8 @@
 //! (chunk 3.1), serving HTTP (chunk 4.1), running a response's
 //! follow-on work in the background (chunk 6.1a), the timer that ticks
 //! the runtime's schedules and sweeps (chunk 6.2), and draining on a stop
-//! (chunk 6.7), files on the local disk (chunk 6.4b) and SMTP (chunk
-//! 7.3). The dev inbox comes with chunk 7.3c.
+//! (chunk 6.7), files on the local disk (chunk 6.4b), SMTP (chunk 7.3)
+//! and TLS over the transport (chunk 8.1b).
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -58,10 +59,10 @@ pub mod files;
 pub mod http;
 pub mod passkeys;
 mod signals;
-pub mod smtp;
 pub mod spamassassin;
 #[cfg(feature = "test-authenticator")]
 pub mod test_authenticator;
+pub mod tls;
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -111,9 +112,10 @@ impl Runtime {
 }
 
 /// The drivers' transport over tokio's sockets: TCP with Nagle's algorithm
-/// off, and Unix sockets on Unix. It connects and spawns only inside
+/// off, and Unix sockets on Unix, upgraded to TLS through rustls against
+/// Mozilla's roots ([`tls`]). It connects, spawns and sleeps only inside
 /// [`Runtime::block_on`] (or another tokio `LocalSet`), where its I/O
-/// driver and its tasks run.
+/// driver, its timer and its tasks run.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NativeTransport;
 
@@ -132,8 +134,33 @@ impl Transport for NativeTransport {
         })
     }
 
+    fn upgrade<'a>(
+        &'a self,
+        stream: Box<dyn Stream>,
+        name: &'a str,
+    ) -> LocalFuture<'a, io::Result<Box<dyn Stream>>> {
+        Box::pin(async move { tls::upgrade(tls::config()?, stream, name).await })
+    }
+
     fn spawn(&self, task: LocalFuture<'static, ()>) {
         tokio::task::spawn_local(task);
+    }
+
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        Box::pin(tokio::time::sleep(Duration::from_millis(millis)))
+    }
+
+    fn now_ms(&self) -> Option<i64> {
+        let since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        i64::try_from(since.as_millis()).ok()
+    }
+
+    fn local_address(&self, stream: &dyn Stream) -> Option<std::net::IpAddr> {
+        let stream: &dyn std::any::Any = stream;
+        let tcp = stream.downcast_ref::<tokio::net::TcpStream>()?;
+        tcp.local_addr().ok().map(|address| address.ip())
     }
 }
 
