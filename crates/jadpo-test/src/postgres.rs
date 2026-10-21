@@ -147,6 +147,28 @@ impl Server {
         }
     }
 
+    /// A URL for `database` on this server over TCP, which a Worker under
+    /// workerd reaches through `connect()` (chunk 8.2e): the server
+    /// `JADPO_TEST_DATABASE_URL` names when it names one by a URL, as CI's
+    /// does, or one [`Server::start_on_tcp`] started; `None` for one
+    /// reached only through a Unix socket.
+    pub fn tcp_url(&self, database: &str) -> Option<String> {
+        match &self.kind {
+            Kind::External { url } => {
+                let url = url.trim();
+                (url.starts_with("postgres://") || url.starts_with("postgresql://"))
+                    .then(|| with_database(url, database))
+            }
+            Kind::Disposable {
+                port, tcp: true, ..
+            } => Some(with_database(
+                &format!("postgresql://{USER}@127.0.0.1:{port}/{ADMIN_DATABASE}"),
+                database,
+            )),
+            Kind::Disposable { .. } => None,
+        }
+    }
+
     /// A URL for `database` on this server, as `jadpo_host_native::postgres`
     /// takes it. [`ADMIN_DATABASE`] always exists.
     pub fn url(&self, database: &str) -> String {

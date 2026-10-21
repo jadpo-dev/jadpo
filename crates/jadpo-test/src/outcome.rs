@@ -408,12 +408,12 @@ pub(crate) fn fakes_used(
     failed: Option<Box<TestFailure>>,
     rerun: &Rerun,
 ) -> Option<Box<TestFailure>> {
-    let (usage, rule) = match used.iter().find(|usage| usage.exhausted()) {
-        Some(usage) => (usage, &rule::TEST_FAKE_EXHAUSTED),
-        None => match (&failed, used.iter().find(|usage| usage.unused())) {
-            (None, Some(usage)) => (usage, &rule::TEST_FAKE_UNUSED),
-            _ => return failed,
-        },
+    let Some((usage, rule)) = fake_rule(
+        used.iter().map(|usage| (usage.exhausted(), usage.unused())),
+        failed.is_some(),
+    )
+    .and_then(|(at, rule)| Some((used.get(at)?, rule))) else {
+        return failed;
     };
     let location = located_frame(places, sources, usage.from)
         .unwrap_or_else(|| Located::new(sources, &test.file, None, test.line, ""));
@@ -670,6 +670,64 @@ fn column_of(text: &str, offset: usize) -> usize {
         + 1
 }
 
+/// How a test's run ended, which decides the rule it fails with: the
+/// same whichever executor ran it and wherever, so a run inside workerd
+/// (chunk 8.2e) is judged as one here is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Ending {
+    /// It gave a value: it passed, unless a fake says otherwise.
+    Value,
+    Assertion,
+    Failed,
+    Fault,
+}
+
+impl Ending {
+    pub(crate) fn of(outcome: &Outcome) -> Ending {
+        match outcome {
+            Outcome::Value(_) => Ending::Value,
+            Outcome::Assertion(_) => Ending::Assertion,
+            Outcome::Failed(_) => Ending::Failed,
+            Outcome::Fault(_) => Ending::Fault,
+        }
+    }
+
+    /// The rule a run that ended so fails with, `undelivered` when a
+    /// delivery between its steps failed for good (chunk 6.11): `None`
+    /// when it gave a value.
+    pub(crate) fn rule(self, undelivered: bool) -> Option<&'static Rule> {
+        match self {
+            Ending::Value => None,
+            _ if undelivered => Some(&rule::TEST_SUBSCRIBER_FAILED),
+            Ending::Assertion => Some(&rule::TEST_ASSERTION_FAILED),
+            Ending::Failed => Some(&rule::TEST_UNEXPECTED_FAILURE),
+            Ending::Fault => Some(&rule::TEST_FAULT),
+        }
+    }
+}
+
+/// Which scripted operation's use fails a test, given each one's use as
+/// whether it was called past its script and whether it has answers left,
+/// and whether the test `failed` otherwise (chunk 7.2d): the first called
+/// past its script, whatever else happened, since that is what went wrong
+/// first; else the first with answers left, for a test that otherwise
+/// passed. Its place among them and the rule.
+pub(crate) fn fake_rule(
+    used: impl IntoIterator<Item = (bool, bool)>,
+    failed: bool,
+) -> Option<(usize, &'static Rule)> {
+    let used: Vec<(bool, bool)> = used.into_iter().collect();
+    if let Some(at) = used.iter().position(|(exhausted, _)| *exhausted) {
+        return Some((at, &rule::TEST_FAKE_EXHAUSTED));
+    }
+    if failed {
+        return None;
+    }
+    used.iter()
+        .position(|(_, unused)| *unused)
+        .map(|at| (at, &rule::TEST_FAKE_UNUSED))
+}
+
 /// How `test` failed, from the outcome it ended with; `undelivered` when
 /// that outcome is a delivery's between its steps, which failed for good
 /// (chunk 6.11).
@@ -682,10 +740,10 @@ pub(crate) fn failure(
     undelivered: Option<&Undelivered>,
 ) -> TestFailure {
     let mut failure = ended(places, sources, test, outcome, rerun);
-    if let Some(undelivered) = undelivered {
-        failure.rule = &rule::TEST_SUBSCRIBER_FAILED;
-        failure.delivery = Some(undelivered.clone());
+    if let Some(rule) = Ending::of(outcome).rule(undelivered.is_some()) {
+        failure.rule = rule;
     }
+    failure.delivery = undelivered.cloned();
     failure
 }
 

@@ -5,9 +5,11 @@
 //! invocation, beside one harness built with cargo, and run beside the
 //! interpreter: every test gives the same record both ways, a failed
 //! assertion's values among them. Area 7's `todos` project, a route that
-//! creates a todo and one that reads it back, is the first route. The
-//! gate runs it as a group of its own, `compiled`, which CI runs as a job
-//! of its own (chunk 8.1j).
+//! creates a todo and one that reads it back, is the first route. Its
+//! route tests and teaching example 23's run inside workerd too, on each
+//! one's compiled program built for wasm32, with the same records (chunk
+//! 8.2e). The gate runs it as a group of its own, `compiled`, which CI
+//! runs as a job of its own (chunk 8.1j).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -398,6 +400,56 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     for name in &skipped {
         println!("  skipped: {name}");
     }
+}
+
+/// Area 7's `todos` and teaching example 23, the repair café: each
+/// project's route tests run on its compiled program inside workerd,
+/// built for wasm32 with the `testing` feature behind a test Worker that
+/// runs one test by its key, against a copy of its database on a server
+/// the Worker reaches over `connect()`, and each test's record the
+/// interpreter's (chunk 8.2e): the café's through `settle:`'s subscribers,
+/// what a request leaves for after its answer delivered before the test's
+/// next line, and its fixtures.
+#[test]
+fn route_tests_on_workerd_give_the_interpreters_records() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let started = std::time::Instant::now();
+    let files = examples::projects()
+        .into_iter()
+        .find(|(name, _)| name == "docs/language/07-http.md todos")
+        .map(|(_, files)| files)
+        .expect("area 7's todos");
+    let projects = [
+        ("area 7's todos", corpus_project(&files, "workerd-todos")),
+        (
+            "the repair café",
+            example_project("23-repair-cafe", "workerd-repair-cafe"),
+        ),
+    ];
+    let folders: Vec<PathBuf> = projects
+        .iter()
+        .map(|(name, folder)| folder.clone().unwrap_or_else(|| panic!("{name} checks")))
+        .collect();
+    let results = jadpo_test::workerd::differential_all(&folders, &harness_folder("workerd"))
+        .unwrap_or_else(|problem| panic!("{problem}"));
+    let compared: Vec<Compared> = projects
+        .iter()
+        .zip(results)
+        .map(|((name, _), result)| result.unwrap_or_else(|problem| panic!("{name}: {problem}")))
+        .collect();
+    let counts: Vec<(usize, usize)> = compared
+        .iter()
+        .map(|compared| (compared.tests, compared.passed))
+        .collect();
+    assert_eq!(counts, [(3, 3), (4, 4)]);
+    println!(
+        "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
+        counts.iter().map(|(tests, _)| tests).sum::<usize>(),
+        counts.len(),
+        started.elapsed()
+    );
 }
 
 /// The export's test, run interpreted as the differential run runs it:
