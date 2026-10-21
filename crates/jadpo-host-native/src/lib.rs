@@ -14,10 +14,10 @@
 //!   randomness, tokio's timer and the monotonic clock for deadlines
 //!   (chunks 4.2 and 4.9), the system clock, rate limits counted in
 //!   bounded memory (chunk 4.10), one table for all of a server's workers
-//!   (chunk 8.1l), and the work a response
-//!   leaves, run as a task on the worker's thread once the response is
-//!   handed back (chunk 6.1a); it drains when the server stops, its
-//!   background work giving back what it holds (chunk 6.7).
+//!   (chunk 8.1l), and the work a response leaves, run as a task on the
+//!   worker's thread once the response is handed back (chunk 6.1a); it
+//!   drains when the server stops, its background work giving back what
+//!   it holds (chunk 6.7).
 //! - [`http`]: the acceptor and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1), the acceptor
 //!   handing them connections in turn (chunk 8.1l).
@@ -204,11 +204,12 @@ pub fn supplies() -> Supplies {
 
 /// The runtime's host natively, one per worker thread: each connection's
 /// driver as the factory built it ([`NativeHost::with_drivers`]), a store
-/// given in place of one, the operating system's randomness for new identities
-/// and request ids, the system clock, rate-limit counters in bounded
-/// memory, the native default until a Redis connection is named (area 16),
-/// shared by all of a server's workers ([`http::WorkerThread::host`];
-/// chunk 8.1l) and a host's own otherwise, and the work responses leave for after they are sent
+/// given in place of one, the operating system's randomness for new
+/// identities and request ids, the system clock, rate-limit counters in
+/// bounded memory, the native default until a Redis connection is named
+/// (area 16), shared by all of a server's workers
+/// ([`http::WorkerThread::host`]; chunk 8.1l) and a host's own otherwise,
+/// and the work responses leave for after they are sent
 /// ([`Host::defer`]), which the HTTP worker takes as each response is
 /// handed back ([`NativeHost::take_deferred`]) and runs as tasks of its
 /// own on the worker's thread (chunk 6.1a). Each invocation of background
