@@ -203,6 +203,93 @@ pub fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> Vec<Dia
     out
 }
 
+/// `policy.system_grant_missing` for the actions the runtime runs as the
+/// system inside a request (Phase 7 review, chunk 7.9b): each webhook's
+/// reply action, the magic-link `send:` action and `on_first_sign_in:`'s,
+/// as a subscriber's is checked, each at where it is named.
+#[salsa::tracked(returns(ref))]
+pub fn system_run_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    if !crate::policy::policy_clean(db, project) {
+        return Vec::new();
+    }
+    let lookup = crate::lookups::Lookup::new(db, project);
+    // An action named as written, `domain.action`, by its key's name.
+    let key_of = |canonical: &str| crate::graph::declaration_key(&lookup, canonical);
+    let mut runs: Vec<(&str, String, String, Span)> = Vec::new();
+    let connections = crate::connections::package_connections(db, project);
+    for route in &crate::webhooks::webhooks(db, project).routes {
+        let Some(connection) = connections
+            .connections
+            .iter()
+            .find(|connection| connection.name == route.connection)
+        else {
+            continue;
+        };
+        for (event, action) in &route.replies {
+            let Some(model) = route.events.iter().find(|model| model.key == *event) else {
+                continue;
+            };
+            let snake = crate::case::to_snake(&model.name);
+            let Some(written) = connection
+                .webhook_replies
+                .iter()
+                .find(|written| written.event == snake)
+            else {
+                continue;
+            };
+            let shown = written
+                .action
+                .as_ref()
+                .map_or_else(|| action.name().to_string(), |names| names.join("."));
+            runs.push((
+                "webhook's reply action",
+                action.name().to_string(),
+                shown,
+                written.value_span(),
+            ));
+        }
+    }
+    let identity = crate::identity::identity(db, project);
+    let written = [
+        (
+            "sign-in email's `send:` action",
+            crate::identity::sign_in_send_action(db, project).0.as_ref(),
+            identity
+                .magic_link
+                .as_ref()
+                .and_then(|magic| magic.send.as_ref()),
+        ),
+        (
+            "first sign-in's action, `on_first_sign_in:`,",
+            crate::identity::first_sign_in_action(db, project)
+                .0
+                .as_ref(),
+            identity.first_sign_in.as_ref(),
+        ),
+    ];
+    for (kind, canonical, written) in written {
+        let (Some(canonical), Some(written)) = (canonical, written) else {
+            continue;
+        };
+        let Some(key) = key_of(canonical) else {
+            continue;
+        };
+        runs.push((
+            kind,
+            key.name().to_string(),
+            written.names.join("."),
+            written.span.clone(),
+        ));
+    }
+    let mut out = Vec::new();
+    for (kind, run, shown, span) in runs {
+        if let Some(found) = crate::policy::reach::public_only(db, project, &run) {
+            out.push(system_only(kind, &shown, &span, &found, false));
+        }
+    }
+    out
+}
+
 /// `policy.system_grant_missing`: the action a schedule or a subscriber
 /// runs (`kind`, called `name`) reaches what only `Access.public` grants,
 /// which never lets the system in on purpose.
@@ -211,6 +298,18 @@ pub(crate) fn public_only(
     name: &str,
     span: &Span,
     found: &crate::policy::reach::PublicOnly,
+) -> Diagnostic {
+    system_only(kind, name, span, found, true)
+}
+
+/// [`public_only`] for background work, or with `background` false for
+/// the system's runs inside a request.
+fn system_only(
+    kind: &str,
+    name: &str,
+    span: &Span,
+    found: &crate::policy::reach::PublicOnly,
+    background: bool,
 ) -> Diagnostic {
     use crate::policy::reach::PublicOnly;
     let (what, place, next) = match found {
@@ -235,9 +334,15 @@ pub(crate) fn public_only(
         ),
     )
     .at(span.clone(), "runs as `Access.system`")
-    .reason(format!(
-        "A {kind} runs as the system, which an entity grants background work by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in."
-    ))
+    .reason(if background {
+        format!(
+            "A {kind} runs as the system, which an entity grants background work by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in."
+        )
+    } else {
+        format!(
+            "A {kind} runs as the system, which an entity lets in by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how the system is let in."
+        )
+    })
     .next(next)
 }
 
