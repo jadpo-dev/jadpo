@@ -106,6 +106,28 @@ impl SubscriberPlan {
                 vec![connection.clone()]
             }
             Target::Action { .. } => self.connections.clone(),
+            Target::Elsewhere => Vec::new(),
+        }
+    }
+
+    /// The same subscriber as a deployable that doesn't run it lists it
+    /// (roadmap chunk 8.1o3): what an emitter needs, its key, its name,
+    /// the event it hears and the connection whose webhooks it hears,
+    /// and nothing a delivery runs.
+    pub fn elsewhere(&self) -> SubscriberPlan {
+        SubscriberPlan {
+            key: self.key.clone(),
+            name: self.name.clone(),
+            event: self.event.clone(),
+            target: Target::Elsewhere,
+            attempts: 0,
+            within_ms: 0,
+            tenant: TenantFrom::Nowhere,
+            store: None,
+            connections: Vec::new(),
+            through: self.through.clone(),
+            file: String::new(),
+            line: 0,
         }
     }
 }
@@ -134,6 +156,12 @@ pub enum Target {
     /// plan is [`crate::email::EmailsPlan::email`] of the subscriber's
     /// event. Sent with no key, as SMTP and the mail APIs take none.
     Email { connection: String },
+    /// Delivered by another deployable, one that runs the app's
+    /// subscribers (area 14, "Declared deployables"; roadmap chunk
+    /// 8.1o3): a deployable that doesn't run them still lists each, so an
+    /// event it emits is left in the outbox for each subscriber that hears
+    /// it, but holds nothing a delivery runs.
+    Elsewhere,
 }
 
 /// Whether an outside call may be sent again (area 11, "Idempotency";
