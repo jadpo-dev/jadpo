@@ -1242,7 +1242,7 @@ pub(crate) fn prepare(
         .then(|| jadpo_check::policy::report::report(db, project));
     let mut surfaces = crate::derived::surfaces(db, project);
     surfaces.extend(crate::derived::network(db, project));
-    let stamp = crate::derived::stamp(db, project, root, graph, errors);
+    let stamp = crate::derived::stamp(db, project, root, errors);
     let _ = crate::derived::write(
         root,
         graph,

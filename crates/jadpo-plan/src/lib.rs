@@ -34,6 +34,7 @@
 mod config;
 mod connections;
 mod constant;
+mod deployable;
 mod emails;
 mod identity;
 mod policy;
@@ -56,6 +57,7 @@ pub use jadpo_std::http::RouteTable;
 pub use jadpo_std::{Isolation, RuntimePlan};
 
 pub use constant::Constant;
+pub use deployable::{Keep, Unkept};
 pub use jadpo_std::read::{MissingPlan, MissingValue};
 pub use jadpo_std::write::{PurgePlan, Raises, Refusal};
 pub use queries::{EntityPlan, QueryPlan};
@@ -176,27 +178,37 @@ fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
 
 /// The subscriber table (area 12, chunk 6.1b): each subscriber that reads
 /// cleanly, with the callable it runs and the store its handled record is
-/// kept in.
+/// kept in. A deployable that doesn't run the subscribers (`running`
+/// false) lists each without its action (chunk 8.1o3).
 fn events_plan(
     db: &dyn Db,
     project: Project,
-    by_key: &HashMap<Key, u32>,
+    callable: &dyn Fn(&Key) -> Option<u32>,
     numbering: &providers::Numbering,
     setting: &dyn Fn(&str) -> Option<u32>,
+    running: bool,
 ) -> jadpo_std::subscriber::EventsPlan {
     use jadpo_check::events::Tenant;
     use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
     let written = jadpo_check::types::written_stores(db, project);
     let called = jadpo_check::types::called_connections(db, project);
-    let (emails, sending) = emails::plan(db, project, by_key, numbering, setting);
+    let (emails, sending) = emails::plan(db, project, callable, numbering, setting, running);
     // A package's own subscriber listens to each connection receiving its
     // package's webhooks, and its action calls the API through that one
     // (chunk 7.6b): one plan for each, named by the connection.
     let receiving = jadpo_check::webhooks::webhooks(db, project);
     let mut subscribers: Vec<SubscriberPlan> = Vec::new();
     for model in jadpo_check::events::subscribers(db, project).iter() {
-        let Some(&callable) = by_key.get(&model.run) else {
-            continue;
+        let target = if running {
+            let Some(callable) = callable(&model.run) else {
+                continue;
+            };
+            Target::Action {
+                callable,
+                args: model.args.clone(),
+            }
+        } else {
+            Target::Elsewhere
         };
         let throughs: Vec<Option<String>> = match &model.package {
             Some(folder) => receiving
@@ -215,17 +227,14 @@ fn events_plan(
             None => vec![None],
         };
         for through in throughs {
-            subscribers.push(SubscriberPlan {
+            let subscriber = SubscriberPlan {
                 key: match &through {
                     Some(connection) => format!("{} {connection}", model.key.as_str()),
                     None => model.key.as_str().to_string(),
                 },
                 name: model.name.clone(),
                 event: model.event.as_str().to_string(),
-                target: Target::Action {
-                    callable,
-                    args: model.args.clone(),
-                },
+                target: target.clone(),
                 attempts: model.retry.attempts,
                 within_ms: model.retry.within_ms,
                 tenant: match &model.tenant {
@@ -252,6 +261,11 @@ fn events_plan(
                 through,
                 file: model.path.clone(),
                 line: model.line,
+            };
+            subscribers.push(if running {
+                subscriber
+            } else {
+                subscriber.elsewhere()
             });
         }
     }
@@ -273,17 +287,21 @@ fn events_plan(
 fn schedules_plan(
     db: &dyn Db,
     project: Project,
-    by_key: &HashMap<Key, u32>,
+    callable: &dyn Fn(&Key) -> Option<u32>,
     purges: &[PurgePlan],
+    running: bool,
 ) -> jadpo_std::schedule::SchedulesPlan {
     use jadpo_check::schedules::ScheduleRun;
     use jadpo_std::schedule::{SchedulePlan, SchedulesPlan};
+    // A deployable that doesn't run the schedules lists none (chunk
+    // 8.1o3).
     let schedules: Vec<SchedulePlan> = jadpo_check::schedules::schedules(db, project)
         .iter()
+        .filter(|_| running)
         .filter_map(|model| {
             let run = match &model.run {
                 ScheduleRun::Action(key) => {
-                    jadpo_std::schedule::ScheduleRun::Action(*by_key.get(key)?)
+                    jadpo_std::schedule::ScheduleRun::Action(callable(key)?)
                 }
                 // An entity's built-in purge runs its purge plan (area 5;
                 // chunk 6.2c).
@@ -419,17 +437,25 @@ impl Plan {
     /// The plan of `project`, which checked without errors: a project with
     /// errors has bodies with nothing to run where the errors are.
     pub fn build(db: &dyn Db, project: Project) -> Plan {
-        Plan::build_with(db, project, false)
+        Plan::build_with(db, project, false, None)
     }
 
     /// The plan of `project` with the latest migration's backfills that
     /// `jadpo migrate apply` works out in Jadpo (chunk 5.6b2), each a
     /// callable of its own.
     pub fn with_backfills(db: &dyn Db, project: Project) -> Plan {
-        Plan::build_with(db, project, true)
+        Plan::build_with(db, project, true, None)
     }
 
-    fn build_with(db: &dyn Db, project: Project, with_backfills: bool) -> Plan {
+    /// The plan of `project`, or with `pruning` only what a deployable
+    /// keeps of it (chunk 8.1o3; [`Plan::for_deployable`]): each table is
+    /// built from what is kept, so its numbers depend on nothing else.
+    fn build_with(
+        db: &dyn Db,
+        project: Project,
+        with_backfills: bool,
+        pruning: Option<&deployable::Pruning<'_>>,
+    ) -> Plan {
         let graph = Arc::clone(jadpo_check::graph::graph(db, project));
         let mut files = BTreeMap::new();
         let mut found: Vec<(Key, Kind, String, Arc<Body>)> = Vec::new();
@@ -481,6 +507,16 @@ impl Plan {
         // checker reports, and the first is kept.
         found.sort_by(|a, b| a.0.cmp(&b.0));
         found.dedup_by(|a, b| a.0 == b.0);
+        // A deployable keeps only the callables it reaches (chunk 8.1o3);
+        // a kept part naming one of the rest is noted.
+        let every: std::collections::HashSet<Key> = match pruning {
+            Some(pruning) => {
+                let every = found.iter().map(|(key, ..)| key.clone()).collect();
+                found.retain(|(key, ..)| pruning.keep.callables.contains(key));
+                every
+            }
+            None => std::collections::HashSet::new(),
+        };
         // Each backfill worked out in Jadpo, numbered after every callable
         // the project declares, keyed by its migration and field.
         let mut backfills = Vec::new();
@@ -532,6 +568,17 @@ impl Plan {
             .enumerate()
             .map(|(i, (key, ..))| (key.clone(), i as u32))
             .collect();
+        // A callable's number by its key.
+        let callable_number = |key: &Key| -> Option<u32> {
+            let number = by_key.get(key).copied();
+            if number.is_none()
+                && let Some(pruning) = pruning
+                && every.contains(key)
+            {
+                pruning.unkept(format!("the callable `{}`", key.as_str()));
+            }
+            number
+        };
         // Each rule across an object's fields, whose body the type's
         // validator runs (area 2, "Rules across fields").
         let mut rule_bodies = HashMap::new();
@@ -586,7 +633,29 @@ impl Plan {
         // its column reads and its writes write (chunk 5.5w2b), then each
         // `json.read` and `json.write` call's.
         let json_types = std::cell::RefCell::new(Vec::new());
-        let (queries, entities, identity) = queries::plans(db, project, &mut types, &json_types);
+        let every_query: std::collections::HashSet<Key> = match pruning {
+            Some(_) => jadpo_check::data::queries::query_models(db, project)
+                .queries
+                .iter()
+                .map(|query| query.key.clone())
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
+        // A deployable keeps the queries it reaches, the `get` of each
+        // entity the callables it keeps read one record of by `id`, the
+        // prompts they ask for and the event types they emit and hear.
+        let used = pruning.map(|pruning| {
+            pruning.used(
+                db,
+                project,
+                found.iter().map(|(_, _, _, body)| body.as_ref()),
+            )
+        });
+        let (queries, entities, identity) =
+            queries::plans(db, project, &mut types, &json_types, &|key| {
+                pruning.is_none_or(|pruning| pruning.keep.callables.contains(key))
+                    || used.as_ref().is_some_and(|used| used.gets.contains(key))
+            });
         let query_ids: HashMap<Key, u32> = queries
             .iter()
             .enumerate()
@@ -601,39 +670,84 @@ impl Plan {
             .iter()
             .map(|(key, _, _, body)| (key.clone(), body.as_ref()))
             .collect();
-        let config = config::plan(db, project, &mut types);
+        let config = config::plan(db, project, &mut types, &|name| {
+            pruning.is_none_or(|pruning| pruning.keeps_setting(name))
+        });
+        let registry = jadpo_check::graph::registry(db, project);
         let setting_ids: HashMap<Key, u32> = config
             .fields
             .iter()
             .enumerate()
-            .map(|(i, field)| {
-                (
-                    config::key(jadpo_check::graph::registry(db, project), &field.name),
-                    i as u32,
-                )
-            })
+            .map(|(i, field)| (config::key(registry, &field.name), i as u32))
             .collect();
-        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
-        let gates = policy::gates(db, project, &mut types, &json_types);
-        let model = jadpo_check::data::data_model(db, project);
-        let purges: Vec<PurgePlan> = model
-            .entities
+        // A setting's number by its key, noting for a deployable each one
+        // a kept part asks for, and one it doesn't keep (chunk 8.1o3).
+        let every_setting: std::collections::HashSet<Key> = match pruning {
+            Some(_) => jadpo_check::config::config(db, project)
+                .settings
+                .iter()
+                .map(|setting| config::key(registry, &setting.name))
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
+        let setting_names: Vec<String> = config
+            .fields
             .iter()
-            .filter_map(|entity| {
-                purge::plan(model, entity, &|name| {
-                    config
-                        .fields
-                        .iter()
-                        .position(|field| field.name == name)
-                        .and_then(|at| u32::try_from(at).ok())
-                })
-            })
+            .map(|field| field.name.clone())
             .collect();
+        let setting_of = |key: &Key| -> Option<u32> {
+            let number = setting_ids.get(key).copied();
+            if let Some(pruning) = pruning {
+                match number.and_then(|at| setting_names.get(at as usize)) {
+                    Some(name) => pruning.asked(name),
+                    None if every_setting.contains(key) => {
+                        pruning.unkept(format!("the setting `{}`", key.name()));
+                    }
+                    None => {}
+                }
+            }
+            number
+        };
+        let setting_number = |name: &str| setting_of(&config::key(registry, name));
+        let (writes, write_ids) = writes::plans(db, project, &mut types, &bodies, &json_types);
+        let gates = policy::gates(db, project, &mut types, &json_types, &|action| {
+            pruning.is_none_or(|_| {
+                found
+                    .iter()
+                    .any(|(key, kind, ..)| *kind == Kind::Action && key.name() == action)
+            })
+        });
+        let model = jadpo_check::data::data_model(db, project);
+        // An entity's purge runs where schedules run.
+        let purges: Vec<PurgePlan> = if pruning.is_none_or(|pruning| pruning.runs().schedules) {
+            model
+                .entities
+                .iter()
+                .filter_map(|entity| purge::plan(model, entity, &setting_number))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut constants = Vec::new();
         let mut json_types = json_types.into_inner();
         // Each prompt's entry, and the type of each field its text writes,
         // read from its type's field nodes (area 21).
-        let prompts = jadpo_check::prompts::plan(db, project);
+        let mut prompts = jadpo_check::prompts::plan(db, project);
+        // A kept call asking for a prompt a deployable doesn't keep is
+        // noted.
+        let every_prompt: std::collections::HashSet<String> = match pruning {
+            Some(_) => prompts
+                .entries
+                .iter()
+                .map(|entry| entry.key.clone())
+                .collect(),
+            None => std::collections::HashSet::new(),
+        };
+        if let Some(used) = &used {
+            prompts
+                .entries
+                .retain(|entry| used.prompts.contains(&entry.key));
+        }
         let prompt_fields: HashMap<String, (u32, Vec<TypeRef>)> = prompts
             .entries
             .iter()
@@ -666,16 +780,36 @@ impl Plan {
         // Every connection, with its driver and the targets it runs on
         // (area 11; chunk 8.1d), and each provider operation's number, which
         // a call's site names it by (chunk 8.1d2).
-        let setting_number = |name: &str| {
-            setting_ids
-                .get(&config::key(
-                    jadpo_check::graph::registry(db, project),
-                    name,
-                ))
-                .copied()
-        };
-        let connections = connections::table(db, project, &setting_number);
+        let connections = connections::table(db, project, &setting_number, &|name, kind| {
+            pruning.is_none_or(|pruning| pruning.keeps_connection(name, kind))
+        });
         let numbering = providers::Numbering::new(db, project, &connections);
+        // The operation a call's site calls, noting for a deployable one
+        // through a connection it doesn't keep (chunk 8.1o3).
+        let declared_connections = &jadpo_check::data::connections(db, project).declared;
+        let called = |file: &str, connection: &str, operation: &str| {
+            let called = numbering.called(file, connection, operation);
+            if let Some(pruning) = pruning
+                && called == jadpo_std::provider::Called::default()
+                && declared_connections
+                    .iter()
+                    .any(|(name, _)| name == connection)
+            {
+                pruning.unkept(format!("the connection `{connection}`"));
+            }
+            called
+        };
+        // A query's number by its key.
+        let query_number = |key: &Key| -> Option<u32> {
+            let number = query_ids.get(key).copied();
+            if number.is_none()
+                && let Some(pruning) = pruning
+                && every_query.contains(key)
+            {
+                pruning.unkept(format!("the query `{}`", key.as_str()));
+            }
+            number
+        };
         let mut callables = Vec::with_capacity(found.len());
         // The dev and test section (chunk 8.1e): each test's key, and
         // what each test gives itself.
@@ -703,20 +837,27 @@ impl Plan {
                 .map_or(backfill.map_or(1, |(_, line)| *line), |place| place.lines.0);
             let isolation = node.and_then(|node| node.isolation()).unwrap_or_default();
             let text = files.get(&file).map(String::as_str).unwrap_or_default();
-            let number = |key: &Key| by_key.get(key).copied();
-            let query = |key: &Key| query_ids.get(key).copied();
             let entity = |key: &Key| entity_ids.get(key).copied();
             let write = |site: u32| write_ids.get(&(key.clone(), site)).copied();
             let sites = sites::Decoder {
                 types: &mut types,
                 constants: &mut constants,
-                callable: &number,
-                query: &query,
+                callable: &callable_number,
+                query: &query_number,
                 entity: &entity,
                 write: &write,
-                setting: &|key: &Key| setting_ids.get(key).copied(),
+                setting: &setting_of,
                 json: &mut json_types,
-                prompt: &|key: &str| prompt_fields.get(key).cloned(),
+                prompt: &|key: &str| {
+                    let fields = prompt_fields.get(key).cloned();
+                    if fields.is_none()
+                        && let Some(pruning) = pruning
+                        && every_prompt.contains(key)
+                    {
+                        pruning.unkept(format!("the prompt `{key}`"));
+                    }
+                    fields
+                },
                 schema: &|ty: &TypeRef| {
                     jadpo_check::ai::schema(
                         &graph,
@@ -726,9 +867,7 @@ impl Plan {
                 },
                 starter: &key,
                 batches: &mut batch_sites,
-                called: &|connection: &str, operation: &str| {
-                    numbering.called(&file, connection, operation)
-                },
+                called: &|connection: &str, operation: &str| called(&file, connection, operation),
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -886,6 +1025,7 @@ impl Plan {
         // batch's saved values were numbered with its site (chunk 6.4).
         let events = event_types(&graph)
             .into_iter()
+            .filter(|key| used.as_ref().is_none_or(|used| used.events.contains(key)))
             .map(|key| {
                 let ty = TypeRef::Node(key.clone());
                 let number = match json_types.iter().position(|known| *known == ty) {
@@ -927,6 +1067,17 @@ impl Plan {
             }
         }
         // Each provider operation's input and output (area 11, chunk 7.2c).
+        // A deployable keeps a recording of nothing, and the webhooks, polls
+        // and queues only where it serves or runs them (chunk 8.1o3).
+        let parts = match pruning {
+            Some(pruning) => providers::Parts {
+                recordings: false,
+                webhooks: pruning.keep.serves(jadpo_check::webhooks::DEFAULT_PREFIX),
+                polls: pruning.runs().schedules,
+                queues: pruning.runs().subscribers,
+            },
+            None => providers::Parts::EVERY,
+        };
         let (providers, recordings) = providers::plan(
             db,
             project,
@@ -935,19 +1086,16 @@ impl Plan {
             &mut json_types,
             &connections,
             &numbering,
+            parts,
         );
         let mut json = routes::json_table(db, project, &mut types, &json_types);
         json.events = events;
-        let mut routes = routes::table(
-            db,
-            project,
-            &mut types,
-            &|key: &Key| by_key.get(key).copied(),
-            &queries,
-        );
+        let mut routes =
+            routes::table(db, project, &mut types, &callable_number, &queries, pruning);
         routes.identity = identity;
         // The action `on_first_sign_in:` names, by its callable's number
-        // (area 8, "A person the app has not seen").
+        // (area 8, "A person the app has not seen"), where a deployable
+        // keeps it: one that serves no API redeems no link.
         if let Some(magic) = routes
             .identity
             .as_mut()
@@ -956,45 +1104,63 @@ impl Plan {
         {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
             magic.first_sign_in = jadpo_check::graph::declaration_key(&lookup, name)
-                .and_then(|key| by_key.get(&key).copied());
+                .filter(|key| {
+                    pruning.is_none_or(|pruning| {
+                        pruning.keep.callables.contains(key)
+                            || pruning
+                                .keep
+                                .serves
+                                .iter()
+                                .any(|api| api != jadpo_check::webhooks::DEFAULT_PREFIX)
+                    })
+                })
+                .and_then(|key| callable_number(&key));
         }
-        let events = events_plan(db, project, &by_key, &numbering, &|name: &str| {
-            setting_ids
-                .get(&config::key(
-                    jadpo_check::graph::registry(db, project),
-                    name,
-                ))
-                .copied()
-        });
-        let schedules = schedules_plan(db, project, &by_key, &purges);
+        let running = pruning.is_none_or(|pruning| pruning.runs().subscribers);
+        let events = events_plan(
+            db,
+            project,
+            &callable_number,
+            &numbering,
+            &setting_number,
+            running,
+        );
+        let schedules = schedules_plan(
+            db,
+            project,
+            &callable_number,
+            &purges,
+            pruning.is_none_or(|pruning| pruning.runs().schedules),
+        );
         let build = graph.digest();
+        // The key a record of several changing calls is sealed with, which
+        // a deployable keeps only when it keeps such an action.
         let steps_key = jadpo_check::types::steps_settings(db, project)
             .encryption_key
             .as_ref()
-            .and_then(|name| {
-                setting_ids
-                    .get(&config::key(
-                        jadpo_check::graph::registry(db, project),
-                        name,
-                    ))
-                    .copied()
-            });
+            .filter(|_| {
+                pruning.is_none() || callables.iter().any(|callable| callable.record.is_some())
+            })
+            .and_then(|name| setting_number(name));
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();
         // The connection `ai:` names, its address and its models (area 21;
         // chunk 5.5v3).
-        let ai = {
+        // A deployable keeps it only when it reaches the model (chunk
+        // 8.1o3).
+        let asks_a_model = jadpo_check::ai::settings(db, project)
+            .connection
+            .as_ref()
+            .is_some_and(|name| {
+                pruning.is_none_or(|pruning| pruning.keep.connections.contains(name))
+            });
+        let ai = if !asks_a_model {
+            None
+        } else {
             let settings = jadpo_check::ai::settings(db, project);
             let connections = jadpo_check::ai::model_connections(db, project);
-            let number = |name: &str| {
-                setting_ids
-                    .get(&config::key(
-                        jadpo_check::graph::registry(db, project),
-                        name,
-                    ))
-                    .copied()
-            };
+            let number = &setting_number;
             // What its calls may spend, and where that is counted
             // (chunk 5.5v5).
             let limits = settings.limits.store.as_ref().and_then(|store| {
@@ -1224,33 +1390,6 @@ impl Plan {
     pub fn with_build(mut self, build: String) -> Plan {
         Arc::make_mut(&mut self.runtime).build = build.clone();
         self.build = build;
-        self
-    }
-
-    /// The same plan as a declared deployable runs it (area 14, "Declared
-    /// deployables"; chunk 8.1o2): only the routes of the APIs in `serves`
-    /// (the webhooks' among them when it names `webhooks`), and only the
-    /// background work `runs` names. Health's routes stay, whatever it
-    /// serves.
-    pub fn for_deployable(mut self, serves: &[String], runs: jadpo_std::Runs) -> Plan {
-        let runtime = Arc::make_mut(&mut self.runtime);
-        let served: Vec<bool> = runtime
-            .routes
-            .apis
-            .iter()
-            .map(|api| serves.contains(&api.name))
-            .collect();
-        runtime
-            .routes
-            .routes
-            .retain(|route| served.get(route.api as usize).copied().unwrap_or(false));
-        if !serves
-            .iter()
-            .any(|api| api == jadpo_check::webhooks::DEFAULT_PREFIX)
-        {
-            runtime.providers.webhooks.clear();
-        }
-        runtime.runs = runs;
         self
     }
 

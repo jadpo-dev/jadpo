@@ -2422,16 +2422,42 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   `staff` and running a schedule each second, the kiosk booking and
   refusing the staff's route without running the schedule, the office
   the other way round and running it (20 s warm).
-- [ ] **8.1o3 A deployable compiled from what it reaches**
-  `opus · xhigh`, after 8.1o2: each deployable's program holding only the
-  callables, sites and plan parts it reaches (8.1o2's `reaches`, with
-  every callable the runtime names by number or key, a webhook reply's
-  action, a package's `decode:` and `encode:`, an email's templates, kept
-  whole), the settings it reads and the connections it builds only those
-  it reaches, and its build id digesting that subgraph rather than the
-  whole graph (area 18, "A build id is a digest"), so a change it doesn't
-  reach leaves its id alone; the binary's size measured against the whole
-  program's.
+- [x] **8.1o3 A deployable compiled from what it reaches**
+  `opus · xhigh`, after 8.1o2. Built (area 14, "Declared deployables"; area
+  18, "What a build id digests"): `Plan::for_deployable` plans a
+  deployable from what it reaches (`jadpo_plan::Keep`): 8.1o2's
+  `reaches` with what Jadpo runs by name (`on_first_sign_in:`'s action
+  where an API is served, `magic_link: { send: }`'s and the email
+  templates where subscribers run, every package's `decode:` and
+  `encode:`, kept whole), the queries they reach and the entities whose
+  `get` they call, the served APIs' routes alone, schedules, purges and
+  polls only where schedules run, queues, templates and the mail package
+  only where subscribers run, every subscriber still listed without its
+  action so what it emits waits for the deployable that runs it
+  (`Target::Elsewhere`, plan format 10), the connections it reaches with
+  every database and Redis, `ai:` where it reaches the model, the prompts
+  and event types its callables use, and only the settings those read,
+  found by planning twice (`RuntimePlan::setting_names` for those read by
+  name); each table numbered from what is kept, and anything a kept part
+  names that isn't kept refusing the plan (`jadpo_plan::Unkept`,
+  `toolchain.build_failed`). Its build id digests the program as compiled
+  (`jadpo_cli::stamp::program`: its Rust as its tokens' text,
+  `jadpo_codegen::unprinted`, its plan's bytes, its name and its stores'
+  migrations), worked out by `jadpo check` too and left out of the
+  manifest while the project has errors (decided in the chunk). A Worker
+  links SMTP when its plan holds an SMTP connection; `jadpo build`'s
+  `settings` lists the deployables' variables once each. Proved by a
+  café's kiosk and office each holding only its own callables, routes,
+  schedules, settings and connections, every corpus project's
+  deployables naming nothing they don't hold (an undeclared app running
+  all the whole plan runs), a kiosk's id unchanged by the office's
+  action, route and setting or a test and changed by its own action, and
+  live: the kiosk's binary holds no sweeping, the office's no booking.
+  Example 23, release, aarch64 macOS, against the whole program: `app`
+  21.10 to 21.09 MB (17.19 to 17.17 MB stripped), declared as a kiosk
+  and an office 21.12 to 21.09 MB and 21.09 to 20.51 MB, and the kiosk
+  on Workers 12.81 to 12.80 MB (3.98 MB gzipped): the runtime and its
+  locale data are most of a deployable.
 - [x] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
   8.1k. Built, decided first (§2.5, "A typed per-route entry"): each
   route's codecs generated from its types' plans, `entries.rs` in a

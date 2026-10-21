@@ -126,11 +126,33 @@ impl Numbering {
     }
 }
 
+/// The parts of the provider plan a program holds: a deployable keeps no
+/// recording, and its webhooks, polls and queues only where it serves or
+/// runs them (chunk 8.1o3).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Parts {
+    pub recordings: bool,
+    pub webhooks: bool,
+    pub polls: bool,
+    pub queues: bool,
+}
+
+impl Parts {
+    /// Every part: what `jadpo dev` and `jadpo test` plan.
+    pub(crate) const EVERY: Parts = Parts {
+        recordings: true,
+        webhooks: true,
+        polls: true,
+        queues: true,
+    };
+}
+
 /// The provider plan, numbering each operation's input and output in
 /// `json_types` (the plan's JSON table's types), each operation's
 /// connection by its number in `table`, the plan's connections table, each
 /// operation the runtime calls by its number in `numbering`, and reading
 /// each setting through `setting`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn plan(
     db: &dyn Db,
     project: Project,
@@ -139,6 +161,7 @@ pub(crate) fn plan(
     json_types: &mut Vec<TypeRef>,
     table: &[jadpo_std::connections::Connection],
     numbering: &Numbering,
+    parts: Parts,
 ) -> (ProviderPlan, Recordings) {
     let lookup = Lookup::new(db, project);
     let operations = jadpo_check::providers::operations(db, project);
@@ -175,7 +198,7 @@ pub(crate) fn plan(
     // Every recording of the app's own integrations, decoded by `jadpo
     // test` and the publishing bar with its operation's decoders (chunk
     // 7.2d2). An installed package's were decoded when it was published.
-    for record in project.records(db) {
+    for record in project.records(db).iter().filter(|_| parts.recordings) {
         let Some((home, rest)) = jadpo_db::package_at(&record.path) else {
             continue;
         };
@@ -205,7 +228,11 @@ pub(crate) fn plan(
     }
     // Each connection's webhooks (chunk 7.7): the body is read with its
     // event's codec, numbered here, and its payload kept with it.
-    for route in &jadpo_check::webhooks::webhooks(db, project).routes {
+    for route in jadpo_check::webhooks::webhooks(db, project)
+        .routes
+        .iter()
+        .filter(|_| parts.webhooks)
+    {
         let (Some(scheme), Some(secret)) = (route.scheme(), setting(&route.secret)) else {
             continue;
         };
@@ -240,7 +267,11 @@ pub(crate) fn plan(
     }
     // Each connection's polls the app subscribes to (chunk 7.6c): the
     // event made from the answer is written with its codec, numbered here.
-    for poll in &jadpo_check::polls::polls(db, project).polls {
+    for poll in jadpo_check::polls::polls(db, project)
+        .polls
+        .iter()
+        .filter(|_| parts.polls)
+    {
         out.polls.push(PollPlan {
             connection: poll.connection.clone(),
             name: poll.name.clone(),
@@ -257,7 +288,11 @@ pub(crate) fn plan(
     }
     // Each queue `receiving:` names (chunk 7.7c): a message's body is read
     // with its event's codec, numbered here, and its payload kept with it.
-    for queue in &jadpo_check::receiving::receiving(db, project).queues {
+    for queue in jadpo_check::receiving::receiving(db, project)
+        .queues
+        .iter()
+        .filter(|_| parts.queues)
+    {
         let inputs =
             |given: &[(String, jadpo_check::receiving::Input)]| -> Option<Vec<(String, Mapped)>> {
                 given
