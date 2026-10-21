@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 
 use jadpo_runtime::record::Entry;
 
-use crate::Run;
+use crate::{Run, Test};
 
 /// One test's record, in its canonical form: one line per thing it did,
 /// then how it ended, then its database's rows.
@@ -32,10 +32,20 @@ impl TestRecord {
     /// (`passed`, or the code it failed with) and left `rows`, each
     /// identity numbered in the order it first appears.
     pub fn new(entries: &[Entry], verdict: &str, rows: &[String]) -> TestRecord {
+        TestRecord::of_lines(entries.iter().map(Entry::line), verdict, rows)
+    }
+
+    /// The record of a test whose entries' lines ([`Entry::line`]) are
+    /// `lines`: one kept where the test ran, in workerd say (chunk 8.2e),
+    /// and handed back as text.
+    pub fn of_lines(
+        lines: impl IntoIterator<Item = String>,
+        verdict: &str,
+        rows: &[String],
+    ) -> TestRecord {
         let mut ids = Ids::default();
-        let lines = entries
-            .iter()
-            .map(Entry::line)
+        let lines = lines
+            .into_iter()
             .chain(std::iter::once(format!("test {verdict}")))
             .chain(rows.iter().map(|row| format!("row {row}")))
             .map(|line| ids.normalise(&line))
@@ -146,25 +156,40 @@ impl std::fmt::Display for Difference {
 /// ran and the other didn't, or one with no record (a run that didn't ask
 /// for records), is a difference.
 pub fn differential(first: &Run, second: &Run) -> Result<usize, Box<Difference>> {
-    fn by_key(run: &Run) -> BTreeMap<String, &crate::TestResult> {
-        run.results
-            .iter()
-            .map(|result| (result.test.key.clone(), result))
+    compare(&recorded(first), &recorded(second))
+}
+
+/// Each test `run` ran, with its record when it kept one.
+pub fn recorded(run: &Run) -> Vec<(&Test, Option<&TestRecord>)> {
+    run.results
+        .iter()
+        .map(|result| (&result.test, result.record.as_ref()))
+        .collect()
+}
+
+/// Compares two runs' records, each given as the tests it ran with their
+/// records ([`recorded`]), as [`differential`] does: a run kept elsewhere,
+/// a Worker's in workerd (chunk 8.2e), compared with one here.
+pub fn compare(
+    first: &[(&Test, Option<&TestRecord>)],
+    second: &[(&Test, Option<&TestRecord>)],
+) -> Result<usize, Box<Difference>> {
+    type Ran<'r> = (&'r Test, Option<&'r TestRecord>);
+    fn by_key<'r>(run: &[Ran<'r>]) -> BTreeMap<String, Ran<'r>> {
+        run.iter()
+            .map(|(test, record)| (test.key.clone(), (*test, *record)))
             .collect()
     }
     let (ones, twos) = (by_key(first), by_key(second));
-    let mut keys: Vec<&crate::TestResult> = ones.values().copied().collect();
+    let mut keys: Vec<&Test> = ones.values().map(|(test, _)| *test).collect();
     keys.extend(
         twos.iter()
             .filter(|(key, _)| !ones.contains_key(*key))
-            .map(|(_, result)| *result),
+            .map(|(_, (test, _))| *test),
     );
-    keys.sort_by(|a, b| {
-        (&a.test.file, a.test.line, &a.test.key).cmp(&(&b.test.file, b.test.line, &b.test.key))
-    });
+    keys.sort_by(|a, b| (&a.file, a.line, &a.key).cmp(&(&b.file, b.line, &b.key)));
     let mut compared = 0;
-    for result in keys {
-        let test = &result.test;
+    for test in keys {
         let missing = |why: &'static str| {
             Box::new(Difference {
                 test: test.key.clone(),
@@ -177,14 +202,14 @@ pub fn differential(first: &Run, second: &Run) -> Result<usize, Box<Difference>>
                 missing: Some(why),
             })
         };
-        let (Some(one), Some(two)) = (ones.get(&test.key), twos.get(&test.key)) else {
+        let (Some((_, one)), Some((_, two))) = (ones.get(&test.key), twos.get(&test.key)) else {
             return Err(missing(if ones.contains_key(&test.key) {
                 "ran only in the first run"
             } else {
                 "ran only in the second run"
             }));
         };
-        let (Some(a), Some(b)) = (&one.record, &two.record) else {
+        let (Some(a), Some(b)) = (one, two) else {
             return Err(missing("has no record in one of the runs"));
         };
         if let Some(at) = first_difference(a, b) {

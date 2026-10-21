@@ -88,19 +88,24 @@ impl std::fmt::Display for Unmade {
     }
 }
 
-/// The template of one store: built once per process and digest.
+/// The templates built so far, by their server and name.
+type Built = BTreeMap<(String, String), Result<String, Unmade>>;
+
+/// The template of one store: built once per process, server and digest.
 fn template(server: &Server, store: &str, steps: &[Migration]) -> Result<String, Unmade> {
-    static BUILT: OnceLock<Mutex<BTreeMap<String, Result<String, Unmade>>>> = OnceLock::new();
+    static BUILT: OnceLock<Mutex<Built>> = OnceLock::new();
     let name = format!("jadpo_tpl_{}_{}", short(store), template_digest(steps));
+    // A process may make copies on more than one server (chunk 8.2e).
+    let key = (server.url(crate::postgres::ADMIN_DATABASE), name.clone());
     let built = BUILT.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut built = built
         .lock()
         .map_err(|_| "the template lock was poisoned".to_string())?;
-    if let Some(done) = built.get(&name) {
+    if let Some(done) = built.get(&key) {
         return done.clone();
     }
     let done = build_template(server, &name, steps);
-    built.insert(name, done.clone());
+    built.insert(key, done.clone());
     done
 }
 
@@ -287,6 +292,8 @@ impl std::fmt::Debug for TestDatabases {
 
 struct Shared {
     steps: BTreeMap<String, Vec<Migration>>,
+    /// The server the copies are made on, when not the process's.
+    server: Option<Arc<Server>>,
     keep_failed: bool,
     state: Mutex<State>,
     changed: Condvar,
@@ -354,9 +361,25 @@ impl TestDatabases {
     /// The databases for a run whose stores have `steps`; nothing starts
     /// until a test asks for its database.
     pub fn new(steps: BTreeMap<String, Vec<Migration>>, keep_failed: bool) -> TestDatabases {
+        TestDatabases::made(steps, keep_failed, None)
+    }
+
+    /// The databases for a run whose stores have `steps`, made on `server`
+    /// rather than the process's: one a Worker reaches over TCP (chunk
+    /// 8.2e).
+    pub fn on(steps: BTreeMap<String, Vec<Migration>>, server: Arc<Server>) -> TestDatabases {
+        TestDatabases::made(steps, false, Some(server))
+    }
+
+    fn made(
+        steps: BTreeMap<String, Vec<Migration>>,
+        keep_failed: bool,
+        server: Option<Arc<Server>>,
+    ) -> TestDatabases {
         TestDatabases {
             shared: Arc::new(Shared {
                 steps,
+                server,
                 keep_failed,
                 state: Mutex::new(State {
                     remaining: usize::MAX,
@@ -481,7 +504,10 @@ fn poisoned() -> String {
 /// starts the other workers and works beside them until the run is over.
 fn prepare(shared: &Arc<Shared>) {
     let ready = (|| -> Result<Started, (Option<String>, Unmade)> {
-        let server = server().map_err(|error| (None, error.into()))?;
+        let server = match &shared.server {
+            Some(server) => Arc::clone(server),
+            None => server().map_err(|error| (None, error.into()))?,
+        };
         let mut templates = BTreeMap::new();
         for (store, steps) in &shared.steps {
             let name =
@@ -861,17 +887,10 @@ fn how_to_reset(url: &str) -> Result<Option<String>, String> {
 pub struct TestHost<'d> {
     databases: &'d TestDatabases,
     held: std::cell::OnceCell<Held>,
-    /// The in-memory store every `files` connection is in a test (area
-    /// 13, "Provider calls and capabilities in tests"; chunk 6.4b).
-    files: jadpo_runtime::files::MemoryFiles,
-    /// The connections that keep files, which it is given for (chunk
-    /// 7.1c).
-    file_stores: Vec<String>,
-    /// Every email a test sends, caught rather than sent (area 16,
-    /// "Email"; chunk 7.3): what `email.sent` will read (chunk 7.3c).
-    mail: jadpo_runtime::capability::Fake,
-    /// The connection `email:` names, which it is given for.
-    mail_connection: Option<String>,
+    /// The in-memory store every `files` connection is in a test, and
+    /// every email a test sends, caught rather than sent
+    /// ([`jadpo_runtime::test_run::Caught`]).
+    caught: jadpo_runtime::test_run::Caught,
     /// The authenticators `test_passkeys.register` made, each holding one
     /// passkey, by number (area 8; chunk 5.5z2).
     authenticators: TestPasskeyAuthenticators,
@@ -944,81 +963,6 @@ impl Store {
     }
 }
 
-/// What a test's database holds when it ends (chunk 8.1c): the rows of
-/// each of the application's and the runtime's tables, but the migrations'
-/// own and an extension's, by table and in column order, as JSON; a
-/// `bytea` column by its length only, since it holds what is sealed, hashed
-/// or encrypted. The tables in name order, each table's rows in their
-/// text's order, so the same data always reads the same.
-const TABLES: &str = "SELECT c.relname::text, a.attname::text, format_type(a.atttypid, a.atttypmod)::text \
-    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
-    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped \
-    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition \
-    AND c.relname <> 'jadpo_migrations' \
-    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass \
-    AND d.objid = c.oid AND d.deptype = 'e') \
-    ORDER BY c.relname, a.attnum";
-
-/// Each row `database` holds, as [`TABLES`] reads them: `<store>.<table>
-/// <row as JSON>`.
-async fn rows_of(
-    store: &str,
-    database: &dyn jadpo_runtime::Database,
-) -> Result<Vec<String>, String> {
-    use jadpo_runtime::SqlValue;
-    let mut transaction = database.begin().await.map_err(|e| format!("{e:?}"))?;
-    // Times read the same whatever zone the server is in.
-    transaction
-        .batch("SET LOCAL TIME ZONE 'UTC'")
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let columns = transaction
-        .query(TABLES, &[])
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    let mut tables: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for column in &columns {
-        let [
-            SqlValue::Text(table),
-            SqlValue::Text(name),
-            SqlValue::Text(ty),
-        ] = column.as_slice()
-        else {
-            continue;
-        };
-        let quoted = format!("\"{}\"", name.replace('"', "\"\""));
-        let read = if ty == "bytea" {
-            format!("'<' || octet_length({quoted}) || ' bytes>' AS {quoted}")
-        } else {
-            quoted
-        };
-        tables.entry(table.clone()).or_default().push(read);
-    }
-    let mut out = Vec::new();
-    for (table, columns) in &tables {
-        let sql = format!(
-            "SELECT row_to_json(r)::text FROM (SELECT {} FROM \"{}\") r",
-            columns.join(", "),
-            table.replace('"', "\"\"")
-        );
-        let read = transaction
-            .query(&sql, &[])
-            .await
-            .map_err(|e| format!("{e:?}"))?;
-        let mut rows: Vec<String> = read
-            .into_iter()
-            .filter_map(|row| match row.into_iter().next() {
-                Some(SqlValue::Text(json)) => Some(json),
-                _ => None,
-            })
-            .collect();
-        rows.sort();
-        out.extend(rows.into_iter().map(|row| format!("{store}.{table} {row}")));
-    }
-    let _ = transaction.rollback().await;
-    Ok(out)
-}
-
 /// A store that refuses with the reason the test's database couldn't be
 /// had, so the test reports it as a fault at the place that used it.
 struct Unready(String);
@@ -1041,10 +985,7 @@ impl<'d> TestHost<'d> {
         TestHost {
             databases,
             held: std::cell::OnceCell::new(),
-            files: jadpo_runtime::files::MemoryFiles::new(),
-            file_stores: Vec::new(),
-            mail: jadpo_runtime::capability::Fake::new(),
-            mail_connection: None,
+            caught: jadpo_runtime::test_run::Caught::default(),
             authenticators: TestPasskeyAuthenticators::default(),
             record: None,
         }
@@ -1067,30 +1008,15 @@ impl<'d> TestHost<'d> {
         let Some(Held::Holding { stores, .. }) = self.held.get() else {
             return Vec::new();
         };
-        let mut out = Vec::new();
-        for (name, store) in stores {
-            match runtime.block_on(rows_of(name, store.raw())) {
-                Ok(rows) => out.extend(rows),
-                Err(error) => out.push(format!("{name} unread {error}")),
-            }
-        }
-        out
+        runtime.block_on(jadpo_runtime::test_run::all_rows(stores.iter().map(
+            |(name, store)| (name.as_str(), store.raw() as &dyn jadpo_runtime::Database),
+        )))
     }
 
-    /// Catches every email sent through `connection`, the one `email:`
-    /// names, rather than sending it (area 16; chunk 7.3).
-    pub fn with_mail(mut self, connection: Option<String>) -> TestHost<'d> {
-        self.mail_connection = connection;
-        self
-    }
-
-    /// Gives its store of files for the connections in `stores`, and
-    /// nothing for any other (chunk 7.1c).
-    pub fn with_file_stores<'s>(
-        mut self,
-        stores: impl IntoIterator<Item = &'s str>,
-    ) -> TestHost<'d> {
-        self.file_stores = stores.into_iter().map(str::to_string).collect();
+    /// Gives it what a test's host gives besides its stores: its stores of
+    /// files and the email connection's mail caught (chunks 7.1c and 7.3).
+    pub fn with_caught(mut self, caught: jadpo_runtime::test_run::Caught) -> TestHost<'d> {
+        self.caught = caught;
         self
     }
 
@@ -1173,18 +1099,12 @@ impl jadpo_runtime::Host for TestHost<'_> {
     /// connection has no driver until provider calls are built (chunk
     /// 7.2c), where a test fakes it.
     fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
-        if self.mail_connection.as_deref() == Some(connection) {
-            return Some(&self.mail);
-        }
-        self.file_stores
-            .iter()
-            .any(|store| store == connection)
-            .then_some(&self.files as &dyn jadpo_runtime::capability::Capability)
+        self.caught.capability(connection)
     }
 
     /// Two rows a batch, so every file a test reads resumes between
     /// batches (area 13, "Provider calls and capabilities in tests").
     fn rows_per_batch(&self) -> u32 {
-        2
+        jadpo_runtime::test_run::ROWS_PER_BATCH
     }
 }

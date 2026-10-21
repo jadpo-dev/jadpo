@@ -7,8 +7,6 @@
 
 use jadpo_runtime::{Clock, Env, MemoryHost};
 
-use crate::select::splitmix;
-
 /// The database a test runs against.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum TestDatabase {
@@ -37,22 +35,6 @@ pub struct TestEnv {
     pub fakes: Fakes,
 }
 
-/// A stable digest of `text` (FNV-1a), the same on every platform.
-fn digest(text: &str) -> u64 {
-    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-    })
-}
-
-/// The order a test's deliveries are drawn in between its steps (area
-/// 13, "Caches and events"; chunk 6.11): from the run's order seed, which
-/// the report prints and `--seed` gives again, and the test's key, so
-/// tests of one run are shuffled apart and rerunning one alone keeps its
-/// order.
-pub(crate) fn delivery_order(order_seed: u64, key: &str) -> u64 {
-    splitmix(order_seed ^ digest(key))
-}
-
 impl TestEnv {
     /// The environment of the test with key `key`: its seed comes from
     /// the key alone, so every run gives the test the same identities,
@@ -60,11 +42,12 @@ impl TestEnv {
     /// clock is fixed (area 13, "Controlling time", amended by area 19,
     /// question 19); the run's order seed decides only the order. Its
     /// clock starts at the fixed default, 2000-01-01T00:00:00Z, which a
-    /// test's `clock:` moves.
+    /// test's `clock:` moves. The runtime's [`jadpo_runtime::test_run`]
+    /// makes it the same way for the run itself.
     pub fn new(key: &str) -> TestEnv {
         TestEnv {
             env: Env {
-                seed: Some(splitmix(digest(key))),
+                seed: Some(jadpo_runtime::test_run::seed(key)),
                 clock: Clock::TEST,
             },
             database: TestDatabase::None,
