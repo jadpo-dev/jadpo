@@ -352,44 +352,28 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
         .filter(|(name, _)| name.starts_with("docs/language/"))
         .count();
     assert!(pages > 200, "{done:?}");
+    // Tests compared and passed, by project.
+    let counted = |project: &str| {
+        done.iter()
+            .find(|(name, _)| name == project)
+            .map(|(_, compared)| (compared.tests, compared.passed))
+    };
+    assert_eq!(counted("docs/language/07-http.md todos"), Some((3, 3)));
+    assert_eq!(counted("a return inside an inline function"), Some((2, 1)));
+    assert_eq!(counted("an export run to its end"), Some((1, 1)));
+    // Every route's typed entry read requests and wrote values as the
+    // codec walk does (chunk 8.1p): the first route's among them.
     let todos = done
         .iter()
         .find(|(name, _)| name == "docs/language/07-http.md todos")
-        .map(|(_, compared)| *compared);
-    assert_eq!(
-        todos,
-        Some(Compared {
-            tests: 3,
-            passed: 3
-        })
-    );
-    let returned = done
-        .iter()
-        .find(|(name, _)| name == "a return inside an inline function")
-        .map(|(_, compared)| *compared);
-    assert_eq!(
-        returned,
-        Some(Compared {
-            tests: 2,
-            passed: 1
-        })
-    );
-    let exported = done
-        .iter()
-        .find(|(name, _)| name == "an export run to its end")
-        .map(|(_, compared)| *compared);
-    assert_eq!(
-        exported,
-        Some(Compared {
-            tests: 1,
-            passed: 1
-        })
-    );
+        .map(|(_, compared)| compared.requests);
+    assert!(todos.is_some_and(|requests| requests > 50), "{todos:?}");
     exported_to_its_end(&export);
     let tests: usize = done.iter().map(|(_, compared)| compared.tests).sum();
     assert!(tests > 500, "{done:?}");
+    let requests: usize = done.iter().map(|(_, compared)| compared.requests).sum();
     println!(
-        "compared {} projects, {tests} tests; skipped for the server's extensions: {}",
+        "compared {} projects, {tests} tests, {requests} requests read and values written by typed entries; skipped for the server's extensions: {}",
         done.len(),
         skipped.len()
     );

@@ -27,6 +27,8 @@ jadpo-interp.workspace = true
 jadpo-runtime = { workspace = true, features = ["testing"] }
 jadpo-std.workspace = true
 jadpo-term.workspace = true
+# Compiled code's typed entries held to the codec walk (chunk 8.1p).
+jadpo-value.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

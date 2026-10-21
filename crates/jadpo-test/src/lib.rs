@@ -32,6 +32,7 @@ pub mod compiled;
 pub mod database;
 mod diff;
 pub mod differential;
+mod entries;
 mod env;
 pub mod host;
 mod json;

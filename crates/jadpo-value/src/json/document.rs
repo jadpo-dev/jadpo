@@ -223,22 +223,36 @@ impl Reader<'_> {
         }
         self.at = at;
         let written = &self.text[start..at];
-        let number = if whole && written == "-0" {
-            Number::from_f64(-0.0)?
-        } else if let Some(n) = whole.then(|| written.parse::<u64>().ok()).flatten() {
-            Number::from(n)
-        } else if let Some(n) = whole.then(|| written.parse::<i64>().ok()).flatten() {
-            Number::from(n)
-        } else {
-            let double: f64 = written.parse().ok()?;
-            if !double.is_finite() {
-                return None;
-            }
-            Number::from_f64(double)?
-        };
+        let number = number_of(written, whole)?;
         self.numbers
             .0
             .insert(self.path.clone(), written.to_string());
         Some(Value::Number(number))
+    }
+}
+
+/// The number `written` is, as `serde_json` keeps it: a whole number that
+/// fits as one and anything else as a finite double; `None` past a
+/// double's range. `whole` when it has no fraction or exponent.
+pub(super) fn number_of(written: &str, whole: bool) -> Option<Number> {
+    Some(if whole && written == "-0" {
+        Number::from_f64(-0.0)?
+    } else if let Some(n) = whole.then(|| written.parse::<u64>().ok()).flatten() {
+        Number::from(n)
+    } else if let Some(n) = whole.then(|| written.parse::<i64>().ok()).flatten() {
+        Number::from(n)
+    } else {
+        let double: f64 = written.parse().ok()?;
+        if !double.is_finite() {
+            return None;
+        }
+        Number::from_f64(double)?
+    })
+}
+
+impl Numbers {
+    /// Each number's text by where it stands, as given.
+    pub(super) fn from_map(numbers: HashMap<Vec<String>, String>) -> Numbers {
+        Numbers(numbers)
     }
 }

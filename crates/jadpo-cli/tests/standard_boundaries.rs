@@ -691,6 +691,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "makes sample values for the proof probes",
     ),
     (
+        "crates/jadpo-test/src/entries.rs",
+        "makes sample values that compiled code's typed entries and the codec walk read and write both ways, to hold the two to each other (chunk 8.1p)",
+    ),
+    (
         "crates/jadpo-runtime/src/ai_budget.rs",
         "counts what `ai` calls use: the day's cost limit read from its `Money` setting's value, and the day a price holds from (chunk 5.5v5)",
     ),
