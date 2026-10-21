@@ -1,0 +1,54 @@
+[package]
+name = "jadpo-cldr"
+description = "The Unicode CLDR data a deployable carries: ICU4X's compiled data exported for the application's supported locales"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+# A tooling crate (docs/compiler-runtime.md §2.1; roadmap chunk 8.2c):
+# `jadpo build` exports, from the data compiled into this Jadpo, the CLDR
+# data a deployable carries, which cargo then compiles in its place
+# (ICU4X's `ICU4X_DATA_DIR`). No workspace crate: the locales come in as
+# BCP 47 tags. The data crates are named directly because their macros
+# implement each marker here; the components are taken with `datagen`, so
+# each marker's data can be baked again; icu_provider_export walks them and
+# writes the baked files. The rest are the crates the baked macros name.
+[dependencies]
+icu_calendar = { workspace = true, features = ["datagen"] }
+icu_casemap = { workspace = true, features = ["datagen"] }
+icu_collator = { workspace = true, features = ["datagen"] }
+icu_datetime = { workspace = true, features = ["datagen"] }
+icu_decimal = { workspace = true, features = ["datagen"] }
+icu_experimental = { workspace = true, features = ["datagen"] }
+icu_list = { workspace = true, features = ["datagen"] }
+icu_locale = { workspace = true, features = ["datagen"] }
+icu_normalizer = { workspace = true, features = ["datagen"] }
+icu_plurals = { workspace = true, features = ["datagen"] }
+icu_properties = { workspace = true, features = ["datagen"] }
+icu_time = { workspace = true, features = ["datagen"] }
+icu_locale_fallback = { workspace = true, features = ["compiled_data", "datagen"] }
+icu_provider = { workspace = true, features = ["baked", "export"] }
+icu_provider_export.workspace = true
+icu_calendar_data.workspace = true
+icu_casemap_data.workspace = true
+icu_collator_data.workspace = true
+icu_datetime_data.workspace = true
+icu_decimal_data.workspace = true
+icu_experimental_data.workspace = true
+icu_list_data.workspace = true
+icu_locale_data.workspace = true
+icu_locale_fallback_data.workspace = true
+icu_normalizer_data.workspace = true
+icu_plurals_data.workspace = true
+icu_properties_data.workspace = true
+icu_time_data.workspace = true
+icu_collections.workspace = true
+icu_locale_core.workspace = true
+icu_pattern.workspace = true
+zerotrie.workspace = true
+zerovec.workspace = true
+
+[lints]
+workspace = true

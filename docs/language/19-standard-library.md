@@ -4957,7 +4957,9 @@ take it.
   becomes `SS`, `İ` becomes `i` and a combining dot) and text sorts by
   code point, as queries sort it (question 26). It takes any `Locale`, not
   only the ones `locales { }` declares, since case mapping and collation
-  are Unicode's and CLDR's data, not the application's translations.
+  are Unicode's and CLDR's data, not the application's translations; a
+  deployable, which carries its supported locales' other data only,
+  carries every locale's collation for it (area 10, chunk 8.2c).
   Collation is the locale's default at CLDR's default strength, so keys
   equal by its rules keep their order. On `list.sort_by` it orders text
   keys only; with any other key it is `type.temporal_option_unused`, whose
