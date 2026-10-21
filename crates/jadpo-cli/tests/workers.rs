@@ -1073,19 +1073,80 @@ impl Drop for Workerd {
 }
 
 /// A PostgreSQL address's user, password, server (`host:port`) and
-/// database: what workerd's Hyperdrive binding is given.
+/// database, each percent-decoded, as libpq reads a URL: a `dbname=` in
+/// its query names the database over its path, the last one winning, as
+/// the run's server's addresses do (`…/postgres?dbname=jadpo_…`).
 fn parts(url: &str) -> (String, String, String, String) {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let (rest, query) = rest.split_once('?').unwrap_or((rest, ""));
     let (user_info, rest) = rest.rsplit_once('@').unwrap_or(("", rest));
     let (user, password) = user_info.split_once(':').unwrap_or((user_info, ""));
-    let (server, database) = rest.split_once('/').unwrap_or((rest, ""));
-    let database = database.split('?').next().unwrap_or_default();
+    let (server, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let database = query
+        .split('&')
+        .filter_map(|pair| pair.strip_prefix("dbname="))
+        .last()
+        .unwrap_or(path);
     (
-        user.to_string(),
-        password.to_string(),
+        decoded(user),
+        decoded(password),
         server.to_string(),
-        database.to_string(),
+        decoded(database),
     )
+}
+
+/// `text` with each `%XX` read as its byte.
+fn decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let hex = text
+            .get(at + 1..at + 3)
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match (bytes[at], hex) {
+            (b'%', Some(byte)) => {
+                out.push(byte);
+                at += 3;
+            }
+            (byte, _) => {
+                out.push(byte);
+                at += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[test]
+fn an_address_is_read_into_its_parts_as_libpq_reads_it() {
+    assert_eq!(
+        parts("postgresql://jadpo:jadpo@127.0.0.1:5432/postgres?dbname=jadpo_1_2_workers"),
+        (
+            "jadpo".to_string(),
+            "jadpo".to_string(),
+            "127.0.0.1:5432".to_string(),
+            "jadpo_1_2_workers".to_string()
+        )
+    );
+    assert_eq!(
+        parts("postgres://app:p%40ss@db.test:6543/repair%20cafe?sslmode=x&dbname=a&dbname=b"),
+        (
+            "app".to_string(),
+            "p@ss".to_string(),
+            "db.test:6543".to_string(),
+            "b".to_string()
+        )
+    );
+    assert_eq!(
+        parts("postgresql://jadpo@127.0.0.1:55432/jadpo_workers"),
+        (
+            "jadpo".to_string(),
+            String::new(),
+            "127.0.0.1:55432".to_string(),
+            "jadpo_workers".to_string()
+        )
+    );
 }
 
 /// A chunked body's text.
