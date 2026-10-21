@@ -221,12 +221,17 @@ POSTGRES = [
 # teaching example 23 built by `jadpo build` in release, its build kept in
 # target/jadpo-compiled/deployable/ too, then started against the run's
 # server, refusing to start out of date, serving and draining on SIGTERM.
-# And route tests on workerd (chunk 8.2e): area 7's todos and teaching
-# example 23 built for wasm32 as a test Worker, in target/jadpo-compiled/
-# workerd/, and each route test run inside it with the interpreter's
-# records, workerd installed into tools/workers/ by `npm ci` the first time.
+# Route tests on workerd (chunk 8.2e) share its test file but are a step
+# of the `wasm32` group, whose job has the time: ROUTES_ON_WORKERD.
 COMPILED = ('compiled code: the corpus interpreted and compiled with the same records, and a deployable',
-            [('jadpo-cli', 'compiled'), ('jadpo-cli', 'deployable')], [])
+            [('jadpo-cli', 'compiled'), ('jadpo-cli', 'deployable')],
+            ['--skip', 'compiled::route_tests_on_workerd_give_the_interpreters_records'])
+# Route tests on workerd (chunk 8.2e): area 7's todos and teaching example
+# 23 built for wasm32 as a test Worker, in target/jadpo-compiled/workerd/,
+# and each route test run inside it with the interpreter's records, workerd
+# installed into tools/workers/ the first time.
+ROUTES_ON_WORKERD = ('route tests on workerd with the interpreter\'s records',
+                     [('jadpo-cli', 'compiled::route_tests_on_workerd_give_the_interpreters_records')])
 COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 
 # The Workers host under workerd, Cloudflare's own Workers runtime, on this
@@ -426,6 +431,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
             Step(WORKERD[0], 'wasm32', tests=modules(WORKERD[1]), lane='cargo'),
             Step(WORKERS_DEPLOYABLE[0], 'wasm32', tests=modules(WORKERS_DEPLOYABLE[1]), lane='cargo',
                  args=['--show-output'], show=WORKERS_SHOWN, postgres=True),
+            Step(ROUTES_ON_WORKERD[0], 'wasm32', tests=ROUTES_ON_WORKERD[1], lane='cargo',
+                 args=['--exact', '--show-output'], show=COMPILED_SHOWN, postgres=True),
         ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'
