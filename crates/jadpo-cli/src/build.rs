@@ -913,6 +913,7 @@ mod tests {
                 module: "build/target/edge/edge.wasm".to_string(),
                 bytes: 12_800_000,
                 gzipped: 4_000_000,
+                hyperdrive: Vec::new(),
             },
             openapi: Vec::new(),
             build: "b_1c5e09d2a7f3".to_string(),
