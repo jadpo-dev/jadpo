@@ -268,7 +268,7 @@ fn recorded(call: &Call) -> Reply {
             );
         }
     };
-    let mut ctx = Ctx::new(program.places(), &host, Env::default());
+    let mut ctx = Ctx::of(&program, &host, Env::default());
     ctx.allow_standalone_calls();
     let Some(done) = runtime.block_on(program.ask_model(&mut ctx, &key, value)) else {
         return failed(

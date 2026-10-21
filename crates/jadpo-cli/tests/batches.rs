@@ -401,7 +401,7 @@ impl Store {
             seed: Some(self.seeds.get()),
             clock: Clock::TEST,
         };
-        Ctx::new(program.places(), self, env)
+        Ctx::of(program, self, env)
     }
 
     /// One query on its own, for what the runtime kept.

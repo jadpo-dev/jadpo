@@ -358,18 +358,6 @@ impl<'p> Ctx<'p> {
         self.started = Some(started);
     }
 
-    /// Gives it what `executor`'s program started with, unless it has
-    /// been given that already: a context made from the program's places
-    /// alone, as a test's harness makes one, reaches the program's
-    /// start-up state as the program first runs in it.
-    pub fn start_from(&mut self, executor: &dyn crate::Executor) {
-        if self.started.is_none()
-            && let Some(started) = executor.started()
-        {
-            self.started = Some(started);
-        }
-    }
-
     /// Whether it has been given what its program started with.
     pub fn is_started(&self) -> bool {
         self.started.is_some()

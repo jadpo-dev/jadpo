@@ -95,6 +95,8 @@ pub mod standard;
 pub mod steps;
 pub mod subscriber;
 pub mod system;
+#[cfg(feature = "testing")]
+pub mod testing;
 mod time;
 pub mod translation;
 pub mod types;

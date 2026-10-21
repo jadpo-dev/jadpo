@@ -663,10 +663,6 @@ mod tests {
             &self.places
         }
 
-        fn callable(&self, _key: &str) -> Option<u32> {
-            None
-        }
-
         fn run<'a, 'p: 'a>(
             &'a self,
             _ctx: &'a mut jadpo_runtime::Ctx<'p>,

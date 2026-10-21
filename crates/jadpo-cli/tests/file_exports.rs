@@ -497,7 +497,7 @@ impl Stand {
     ) -> (Outcome, Vec<Deferred>) {
         let id = program.plan().find(action).expect("the action");
         let host = self.host();
-        let mut ctx = self.harness.ctx_on(program.places(), &host);
+        let mut ctx = self.harness.ctx_on(program, &host);
         let outcome = program.run(&mut ctx, id, args).await;
         let left = ctx.take_deferred();
         (outcome, left)

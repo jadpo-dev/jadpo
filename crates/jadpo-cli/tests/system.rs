@@ -376,7 +376,7 @@ async fn call(
     caller: Option<&Value>,
 ) -> Outcome {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     ctx.set_caller(caller.map(|person| Caller {
         value: person.clone(),
         key: "user".to_string(),
@@ -401,7 +401,7 @@ async fn as_system(
             other => panic!("not an identity: {other:?}"),
         }
     });
-    let mut ctx = host.ctx(program.places());
+    let mut ctx = host.ctx(program);
     let job = Job {
         callable,
         args,

@@ -408,7 +408,7 @@ async fn act(
     args: Vec<Value>,
 ) -> (Outcome, Vec<Deferred>) {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = harness.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program, host);
     let outcome = program.run(&mut ctx, id, args).await;
     (outcome, ctx.take_deferred())
 }
@@ -1081,7 +1081,7 @@ fn a_tests_own_settings_reach_the_mail_package_its_email_goes_through() {
     let host = through_resend(&harness, &cards);
     Runtime::new().expect("runtime").block_on(async {
         let join = program.plan().find("join").expect("the action");
-        let mut ctx = harness.ctx_on(program.places(), &host);
+        let mut ctx = harness.ctx_on(program, &host);
         ctx.set_settings(vec![(host_setting, Value::text(&tested.url))]);
         ctx.deliver_between_steps(1);
         let joined = program

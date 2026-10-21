@@ -51,7 +51,7 @@ pub fn settings_read(ai: &Ai<'_>, site: &EmbedSite) -> Vec<u32> {
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
             if let Some(embed) = &package.embed {
-                read.extend(crate::ai::package_reads(ai, &embed.operation, &embed.input));
+                read.extend(crate::ai::package_reads(ai, embed.called, &embed.input));
             }
         }
     }
@@ -213,7 +213,7 @@ async fn embedded(
             match crate::ai::package_request(
                 ctx,
                 &providers,
-                (&ai.plan.connection, &embed.operation),
+                embed.called,
                 &json,
                 settings,
                 None,
@@ -466,7 +466,7 @@ fn package_vectors(
     embed: &jadpo_std::ai::PackageEmbed,
     text: &str,
 ) -> Result<Rc<str>, Done> {
-    let Some((_, op)) = providers.operation(connection, &embed.operation) else {
+    let Some((_, op, _)) = providers.numbered(embed.called) else {
         return Err(Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{}`, which the plan doesn't have",
             embed.operation

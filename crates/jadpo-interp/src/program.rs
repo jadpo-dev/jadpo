@@ -293,15 +293,6 @@ impl Program {
         &self.started
     }
 
-    /// Gives `ctx` what it started with, unless `ctx` was given that
-    /// already: a context made from its places alone, as a test's harness
-    /// makes one, reaches it as one of its callables first runs there.
-    fn start_in(&self, ctx: &mut Ctx<'_>) {
-        if !ctx.is_started() {
-            ctx.start(Rc::clone(&self.started));
-        }
-    }
-
     /// What the runtime reads of its plan (chunks 7.9e and 8.1a), with
     /// this thread's validators and shapes: what [`Executor::plan`] gives.
     pub fn runtime_plan(&self) -> jadpo_runtime::Plan<'_> {
@@ -411,7 +402,7 @@ impl Program {
             .fold(host, |host, (_, name, _)| {
                 host.with(name, std::rc::Rc::clone(&fake))
             });
-        let mut ctx = Ctx::new(self.places(), &host, Env::default());
+        let mut ctx = Ctx::of(self, &host, Env::default());
         let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));
         Ok(ran.unwrap_or_else(|_| {
             Outcome::Fault(ctx.fault(
@@ -424,7 +415,8 @@ impl Program {
     /// Calls operation `operation` (`pickups.create`) of provider
     /// connection `connection` with `input`, as a call's site in code does
     /// but reading the whole answer (chunk 7.2d2): what `jadpo package
-    /// record` sends to a provider's sandbox, on `ctx`'s host.
+    /// record` sends to a provider's sandbox, on `ctx`'s host, a context
+    /// made from it ([`Ctx::of`]).
     pub async fn call_provider(
         &self,
         ctx: &mut Ctx<'_>,
@@ -433,7 +425,6 @@ impl Program {
         input: Option<Value>,
     ) -> jadpo_runtime::provider::Done {
         use jadpo_runtime::provider;
-        self.start_in(ctx);
         let plan = self.plan();
         let number = plan
             .providers()
@@ -465,7 +456,6 @@ impl Program {
         // The developer's own one call, outside any running app, which no
         // store counts against the app's limits (chunk 5.5v5).
         let unlimited = self.unlimited()?;
-        self.start_in(ctx);
         let calling = jadpo_runtime::ai::Calling {
             plan: jadpo_runtime::Plan {
                 ai: Some(&unlimited),
@@ -495,7 +485,6 @@ impl Program {
             })
         })?;
         let unlimited = self.unlimited()?;
-        self.start_in(ctx);
         let calling = jadpo_runtime::ai::Calling {
             plan: jadpo_runtime::Plan {
                 ai: Some(&unlimited),
@@ -522,7 +511,6 @@ impl Program {
             })
         })?;
         let unlimited = self.unlimited()?;
-        self.start_in(ctx);
         let calling = jadpo_runtime::ai::Calling {
             plan: jadpo_runtime::Plan {
                 ai: Some(&unlimited),
@@ -695,10 +683,6 @@ impl Executor for Program {
         Program::places(self)
     }
 
-    fn callable(&self, key: &str) -> Option<u32> {
-        Program::plan(self).find(key)
-    }
-
     fn plan(&self) -> jadpo_runtime::Plan<'_> {
         self.runtime_plan()
     }
@@ -707,59 +691,27 @@ impl Executor for Program {
         Some(Rc::clone(&self.started))
     }
 
-    fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
-        let plan = Program::plan(self);
-        let config = plan.config();
-        plan.callable(callable)
-            .into_iter()
-            .flat_map(|plan| plan.settings.iter())
-            .filter_map(|(at, text)| {
-                let field = config.fields.get(*at as usize)?;
-                let value =
-                    jadpo_runtime::config::decode(config, &self.prepared.validators, field, text)
-                        .ok()?;
-                Some((*at, value))
-            })
-            .collect()
-    }
-
-    fn clock(&self, callable: u32) -> Option<i64> {
-        Program::plan(self).callable(callable)?.clock
-    }
-
-    fn recording(
-        &self,
-        ctx: &mut Ctx<'_>,
-        file: &str,
-    ) -> Option<Result<(), jadpo_runtime::recorded::Unread>> {
-        let recorded = Program::plan(self)
-            .providers()
-            .recorded
-            .iter()
-            .find(|recorded| recorded.file == file)?;
-        let Some(op) = &recorded.plan else {
-            return Some(Err(jadpo_runtime::recorded::Unread::NoOperation));
-        };
-        self.start_in(ctx);
-        Some(jadpo_runtime::recorded::check(
-            ctx,
-            &self.stored_json(),
-            op,
-            &recorded.text,
-            self,
-        ))
-    }
-
     fn run<'a, 'p: 'a>(
         &'a self,
         ctx: &'a mut Ctx<'p>,
         callable: u32,
         args: Vec<Value>,
     ) -> LocalFuture<'a, Outcome> {
-        self.start_in(ctx);
         Box::pin(async move {
             drive::outcome(drive::invoke(self, ctx, callable, args, Frame::ENTRY, false).await)
         })
+    }
+
+    /// A provider package's own functions run at a call's site (chunk
+    /// 7.2c2).
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        callable: u32,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String> {
+        drive::package_function(self, ctx, callable, args, at)
     }
 
     fn row<'a, 'p: 'a>(
@@ -769,20 +721,6 @@ impl Executor for Program {
         item: Value,
         saved: &'a [Value],
     ) -> LocalFuture<'a, Outcome> {
-        self.start_in(ctx);
         Box::pin(async move { drive::row(self, ctx, row, item, saved) })
-    }
-}
-
-/// A provider package's own functions run at a call's site (chunk 7.2c2).
-impl jadpo_runtime::provider::Functions for Program {
-    fn function(
-        &self,
-        ctx: &mut Ctx<'_>,
-        function: &str,
-        args: Vec<Value>,
-        at: u32,
-    ) -> Result<Value, String> {
-        drive::package_function(self, ctx, function, args, at)
     }
 }

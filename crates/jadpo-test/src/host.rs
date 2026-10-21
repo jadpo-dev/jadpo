@@ -12,7 +12,7 @@
 use std::cell::{Cell, RefCell};
 
 use jadpo_runtime::budget::Invocation;
-use jadpo_runtime::{Clock, Ctx, Database, Env, Host, LocalFuture, Places, Row, SqlValue};
+use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, LocalFuture, Row, SqlValue};
 
 /// What a timer of some length does on a [`Harness`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,21 +194,22 @@ impl<D: Database> Harness<D> {
         }
     }
 
-    /// A context for one invocation on it, under a seed of its own and its
-    /// clock's time.
-    pub fn ctx<'p>(&'p self, places: &'p Places) -> Ctx<'p> {
-        self.ctx_on(places, self)
+    /// A context for one invocation of `executor`'s program on it, under a
+    /// seed of its own and its clock's time.
+    pub fn ctx<'p>(&'p self, executor: &'p dyn Executor) -> Ctx<'p> {
+        self.ctx_on(executor, self)
     }
 
-    /// A context for one invocation on `host`, a wrapper of it (fakes in
-    /// some capabilities' place), as [`Harness::ctx`] makes one.
-    pub fn ctx_on<'p>(&self, places: &'p Places, host: &'p dyn Host) -> Ctx<'p> {
+    /// A context for one invocation of `executor`'s program on `host`, a
+    /// wrapper of it (fakes in some capabilities' place), as
+    /// [`Harness::ctx`] makes one: made from the executor ([`Ctx::of`]).
+    pub fn ctx_on<'p>(&self, executor: &'p dyn Executor, host: &'p dyn Host) -> Ctx<'p> {
         self.seeds.set(self.seeds.get() + 1);
         let env = Env {
             seed: Some(self.seeds.get()),
             clock: Clock::fixed(self.now()),
         };
-        Ctx::new(places, host, env)
+        Ctx::of(executor, host, env)
     }
 
     /// The work it was given to run after a response, in order.

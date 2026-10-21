@@ -24,7 +24,9 @@ jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
 jadpo-host-native.workspace = true
 jadpo-interp.workspace = true
-jadpo-runtime.workspace = true
+# The fakes, recordings, crash points and the plan's dev and test
+# section (chunk 8.1e), which `jadpo test` and `jadpo dev` run with.
+jadpo-runtime = { workspace = true, features = ["testing"] }
 jadpo-std.workspace = true
 jadpo-lsp.workspace = true
 jadpo-plan.workspace = true

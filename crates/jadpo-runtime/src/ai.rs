@@ -111,7 +111,7 @@ pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
         AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
-            read.extend(package_reads(ai, &package.operation, &package.input));
+            read.extend(package_reads(ai, package.called, &package.input));
         }
     }
     read.sort_unstable();
@@ -119,15 +119,15 @@ pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
     read
 }
 
-/// The settings a package's operation `operation` reads when `ai` calls
-/// it, its credential's and address's among them, and those its mapped
-/// `input` reads.
-pub(crate) fn package_reads(ai: &Ai<'_>, operation: &str, input: &[(String, AiInput)]) -> Vec<u32> {
+/// The settings the package's operation numbered `called` reads when
+/// `ai` calls it, its credential's and address's among them, and those
+/// its mapped `input` reads.
+pub(crate) fn package_reads(ai: &Ai<'_>, called: u32, input: &[(String, AiInput)]) -> Vec<u32> {
     let mut read = Vec::new();
-    if let Some((plan, _)) = ai
+    if let Some((plan, _, _)) = ai
         .providers
         .as_ref()
-        .and_then(|providers| providers.operation(&ai.plan.connection, operation))
+        .and_then(|providers| providers.numbered(called))
     {
         read.extend(crate::provider::settings_read(plan));
     }
@@ -425,7 +425,7 @@ async fn generated(
             Via::Package { package, providers }
         }
     };
-    let first = match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
+    let first = match prepared(ctx, &via, &asked, &messages, site, settings) {
         Ok(request) => request,
         Err(crate::provider::Unready::Misconfigured) => return misconfigured(ctx),
         Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
@@ -521,7 +521,7 @@ async fn generated(
     for attempt in 1..=attempts {
         let request = match first.take() {
             Some(request) => request,
-            None => match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
+            None => match prepared(ctx, &via, &asked, &messages, site, settings) {
                 Ok(request) => request,
                 Err(crate::provider::Unready::Misconfigured) => {
                     let done = misconfigured(ctx);
@@ -757,7 +757,6 @@ pub fn model_name(model: &str) -> &str {
 /// The request one attempt sends, with `messages`.
 fn prepared(
     ctx: &mut Ctx<'_>,
-    ai: &Ai<'_>,
     via: &Via<'_>,
     asked: &Asked,
     messages: &[(String, String)],
@@ -798,7 +797,7 @@ fn prepared(
     package_request(
         ctx,
         providers,
-        (ai.plan.connection.as_str(), &package.operation),
+        package.called,
         &json,
         settings,
         added,
@@ -806,25 +805,26 @@ fn prepared(
     )
 }
 
-/// The request a package's operation `operation` of `connection` sends
-/// with `json`, its input as the mapping made it, and `added` written
-/// where it says; `asking` names the prompt or operation it is made for,
-/// in a fault.
+/// The request the package's operation numbered `called` sends with
+/// `json`, its input as the mapping made it, and `added` written where it
+/// says; `asking` names the prompt or operation it is made for, in a
+/// fault.
 pub(crate) fn package_request(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
-    (connection, operation): (&str, &str),
+    called: u32,
     json: &serde_json::Value,
     settings: &[(u32, Value)],
     added: Option<(&str, serde_json::Value)>,
     asking: &str,
 ) -> Result<Request, crate::provider::Unready> {
     use crate::provider::Unready;
-    let Some((_, op)) = providers.operation(connection, operation) else {
+    let Some((_, op, connection)) = providers.numbered(called) else {
         return Err(Unready::Fault(FaultKind::Defect(format!(
-            "`{connection}.{operation}`, which the plan doesn't have"
+            "the operation `{asking}` calls, which the plan doesn't have"
         ))));
     };
+    let operation = op.name.as_str();
     let input = match op.input {
         Some(number) => {
             let text = json.to_string();
@@ -854,7 +854,7 @@ pub(crate) fn package_request(
     crate::provider::request_adding(
         ctx,
         providers,
-        (connection, operation),
+        called,
         input.as_ref(),
         settings,
         crate::provider::Site {
@@ -982,7 +982,7 @@ fn package_reply(
     package: &PackageAi,
     text: &str,
 ) -> Result<Reply, Done> {
-    let Some((_, op)) = providers.operation(connection, &package.operation) else {
+    let Some((_, op, _)) = providers.numbered(package.called) else {
         return Err(Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{}`, which the plan doesn't have",
             package.operation

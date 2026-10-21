@@ -129,3 +129,57 @@ fn bytes_of_another_format_or_cut_short_are_refused() {
     assert!(RuntimePlan::decode(&bytes[..bytes.len() - 1]).is_err());
     assert!(RuntimePlan::decode(b"").is_err());
 }
+
+/// What only `jadpo test` and `jadpo dev` read, each test's key, its
+/// `config:` and `clock:` and the recordings, is the plan's dev and test
+/// section (chunk 8.1e): written after the rest of the plan's bytes, and
+/// left out of a deployable's, which then holds no test's name.
+#[test]
+fn a_plans_tests_are_its_dev_and_test_section_which_a_deployable_leaves_out() {
+    let source = "type FromAddress = Email {}\n\nconfig {\n    mail_sender: FromAddress {\n        test: \"reminders@example.test\"\n    }\n}\n\nfunction address() -> FromAddress {\n    return config.mail_sender\n}\n\ntest \"reminders come from the test sender\" {\n    assert address() == \"reminders@example.test\"\n}\n\ntest \"a test can change the sender\" {\n    config: {\n        mail_sender: \"planning@example.test\"\n    }\n    clock: \"2026-01-15T12:00:00Z\"\n    assert address() == \"planning@example.test\"\n}\n";
+    let db = Database::default();
+    let project = Project::new(
+        &db,
+        vec![File::new(&db, "main.jadpo".to_string(), source.to_string())],
+        Vec::new(),
+        Layout::Loose,
+        Default::default(),
+        Vec::new(),
+    );
+    let bytes = bytes_of(&db, project).expect("it checks");
+    let plan = Plan::build(&db, project);
+    let runtime = plan.runtime();
+    // Each test by its key, the other callables by theirs.
+    let changed = runtime
+        .testing
+        .tests
+        .iter()
+        .find(|(key, _)| key.contains("a test can change the sender"))
+        .map(|(_, number)| *number)
+        .expect("the test is in the section");
+    assert_eq!(runtime.testing.tests.len(), 2);
+    assert_eq!(runtime.callable("function address"), plan.find("address"));
+    assert!(
+        runtime
+            .callables
+            .keys()
+            .all(|key| !key.starts_with("test ")),
+        "{:?}",
+        runtime.callables
+    );
+    // What the test gives itself.
+    let setup = runtime.testing.setups.get(&changed).expect("its setup");
+    assert_eq!(setup.clock, Some(1_768_478_400_000));
+    assert_eq!(setup.settings.len(), 1);
+    assert_eq!(runtime.testing.setups.len(), 1);
+    // A deployable's bytes are the rest of the plan's, and read back
+    // with an empty section.
+    let deployable = runtime.encode_deployable().expect("encodes");
+    assert!(bytes.starts_with(&deployable) && bytes.len() > deployable.len());
+    let read = RuntimePlan::decode(&deployable).expect("reads back");
+    assert!(read.testing.is_empty());
+    assert_eq!(read.callables, runtime.callables);
+    let named = |bytes: &[u8], name: &[u8]| bytes.windows(name.len()).any(|at| at == name);
+    assert!(named(&bytes, b"a test can change the sender"));
+    assert!(!named(&deployable, b"a test can change the sender"));
+}

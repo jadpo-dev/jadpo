@@ -1176,7 +1176,9 @@ callables' bodies is one owned value, `jadpo_std::RuntimePlan`: the
 validator, shape and failure plans, the JSON table, the route table with
 its codecs, the settings, subscribers, batches, schedules, purges, the
 connections table (chunk 8.1d, §2.6), providers' operations, `ai:`,
-prompts and their recordings. `jadpo-plan`
+prompts, each callable's number by its identity key but a test's
+(`RuntimePlan::callables`, chunk 8.1e), and, with the `testing` feature,
+its dev and test section (§2.6, "The `testing` feature"). `jadpo-plan`
 builds it as a section of its plan (`Plan::runtime`, the type table's
 numbered plans moved into it as the plan is finished), and an executor
 hands the runtime a view of it, `jadpo_runtime::Plan`, through
@@ -2374,9 +2376,9 @@ target (`http::address::ClientAddress`; the interpreter runs on
 long each purge waits. The context reaches it (`Ctx::started`): the
 runtime gives it to every context it makes for a program
 (`Ctx::of(executor, host, env)`: a request's, a delivery's, a tick's, a
-batch's), and a context a test's harness makes from the program's places
-alone is given it as the program first runs there (`Ctx::start_from`,
-which the interpreter's `run` and the HTTP component's `handle` call). So
+batch's), and since chunk 8.1e every context an executor runs in is made from
+it that way, a test's harness's and the record tools' too, so nothing
+gives a context its start-up state later (`Ctx::start_from` is gone). So
 a setting is read one way wherever it is read: `Ctx::setting`, a test's
 own value (its `config:`, `Ctx::set_settings`) or else the one the
 program started with, for `config.<name>`, a call's address and model,
@@ -2393,10 +2395,19 @@ builds what each of its parts runs with (`Plan::events`, `batches`,
 `providers`, `webhooks`, `receiving`, `polls`, `ai`, `purge` and, since
 chunk 8.1a, the HTTP component's `app`, given the `Started` their
 credentials and periods come from).
-The `Executor` is left with `places`, `callable`, `plan`, `started`, a
-test's `settings` and `clock`, `recording` (which runs the package's own
-decoders) and `run` and `row`, where it had twenty methods, fourteen of
-them bundling plan parts with the JSON codecs or the credentials. Each
+The `Executor` is left with its places, its plan, what it started with
+and running a callable (`places`, `plan`, `started`, `run`, `function`
+and `row`; chunk 8.1e), where it had twenty methods, fourteen of them
+bundling plan parts with the JSON codecs or the credentials. The runtime
+finds a callable by its key through the plan (`Plan::callable`: a
+webhook reply's action, a package's own `decode:` or `encode:`, a test),
+reads a test's `config:` and `clock:` from the plan's dev and test
+section (`Plan::test_settings`, `Plan::test_clock`), and checks a
+recording of the app's own integrations itself (`recorded::run`), the
+package's functions reached through the executor: `Executor::function`
+runs one by its number, and `provider::Functions`, what a call's site
+runs them through, is implemented for every executor by finding the
+function's key in its plan. Each
 call kind's site is one entry point taking the context, the site and the
 input: `provider::call(ctx, provider::Calling { plan, site }, input)`
 (its site naming its operation by number since chunk 8.1d2, "Provider
@@ -2495,8 +2506,12 @@ calls carry their operations' numbers in their plans the same way
 that reads the whole answer (`provider::whole_site`). The names stay
 where they are read: in what is logged and faked, a fault's words, and
 the record tools, which name a call from outside the plan
-(`ProviderPlan::number_of`). `ai:`'s calls through a package still find
-its operation by name. The plan's format is `jadpo runtime plan 3`.
+(`ProviderPlan::number_of`). Since chunk 8.1e `ai:`'s calls through a
+package find theirs by number too: a package's `generate:`, `stream:` and
+`embed:` mappings carry their operation's number (`PackageAi::called`,
+`PackageStream::called`, `PackageEmbed::called`), its name kept for
+what is logged, recorded and faked. The plan's format is `jadpo runtime
+plan 4`.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -2674,10 +2689,11 @@ host has one, writing `build/dev/calls.jsonl` for `jadpo calls`.
 
 **A package's recordings** (chunk 7.2d2; area 11, "Provenance and
 confirmation"): `recordings/<resource>.<operation>.json` in a package is
-a package record (`jadpo_db::Record`), and the plan carries each
-operation's text on `OperationPlan::recording` and every recording of
-the app's own integrations as a `RecordedPlan` (its operation planned
-whether or not a connection calls it). `jadpo_runtime::recorded` keeps an
+a package record (`jadpo_db::Record`), and the plan's dev and test
+section (since chunk 8.1e) carries each operation's text by its number
+(`TestingPlan::operation_recordings`) and every recording of the app's
+own integrations as a `RecordedPlan` (its operation planned whether or
+not a connection calls it). `jadpo_runtime::recorded` keeps an
 answer as a recording (`recorded::kept`: the path to `output_at:` and
 the members the output type declares, each plain text or number a
 placeholder naming its built-in type, `"{Text}"`, where a generated value
@@ -2686,7 +2702,8 @@ sent, digits included) and fills one back (`recorded::filled`, from
 `fakes::generated`). `recorded::check` reads a recording whole through
 the package's functions at the call's site, a `RoundTrip` coder checking
 each field's `encode:` gives back what its `decode:` read; it is
-`Executor::recording`, which `jadpo test` runs for each `RecordedPlan` as
+`recorded::run` (`Executor::recording` until chunk 8.1e), which `jadpo
+test` runs for each `RecordedPlan` as
 a test of kind `recording` (`test.recording_undecodable`,
 `test.round_trip_failed`), and the publishing bar counts as its
 `decoders` row. `jadpo dev`'s fake answers an operation that has one
@@ -2761,7 +2778,8 @@ the type's codec, and keeps the answer for a rerun and as a step as
 each vector from the text's SHA-256 and `Env::seed` (`embed::seeded`).
 Recordings of a prompt's answer are records (`jadpo_db::is_prompt_recording`)
 found by `jadpo_check::prompt_recordings` and planned as
-`Plan::prompt_recordings`, each with the JSON-table numbers of the types
+`Plan::prompt_recordings`, in the dev and test section since chunk 8.1e,
+each with the JSON-table numbers of the types
 its prompt's `ai.generate` sites decode into; `recorded(...)` lowers to
 `AiFakeAnswer::Recorded`, which the interpreter scripts with the answer
 `prompt_recordings::answer` fills (area 11's `recorded::filled_value`),

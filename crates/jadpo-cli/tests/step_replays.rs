@@ -649,7 +649,7 @@ async fn call(
     args: Vec<Value>,
 ) -> (Outcome, Vec<jadpo_runtime::runner::Deferred>) {
     let id = program.plan().find(name).expect("the action");
-    let mut ctx = harness.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program, host);
     let outcome = program.run(&mut ctx, id, args).await;
     (outcome, ctx.take_deferred())
 }

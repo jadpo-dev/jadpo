@@ -101,8 +101,8 @@ fn get(root: &Path, path: &str, query: Option<&str>) -> jadpo_runtime::http::Res
     let host = Harness::new(NoStore);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     runtime.block_on(async {
-        let mut ctx = Ctx::new(
-            program.places(),
+        let mut ctx = Ctx::of(
+            &program,
             &host,
             Env {
                 seed: Some(1),

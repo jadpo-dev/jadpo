@@ -318,8 +318,8 @@ pub async fn serve_request(
 
 /// Answers `request` with `app`'s routes, running what a route runs with
 /// `executor` against `ctx`, whose stack is empty: what a route test's
-/// request goes through, in the test's own context, which reaches what the
-/// program started with.
+/// request goes through, in the test's own context, made from `executor`
+/// ([`Ctx::of`]), which reaches what the program started with.
 pub async fn handle(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -327,7 +327,6 @@ pub async fn handle(
     request: &Request,
     request_id: &str,
 ) -> Response {
-    ctx.start_from(executor);
     answer_request(app, executor, ctx, request, request_id, None).await
 }
 

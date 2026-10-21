@@ -503,7 +503,7 @@ fn a_call_goes_to_the_provider_and_its_answer_is_decoded() {
         r#"{"ok": true, "data": {"id": "b-1", "collectAt": "2026-10-20T09:00:00Z", "window": "after-noon", "courier": "Sam"}}"#,
     );
     let host = host();
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     ctx.set_call_key("user:ada", "client-key-1");
     let outcome = run(
         &runtime,
@@ -563,7 +563,7 @@ fn keys_differ_by_caller_and_step_and_repeat_for_the_same_call() {
     let host = host();
     let mut keys = Vec::new();
     for scope in ["user:ada", "user:ada", "user:bob"] {
-        let mut ctx = Ctx::new(program.places(), &host, env());
+        let mut ctx = Ctx::of(&program, &host, env());
         ctx.set_call_key(scope, "client-key-1");
         let outcome = run(
             &runtime,
@@ -574,7 +574,7 @@ fn keys_differ_by_caller_and_step_and_repeat_for_the_same_call() {
         );
         assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
     }
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     ctx.set_call_key("user:ada", "client-key-1");
     let outcome = run(
         &runtime,
@@ -634,7 +634,7 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
         "book_collection",
         "book_collection",
     ] {
-        let mut ctx = Ctx::new(program.places(), &host, env());
+        let mut ctx = Ctx::of(&program, &host, env());
         outcomes.push(run(
             &runtime,
             &program,
@@ -697,7 +697,7 @@ fn a_get_sends_its_input_in_its_path_and_query() {
     provider.answer(200, r#"{"id": "p/1", "status": "out_for_delivery"}"#);
     provider.answer(404, r#"{"error": {"code": "parcel_unknown"}}"#);
     let host = host();
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     let outcome = run(
         &runtime,
         &program,
@@ -709,7 +709,7 @@ fn a_get_sends_its_input_in_its_path_and_query() {
         panic!("{outcome:?}");
     };
     assert_eq!(field(&parcel, "status"), &text("out_for_delivery"));
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     let missing = run(
         &runtime,
         &program,
@@ -745,7 +745,7 @@ fn a_connection_at_a_settings_address_sends_basic_credentials() {
     let runtime = Runtime::new().expect("a runtime");
     provider.answer(201, r#"{"id": "post-9"}"#);
     let host = host();
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     let outcome = run(
         &runtime,
         &program,
@@ -782,7 +782,7 @@ fn an_address_that_isnt_https_is_refused_unsent() {
     let program = program(&root("refused"), &provider.url, "http://ledger.example");
     let runtime = Runtime::new().expect("a runtime");
     let host = host();
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     let outcome = run(
         &runtime,
         &program,
@@ -998,7 +998,7 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
         201,
         r#"{"ok": true, "data": {"id": "b-7", "collectAt": "2026-10-20T09:00:00Z", "window": "morning"}}"#,
     );
-    let mut ctx = Ctx::new(program.places(), &host, env());
+    let mut ctx = Ctx::of(&program, &host, env());
     let kept = run(
         &runtime,
         &program,

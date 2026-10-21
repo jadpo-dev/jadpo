@@ -79,7 +79,7 @@ pub(crate) async fn answer(
     (id, value): (&str, Value),
 ) -> Response {
     use crate::http::{INTERNAL_FAULT, UNAVAILABLE, runtime_failure as failure};
-    let Some(callable) = executor.callable(&reply.action) else {
+    let Some(callable) = executor.plan().callable(&reply.action) else {
         return super::internal(request_id, "a webhook's reply with no action to run");
     };
     let Some(database) = ctx.capabilities().database(&plan.store) else {

@@ -325,7 +325,7 @@ impl Stores {
             seed: Some(self.seeds.get()),
             clock: Clock::fixed(self.clock.get()),
         };
-        Ctx::new(program.places(), self, env)
+        Ctx::of(program, self, env)
     }
 
     async fn rows(&self, store: &Postgres, sql: &str) -> Vec<Row> {

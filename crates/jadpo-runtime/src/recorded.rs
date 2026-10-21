@@ -165,6 +165,35 @@ pub fn filled(
     Some(out)
 }
 
+/// Reads the recording at `file` of one of the app's own integrations,
+/// from the plan's dev and test section, as its operation's output,
+/// through the package's own decoders run by `executor` at `ctx` (area
+/// 11, "Provenance and confirmation"; chunk 7.2d2): what `jadpo test` runs
+/// for each, the runtime's since chunk 8.1e. `None` when the plan holds no
+/// such recording.
+pub fn run(
+    executor: &dyn crate::Executor,
+    ctx: &mut Ctx<'_>,
+    file: &str,
+) -> Option<Result<(), Unread>> {
+    let plan = executor.plan();
+    let recorded = plan
+        .testing()
+        .recorded
+        .iter()
+        .find(|recorded| recorded.file == file)?;
+    let Some(op) = &recorded.plan else {
+        return Some(Err(Unread::NoOperation));
+    };
+    Some(check(
+        ctx,
+        &plan.json,
+        op,
+        &recorded.text,
+        &crate::provider::Through(executor),
+    ))
+}
+
 /// Reads `text`, a recording of operation `op`, as the operation's whole
 /// output (chunk 7.2d2): its placeholders filled, read with its output
 /// type's codec through the package's own decoders, run by `functions`

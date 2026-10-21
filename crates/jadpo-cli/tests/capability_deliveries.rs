@@ -251,8 +251,8 @@ impl Executor for Stand<'_> {
         self.program.places()
     }
 
-    fn callable(&self, key: &str) -> Option<u32> {
-        Executor::callable(self.program, key)
+    fn started(&self) -> Option<std::rc::Rc<jadpo_runtime::Started>> {
+        Executor::started(self.program)
     }
 
     fn plan(&self) -> Plan<'_> {
@@ -261,6 +261,7 @@ impl Executor for Stand<'_> {
             json: program.json,
             events: Some(&self.events),
             event_numbers: program.event_numbers,
+            callables: program.callables,
             ..Plan::NONE
         }
     }
@@ -288,7 +289,7 @@ impl Executor for Stand<'_> {
 /// after its response.
 async fn post(harness: &Harness, host: &dyn Host, program: &Program, words: &str) -> Vec<Deferred> {
     let id = program.plan().find("post_note").expect("the action");
-    let mut ctx = harness.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program, host);
     match program.run(&mut ctx, id, vec![Value::text(words)]).await {
         Outcome::Value(_) => {}
         other => panic!("the note is posted: {other:?}"),

@@ -4,7 +4,12 @@
 //! hands it to the runtime, which builds what each of its parts runs with
 //! from it (docs/compiler-runtime.md §2.5 and §2.6). Compiled code holds
 //! it as a constant, in its canonical bytes ([`RuntimePlan::encode`]),
-//! and decodes it once as it starts ([`RuntimePlan::decode`]).
+//! and decodes it once as it starts ([`RuntimePlan::decode`]). What only
+//! `jadpo test` and `jadpo dev` read is its dev and test section,
+//! [`crate::testing::TestingPlan`], which exists only with the `testing`
+//! feature (chunk 8.1e).
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +18,6 @@ use crate::batch::BatchPlan;
 use crate::canonical;
 use crate::config::ConfigPlan;
 use crate::connections::Connection;
-use crate::embed::PromptRecording;
 use crate::http::{JsonTable, RouteTable};
 use crate::prompt::PromptPlan;
 use crate::provider::ProviderPlan;
@@ -64,9 +68,17 @@ pub struct RuntimePlan {
     pub ai: Option<AiPlan>,
     /// Every prompt that checks (area 21).
     pub prompts: PromptPlan,
-    /// Every recording of a prompt's answer, which `jadpo test` reads
-    /// (area 21, "Tests").
-    pub prompt_recordings: Vec<PromptRecording>,
+    /// Each callable's number, by its identity key, but a test's (chunk
+    /// 8.1e): how the runtime finds a callable named in the plan by its
+    /// key, a webhook reply's action or a package's own `decode:` and
+    /// `encode:` functions.
+    pub callables: BTreeMap<String, u32>,
+    /// The dev and test section: each test's key and what it gives
+    /// itself, and the recordings (chunk 8.1e). Written after the rest
+    /// ([`RuntimePlan::encode`]), not as one of its fields.
+    #[cfg(feature = "testing")]
+    #[serde(skip)]
+    pub testing: crate::testing::TestingPlan,
 }
 
 /// Why bytes didn't read as a runtime plan.
@@ -77,6 +89,9 @@ pub enum Unreadable {
     NotThisFormat,
     /// They start as one but don't hold one.
     Malformed(canonical::Error),
+    /// They hold a dev and test section, which a build without the
+    /// `testing` feature has no part for (chunk 8.1e).
+    Testing,
 }
 
 impl std::fmt::Display for Unreadable {
@@ -84,6 +99,9 @@ impl std::fmt::Display for Unreadable {
         match self {
             Unreadable::NotThisFormat => f.write_str("not a runtime plan this Jadpo writes"),
             Unreadable::Malformed(error) => write!(f, "a malformed runtime plan: {error}"),
+            Unreadable::Testing => {
+                f.write_str("a runtime plan with a test section, which this build doesn't read")
+            }
         }
     }
 }
@@ -93,13 +111,26 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 3\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 4\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
-    /// canonical byte encoding. The same plan always gives the same bytes;
-    /// the one refusal is a value the encoding has no form for, which no
-    /// plan holds.
+    /// canonical byte encoding, then, with the `testing` feature, its dev
+    /// and test section in the same encoding unless that is empty. The
+    /// same plan always gives the same bytes; the one refusal is a value
+    /// the encoding has no form for, which no plan holds.
     pub fn encode(&self) -> Result<Vec<u8>, canonical::Error> {
+        let mut bytes = self.encode_deployable()?;
+        #[cfg(feature = "testing")]
+        if !self.testing.is_empty() {
+            bytes.extend_from_slice(&canonical::to_bytes(&self.testing)?);
+        }
+        Ok(bytes)
+    }
+
+    /// Its canonical bytes without its dev and test section: what a
+    /// deployable holds, which a build without the `testing` feature
+    /// reads (chunk 8.1e).
+    pub fn encode_deployable(&self) -> Result<Vec<u8>, canonical::Error> {
         let body = canonical::to_bytes(self)?;
         let mut bytes = Vec::with_capacity(Self::HEADER.len() + body.len());
         bytes.extend_from_slice(Self::HEADER);
@@ -107,11 +138,38 @@ impl RuntimePlan {
         Ok(bytes)
     }
 
-    /// The plan `bytes` hold, as [`RuntimePlan::encode`] wrote it.
+    /// The plan `bytes` hold, as [`RuntimePlan::encode`] wrote it. Without
+    /// the `testing` feature, bytes holding a dev and test section are
+    /// refused ([`Unreadable::Testing`]).
     pub fn decode(bytes: &[u8]) -> Result<RuntimePlan, Unreadable> {
         let body = bytes
             .strip_prefix(Self::HEADER)
             .ok_or(Unreadable::NotThisFormat)?;
-        canonical::from_bytes(body).map_err(Unreadable::Malformed)
+        let (plan, rest): (RuntimePlan, &[u8]) =
+            canonical::from_prefix(body).map_err(Unreadable::Malformed)?;
+        if rest.is_empty() {
+            return Ok(plan);
+        }
+        #[cfg(feature = "testing")]
+        {
+            let mut plan = plan;
+            plan.testing = canonical::from_bytes(rest).map_err(Unreadable::Malformed)?;
+            Ok(plan)
+        }
+        #[cfg(not(feature = "testing"))]
+        Err(Unreadable::Testing)
+    }
+
+    /// The number of the callable with identity key `key`: a test's
+    /// through the dev and test section, with the `testing` feature.
+    pub fn callable(&self, key: &str) -> Option<u32> {
+        if let Some(number) = self.callables.get(key) {
+            return Some(*number);
+        }
+        #[cfg(feature = "testing")]
+        if let Some(number) = self.testing.tests.get(key) {
+            return Some(*number);
+        }
+        None
     }
 }

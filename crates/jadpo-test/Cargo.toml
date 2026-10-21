@@ -20,7 +20,9 @@ jadpo-graph.workspace = true
 # with (area 8; chunk 5.5z2): only tests have it.
 jadpo-host-native = { workspace = true, features = ["test-authenticator"] }
 jadpo-interp.workspace = true
-jadpo-runtime.workspace = true
+# The fakes, recordings, crash points and the plan's dev and test
+# section (chunk 8.1e), which `jadpo test` and `jadpo dev` run with.
+jadpo-runtime = { workspace = true, features = ["testing"] }
 jadpo-term.workspace = true
 serde_json.workspace = true
 

@@ -645,11 +645,7 @@ pub fn settings_read(ai: &Ai<'_>, site: &StreamSite) -> Vec<u32> {
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
             if let Some(stream) = &package.stream {
-                read.extend(crate::ai::package_reads(
-                    ai,
-                    &stream.operation,
-                    &stream.input,
-                ));
+                read.extend(crate::ai::package_reads(ai, stream.called, &stream.input));
             }
         }
     }
@@ -784,7 +780,7 @@ async fn streamed(
             let mut request = match crate::ai::package_request(
                 ctx,
                 &providers,
-                (&ai.plan.connection, &mapped.operation),
+                mapped.called,
                 &json,
                 settings,
                 None,

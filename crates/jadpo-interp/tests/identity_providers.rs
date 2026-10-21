@@ -78,8 +78,8 @@ fn auth0() -> String {
 fn called(program: &Program, name: &str, token: &str, published: &str, now: i64) -> Outcome {
     let id = program.plan().find(name).expect(name);
     let host = MemoryHost::new();
-    let mut ctx = Ctx::new(
-        program.places(),
+    let mut ctx = Ctx::of(
+        program,
         &host,
         Env {
             seed: Some(7),

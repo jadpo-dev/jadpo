@@ -462,7 +462,8 @@ impl Credentials {
 /// What runs a package's own functions at a call's site (area 11,
 /// "Decoding"; chunk 7.2c2): a field's `decode:` and `encode:`, and an
 /// operation's whole-answer `decode:`, each pure. The executor, which runs
-/// every other function.
+/// every other function: each finds the function by its key through its
+/// plan and runs it ([`crate::Executor::function`], chunk 8.1e).
 pub trait Functions {
     /// Runs the package's function with identity key `function` on `args`,
     /// from the site numbered `at` in the frame on top of `ctx`: what it
@@ -475,6 +476,37 @@ pub trait Functions {
         args: Vec<Value>,
         at: u32,
     ) -> Result<Value, String>;
+}
+
+impl<E: crate::Executor + ?Sized> Functions for E {
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        function: &str,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String> {
+        match self.plan().callable(function) {
+            Some(callable) => crate::Executor::function(self, ctx, callable, args, at),
+            None => Err(format!("`{function}`, which the plan doesn't have")),
+        }
+    }
+}
+
+/// An executor reached through a reference, as the package's functions'
+/// runner (chunk 8.1e).
+pub(crate) struct Through<'e>(pub(crate) &'e dyn crate::Executor);
+
+impl Functions for Through<'_> {
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        function: &str,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String> {
+        Functions::function(self.0, ctx, function, args, at)
+    }
 }
 
 /// The site a call is made from: what it reads of the answer, whether it
@@ -560,6 +592,11 @@ pub struct Providers<'a> {
     pub credentials: &'a Credentials,
     /// The application's name, which every key is derived from.
     pub application: &'a str,
+    /// Each operation's recording's text, by its number, from the plan's
+    /// dev and test section (chunk 8.1e): what `jadpo dev`'s fake answers
+    /// from.
+    #[cfg(feature = "testing")]
+    pub recordings: &'a std::collections::BTreeMap<u32, String>,
 }
 
 impl<'a> Providers<'a> {
@@ -845,7 +882,7 @@ async fn made(
     // keeps any other.
     let answer = match answer {
         Answer::Generated => Answer::Wire(crate::fakes::default_answer(ctx, providers, op)),
-        Answer::Recorded => Answer::Wire(recorded_answer(ctx, providers, op)),
+        Answer::Recorded => Answer::Wire(recorded_answer(ctx, providers, op, number)),
         other => other,
     };
     if let Some(at) = step
@@ -884,7 +921,7 @@ async fn made(
             // its placeholders filled with generated values of their types
             // (area 11, "Provider calls in development"; chunk 7.2d2).
             Ok(Given::Recorded) => {
-                let text = recorded_answer(ctx, providers, op);
+                let text = recorded_answer(ctx, providers, op, number);
                 let done = decode(ctx, providers, op, &name, &text, site);
                 sent = Some(text);
                 done
@@ -997,9 +1034,14 @@ fn replayed(
 /// Operation `op`'s recording with its placeholders filled, as its
 /// provider would send it; its generated default when it keeps none, or
 /// one that isn't JSON.
-fn recorded_answer(ctx: &mut Ctx<'_>, providers: &Providers<'_>, op: &OperationPlan) -> Rc<str> {
+fn recorded_answer(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    op: &OperationPlan,
+    number: u32,
+) -> Rc<str> {
     let now = ctx.now();
-    let filled = op.recording.as_deref().and_then(|text| {
+    let filled = providers.recordings.get(&number).and_then(|text| {
         let mut uuid = || crate::fakes::uuid_text(ctx.new_id().unwrap_or_default());
         let mut making = crate::fakes::Making {
             now,
@@ -1057,25 +1099,25 @@ fn add_at(
     at.insert(last.to_string(), value);
 }
 
-/// The request operation `operation` of connection `connection` sends
-/// with `input`, `added`'s value written at its place beside it (area 21,
+/// The request the operation numbered `number` sends with `input`,
+/// `added`'s value written at its place beside it (area 21,
 /// "How a provider fills it"; chunk 5.5v3b): what a package filling `ai`
 /// is sent, through the capability seam by the `ai` call's own site.
 pub(crate) fn request_adding(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
-    (connection, operation): (&str, &str),
+    number: u32,
     input: Option<&Value>,
     settings: &[(u32, Value)],
     site: Site<'_>,
     added: Option<(&str, serde_json::Value)>,
 ) -> Result<Request, Unready> {
-    let Some((plan, op)) = providers.operation(connection, operation) else {
-        return Err(Unready::Fault(FaultKind::Defect(format!(
-            "`{connection}.{operation}`, which the plan doesn't have"
-        ))));
+    let Some((plan, op, connection)) = providers.numbered(number) else {
+        return Err(Unready::Fault(FaultKind::Defect(
+            "a provider's operation the plan doesn't have".into(),
+        )));
     };
-    let at = providers.number(connection);
+    let at = op.connection;
     request(
         ctx,
         providers,

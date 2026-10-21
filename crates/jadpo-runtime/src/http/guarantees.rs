@@ -419,10 +419,6 @@ impl Executor for Program {
         &self.places
     }
 
-    fn callable(&self, _key: &str) -> Option<u32> {
-        Some(0)
-    }
-
     fn run<'a, 'p: 'a>(
         &'a self,
         ctx: &'a mut Ctx<'p>,

@@ -121,6 +121,7 @@ pub fn check_file(
     file: &str,
 ) -> Option<Result<(), Unread>> {
     let recording = plan
+        .testing()
         .prompt_recordings
         .iter()
         .find(|recording| recording.file == file)?;

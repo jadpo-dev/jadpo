@@ -174,10 +174,12 @@ pub(crate) fn setup(
     };
     let mut out = Setup {
         prompts,
-        recorded: plan
-            .operations
-            .iter()
-            .filter(|op| op.recording.is_some())
+        recorded: prepared
+            .plan()
+            .testing()
+            .operation_recordings
+            .keys()
+            .filter_map(|number| plan.operations.get(*number as usize))
             .filter_map(|op| Some(format!("{}.{}", connection_name(op.connection)?, op.name)))
             .collect(),
         ..Setup::default()
