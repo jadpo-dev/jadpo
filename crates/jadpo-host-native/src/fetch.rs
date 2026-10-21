@@ -766,43 +766,9 @@ fn keeps(headers: &HeaderMap) -> bool {
     })
 }
 
-/// Whether `ip` is an address on the public internet: not loopback,
-/// private, link-local, shared (100.64/10), reserved, documentation,
-/// benchmarking, unspecified, broadcast or multicast; IPv4 inside IPv6
-/// judged as itself.
-pub fn public(ip: std::net::IpAddr) -> bool {
-    use std::net::IpAddr;
-    match ip {
-        IpAddr::V4(v4) => {
-            let [a, b, c, _] = v4.octets();
-            !(v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_broadcast()
-                || v4.is_documentation()
-                || v4.is_unspecified()
-                || v4.is_multicast()
-                || a == 0
-                || a >= 240
-                || (a == 100 && (64..128).contains(&b))
-                || (a == 192 && b == 0 && c == 0)
-                || (a == 198 && (18..20).contains(&b)))
-        }
-        IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped().or_else(|| v6.to_ipv4()) {
-                return public(IpAddr::V4(v4));
-            }
-            let first = v6.segments()[0];
-            !(v6.is_loopback()
-                || v6.is_unspecified()
-                || v6.is_multicast()
-                || first & 0xfe00 == 0xfc00
-                || first & 0xffc0 == 0xfe80
-                || first == 0x2001 && v6.segments()[1] == 0x0db8
-                || first == 0x0064 && v6.segments()[1] == 0xff9b)
-        }
-    }
-}
+/// Whether `ip` is an address on the public internet: the runtime's one
+/// answer, which the Workers host's guard asks too (chunk 8.2a).
+pub use jadpo_runtime::public_address as public;
 
 /// Where a request goes.
 #[derive(Debug, PartialEq, Eq)]

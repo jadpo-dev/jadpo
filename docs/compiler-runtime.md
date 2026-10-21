@@ -261,14 +261,14 @@ Rust 1.88 or later).
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
 | `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL, the package driver (JSON over HTTP, chunk 7.2c) and SMTP (chunks 7.3 and 8.1b) now; Redis and S3 with their areas | yes |
 | `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with (chunk 6.4b), HTTP for the package driver (chunk 7.2c); the inbox with email | |
-| `jadpo-host-workers` | workers-rs: fetch, scheduled, `waitUntil`, sockets, bindings | only |
+| `jadpo-host-workers` | wasm-bindgen and Jadpo's own bindings to Workers: `connect()` sockets, `fetch()`, timers, `waitUntil`, bindings (§2.6, "The Workers host") | yes |
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code | |
 | `jadpo-lsp` | Language server | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
-Built so far: every crate above but `jadpo-host-workers`, which comes
-with chunk 8.2; `jadpo-codegen` since chunk 8.1f.
+Built so far: every crate above; `jadpo-codegen` since chunk 8.1f and
+`jadpo-host-workers` since chunk 8.2a.
 
 **`jadpo-std`** decides once what both sides need: what a valid value is
 (`Rules` and the validators the checker runs on literals and the runtime on
@@ -366,7 +366,10 @@ crate, which grew to everything and let the generator read the syntax tree.
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
 the layer table, less the crates `[workspace.metadata.targets]` lists as
-`native_only`; `jadpo-drivers` builds with every driver feature on.
+`native_only` (the native host); `jadpo-drivers` builds with every driver
+feature on. `jadpo-host-workers` builds natively too, where its bindings
+compile but are never called, and runs under workerd in the gate's
+`wasm32` group (§2.6, "The Workers host").
 `rust-toolchain.toml` pins the target with the toolchain. The maths on `Decimal` runs there too, not only builds:
 the gate builds `jadpo-value`'s `decimal_maths` example for wasm32 and runs
 it under Node (`tools/run_wasm.mjs`), holding it to the reference values the
@@ -2153,7 +2156,7 @@ and tells an `Observer` of each request and tick. The native server's
 handler that serves an application is `jadpo_host_native::http::AppHandler`,
 `Serving` on a `NativeHost` with that host's deferred work, tracked ticks
 and drain; Workers' fetch and scheduled events call the same `Serving`
-(chunk 8.2). `jadpo dev` runs the interpreter on it, swapping in each
+(chunks 8.2d and 8.2f). `jadpo dev` runs the interpreter on it, swapping in each
 save that checks cleanly, and only observes it to print its lines. Since chunk
 6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
 its timer starts no more ticks, and each worker waits, at most
@@ -2267,8 +2270,9 @@ counter is still the one read. The ceremonies are a host capability,
 `Host::passkeys` (`jadpo_runtime::Passkeys`), with the configured origin
 and plain data across it, so the runtime crate stays free of them on
 wasm32: the native host and a test's host carry `webauthn-rs` 0.5.5,
-whose OpenSSL doesn't build for wasm32, so a Workers host waits for its
-pure-Rust release; `jadpo_host_native::test_authenticator` (feature
+whose OpenSSL doesn't build for wasm32, so the Workers host checks them
+with jadpo-value's pure-Rust ES256 and RSA instead (chunk 8.2l, decided
+2026-10-21); `jadpo_host_native::test_authenticator` (feature
 `test-authenticator`, tests only) is a software device the live tests
 sign in with.
 
@@ -2542,7 +2546,7 @@ the response (`Response::client`) before anything else runs, and
 (`Request::address`; natively the peer's), so the Workers host uses the same
 code with `Target::Workers`, where the default is `cloudflare`
 (`CF-Connecting-IP`) and `read` refuses every other source (`NotAccepted`)
-for the deployable to report as a start-up problem (chunk 8.2). With
+for the deployable to report as a start-up problem (chunk 8.2d). With
 `hops: N` the client is the N-th address from the right of `X-Forwarded-For`
 (every line joined) or of `Forwarded`'s `for` parameters; a header that is
 short, invalid or missing gives the connection's address, never a guess, and
@@ -2595,7 +2599,7 @@ a boundary of its own:
   (`Handler::take_deferred`, `NativeHost::take_deferred`) and spawns it
   on its own thread's `LocalSet`, where it shares the worker's program,
   so no background thread needs a program of its own; on Workers,
-  `waitUntil` (chunk 8.2). Each piece gets its own context under the
+  `waitUntil` (chunk 8.2a). Each piece gets its own context under the
   host's clock and no seed, as the system; what it sets off runs after
   it;
 - **while a route waits**: `runner::settle_within` runs a route's
@@ -2618,7 +2622,8 @@ Each invocation of background work (`budget::Invocation`: after a
 response, the tick, or work handed on) runs within the budget its host
 gives it (`Host::budget_ms`, at most `RUN_LIMIT_MS`, 15 minutes; the
 runtime's default and the native host's is all of it, a test's host may
-give less, Workers' come in 8.2). `budget::Budget` measures it on the
+give less, and Workers' are 30 seconds after a response and for work
+handed on, 15 minutes for the cron, since chunk 8.2a). `budget::Budget` measures it on the
 host's monotonic clock and keeps a tenth back, at most 5 seconds, for
 giving claims back: `runner::drive` takes a piece only while it isn't
 `spent`, and what it doesn't reach stays in the store (a delivery
@@ -2724,7 +2729,7 @@ holding. Readers (`jadpo schedules`, `jadpo why`) still work the alerts
 out from the rows when they read, since a stopped application raises
 nothing; `jadpo why`'s answer is decided by the runtime as data
 (`schedules::why`), which the CLI says in words. On Workers the cron trigger calls the same function
-(chunk 8.2).
+(chunk 8.2f).
 
 **Batch runs** (chunk 6.4, area 12's "How a run is kept"). The
 checker reads `batches.each(from:, each:, finished:, key:)`
@@ -2786,7 +2791,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Transactions | Read committed or repeatable read by what the action does, a snapshot closed before each outside call and row versions checked after it (chunk 7.4), a batch's item that calls a batch of its own (chunk 7.4b), rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
-| Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2) | Cloudflare cron |
+| Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2g) | Cloudflare cron |
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
@@ -2921,7 +2926,7 @@ each setting's value decoded (never a secret's), the key settings' keys
 (`provider::Credentials`), what signing in reads
 (`http::signed::AuthSettings`), how a client's address is chosen on that
 target (`http::address::ClientAddress`; the interpreter runs on
-`Target::Native`, and Workers' host makes its own in chunk 8.2) and how
+`Target::Native`, and Workers' host makes its own in chunk 8.2d) and how
 long each purge waits. The context reaches it (`Ctx::started`): the
 runtime gives it to every context it makes for a program
 (`Ctx::of(executor, host, env)`: a request's, a delivery's, a tick's, a
@@ -3620,13 +3625,105 @@ savepoint; a file's from its items over how far into its text they end.
 `type.batch_order_updatable` is the checker's, at `from:`'s query
 (`Body::batch_order`), declinable.
 
+**The Workers host** (chunk 8.2a). `jadpo-host-workers` is the
+runtime's host on Cloudflare Workers, over wasm-bindgen 0.2.129, js-sys
+and web-sys 0.3.106 and wasm-bindgen-futures 0.4.79 (the releases
+tokio-postgres's `js` feature had already put in the lock), with bindings
+of Jadpo's own to what Workers gives a Worker beyond the Web platform
+(`connect()` from `cloudflare:sockets`, `ctx.waitUntil`, and the globals
+`fetch`, `setTimeout` and `crypto`), each bound with `catch`, so a
+JavaScript exception comes back as an error rather than unwinding through
+the module. It builds natively too, where the bindings compile but are
+never called, so the workspace builds, lints and tests as one.
+
+- **`WorkersHost`** is one invocation's `Host`, made from its `env` and
+  `ctx`: the drivers the factory built over `supplies()`
+  (`Target::Workers`, `WorkersTransport`, `WorkersFetch`, no disk), for
+  each invocation, since a socket belongs to the request that opened it;
+  randomness from `crypto.getRandomValues`, 65,536 bytes a call; the
+  wall clock, `Date.now()`, and a monotonic clock made from it that never
+  goes back past an earlier reading (Workers moves both on only while an
+  invocation waits, never while it computes); timers on `setTimeout`,
+  cleared when a wait is dropped; settings from the bindings, a text
+  binding being a variable or a secret; `defer` through `ctx.waitUntil`;
+  rate limits in the isolate's memory, one table an isolate, the fallback
+  area 16 allows while no Redis connection or rate-limiting binding counts
+  them; and Workers' budgets (`budget_for`): 30 seconds after a response
+  and for work handed on, 15 minutes for the cron. Work handed on is
+  dropped, the tick taking it up, until chunk 8.2h decides how a Worker
+  starts a fresh invocation; a database needs the crate's `postgres`
+  feature, so a deployable that keeps none links no driver for one; the
+  passkey ceremonies are 8.2l's.
+- **`WorkersTransport`** opens every connection with `secureTransport:
+  "starttls"`, since a driver says it will upgrade only once its
+  conversation has begun, waits for it to open, and upgrades with
+  `startTls()`, passing `expectedServerHostname` when the name to check
+  isn't the one connected to. `startTls()` takes no authority of a
+  connection's own, so `Trust::Authorities` is `InvalidInput`. Workers
+  opens the upgraded socket at once and checks the certificate as the
+  first bytes go out, telling JavaScript only that the socket broke, so a
+  failure before anything has gone through over TLS is `InvalidData`, as
+  a check that fails is natively; a driver that judges a failed check
+  only by the upgrade's own answer (PostgreSQL's, chunk 8.1n) learns it
+  at its first write instead, which chunk 8.2i settles. A stream holds
+  its streams' locks only while it reads or writes, so it can be
+  upgraded between them, and closes its socket when dropped; a Unix
+  socket is `Unsupported`.
+- **`WorkersFetch`** sends through `fetch()` with `redirect: "manual"`,
+  so a `3xx` is an answer, races the whole exchange (or a streamed
+  answer's head, then each piece) against a timer, and when the timer
+  wins aborts the request through its `AbortController`'s signal, so its
+  connection is let go while the invocation carries on; it reads at most
+  `MOST_ANSWER`. Workers' `fetch()` rejects with the same `TypeError`
+  whether or not the request left, so every rejection is `NoAnswer`, a
+  call that may have acted: a keyed or safe call is sent again, a change
+  with no key never twice. Natively a refused connection is `NotSent`.
+- **`WorkersOutbound`**, the runtime's own fetch, sends a `GET` over HTTPS
+  only, never to an address written as one that isn't public
+  (`jadpo_runtime::public_address`, the native guard's check, moved to
+  the runtime so both ask one question) nor to `localhost`, follows no
+  redirect and reads at most the bytes asked for. A name isn't looked up
+  first, since a Worker has no resolver; whether Cloudflare's network
+  reaches a private address a name resolves to is for the real deploy
+  (chunk 8.2n) to check.
+
+Proved under workerd, Cloudflare's own Workers runtime
+(`crates/jadpo-host-workers/tests/workerd.rs`): a probe Worker
+(`examples/probe.rs`) built for wasm32 by the test, bound by wasm-bindgen's
+library (`wasm-bindgen-cli-support` at the lock's release, so nothing is
+downloaded and no command-line tool has to match the crate), with a module
+of Jadpo's own that instantiates it once per isolate, and run by workerd
+1.20261007.1, pinned in `tools/workers/package-lock.json` and installed
+there by `npm ci --ignore-scripts` the first time a test needs it (never
+globally; `JADPO_WORKERD` names another), against servers the test starts
+on this machine: an echo over TCP, the same behind TLS signed by an
+authority workerd's network is told to trust and by one it isn't, and
+HTTP. Its sixteen tests cover randomness, the clocks and the timer,
+bindings, budgets, TCP, TLS checked for the name and refused for another
+name and another authority, a Unix socket and a connection's own
+authority refused, a request's method, headers and body sent and its
+answer read, no redirect followed, a call past its timeout ended then and
+its connection let go within 1.5 seconds while the probe goes on for two
+more (without the abort it is held until the invocation ends, which the
+test was checked against), a streamed answer read piece by piece and
+stopped at a piece's timeout the same way, the outbound guard, work run
+after the response through `waitUntil`, rate limits kept across an
+isolate's requests, a connection's task run, and the factory's supplies.
+The gate runs them as a step of its `wasm32` group, in cargo's lane since
+the test builds the probe; `compiler tests` leaves them out. *Rejected:*
+workers-rs, whose `Socket::start_tls` unwraps (a panic aborts the
+instance) and takes no options, whose event macros need its build tool's
+shim, and whose `worker-build` downloads esbuild, binaryen and
+wasm-bindgen, unpinned, as it builds; Node with Workers' APIs stood in
+for, which tests the stand-in; and wasmtime, which runs no JavaScript.
+
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in
   `waitUntil`, and the minute cron calls `schedules::tick`, which runs
   the schedules due and sweeps each store's outbox,
   each within the budget the host gives it (30 seconds after a response,
-  15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2),
+  15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2a),
   and what one leaves goes on in a fresh invocation (`Host::hand_on`).
 - PostgreSQL goes through Hyperdrive over `connect()` sockets with
   tokio-postgres, as in workers-rs's
@@ -3829,7 +3926,7 @@ it), may use them.
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
-| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the golden todo built for wasm32 and smoke-tested in local workerd |
+| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); the golden todo built for wasm32 and smoke-tested in local workerd |
 | 10 | `--require-golden`: every golden contract case on both targets |
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
@@ -3933,7 +4030,9 @@ jobs, each with the pinned toolchain and its own cargo cache: `lint`
 and the teaching examples), `tests` (every test, with the live PostgreSQL
 steps running at once on one PostgreSQL container named by
 `JADPO_TEST_DATABASE_URL`), `compiled` (the differential run above) and
-`wasm32`; `docs`, `tests` and `compiled` each build and
+`wasm32` (the runtime crates for wasm32, their checks under Node, and the
+Workers host under workerd, which its test installs into `tools/workers/`
+with `npm ci` the runner's Node provides); `docs`, `tests` and `compiled` each build and
 start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
 "Without pgvector"), while the toolchain installs. A local run's
@@ -3961,8 +4060,10 @@ separate command, not the gate.
   `rust-toolchain.toml` into the generated crate, builds `--locked` with
   `--remap-path-prefix` and a fixed `SOURCE_DATE_EPOCH`
   ([reproducible Rust](https://reproducible-builds.org/docs/rust/)), and
-  pins wasm-bindgen and wasm-opt through `WASM_BINDGEN_BIN` and
-  `WASM_OPT_BIN`, since `worker-build` otherwise downloads unpinned ones.
+  binds a Workers module with wasm-bindgen's own library at the release
+  Jadpo's lock holds (chunk 8.2a), never `worker-build`, which downloads
+  wasm-bindgen, binaryen and esbuild, unpinned, as it builds. wasm-opt is
+  9.2's.
   Bit-identical binaries are a goal checked in CI, not a dependency of
   incidents.
 - **The stamp** (build id, commit, modified flag, compiler version,
@@ -3986,7 +4087,7 @@ separate command, not the gate.
 | Interpreter and compiled code diverge | One plan, one runtime, codecs from the same type plans, the differential run |
 | The runtime grows without seams | Components behind traits; capability features per deployable |
 | salsa's breaking releases and advisories | Exact pin, two crates, upgraded in its own change |
-| workers-rs is 0.x | Only `jadpo-host-workers` touches it; our own JavaScript glue where it falls short |
+| Workers' JavaScript APIs move | Only `jadpo-host-workers` binds them, through wasm-bindgen at the lock's release, proved under a pinned workerd (chunk 8.2a) |
 | PostgreSQL from Workers, Wasm slower than Bun | Hyperdrive with caching off, unnamed statements and each transaction's isolation level set in its own `BEGIN`, and typed codecs, measured in the performance spike (chunk 8.3), before the Phase 9 benchmarks |
 | Graph shape fixed too early | Kinds for later areas reserved now; `format` changes only on removals or changed meaning |
 

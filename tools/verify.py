@@ -225,6 +225,15 @@ COMPILED = ('compiled code: the corpus interpreted and compiled with the same re
             [('jadpo-cli', 'compiled'), ('jadpo-cli', 'deployable')], [])
 COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 
+# The Workers host under workerd, Cloudflare's own Workers runtime, on this
+# machine (docs/compiler-runtime.md §2.6, "The Workers host"; chunk 8.2a):
+# the probe Worker built for wasm32 by the test itself (so the step takes
+# cargo's lane), bound by wasm-bindgen's library, and run by the workerd
+# pinned in tools/workers/, which the test installs there with `npm ci` the
+# first time, against servers it starts. The `wasm32` group; `compiler
+# tests` leaves it out in both profiles.
+WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd')])
+
 
 # A test file with a live part calls the one helper that says whether it
 # runs (crates/jadpo-test/src/live.rs).
@@ -395,13 +404,14 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
             Step('geodesic measures give the native digits under wasm32', 'wasm32',
                  ['node', 'tools/run_wasm.mjs',
                   str(target_dir() / WASM / 'debug/examples/geodesics.wasm')], lane='cargo'),
+            Step(WORKERD[0], 'wasm32', tests=modules(WORKERD[1]), lane='cargo'),
         ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'
     if require_examples:
         coverage.env['JADPO_REQUIRE_EXAMPLES'] = '1'
     # Test files another step runs are left out of `compiler tests`.
-    owned = {test for _, tests in own_steps for test in modules(tests)}
+    owned = {test for _, tests in [*own_steps, WORKERD] for test in modules(tests)}
     if full:
         owned |= {test for _, tests, _ in [*postgres, COMPILED] for test in modules(tests)}
     for step in checks:
