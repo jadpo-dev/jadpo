@@ -2354,11 +2354,29 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   serving and ticking through `Serving` on `NativeHost` and draining on
   SIGTERM; `jadpo check` refusing a driver or package a deployable's
   target can't run, naming the alternative (area 11, question 24).
-- [ ] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
-  8.1k: decided in §2.5 first, a struct or enum per type with codecs from
-  its type plan, and each route's entry decoding a request straight into
-  its input's struct and writing its output from its output's, `Value`
-  kept where the runtime and the standard library take one.
+- [x] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
+  8.1k. Built, decided first (§2.5, "A typed per-route entry"): each
+  route's codecs generated from its types' plans, `entries.rs` in a
+  project's crate, a reader per codec a route reads and a writer per codec
+  it writes, and each route's entry (`jadpo_runtime::http::Entry`: its
+  placeholders' readers, its input's, its output's writer), which the HTTP
+  component takes from compiled code (`App::entries`) in place of the
+  codec walk, the interpreter keeping the walk as the reference and both
+  reading a request through one function (`http::read_request`); a body
+  read in place (`jadpo_value::json::Doc`, accepting exactly what
+  `json::parse` accepts, held to it by a seeded comparison), the readers
+  calling the walk's own rules (`json::presence`, `json::scalar`,
+  `Codecs::check`, `json::collected`, `Shape::build_slots`) and writing a
+  problem's path only when there is one; `Value` kept from the action on,
+  and a codec the generator doesn't walk (a map, a standard type sent as
+  its parts, a geometry, a page, a standard enum read ignoring case) read
+  and written by the walk at that place. No Rust struct per type: one
+  would become a `Value` at once; typed bodies are listed with 9.2. The
+  compiled step holds every route's entry to the walk over a seeded set of
+  requests and values (`jadpo_test::entries`, MEASURE_REQUESTS across the
+  corpus), and the differential run still gives the same records for all
+  258 projects and 525 tests. On example 23's `POST /repairs`, release
+  build: MEASURE_WIN.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
@@ -2415,6 +2433,10 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
   ([optimisation results](experiments/wasm-optimization-results.md)).
+  From chunk 8.1p: typed values in compiled bodies (a struct or enum per
+  type, locals and parameters typed, a `Value` made only at the runtime's
+  entry points), if profiling shows a body's own work matters beside the
+  request's edge and the store.
 
 ## Phase 10 — Golden todo
 
