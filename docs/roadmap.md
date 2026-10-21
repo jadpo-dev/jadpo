@@ -2714,11 +2714,27 @@ whose entry names them.
   of the three other sources on Workers and none natively, area 14's
   third bakery, and the build screen's `calls` in rich, plain and
   `--json`.
-- [ ] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d:
-  area 16's counters on Workers kept in the store `rate_limits: { store: }`
-  names, Cloudflare's rate-limiting binding taken as a driver, in place of
-  8.2a's count in the isolate's memory, which the page allows only as a
-  fallback.
+- [x] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d.
+  Built (area 16, "Rate limits"; "Chosen in chunk 8.2m2"):
+  `application { rate_limits: { store: } }` naming a `Driver.redis` or
+  `Driver.cloudflare_rate_limits` connection (`rate_limits.store_invalid`),
+  the latter on Workers only with a `namespace:`; the plan's route table
+  carrying the store (`RateLimitStore`), one binding a limit, named for
+  the connection and the limit (`LIMITS_120_PER_60S`) and numbered from
+  `namespace:`, which `jadpo build` writes into the Wrangler file's
+  `ratelimits`; the Workers host asking the limit's binding
+  (`limit({ key })`), a refusal waiting the window's length, and counting
+  in the isolate's memory only while the binding is missing or throws;
+  `jadpo check` refusing a Workers deployable that serves an API with no
+  store (`rate_limits.store_required`), the binding in a native one
+  (`deployable.target_unsupported`); every limit counted now is a
+  minute's, so the error for another window on the binding comes with a
+  route's own `rate_limit:`. Proved under workerd with a
+  stand-in binding (`tools/workers/ratelimit-binding.mjs`), since workerd
+  has none: the binding deciding in the probe, a broken or missing one
+  falling back, and example 23's kiosk counting 120 a minute an address
+  in it. Its windows and Wrangler entries are checked on the real edge in
+  8.2n.
 - [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
   Richard** (his Cloudflare account): a teaching example deployed with
   Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,

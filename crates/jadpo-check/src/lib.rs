@@ -47,6 +47,7 @@ pub mod prompt_recordings;
 pub mod prompts;
 pub mod providers;
 pub mod publishing;
+pub mod rate_limits;
 pub mod receiving;
 pub mod records;
 mod resolve;
@@ -287,6 +288,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
         out.extend(polls::declared(db, project).problems.iter().cloned());
         out.extend(polls::polls(db, project).problems.iter().cloned());
+        out.extend(rate_limits::rate_limits_problems(db, project));
         out.extend(
             receiving::cloudflare_queues(db, project)
                 .problems

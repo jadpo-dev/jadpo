@@ -264,6 +264,37 @@ fn rate_limits_are_counted_in_the_isolates_memory() {
     assert_eq!(bed.get("/rate?key=two"), "yes yes");
 }
 
+/// With Cloudflare's rate-limiting binding as the store, the binding
+/// decides (chunk 8.2m2): the stand-in allows one request a minute where
+/// the limit says two, and a refusal is told to wait the window's length,
+/// since the binding says nothing of when its window ends. A binding that
+/// throws, or one the Worker hasn't got, leaves the count to the
+/// isolate's memory, and no request fails for it.
+#[test]
+fn rate_limits_are_counted_in_cloudflares_binding() {
+    let bed = bed();
+    assert_eq!(
+        bed.get("/rate-binding?binding=LIMITS_2_PER_60S&key=bound"),
+        "yes no:60"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=LIMITS_2_PER_60S&key=another"),
+        "yes no:60"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=BROKEN_2_PER_60S&key=unreached"),
+        "yes yes"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=BROKEN_2_PER_60S&key=unreached"),
+        "no:60 no:60"
+    );
+    assert_eq!(
+        bed.get("/rate-binding?binding=MISSING_2_PER_60S&key=unbound"),
+        "yes yes"
+    );
+}
+
 /// A connection's task, which a driver hands the transport, runs beside
 /// the work that started it.
 #[test]
