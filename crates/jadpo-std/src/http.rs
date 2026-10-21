@@ -1164,7 +1164,9 @@ pub struct FailureCodec {
 }
 
 /// How many requests a caller may make in a window (area 16, "Rate limits").
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct RateLimit {
     pub requests: u32,
     pub window_ms: u32,
@@ -1186,6 +1188,78 @@ pub const ADDRESS_LIMIT: RateLimit = RateLimit {
 /// How much memory in-memory rate-limit counters may take before the
 /// oldest are dropped (area 16: `memory: 16MB` by default).
 pub const RATE_LIMIT_MEMORY: usize = 16 * 1024 * 1024;
+
+/// Every limit the HTTP component counts, in the order a store's bindings
+/// are numbered (by window, then requests): the address's and the signed-in
+/// caller's, until routes give their own (`rate_limit:`).
+pub const COUNTED_LIMITS: [RateLimit; 2] = [ADDRESS_LIMIT, CALLER_LIMIT];
+
+/// The windows Cloudflare's rate-limiting binding counts over: 10 seconds
+/// and a minute (area 16, "Rate limits"; its `period`, 10 or 60).
+pub const BINDING_WINDOWS_MS: [u32; 2] = [10_000, 60_000];
+
+/// Where routes' rate limits are counted: the connection
+/// `application { rate_limits: { store: } }` names (area 16, "Rate
+/// limits"; chunk 8.2m2). A host that can't reach it counts in its own
+/// memory, so no request fails for it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RateLimitStore {
+    /// The connection's name.
+    pub connection: String,
+    /// On Cloudflare's rate-limiting binding, `Driver.cloudflare_rate_limits`,
+    /// the binding each limit is counted in, since a binding counts one
+    /// limit over one window; empty on Redis.
+    pub bindings: Vec<RateLimitBinding>,
+}
+
+impl RateLimitStore {
+    /// The binding `limit` is counted in, if the store has one for it.
+    pub fn binding(&self, limit: RateLimit) -> Option<&RateLimitBinding> {
+        self.bindings.iter().find(|binding| binding.limit == limit)
+    }
+}
+
+/// One of Cloudflare's rate-limiting bindings: the Worker's binding of
+/// that name, counting `limit` in the namespace numbered here.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RateLimitBinding {
+    pub limit: RateLimit,
+    /// The binding's name in the Worker's `env`: the connection's name in
+    /// capitals, the requests and the window, `LIMITS_120_PER_60S`.
+    pub name: String,
+    /// Its `namespace_id` in Cloudflare.
+    pub namespace: u32,
+}
+
+/// The bindings connection `connection` counts `limits` in, numbered from
+/// `namespace`: one a limit, in the order of [`COUNTED_LIMITS`], each
+/// named for the connection and the limit. `None` when the numbers would
+/// pass the largest a `u32` holds.
+pub fn rate_limit_bindings(
+    connection: &str,
+    namespace: u32,
+    limits: &[RateLimit],
+) -> Option<Vec<RateLimitBinding>> {
+    let mut limits = limits.to_vec();
+    limits.sort_by_key(|limit| (limit.window_ms, limit.requests));
+    limits.dedup();
+    limits
+        .into_iter()
+        .zip(0u32..)
+        .map(|(limit, at)| {
+            Some(RateLimitBinding {
+                limit,
+                name: format!(
+                    "{}_{}_PER_{}S",
+                    connection.to_ascii_uppercase(),
+                    limit.requests,
+                    limit.window_ms / 1000
+                ),
+                namespace: namespace.checked_add(at)?,
+            })
+        })
+        .collect()
+}
 
 /// How many proxies of the deployment's own sit in front of the app
 /// (area 10, "Client addresses").
@@ -1226,6 +1300,9 @@ pub struct RouteTable {
     /// Where the client's address is read; `None` takes the host's default
     /// (the connection's natively, `CF-Connecting-IP` on Workers).
     pub client_address: Option<ClientAddressPlan>,
+    /// Where rate limits are counted; `None` when `app.jadpo` names no
+    /// store, and the host counts in its own memory.
+    pub rate_limits: Option<RateLimitStore>,
 }
 
 impl RouteTable {
@@ -1303,5 +1380,57 @@ mod tests {
         assert_eq!(SuccessStatus::NoContent.code(), 204);
         assert!(HttpMethod::Delete.reads_query());
         assert_eq!(HttpMethod::from_word("PATCH"), Some(HttpMethod::Patch));
+    }
+
+    /// Each limit counted on Cloudflare's binding has a binding of its
+    /// own, named for the connection and the limit and numbered from the
+    /// connection's namespace in the order of window, then requests
+    /// (chunk 8.2m2).
+    #[test]
+    fn each_limit_has_a_binding_numbered_from_the_namespace() {
+        let hourly = RateLimit {
+            requests: 5,
+            window_ms: 3_600_000,
+        };
+        let bindings = rate_limit_bindings(
+            "limits",
+            1001,
+            &[CALLER_LIMIT, hourly, ADDRESS_LIMIT, CALLER_LIMIT],
+        )
+        .expect("numbered");
+        let named: Vec<(&str, u32)> = bindings
+            .iter()
+            .map(|binding| (binding.name.as_str(), binding.namespace))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                ("LIMITS_120_PER_60S", 1001),
+                ("LIMITS_600_PER_60S", 1002),
+                ("LIMITS_5_PER_3600S", 1003)
+            ]
+        );
+        assert_eq!(
+            rate_limit_bindings("limits", 1001, &COUNTED_LIMITS)
+                .expect("numbered")
+                .iter()
+                .map(|binding| binding.limit)
+                .collect::<Vec<_>>(),
+            COUNTED_LIMITS
+        );
+        assert_eq!(
+            rate_limit_bindings("limits", u32::MAX, &COUNTED_LIMITS),
+            None
+        );
+        let store = RateLimitStore {
+            connection: "limits".into(),
+            bindings,
+        };
+        assert_eq!(
+            store.binding(ADDRESS_LIMIT).map(|b| b.name.as_str()),
+            Some("LIMITS_120_PER_60S")
+        );
+        assert!(BINDING_WINDOWS_MS.contains(&ADDRESS_LIMIT.window_ms));
+        assert!(!BINDING_WINDOWS_MS.contains(&hourly.window_ms));
     }
 }

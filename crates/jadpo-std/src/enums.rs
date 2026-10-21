@@ -303,6 +303,10 @@ std_enum! {
         /// Workers, its batches pushed to the app's consumer (area 11,
         /// "Queues"; chunk 7.7c2).
         CloudflareQueues: "cloudflare_queues",
+        /// Cloudflare's rate-limiting binding, a store `rate_limits:` can
+        /// count route rate limits in on Workers (area 16, "Rate limits";
+        /// chunk 8.2m2).
+        CloudflareRateLimits: "cloudflare_rate_limits",
     }
 }
 

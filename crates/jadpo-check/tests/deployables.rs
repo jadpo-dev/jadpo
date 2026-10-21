@@ -10,11 +10,12 @@ use crate::support;
 use jadpo_db::{Database, Layout};
 use jadpo_std::{DeployTarget, Runs};
 
-/// The café's two APIs, its database and a disk for sheets, and
-/// `deployables`, written inside `application { }`.
+/// The café's two APIs, its database, a disk for sheets and the Redis
+/// connection its rate limits are counted in, and `deployables`, written
+/// inside `application { }`.
 fn app(deployables: &str, more: &str) -> String {
     format!(
-        "application {{\n    apis: {{\n        main: {{\n            prefix: /\n        }}\n        staff: {{\n            prefix: /sheets\n        }}\n    }}\n    connections: {{\n        main: {{\n            driver: Driver.postgres\n        }}\n        sheets: {{\n            driver: Driver.disk\n            path: \"/var/lib/cafe/sheets\"\n        }}\n{more}    }}\n    events: {{\n        store: main\n    }}\n{deployables}}}\n"
+        "application {{\n    apis: {{\n        main: {{\n            prefix: /\n        }}\n        staff: {{\n            prefix: /sheets\n        }}\n    }}\n    connections: {{\n        cache: {{\n            driver: Driver.redis\n        }}\n        main: {{\n            driver: Driver.postgres\n        }}\n        sheets: {{\n            driver: Driver.disk\n            path: \"/var/lib/cafe/sheets\"\n        }}\n{more}    }}\n    events: {{\n        store: main\n    }}\n    rate_limits: {{\n        store: cache\n    }}\n{deployables}}}\n"
     )
 }
 
@@ -177,10 +178,14 @@ fn an_app_that_declares_none_has_one_deployable_with_no_target() {
     assert_eq!(app.runs, Runs::EVERYTHING);
     assert_eq!(app.target, None);
     assert_eq!(app.builds_for(), DeployTarget::Native);
-    // It reaches the disk, but with no target nothing is refused.
+    // It reaches the disk, and counts its rate limits in Redis, but with
+    // no target nothing is refused.
     assert_eq!(
         reached(""),
-        [("app".to_string(), vec!["sheets".to_string()])]
+        [(
+            "app".to_string(),
+            vec!["cache".to_string(), "sheets".to_string()]
+        )]
     );
 }
 
@@ -204,12 +209,16 @@ fn each_declared_deployable_serves_and_runs_what_it_says() {
         kiosk.target.as_ref().map(|(target, _)| *target),
         Some(DeployTarget::Native)
     );
-    // Only the office reaches the disk, through the staff's route.
+    // Only the office reaches the disk, through the staff's route; each
+    // serves an API, so each counts its rate limits in Redis.
     assert_eq!(
         reached(&deployables),
         [
-            ("kiosk".to_string(), Vec::<String>::new()),
-            ("office".to_string(), vec!["sheets".to_string()])
+            ("kiosk".to_string(), vec!["cache".to_string()]),
+            (
+                "office".to_string(),
+                vec!["cache".to_string(), "sheets".to_string()]
+            )
         ]
     );
 }
@@ -467,6 +476,156 @@ fn smtp_on_port_25_is_refused_where_workers_sends_the_email() {
     );
     assert_eq!(problems_with(&application("", WASM), files), CLEAN);
     assert_eq!(problems_with(&application(port_25, NATIVE), files), CLEAN);
+}
+
+/// `rate_limits:` as the café writes it.
+const CACHE_STORE: &str = "    rate_limits: {\n        store: cache\n    }\n";
+
+/// Cloudflare's rate-limiting binding, numbered from namespace 1001.
+const LIMITS: &str = "        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n        }\n";
+
+/// The café with its rate limits counted in `store` (none when empty),
+/// `connection` among its connections.
+fn counted_in(store: &str, connection: &str, deployables: &str) -> Vec<String> {
+    let written = if store.is_empty() {
+        String::new()
+    } else {
+        format!("    rate_limits: {{\n        store: {store}\n    }}\n")
+    };
+    let application = app(deployables, connection).replace(CACHE_STORE, &written);
+    problems_with(&application, &[])
+}
+
+#[test]
+fn on_workers_rate_limits_are_counted_in_a_store() {
+    // A Worker that serves an API needs a store, since its instances share
+    // no memory (area 16, question 6).
+    assert_eq!(
+        counted_in("", "", &declared(WASM, NATIVE)),
+        [
+            "app.jadpo rate_limits.store_required: `kiosk` has nowhere to count its rate limits on Workers"
+        ]
+    );
+    // Natively, and without a target, memory counts them.
+    assert_eq!(counted_in("", "", &declared(NATIVE, NATIVE)), CLEAN);
+    assert_eq!(counted_in("", "", &declared("", "")), CLEAN);
+    // Cloudflare's binding counts them for the Worker; a native server
+    // has none.
+    assert_eq!(counted_in("limits", LIMITS, &declared(WASM, "")), CLEAN);
+    assert_eq!(
+        counted_in("limits", LIMITS, &declared(WASM, NATIVE)),
+        [
+            "app.jadpo deployable.target_unsupported: `office` can't count its rate limits in `limits` natively: Cloudflare's rate-limiting binding is only a Worker's"
+        ]
+    );
+    // Redis counts them everywhere.
+    assert_eq!(counted_in("cache", "", &declared(WASM, NATIVE)), CLEAN);
+}
+
+#[test]
+fn the_store_and_the_binding_are_checked() {
+    let cases: [(&str, &str, &[&str]); 5] = [
+        (
+            "main",
+            LIMITS,
+            &["app.jadpo rate_limits.store_invalid: `store: main` can't count rate limits"],
+        ),
+        (
+            "limts",
+            LIMITS,
+            &["app.jadpo rate_limits.store_invalid: `store: limts` isn't a connection"],
+        ),
+        (
+            "limits",
+            "        limits: {\n            driver: Driver.cloudflare_rate_limits\n        }\n",
+            &["app.jadpo connection.key_missing: `limits` doesn't give `namespace:`"],
+        ),
+        (
+            "limits",
+            "        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 0\n        }\n",
+            &[
+                "app.jadpo connection.value_invalid: `limits`'s `namespace:` must be a whole number of at least 1",
+            ],
+        ),
+        (
+            "limits",
+            "        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n            period: 60\n        }\n",
+            &[
+                "app.jadpo connection.key_invalid: A connection with `driver: Driver.cloudflare_rate_limits` takes no `period:`",
+            ],
+        ),
+    ];
+    for (store, connection, expected) in cases {
+        assert_eq!(
+            counted_in(store, connection, &declared(WASM, "")),
+            expected,
+            "{store} {connection}"
+        );
+    }
+    let written = |rate_limits: &str| {
+        problems_with(
+            &app(&declared(WASM, ""), LIMITS).replace(CACHE_STORE, rate_limits),
+            &[],
+        )
+    };
+    assert_eq!(
+        written("    rate_limits: {\n        stor: limits\n    }\n"),
+        ["app.jadpo rate_limits.store_invalid: `stor` isn't a rate-limits setting"]
+    );
+    assert_eq!(
+        written("    rate_limits: {}\n"),
+        ["app.jadpo rate_limits.store_invalid: `rate_limits:` names no `store:`"]
+    );
+    assert_eq!(
+        written("    rate_limits: limits\n"),
+        ["app.jadpo rate_limits.store_invalid: `rate_limits:` holds no block"]
+    );
+}
+
+/// The plan's store: on Cloudflare's binding, one binding for each limit
+/// the app counts, numbered from the connection's namespace.
+#[test]
+fn the_plan_names_a_binding_for_each_limit() {
+    let db = Database::default();
+    let application = app(&declared(WASM, ""), LIMITS).replace(
+        CACHE_STORE,
+        "    rate_limits: {\n        store: limits\n    }\n",
+    );
+    let mut files: Vec<(&str, &str)> = vec![("app.jadpo", application.as_str())];
+    files.extend_from_slice(CAFE);
+    let project = support::project(&db, Layout::Project, &files);
+    let store = jadpo_check::rate_limits::store_plan(&db, project).expect("a store");
+    assert_eq!(store.connection, "limits");
+    let bindings: Vec<(&str, u32, u32, u32)> = store
+        .bindings
+        .iter()
+        .map(|binding| {
+            (
+                binding.name.as_str(),
+                binding.namespace,
+                binding.limit.requests,
+                binding.limit.window_ms,
+            )
+        })
+        .collect();
+    assert_eq!(
+        bindings,
+        [
+            ("LIMITS_120_PER_60S", 1001, 120, 60_000),
+            ("LIMITS_600_PER_60S", 1002, 600, 60_000)
+        ]
+    );
+    // Redis takes no bindings.
+    let db = Database::default();
+    let application = app(&declared(WASM, ""), "");
+    let mut files: Vec<(&str, &str)> = vec![("app.jadpo", application.as_str())];
+    files.extend_from_slice(CAFE);
+    let project = support::project(&db, Layout::Project, &files);
+    let store = jadpo_check::rate_limits::store_plan(&db, project).expect("a store");
+    assert_eq!(
+        (store.connection.as_str(), store.bindings.len()),
+        ("cache", 0)
+    );
 }
 
 #[test]

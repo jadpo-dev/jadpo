@@ -2531,7 +2531,10 @@ there is no native default: area 16 keeps counts in memory only where
 memory lasts, and its question 6 requires a Redis connection or
 Cloudflare's rate-limiting binding there, with the isolate's memory
 counting only while that can't be reached, which is the one reading both
-give. Round trips: the sign-in lookup, an idempotency key's claim (one
+give: since chunk 8.2m2 the plan's route table carries the store
+`rate_limits:` names (`RateLimitStore`, with a binding for each limit
+on Cloudflare's), the Workers host counts in it, and `jadpo check`
+refuses a Workers deployable that serves an API without one. Round trips: the sign-in lookup, an idempotency key's claim (one
 `INSERT ... ON CONFLICT` that also gives back what the key is kept with)
 and its release, the response a failed action keeps, and `SELECT 1` each
 run as one statement on their own (`Database::query_once`, autocommit),
@@ -2818,7 +2821,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2g) | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6), the binding counted in since chunk 8.2m2; the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4); `ai.stream` read piece by piece and sent as server-sent events (chunk 5.5v6) | same, through Workers' `fetch` |
@@ -4033,9 +4036,12 @@ never called, so the workspace builds, lints and tests as one.
   invocation waits, never while it computes); timers on `setTimeout`,
   cleared when a wait is dropped; settings from the bindings, a text
   binding being a variable or a secret; `defer` through `ctx.waitUntil`;
-  rate limits in the isolate's memory, one table an isolate, the fallback
-  area 16 allows while no Redis connection or rate-limiting binding counts
-  them; and Workers' budgets (`budget_for`): 30 seconds after a response
+  rate limits in Cloudflare's rate-limiting binding when the plan's store
+  (`RouteTable::rate_limits`, `rate_limits: { store: }`) is one, each
+  limit in the binding of its own the store names (`limit({ key })`, a
+  refusal waiting the window's length), and in the isolate's memory, one
+  table an isolate, while it can't be asked, the fallback area 16 allows
+  (chunk 8.2m2); and Workers' budgets (`budget_for`): 30 seconds after a response
   and for work handed on, 15 minutes for the cron. Work handed on is
   dropped, the tick taking it up, until chunk 8.2h decides how a Worker
   starts a fresh invocation; a database needs the crate's `postgres`
