@@ -76,7 +76,7 @@ impl Bed {
         std::fs::write(dir.join("worker.mjs"), SHIM).expect("the shim");
         std::fs::write(dir.join("authority.pem"), &trusted.root_pem).expect("the authority");
         std::fs::copy(
-            root.join(TOOLS).join("ratelimit-binding.mjs"),
+            root.join("tools/workers").join("ratelimit-binding.mjs"),
             dir.join("ratelimit-binding.mjs"),
         )
         .expect("the stand-in rate-limiting binding");
