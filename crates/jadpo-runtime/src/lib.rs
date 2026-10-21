@@ -67,8 +67,9 @@
 //!   [`capability::Faked`], the `ai` fake), the recordings ([`recorded`],
 //!   [`prompt_recordings`]), the crash points ([`crashes`]), the
 //!   outcome-and-effect record ([`record`]), the delivery between a test's
-//!   steps ([`test_steps`]) and the plan's dev and test section, which only
-//!   `jadpo test` and `jadpo dev` build in: a deployable holds none of them.
+//!   steps ([`test_steps`]), one run of one test ([`test_run`], chunk 8.2e)
+//!   and the plan's dev and test section, which only `jadpo test`, `jadpo
+//!   dev` and a test Worker build in: a deployable holds none of them.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -151,6 +152,8 @@ pub mod statements;
 pub mod steps;
 mod store;
 pub mod stream;
+#[cfg(feature = "testing")]
+pub mod test_run;
 #[cfg(feature = "testing")]
 pub mod test_steps;
 pub mod unfinished;
