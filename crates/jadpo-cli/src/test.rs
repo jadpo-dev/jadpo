@@ -58,6 +58,7 @@ pub fn test(call: &Call) -> Reply {
         keep_failed: call.flag("--keep-failed"),
         ci: crate::run::in_ci(&call.environment),
         record: false,
+        batches: false,
     };
     if call.flag("--watch") {
         // Mistakes in what to run end the command before it starts

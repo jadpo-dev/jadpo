@@ -1339,8 +1339,13 @@ impl Plan {
 
     /// The run of the `batches.each` call whose site decodes `number`.
     pub fn batch(&self, number: u32) -> Option<&jadpo_std::batch::BatchPlan> {
-        let at = (*self.batch_numbers.get(number as usize)?)?;
-        self.runtime.batches.get(at as usize)
+        self.runtime.batches.get(self.batch_place(number)? as usize)
+    }
+
+    /// The place in [`Plan::batches`] of the run of the `batches.each` call
+    /// whose site decodes `number`, which compiled code names it by.
+    pub fn batch_place(&self, number: u32) -> Option<u32> {
+        *self.batch_numbers.get(number as usize)?
     }
 
     /// Every subscriber, and where an action that writes no store keeps

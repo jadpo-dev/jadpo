@@ -897,15 +897,36 @@ impl Emitter<'_> {
                 let defect = self.defect("a call to something that can't be called", id);
                 quote!({ #defect })
             }
+            Callee::Caller(kind) => self.caller(id, *kind, args),
+            Callee::Session(op) => {
+                let (lets, names) = self.arguments(args, id);
+                let op = format_ident!("{}", format!("{op:?}"));
+                let at = number(id.0);
+                self.waited(
+                    id,
+                    lets,
+                    quote!(rt::session(cx, p, jadpo_std::http::SessionOp::#op, &[#(#names),*], #at).await),
+                    false,
+                )
+            }
+            Callee::Batch(op) => self.batch(id, *op, args),
+            Callee::AdvanceClock => {
+                let [Some(arg)] = args else {
+                    let defect = self.defect("a clock moved by nothing", id);
+                    return quote!({ #defect });
+                };
+                let by = self.expr(*arg);
+                let at = number(id.0);
+                self.waited(
+                    id,
+                    vec![quote!(let by = #by;)],
+                    quote!(rt::advance(cx, by, #at)),
+                    true,
+                )
+            }
             // Named by what is written where that names the operation, and
             // by its kind where what is written is the project's own.
-            Callee::Caller(_)
-            | Callee::Session(_)
-            | Callee::Batch(_)
-            | Callee::AdvanceClock
-            | Callee::Generate { .. }
-            | Callee::Stream { .. }
-            | Callee::Embed { .. } => {
+            Callee::Generate { .. } | Callee::Stream { .. } | Callee::Embed { .. } => {
                 let written = self.written(id);
                 self.refuse(format!("`{written}`"), id)
             }
@@ -915,10 +936,158 @@ impl Emitter<'_> {
             Callee::Fake { .. } => self.refuse("a test's `fakes:`".into(), id),
             Callee::AiFake { .. } => self.refuse("a test's `fakes: { ai: }`".into(), id),
             Callee::AiRequests { .. } => self.refuse("`ai.<prompt>.requests`".into(), id),
-            Callee::Schedule { .. } => self.refuse("`<schedule>.run()`".into(), id),
+            Callee::Schedule { .. } => {
+                let ran = self.schedule_ran(id, false);
+                self.tri(ran)
+            }
             Callee::Translation(_) => self.refuse("`translations.<message>`".into(), id),
             Callee::Prompt(_) => self.refuse("`prompts.render`".into(), id),
             Callee::Escape => self.refuse("an email template's `{{ value }}`".into(), id),
+        }
+    }
+
+    /// A site that waits on the runtime, `id`: `lets`, its values worked
+    /// out in order, then `call`, giving a `Ran`; in a test, what the step
+    /// emitted delivered after it, and, when `advanced`, what the clock it
+    /// moved brought due (area 13). Inside an inline function, where
+    /// nothing waits, the interpreter's defect.
+    fn waited(
+        &mut self,
+        id: SiteId,
+        lets: Vec<TokenStream>,
+        call: TokenStream,
+        advanced: bool,
+    ) -> TokenStream {
+        if let Some(defect) = self.waits_inline() {
+            return quote!({ #(#lets)* #defect });
+        }
+        let ran = self.stepped(call, id, advanced);
+        let value = self.tri(quote!(ran));
+        quote!({
+            #(#lets)*
+            let ran = #ran;
+            #value
+        })
+    }
+
+    /// `Principal.user(record)` or `Principal.service(record)` at `id` in
+    /// a test, fixture or seed (area 8): the caller made from the record.
+    fn caller(
+        &mut self,
+        id: SiteId,
+        kind: jadpo_std::http::PrincipalKind,
+        args: &[Option<SiteId>],
+    ) -> TokenStream {
+        let [Some(arg)] = args else {
+            let defect = self.defect("a caller made without its record", id);
+            return quote!({ #defect });
+        };
+        let record = self.expr(*arg);
+        let kind = format_ident!("{}", format!("{kind:?}"));
+        let at = number(id.0);
+        let made = self.tri(quote!(rt::caller(
+            cx,
+            p,
+            jadpo_std::http::PrincipalKind::#kind,
+            &record,
+            #at
+        )));
+        quote!({
+            let record = #record;
+            #made
+        })
+    }
+
+    /// A batch operation at `id` (area 12): a call that starts a run works
+    /// out only what the run saves, in the order its plan saves them, never
+    /// its query or the actions the run calls later; `batches.status` and
+    /// `batches.cancel` their run.
+    fn batch(
+        &mut self,
+        id: SiteId,
+        op: jadpo_std::batch::BatchOp,
+        args: &[Option<SiteId>],
+    ) -> TokenStream {
+        let at = number(id.0);
+        let (lets, names, place) = if op.starts() {
+            let Some(Decoded::Batch { number, sites }) = self.decoded(id).cloned() else {
+                let defect = self.defect("a batch with no plan", id);
+                return quote!({ #defect });
+            };
+            let mut lets = Vec::new();
+            let mut names = Vec::new();
+            for (index, site) in sites.iter().enumerate() {
+                let value = self.expr(SiteId(*site));
+                let name = format_ident!("a{}", index);
+                lets.push(quote!(let #name = #value;));
+                names.push(name);
+            }
+            let place = match self.plan.batch_place(number) {
+                Some(place) => {
+                    let place = self::number(place);
+                    quote!(Some(#place))
+                }
+                None => quote!(None),
+            };
+            (lets, names, place)
+        } else {
+            let (lets, names) = self.arguments(args, id);
+            (lets, names, quote!(None))
+        };
+        let op = batch_op(op);
+        self.waited(
+            id,
+            lets,
+            quote!(rt::batch(cx, p, #op, #place, &[#(#names),*], #at).await),
+            false,
+        )
+    }
+
+    /// A file helper's write's row (area 12, "Batches"; chunk 6.4b2), the
+    /// inline function `row` names in this callable's body, as a function
+    /// of its own, `name`: every local of the callable declared, those it
+    /// is given set, then the body worked out, where nothing waits.
+    pub fn row(&mut self, row: &jadpo_std::batch::BatchRow, name: &Ident) -> TokenStream {
+        let locals: Vec<Ident> = (0..self.callable.body.locals.len())
+            .map(|at| format_ident!("l{}", at))
+            .collect();
+        let numbers = (0..locals.len()).map(|at| number(u32::try_from(at).unwrap_or(u32::MAX)));
+        let body = SiteId(row.body);
+        let outer = (
+            self.label.take(),
+            std::mem::replace(&mut self.recording, false),
+            self.inline.replace(body),
+        );
+        let value = self.expr(body);
+        (self.label, self.recording, self.inline) = outer;
+        let cfg = if testing_only(self.callable.kind) {
+            quote!(#[cfg(feature = "testing")])
+        } else {
+            TokenStream::new()
+        };
+        let doc = text(&format!(
+            " A row `{}` writes, {}:{}.",
+            self.callable.label,
+            self.callable.file,
+            self.callable
+                .body
+                .sites
+                .get(row.body as usize)
+                .map_or(self.callable.line, |site| site.line)
+        ));
+        quote! {
+            #[doc = #doc]
+            #cfg
+            pub(crate) fn #name(cx: &mut Ctx<'_>, p: &Program, given: Vec<(u32, Value)>) -> Ran {
+                #(let mut #locals = Value::Unit;)*
+                for (local, value) in given {
+                    match local {
+                        #(#numbers => #locals = value,)*
+                        _ => {}
+                    }
+                }
+                Ok(#value)
+            }
         }
     }
 
@@ -1037,9 +1206,10 @@ impl Emitter<'_> {
                 {
                     Some((callee, args))
                 }
+                // A schedule's run, which only its action's failures end.
                 Callee::Schedule { .. } => {
-                    self.refuse("`<schedule>.run()`".into(), subject);
-                    return quote!(Ok::<Value, Stop>(Value::Unit));
+                    let ran = self.schedule_ran(subject, true);
+                    return self.remembered(subject, ran);
                 }
                 _ => None,
             },
@@ -1050,6 +1220,12 @@ impl Emitter<'_> {
             return self.caught(&name, subject);
         };
         let ran = self.call_ran(subject, &callee, &args, true);
+        self.remembered(subject, ran)
+    }
+
+    /// `ran`, what the subject at `subject` gave, its value kept for an
+    /// assertion's report when it gives one.
+    fn remembered(&self, subject: SiteId, ran: TokenStream) -> TokenStream {
         if !self.recording {
             return ran;
         }
@@ -1061,6 +1237,26 @@ impl Emitter<'_> {
             }
             ran
         })
+    }
+
+    /// A test's run of a schedule at `id`, `<schedule>.run()` (area 13,
+    /// "Kinds of test"): its action called as the system with no tenant,
+    /// as the tick runs it, giving nothing; `caught` when its failure is
+    /// handled. A Rust expression giving a `Ran`.
+    fn schedule_ran(&mut self, id: SiteId, caught: bool) -> TokenStream {
+        let Some(Decoded::Callable(Some(action))) = self.decoded(id).cloned() else {
+            let defect = self.defect("a schedule run with no action", id);
+            return quote!({ #defect });
+        };
+        if let Some(defect) = self.waits_inline() {
+            return defect;
+        }
+        let (action, at) = (number(action), number(id.0));
+        self.stepped(
+            quote!(rt::schedule(cx, p, #action, #at, #caught).await),
+            id,
+            false,
+        )
     }
 
     /// An outcome `match` at `id` on `subject`: the `success` arm with the
@@ -1648,5 +1844,27 @@ fn comparison(op: BinaryOp) -> Option<proc_macro2::Ident> {
         | BinaryOp::Greater
         | BinaryOp::GreaterEqual => operator(op),
         _ => None,
+    }
+}
+
+/// Batch operation `op` as generated code names it.
+fn batch_op(op: jadpo_std::batch::BatchOp) -> TokenStream {
+    use jadpo_std::batch::BatchOp;
+    let format = |format: jadpo_std::batch::RowFormat| {
+        let format = format_ident!("{}", format!("{format:?}"));
+        quote!(jadpo_std::batch::RowFormat::#format)
+    };
+    match op {
+        BatchOp::Each => quote!(jadpo_std::batch::BatchOp::Each),
+        BatchOp::Status => quote!(jadpo_std::batch::BatchOp::Status),
+        BatchOp::Cancel => quote!(jadpo_std::batch::BatchOp::Cancel),
+        BatchOp::Read(read) => {
+            let read = format(read);
+            quote!(jadpo_std::batch::BatchOp::Read(#read))
+        }
+        BatchOp::Write(write) => {
+            let write = format(write);
+            quote!(jadpo_std::batch::BatchOp::Write(#write))
+        }
     }
 }

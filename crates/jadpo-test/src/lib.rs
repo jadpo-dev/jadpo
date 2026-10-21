@@ -146,6 +146,13 @@ pub struct Options {
     /// Keep each test's outcome-and-effect record ([`TestRecord`]), for
     /// the differential run (chunk 8.1c). Off, nothing is recorded.
     pub record: bool,
+    /// The differential run's (chunk 8.1h): once a test has ended, each
+    /// batch run it started is run to its end at the test's clock, its
+    /// pages, rows and calls kept in the test's record, so compiled code's
+    /// runs and an export's rows are compared too. `jadpo test` leaves a
+    /// run as it started (area 13, "Caches and events") until question
+    /// 18's batches in tests are built.
+    pub batches: bool,
 }
 
 /// How a request to run tests ended.
@@ -490,7 +497,10 @@ pub(crate) fn choose_and_run(
         &ordered,
         &rerun,
         databases.as_ref(),
-        options.record,
+        run::Keep {
+            record: options.record,
+            batches: options.batches,
+        },
         maker,
     );
     drop(databases);

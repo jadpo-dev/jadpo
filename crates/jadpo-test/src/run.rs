@@ -18,6 +18,7 @@ use jadpo_runtime::config::Mode;
 use jadpo_runtime::crashes::{Boundary, Reached};
 use jadpo_runtime::fakes::ProviderFake;
 use jadpo_runtime::record::{Entry, Record};
+use jadpo_runtime::runner::{Deferred, run_deferred};
 use jadpo_runtime::{Ctx, Executor, FaultKind, Frame, Host, Outcome, Sources, block_on};
 
 use crate::database::{TestDatabases, TestHost};
@@ -41,6 +42,15 @@ struct Kept {
     rows: Vec<String>,
 }
 
+/// What a run keeps besides how each test went: each test's record
+/// (chunk 8.1c), and, for the differential run, what the batch runs a
+/// test started do once run to their end (chunk 8.1h).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Keep {
+    pub record: bool,
+    pub batches: bool,
+}
+
 /// What makes a thread's executor when tests run on one other than the
 /// interpreter (compiled code, chunk 8.1f), given the settings a test run
 /// reads.
@@ -49,13 +59,13 @@ pub(crate) type Maker<'m> =
 
 /// Runs `tests`, in order, on the interpreter, or on the executors `maker`
 /// makes: how each went, by its place in `tests`, with its record when
-/// `record` asks for one.
+/// `keep` asks for one.
 pub(crate) fn run_all(
     prepared: &Arc<Prepared>,
     tests: &[Test],
     rerun: &Rerun,
     databases: Option<&TestDatabases>,
-    record: bool,
+    keep: Keep,
     maker: Option<Maker<'_>>,
 ) -> Vec<Done> {
     let sources = prepared.plan().files();
@@ -73,7 +83,7 @@ pub(crate) fn run_all(
             rerun,
             sources,
             databases,
-            record,
+            keep,
         );
     }
     spread(
@@ -88,7 +98,7 @@ pub(crate) fn run_all(
         rerun,
         sources,
         databases,
-        record,
+        keep,
     )
 }
 
@@ -154,7 +164,7 @@ fn spread<E: Executor>(
     rerun: &Rerun,
     sources: &(dyn Sources + Sync),
     databases: Option<&TestDatabases>,
-    record: bool,
+    keep: Keep,
 ) -> Vec<Done> {
     let next = AtomicUsize::new(0);
     let work = || {
@@ -172,7 +182,7 @@ fn spread<E: Executor>(
             let Some(test) = tests.get(index) else {
                 break;
             };
-            done.push((index, one(&executor, test, rerun, sources, &stores, record)));
+            done.push((index, one(&executor, test, rerun, sources, &stores, keep)));
         }
         done
     };
@@ -215,17 +225,25 @@ struct Stores<'a> {
     runtime: Option<&'a jadpo_host_native::Runtime>,
 }
 
-/// Runs one test, keeping its record when `record` asks for one.
+/// Runs one test, keeping its record when `keep` asks for one.
 fn one<E: Executor>(
     executor: &E,
     test: &Test,
     rerun: &Rerun,
     sources: &dyn Sources,
     stores: &Stores<'_>,
-    record: bool,
+    keep: Keep,
 ) -> Done {
-    let mut kept = record.then(Kept::default);
-    let failure = tested(executor, test, rerun, sources, stores, kept.as_mut());
+    let mut kept = keep.record.then(Kept::default);
+    let failure = tested(
+        executor,
+        test,
+        rerun,
+        sources,
+        stores,
+        kept.as_mut(),
+        keep.batches,
+    );
     let record =
         kept.map(|kept| TestRecord::new(&kept.entries, &verdict(failure.as_deref()), &kept.rows));
     (failure, record)
@@ -249,7 +267,8 @@ fn recording(kept: Option<&Kept>) -> Option<Rc<Record>> {
 }
 
 /// Runs one test: `None` when it passed. What it did goes into `kept`,
-/// when given.
+/// when given, and with `batches` each batch run it started is run to its
+/// end once it has ended.
 fn tested<E: Executor>(
     executor: &E,
     test: &Test,
@@ -257,6 +276,7 @@ fn tested<E: Executor>(
     sources: &dyn Sources,
     stores: &Stores<'_>,
     kept: Option<&mut Kept>,
+    batches: bool,
 ) -> Option<Box<TestFailure>> {
     // A recording of one of the app's own integrations, read by its
     // operation's decoders (chunk 7.2d2).
@@ -337,6 +357,7 @@ fn tested<E: Executor>(
             runtime,
             callable,
             env: &env,
+            batches,
         };
         let first = stored.run(None, kept);
         if first.failure.is_some() {
@@ -427,6 +448,8 @@ struct Stored<'s, E> {
     runtime: &'s jadpo_host_native::Runtime,
     callable: u32,
     env: &'s TestEnv,
+    /// Each batch run the test started run to its end once it has ended.
+    batches: bool,
 }
 
 /// How one run of a test with a database went.
@@ -478,6 +501,18 @@ impl<E: Executor> Stored<'_, E> {
                 record.push(Entry::Outcome(jadpo_runtime::record::outcome(
                     &outcome, places,
                 )));
+            }
+            if self.batches {
+                let started: Vec<Deferred> = ctx
+                    .take_deferred()
+                    .into_iter()
+                    .filter(|work| matches!(work, Deferred::Batch(_)))
+                    .collect();
+                if !started.is_empty() {
+                    let clocked = crate::host::AtClock::new(&host, ctx.now());
+                    self.runtime
+                        .block_on(run_deferred(executor, &clocked, started));
+                }
             }
             (
                 outcome,
@@ -642,7 +677,7 @@ mod tests {
             seed: 1,
         };
         let sources: BTreeMap<String, String> = BTreeMap::new();
-        let failed: Vec<usize> = spread(Fake::new, &tests, &rerun, &sources, None, false)
+        let failed: Vec<usize> = spread(Fake::new, &tests, &rerun, &sources, None, Keep::default())
             .iter()
             .enumerate()
             .filter(|(_, (failure, _))| failure.is_some())

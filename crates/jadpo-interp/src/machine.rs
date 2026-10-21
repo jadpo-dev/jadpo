@@ -1210,17 +1210,7 @@ impl<'p> Machine<'p> {
             }
             Task::Caller { kind, at } => {
                 let record = self.pop();
-                let made = self
-                    .program
-                    .plan()
-                    .routes()
-                    .identity
-                    .as_ref()
-                    .and_then(|identity| identity.principal(kind))
-                    .and_then(|plan| {
-                        jadpo_runtime::http::identity::caller_from_record(plan, kind, &record)
-                    });
-                match made {
+                match jadpo_runtime::http::caller_from(self.program, kind, &record) {
                     Some(value) => self.values.push(value),
                     None => {
                         return Err(self.defect(

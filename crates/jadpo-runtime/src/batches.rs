@@ -397,6 +397,65 @@ pub fn shape_digest(plan: &BatchPlan) -> String {
     blake3::hash(plan.shape.as_bytes()).to_hex().to_string()
 }
 
+/// `batches.each`, a file helper's read or write, `batches.status` or
+/// `batches.cancel`, called with `args` at `site` of the running action
+/// (area 12): the one entry point both executors call (chunk 8.1h). A
+/// call that starts a run is given its plan, `plan`, and `args` are the
+/// values it saves, then its `key:`; the others are given the run. A
+/// store's refusal is the failure it raised, never a `conflict:` arm.
+pub async fn call(
+    ctx: &mut Ctx<'_>,
+    batches: Option<Batches<'_>>,
+    op: jadpo_std::batch::BatchOp,
+    plan: Option<&BatchPlan>,
+    args: &[Value],
+    site: u32,
+) -> Stored {
+    use jadpo_std::batch::BatchOp;
+    let Some(batches) = batches else {
+        return fault(ctx, "a batch in a program that runs none", site);
+    };
+    let stored = match (op, args) {
+        (BatchOp::Each | BatchOp::Read(_) | BatchOp::Write(_), _) => match plan {
+            Some(plan) => start(ctx, batches, plan, args, site).await,
+            None => return fault(ctx, "a batch with no plan", site),
+        },
+        (BatchOp::Status, [run]) => status(ctx, batches, run, site).await,
+        (BatchOp::Cancel, [run]) => cancel(ctx, batches, run, site).await,
+        _ => {
+            return fault(
+                ctx,
+                format!("`batches.{}` called with the wrong arguments", op.name()),
+                site,
+            );
+        }
+    };
+    match stored {
+        Stored::Conflict { cause, .. } => Stored::Failed(cause),
+        stored => stored,
+    }
+}
+
+/// What a file helper's write's row (chunk 6.4b2) runs with: each local
+/// of the action that started the run it reads, `row.item` given `item`
+/// and every other the value the run saved for it at its place in `saved`
+/// (`none` past the end), as either executor sets them before working
+/// the row out.
+pub fn row_locals(
+    row: &jadpo_std::batch::BatchRow,
+    item: Value,
+    saved: &[Value],
+) -> Vec<(u32, Value)> {
+    let mut locals = vec![(row.item, item)];
+    for (local, at) in &row.locals {
+        locals.push((
+            *local,
+            saved.get(*at as usize).cloned().unwrap_or(Value::None),
+        ));
+    }
+    locals
+}
+
 /// `batches.status(run)`, at `site` of the running action: the run's
 /// `BatchProgress`, read in the action's transaction.
 pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: u32) -> Stored {

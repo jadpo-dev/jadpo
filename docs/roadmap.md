@@ -2191,15 +2191,36 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   runs the whole corpus that compiles: `differential_all` builds every
   project as a crate of one harness, linked once, and compares 208
   projects' 332 tests with the same records (§2.5, "Compiled code").
-- [ ] **8.1h Compiled code: data, routes and identity** `opus · xhigh`,
-  after 8.1g: areas 5 to 9 and 13's test forms: queries, `get`, writes
-  and transitions through `jadpo_runtime::store`, callers and `call_as`,
-  sessions, tokens and keys, route, fixture and seed tests, batches and
-  an export's rows, the pages' projects for those areas passing compiled.
+- [x] **8.1h Compiled code: data, routes and identity** `opus · xhigh`,
+  after 8.1g. Built: a caller made from its record (`Principal.user`,
+  `Principal.service`), `sessions.*`, tokens and keys, magic links' and a
+  test's passkeys' operations, `batches.each`, `batches.status`,
+  `batches.cancel`, a file helper's read and write, `clock.advance` and a
+  test's `<schedule>.run()` (an area 13 test form, taken from 8.1i),
+  through new site functions in `jadpo_runtime::compiled` (`caller`,
+  `session`, `batch`, `advance`, `schedule`); area 8's operations and the
+  batches through one runtime entry point each that the interpreter calls
+  too (`http::session`, `http::caller_from`, `batches::call`), its copies
+  gone and a test keeping them gone; an export's rows compiled as
+  functions of their own, reached through the crate's `row` table by the
+  compiled `Executor::row`, their locals set by `batches::row_locals`,
+  which the interpreter uses too. The differential harness runs each
+  batch run a test started to its end, at the test's clock
+  (`Options::batches`, `host::AtClock`), so runs and an export's rows are
+  compared in the records, and area 19's export with a test that starts
+  it proves it; the gate copies each teaching example whole, so all 28
+  reach it. 190 of the corpus's 206 projects that check compile (184
+  before); the gate's compiled step compares 232 projects and 451 tests
+  (210 and 334 before), every project of areas 5 to 9 and 13 compiling
+  but those using a form of 8.1i's, 22 of the 28 teaching examples with
+  all 276 of their tests passing both ways; 26 projects are left, every
+  one for 8.1i's forms (translations, provider operations and package
+  actions, a test's `fakes:`, a store's `put` and `read`, prompts, `ai.*`
+  and email templates). §2.5's "Compiled code".
 - [ ] **8.1i Compiled code: events, packages and the rest** `opus ·
   xhigh`, after 8.1h: areas 10 to 12, 16 and 19 to 21: settings and a
   test's `config:`, translations, `emit` and the deliveries between a
-  test's steps, schedules and `schedule.run()`, provider calls with
+  test's steps, schedules, provider calls with
   their fakes and recordings, files, email and `email.sent`,
   `ai.generate`, `ai.stream` and `ai.embed` with the `ai` fake, prompts,
   magic links and webhook replies.
