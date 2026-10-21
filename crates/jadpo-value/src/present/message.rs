@@ -40,7 +40,10 @@ pub fn translate(
     if args.len() != entry.params.len() {
         return Err(Fault::Shape);
     }
-    let (source, wording) = crate::locale::fallback_chain(variant.ordinal, plan)
+    // A locale the application doesn't support is written in the one it
+    // does that a header asking for it would get (area 10, "Locales").
+    let ordinal = crate::locale::written_in(variant.ordinal, plan);
+    let (source, wording) = crate::locale::fallback_chain(ordinal, plan)
         .into_iter()
         .find_map(|at| Some((at, entry.wording(at)?)))
         .ok_or(Fault::Shape)?;
@@ -56,7 +59,7 @@ pub fn translate(
         .collect();
     // The pseudo-locale has no wording of its own unless a file gives some:
     // it writes the default locale's, accented and lengthened.
-    let pseudo = LocalePlan::is_pseudo(variant.ordinal) && source != variant.ordinal;
+    let pseudo = LocalePlan::is_pseudo(ordinal) && source != ordinal;
     let mut writer = Writer::new(tag, &named)?;
     writer.pseudo = pseudo;
     let mut out = String::new();

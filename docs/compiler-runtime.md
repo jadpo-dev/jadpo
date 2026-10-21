@@ -265,6 +265,7 @@ Rust 1.88 or later).
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code | |
 | `jadpo-lsp` | Language server | |
+| `jadpo-cldr` | The CLDR data a deployable carries: ICU4X's compiled data baked again for the app's supported locales (chunk 8.2c) | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 Built so far: every crate above; `jadpo-codegen` since chunk 8.1f and
@@ -327,7 +328,8 @@ Rust function both executors call; `run` matches on the table's `Op`
 exhaustively. Its pure-Rust dependencies build for wasm32 with their data
 compiled in (jiff with its bundled IANA zones, ICU4X with Unicode CLDR), so
 every target reads the same zones and locale data and none reads the
-platform's. Operations that read the generator or the clock run only in
+platform's; a deployable's CLDR data is its supported locales' only
+(chunk 8.2c), which write the same text. Operations that read the generator or the clock run only in
 actions and tests, given the invocation's random bytes or clock.
 
 **`jadpo-runtime`, `jadpo-drivers` and the hosts** are §2.6: the runtime
@@ -341,9 +343,11 @@ whole geometry; storage itself binds a geometry without asking, because the
 checker and every reader refuse such a mix (area 20, "Altitudes are all or
 nothing").
 
-**`jadpo-term`, `jadpo-test`, `jadpo-lsp` and `jadpo-cli`** are tooling:
-the CLI design language's screens, the test runner (§2.5, §2.7), the
-language server, and the binary that nothing depends on.
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp`, `jadpo-cldr` and `jadpo-cli`**
+are tooling: the CLI design language's screens, the test runner (§2.5,
+§2.7), the language server, the locale data `jadpo build` exports for a
+deployable (§2.6, "The locale data a deployable carries"), and the binary
+that nothing depends on.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -3213,6 +3217,38 @@ registering it through an export of its own anyway; a direct dependency
 on `wasm-bindgen`, at a version the generator would have to know; `wasm-opt`, which `binaryen`
 would have to be downloaded for (chunk 9.2 tunes the module); and
 `vars` for settings, which take a value the build doesn't have.
+
+**The locale data a deployable carries** (chunk 8.2c; area 10,
+"Locales"). `jadpo test`, `jadpo dev` and the compiled step run with
+ICU4X's compiled data for every locale `Locale` lists; a deployable
+carries its supported locales' only, native and Workers alike.
+`jadpo build` hands `jadpo_cldr::export` the supported locales' tags,
+which bakes again, from the data compiled into this Jadpo
+(`jadpo_cldr::Compiled`, every marker of the ICU4X data crates in the
+lock, each implemented by its own crate's macro), each marker's entries
+for the locales a supported locale's lookups walk through (the locale,
+then each its fallback gives for that marker's configuration, down to
+`und`, which is always kept), every locale's collation (`list.sort_by`
+takes any `Locale`, area 19), and every marker with one entry, through
+icu_provider_export's `ExportDriver` and baked writer. The files go into
+`build/rust/cldr/`, written only where they changed, one folder for
+every deployable of the app since its locales are the app's, so the
+shared target compiles the runtime crates once; `deployable::build` runs
+cargo with `ICU4X_DATA_DIR` naming it (`Release::cldr`), so each ICU4X
+data crate compiles them in place of its own: every `compiled_data` constructor is the same call,
+and each lookup in a supported locale finds the entry the full data
+gives (`jadpo-cldr`'s tests walk every marker's fallback for six locales
+to hold it). A `Locale` the app doesn't support reaching formatting or
+a message is written in the supported one a header naming it would get
+(`jadpo_value::locale::written_in`) on every target, so `jadpo test` and
+the deployable write the same text. Proved live (`deployable.rs`): a
+shop supporting `en_gb` and `fr_fr`, built, holds no German or Spanish
+weekday and answers what `jadpo dev` answers. Exporting takes about two
+seconds in a debug `jadpo`; the sizes are in area 10's decisions.
+*Rejected:* ICU4X's blob provider read at run time, which would put a
+second constructor beside every compiled-data one and deserialise as the
+app runs; data filtered by marker as well as by locale, whose savings
+the linker already makes.
 
 **Provider call sites by number** (chunk 8.1d2, split from 8.1d). A
 provider call's site plan (`jadpo_std::provider::CallSite`) names the

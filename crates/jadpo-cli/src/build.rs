@@ -9,7 +9,9 @@
 //! `<api>.failures.<locale>.json` (area 10): natively one binary; for
 //! Workers (`Target.wasm`) a WebAssembly module bound by wasm-bindgen's
 //! library, Jadpo's module shim and a Wrangler file, the module's size
-//! shown raw and gzipped.
+//! shown raw and gzipped. Each carries the CLDR data of the app's
+//! supported locales only (chunk 8.2c), from `build/rust/cldr/`, where
+//! `jadpo test` and `jadpo dev` keep every locale.
 //!
 //! `jadpo build` builds every deployable, `jadpo build <deployable>` one.
 //! With no `deployables:` declared there is one, `app`, which serves every
@@ -103,6 +105,10 @@ pub fn build(call: &Call) -> Reply {
     // target, its paths remapped alike, so the runtime crates compile once
     // for them all.
     let rust = root.join("build/rust");
+    let cldr = match carried_locales(db, project, &rust) {
+        Ok(cldr) => cldr,
+        Err(problem) => return Reply::failed(*problem),
+    };
     let epoch = call
         .environment
         .var("SOURCE_DATE_EPOCH")
@@ -195,6 +201,7 @@ pub fn build(call: &Call) -> Reply {
             target: &rust.join("target"),
             remap: &remap,
             epoch,
+            cldr: &cldr,
         });
         let compiled = match compiled {
             Ok(binary) => binary,
@@ -299,6 +306,43 @@ pub fn build(call: &Call) -> Reply {
         migrations: !stores.is_empty(),
         seconds: elapsed.as_secs_f64(),
     })
+}
+
+/// Writes the CLDR data every deployable carries, its app's supported
+/// locales' only (area 10, "Locales"; chunk 8.2c), into `rust`'s `cldr/`,
+/// each file only where it changed: the folder. The locales are the app's,
+/// so every deployable reads the one folder and the runtime crates compile
+/// once for them all.
+fn carried_locales(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    rust: &Path,
+) -> Result<PathBuf, Box<Diagnostic>> {
+    let tags: Vec<&str> = jadpo_check::locales::locales(db, project)
+        .plan
+        .as_ref()
+        .map(|locales| {
+            locales
+                .supported
+                .iter()
+                .filter_map(|&ordinal| jadpo_std::LOCALES.get(ordinal as usize))
+                .map(|(_, tag)| *tag)
+                .collect()
+        })
+        .unwrap_or_default();
+    let files = jadpo_cldr::export(&tags, &rust.join(".cldr-export")).map_err(|error| {
+        Box::new(failed(
+            "The deployables' locale data couldn't be written".to_string(),
+            format!(
+                "Jadpo exports the CLDR data of the app's supported locales for its deployables, and that failed, which is Jadpo's own mistake: {error}."
+            ),
+        ))
+    })?;
+    let folder = rust.join("cldr");
+    jadpo_codegen::Generated { files }
+        .write(&folder)
+        .map_err(|error| Box::new(write_failed("build/rust/cldr/", &error)))?;
+    Ok(folder)
 }
 
 /// The project's deployables, for Tab completion: each declared one, or
