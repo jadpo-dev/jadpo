@@ -1351,7 +1351,7 @@ pub fn carry_on(
 ) -> Option<LocalFuture<'static, ()>> {
     let pieces = named(message)?;
     Some(Box::pin(async move {
-        let work = read_back(executor.as_ref(), host.as_ref(), pieces).await;
+        let work = from_records(executor.as_ref(), host.as_ref(), pieces).await;
         if work.is_empty() {
             return;
         }
@@ -1362,7 +1362,11 @@ pub fn carry_on(
 /// The work `pieces` name as the runner runs it, in their order: each
 /// store's deliveries read in one statement; one a store can't give is
 /// left for the tick.
-async fn read_back(executor: &dyn Executor, host: &dyn Host, pieces: Vec<Named>) -> Vec<Deferred> {
+async fn from_records(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    pieces: Vec<Named>,
+) -> Vec<Deferred> {
     let mut wanted: Vec<(&str, Vec<SqlValue>)> = Vec::new();
     for piece in &pieces {
         if let Named::Delivery { store, id } = piece {
@@ -1828,6 +1832,39 @@ mod tests {
 
     use super::*;
     use crate::{ActionBody, Caller, Database, Event, Failure, Places, Row, block_on};
+
+    /// A message handed on names each piece by its record and store, in
+    /// order (chunk 8.2h); anything else names nothing, so what it would
+    /// have named is left for the tick.
+    #[test]
+    fn a_message_handed_on_names_each_piece_by_its_record() {
+        let delivery = "0192f7a8c3d14e5f8a6b7c8d9e0f1a2b";
+        let run = "00112233445566778899aabbccddeeff";
+        let message = format!(
+            r#"{{"handed_on":[{{"store":"main","delivery":"{delivery}"}},{{"store":"archive","batch":"{run}"}}]}}"#
+        );
+        let pieces = named(&message).expect("a message");
+        assert!(matches!(
+            pieces.as_slice(),
+            [
+                Named::Delivery { store, id },
+                Named::Batch(crate::batches::BatchStart { store: batch_store, run: batch_run }),
+            ] if store == "main"
+                && crate::deliveries::hex(id) == delivery
+                && batch_store == "archive"
+                && crate::deliveries::hex(batch_run) == run
+        ));
+        for refused in [
+            "",
+            "{}",
+            r#"{"handed_on":[{"delivery":"0192f7a8c3d14e5f8a6b7c8d9e0f1a2b"}]}"#,
+            r#"{"handed_on":[{"store":"main","delivery":"0192f7a8"}]}"#,
+            r#"{"handed_on":[{"store":"main","delivery":"zz92f7a8c3d14e5f8a6b7c8d9e0f1a2b"}]}"#,
+            r#"{"handed_on":[{"store":"main","delivery":"0192f7a8c3d14e5f8a6b7c8d9e0f1a2b","batch":"00112233445566778899aabbccddeeff"}]}"#,
+        ] {
+            assert!(named(refused).is_none(), "{refused}");
+        }
+    }
 
     /// Work joins a runner only where its deployable runs it (chunk
     /// 8.1o2): a delivery where subscribers run, a batch run where
