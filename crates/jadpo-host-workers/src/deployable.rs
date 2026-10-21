@@ -22,7 +22,8 @@
 //! after the deploy is picked up by the next request. Served, it goes
 //! through the runtime's `Serving`, the client's address read from
 //! `CF-Connecting-IP` (`Target::Workers`), what it leaves run in
-//! `waitUntil`, sharing the isolate's `Worker`, and each fault behind a
+//! `waitUntil`, sharing the isolate's `Worker`, its rate limits counted in
+//! the store `rate_limits:` names (chunk 8.2m2), and each fault behind a
 //! 500 is logged with its `.jadpo` frames. Every event is one JSON line
 //! on the console, which Workers Logs reads, carrying the stamp.
 //!
@@ -52,6 +53,7 @@ use jadpo_runtime::http::address::{ClientAddress, Target};
 use jadpo_runtime::http::{self, BODY_LIMIT, Request, Response, Worker};
 use jadpo_runtime::serve::Serving;
 use jadpo_runtime::{Executor, Host};
+use jadpo_std::http::RateLimitStore;
 use js_sys::Uint8Array;
 use serde_json::{Value, json};
 use wasm_bindgen::{JsCast, JsValue};
@@ -67,6 +69,8 @@ pub use jadpo_runtime::deployable::{Deployable, Migration, Stamp, Store};
 struct Isolate {
     program: Rc<Program>,
     worker: Rc<Worker>,
+    /// Where its rate limits are counted (chunk 8.2m2).
+    rate_limits: Option<Rc<RateLimitStore>>,
     log: Log,
     /// Whether each store has been compared with the build's migrations
     /// and found current: until then each request compares them again.
@@ -116,7 +120,9 @@ async fn respond(
     let Some(isolate) = isolate(deployable, &host) else {
         return http::unavailable(&host);
     };
-    let host = host.with_drivers(drivers(&isolate.program));
+    let host = host
+        .with_drivers(drivers(&isolate.program))
+        .with_rate_limits(isolate.rate_limits.clone());
     if !ready(deployable, &host, &isolate).await {
         return http::unavailable(&host);
     }
@@ -226,6 +232,11 @@ fn start(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
     let log = Log::new(deployable.stamp, js::log);
     match started(deployable, host) {
         Ok(program) => Some(Rc::new(Isolate {
+            rate_limits: program
+                .plan()
+                .routes
+                .and_then(|routes| routes.rate_limits.clone())
+                .map(Rc::new),
             program: Rc::new(program),
             worker: Rc::default(),
             log,
