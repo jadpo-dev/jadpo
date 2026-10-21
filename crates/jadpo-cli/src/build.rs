@@ -251,7 +251,7 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::wrangler(name, &required).into_bytes(),
+                        workers::wrangler(name, &required, plan.schedules().ticks()).into_bytes(),
                     ),
                 ] {
                     if let Err(error) = write_new(&root, &path, &contents) {

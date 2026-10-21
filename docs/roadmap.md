@@ -2613,13 +2613,25 @@ whose entry names them.
   handler that runs one test by its key, its test database a copy on the
   run's server reached over `connect()`; area 7's `todos` and a teaching
   example passing with the same records, in the `compiled` group.
-- [ ] **8.2f The cron tick** `opus · xhigh`, after 8.2d: the Worker's
-  `scheduled` handler calling `schedules::tick` within the cron's 15
-  minutes, the minute's cron trigger written into the Wrangler file; an
-  `every:` under a minute an error naming the schedule when a Workers
-  deployable reaches it (area 12, decided 2026-10-19); SQS through
-  `receiving:` looped inside the minute's cron every 10 seconds, or its
-  delay documented. Proved through workerd's scheduled entry.
+- [x] **8.2f The cron tick** `opus · xhigh`, after 8.2d. Built (area
+  12, "The tick"; area 14, "A Workers deployable"; §2.6, "The cron on
+  Workers"): an `every:` under a minute refused for a Workers deployable
+  that runs `Trigger.schedules`, at the schedule's `every:` and naming it
+  (`deployable.target_unsupported`); `triggers: { crons: ["* * * * *"]
+  }` in the Wrangler file of each Workers deployable whose tick has a
+  store (`SchedulesPlan::ticks`); the Worker's `scheduled`, exported and
+  handed on by the shim, starting the isolate as `fetch` does and, once
+  its stores are current, ticking through `Serving` on a host whose
+  ticks share the cron's 15 minutes, then again at each 10-second mark of
+  the cron's minute while the app receives a queue, one tick after
+  another, ending with the minute. Decided in the chunk (area 12, "The
+  tick on Workers", 2026-10-21). Proved under workerd through a service
+  binding's `scheduled()` (`crates/jadpo-cli/tests/workers.rs`, the
+  `wasm32` group): a depot reading a local SQS through the SQS package,
+  out of date logging its migration and leaving the queue alone, then
+  keeping and delivering one message, ticking again at its minute's
+  50-second mark to receive one sent between, and running its schedule
+  once due.
 - [ ] **8.2g The `trigger:` adapter** `opus · high`, after 8.2f:
   `schedules: { trigger: }` (area 12, question 16): the native timer,
   Cloudflare's cron, or an external tick another scheduler calls: the

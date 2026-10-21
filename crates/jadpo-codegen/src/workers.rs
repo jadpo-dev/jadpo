@@ -9,14 +9,16 @@
 //! The four files sit side by side in `build/target/<deployable>/`:
 //!
 //! - `worker.mjs`, the shim: the module instantiated once per isolate and
-//!   the Worker's handlers handed to the ones the module exports;
+//!   the Worker's handlers, `fetch` and `scheduled`, handed to the ones the
+//!   module exports;
 //! - `<deployable>.js`, the JavaScript wasm-bindgen writes for the module
 //!   (its `web` form, which takes the module it is given);
 //! - `<deployable>.wasm`, the module;
 //! - `wrangler.json`: the shim as the main module, uploaded as it is with
 //!   the others beside it (no bundling, each kind by an explicit rule), the
-//!   compatibility date Jadpo's Workers host is run under, and each
-//!   setting the deployable needs set, by its variable.
+//!   compatibility date Jadpo's Workers host is run under, each setting
+//!   the deployable needs set, by its variable, and the minute's cron
+//!   trigger when its tick has something to do.
 
 use std::path::Path;
 
@@ -66,14 +68,14 @@ pub fn bind(module: &Path, name: &str) -> Result<Bound, String> {
 }
 
 /// The module Workers runs first: `name`'s module instantiated once per
-/// isolate, and the Worker's `fetch` the module's.
+/// isolate, and the Worker's `fetch` and `scheduled` the module's.
 pub fn shim(name: &str) -> String {
     format!(
         "// The deployable `{name}` for Cloudflare Workers, written by `jadpo build`; don't edit it.\n\
          // Its module is instantiated once per isolate, and each handler hands\n\
          // the module's its event, the Worker's `env` and the invocation's `ctx`.\n\
          import module from \"./{name}.wasm\";\n\
-         import {{ initSync, fetch as handleFetch }} from \"./{name}.js\";\n\
+         import {{ initSync, fetch as handleFetch, scheduled as handleScheduled }} from \"./{name}.js\";\n\
          \n\
          initSync({{ module }});\n\
          \n\
@@ -81,9 +83,16 @@ pub fn shim(name: &str) -> String {
          \x20 fetch(request, env, ctx) {{\n\
          \x20   return handleFetch(request, env, ctx);\n\
          \x20 }},\n\
+         \x20 scheduled(controller, env, ctx) {{\n\
+         \x20   return handleScheduled(controller, env, ctx);\n\
+         \x20 }},\n\
          }};\n"
     )
 }
+
+/// The minute's cron, as Cloudflare's cron triggers write it: every minute
+/// (area 12, "The tick").
+pub const EVERY_MINUTE: &str = "* * * * *";
 
 /// The Worker's name on Cloudflare for deployable `name`: letters, digits
 /// and dashes only, so each `_` becomes `-` (`back_office`,
@@ -95,8 +104,10 @@ pub fn worker_name(name: &str) -> String {
 /// The Wrangler file of deployable `name`, whose settings without a
 /// default are read from `required`, their variables: JSON. Each is a
 /// required secret, Wrangler's one way to name a binding that must be set
-/// without giving its value; a setting with a default is left to it.
-pub fn wrangler(name: &str, required: &[String]) -> String {
+/// without giving its value; a setting with a default is left to it. When
+/// it `ticks`, its tick having a store to keep or sweep, the minute's cron
+/// trigger runs its `scheduled` handler (chunk 8.2f).
+pub fn wrangler(name: &str, required: &[String], ticks: bool) -> String {
     let quoted = |text: &str| serde_json::Value::from(text).to_string();
     let mut out = format!(
         "{{\n\
@@ -118,6 +129,12 @@ pub fn wrangler(name: &str, required: &[String]) -> String {
         out.push_str(&format!(
             ",\n  \"secrets\": {{\n    \"required\": [{}]\n  }}",
             secrets.join(", ")
+        ));
+    }
+    if ticks {
+        out.push_str(&format!(
+            ",\n  \"triggers\": {{\n    \"crons\": [{}]\n  }}",
+            quoted(EVERY_MINUTE)
         ));
     }
     out.push_str("\n}\n");

@@ -164,6 +164,10 @@ fn hostile_input_is_survived() {
             .to_string(),
     );
     inputs.push("function f() -> Unit {\n    g(mine =/_length: 3)\n}\n".to_string());
+    // A `#` comment tight after a `/`: `//` there would be `///`, a doc
+    // comment, so the edit keeps them apart.
+    inputs.push("routes Outlets {\n    prefix: /#outlets\n}\n".to_string());
+    inputs.push("function f(a: Count) -> Count {\n    return a /# half\n}\n".to_string());
     for input in inputs {
         check(&input);
     }
