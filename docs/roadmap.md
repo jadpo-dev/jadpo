@@ -2632,11 +2632,30 @@ whose entry names them.
   keeping and delivering one message, ticking again at its minute's
   50-second mark to receive one sent between, and running its schedule
   once due.
-- [ ] **8.2g The `trigger:` adapter** `opus · high`, after 8.2f:
-  `schedules: { trigger: }` (area 12, question 16): the native timer,
-  Cloudflare's cron, or an external tick another scheduler calls: the
-  native deployable's `tick` command, one tick and exit, with no HTTP
-  endpoint (Richard, 2026-10-21; area 12, question 16).
+- [x] **8.2g The `trigger:` adapter** `opus · high`, after 8.2f. Built
+  (area 12, "The tick" and question 16; area 14, "A native deployable";
+  §2.6, "The `trigger:` adapter"): `schedules: { trigger: }`, a
+  `ScheduleTrigger`, `native` (the server's own timer, the default) or
+  `external`, anything else `schedule.settings_invalid` with the
+  nearest, carried by the plan (`SchedulesPlan::trigger`, plan format
+  11); it changes only a native deployable, a Worker ticking on 8.2f's
+  cron whichever is written. A native binary takes one command: none or
+  `serve` serves, with `external` its server never ticking
+  (`AppHandler::untimed`); `<deployable> tick` reads its settings and
+  compares its stores' migrations as serving does, waits for no
+  database (`store_unreachable`), runs one tick, logs `runtime.ticked`
+  (each run by its schedule's name, deliveries, what it received and
+  polled, rows deleted, alerts, the stores it couldn't work in) and ends,
+  code 1 only when a store couldn't be worked in, the first SIGTERM
+  draining it; anything else is `command_unknown`, code 2. No HTTP
+  endpoint and no tick secret (Richard, 2026-10-21). `jadpo build` gives
+  such a deployable a `tick` line, the command and how often to run it,
+  and `--json` its `tick`. Decided in the chunk (area 12, "The `trigger:`
+  adapter", 2026-10-21). Proved live (`crates/jadpo-cli/tests/deployable.rs`):
+  example 23's office with `ScheduleTrigger.external` serving without
+  running its every-second schedule, `office tick` refusing to start
+  without `DATABASE_URL`, then running the schedule once and ending with
+  code 0, and `office ticks` ending with code 2.
 - [ ] **8.2h After the response** `opus · xhigh`, after 8.2d: outbox
   delivery after commit in `waitUntil`, within its 30 seconds, the
   minute's cron sweeping what it leaves; a batch carried on in a fresh
