@@ -2161,8 +2161,8 @@ handler that serves an application is `jadpo_host_native::http::AppHandler`,
 `Serving` on a `NativeHost` with that host's deferred work, tracked ticks
 and drain; Workers' fetch event calls the same `Serving`, one a request
 on that invocation's host sharing the isolate's `http::Worker`
-(`Serving::sharing`; chunk 8.2d), and its scheduled event will (chunk
-8.2f). `jadpo dev` runs the interpreter on it, swapping in each
+(`Serving::sharing`; chunk 8.2d), and its scheduled event ticks
+through it (chunk 8.2f, "The cron on Workers"). `jadpo dev` runs the interpreter on it, swapping in each
 save that checks cleanly, and only observes it to print its lines. Since chunk
 6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
 its timer starts no more ticks, and each worker waits, at most
@@ -2735,8 +2735,9 @@ record raises what newly holds (`Ticked::raised`), once until it stops
 holding. Readers (`jadpo schedules`, `jadpo why`) still work the alerts
 out from the rows when they read, since a stopped application raises
 nothing; `jadpo why`'s answer is decided by the runtime as data
-(`schedules::why`), which the CLI says in words. On Workers the cron trigger calls the same function
-(chunk 8.2f).
+(`schedules::why`), which the CLI says in words. On Workers the minute's
+cron trigger calls the same function (chunk 8.2f, "The cron on
+Workers").
 
 **Batch runs** (chunk 6.4, area 12's "How a run is kept"). The
 checker reads `batches.each(from:, each:, finished:, key:)`
@@ -3282,6 +3283,46 @@ would leave a deploy made before `jadpo migrate apply` refusing until
 its isolates were recycled; and one `Serving` an isolate over a host
 standing for whichever request is current, which an isolate serving
 requests at once would mix up.
+
+**The cron on Workers** (chunk 8.2f; area 12, "The tick"; area 14, "A
+Workers deployable"). `jadpo check` refuses, for a Workers deployable
+that runs `Trigger.schedules`, each schedule whose `every:` is under a
+minute (`deployable.target_unsupported` at its `every:`, naming it,
+beside 8.1o2's refusals in `jadpo_check::deployables::target_problems`),
+since the minute's cron can't run it. `jadpo build` writes the cron,
+`triggers: { crons: ["* * * * *"] }`, into a Workers deployable's
+Wrangler file when its tick has a store to keep or sweep
+(`SchedulesPlan::ticks`), as every native deployable ticks; the
+generated crate exports `scheduled` beside `fetch` and the shim hands
+it the controller, `env` and `ctx`.
+`jadpo_host_workers::deployable::scheduled` starts the isolate as
+`fetch` does and, once its stores are current (out of date, logging
+why as a request does and ticking nothing), runs `Serving::tick` on a
+`WorkersHost` of its own made `for_cron`, whose tick budget is what is
+left of the cron's 15 minutes (`cron_left`). While the program ticks
+more often than once a minute (`Serving::tick_every_ms`: every 10
+seconds while it receives a queue, as the native timer does) it ticks
+again at each such mark of the cron's minute, from its
+`scheduledTime`, one tick after the last ends (`next_tick`), so an
+invocation holds no more connections than one tick does and a mark a
+long tick passed isn't made up; it ends with the minute. Proved under
+workerd (`crates/jadpo-cli/tests/workers.rs`, the `wasm32` group): a
+depot built for Workers that serves nothing, reads a local SQS through
+the SQS package and takes stock every minute, its Wrangler file naming
+the cron and `jadpo check` refusing the schedule at `every: 30s`; its
+`scheduled` run as the cron trigger runs it, through a service
+binding's `scheduled()` (workerd's `service_binding_extra_handlers`,
+`--experimental`, in the test alone): out of date, logging the
+migration and leaving the queue alone; then, current, a cron 40
+seconds into its minute keeping the queue's message as its event and
+delivering it, then ticking again at the 50-second mark and receiving
+a message sent between the two, the schedule's first run due a minute
+after the first tick; and, the schedule due, a cron at the end of its
+minute running it once. *Rejected:* a tick at each mark started
+whether or not the last had ended, as the native timer starts one,
+which on Workers would hold the connections of several ticks in one
+invocation; and a schedule refused in `jadpo build` rather than by
+`jadpo check`, where an agent sees it as it writes the schedule.
 
 **The locale data a deployable carries** (chunk 8.2c; area 10,
 "Locales"). `jadpo test`, `jadpo dev` and the compiled step run with

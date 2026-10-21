@@ -114,10 +114,14 @@ schedule chore_census {
 once a minute, or as often as the shortest `every:` when that is shorter,
 at least once a second. Natively it is the server's timer on its first
 worker's thread, at each whole period of UTC; `jadpo dev` ticks, and a
-test's or a tool's host doesn't. On Workers it is the cron trigger
-(roadmap 8.2f), where an `every:` under a minute is an error naming the
-schedule, since a minute's cron can't run it (decided 2026-10-19). Each
-state row keeps the last tick that reached it. Then, each step starting
+test's or a tool's host doesn't. On Workers it is the minute's cron
+trigger, which `jadpo build` writes into the Wrangler file (built in
+chunk 8.2f): each run ticks, and while the app receives a queue ticks
+again at each 10-second mark of its minute, so a queue is read as often
+as natively. There an `every:` under a minute is an error naming the
+schedule, since a minute's cron can't run it (decided 2026-10-19;
+`deployable.target_unsupported`, area 14). Each state row keeps the last
+tick that reached it. Then, each step starting
 only while the tick's budget lasts, the tick:
 
 - runs the schedules due, and any run asked for by hand ("Running a
@@ -5196,6 +5200,7 @@ Not yet:
 | A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended; several naming the same tenant count as that one: "Schedule and batch defaults") | 2026-10-19 |
 | `jadpo schedules run` (after chunk 6.2b) | Against `jadpo dev` it runs the schedule straight away and shows the outcome; against a deployed application it marks the schedule due, so the application's own server runs it on its next tick under the lease, and the command waits for that run's record and shows it, so a deployment's settings and secrets never leave its servers (Richard, as recommended) | 2026-10-19 |
 | An `every:` under a minute on Workers (Phase 6 review) | An error naming the schedule when a Workers deployable reaches it, since a minute's cron can't run it and Jadpo has no warnings (Richard, as recommended) | 2026-10-19 |
+| The tick on Workers (chunk 8.2f) | Chosen in the chunk, each reversible: a Workers deployable reaches a schedule when its `runs:` lists `Trigger.schedules`, and one more often than once a minute is `deployable.target_unsupported` (area 14), at its `every:`, rather than a rule of its own, since it is one more thing a target can't run; the Wrangler file names the cron `* * * * *` for every Workers deployable whose tick has a store to keep or sweep, as every native deployable ticks; each run of the cron ticks once its stores are current (out of date, it logs why as a request does and ticks nothing), then, while the app ticks more often than once a minute (a received queue, every 10 seconds, as natively), again at each such mark of the cron's minute, one tick after the last ends, never two at once, so a Worker holds no more connections than one tick does, and a mark a long tick passed is not made up; the invocation ends with its minute, and each of its ticks has what is left of the cron's 15 minutes | 2026-10-21 |
 | Schedule and batch defaults (Phase 6 review) | What the code does is decided: a schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` (Richard, as recommended) | 2026-10-19 |
 | A batch's `key:` with tenants (Phase 6 review) | In an application with a tenant, `key:` is unique per call, run tenant and key, so two tenants' runs with the same key never meet (Richard, as recommended) | 2026-10-19 |
 | Queue messages the store refuses (Phase 7 review, chunk 7.9c) | A message whose event the store refuses as a statement, as it would every time it was sent (a value it can't take, such as a text holding `\u0000`, which `jsonb` can't hold), is parked `unreadable` and acknowledged, so the queue doesn't send it again until its retention deletes it. A store that can't be reached, a conflict, a concurrent change or a fault the driver can't classify still leaves it on the queue, to be kept when it is sent again (decided for Richard, the conservative reading) | 2026-10-21 |

@@ -27,8 +27,10 @@
 //! run, naming the alternative ([`target_problems`]): the disk and a
 //! service Jadpo runs (`runs:`) without `host:` on Workers, a Cloudflare
 //! queue in a native deployable, and SMTP on port 25, which Workers
-//! blocks. Its `max_concurrent:` caps on Workers count per instance,
-//! which [`per_instance`] lists for the network report.
+//! blocks; and one built for Workers that runs the schedules is refused
+//! each schedule more often than once a minute, which its minute's cron
+//! can't run (chunk 8.2f). Its `max_concurrent:` caps on Workers count per
+//! instance, which [`per_instance`] lists for the network report.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -974,6 +976,55 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 problem = problem.also(span.clone(), refusal.label);
             }
             out.push(problem.reason(refusal.reason).next(refusal.next));
+        }
+        if *target == DeployTarget::Wasm && deployable.runs.schedules {
+            out.extend(too_often(db, project, deployable, at));
+        }
+    }
+    out
+}
+
+/// How often Cloudflare's cron trigger runs a Worker at most: once a
+/// minute (area 12, "The tick").
+pub const CRON_EVERY_MS: u64 = 60_000;
+
+/// Each schedule more often than once a minute that `deployable`, built
+/// for Workers and running the schedules, would run: its tick is the
+/// minute's cron, which can't run it (area 12, decided 2026-10-19), and
+/// Jadpo has no warnings. Its error is at the schedule's `every:`, naming
+/// the schedule (chunk 8.2f).
+fn too_often(db: &dyn Db, project: Project, deployable: &Deployable, at: &Span) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for &file in project.files(db).iter() {
+        for read in crate::schedules::schedules_in(db, project, file) {
+            let Some(model) = &read.model else { continue };
+            if model.every_ms >= CRON_EVERY_MS {
+                continue;
+            }
+            let how_often = match model.every_ms / 1000 {
+                1 => "every second".to_string(),
+                seconds => format!("every {seconds} seconds"),
+            };
+            let (name, schedule) = (&deployable.name, &model.name);
+            out.push(
+                Diagnostic::new(
+                    &rule::DEPLOYABLE_TARGET_UNSUPPORTED,
+                    format!(
+                        "`{name}` can't run `{schedule}` {how_often} on Workers, whose cron runs once a minute"
+                    ),
+                )
+                .at(
+                    read.every.clone().unwrap_or_else(|| read.span.clone()),
+                    "more often than once a minute",
+                )
+                .also(at.clone(), "built for Workers")
+                .reason(format!(
+                    "A Worker ticks when Cloudflare's cron trigger runs it, once a minute at most, so a schedule due {how_often} would run late; `{name}` runs `{schedule}` because its `runs:` lists `Trigger.schedules`."
+                ))
+                .next(format!(
+                    "Give `{schedule}` `every: 1m` or longer, or run `Trigger.schedules` in a `Target.native` deployable"
+                )),
+            );
         }
     }
     out

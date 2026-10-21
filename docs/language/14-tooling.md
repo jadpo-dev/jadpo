@@ -1042,10 +1042,11 @@ Until chunk 8.2b, `web`, built for `Target.wasm`, was refused as
 
 ### A Workers deployable
 
-Built in chunk 8.2b, and its `fetch` serving each request in chunk 8.2d,
-each the most conservative reading where the pages leave a choice open
-(Decisions, "A Workers deployable" and "A Worker's start"). The cron's
-`scheduled` handler comes with chunk 8.2f and the queue's with 8.2k.
+Built in chunk 8.2b, its `fetch` serving each request in chunk 8.2d and
+its `scheduled` ticking at the minute's cron in chunk 8.2f, each the most
+conservative reading where the pages leave a choice open (Decisions, "A
+Workers deployable" and "A Worker's start"; area 12, "The tick on
+Workers"). The queue's handler comes with 8.2k.
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
@@ -1076,8 +1077,10 @@ each the most conservative reading where the pages leave a choice open
   variable or a secret, and a required secret is Wrangler's one way to
   name a binding that must be set without giving its value, so `wrangler
   deploy` refuses until each is set; a setting with a default is left to
-  it. The cron trigger (chunk 8.2f) and the queues' consumers (8.2k) join
-  the file with their chunks, and 8.2k checks it against Wrangler itself.
+  it. `triggers: { crons: ["* * * * *"] }`, the minute's cron trigger,
+  runs its tick when the tick has a store to keep or sweep (chunk 8.2f).
+  The queues' consumers (8.2k) join the file with their chunk, which
+  checks it against Wrangler itself.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
   target as `wasm`.
@@ -1118,6 +1121,17 @@ each the most conservative reading where the pages leave a choice open
   16's store on Workers comes (chunk 8.2m2). A streamed answer
   (`ai.stream`) is sent whole once it ends until chunk 8.2h sends it as
   it comes.
+- **The tick.** Each run of the minute's cron trigger calls the Worker's
+  `scheduled`, which starts the isolate as a request does and, once its
+  databases are current, runs the runtime's tick (area 12, "The tick"):
+  the schedules due, the outbox's sweep and the deletions, and the
+  queues `receiving:` reads through a package. While the app receives a
+  queue it ticks again at each 10-second mark of the cron's minute, one
+  tick after another, so a queue is read as often as natively; the
+  invocation ends with the minute and its ticks share the cron's 15
+  minutes. Out of date, it logs why as a request does and ticks nothing.
+  An `every:` under a minute is refused for a Worker that runs the
+  schedules ([`deployable.target_unsupported`](#deployable-target-unsupported)).
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,
@@ -1152,6 +1166,9 @@ $ jadpo build kiosk
   ],
   "secrets": {
     "required": ["DATABASE_URL"]
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
   }
 }
 ```
@@ -1959,8 +1976,11 @@ A deployable that declares a target is held to the connections it
 reaches, from the routes of the APIs it serves and the background work it
 runs: the disk and a service Jadpo runs (`runs:`) without `host:` aren't
 on Workers, SMTP on port 25 is blocked there, and only a Worker receives
-a Cloudflare queue (area 11, question 24). Each refusal names what to use
-instead. A bakery keeps its suppliers' price sheets on its disk:
+a Cloudflare queue (area 11, question 24). One built for Workers that
+runs the schedules is held to them too: its tick is the minute's cron, so
+a schedule more often than once a minute is refused at its `every:`
+(area 12, decided 2026-10-19; chunk 8.2f). Each refusal names what to
+use instead. A bakery keeps its suppliers' price sheets on its disk:
 
 ```jadpo check project=e-deployable-target-unsupported file=app.jadpo hidden
 application {
@@ -2125,6 +2145,67 @@ error: `edge` can't use `sheets` on Workers, which has no disk
   help: docs/language/14-tooling.html#deployable-target-unsupported
 
 check failed: 1 error, 8 files
+```
+
+Another bakery checks its ovens' temperatures twice a minute:
+
+```jadpo check project=e-deployable-schedule-workers file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers file=domains/bakery/actions/check_ovens.jadpo hidden
+/// Checks the ovens' temperatures, which changes nothing here.
+action check_ovens() -> Unit {
+    assert 1 == 1
+}
+```
+
+```jadpo check project=e-deployable-schedule-workers file=domains/bakery/schedules/oven_check.jadpo migrate=initial
+use bakery/actions { check_ovens }
+
+/// Checks the ovens twice a minute.
+schedule oven_check {
+    every: 30s
+    run: check_ovens()
+}
+```
+
+and runs its schedules on Workers:
+
+```jadpo check project=e-deployable-schedule-workers expect=deployable.target_unsupported file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    deployables: {
+        edge: {
+            runs: [Trigger.schedules, Trigger.subscribers]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```text output
+error: `edge` can't run `oven_check` every 30 seconds on Workers, whose cron runs once a minute
+ --> domains/bakery/schedules/oven_check.jadpo:5:12
+  |
+5 |     every: 30s
+  |            ^^^ more often than once a minute
+  reason: A Worker ticks when Cloudflare's cron trigger runs it, once a minute at most, so a schedule due every 30 seconds would run late; `edge` runs `oven_check` because its `runs:` lists `Trigger.schedules`.
+  next: Give `oven_check` `every: 1m` or longer, or run `Trigger.schedules` in a `Target.native` deployable (agent)
+  rule: deployable.target_unsupported
+  help: docs/language/14-tooling.html#deployable-target-unsupported
+
+check failed: 1 error, 3 files
 ```
 
 ## Review
