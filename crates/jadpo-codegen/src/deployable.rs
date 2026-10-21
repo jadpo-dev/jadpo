@@ -1,7 +1,8 @@
-//! A native deployable's workspace (roadmap chunk 8.1o;
-//! docs/compiler-runtime.md §2.6, "A native deployable", and §2.8): what
-//! `jadpo build` compiles in release, offline, against the runtime crates'
-//! own lock.
+//! A deployable's workspace (roadmap chunks 8.1o and 8.2b;
+//! docs/compiler-runtime.md §2.6, "A native deployable" and "A Workers
+//! deployable", and §2.8): what `jadpo build` compiles in release,
+//! offline, against the runtime crates' own lock, natively or for
+//! Cloudflare Workers.
 //!
 //! [`workspace`] writes, by path from the workspace's folder:
 //!
@@ -15,18 +16,25 @@
 //!   deployables built into one cargo target never share a unit (cargo
 //!   names a path package's unit by its name and its path within its
 //!   workspace, which is `program` in each; chunk 8.1o2);
-//! - `deployable/`, a binary named after the deployable, depending on the
-//!   program and the native host without the `testing` feature, whose
-//!   `main` hands the native host the program, the build stamp and each
-//!   store's migrations (`jadpo_host_native::deployable::run`).
+//! - `deployable/`: natively, a binary named after the deployable,
+//!   depending on the program and the native host without the `testing`
+//!   feature, whose `main` hands the native host the program, the build
+//!   stamp and each store's migrations
+//!   (`jadpo_host_native::deployable::run`); for Workers, a `cdylib`,
+//!   `jadpo-worker-<deployable>`, depending on the program and the Workers
+//!   host with only the drivers the deployable reaches ([`Drivers`]),
+//!   which exports the Worker's `fetch` through the host's wasm-bindgen,
+//!   handing it the same three (`jadpo_host_workers::deployable::fetch`).
 //!
-//! [`build`] runs cargo over it with the paths it was built from remapped
-//! and `SOURCE_DATE_EPOCH` fixed, so the binary holds no machine's paths
+//! [`build`] runs cargo over it, for `wasm32-unknown-unknown` when it is
+//! a Worker, with the paths it was built from remapped and
+//! `SOURCE_DATE_EPOCH` fixed, so what it builds holds no machine's paths
 //! (reproducible builds are a goal CI can check, §2.8), and with
 //! `ICU4X_DATA_DIR` naming the folder of the Unicode CLDR data it
 //! carries, the application's supported locales' only as `jadpo-cldr`
 //! exports it (area 10, "Locales"; chunk 8.2c), so ICU4X's data crates
-//! compile that in place of every locale's.
+//! compile that in place of every locale's. [`crate::workers`] binds a
+//! Worker's module and writes the files Workers runs it from.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -52,6 +60,50 @@ pub fn program_package(name: &str) -> String {
 /// The binary's package; the binary is named after the deployable.
 pub const BINARY: &str = "jadpo-deployable";
 
+/// The Worker's package for deployable `name`: `jadpo-worker-kiosk`,
+/// named after the deployable for the reason the program's is.
+pub fn worker_package(name: &str) -> String {
+    format!("jadpo-worker-{name}")
+}
+
+/// The target a Worker is built for.
+pub const WASM: &str = "wasm32-unknown-unknown";
+
+/// What a deployable is built to run on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Host {
+    /// A server: a binary on the native host.
+    Native,
+    /// Cloudflare Workers: a WebAssembly module on the Workers host,
+    /// linking only the drivers it reaches.
+    Workers(Drivers),
+}
+
+/// The drivers a Worker links beyond the package driver, which every one
+/// has (HTTP is how the runtime fetches): those whose connections it
+/// reaches.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Drivers {
+    /// PostgreSQL, for a project that keeps a database.
+    pub postgres: bool,
+    /// SMTP, for a deployable that sends email through an SMTP server.
+    pub smtp: bool,
+}
+
+impl Drivers {
+    /// The Workers host's features that turn them on.
+    fn features(self) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        if self.postgres {
+            out.push("postgres");
+        }
+        if self.smtp {
+            out.push("smtp");
+        }
+        out
+    }
+}
+
 /// The build stamp a deployable carries (area 18, "Production builds").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stamp<'a> {
@@ -60,15 +112,16 @@ pub struct Stamp<'a> {
     pub commit: Option<&'a str>,
     pub modified: bool,
     pub compiler: &'a str,
-    /// `native`.
+    /// `native` or `wasm`.
     pub target: &'a str,
 }
 
 /// One deployable to write.
 #[derive(Clone, Copy, Debug)]
 pub struct Deployable<'a> {
-    /// Its name, which its binary takes.
+    /// Its name, which its binary or module takes.
     pub name: &'a str,
+    pub host: Host,
     pub stamp: Stamp<'a>,
     /// Each store's migrations, by the store's connection, in the order
     /// they apply: each one's name and digest.
@@ -112,41 +165,122 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
     );
     files.insert("Cargo.lock".to_string(), deployable.lock.to_vec());
     let runtime = deployable.runtime.trim_end_matches('/');
-    files.insert(
-        "deployable/Cargo.toml".to_string(),
-        format!(
-            "# The deployable `{name}`, written by `jadpo build` (docs/compiler-runtime.md §2.5); don't edit it.\n\
-             [package]\n\
-             name = \"{BINARY}\"\n\
-             version = \"0.0.0\"\n\
-             edition = \"2024\"\n\
-             publish = false\n\
-             \n\
-             [[bin]]\n\
-             name = \"{name}\"\n\
-             path = \"src/main.rs\"\n\
-             \n\
-             [dependencies]\n\
-             {PROGRAM} = {{ path = \"../program\", package = \"{program}\" }}\n\
-             jadpo-host-native = {{ path = \"{runtime}/jadpo-host-native\" }}\n",
-            name = deployable.name,
-            program = program_package(deployable.name),
-        )
-        .into_bytes(),
-    );
-    let main = "deployable/src/main.rs";
-    files.insert(main.to_string(), printed(main, main_rs(deployable))?);
+    let program = program_package(deployable.name);
+    match deployable.host {
+        Host::Native => {
+            files.insert(
+                "deployable/Cargo.toml".to_string(),
+                format!(
+                    "# The deployable `{name}`, written by `jadpo build` (docs/compiler-runtime.md §2.5); don't edit it.\n\
+                     [package]\n\
+                     name = \"{BINARY}\"\n\
+                     version = \"0.0.0\"\n\
+                     edition = \"2024\"\n\
+                     publish = false\n\
+                     \n\
+                     [[bin]]\n\
+                     name = \"{name}\"\n\
+                     path = \"src/main.rs\"\n\
+                     \n\
+                     [dependencies]\n\
+                     {PROGRAM} = {{ path = \"../program\", package = \"{program}\" }}\n\
+                     jadpo-host-native = {{ path = \"{runtime}/jadpo-host-native\" }}\n",
+                    name = deployable.name,
+                )
+                .into_bytes(),
+            );
+            let main = "deployable/src/main.rs";
+            files.insert(main.to_string(), printed(main, main_rs(deployable))?);
+        }
+        Host::Workers(drivers) => {
+            let features: Vec<String> = drivers
+                .features()
+                .iter()
+                .map(|feature| format!("\"{feature}\""))
+                .collect();
+            files.insert(
+                "deployable/Cargo.toml".to_string(),
+                format!(
+                    "# The deployable `{name}` for Cloudflare Workers, written by `jadpo build` (docs/compiler-runtime.md §2.5); don't edit it.\n\
+                     [package]\n\
+                     name = \"{package}\"\n\
+                     version = \"0.0.0\"\n\
+                     edition = \"2024\"\n\
+                     publish = false\n\
+                     \n\
+                     [lib]\n\
+                     path = \"src/lib.rs\"\n\
+                     crate-type = [\"cdylib\"]\n\
+                     \n\
+                     [dependencies]\n\
+                     {PROGRAM} = {{ path = \"../program\", package = \"{program}\" }}\n\
+                     jadpo-host-workers = {{ path = \"{runtime}/jadpo-host-workers\", features = [{features}] }}\n",
+                    name = deployable.name,
+                    package = worker_package(deployable.name),
+                    features = features.join(", "),
+                )
+                .into_bytes(),
+            );
+            let lib = "deployable/src/lib.rs";
+            files.insert(lib.to_string(), printed(lib, worker_rs(deployable))?);
+        }
+    }
     Ok(Generated { files })
 }
 
 /// The binary's `main`: the native host given the program, the stamp and
 /// each store's migrations.
 fn main_rs(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
-    let text = Literal::string;
-    let doc = text(&format!(
+    let doc = Literal::string(&format!(
         " The deployable `{}`, written by `jadpo build` (docs/compiler-runtime.md §2.5). Generated by Jadpo; don't edit it.",
         deployable.name
     ));
+    let constant = constant(deployable);
+    quote! {
+        #![doc = #doc]
+
+        use jadpo_host_native::deployable::{Deployable, Migration, Stamp, Store};
+
+        #constant
+
+        fn main() -> std::process::ExitCode {
+            jadpo_host_native::deployable::run(&DEPLOYABLE)
+        }
+    }
+}
+
+/// The Worker's crate: the Workers host given the program, the stamp and
+/// each store's migrations by each handler it exports, through the host's
+/// own wasm-bindgen.
+fn worker_rs(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
+    let doc = Literal::string(&format!(
+        " The deployable `{}` for Cloudflare Workers, written by `jadpo build` (docs/compiler-runtime.md §2.5). Generated by Jadpo; don't edit it.",
+        deployable.name
+    ));
+    let constant = constant(deployable);
+    quote! {
+        #![doc = #doc]
+
+        use jadpo_host_workers::deployable::{Deployable, Migration, Stamp, Store};
+        use jadpo_host_workers::wasm_bindgen::JsValue;
+
+        #constant
+
+        /// The Worker's `fetch`: Jadpo's module shim hands it each request
+        /// with the Worker's `env` and the invocation's `ctx`.
+        #[jadpo_host_workers::wasm_bindgen::prelude::wasm_bindgen(
+            wasm_bindgen = jadpo_host_workers::wasm_bindgen
+        )]
+        pub fn fetch(request: JsValue, env: JsValue, ctx: JsValue) -> JsValue {
+            jadpo_host_workers::deployable::fetch(&DEPLOYABLE, request, env, ctx)
+        }
+    }
+}
+
+/// `DEPLOYABLE`: the program, its build stamp and each store's
+/// migrations, as either host's `Deployable` names them.
+fn constant(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
+    let text = Literal::string;
     let Stamp {
         build,
         commit,
@@ -176,10 +310,6 @@ fn main_rs(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
         quote!(Store { name: #store, migrations: &[#(#migrations),*] })
     });
     quote! {
-        #![doc = #doc]
-
-        use jadpo_host_native::deployable::{Deployable, Migration, Stamp, Store};
-
         /// The program, its build stamp and each store's migrations.
         const DEPLOYABLE: Deployable = Deployable {
             program: jadpo_program::program,
@@ -193,10 +323,6 @@ fn main_rs(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
             },
             stores: &[#(#stores),*],
         };
-
-        fn main() -> std::process::ExitCode {
-            jadpo_host_native::deployable::run(&DEPLOYABLE)
-        }
     }
 }
 
@@ -205,8 +331,10 @@ fn main_rs(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
 pub struct Release<'a> {
     /// The workspace's folder, as [`workspace`] wrote it.
     pub folder: &'a Path,
-    /// The deployable's name: its binary's.
+    /// The deployable's name: its binary's or its module's.
     pub name: &'a str,
+    /// What it is built to run on.
+    pub host: Host,
     /// Where cargo keeps what it builds, between builds.
     pub target: &'a Path,
     /// Each folder whose path the binary would otherwise hold, and what
@@ -222,31 +350,44 @@ pub struct Release<'a> {
     pub cldr: &'a Path,
 }
 
-/// Builds `release`'s binary in the release profile, offline and keeping
-/// to the lock, with the CLDR data in `release.cldr`: its path.
+/// Builds `release`'s binary, or its Worker's module for
+/// `wasm32-unknown-unknown`, in the release profile, offline and keeping
+/// to the lock, with the CLDR data in `release.cldr`: its path, which
+/// cargo builds over next time.
 pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
     // The two generated packages join the runtime crates' lock; nothing
     // else in it moves, which the build then holds it to.
     run(release, &["update", "--workspace", "--offline", "--quiet"])?;
-    run(
-        release,
-        &[
-            "build",
-            "--release",
-            "--locked",
-            "--offline",
-            "--quiet",
-            "--package",
-            BINARY,
-            "--bin",
-            release.name,
-        ],
-    )?;
-    let mut binary = release.target.join("release").join(release.name);
-    if cfg!(windows) {
-        binary.set_extension("exe");
+    let built = ["build", "--release", "--locked", "--offline", "--quiet"];
+    match release.host {
+        Host::Native => {
+            run(
+                release,
+                &[&built[..], &["--package", BINARY, "--bin", release.name]].concat(),
+            )?;
+            let mut binary = release.target.join("release").join(release.name);
+            if cfg!(windows) {
+                binary.set_extension("exe");
+            }
+            Ok(binary)
+        }
+        Host::Workers(_) => {
+            let package = worker_package(release.name);
+            run(
+                release,
+                &[
+                    &built[..],
+                    &["--target", WASM, "--package", &package, "--lib"],
+                ]
+                .concat(),
+            )?;
+            Ok(release
+                .target
+                .join(WASM)
+                .join("release")
+                .join(format!("{}.wasm", package.replace('-', "_"))))
+        }
     }
-    Ok(binary)
 }
 
 /// cargo with `args` in the workspace, as [`build`] runs it.

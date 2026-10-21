@@ -44,6 +44,9 @@ jadpo-test.workspace = true
 jadpo-value.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+# A Workers deployable's module size gzipped, as Wrangler reports an
+# upload's, on `jadpo build`'s screen (chunk 8.2b).
+miniz_oxide.workspace = true
 # `jadpo suggest share` (area 14, chunk 5.5y): the project token from the
 # operating system's generator, and HTTPS to Jadpo HQ through the OpenSSL
 # `webauthn-rs` already links, so no crate is added.

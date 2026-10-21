@@ -124,4 +124,5 @@ mod vectors;
 mod watch;
 mod webhook_replies;
 mod webhooks;
+mod workers;
 mod writes;

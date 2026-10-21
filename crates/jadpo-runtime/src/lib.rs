@@ -50,6 +50,9 @@
 //!   each claim it takes a [`lease`] of the same length (chunk 6.7).
 //! - [`serve`]: what every host does with a request and a tick (chunk
 //!   6.9), which a host's server handler wraps.
+//! - [`deployable`]: what a deployable's generated code hands its host,
+//!   natively or on Workers: the program, its build stamp and each
+//!   store's migrations (chunks 8.1o and 8.2b).
 //! - [`calls`]: one entry point each for a body's sites of areas 10, 11,
 //!   16 and 21 (chunk 8.1i), which both executors call: a translation, a
 //!   prompt rendered, a template's value escaped, a store's `put` and
@@ -100,6 +103,7 @@ pub mod config;
 pub mod crashes;
 mod ctx;
 pub mod deliveries;
+pub mod deployable;
 pub mod effects;
 pub mod email;
 pub mod embed;

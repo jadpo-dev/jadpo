@@ -33,13 +33,16 @@
 //!
 //! A body form not compiled yet is refused by name and place
 //! ([`Refusal`]), every one of them, rather than written as code that
-//! faults when a test reaches it. [`cargo`] builds what it writes.
+//! faults when a test reaches it. [`cargo`] builds what it writes;
+//! [`deployable`] writes and builds a deployable around it, and
+//! [`workers`] what a Workers deployable is deployed from.
 
 mod body;
 pub mod cargo;
 pub mod deployable;
 mod entries;
 mod names;
+pub mod workers;
 
 use std::collections::BTreeMap;
 use std::fmt;

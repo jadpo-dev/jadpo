@@ -3,7 +3,8 @@
 //! that doesn't check, whose errors are shown as `jadpo check` shows them
 //! and nothing is built; and a deployable the project doesn't have. With
 //! none declared, the one deployable, `app`, runs everything. Building one
-//! and running it is `deployable.rs`, against live PostgreSQL.
+//! and running it is `deployable.rs`, against live PostgreSQL, and one
+//! built for Workers `workers.rs`, under workerd.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -92,7 +93,8 @@ fn with_none_declared_the_one_deployable_is_app() {
 }
 
 /// The café declares a kiosk serving `main`, built natively, and an edge
-/// built for Workers (chunk 8.1o2).
+/// built for Workers (chunk 8.1o2), which `jadpo build` builds since chunk
+/// 8.2b (`workers.rs`).
 const DECLARED: &str = "application {\n    deployables: {\n        kiosk: {\n            serves: [main]\n            target: Target.native\n        }\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n";
 
 #[test]
@@ -111,27 +113,5 @@ fn a_declared_deployable_is_built_by_its_name() {
             "{expected}: {}",
             output.stderr
         );
-    }
-}
-
-#[test]
-fn a_deployable_built_for_workers_is_not_built_yet() {
-    let root = project("workers", &[("app.jadpo", DECLARED)]);
-    for args in [&["build", "edge"][..], &["build"][..]] {
-        let output = jadpo(&root, args);
-        assert_eq!(output.code, 1, "{}{}", output.stdout, output.stderr);
-        for expected in [
-            "error: `edge` is built for Workers, which `jadpo build` can't do yet",
-            "Build a native deployable by name, `jadpo build kiosk`",
-            "rule: toolchain.not_built_yet",
-        ] {
-            assert!(
-                output.stderr.contains(expected),
-                "{args:?} {expected}: {}",
-                output.stderr
-            );
-        }
-        assert!(!root.join("build/rust").exists());
-        assert!(!root.join("build/target").exists());
     }
 }

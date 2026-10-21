@@ -53,6 +53,9 @@ web-sys = { workspace = true, features = [
 # PostgreSQL over `connect()`, for a deployable that keeps data: the
 # drivers it doesn't reach are left out of its module.
 postgres = ["jadpo-drivers/postgres"]
+# SMTP over `connect()`, for a deployable that sends the app's email
+# through an SMTP server (chunk 8.2b).
+smtp = ["jadpo-drivers/smtp"]
 # A test's server on this machine reached over HTTPS by the outbound guard
 # (`WorkersOutbound::reaching`): never built outside a test.
 test-outbound = []
