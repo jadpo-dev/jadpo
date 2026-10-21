@@ -2155,13 +2155,14 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   timeout or a dropped future ending its exchange, streamed answers read
   as they come, the outbound guard kept (HTTPS, public addresses, no
   redirect).
-- [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m, **needs
-  Richard** before it starts: PostgreSQL's TLS through
+- [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m:
+  PostgreSQL's TLS through
   `Transport::upgrade`, live-tested against a server the harness starts
   with a certificate it makes. The pages don't say when a database
   connection must use TLS, nor how one names a private certificate
   authority (Amazon RDS's and Cloud SQL's aren't in the public roots).
-  *Recommendation:* as area 16 decides for SMTP: TLS always, checked
+  *Decided (Richard, 2026-10-21), area 5's decisions table:* as area 16
+  decides for SMTP: TLS always, checked
   against Mozilla's roots compiled in, except to this machine (a Unix
   socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a
   `Certificate` setting holding its server's authority; a server
