@@ -116,6 +116,8 @@ pub struct ScheduleRead {
     pub model: Option<Arc<ScheduleModel>>,
     /// Where its declaration's name is, for a problem found later.
     pub span: Span,
+    /// Where its `every:` value is written, when it is.
+    pub every: Option<Span>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -166,10 +168,26 @@ pub fn schedules_in(db: &dyn Db, project: Project, file: File) -> Vec<ScheduleRe
             || node_span(path, decl.syntax()),
             |name| node_span(path, name.syntax()),
         );
+        let every = decl
+            .member_list()
+            .iter()
+            .flat_map(|list| list.member_items())
+            .filter_map(|item| match item {
+                ast::MemberItem::Member(member) => Some(member),
+                _ => None,
+            })
+            .find(|member| {
+                member
+                    .member_key()
+                    .is_some_and(|key| tree::written(key.syntax()) == "every")
+            })
+            .and_then(|member| member.value())
+            .map(|value| node_span(path, value.syntax()));
         out.push(ScheduleRead {
             name: item.name.clone(),
             model: model.map(Arc::new),
             span,
+            every,
             problems: reader.out,
         });
     }

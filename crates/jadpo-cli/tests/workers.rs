@@ -29,6 +29,15 @@
 //! has its own allowance of 120 requests a minute. Every event it logs is
 //! one JSON line carrying the build stamp.
 //!
+//! The Workers cron (chunk 8.2f) is proved on a depot of its own that
+//! serves nothing, receives a queue from a local SQS
+//! (`support::fake_sqs`) through the SQS package and takes stock every
+//! minute: its Wrangler file names the minute's cron, and workerd runs its
+//! `scheduled` handler as the cron trigger does, through a service
+//! binding's `scheduled()`, ticking once its database is current, again at
+//! each 10-second mark of its minute while it receives a queue, and
+//! running the schedule once due.
+//!
 //! The build is kept beside the build's own folders
 //! (`target/jadpo-compiled/workers/`), so a second run compiles only what
 //! changed. The database is the run's when `JADPO_TEST_DATABASE_URL` names
@@ -45,6 +54,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use jadpo_cli::run;
@@ -52,7 +62,8 @@ use jadpo_term::Environment;
 use jadpo_test::postgres::Server;
 use serde_json::Value;
 
-use crate::deployable::{apply, copy_folder, migrations, rows};
+use crate::deployable::{apply, copy_folder, count, migrations, rows};
+use crate::support::fake_sqs::FakeSqs;
 
 /// The café declares one kiosk, built for Workers, serving its API and
 /// running its subscribers and schedules.
@@ -177,6 +188,12 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         kiosk["hyperdrive"],
         serde_json::json!([{ "binding": "DATABASE_URL", "id": null }]),
         "{built}"
+    );
+    // Its tick has a database to sweep, so the minute's cron runs it.
+    assert_eq!(
+        wrangler["triggers"]["crons"],
+        serde_json::json!(["* * * * *"]),
+        "{wrangler}"
     );
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
     assert!(shim.contains("from \"./kiosk.js\""), "{shim}");
@@ -409,6 +426,310 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     }
 }
 
+/// A depot built for Workers that serves nothing: it reads the
+/// warehouse's queue through the SQS package, recording each shipment
+/// its messages tell it of, and takes stock every minute.
+const DEPOT: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        "use stock/events { OrderShipped }\n\napplication {\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n        warehouse_queue: {\n            package: AmazonSqs.v2012_11_05\n            domains: [stock]\n            credential: {\n                key_id: config.aws_key_id\n                secret: config.aws_secret_key\n            }\n            host: config.sqs_endpoint\n            queue_url: config.warehouse_queue_url\n        }\n    }\n    receiving: {\n        warehouse_queue: {\n            id_at: \"message_id\"\n            events: [OrderShipped]\n        }\n    }\n    deployables: {\n        depot: {\n            runs: [Trigger.schedules, Trigger.subscribers]\n            target: Target.wasm\n        }\n    }\n}\n",
+    ),
+    (
+        "config.jadpo",
+        "config {\n    database_url: PostgresUrl\n    aws_key_id: Text\n    aws_secret_key: Text {\n        secret: true\n    }\n    sqs_endpoint: Url\n    warehouse_queue_url: Text\n}\n",
+    ),
+    (
+        "domains/stock/events/order_shipped.jadpo",
+        "/// An order left the warehouse.\ntype OrderShipped = Event {\n    wire_name: \"order.shipped\"\n    order: Text {\n        max_length: 12\n    }\n}\n",
+    ),
+    (
+        "domains/stock/entities/shipment.jadpo",
+        "entity Shipment {\n    id: Uuid\n    order: Text {\n        max_length: 12\n    }\n\n    policy: {\n        create: [Access.system]\n        read: [Access.system]\n    }\n}\n",
+    ),
+    (
+        "domains/stock/actions/record_shipment.jadpo",
+        "use stock/entities { Shipment }\nuse stock/events { OrderShipped }\n\n/// Records an order the warehouse shipped.\naction record_shipment(event: OrderShipped) -> Shipment {\n    return Shipment.create {\n        set: {\n            order: event.order\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/stock/subscribers/shipped.jadpo",
+        "use stock/actions { record_shipment }\nuse stock/events { OrderShipped }\n\n/// Records each order the warehouse ships.\nsubscriber shipped {\n    on: OrderShipped\n    run: record_shipment(event)\n}\n",
+    ),
+    (
+        "domains/stock/actions/take_stock.jadpo",
+        "/// Takes stock, which changes nothing.\naction take_stock() -> Unit {\n    assert 1 == 1\n}\n",
+    ),
+    ("domains/stock/schedules/stocktake.jadpo", STOCKTAKE),
+];
+
+/// The depot's schedule, every minute.
+const STOCKTAKE: &str = "use stock/actions { take_stock }\n\n/// Takes stock every minute.\nschedule stocktake {\n    every: 1m\n    run: take_stock()\n}\n";
+
+/// The queue's credential.
+const KEY_ID: &str = "AKIDEXAMPLE";
+const SECRET: &str = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
+
+/// The depot, written where its build is kept between runs, a file left
+/// as it was keeping its time, with the SQS package and its migration.
+fn depot() -> PathBuf {
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/workers/depot");
+    for (path, text) in DEPOT {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("a folder")).expect("folders");
+        if fs::read_to_string(&path).ok().as_deref() != Some(*text) {
+            fs::write(&path, text).expect("written");
+        }
+    }
+    if !root.join("jadpo.lock").exists() {
+        let package = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/amazon_sqs");
+        jadpo(
+            &root,
+            &["package", "add", package.to_str().expect("a path")],
+        );
+    }
+    if !root.join("database/migrations").exists() {
+        jadpo(&root, &["migrate", "new", "initial"]);
+    }
+    jadpo(&root, &["records", "update"]);
+    root
+}
+
+/// The time on this machine, in milliseconds since 1970.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis() as i64)
+}
+
+/// The Workers cron (chunk 8.2f): a deployable that runs on the tick is
+/// given the minute's cron trigger in its Wrangler file and a `scheduled`
+/// handler that ticks. Under workerd, as Cloudflare's cron runs it: out of
+/// date, the cron logs why and ticks nothing; up to date, it receives the
+/// queue and delivers its event, and, since the depot receives a queue,
+/// ticks again at each 10-second mark of its minute, so a message sent
+/// between two marks is received in the same invocation; a schedule due
+/// runs on it. A schedule more often than once a minute is refused for
+/// Workers by `jadpo check`, naming it.
+#[test]
+fn a_workers_cron_ticks_runs_schedules_and_receives_a_queue_each_10_seconds() {
+    let root = depot();
+
+    // More often than once a minute, the depot's schedule can't run on
+    // Workers' cron.
+    fs::write(
+        root.join("domains/stock/schedules/stocktake.jadpo"),
+        STOCKTAKE.replace("every: 1m", "every: 30s"),
+    )
+    .expect("written");
+    let args = ["check".to_string()];
+    let refused = run(
+        &args,
+        &Environment::empty()
+            .with_var("NO_COLOR", "1")
+            .with_cwd(&root),
+    );
+    fs::write(
+        root.join("domains/stock/schedules/stocktake.jadpo"),
+        STOCKTAKE,
+    )
+    .expect("written");
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    let screen = format!("{}{}", refused.stdout, refused.stderr);
+    for shown in [
+        "`depot` can't run `stocktake` every 30 seconds on Workers, whose cron runs once a minute",
+        "domains/stock/schedules/stocktake.jadpo:5:12",
+        "rule: deployable.target_unsupported",
+    ] {
+        assert!(screen.contains(shown), "{shown} isn't in:\n{screen}");
+    }
+
+    let output = jadpo(&root, &["build", "--json"]);
+    let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
+    let built = &document["data"];
+    let depot = &built["deployables"][0];
+    assert_eq!(depot["deployable"], "depot", "{built}");
+    assert_eq!(
+        depot["runs"],
+        serde_json::json!(["schedules", "subscribers"])
+    );
+    let out = root.join("build/target/depot");
+    let wrangler: Value = serde_json::from_str(
+        &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
+    )
+    .expect("JSON");
+    // The minute's cron, and the settings it needs.
+    assert_eq!(
+        wrangler["triggers"],
+        serde_json::json!({ "crons": ["* * * * *"] }),
+        "{wrangler}"
+    );
+    assert_eq!(
+        wrangler["secrets"]["required"],
+        serde_json::json!([
+            "AWS_KEY_ID",
+            "AWS_SECRET_KEY",
+            "SQS_ENDPOINT",
+            "WAREHOUSE_QUEUE_URL"
+        ]),
+        "{wrangler}"
+    );
+    // Its database's address is a Hyperdrive binding (chunk 8.2i), which
+    // the harness gives as workerd's.
+    assert_eq!(
+        wrangler["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL" }]),
+        "{wrangler}"
+    );
+    let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
+    assert!(shim.contains("scheduled(controller, env, ctx)"), "{shim}");
+    let module = fs::read(out.join("depot.wasm")).expect("the module");
+    assert!(
+        names(&module, "jadpo_host_workers", "deployable::scheduled"),
+        "it lacks the scheduled handler"
+    );
+
+    if !jadpo_test::live() {
+        return;
+    }
+    let database = Database::on_tcp();
+    let sqs = FakeSqs::start("warehouse", KEY_ID, SECRET);
+    let queue = sqs.queue_url("warehouse");
+    let worker = Workerd::start(
+        &out,
+        &wrangler,
+        &[
+            ("DATABASE_URL", &database.worker),
+            ("AWS_KEY_ID", KEY_ID),
+            ("AWS_SECRET_KEY", SECRET),
+            ("SQS_ENDPOINT", &sqs.url),
+            ("WAREHOUSE_QUEUE_URL", &queue),
+        ],
+    );
+    sqs.send("warehouse", &shipped("w-1", "A-100"));
+
+    // Its database hasn't applied its migration: the cron logs it and
+    // ticks nothing, leaving the message on the queue.
+    assert_eq!(worker.scheduled(now_ms()), "ok", "{}", worker.log());
+    let failed = worker.events("runtime.startup_failed");
+    assert_eq!(failed.len(), 1, "{}", worker.log());
+    stamped(&failed[0], built, depot);
+    assert_eq!(failed[0]["problems"][0]["problem"], "migrations_pending");
+    assert_eq!(sqs.left("warehouse").len(), 1, "{}", worker.log());
+    assert!(sqs.seen().is_empty(), "{:?}", sqs.seen());
+
+    // Up to date, the same isolate ticks: a cron 40 seconds into its
+    // minute ticks at once and again at its 50-second mark, as the depot
+    // receives a queue, then ends with the minute. The first tick keeps
+    // the message as its event and delivers it; one sent between the two
+    // is received by the second.
+    apply(&database.native, &migrations(&root));
+    let minute = now_ms() - 40_000;
+    let cron = std::thread::scope(|scope| {
+        let cron = scope.spawn(|| worker.scheduled(minute));
+        let until = Instant::now() + Duration::from_secs(60);
+        while rows(&database.native, "SELECT \"order\" FROM shipment").is_empty() {
+            assert!(Instant::now() < until, "no shipment:\n{}", worker.log());
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        sqs.send("warehouse", &shipped("w-2", "A-200"));
+        cron.join().expect("the cron ran")
+    });
+    assert_eq!(cron, "ok", "{}", worker.log());
+    let ended = now_ms();
+    assert!(
+        ended >= minute + 49_900 && ended < minute + 120_000,
+        "the cron ended {} ms into its minute",
+        ended - minute
+    );
+    assert_eq!(
+        rows(
+            &database.native,
+            "SELECT \"order\" FROM shipment ORDER BY \"order\""
+        ),
+        vec![vec!["A-100".to_string()], vec!["A-200".to_string()]],
+        "{}",
+        worker.log()
+    );
+    assert!(
+        sqs.left("warehouse").is_empty(),
+        "{:?}",
+        sqs.left("warehouse")
+    );
+    let receives = sqs
+        .seen()
+        .iter()
+        .filter(|seen| seen.target == "AmazonSQS.ReceiveMessage")
+        .count();
+    assert!(receives >= 2, "{:?}", sqs.seen());
+    // The first tick saw the schedule, its first run due a minute on, and
+    // the last tick that reached it was the 50-second mark's.
+    let state = rows(
+        &database.native,
+        "SELECT (extract(epoch from \"last_tick_at\") * 1000)::int8, (extract(epoch from \"next_run_at\") * 1000)::int8 FROM jadpo_schedules",
+    );
+    let [state] = state.as_slice() else {
+        panic!("one schedule's state: {state:?}")
+    };
+    let last_tick: i64 = state[0].parse().expect("a time");
+    let next_run: i64 = state[1].parse().expect("a time");
+    // A timer may fire a millisecond or so early by the clock.
+    assert!(
+        last_tick >= minute + 49_900,
+        "the last tick was {} ms into the minute",
+        last_tick - minute
+    );
+    assert!(
+        next_run > minute + 60_000 && next_run <= minute + 120_000,
+        "the first run is due {} ms into the minute",
+        next_run - minute
+    );
+    assert_eq!(count(&database.native, "jadpo_schedule_runs"), 0);
+
+    // Once the schedule is due, the next cron runs it, and a cron at the
+    // end of its minute ticks once.
+    rows(
+        &database.native,
+        "UPDATE jadpo_schedules SET next_run_at = now() - interval '1 second' RETURNING 1",
+    );
+    let before = sqs.seen().len();
+    assert_eq!(
+        worker.scheduled(now_ms() - 59_000),
+        "ok",
+        "{}",
+        worker.log()
+    );
+    assert_eq!(
+        rows(&database.native, "SELECT outcome FROM jadpo_schedule_runs"),
+        vec![vec!["succeeded".to_string()]],
+        "{}",
+        worker.log()
+    );
+    let receives = sqs.seen()[before..]
+        .iter()
+        .filter(|seen| seen.target == "AmazonSQS.ReceiveMessage")
+        .count();
+    assert_eq!(receives, 1, "{:?}", sqs.seen());
+
+    let started = worker.events("runtime.started");
+    assert_eq!(started.len(), 1, "{}", worker.log());
+    for event in worker.events("") {
+        stamped(&event, built, depot);
+    }
+    assert!(
+        !worker.log().contains(SECRET) && !worker.log().contains(&database.worker),
+        "the log holds a secret:\n{}",
+        worker.log()
+    );
+}
+
+/// A message telling of order `order` shipped, by id `id`.
+fn shipped(id: &str, order: &str) -> String {
+    format!(r#"{{"message_id":"{id}","order":"{order}"}}"#)
+}
+
 /// A booking for a lamp.
 const LAMP: &str = r#"{"item":"lamp","symptom":"flickers when the shade is touched"}"#;
 
@@ -469,12 +790,21 @@ impl Database {
 }
 
 /// workerd serving a built Worker on a port of this machine, stopped
-/// when dropped.
+/// when dropped, and beside it a Worker of the test's own on another port
+/// that runs the built Worker's `scheduled` handler as Cloudflare's cron
+/// trigger does, through a service binding's `scheduled()` (workerd's
+/// `service_binding_extra_handlers`, which needs `--experimental`).
 struct Workerd {
     child: Child,
     port: u16,
+    cron: u16,
     log: PathBuf,
 }
+
+/// The test's cron: each request runs the bound Worker's `scheduled`
+/// handler for the time its `?at=` gives, in milliseconds, and answers
+/// with how it ended.
+const CRON: &str = "export default {\n  async fetch(request, env) {\n    const at = Number(new URL(request.url).searchParams.get(\"at\"));\n    const ended = await env.WORKER.scheduled({ scheduledTime: new Date(at), cron: \"* * * * *\" });\n    return Response.json(ended);\n  },\n};\n";
 
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
@@ -485,7 +815,14 @@ impl Workerd {
     /// hands `connect()` to its server, as `wrangler dev` does with a local
     /// connection string; any other is text.
     fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("workers-workerd");
+        // A folder of its own, config and log, since this module's tests
+        // run side by side, each with its workerd.
+        static STARTED: AtomicUsize = AtomicUsize::new(0);
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+            "workers-workerd/{}-{}",
+            wrangler["name"].as_str().unwrap_or("worker"),
+            STARTED.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("the folder");
         let main = wrangler["main"].as_str().expect("a main module");
@@ -539,11 +876,15 @@ impl Workerd {
                 )
             })
             .collect();
-        let port = TcpListener::bind("127.0.0.1:0")
-            .and_then(|listener| listener.local_addr())
-            .expect("a port")
-            .port();
+        let free = || {
+            TcpListener::bind("127.0.0.1:0")
+                .and_then(|listener| listener.local_addr())
+                .expect("a port")
+                .port()
+        };
+        let (port, cron) = (free(), free());
         let date = wrangler["compatibility_date"].as_str().expect("a date");
+        fs::write(dir.join("cron.mjs"), CRON).expect("the cron");
         fs::write(
             dir.join("config.capnp"),
             format!(
@@ -551,16 +892,26 @@ impl Workerd {
                  const config :Workerd.Config = (\n\
                  \x20 services = [\n\
                  \x20   (name = \"kiosk\", worker = .kiosk),\n\
+                 \x20   (name = \"cron\", worker = .cron),\n\
                  \x20   (name = \"machine\", network = (allow = [\"public\", \"private\", \"local\"])),\n\
                  \x20   {}\n\
                  \x20 ],\n\
-                 \x20 sockets = [(name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\")],\n\
+                 \x20 sockets = [\n\
+                 \x20   (name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\"),\n\
+                 \x20   (name = \"cron\", address = \"127.0.0.1:{cron}\", http = (), service = \"cron\"),\n\
+                 \x20 ],\n\
                  );\n\n\
                  const kiosk :Workerd.Worker = (\n\
                  \x20 modules = [{}],\n\
                  \x20 compatibilityDate = \"{date}\",\n\
                  \x20 bindings = [{}],\n\
                  \x20 globalOutbound = \"machine\",\n\
+                 );\n\n\
+                 const cron :Workerd.Worker = (\n\
+                 \x20 modules = [(name = \"cron.mjs\", esModule = embed \"cron.mjs\")],\n\
+                 \x20 compatibilityDate = \"{date}\",\n\
+                 \x20 compatibilityFlags = [\"service_binding_extra_handlers\"],\n\
+                 \x20 bindings = [(name = \"WORKER\", service = \"kiosk\")],\n\
                  );\n",
                 services.join("\n    "),
                 modules.join(", "),
@@ -571,16 +922,23 @@ impl Workerd {
         let log = dir.join("workerd.log");
         let file = fs::File::create(&log).expect("the log");
         let child = Command::new(workerd())
-            .args(["serve", "config.capnp"])
+            .args(["serve", "--experimental", "config.capnp"])
             .current_dir(&dir)
             .stdin(Stdio::null())
             .stdout(file.try_clone().expect("the log"))
             .stderr(file)
             .spawn()
             .expect("workerd starts");
-        let mut worker = Workerd { child, port, log };
+        let mut worker = Workerd {
+            child,
+            port,
+            cron,
+            log,
+        };
         let until = Instant::now() + Duration::from_secs(60);
-        while TcpStream::connect(("127.0.0.1", port)).is_err() {
+        while TcpStream::connect(("127.0.0.1", port)).is_err()
+            || TcpStream::connect(("127.0.0.1", cron)).is_err()
+        {
             if let Ok(Some(status)) = worker.child.try_wait() {
                 panic!("workerd ended ({status}):\n{}", worker.log());
             }
@@ -596,6 +954,39 @@ impl Workerd {
 
     fn log(&self) -> String {
         fs::read_to_string(&self.log).unwrap_or_default()
+    }
+
+    /// Runs the Worker's `scheduled` handler as the cron trigger would for
+    /// the minute at `at`, in milliseconds since 1970, waiting for the
+    /// invocation to end: how it ended, `ok` or `exception`.
+    fn scheduled(&self, at: i64) -> String {
+        let mut stream = TcpStream::connect(("127.0.0.1", self.cron)).expect("the cron listens");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(180)))
+            .expect("a timeout");
+        write!(
+            stream,
+            "GET /?at={at} HTTP/1.1\r\nHost: cron\r\nConnection: close\r\n\r\n"
+        )
+        .expect("sent");
+        let mut answer = String::new();
+        let _ = stream.read_to_string(&mut answer);
+        let body = answer
+            .split_once("\r\n\r\n")
+            .map(|(head, body)| {
+                if head
+                    .to_ascii_lowercase()
+                    .contains("transfer-encoding: chunked")
+                {
+                    dechunk(body)
+                } else {
+                    body.to_string()
+                }
+            })
+            .unwrap_or_else(|| panic!("an HTTP answer: {answer}\n{}", self.log()));
+        let ended: Value = serde_json::from_str(&body)
+            .unwrap_or_else(|_| panic!("the cron's answer: {answer}\n{}", self.log()));
+        ended["outcome"].as_str().unwrap_or_default().to_string()
     }
 
     /// The events the Worker has logged whose name starts with `event`,

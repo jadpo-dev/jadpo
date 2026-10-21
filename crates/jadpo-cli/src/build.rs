@@ -1,5 +1,5 @@
 //! `jadpo build` (area 14, "The `jadpo` command"; roadmap chunks 8.1o,
-//! 8.1o2 and 8.2b; docs/compiler-runtime.md §2.6, "A native deployable"
+//! 8.1o2, 8.1o3 and 8.2b; docs/compiler-runtime.md §2.6, "A native deployable"
 //! and "A Workers deployable", and §2.8): checks the project as `jadpo
 //! check` does, writing the same derived files, and stops at its errors;
 //! otherwise writes each deployable's Rust into `build/rust/<deployable>/`
@@ -19,20 +19,21 @@
 //! With no `deployables:` declared there is one, `app`, which serves every
 //! API and runs everything, natively (area 14, question 14); a declared
 //! one serves only its APIs' routes and runs only the background work its
-//! `runs:` names (`jadpo_plan::Plan::for_deployable`), and a Worker links
-//! only the drivers it reaches. Each deployable's build stamp (area 18;
+//! `runs:` names. Each is compiled from only what it reaches (chunk
+//! 8.1o3; `jadpo_plan::Plan::for_deployable`): its callables, routes,
+//! connections and settings, so a Worker links only the drivers it
+//! reaches. Each deployable's build stamp (area 18;
 //! [`crate::stamp`]) is a constant in its binary or module and on every
 //! event it logs: the build id; the commit, and whether the tree held
 //! changes it doesn't (a project git doesn't track counts as changed, with
 //! no commit); the compiler; the deployable; and the target, `native` or
 //! `wasm`.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use jadpo_check::deployables::{Deployable, Reached};
+use jadpo_check::deployables::Deployable;
 use jadpo_codegen::deployable::{Drivers, Host};
 use jadpo_codegen::workers;
 use jadpo_diag::{Decider, Diagnostic, nearest, rule};
@@ -72,21 +73,8 @@ pub fn build(call: &Call) -> Reply {
         None => declared.list.iter().collect(),
     };
     let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
-    let graph = jadpo_check::graph::graph(db, project).digest();
     let source = stamp::commit(&root);
-    let stores: BTreeMap<String, Vec<(String, String)>> =
-        jadpo_check::data::migrations::store_steps(jadpo_check::data::migrations::migrations(
-            db, project,
-        ))
-        .into_iter()
-        .map(|(store, migrations)| {
-            let migrations = migrations
-                .into_iter()
-                .map(|migration| (migration.name, migration.digest))
-                .collect();
-            (store, migrations)
-        })
-        .collect();
+    let stores = stamp::stores(db, project);
     let sources = runtime_sources();
     let (toolchain, runtime_lock) = match (
         std::fs::read_to_string(sources.join("../rust-toolchain.toml")),
@@ -134,35 +122,36 @@ pub fn build(call: &Call) -> Reply {
         remap.push((home, "/cargo".to_string()));
     }
     let runtime = sources.display().to_string();
-    let reaches = jadpo_check::deployables::reaches(db, project);
+    // The variables the deployables' settings read, each once, in the
+    // order they come: each reads only those of what it reaches.
     let mut settings: Vec<String> = Vec::new();
     let mut built = Vec::new();
     for deployable in chosen {
         let name = deployable.name.as_str();
         say(&format!("Writing `{name}`"));
         let target = deployable.builds_for().name();
-        let build = stamp::build_id(&stamp::source(&graph, deployable), VERSION, target, &lock);
-        let plan = jadpo_plan::Plan::build(db, project)
-            .for_deployable(&deployable.serves, deployable.runs)
-            .with_build(build.clone());
-        let host = match deployable.builds_for() {
-            DeployTarget::Native => Host::Native,
-            DeployTarget::Wasm => {
-                let reached = declared
-                    .list
-                    .iter()
-                    .position(|other| other.name == deployable.name)
-                    .and_then(|at| reaches.get(at));
-                Host::Workers(drivers(&plan, reached))
+        let stamp::Program { plan, build } = match stamp::program(
+            db, project, deployable, VERSION, &lock, &stores,
+        ) {
+            Ok(program) => program,
+            Err(error) => {
+                return Reply::failed(failed(
+                    format!("`{name}`'s program couldn't be planned"),
+                    format!(
+                        "Jadpo plans a deployable from what it reaches, and that went wrong, which is Jadpo's own mistake: {error}."
+                    ),
+                ));
             }
         };
-        settings = plan
-            .runtime()
-            .config
-            .fields
-            .iter()
-            .map(|field| field.variable.clone())
-            .collect();
+        let host = match deployable.builds_for() {
+            DeployTarget::Native => Host::Native,
+            DeployTarget::Wasm => Host::Workers(drivers(&plan)),
+        };
+        for field in &plan.runtime().config.fields {
+            if !settings.contains(&field.variable) {
+                settings.push(field.variable.clone());
+            }
+        }
         let folder = rust.join(name);
         let workspace = match jadpo_codegen::deployable::workspace(
             &plan,
@@ -270,7 +259,8 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::wrangler(name, &required, &hyperdrive).into_bytes(),
+                        workers::wrangler(name, &required, &hyperdrive, plan.schedules().ticks())
+                            .into_bytes(),
                     ),
                 ] {
                     if let Err(error) = write_new(&root, &path, &contents) {
@@ -403,17 +393,16 @@ fn unknown(name: &str, declared: &jadpo_check::deployables::Deployables) -> Diag
 /// The drivers a Worker built from `plan` links beyond the package
 /// driver: PostgreSQL when the project keeps a database, since every
 /// deployable's tick reaches each store, and SMTP when it reaches an SMTP
-/// connection (`reached`, as `jadpo check` follows it).
-fn drivers(plan: &Plan, reached: Option<&Reached>) -> Drivers {
+/// connection, the only ones its plan holds (chunk 8.1o3).
+fn drivers(plan: &Plan) -> Drivers {
     let connections = &plan.runtime().connections;
     Drivers {
         postgres: connections
             .iter()
             .any(|connection| matches!(connection.driver, ConnectionDriver::Postgres { .. })),
-        smtp: connections.iter().any(|connection| {
-            matches!(connection.driver, ConnectionDriver::Smtp(_))
-                && reached.is_some_and(|reached| reached.connections.contains_key(&connection.name))
-        }),
+        smtp: connections
+            .iter()
+            .any(|connection| matches!(connection.driver, ConnectionDriver::Smtp(_))),
     }
 }
 

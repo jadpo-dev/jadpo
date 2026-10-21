@@ -53,6 +53,21 @@ impl SchedulesPlan {
         self.schedules.iter().find(|schedule| schedule.key == key)
     }
 
+    /// Whether a tick has anything to do: a store to keep schedules'
+    /// state in, sweep or delete from. Every step of the tick works in
+    /// one, so a program with none is never ticked on Workers, whose cron
+    /// trigger would run it for nothing (chunk 8.2f).
+    pub fn ticks(&self) -> bool {
+        self.store.is_some()
+            || !self.stores.is_empty()
+            || self.sessions.is_some()
+            || self.keys.is_some()
+            || self.received.is_some()
+            || !self.steps.is_empty()
+            || self.parked.is_some()
+            || self.ai_usage.is_some()
+    }
+
     /// The shortest `every:`, in milliseconds: how often a host's own
     /// timer has to tick for every schedule to run when it is due.
     pub fn shortest_every(&self) -> Option<u64> {
