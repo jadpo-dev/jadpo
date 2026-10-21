@@ -6,7 +6,7 @@
 /// What the runtime keeps for an action whose longest way makes several
 /// changing calls, when it is run where its key survives a retry: by a
 /// subscriber, or by a route whose API requires `Idempotency-Key`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RecordPlan {
     /// The store its record is kept in: the one it writes, or the one
     /// `events: { store: }` names, beside its outbox.

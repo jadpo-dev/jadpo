@@ -1048,6 +1048,52 @@ failure todo_not_found
     todo_id: Uuid
 ```
 
+```jadpo check project=todos file=domains/planning/routes/todos.test.jadpo hidden
+use planning/types { TodoView }
+use planning/actions { CreateTodo, create_todo }
+
+test "a todo is created" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/todos"
+        input: CreateTodo {
+            title: "Buy oat milk"
+        }
+    }
+    assert response.status == 201
+    assert response.code == none
+}
+
+test "a todo is read back by its id" {
+    var basil: TodoView = create_todo(
+        CreateTodo {
+            title: "Water the basil"
+        }
+    )
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/todos/{todo_id}"
+        params: {
+            todo_id: basil.id
+        }
+    }
+    assert response.status == 200
+    assert response.output == basil
+}
+
+test "a todo that isn't there is not found" {
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/todos/{todo_id}"
+        params: {
+            todo_id: "0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e"
+        }
+    }
+    assert response.status == 404
+    assert response.code == "todo_not_found"
+}
+```
+
 A change that can break a client (a route removed, a required input field
 added, an output field removed, a failure code changed) also needs an
 acceptance written by a person, in the form area 18 decides for every

@@ -28,6 +28,7 @@
 //! what ran, fakes, the kept database and clock overrides. Route and
 //! schedule tests come with their areas.
 
+pub mod compiled;
 pub mod database;
 mod diff;
 pub mod differential;
@@ -263,12 +264,31 @@ pub struct TestResult {
 
 /// Runs what `options` asks for.
 pub fn run(options: Options) -> Ran {
+    running(options, None)
+}
+
+/// Runs what `options` asks for as [`run`] does, each test through the
+/// executor `make` gives each thread, given the settings a test run reads,
+/// rather than the interpreter: compiled code (chunk 8.1f).
+pub fn run_with<E: jadpo_runtime::Executor + 'static>(
+    options: Options,
+    make: impl Fn(Option<&jadpo_runtime::config::ConfigValues>) -> E + Sync,
+) -> Ran {
+    let boxed = move |values: Option<&jadpo_runtime::config::ConfigValues>| {
+        Box::new(make(values)) as Box<dyn jadpo_runtime::Executor>
+    };
+    running(options, Some(&boxed))
+}
+
+/// Runs what `options` asks for, on the interpreter or through `maker`'s
+/// executors.
+fn running(options: Options, maker: Option<run::Maker<'_>>) -> Ran {
     let target = match select::resolve(&options) {
         Ok(target) => target,
         Err(ran) => return ran,
     };
     let started = Instant::now();
-    match jadpo_interp::on_large_stack(move || execute(target, options, started)) {
+    match jadpo_interp::on_large_stack(move || execute(target, options, started, maker)) {
         Ok(ran) => ran,
         Err(error) => Ran::Stopped(Box::new(
             Diagnostic::new(
@@ -284,7 +304,12 @@ pub fn run(options: Options) -> Ran {
 }
 
 /// Loads, checks, selects and runs, on the interpreter's thread.
-fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
+fn execute(
+    target: select::Target,
+    options: Options,
+    started: Instant,
+    maker: Option<run::Maker<'_>>,
+) -> Ran {
     let loaded = jadpo_db::load(&target.folder);
     if options.ci {
         let refused = jadpo_check::packages::links_refused(&loaded.db, loaded.project);
@@ -301,7 +326,7 @@ fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
         Ok(checked) => checked,
         Err(ran) => return ran,
     };
-    choose_and_run(&loaded, &checked, &target, &options, None, started)
+    choose_and_run(&loaded, &checked, &target, &options, None, started, maker)
 }
 
 /// A project that checked without errors, ready to run: its prepared
@@ -393,6 +418,7 @@ pub(crate) fn choose_and_run(
     options: &Options,
     only: Option<&std::collections::BTreeSet<String>>,
     started: Instant,
+    maker: Option<run::Maker<'_>>,
 ) -> Ran {
     let Checked {
         prepared,
@@ -465,6 +491,7 @@ pub(crate) fn choose_and_run(
         &rerun,
         databases.as_ref(),
         options.record,
+        maker,
     );
     drop(databases);
     let results: Vec<TestResult> = ordered

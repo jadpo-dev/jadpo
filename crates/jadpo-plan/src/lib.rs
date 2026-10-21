@@ -379,6 +379,9 @@ pub struct Plan {
     /// one; area 18's build id, which adds the compiler, the target and the
     /// lock, replaces it when the build stamp is built.
     build: String,
+    /// Each outside call's number in the runtime plan's calls, by its
+    /// callable's number and its site's (chunk 8.1f).
+    call_numbers: HashMap<(u32, u32), u32>,
 }
 
 /// A structured field the latest migration checks, rewrites or fills as
@@ -1136,6 +1139,53 @@ impl Plan {
         testing.recorded = recordings.recorded;
         testing.prompt_recordings = prompt_recordings;
         let (validators, shapes, failures) = types.take_tables();
+        // What compiled code's sites name by number (chunk 8.1f): each
+        // outside call's site, numbered in callable and site order.
+        let mut calls = Vec::new();
+        let mut call_numbers = HashMap::new();
+        for (number, callable) in callables.iter().enumerate() {
+            for (at, site) in callable.sites.iter().enumerate() {
+                use jadpo_std::compiled::CallPlan;
+                let call = match &site.decoded {
+                    Decoded::Provider(call) => CallPlan::Provider(call.clone()),
+                    Decoded::Generate(generate) => CallPlan::Generate((**generate).clone()),
+                    Decoded::Stream(stream) => CallPlan::Stream((**stream).clone()),
+                    Decoded::Embed(embed) => CallPlan::Embed((**embed).clone()),
+                    _ => continue,
+                };
+                let key = (
+                    u32::try_from(number).unwrap_or(u32::MAX),
+                    u32::try_from(at).unwrap_or(u32::MAX),
+                );
+                call_numbers.insert(key, u32::try_from(calls.len()).unwrap_or(u32::MAX));
+                calls.push(call);
+            }
+        }
+        let sites = jadpo_std::compiled::SitesPlan {
+            constants: constants.clone(),
+            queries: queries.iter().map(|query| query.read.clone()).collect(),
+            gets: entities.iter().map(|entity| entity.get.clone()).collect(),
+            writes: writes.iter().map(|write| write.plan.clone()).collect(),
+            calls,
+        };
+        // What the boundary needs of each action and fixture.
+        let actions = callables
+            .iter()
+            .enumerate()
+            .filter(|(_, callable)| callable.is_action())
+            .map(|(number, callable)| {
+                (
+                    u32::try_from(number).unwrap_or(u32::MAX),
+                    jadpo_std::compiled::ActionPlan {
+                        key: callable.key.as_str().to_string(),
+                        isolation: callable.isolation,
+                        gate: callable.gate.clone(),
+                        outbox: callable.outbox.clone(),
+                        record: callable.record.clone(),
+                    },
+                )
+            })
+            .collect();
         let runtime = RuntimePlan {
             validators,
             shapes,
@@ -1152,6 +1202,10 @@ impl Plan {
             ai,
             prompts,
             callables: keyed,
+            sites,
+            actions,
+            build: build.clone(),
+            steps_key,
             testing,
         };
         Plan {
@@ -1171,7 +1225,15 @@ impl Plan {
             batch_numbers,
             steps_key,
             build,
+            call_numbers,
         }
+    }
+
+    /// The number compiled code names the outside call at site `site` of
+    /// callable `callable` by: its place in the runtime plan's calls
+    /// (chunk 8.1f).
+    pub fn call_number(&self, callable: u32, site: u32) -> Option<u32> {
+        self.call_numbers.get(&(callable, site)).copied()
     }
 
     /// The digest of the graph a record of several changing calls keeps

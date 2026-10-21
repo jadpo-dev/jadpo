@@ -52,7 +52,7 @@ impl CallerPart {
 
 /// Who may call an action that reaches no entity (area 9, "Actions"):
 /// checked as it starts, wherever it is called from.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Gate {
     /// Which signed-in callers its line lets in.
     pub callers: Callers,
@@ -73,7 +73,7 @@ impl Gate {
 }
 
 /// The callers a [`Gate`] lets in besides the system.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Callers {
     /// Anyone signed in.
     Signed,

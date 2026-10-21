@@ -205,6 +205,11 @@ POSTGRES = [
     # needs PostGIS: CI's image has it (tools/postgres/Dockerfile).
     ('live PostgreSQL: geography',
      [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries'), ('jadpo-cli', 'geo_layers')], []),
+    # Compiled code: a project written as a Rust crate, its differential
+    # harness built with cargo, offline, in target/jadpo-compiled/ (kept,
+    # so a later run compiles only what changed), and its tests run
+    # interpreted and compiled with the same records (chunk 8.1f).
+    ('live PostgreSQL: compiled code', [('jadpo-cli', 'compiled')], []),
 ]
 
 

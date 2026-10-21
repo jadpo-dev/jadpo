@@ -12,6 +12,8 @@ autotests = false
 [dependencies]
 blake3.workspace = true
 jadpo-check.workspace = true
+# The differential harness compiles a project (chunk 8.1f).
+jadpo-codegen.workspace = true
 jadpo-db.workspace = true
 jadpo-diag.workspace = true
 jadpo-drivers.workspace = true
@@ -23,6 +25,7 @@ jadpo-interp.workspace = true
 # The fakes, recordings, crash points and the plan's dev and test
 # section (chunk 8.1e), which `jadpo test` and `jadpo dev` run with.
 jadpo-runtime = { workspace = true, features = ["testing"] }
+jadpo-std.workspace = true
 jadpo-term.workspace = true
 serde_json.workspace = true
 
