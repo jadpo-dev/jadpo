@@ -1265,6 +1265,39 @@ most `DRAIN_GRACE` (10 seconds), then drains its handler's background
 work for at most `DRAIN_GRACE` again (chunk 6.7); what is still open after
 that closes as the thread ends.
 
+**The route trie** (chunk 8.1k, from the Phase 4 review). The HTTP
+component finds a request's path in a trie, `jadpo_runtime::http::Routes`,
+built once as a plan is loaded (`Loaded`, beside its validators and
+shapes) from the route table, health's two paths and the program's
+webhooks, and handed to the component on `App::routes`. A node's
+children are its fixed segments in byte order, searched by halving, and
+one placeholder. A path is walked fixed child first and every match
+visited, so the first route found for the method is the one with fixed
+text earliest, as the table's search chose it, and each route the path
+matches adds its method to `Allow`; 404, 405 and `OPTIONS` are as before.
+Health's paths and each webhook's are entries of the trie
+(`Found::Health`, `Found::Webhook`) on paths of fixed segments only, which
+the walk reaches first, so they still answer whatever the method and
+ahead of a placeholder route there, and a webhook is still counted
+against its address before anything in it is read; the component no
+longer matches webhooks in front of the table. A request's routing
+allocates nothing: segments are slices of the path, compared
+percent-decoded byte by byte and checked as UTF-8 a few bytes at a time,
+a placeholder decoded only when its route reads it; each route's,
+webhook's and health path's label (`POST /todos`) is made once and a
+response shares it (`Response::route` an `Arc<str>`); and a page cursor's
+failure is recognised by its key rather than by making one. A dedicated
+test binary counts allocations with a counting global allocator
+(`crates/jadpo-runtime/tests/route_allocations.rs`, through `stats_alloc`,
+since the workspace forbids `unsafe`), and a unit test checks the trie
+against the table's search on every method and a spread of paths.
+*Rejected:* a `Run::Webhook` in the route table itself, which would put
+the runtime's own receiving into the plan's routes, the API listing and
+`jadpo dev`'s count and into code generation's per-route entry points,
+when a webhook's plan already lives with its provider and its secrets
+with what the program started with; and a map from whole paths, which
+can't hold placeholders.
+
 **Frames.** Both executors keep a shadow stack of `(callable, site)` in
 the context; each site maps to a `.jadpo` file and line through a table
 from the graph (a static array in compiled code). A fault renders its
@@ -1647,7 +1680,7 @@ against the default rate limits (`RateLimits`: 120 a minute per address,
 and since chunk 4.3 600 a minute per signed-in caller, fixed windows in a bounded amount of memory, the oldest
 counters dropped first; since chunk 4.10 the host counts them,
 `Host::rate_limit`), routes by the route table (a fixed segment beats
-a placeholder; 404 `route_not_found`, 405 `method_not_allowed` with
+a placeholder, found in the route trie since chunk 8.1k, §2.5; 404 `route_not_found`, 405 `method_not_allowed` with
 `Allow`; `HEAD` as `GET` without the body, `OPTIONS` with `Allow`),
 decodes each placeholder and the input with the route's codecs
 (`jadpo_value::json`: each problem as `{ field, rule }` by its path in the
@@ -2942,8 +2975,9 @@ numbered in the JSON table as every event is, and `jadpo_std::system::
 RECEIVED_EVENTS` joins that store's schema. The runtime reads them from
 the plan with the secrets the program started with (`Plan::webhooks`,
 `provider::Credentials` in `Started`), and the
-HTTP component answers a request at a webhook's path before routing
-(`jadpo_runtime::webhooks::answer`), after its address's rate limit:
+HTTP component answers a request at a webhook's path, an entry of the
+route trie since chunk 8.1k (§2.5, "The route trie"), with
+`jadpo_runtime::webhooks::answer`, after its address's rate limit:
 `webhooks::check` reads the scheme's signature (pure, over the raw body,
 every candidate compared in constant time through
 `jadpo_value::crypto::signed_by` and `same_secret`), the body is read

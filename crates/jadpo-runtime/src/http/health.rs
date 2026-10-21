@@ -16,7 +16,7 @@
 
 use std::cell::RefCell;
 
-use jadpo_std::http::{HEALTH_LIVE, HEALTH_READY, READY_WITHIN_MS, RouteTable};
+use jadpo_std::http::{READY_WITHIN_MS, RouteTable};
 
 use jadpo_value::json::write_string;
 
@@ -39,30 +39,18 @@ pub(crate) const READY_REUSED_MS: u64 = 1_000;
 #[derive(Debug, Default)]
 pub(crate) struct Readiness(RefCell<Option<(u64, Response)>>);
 
-/// The health check `segments` names, answered, or `None` when it names
-/// none; `/health/ready` from `ready` when it checked within the last
-/// second.
+/// The health check at `/health/ready` when `ready`, else at
+/// `/health/live`, answered; `/health/ready` from `ready_cache` when it
+/// checked within the last second.
 pub async fn answer(
     table: &RouteTable,
     ctx: &Ctx<'_>,
     request: &Request,
     request_id: &str,
-    segments: &[String],
+    ready: bool,
     ready_cache: Option<&Readiness>,
-) -> Option<Response> {
-    let ready = if segments == HEALTH_LIVE {
-        false
-    } else if segments == HEALTH_READY {
-        true
-    } else {
-        return None;
-    };
-    let label = if ready {
-        "GET /health/ready"
-    } else {
-        "GET /health/live"
-    };
-    let mut response = match request.method.as_str() {
+) -> Response {
+    match request.method.as_str() {
         "GET" | "HEAD" if ready => reused(table, ctx.host(), ready_cache).await,
         "GET" | "HEAD" => json(200, "{\"status\":\"live\"}".to_string()),
         "OPTIONS" => Response {
@@ -77,9 +65,7 @@ pub async fn answer(
                 .push(("allow".to_string(), ALLOW.to_string()));
             response
         }
-    };
-    response.route = Some(label.to_string());
-    Some(response)
+    }
 }
 
 const ALLOW: &str = "GET, HEAD, OPTIONS";
