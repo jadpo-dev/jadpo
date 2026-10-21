@@ -60,7 +60,8 @@ fn repair_cafe() -> PathBuf {
 
 /// A connection the test server gives, as the URL a `PostgresUrl` holds:
 /// the disposable server answers with `host=… dbname=…` pairs, an
-/// external one with a URL.
+/// external one with a URL. A database named on the admin connection's
+/// pairs is the last `dbname=`, as libpq reads it.
 fn as_url(connection: &str) -> String {
     if connection.starts_with("postgres") {
         return connection.to_string();
@@ -68,6 +69,7 @@ fn as_url(connection: &str) -> String {
     let part = |key: &str| {
         connection
             .split_whitespace()
+            .rev()
             .find_map(|pair| pair.strip_prefix(&format!("{key}=")))
             .map(|value| value.trim_matches('\'').to_string())
             .unwrap_or_default()

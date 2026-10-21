@@ -12,9 +12,10 @@
 //! doesn't have, stops the start (area 5, "Migrations"), and a database
 //! that can't be reached yet is waited for, since a database that is down
 //! is not a configuration error (area 10). Only then does it open its
-//! port: `PORT` (8080 when unset) on `HOST` (every interface when unset),
-//! with a worker per core, each serving and ticking through the runtime's
-//! `Serving` on its own `NativeHost` ([`crate::http::AppHandler`]). The
+//! port: `PORT` (8080 when unset) on `HOST` (every IPv4 interface when
+//! unset), with a worker per core, each serving and ticking through the
+//! runtime's `Serving` on its own `NativeHost`
+//! ([`crate::http::AppHandler`]). The
 //! first SIGTERM or ctrl-c stops it: it accepts nothing more, lets each
 //! connection give the answer it owes and its background work give back
 //! what it holds ([`crate::http::Server::stop`]), then ends.

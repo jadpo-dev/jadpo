@@ -223,12 +223,6 @@ struct Built {
 /// then the outcome and the one thing to do next.
 fn built(built: Built) -> Reply {
     let mut fields = vec![("binary".to_string(), built.binary.clone())];
-    if !built.openapi.is_empty() {
-        fields.push((
-            "openapi".to_string(),
-            format!("build/target/{APP}/openapi/"),
-        ));
-    }
     fields.push(("build".to_string(), built.build.clone()));
     fields.push((
         "commit".to_string(),

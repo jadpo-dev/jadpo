@@ -909,7 +909,6 @@ target can't run (area 11, question 24) are chunk 8.1o2.
 ```text
 $ jadpo build
   binary    build/target/app/app
-  openapi   build/target/app/openapi/
   build     b_e20fc10f5474
   commit    8d113e6
   settings  DATABASE_URL
