@@ -30,7 +30,7 @@ use jadpo_std::write::PurgePlan;
 use jadpo_value::Validator;
 use jadpo_value::shape::Shape;
 
-use crate::http::App;
+use crate::http::{App, Routes};
 use crate::{JsonCodecs, Started};
 
 /// A runtime plan loaded on one thread: see the module.
@@ -40,6 +40,9 @@ pub struct Loaded {
     validators: Arc<[Validator]>,
     /// Each shape with its names as values hold them, by number.
     shapes: Vec<Shape>,
+    /// The trie of the route table's routes, health's paths and the
+    /// webhooks', built once as the plan is loaded (chunk 8.1k).
+    routes: Routes,
 }
 
 impl Loaded {
@@ -65,10 +68,12 @@ impl Loaded {
     /// [`Loaded::compile`] made from it, on this thread or another.
     pub fn sharing(plan: Arc<RuntimePlan>, validators: Arc<[Validator]>) -> Loaded {
         let shapes = plan.shapes.iter().map(Shape::new).collect();
+        let routes = Routes::new(&plan.routes, &plan.providers.webhooks);
         Loaded {
             plan,
             validators,
             shapes,
+            routes,
         }
     }
 
@@ -105,6 +110,7 @@ impl Loaded {
             failures: &plan.failures,
             config: Some(&plan.config),
             routes: Some(&plan.routes),
+            trie: Some(&self.routes),
             events: Some(&plan.events),
             event_numbers: &plan.json.events,
             batches: &plan.batches,
@@ -138,6 +144,10 @@ pub struct Plan<'a> {
     /// [`Started::new`] reads, and whose routes and codecs the HTTP
     /// component answers with ([`Plan::app`]).
     pub routes: Option<&'a RouteTable>,
+    /// The trie of the route table's routes, health's paths and the
+    /// webhooks' (chunk 8.1k), which [`Loaded`] builds with the plan:
+    /// what [`Plan::app`] finds a request's route in.
+    pub trie: Option<&'a Routes>,
     /// The program's subscribers, and each event type's number in the JSON
     /// table.
     pub events: Option<&'a EventsPlan>,
@@ -184,6 +194,7 @@ impl Plan<'static> {
         failures: &[],
         config: None,
         routes: None,
+        trie: None,
         events: None,
         event_numbers: &[],
         batches: &[],
@@ -258,11 +269,15 @@ impl<'a> Plan<'a> {
     /// shapes; a program with no routes answers every path `404`.
     pub fn app(self) -> App<'a> {
         static NO_ROUTES: OnceLock<RouteTable> = OnceLock::new();
+        static NO_TRIE: OnceLock<Routes> = OnceLock::new();
         let table = self
             .routes
             .unwrap_or_else(|| NO_ROUTES.get_or_init(RouteTable::default));
         App {
             table,
+            routes: self
+                .trie
+                .unwrap_or_else(|| NO_TRIE.get_or_init(Routes::default)),
             codecs: jadpo_value::json::Codecs {
                 codecs: &table.codecs,
                 ..self.json.codecs
