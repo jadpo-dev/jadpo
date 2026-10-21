@@ -274,6 +274,47 @@ error: `main` names an authority and goes without TLS
 check failed: 1 error, 2 files
 ```
 
+### PostgreSQL through Hyperdrive
+
+> Chosen in chunk 8.2i (2026-10-21), each reversible; see Decisions,
+> "PostgreSQL through Hyperdrive".
+
+A Worker reaches PostgreSQL through Cloudflare's Hyperdrive, which keeps
+the connections to the database open between requests that a Worker,
+opening its own for each, can't. The connection names its binding through
+its `url:` setting: the setting's variable (`DATABASE_URL`, or its
+`binding:`) is, on Workers, a Hyperdrive binding, so the same `app.jadpo`
+runs natively and on Workers with nothing added. `jadpo build` writes that
+binding into a Workers deployable's Wrangler file in place of a secret,
+with the id of the Hyperdrive configuration it is given in
+`JADPO_HYPERDRIVE_<variable>` (area 14, "A Workers deployable").
+
+- **The address is the binding's.** Its user, password and database at
+  the host the Workers runtime makes for it, which `connect()` reaches
+  inside Cloudflare. A text binding of that name is still an address the
+  Worker reaches directly, as natively.
+- **TLS is Hyperdrive's.** The Worker reaches Hyperdrive without TLS:
+  Hyperdrive's own address for the binding says `sslmode=disable`, its
+  socket offers no TLS, and the connection doesn't leave Cloudflare.
+  Hyperdrive uses TLS to the database, checking the server's certificate
+  against the public authorities by default, as Jadpo does; a connection
+  whose `authority:` names a private authority needs it uploaded to
+  Hyperdrive and the configuration created with it
+  (`--ca-certificate-id`, `--sslmode verify-full`). A connection a Worker
+  makes directly uses TLS through `startTls()`, checked against the
+  platform's roots, and a certificate refused there is the same fault
+  naming the server as natively, though Workers reports it only as the
+  first bytes go out.
+- **Caching off.** Hyperdrive caches reads and doesn't invalidate them on
+  a write, and Jadpo's reads are current (area 6), so its configuration
+  is created with caching off (`--caching-disabled`). A Worker can't see
+  a configuration's caching, so `jadpo build` says so when it writes a
+  binding with no id, and the real deploy (chunk 8.2n) checks it.
+- **No session state.** Hyperdrive pools by transaction, so Jadpo's
+  statements are unnamed, each transaction sets its isolation level in
+  its own `BEGIN`, and leases are rows, never advisory locks, as on every
+  target.
+
 ## Entities and the `id`
 
 An entity is a stored record with a lasting identity, in its own file under
@@ -2993,6 +3034,11 @@ says: the SSL request and the host's TLS upgrade in the driver, checked
 against servers on this machine the tests start, one with a certificate
 an authority the test makes signed.
 
+Built in chunk 8.2i: **PostgreSQL through Hyperdrive**, as its section
+under Stores says, proved under workerd's Hyperdrive binding against the
+run's PostgreSQL; a direct connection's TLS through `startTls()` and its
+refused certificate proved under workerd against servers the test starts.
+
 Built in chunk 3.4: **lifecycles**, as the Lifecycle section says. Each
 lifecycle and transition is a node in the manifest (`lifecycle Todo`,
 `transition Todo.delete`, with its `when:`, whether it can refuse a record
@@ -3165,6 +3211,7 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Topic | Decision | Date |
 |---|---|---|
 | PostgreSQL over TLS | A database connection always uses TLS, checked against Mozilla's root certificates compiled in, except to this machine (a Unix socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a `Certificate` setting holding its server's private authority (Amazon RDS, Cloud SQL); a server elsewhere without TLS is reached only when the connection says so in `app.jadpo`, which the review report lists; `sslmode` in the URL is refused, since the connection decides; as area 16 decides for SMTP (Richard; built in chunk 8.1n: the authority is `authority: config.<name>`, a setting of area 19's `Certificate`, one certificate read from its PEM, trusted alone and used to this machine too but over a Unix socket; the opt-out is `tls: false`, listed in the network report, chosen as the narrowest form, a word written in source and never a setting; a local server is reached without TLS rather than offered it, since a local server's own certificate, Debian's snakeoil among them, would fail the check) | 2026-10-21 |
+| PostgreSQL through Hyperdrive | Chosen in chunk 8.2i, each reversible; no TLS from the Worker to Hyperdrive and TLS to the database left to Hyperdrive accepted by Richard (2026-10-21): on Workers a database connection's address setting's variable names a Hyperdrive binding, so a connection names its binding through `url:` and `app.jadpo` gains nothing (a text binding of that name stays a direct address); the Worker reaches Hyperdrive without TLS, since the binding's address says `sslmode=disable` and its socket offers none (verified in workerd 1.20261007.1; on Cloudflare's network an inference chunk 8.2n checks), and TLS to the database is Hyperdrive's: by default checked against the public authorities, a private `authority:` uploaded to Hyperdrive with `--sslmode verify-full`; the roadmap's TLS through `startTls()` applies to a direct connection only; caching off (`--caching-disabled`) is required and stated, since a Worker can't see it; `jadpo build` writes the binding with the id `JADPO_HYPERDRIVE_<variable>` gives, or without one, which `wrangler deploy` refuses | 2026-10-21 |
 | Layout | Carried from area 1: an entity lives in its own file under its domain's `entities/` folder; `database/` holds `identities.json` (one sorted entry per line), timestamped migration folders and `seeds/` | 2026-10-12 |
 | Keyword | Carried from area 4: a declaration with its own folder keeps its keyword (`entity`); anything in `types/` is a `type` | 2026-10-12 |
 | Field settings | Carried from area 2: a field's settings go in a block after its type, one per line, including entity facts (`unique`, `generated`, the reference); only `Input` has `optional` and `default` | 2026-10-12 |
