@@ -627,3 +627,54 @@ fn the_plan_names_a_binding_for_each_limit() {
         ("cache", 0)
     );
 }
+
+#[test]
+fn a_schedule_more_often_than_a_minute_is_refused_where_workers_runs_it() {
+    // The kiosk runs the schedules and the subscribers; the office serves
+    // the staff's sheets natively.
+    let deployables = |kiosk: &str| {
+        format!(
+            "    deployables: {{\n        kiosk: {{\n            serves: [main]\n            runs: [Trigger.subscribers, Trigger.schedules]\n{kiosk}        }}\n        office: {{\n            serves: [staff]\n            target: Target.native\n        }}\n    }}\n"
+        )
+    };
+    let every = |every: &str| {
+        format!(
+            "use cafe/actions {{ tidy }}\n\n/// Tidies up.\nschedule nightly {{\n    every: {every}\n    run: tidy()\n}}\n"
+        )
+    };
+    let found = |kiosk: &str, written: &str| {
+        let schedule = every(written);
+        problems_with(
+            &app(&deployables(kiosk), ""),
+            &[("domains/cafe/schedules/nightly.jadpo", schedule.as_str())],
+        )
+    };
+    assert_eq!(
+        found(WASM, "30s"),
+        [
+            "domains/cafe/schedules/nightly.jadpo deployable.target_unsupported: `kiosk` can't run `nightly` every 30 seconds on Workers, whose cron runs once a minute"
+        ]
+    );
+    assert_eq!(
+        found(WASM, "1s"),
+        [
+            "domains/cafe/schedules/nightly.jadpo deployable.target_unsupported: `kiosk` can't run `nightly` every second on Workers, whose cron runs once a minute"
+        ]
+    );
+    // A minute, or 60 seconds, is as often as the cron runs.
+    assert_eq!(found(WASM, "1m"), CLEAN);
+    assert_eq!(found(WASM, "60s"), CLEAN);
+    // Natively, or with no target, a server's own timer runs it.
+    assert_eq!(found(NATIVE, "30s"), CLEAN);
+    assert_eq!(found("", "30s"), CLEAN);
+    // A Worker that doesn't run the schedules doesn't reach it.
+    let elsewhere = "    deployables: {\n        kiosk: {\n            serves: [main]\n            runs: [Trigger.subscribers]\n            target: Target.wasm\n        }\n        office: {\n            serves: [staff]\n            runs: [Trigger.schedules]\n            target: Target.native\n        }\n    }\n";
+    let schedule = every("30s");
+    assert_eq!(
+        problems_with(
+            &app(elsewhere, ""),
+            &[("domains/cafe/schedules/nightly.jadpo", schedule.as_str())],
+        ),
+        CLEAN
+    );
+}

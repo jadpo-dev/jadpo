@@ -21,16 +21,22 @@
 //! ([`unserved`]).
 //!
 //! [`reaches`] follows what each deployable reaches, from the routes of
-//! the APIs it serves and the background work it runs, through every
-//! callable those call, to the connections they use; a deployable that
+//! the APIs it serves, the background work it runs and what Jadpo runs by
+//! name (chunk 8.1o3: the actions `on_first_sign_in:` and `magic_link: {
+//! send: }` name, the email templates and the provider packages' `decode:`
+//! and `encode:`), through every callable those call, to the connections
+//! they use, which is what its program holds (`jadpo_plan::Plan::
+//! for_deployable`); a deployable that
 //! declares a target is refused each one whose driver that target can't
 //! run, naming the alternative ([`target_problems`]): the disk and a
 //! service Jadpo runs (`runs:`) without `host:` on Workers, a Cloudflare
 //! queue or rate-limiting binding in a native deployable, and SMTP on port
-//! 25, which Workers blocks; and one built for Workers that serves an API
-//! needs a store its rate limits are counted in (area 16; chunk 8.2m2).
-//! Its `max_concurrent:` caps on Workers count per instance, which
-//! [`per_instance`] lists for the network report.
+//! 25, which Workers blocks; one built for Workers that serves an API
+//! needs a store its rate limits are counted in (area 16; chunk 8.2m2);
+//! and one built for Workers that runs the schedules is refused each
+//! schedule more often than once a minute, which its minute's cron can't
+//! run (chunk 8.2f). Its `max_concurrent:` caps on Workers count per
+//! instance, which [`per_instance`] lists for the network report.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -724,7 +730,8 @@ impl Via {
 /// What one deployable reaches.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Reached {
-    /// Every callable it reaches, by key.
+    /// Every callable it reaches, by key: a query or an email template
+    /// among them.
     pub callables: BTreeSet<Key>,
     /// Every connection it uses, by name, with the first way found.
     pub connections: BTreeMap<String, Via>,
@@ -733,12 +740,79 @@ pub struct Reached {
 /// What each of the app's deployables reaches, in their order.
 #[salsa::tracked(returns(ref))]
 pub fn reaches(db: &dyn Db, project: Project) -> Vec<Reached> {
-    let bodies = bodies(db, project);
+    let bodies = reachable_bodies(db, project);
     deployables(db, project)
         .list
         .iter()
         .map(|deployable| reach(db, project, deployable, &bodies))
         .collect()
+}
+
+/// What `deployable` reaches: one of the app's, or one a test makes.
+pub fn reached(db: &dyn Db, project: Project, deployable: &Deployable) -> Reached {
+    if let Some(at) = deployables(db, project)
+        .list
+        .iter()
+        .position(|declared| declared == deployable)
+        && let Some(reached) = reaches(db, project).get(at)
+    {
+        return reached.clone();
+    }
+    reach(db, project, deployable, &reachable_bodies(db, project))
+}
+
+/// Every callable's typed body, and each email template's, which a
+/// delivery renders (area 16), by key.
+fn reachable_bodies(db: &dyn Db, project: Project) -> BTreeMap<Key, Arc<Body>> {
+    let mut out = bodies(db, project);
+    for path in crate::emails::template_paths(db, project) {
+        let checked =
+            crate::types::template_body(db, project, crate::lookups::Name::new(db, path.clone()));
+        if let Some(key) = &checked.key {
+            out.insert(key.clone(), Arc::clone(&checked.body));
+        }
+    }
+    out
+}
+
+/// The callables the runtime runs by their key or number rather than
+/// because a body calls them, which a deployable that serves `serves`
+/// and runs `runs` reaches (roadmap chunk 8.1o3): the action
+/// `on_first_sign_in:` names wherever an API is served, since redeeming a
+/// magic link runs it; where subscribers run, the action `magic_link: {
+/// send: }` names and every email template, which a delivery runs; and
+/// every provider package's `decode:` and `encode:` functions, kept
+/// whole, which its codecs name by key.
+fn named_by_the_runtime(db: &dyn Db, project: Project, deployable: &Deployable) -> Vec<Key> {
+    let lookup = crate::lookups::Lookup::new(db, project);
+    let named = |name: &Option<String>| {
+        name.as_ref()
+            .and_then(|name| crate::graph::declaration_key(&lookup, name))
+    };
+    let mut out = Vec::new();
+    if deployable.serves.iter().any(|api| api != WEBHOOKS) {
+        out.extend(named(&crate::identity::first_sign_in_action(db, project).0));
+    }
+    if deployable.runs.subscribers {
+        out.extend(named(&crate::identity::sign_in_send_action(db, project).0));
+        for path in crate::emails::template_paths(db, project) {
+            let checked =
+                crate::types::template_body(db, project, crate::lookups::Name::new(db, path));
+            out.extend(checked.key.clone());
+        }
+    }
+    let operations = crate::providers::operations(db, project);
+    for decoder in &operations.decoders {
+        out.push(decoder.decode.clone());
+        out.push(decoder.encode.clone());
+    }
+    out.extend(
+        operations
+            .list
+            .iter()
+            .filter_map(|operation| operation.decode.as_ref().map(|(_, key)| key.clone())),
+    );
+    out
 }
 
 fn reach(
@@ -816,6 +890,7 @@ fn reach(
             connection(&mut out, &email, Via::Email);
         }
     }
+    roots.extend(named_by_the_runtime(db, project, deployable));
     let ai = crate::ai::settings(db, project).connection.clone();
     let files = crate::data::connections(db, project).files();
     let mut pending = roots;
@@ -1020,6 +1095,55 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 problem = problem.also(span.clone(), refusal.label);
             }
             out.push(problem.reason(refusal.reason).next(refusal.next));
+        }
+        if *target == DeployTarget::Wasm && deployable.runs.schedules {
+            out.extend(too_often(db, project, deployable, at));
+        }
+    }
+    out
+}
+
+/// How often Cloudflare's cron trigger runs a Worker at most: once a
+/// minute (area 12, "The tick").
+pub const CRON_EVERY_MS: u64 = 60_000;
+
+/// Each schedule more often than once a minute that `deployable`, built
+/// for Workers and running the schedules, would run: its tick is the
+/// minute's cron, which can't run it (area 12, decided 2026-10-19), and
+/// Jadpo has no warnings. Its error is at the schedule's `every:`, naming
+/// the schedule (chunk 8.2f).
+fn too_often(db: &dyn Db, project: Project, deployable: &Deployable, at: &Span) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for &file in project.files(db).iter() {
+        for read in crate::schedules::schedules_in(db, project, file) {
+            let Some(model) = &read.model else { continue };
+            if model.every_ms >= CRON_EVERY_MS {
+                continue;
+            }
+            let how_often = match model.every_ms / 1000 {
+                1 => "every second".to_string(),
+                seconds => format!("every {seconds} seconds"),
+            };
+            let (name, schedule) = (&deployable.name, &model.name);
+            out.push(
+                Diagnostic::new(
+                    &rule::DEPLOYABLE_TARGET_UNSUPPORTED,
+                    format!(
+                        "`{name}` can't run `{schedule}` {how_often} on Workers, whose cron runs once a minute"
+                    ),
+                )
+                .at(
+                    read.every.clone().unwrap_or_else(|| read.span.clone()),
+                    "more often than once a minute",
+                )
+                .also(at.clone(), "built for Workers")
+                .reason(format!(
+                    "A Worker ticks when Cloudflare's cron trigger runs it, once a minute at most, so a schedule due {how_often} would run late; `{name}` runs `{schedule}` because its `runs:` lists `Trigger.schedules`."
+                ))
+                .next(format!(
+                    "Give `{schedule}` `every: 1m` or longer, or run `Trigger.schedules` in a `Target.native` deployable"
+                )),
+            );
         }
     }
     out

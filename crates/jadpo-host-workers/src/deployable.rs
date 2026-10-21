@@ -27,9 +27,16 @@
 //! 500 is logged with its `.jadpo` frames. Every event is one JSON line
 //! on the console, which Workers Logs reads, carrying the stamp.
 //!
-//! The cron's `scheduled` handler is chunk 8.2f's and the queue's 8.2k's;
-//! a streamed answer is read whole and sent at its end until chunk 8.2h
-//! sends it as a `ReadableStream`.
+//! [`scheduled`] is the minute's cron trigger (chunk 8.2f): it starts the
+//! isolate as `fetch` does, and once its stores are current runs the
+//! runtime's tick through `Serving` on a host of its own, whose ticks
+//! share the cron's 15 minutes. While the program ticks more often than
+//! once a minute, as one receiving a queue does every 10 seconds, it ticks
+//! again at each such mark of the cron's minute, one tick after another,
+//! and ends with the minute, the next minute's cron going on from there.
+//!
+//! The queue's handler is chunk 8.2k's; a streamed answer is read whole
+//! and sent at its end until chunk 8.2h sends it as a `ReadableStream`.
 
 use std::cell::{Cell, OnceCell};
 use std::fmt;
@@ -86,6 +93,22 @@ pub fn fetch(deployable: &Deployable, request: JsValue, env: JsValue, ctx: JsVal
     .into()
 }
 
+/// The Worker's `scheduled` for `deployable`: a promise that settles once
+/// the run of the cron trigger `controller` stands for has ticked.
+pub fn scheduled(
+    deployable: &Deployable,
+    controller: JsValue,
+    env: JsValue,
+    ctx: JsValue,
+) -> JsValue {
+    let deployable = *deployable;
+    wasm_bindgen_futures::future_to_promise(async move {
+        cron(&deployable, &controller, env, ctx).await;
+        Ok(JsValue::UNDEFINED)
+    })
+    .into()
+}
+
 /// The runtime's answer to `request`, on a host of its own.
 async fn respond(
     deployable: &Deployable,
@@ -100,26 +123,102 @@ async fn respond(
     let host = host
         .with_drivers(drivers(&isolate.program))
         .with_rate_limits(isolate.rate_limits.clone());
-    if !isolate.current.get() {
-        if !stores_current(deployable, &host, &isolate.log).await {
-            return http::unavailable(&host);
-        }
-        if !isolate.current.replace(true) {
-            isolate
-                .log
-                .event("runtime.started", [("unbuilt", unbuilt(&host))]);
-        }
+    if !ready(deployable, &host, &isolate).await {
+        return http::unavailable(&host);
     }
     let Some(request) = read(request).await else {
         return http::unreadable(&host);
     };
+    serving(&isolate, Rc::new(host)).handle(&request).await
+}
+
+/// One run of the cron trigger, on a host of its own: the runtime's tick
+/// once the isolate has started and its stores are current, then again at
+/// each mark of the cron's minute while the program ticks more often than
+/// once a minute ([`next_tick`]). What stops it is logged as a request
+/// logs it, and nothing ticks.
+async fn cron(deployable: &Deployable, controller: &JsValue, env: JsValue, ctx: JsValue) {
+    let host = WorkersHost::new(env, ctx).for_cron();
+    let Some(isolate) = isolate(deployable, &host) else {
+        return;
+    };
+    let host = host.with_drivers(drivers(&isolate.program));
+    if !ready(deployable, &host, &isolate).await {
+        return;
+    }
+    let host = Rc::new(host);
+    let serving = serving(&isolate, Rc::clone(&host));
+    let Some(minute) = scheduled_time(controller).or_else(|| host.now_ms()) else {
+        return;
+    };
+    let every = serving.tick_every_ms();
+    loop {
+        let _ = serving.tick().await;
+        let Some(now) = host.now_ms() else {
+            return;
+        };
+        let Some(next) = next_tick(minute, now, every) else {
+            return;
+        };
+        let wait = u64::try_from(next.saturating_sub(now)).unwrap_or(0);
+        host.sleep(wait).await;
+    }
+}
+
+/// The cron trigger's minute, in milliseconds: how often it runs.
+const MINUTE_MS: i64 = 60_000;
+
+/// When the next tick of the cron for the minute starting at `minute`
+/// starts, the last ending at `now`, for a program ticking every
+/// `every_ms`: the first whole `every_ms` after `minute` past `now`, or
+/// `None` once that is the next minute's, whose own cron ticks then.
+fn next_tick(minute: i64, now: i64, every_ms: u64) -> Option<i64> {
+    let every = i64::try_from(every_ms).ok().filter(|&every| every > 0)?;
+    let marks = now
+        .saturating_sub(minute)
+        .div_euclid(every)
+        .saturating_add(1);
+    let next = minute.saturating_add(marks.saturating_mul(every));
+    (next < minute.saturating_add(MINUTE_MS)).then_some(next)
+}
+
+/// The time the cron trigger ran for, its `scheduledTime`: a whole minute,
+/// in milliseconds since 1970.
+fn scheduled_time(controller: &JsValue) -> Option<i64> {
+    let time = js_sys::Reflect::get(controller, &JsValue::from_str("scheduledTime"))
+        .ok()?
+        .as_f64()?;
+    // A whole number of milliseconds, well inside an `i64`.
+    (time.is_finite() && time >= 0.0).then_some(time as i64)
+}
+
+/// Whether the isolate's stores are current, comparing them first through
+/// `host`'s databases until they have been; `runtime.started` is logged
+/// the first time they are.
+async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -> bool {
+    if isolate.current.get() {
+        return true;
+    }
+    if !stores_current(deployable, host, &isolate.log).await {
+        return false;
+    }
+    if !isolate.current.replace(true) {
+        isolate
+            .log
+            .event("runtime.started", [("unbuilt", unbuilt(host))]);
+    }
+    true
+}
+
+/// The isolate's program served on `host`, sharing the isolate's
+/// `Worker`, each fault behind a 500 logged.
+fn serving(isolate: &Isolate, host: Rc<WorkersHost>) -> Serving {
     let program = Rc::clone(&isolate.program);
-    let serving = Serving::new(Rc::new(host), move || -> Rc<dyn Executor> {
+    Serving::new(host, move || -> Rc<dyn Executor> {
         Rc::clone(&program) as Rc<dyn Executor>
     })
     .sharing(Rc::clone(&isolate.worker))
-    .observed_by(Rc::new(Faults(isolate.log)));
-    serving.handle(&request).await
+    .observed_by(Rc::new(Faults(isolate.log)))
 }
 
 /// The isolate's start, made at its first request.
@@ -344,6 +443,35 @@ async fn write(mut response: Response) -> Result<JsValue, JsValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A cron ticks once for a program that ticks each minute; for one
+    /// that ticks every 10 seconds it ticks at each mark of its minute
+    /// after the last tick ended, never twice for one mark, and ends with
+    /// the minute.
+    #[test]
+    fn a_cron_ticks_at_each_mark_of_its_minute() {
+        let minute = 1_792_486_800_000;
+        assert_eq!(next_tick(minute, minute + 400, 60_000), None);
+        assert_eq!(
+            next_tick(minute, minute + 400, 10_000),
+            Some(minute + 10_000)
+        );
+        // A tick ending on a mark waits for the next.
+        assert_eq!(
+            next_tick(minute, minute + 10_000, 10_000),
+            Some(minute + 20_000)
+        );
+        // A long tick passes marks, which are not made up.
+        assert_eq!(
+            next_tick(minute, minute + 34_500, 10_000),
+            Some(minute + 40_000)
+        );
+        assert_eq!(next_tick(minute, minute + 50_000, 10_000), None);
+        assert_eq!(next_tick(minute, minute + 3 * 60_000, 10_000), None);
+        // A cron run early in its minute starts at the minute's first mark.
+        assert_eq!(next_tick(minute, minute - 2_000, 10_000), Some(minute));
+        assert_eq!(next_tick(minute, minute, 0), None);
+    }
 
     #[test]
     fn a_url_is_its_path_and_query() {

@@ -11,11 +11,14 @@ use jadpo_std::connections::{Connection, ConnectionDriver, DatabaseTls, SmtpServ
 use jadpo_std::email::SmtpHost;
 use jadpo_std::receiving::CloudflareQueue;
 
-/// The table, each setting read through `setting`.
+/// The table of the connections `keeps` keeps, by name and kind: every
+/// one but in a deployable's plan (chunk 8.1o3). Each setting is read
+/// through `setting`.
 pub(crate) fn table(
     db: &dyn Db,
     project: Project,
     setting: &dyn Fn(&str) -> Option<u32>,
+    keeps: &dyn Fn(&str, &ConnectionKind) -> bool,
 ) -> Vec<Connection> {
     let declared = jadpo_check::data::connections(db, project);
     let mut kinds: Vec<(String, ConnectionKind)> = declared.declared.clone();
@@ -38,6 +41,7 @@ pub(crate) fn table(
     let packages = &jadpo_check::connections::package_connections(db, project).connections;
     let mut table: Vec<Connection> = kinds
         .iter()
+        .filter(|(name, kind)| keeps(name, kind))
         .filter_map(|(name, kind)| {
             let driver = match kind {
                 ConnectionKind::Postgres => ConnectionDriver::Postgres {

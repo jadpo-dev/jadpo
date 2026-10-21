@@ -206,6 +206,8 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
         "wasm_bindgen = jadpo_host_workers::wasm_bindgen",
         "pub fn fetch(request: JsValue, env: JsValue, ctx: JsValue) -> JsValue",
         "jadpo_host_workers::deployable::fetch(&DEPLOYABLE, request, env, ctx)",
+        "pub fn scheduled(controller: JsValue, env: JsValue, ctx: JsValue) -> JsValue",
+        "jadpo_host_workers::deployable::scheduled(&DEPLOYABLE, controller, env, ctx)",
         "program: jadpo_program::program",
         "build: \"b_3c41d07a9e12\"",
         "deployable: \"kiosk\"",
@@ -239,16 +241,19 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     let shim = workers::shim("back_office");
     for held in [
         "import module from \"./back_office.wasm\";",
-        "import { initSync, fetch as handleFetch } from \"./back_office.js\";",
+        "import { initSync, fetch as handleFetch, scheduled as handleScheduled } from \"./back_office.js\";",
         "initSync({ module });",
         "export default {",
         "return handleFetch(request, env, ctx);",
+        "scheduled(controller, env, ctx) {",
+        "return handleScheduled(controller, env, ctx);",
     ] {
         assert!(shim.contains(held), "{held} isn't in:\n{shim}");
     }
     let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
         "back_office",
         &["DATABASE_URL".to_string(), "MAIL_SENDER".to_string()],
+        true,
     ))
     .expect("JSON");
     assert_eq!(
@@ -264,13 +269,16 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
             ],
             "secrets": { "required": ["DATABASE_URL", "MAIL_SENDER"] },
+            "triggers": { "crons": ["* * * * *"] },
         })
     );
-    // With no setting to give, there is no secret to require.
+    // With no setting to give, there is no secret to require, and with no
+    // store for its tick to keep or sweep, no cron to run it.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[])).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], false)).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
+    assert!(bare.get("triggers").is_none(), "{bare}");
 }
 
 /// Each limit counted in Cloudflare's rate-limiting binding is a binding
@@ -282,7 +290,7 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
             .expect("numbered");
     let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
-        workers::wrangler("web", &["DATABASE_URL".to_string()]),
+        workers::wrangler("web", &["DATABASE_URL".to_string()], true),
         &bindings,
     ))
     .expect("JSON");
@@ -305,6 +313,10 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         wrangler["secrets"]["required"],
         serde_json::json!(["DATABASE_URL"])
     );
-    let plain = workers::wrangler("web", &[]);
+    assert_eq!(
+        wrangler["triggers"]["crons"],
+        serde_json::json!(["* * * * *"])
+    );
+    let plain = workers::wrangler("web", &[], false);
     assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }

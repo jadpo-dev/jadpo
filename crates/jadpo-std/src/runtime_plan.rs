@@ -168,7 +168,7 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 9\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 10\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding, then, with the `testing` feature, its dev
@@ -216,6 +216,32 @@ impl RuntimePlan {
         }
         #[cfg(not(feature = "testing"))]
         Err(Unreadable::Testing)
+    }
+
+    /// The settings the runtime reads by name rather than by number
+    /// (roadmap chunk 8.1o3): each way of signing in's signing key and the
+    /// browser session's origin (area 8), and how many proxies are in
+    /// front when a setting says (area 10, "Client addresses").
+    pub fn setting_names(&self) -> Vec<&str> {
+        let mut out = Vec::new();
+        if let Some(identity) = &self.routes.identity {
+            out.extend(
+                identity
+                    .signing_keys
+                    .iter()
+                    .map(|(_, setting)| setting.as_str()),
+            );
+            out.extend(identity.origin.as_deref());
+        }
+        if let Some(crate::http::Hops::Setting(name)) = self
+            .routes
+            .client_address
+            .as_ref()
+            .and_then(|plan| plan.hops.as_ref())
+        {
+            out.push(name.as_str());
+        }
+        out
     }
 
     /// The number of the callable with identity key `key`: a test's
