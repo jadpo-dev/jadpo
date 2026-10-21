@@ -1138,6 +1138,14 @@ impl<'p> Ctx<'p> {
         self.deadline.is_some()
     }
 
+    /// When, on the host's monotonic clock, the invocation's time is up:
+    /// the request's deadline, or what background work's budget leaves it
+    /// ([`Ctx::set_deadline`]); `None` with none. A call never waits to be
+    /// sent again past it (chunk 7.9d).
+    pub(crate) fn deadline_at(&self) -> Option<u64> {
+        self.deadline
+    }
+
     /// Whether the request's deadline has passed: what an executor checks
     /// as it runs work that never waits, and the route once its work ends
     /// (area 7, "Time limits").

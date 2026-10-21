@@ -3,11 +3,12 @@
 //! `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` call's site.
 //!
 //! [`embed`] asks the model the call's `model:` names, through the
-//! connection `ai:` names, for each text's embedding, on the capability
-//! seam ([`crate::effects::exchange`]) as `ai.generate` does: refused in an
-//! open transaction, logged without its values, recorded and replayed
-//! with the other effects, and its answer kept by its step and request
-//! for a rerun. Each vector is read through `V`'s codec, `json.read`'s
+//! connection `ai:` names, for each text's embedding, on the one
+//! outside-call path ([`crate::outside`]) as `ai.generate` does: refused
+//! in an open transaction, logged without its values, recorded and
+//! replayed with the other effects, held to its connection's
+//! `max_concurrent:`, and its answer kept by its step and request for a
+//! rerun. Each vector is read through `V`'s codec, `json.read`'s
 //! decoding, so one of another length, or with no direction where `V`
 //! compares by cosine, never becomes a `V`.
 //!
@@ -35,9 +36,9 @@ use jadpo_value::Value;
 
 use crate::Ctx;
 use crate::FaultKind;
-use crate::ai::{Ai, CONTEXT_LENGTH_EXCEEDED, Done, Kept, Reused};
+use crate::ai::{Ai, CONTEXT_LENGTH_EXCEEDED, Done, Kept};
 use crate::capability::{Answer, Call, Source};
-use crate::effects::Unanswered;
+use crate::outside::{Asking, Comes, Form, Rerun, Retry, Sending};
 use crate::provider::{Reading, Request};
 
 /// The settings a call reads, by number, for its model and its address.
@@ -215,52 +216,41 @@ pub async fn embed(
     // Given back on a rerun: from the record of the action's steps, or
     // from the first run's answers kept by the invocation.
     let name = format!("{}.{OPERATION}", ai.plan.connection);
-    let stepped = crate::steps::step(
+    let comes = crate::outside::comes_from(
         ctx,
-        crate::steps::Proposed {
-            operation: &name,
-            fields: vec![("request".to_string(), body.clone().into_bytes())],
-            repeat: Repeat::Safe,
-            changes: false,
-            window_ms: None,
-            did_nothing: &[],
+        Asking {
+            step: Some(crate::steps::Proposed {
+                operation: &name,
+                fields: vec![("request".to_string(), body.clone().into_bytes())],
+                repeat: Repeat::Safe,
+                changes: false,
+                window_ms: None,
+                did_nothing: &[],
+            }),
+            rerun: Some(Rerun::Answer(digest)),
         },
     )
     .await;
-    let step_at = match stepped {
-        Ok(crate::steps::Stepped::Untracked) => None,
-        Ok(crate::steps::Stepped::Send(at)) => Some(at),
-        Ok(crate::steps::Stepped::Replay(answered)) => {
-            let kept = match answered {
-                crate::steps::Answered::Wire(text) => Kept::Answer(text),
-                crate::steps::Answered::Failed(word) => match Kept::from_word(&word) {
-                    Some(kept) => kept,
-                    None => {
-                        return Done::Fault(FaultKind::Defect(
-                            "a recorded answer of no condition".into(),
-                        ));
-                    }
-                },
-                crate::steps::Answered::Done => {
-                    return Done::Fault(FaultKind::Defect("a recorded answer with nothing".into()));
-                }
+    let place = match comes {
+        Ok(Comes::Send(place)) => place,
+        Ok(Comes::Recorded { answered, at }) => {
+            let kept = match Kept::recorded(answered) {
+                Ok(kept) => kept,
+                Err(what) => return Done::Fault(FaultKind::Defect(what.into())),
             };
+            // Logged as the step it is (chunk 7.5f).
+            let mut made = made;
+            made.step = at;
             return replayed(ctx, ai, site, texts.len(), made, kept);
         }
-        Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
-        Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
-        Err(Unanswered::Failed(_)) => return Done::Failed(Box::new(crate::unavailable())),
+        Ok(Comes::Reused(kept)) => return replayed(ctx, ai, site, texts.len(), made, kept),
+        Ok(Comes::Opened(_)) => {
+            return Done::Fault(FaultKind::Defect(
+                "an embedding given back as a stream".into(),
+            ));
+        }
+        Err(refused) => return crate::ai::unanswered(refused),
     };
-    let step = if step_at.is_none() {
-        ctx.next_step()
-    } else {
-        None
-    };
-    if let Some(step) = step
-        && let Some(kept) = ctx.reused(step, &digest)
-    {
-        return replayed(ctx, ai, site, texts.len(), made, kept);
-    }
     // What the call may use, taken from every limit before it is sent:
     // its texts, since an embedding answers with no tokens of its own
     // (area 21, "Budgets"; chunk 5.5v5).
@@ -290,16 +280,30 @@ pub async fn embed(
     };
     let began = ctx.host().monotonic_ms();
     let mut call = made.clone();
-    call.step = step_at;
+    call.step = place.step;
     // The sends a provider's error asked for again, each charged what it
     // sent (chunk 7.9c).
     let mut sent_again = crate::ai_budget::Used::default();
-    let resend = crate::ai_budget::Resend {
-        taken: &mut taken,
-        used: &mut sent_again,
-        input,
+    let logged: crate::outside::Log<'_> =
+        &|ctx, call, answer| crate::ai::log(ctx, call, None, answer);
+    let sending = Sending {
+        retry: Retry::timed(began, site.timeout_ms),
+        form: Form::Whole,
+        max_concurrent: crate::ai::max_concurrent_of(ai),
+        resend: Some(crate::ai_budget::Resend {
+            taken: &mut taken,
+            used: &mut sent_again,
+            input,
+        }),
+        log: Some(logged),
     };
-    let sent = crate::ai::sent(ctx, call, request, (began, site.timeout_ms), None, resend).await;
+    let sent = crate::outside::send(ctx, &call.with_request(request), sending)
+        .await
+        .map(|sent| {
+            let source = sent.source;
+            (sent.whole(), source)
+        })
+        .map_err(crate::ai::unanswered);
     let texts_used = |tokens: u64| {
         let mut used = texts_used(tokens);
         used.add(sent_again);
@@ -365,20 +369,8 @@ pub async fn embed(
         }
     };
     let done = read(ai, site, texts.len(), &kept);
-    if let Some(at) = step_at {
-        let answered = match &kept {
-            Kept::Answer(text) => crate::steps::Answered::Wire(text.clone()),
-            condition => crate::steps::Answered::Failed(condition.word().unwrap_or_default()),
-        };
-        match crate::steps::answered(ctx, at, answered).await {
-            Ok(()) => {}
-            Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
-            Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
-            Err(Unanswered::Failed(_)) => return Done::Failed(Box::new(crate::unavailable())),
-        }
-    }
-    if let Some(step) = step {
-        ctx.keep_reused(Reused { step, digest, kept });
+    if let Err(refused) = crate::outside::keep(ctx, place, kept).await {
+        return crate::ai::unanswered(refused);
     }
     done
 }
@@ -402,15 +394,7 @@ fn replayed(
     made: Call,
     kept: Kept,
 ) -> Done {
-    let now = ctx.now();
-    let answer = match &kept {
-        Kept::Answer(text) => Answer::Wire(text.clone()),
-        Kept::Condition(rule) => Answer::Failed(rule.word().to_string()),
-        Kept::Malformed(_) => Answer::Failed(RuleKey::Malformed.word().to_string()),
-    };
-    let capabilities = ctx.capabilities_mut();
-    let place = capabilities.sent(&made, Source::Replayed, now);
-    capabilities.ended(place, &answer, Some(0));
+    crate::outside::given_back(ctx, &made, &kept.logged());
     read(ai, site, count, &kept)
 }
 

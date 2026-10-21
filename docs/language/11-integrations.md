@@ -1830,9 +1830,10 @@ public type Parcel = Object {
 - **How long it waits between.** 200 milliseconds before the second
   attempt, doubled before each after it, each wait drawn evenly from zero
   to that (full jitter); a provider's `Retry-After` in seconds instead,
-  where it gives one. A wait that would end after `within:` ends the
-  retrying, and the last answer stands. Each attempt is logged as a call
-  of its own.
+  where it gives one. A wait that would end after `within:`, or after
+  what is left of the route's deadline or of background work's budget
+  (chunk 7.9d), ends the retrying, and the last answer stands. Each
+  attempt is logged as a call of its own.
 - **`timed_out:`** maps the runtime's `timed_out` (area 4) on a call of
   an operation that changes nothing or is `idempotent: true`, to one of
   the app's `unavailable` failures, with `timed_out` as its cause, once
@@ -3263,7 +3264,7 @@ Built in chunk 7.5b, the record, replay and key windows, as area 12's
 `window:`, `replays_failures:` and `new_key_on:` are read into the plan,
 an operation's `changes:` marks a step, and the provider call records,
 replays and keys each step through the capability seam
-(`effects::exchange` writes a step before it is sent). Choices in area
+(the seam's exchange writes a step before it is sent). Choices in area
 12's decisions table, "The record, chosen in chunk 7.5b".
 
 Built in chunk 7.5c, the operator's side, as area 12's "What an operator

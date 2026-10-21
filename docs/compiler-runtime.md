@@ -2163,8 +2163,11 @@ the same traits.
 
 **The capability seam** (chunk 7.0c, from the Phase 6 architecture
 review; area 16, "Chosen in chunk 7.0c"). Every call that leaves the
-process goes through `jadpo_runtime::effects::call(ctx, call)`, which
-both executors call: a `capability::Call` (its connection, operation,
+process goes through one exchange, `jadpo_runtime::outside::exchange`
+(since chunk 7.9d, "One outside-call path" below), which
+`effects::call(ctx, call)`, what both executors call for a store's file,
+an email or a capability's delivery, reaches as every other call kind
+does: a `capability::Call` (its connection, operation,
 input, and `Repeat`: `Safe`, `Keyed` or `Unkeyed`) is refused with
 `FaultKind::CallInTransaction` while a transaction that has written is
 open (`Ctx::transaction_open`), having first closed one that has only
@@ -2207,6 +2210,49 @@ and the work it is given kept), which replaced twenty hand-written hosts
 in nineteen of `crates/jadpo-cli/tests`' files; the live tests of
 `capability_deliveries.rs` prove the seam with a test capability, the
 `mail` connection's fake.
+
+**One outside-call path** (chunk 7.9d, from the Phase 7 architecture
+review; area 12, "One outside-call path, chosen in chunk 7.9d"). Every
+call kind (a provider's operation, `ai.generate`, `ai.embed`,
+`ai.stream`, a store's file, an email, a capability's delivery) is
+decided and sent by `jadpo_runtime::outside`, and each kind's module
+only builds its request and decodes its answer. `outside::comes_from`
+says, before anything is sent, where the answer comes from
+(`outside::Comes`): the action's record of its steps (`steps::step`
+with the call's `steps::Proposed`; `Comes::Recorded`, logged as the step
+it is), an `ai` call's answer kept by an earlier run for area 6's rerun
+(`Rerun::Answer`, by `Ctx::next_step` and the request's digest;
+`Comes::Reused`), an `ai.stream`'s open stream (`Rerun::Stream`;
+`Comes::Opened`), or a send at its `outside::Place` (its step of the
+record, its place for a rerun); `outside::given_back` logs a call answered
+without going out, from any of them or a replayed run's tape, and
+`outside::keep` keeps an `ai` call's answer where it is given back
+from. `outside::send` is the one retrying send: each send through
+`outside::exchange`, and again while that is safe (one that never left or
+that the provider said did nothing; one that may have acted only when it
+isn't `Unkeyed`) and its `outside::Retry` allows: a provider's `retry:`
+(`Retry::of`), an `ai` call's `jadpo_std::ai::SENDS` within its
+`timeout:`, each send given what is left of it as its timeout and none
+made once none is (`Retry::timed`), or once (`Retry::ONCE`, a store's
+file, an email, a capability's delivery). Its waits are
+`provider::retry_wait`'s, never past what is left of the window nor of
+the invocation's time, `Ctx::deadline_at` (the route's deadline, or
+background work's budget less what it keeps back, as
+`Ctx::set_deadline` set it): a wait that wouldn't end within both ends
+the sending and the last answer stands. An `ai` call's send again first
+takes what it sends from its limits (`Sending::resend`, chunk 7.9c), and
+each of its sends goes to the development call log as it is answered
+(`Sending::log`). `outside::exchange` is one send, its answer asked for
+whole or as it comes (`outside::Form`, `Capability::call` or
+`Capability::stream`): the snapshot closed and an open transaction
+refused, a replayed run's tape read, the driver found, then one of the
+connection's `max_concurrent:` slots taken (`Host::slots`), the step
+written (`steps::sending`), the driver asked, the call logged, the slot
+given back once answered (a stream's once its answer starts to come), and
+`jadpo test`'s crash after a step's send. The cap is the provider plan's
+`ConnectionPlan::max_concurrent`, for a provider operation's call and, where
+a package fills `ai`, for the `ai` calls through its connection
+(`ai::max_concurrent_of`).
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -2287,7 +2333,7 @@ clock at the record's first start; each rerun of the body rewinds it
 `steps::step` with their operation and each top-level field of the
 request: untracked, a recorded answer to replay (logged as
 `Source::Replayed`), or a place to send at, whose row
-`effects::exchange` writes (`steps::sending`) before the driver is
+`outside::exchange` writes (`steps::sending`) before the driver is
 asked; the answer is kept sealed after (`steps::answered`), the
 provider's `reused:` code and a request that differs are
 `FaultKind::Diverged`, and a step in doubt goes again under its key only
@@ -2333,7 +2379,7 @@ path, the query or the body, adds the credential and, for a keyed call,
 the derived key (`provider::key`, from the invocation's `CallKey`, which
 the HTTP component and the runner set, and its step, counted across the
 invocation and taken again by a rerun), and sends a `Call` carrying the
-`provider::Request` through `effects::send`. The package driver
+`provider::Request` through `outside::send`. The package driver
 (`jadpo_drivers::package::JsonHttp`, feature `package`) sends it through
 its host's `Fetch` and classifies the answer (`provider::classify`):
 `Answer::Wire`, the answer as sent, which a recording keeps, or the
@@ -2418,7 +2464,7 @@ connection and models as `Plan::ai`. `jadpo_runtime::ai::generate`, which
 both executors call, renders the prompt as `prompts.render` does, builds
 OpenAI's Chat Completions request with the schema cut for a strict mode
 (`ai::strict`) or added to the instructions (`ai::with_schema`), sends
-each attempt through `effects::exchange` as a `Call` whose `attempt`
+each attempt through `outside::send` as a `Call` whose `attempt`
 counts its repairs, reads the completion, decodes the content through the
 answer's codec (`Codecs::read_member` for a wrapped one), and gives
 `Done::Broke` for a condition, which the interpreter raises as a
@@ -2437,7 +2483,8 @@ answer"; area 21, "Chosen in chunk 5.5v6"). `ai.stream` is checked in
 lowered to `Callee::Stream` and decoded to a `jadpo_std::ai::StreamSite`;
 a route whose output is an `AiStream` (`routes::streams`) is planned with
 `RoutePlan::stream` and no output codec. `jadpo_runtime::stream::stream`
-sends the request through its own seam (`Capability::stream`, which gives
+sends the request through the one exchange, asked for as it comes
+(`outside::Form::Streamed`: `Capability::stream`, which gives
 `Streamed::Whole` or `Streamed::Coming`, a body read a `Chunk` at a time),
 reads OpenAI's `chat.completion.chunk` events until the first piece, and
 keeps the open answer on the invocation (`Ctx::keep_stream`), the
@@ -2462,7 +2509,7 @@ conditions, lowered to `Callee::Embed` with the model, timeout and the
 vector type's dimensions; the plan decodes the site to a
 `jadpo_std::embed::EmbedSite` (the vector type's JSON-table number).
 `jadpo_runtime::embed::embed` sends OpenAI's embeddings request through
-`ai::sent`, as `generate` sends its attempts, reads each vector through
+`outside::send`, as `generate` sends its attempts, reads each vector through
 the type's codec, and keeps the answer for a rerun and as a step as
 `generate` does; on `Answer::Generated`, the `ai` fake's default, it makes
 each vector from the text's SHA-256 and `Env::seed` (`embed::seeded`).

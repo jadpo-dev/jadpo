@@ -4,7 +4,8 @@
 //! sends once the route's action has committed.
 //!
 //! [`stream`] renders the prompt as `ai.generate` does and asks the model
-//! through the connection `ai:` names, on the capability seam, for the
+//! through the connection `ai:` names, on the one outside-call path
+//! ([`crate::outside`]) as every call is, asked for as it comes, for the
 //! answer as OpenAI's Chat Completions API streams it (`"stream": true`,
 //! server-sent events of `chat.completion.chunk`s). It reads until the
 //! first piece of text comes: before it, the call ends in one of its four
@@ -37,7 +38,7 @@ use jadpo_value::Value;
 
 use crate::ai::{Ai, Done};
 use crate::capability::{Answer, Call, Source};
-use crate::effects::Unanswered;
+use crate::outside::{Asking, Comes, Form, Rerun, Retry, Sending};
 use crate::provider::{Reading, Request};
 use crate::race::{First, race};
 use crate::{Ctx, FaultKind, Host, LocalFuture};
@@ -785,18 +786,29 @@ pub async fn stream(
     };
     let body = request.body.clone().unwrap_or_default();
     let digest = jadpo_value::hash::sha256(body.as_bytes());
-    let step = ctx.next_step();
     // An action run again after a concurrent change is given the stream
-    // its first run opened, which nothing has read from yet.
-    if let Some(step) = step
-        && let Some(number) = ctx.reused_stream(step, &digest)
-    {
-        let now = ctx.now();
-        let capabilities = ctx.capabilities_mut();
-        let place = capabilities.sent(&made, Source::Replayed, now);
-        capabilities.ended(place, &Answer::Wire(Rc::from("")), Some(0));
-        return Done::Value(ai_stream(number));
-    }
+    // its first run opened, which nothing has read from yet. A stream is
+    // never a step of the action's record: the route reads it once the
+    // action has ended.
+    let comes = crate::outside::comes_from(
+        ctx,
+        Asking {
+            step: None,
+            rerun: Some(Rerun::Stream(digest)),
+        },
+    )
+    .await;
+    let place = match comes {
+        Ok(Comes::Send(place)) => place,
+        Ok(Comes::Opened(number)) => {
+            crate::outside::given_back(ctx, &made, &Answer::Wire(Rc::from("")));
+            return Done::Value(ai_stream(number));
+        }
+        Ok(Comes::Recorded { .. } | Comes::Reused(_)) => {
+            return defect("a stream given back as a whole answer");
+        }
+        Err(refused) => return crate::ai::unanswered(refused),
+    };
     // What the call may use, taken from every limit before it is sent
     // and charged whole, since what a stream used is never read from it
     // (area 21, "Budgets"; chunk 5.5v5).
@@ -834,16 +846,27 @@ pub async fn stream(
         output: u64::from(site.max_output),
         cached: 0,
     };
-    let resend = crate::ai_budget::Resend {
-        taken: &mut taken,
-        used: &mut used,
-        input,
+    let logged: crate::outside::Log<'_> =
+        &|ctx, call, answer| crate::ai::log(ctx, call, None, answer);
+    // Sent again while the provider couldn't be reached or asked for it
+    // later, until its answer starts to come: nothing has reached the
+    // client yet, so asking again is safe.
+    let sending = Sending {
+        retry: Retry::timed(began, site.timeout_ms),
+        form: Form::Streamed,
+        max_concurrent: crate::ai::max_concurrent_of(ai),
+        resend: Some(crate::ai_budget::Resend {
+            taken: &mut taken,
+            used: &mut used,
+            input,
+        }),
+        log: Some(logged),
     };
-    let opened = opened(ctx, made, &request, began, site.timeout_ms, resend).await;
+    let opened = crate::outside::send(ctx, &made.with_request(request), sending).await;
     crate::ai_budget::debit(ctx, taken, used).await;
     let (opened, source) = match opened {
-        Ok(opened) => opened,
-        Err(done) => return done,
+        Ok(sent) => (sent.answer, sent.source),
+        Err(refused) => return crate::ai::unanswered(refused),
     };
     // A fake answers in the built-in driver's own form, whatever the
     // connection; the package's provider as its `stream:` says.
@@ -876,7 +899,7 @@ pub async fn stream(
         Some(_) => return Done::Failed(Box::new(crate::unavailable())),
     }
     let number = ctx.keep_stream(OpenStream {
-        step,
+        step: place.rerun.map(|(step, _)| step),
         digest,
         events: Some(Box::new(reply)),
     });
@@ -912,140 +935,6 @@ fn request_body(model: &str, messages: &[(String, String)], max_output: u32) -> 
     body.insert("max_tokens".into(), max_output.into());
     body.insert("stream".into(), true.into());
     serde_json::Value::Object(body).to_string()
-}
-
-/// Sends the request through the capability seam, and again while the
-/// provider couldn't be reached or asked for it later, as long as the
-/// call's `timeout:` lasts, until its answer starts to come: nothing has
-/// reached the client yet, so asking again is safe. Each send again takes
-/// what it sends from the call's limits first, as `ai.generate`'s do
-/// ([`crate::ai::sent`]).
-async fn opened(
-    ctx: &mut Ctx<'_>,
-    made: Call,
-    asked: &Request,
-    began: Option<u64>,
-    timeout_ms: u64,
-    resend: crate::ai_budget::Resend<'_>,
-) -> Result<(Streamed, Source), Done> {
-    let host = ctx.host();
-    let mut sends = 1;
-    let mut unanswered: Option<(Streamed, Source)> = None;
-    loop {
-        let spent = match (began, host.monotonic_ms()) {
-            (Some(began), Some(now)) => now.saturating_sub(began),
-            _ => 0,
-        };
-        let left = timeout_ms.saturating_sub(spent);
-        if left == 0 {
-            return Ok((Streamed::Whole(Answer::TimedOut), Source::Live));
-        }
-        if let Some((streamed, source)) = unanswered.take() {
-            if !crate::ai_budget::top_up(ctx, resend.taken, resend.input).await {
-                return Ok((streamed, source));
-            }
-            resend.used.add(crate::ai_budget::Used {
-                input: resend.input,
-                ..Default::default()
-            });
-        }
-        let mut request = asked.clone();
-        request.timeout_ms = left;
-        let url = request.url.clone();
-        let body = request.body.clone().unwrap_or_default();
-        let call = made.clone().with_request(request);
-        let streamed = match exchange(ctx, call.clone()).await {
-            Ok(streamed) => streamed,
-            Err(Unanswered::Failure(failure)) => return Err(Done::Failed(failure)),
-            Err(Unanswered::Fault(kind)) => return Err(Done::Fault(kind)),
-            Err(Unanswered::Failed(_)) => return Err(Done::Failed(Box::new(crate::unavailable()))),
-        };
-        if ctx.host().call_log().is_some() {
-            let answer = match &streamed {
-                Streamed::Whole(answer) => answer.clone(),
-                Streamed::Coming(_) => Answer::Unknown,
-            };
-            crate::ai::log(ctx, &call, (&url, &body, None), &answer);
-        }
-        let source = ctx
-            .capabilities()
-            .calls()
-            .last()
-            .map_or(Source::Live, |logged| logged.source);
-        let later = match &streamed {
-            Streamed::Whole(Answer::Unavailable | Answer::Unknown) => None,
-            Streamed::Whole(Answer::RetryAfter(millis)) => Some(*millis),
-            _ => return Ok((streamed, source)),
-        };
-        if sends >= jadpo_std::ai::SENDS {
-            return Ok((streamed, source));
-        }
-        sends += 1;
-        if let Some(began) = began {
-            let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
-            let left = timeout_ms.saturating_sub(spent);
-            let mut random = [0u8; 8];
-            let random = host.random(&mut random).then_some(random);
-            let Some(wait) = crate::provider::retry_wait(sends - 1, later, left, random) else {
-                return Ok((streamed, source));
-            };
-            if wait > 0 {
-                host.sleep(wait).await;
-            }
-        }
-        unanswered = Some((streamed, source));
-    }
-}
-
-/// The capability seam for a streamed call, as [`crate::effects::exchange`]
-/// is for any other: refused inside an open transaction or with no driver,
-/// a replayed run's recorded answer, or the driver's, logged without its
-/// values.
-async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Streamed, Unanswered> {
-    let now = ctx.now();
-    if ctx.close_snapshot().await.is_err() {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(Unanswered::Failure(Box::new(crate::unavailable())));
-    }
-    if ctx.transaction_open() {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(Unanswered::Fault(FaultKind::CallInTransaction(call.name())));
-    }
-    if let Some(replayed) = ctx.capabilities_mut().replayed(&call) {
-        return match replayed {
-            Ok(answer) => {
-                let capabilities = ctx.capabilities_mut();
-                let place = capabilities.sent(&call, Source::Replayed, now);
-                capabilities.ended(place, &answer, Some(0));
-                Ok(Streamed::Whole(answer))
-            }
-            Err(recorded) => {
-                ctx.capabilities_mut().refused(&call, now);
-                Err(Unanswered::Fault(FaultKind::Defect(format!(
-                    "a replayed run calling `{}` where its recording has {recorded}",
-                    call.name()
-                ))))
-            }
-        };
-    }
-    let host = ctx.host();
-    let Some(driver) = host.capability(&call.connection) else {
-        ctx.capabilities_mut().refused(&call, now);
-        return Err(Unanswered::Failure(Box::new(crate::misconfigured())));
-    };
-    let began = host.monotonic_ms();
-    let place = ctx
-        .capabilities_mut()
-        .sent(&call, driver.source_of(&call), now);
-    let streamed = driver.stream(&call).await;
-    let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
-    // A stream that has started is logged as answered, never with its text.
-    let answer = match &streamed {
-        Streamed::Whole(answer) => answer.clone(),
-        Streamed::Coming(_) => Answer::Wire(Rc::from("")),
-    };
-    ctx.capabilities_mut().ended(place, &answer, took);
-    Ok(streamed)
 }
 
 // --- the fake --------------------------------------------------------------

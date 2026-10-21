@@ -1968,15 +1968,25 @@ side by side, then 7.9d, then 7.9e).
   hands the link to `rundll32 url.dll,FileProtocolHandler` as one
   argument, no shell; `jadpo dev` adds `build/` to `.gitignore`. Each
   choice is in its area's Decisions (11, 12, 14, 16, 21).
-- [ ] **7.9d One outside-call path** `opus · xhigh`, after 7.9a: one
+- [x] **7.9d One outside-call path** `opus · xhigh`, after 7.9a: one
   `exchange` for whole and streamed answers, owning `max_concurrent:`'s
   slots and the time left (the route's remaining deadline, the background
   budget) so a `Retry-After` never waits past it; one retrying send for
   every call kind (provider, `ai.generate`, `ai.embed`, `ai.stream`,
   files); one place deciding where an answer comes from (replay tape, step
   record, rerun reuse); each call kind only building its request and
-  decoding its answer. Today `ai`, `embed` and `stream` through a package
-  ignore `max_concurrent:`, and streaming has its own copy of the path.
+  decoding its answer. Built: `jadpo_runtime::outside`, with
+  `comes_from` (the action's record, an `ai` call's answer or open stream
+  kept for a rerun, or a send at its place), one retrying `send` (a
+  provider's `retry:`, an `ai` call's sends within its `timeout:`, or
+  once for files, email and deliveries) and one `exchange`, whole or
+  streamed, which takes the connection's `max_concurrent:` slot, so
+  `ai.generate`, `ai.embed` and `ai.stream` through a package are capped
+  too; no wait outlasts a route's remaining deadline or the background
+  budget, a `Retry-After` past it ending the call at once with its last
+  answer, `unavailable`; `stream::exchange`, `ai::sent` and
+  `provider::retried` gone. Choices in area 12's decisions table, "One
+  outside-call path, chosen in chunk 7.9d".
 - [ ] **7.9e The runtime's start-up state** `opus · xhigh`, after 7.9d:
   `jadpo_runtime::Started::new(plan, values, target)` holding the decoded
   settings, keys, credentials, sign-in settings, client address and purge
