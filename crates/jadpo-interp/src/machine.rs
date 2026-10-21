@@ -1010,7 +1010,14 @@ impl<'p> Machine<'p> {
         at: SiteId,
     ) -> Result<Value, Stop> {
         let effects = self.program.effects();
-        effects::run(ctx, &effects, effect, values).map_err(|refused| match refused {
+        effects::run(ctx, &effects, effect, values)
+            .map_err(|refused| self.refused(ctx, refused, at))
+    }
+
+    /// What the runtime refused an operation at `at` with, as what stops
+    /// the body: a condition for its call's `attempt` to map, or a fault.
+    fn refused(&self, ctx: &mut Ctx<'_>, refused: Refused, at: SiteId) -> Stop {
+        match refused {
             Refused::Broke {
                 rule,
                 written,
@@ -1023,7 +1030,7 @@ impl<'p> Machine<'p> {
             },
             Refused::Fault(fault) => self.value_fault(ctx, fault, at),
             Refused::Defect(what) => self.defect(ctx, &what, at),
-        })
+        }
     }
 
     fn not_built_yet(&self, ctx: &mut Ctx<'_>, what: impl Into<String>, at: SiteId) -> Stop {
@@ -2814,58 +2821,51 @@ impl<'p> Machine<'p> {
         at: SiteId,
     ) -> Result<Value, Stop> {
         // `random`, `crypto` and JSON in memory read the invocation or the
-        // plan's codec for their call, so the runtime runs them (chunk
-        // 7.0b).
-        if effects::is_effect(op) {
-            let json = match self.decoded(at) {
-                Some(Decoded::Json(number)) => Some(*number),
-                _ => None,
-            };
-            return self.run_effect(ctx, Effect::Std { op, json }, values, at);
-        }
-        let mut stopped: Option<Stop> = None;
-        let locales = self.program.plan().locales();
-        // An inline function's expressions give a value per item, not one
-        // an assertion's report could show.
-        if inline.is_some() {
-            ctx.pause_recording();
-        }
-        let result = {
-            let mut each = |given: &[Value]| -> Option<Value> {
-                let (params, body) = inline?;
-                for (param, value) in params.iter().zip(given) {
-                    if let Some(slot) = self
-                        .locals()
-                        .and_then(|locals| locals.get_mut(param.0 as usize))
-                    {
-                        *slot = value.clone();
-                    }
-                }
-                match self.nested(ctx, body) {
-                    Ok(value) => Some(value),
-                    Err(stop) => {
-                        stopped = Some(stop);
-                        None
-                    }
-                }
-            };
-            jadpo_value::run(op, values, locales, &mut each)
+        // plan's codec for their call (chunk 7.0b), and the rest run in
+        // `jadpo-value`, both through the runtime's one entry point, which
+        // compiled code calls too (chunk 8.1g).
+        let json = match self.decoded(at) {
+            Some(Decoded::Json(number)) => Some(*number),
+            _ => None,
         };
-        if inline.is_some() {
-            ctx.resume_recording();
-        }
+        let program = self.program;
+        let effects = program.effects();
+        let locales = program.plan().locales();
+        let mut stopped: Option<Stop> = None;
+        let mut each = |ctx: &mut Ctx<'_>, given: &[Value]| -> Option<Value> {
+            let (params, body) = inline?;
+            for (param, value) in params.iter().zip(given) {
+                if let Some(slot) = self
+                    .locals()
+                    .and_then(|locals| locals.get_mut(param.0 as usize))
+                {
+                    *slot = value.clone();
+                }
+            }
+            match self.nested(ctx, body) {
+                Ok(value) => Some(value),
+                Err(stop) => {
+                    stopped = Some(stop);
+                    None
+                }
+            }
+        };
+        let each: Option<&mut effects::Each<'_>> = match inline {
+            Some(_) => Some(&mut each),
+            None => None,
+        };
+        let result = effects::standard(
+            ctx,
+            &effects,
+            locales,
+            effects::Standard { op, json },
+            values,
+            each,
+        );
         match (result, stopped) {
             (Ok(value), _) => Ok(value),
             (Err(_), Some(stop)) => Err(stop),
-            // A temporal condition its `attempt` maps, as a construction's
-            // broken rule (area 10).
-            (Err(jadpo_value::Fault::Broke(rule)), None) => Err(Stop::Invalid {
-                rule,
-                written: format!("{}:", rule.word()),
-                problem: None,
-                name: None,
-            }),
-            (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
+            (Err(refused), None) => Err(self.refused(ctx, refused, at)),
         }
     }
 }

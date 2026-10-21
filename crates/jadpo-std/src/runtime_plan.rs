@@ -69,6 +69,11 @@ pub struct RuntimePlan {
     pub ai: Option<AiPlan>,
     /// Every prompt that checks (area 21).
     pub prompts: PromptPlan,
+    /// The locales the application supports, when it declares them (area
+    /// 10): what the standard library formats in and
+    /// `locale.from_accept_language` chooses among, whichever executor
+    /// runs it (chunk 8.1g).
+    pub locales: Option<crate::LocalePlan>,
     /// Each callable's number, by its identity key, but a test's (chunk
     /// 8.1e): how the runtime finds a callable named in the plan by its
     /// key, a webhook reply's action or a package's own `decode:` and
@@ -124,7 +129,7 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 6\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 7\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding, then, with the `testing` feature, its dev

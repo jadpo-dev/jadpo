@@ -2172,13 +2172,25 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   comparing their records; area 7's `todos` project, a route creating a
   todo and one reading it back, with three route tests added to the
   page, passing both ways with the same records. §2.5's "Compiled code".
-- [ ] **8.1g Compiled code: areas 1 to 4** `opus · xhigh`, after 8.1f:
-  every body form areas 1 to 4 build (functions, failures, `attempt`,
-  outcome `match`, constructions, a proven one never checked again,
-  collections and inline functions, constants, the standard library
-  through `jadpo_value::run`, effects through `effects::run`, assertions
-  with their values), the pages' projects for those areas passing
-  compiled with the same records.
+- [x] **8.1g Compiled code: areas 1 to 4** `opus · xhigh`, after 8.1f.
+  Built: `for`, `assert … fails`, value and outcome `match` (the
+  handled failure a variable while its arm runs, for `propagate` and a
+  `reject`'s cause), `attempt` over a construction, `reject`,
+  `Type(value)` checked only where the checker couldn't prove it, every
+  standard operation with its inline functions as closures, `emit` and
+  `email.sent`, through new site functions in `jadpo_runtime::compiled`;
+  every standard operation, interpreted or compiled, through one entry
+  point, `effects::standard` (effects as `effects::run`, the rest through
+  `jadpo_value::run` with the locales, which joined the runtime plan:
+  format 6), and an `attempt`'s arm found by `jadpo_std::arm_for`, which
+  the checker's `RuleArm` uses too. 183 of the corpus's 205 projects that
+  check compile (65 at 8.1f); what is left is 8.1h's and 8.1i's
+  (translations, provider operations and package actions, a test's
+  `fakes:`, `batches.*`, `clock.advance`). The pages' projects for areas
+  1 to 4 all compile but declare no tests, so the gate's compiled step
+  runs the whole corpus that compiles: `differential_all` builds every
+  project as a crate of one harness, linked once, and compares 208
+  projects' 332 tests with the same records (§2.5, "Compiled code").
 - [ ] **8.1h Compiled code: data, routes and identity** `opus · xhigh`,
   after 8.1g: areas 5 to 9 and 13's test forms: queries, `get`, writes
   and transitions through `jadpo_runtime::store`, callers and `call_as`,

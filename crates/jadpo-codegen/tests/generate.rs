@@ -164,47 +164,119 @@ fn a_project_is_one_crate_the_same_each_time() {
     assert_eq!(generated, again);
 }
 
+/// Areas 1 to 4 (chunk 8.1g): a loop, the standard library, an inline
+/// function, a construction and its `attempt`, a `reject` and an outcome
+/// `match` compile, each through the runtime's site functions.
+#[test]
+fn the_forms_of_areas_one_to_four_compile() {
+    let planned = plan(&[(
+        "main.jadpo",
+        r#"type Count = Int {}
+
+type CakeCount = Int {
+    min: 1
+    max: 12
+}
+
+type Pence = Int {
+    min: 0
+}
+
+type OrderLine = Object {
+    subtotal: Pence
+}
+
+type OrderEmpty = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OrderTooLarge = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type LookupCode = Text {}
+
+type LookupResult = Text {}
+
+type LookupMissing = Failure {
+    kind: FailureKind.not_found
+}
+
+function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
+    var result: CakeCount = attempt CakeCount(n) {
+        max: OrderTooLarge
+        invalid: OrderEmpty
+    }
+    return result
+}
+
+function order_total(lines: List<OrderLine>) -> Pence {
+    var mut total: Pence = 0
+    for line in lines {
+        total = Pence(total + line.subtotal)
+    }
+    return total
+}
+
+function dear_lines(lines: List<OrderLine>) -> Count {
+    return Count(list.count(list.filter(lines, line -> line.subtotal > 100)))
+}
+
+function lookup(key: LookupCode) fails LookupMissing -> LookupResult {
+    if (key == "missing") {
+        reject LookupMissing
+    }
+    return "found"
+}
+
+function lookup_or_default(key: LookupCode) -> LookupResult {
+    return match lookup(key) {
+        success(value) -> value
+        LookupMissing -> "not found"
+    }
+}
+"#,
+    )]);
+    let generated = generate(&planned, &options()).expect("it compiles");
+    let module = text(&generated, "src/app.rs");
+    for expected in [
+        "for item in items.iter()",
+        "rt::standard(cx, p, jadpo_std::Op::ListCount",
+        "rt::standard_each(",
+        "rt::construct(",
+        "rt::rule_arm(",
+        "rt::raised(",
+        "Err(Stop::Failed(failure)) if failure.key ==",
+    ] {
+        assert!(module.contains(expected), "{expected}:\n{module}");
+    }
+}
+
 /// A body form the generator doesn't compile yet is refused by its name
 /// and place, every one of them, rather than written as code that faults
 /// when a test reaches it.
 #[test]
 fn a_body_form_not_compiled_yet_is_refused_by_name() {
-    let planned = plan(&[(
-        "main.jadpo",
-        r#"type Basket = Object {
-    prices: List<Int>
-}
-
-type Bill = Object {
-    pence: Int
-}
-
-function total(basket: Basket) -> Bill {
-    var mut sum: Int = 0
-    for price in basket.prices {
-        sum = sum + price
-    }
-    return Bill {
-        pence: sum
-    }
-}
-
-function counted(basket: Basket) -> Bill {
-    return Bill {
-        pence: list.count(basket.prices)
-    }
+    let planned = plan(&[
+        ("main.jadpo", PRICES),
+        (
+            "main.test.jadpo",
+            r#"test "an hour later" {
+    clock.advance(1h)
+    assert line_total(Basket {
+        loaves: 1
+        each: 2
+    }).pence == 2
 }
 "#,
-    )]);
+        ),
+    ]);
     let Err(Error::Refused(refusals)) = generate(&planned, &options()) else {
         panic!("refused");
     };
     let shown: Vec<String> = refusals.iter().map(ToString::to_string).collect();
     assert_eq!(
         shown,
-        [
-            "`list.count` isn't compiled yet: main.jadpo:21, in function counted",
-            "`for` isn't compiled yet: main.jadpo:11, in function total",
-        ]
+        ["`clock.advance` isn't compiled yet: main.test.jadpo:2, in test \"an hour later\""]
     );
 }

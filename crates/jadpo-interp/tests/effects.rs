@@ -211,6 +211,10 @@ const EFFECTS_ONLY: &[(&str, &str)] = &[
         ".capability(",
         "sends a call outside the process of its own",
     ),
+    // Every standard operation runs through the runtime's one entry point,
+    // which compiled code calls too (chunk 8.1g).
+    ("jadpo_value::run(", "runs a standard operation of its own"),
+    ("is_effect", "tells an operation with effects apart"),
 ];
 
 /// A source file's code, without its comments and its tests: what it runs.

@@ -164,6 +164,27 @@ pub enum RuleKey {
     Named,
 }
 
+/// Which of an `attempt`'s arms maps a broken rule (area 2): the arm whose
+/// rule is `rule`, or, for a rule across an object's fields, the arm named
+/// `name`; else `invalid:`, the arm with neither, which covers every rule
+/// without one. `arms` gives each arm's rule and name in the order
+/// written. The checker, the interpreter and compiled code all find an
+/// arm by this (chunk 8.1g).
+pub fn arm_for<'a>(
+    arms: impl Iterator<Item = (Option<RuleKey>, Option<&'a str>)> + Clone,
+    rule: RuleKey,
+    name: Option<&str>,
+) -> Option<usize> {
+    let own = match name {
+        Some(name) => arms.clone().position(|(_, named)| named == Some(name)),
+        None => arms.clone().position(|(key, _)| key == Some(rule)),
+    };
+    own.or_else(|| {
+        arms.into_iter()
+            .position(|(key, named)| key.is_none() && named.is_none())
+    })
+}
+
 impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the

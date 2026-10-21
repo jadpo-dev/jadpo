@@ -129,6 +129,57 @@ pub fn is_effect(op: Op) -> bool {
         || op.reads_generator()
 }
 
+/// A standard-library operation, `op` with `values` in its parameters'
+/// order, at a call's site: the one entry point both executors run every
+/// standard operation through (chunk 8.1g). One with effects runs as
+/// [`run`] runs it, `json` being its site's number in the plan's JSON
+/// table; any other through `jadpo_value::run`, given the application's
+/// `locales` and, for a collection operation, `each`, its inline function
+/// run per item, which gives `None` once its body stopped (its caller
+/// keeps why, and raises that instead of what this gives). An inline
+/// function's values are per item, so an assertion keeps none of them. A
+/// temporal condition or two currencies is a condition its call's
+/// `attempt` maps; anything else the operation's fault.
+pub fn standard(
+    ctx: &mut Ctx<'_>,
+    effects: &Effects<'_>,
+    locales: Option<&jadpo_std::LocalePlan>,
+    call: Standard,
+    values: &[Value],
+    each: Option<&mut Each<'_>>,
+) -> Result<Value, Refused> {
+    let Standard { op, json } = call;
+    if is_effect(op) {
+        return run(ctx, effects, Effect::Std { op, json }, values);
+    }
+    let result = match each {
+        Some(each) => {
+            ctx.pause_recording();
+            let result = jadpo_value::run(op, values, locales, &mut |given| each(ctx, given));
+            ctx.resume_recording();
+            result
+        }
+        None => jadpo_value::run(op, values, locales, &mut |_| None),
+    };
+    result.map_err(|fault| match fault {
+        jadpo_value::Fault::Broke(rule) => broke(rule),
+        fault => Refused::Fault(fault),
+    })
+}
+
+/// A collection operation's inline function, given each item's values:
+/// its value, or `None` once its body stopped.
+pub type Each<'f> = dyn FnMut(&mut Ctx<'_>, &[Value]) -> Option<Value> + 'f;
+
+/// A standard operation as its site names it: the operation, and the
+/// number of the type its site reads or writes in the plan's JSON table
+/// (`json.read`'s, `json.write`'s, `crypto.verify_jwt`'s with `as:`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Standard {
+    pub op: Op,
+    pub json: Option<u32>,
+}
+
 /// Runs `effect` with `values` in `ctx`, with what `effects` holds of the
 /// program: its value (`Unit` for `emit`), or why it gave none.
 pub fn run(

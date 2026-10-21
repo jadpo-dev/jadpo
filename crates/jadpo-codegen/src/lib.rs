@@ -158,7 +158,10 @@ pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
             shape,
             paths: &paths,
             refusals: &mut refusals,
-            assertion: None,
+            label: None,
+            recording: false,
+            handling: Vec::new(),
+            inline: None,
         }
         .callable(number, &function);
         code.entry(module.to_string()).or_default().push(tokens);

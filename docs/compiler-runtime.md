@@ -1246,12 +1246,23 @@ an assertion, a broken rule for an `attempt`, a refusal for a `conflict:`
 arm); and a function per kind of site (`binary`, `truth`, `field`,
 `given` and `build`, `kept`, `query`, `get`, `write`, `request`,
 `setting`, `now`, `failure` and `raised`, `assert_true`,
-`assert_compare` and `assertion_end`, `enter` and `left`, `step`), each
-turning what the runtime or `jadpo-value` gives into the stop the
-interpreter's walker raises at the same site, with the same words. The
-operators are one implementation both executors call,
-`jadpo_runtime::operators::operate`. None of it is generic, so a
-generated crate monomorphises nothing of the runtime's.
+`assert_compare` and `assertion_end`, `enter` and `left`, `step`; since
+chunk 8.1g `construct`, `mapped`, `broke` and `rule_arm` for an
+`attempt`, `is_variant` and `items` for a `match` arm and a `for`,
+`standard` and `standard_each`, `emit`, `sent_emails` and
+`assert_fails`), each turning what the runtime or `jadpo-value` gives
+into the stop the interpreter's walker raises at the same site, with the
+same words. The operators are one implementation both executors call,
+`jadpo_runtime::operators::operate`, and so is the standard library:
+every standard operation goes through `jadpo_runtime::effects::standard`
+(chunk 8.1g), which runs one with effects as `effects::run` does and any
+other through `jadpo_value::run` with the plan's locales, an inline
+function a closure it calls per item, its values kept from an assertion's
+report; the test that holds the interpreter to `effects::run` holds it to
+this entry point too (`jadpo_value::run` may not appear in its sources).
+An `attempt`'s arm is found by `jadpo_std::arm_for`, which the checker's
+`RuleArm` uses too. None of it is generic, so a generated crate
+monomorphises nothing of the runtime's.
 
 What compiled code reads of the plan besides the frame table joins the
 runtime plan: `RuntimePlan::sites` (`jadpo_std::compiled::SitesPlan`:
@@ -1261,9 +1272,11 @@ plan, and each outside call's site, a provider operation's,
 site order, `Plan::call_number`), `RuntimePlan::actions` (what the
 boundary needs of each action and fixture), the build id and the steps
 key: plan format 5. The interpreter reads the same plans from the
-compiler's `Plan`, built in the same pass. Locales and translations join
-the runtime plan when compiled code first calls the standard library and
-a translation (8.1g, 8.1i).
+compiler's `Plan`, built in the same pass. The application's locales
+joined the runtime plan when compiled code first called the standard
+library (`RuntimePlan::locales`, chunk 8.1g, plan format 7), and the
+compiler's `Plan::locales` reads them there; translations join it with
+their first compiled call (8.1i).
 
 A body's sites are numbered as its typed body numbers them (§2.3), and
 generated code passes those numbers, as literals, wherever the
@@ -1281,7 +1294,28 @@ that can stop is `?` on a `Ran`, an `if` a Rust `if` whose condition
 An `assert` is a labelled block between `assertion_begin` and
 `assertion_end`: a stop in its condition breaks out of the block, so the
 recording always ends, and each value its condition works out, but a
-literal, is recorded as the interpreter records it. A call to a function
+literal, is recorded as the interpreter records it. Chunk 8.1g compiled
+the rest of areas 1 to 4 the same way: an `attempt`'s construction and an
+outcome `match`'s subject other than a call are labelled blocks too,
+giving their `Ran` to a Rust `match` that raises the arm's failure (at
+the construction's site, its fields worked out only then) or runs the
+arm, and passes any other stop on; a call that is a subject has its
+arguments' stops leave as anywhere else and only its own outcome caught,
+an action through the boundary with `caught` set. The failure an arm
+handles is a variable while the arm runs, which `propagate` passes on
+and a `reject` inside it keeps as its cause. A value `match` is an `if`
+chain over its patterns, a `for` a Rust loop over the items `items`
+gives, a construction `construct`, checked only where the checker
+couldn't prove its rules, and `assert … fails` `assert_fails` on what its
+subject gave. An inline function is a closure `standard_each` calls per
+item, setting its parameters, which are the callable's locals, and
+working its body out with `?` going out of the closure, never to a label
+outside it; a site that waits there is the interpreter's defect, which
+the checker rules out. A `return` there (the checker allows one in a
+`match` arm's block) or inside a labelled block leaves as a stop,
+`Stop::Returned`, ending what it passes through as any stop does, and
+the callable's end (`left`) gives its value, as the interpreter's
+`return` unwinds to its frame's end. A call to a function
 enters its frame, runs it and leaves the frame whatever it gave (`left`
 turns a broken rule no `attempt` caught into the interpreter's defect at
 the callee's entry); a call that pauses goes through `invoke`. In a test,
@@ -1299,32 +1333,52 @@ What isn't compiled yet is refused by name: `generate` gives every
 and where it is written) rather than a crate that faults where a test
 happens to reach it, so the generator run over the corpus shows what
 8.1g to 8.1i have left (`crates/jadpo-codegen/tests/corpus.rs`, which
-also holds every crate it writes to parsing as Rust). Built in 8.1f:
+also holds every crate it writes to parsing as Rust, and lists each
+project refused with its forms). Built in 8.1f:
 `var`, assignment, `return`, `if`, an expression's statement and
 `assert`; literals, locals, field reads, calls of functions, actions and
 fixtures, queries and `get`, object and variant builds, lists, every
 operator, `not` and `-`, `create`, `update` and `delete` with their
 `conflict:` arms, a route test's `request`, constants, `config.<name>` and
-`clock.now`. Of the corpus's 205 projects that check, 65 compile.
+`clock.now`. Of the corpus's 205 projects that check without
+migrations, 65 compiled. Built in 8.1g: `for`, `assert … fails`, `emit`;
+value and outcome `match`, `attempt` over a construction, `reject`,
+`propagate`, `Type(value)`, every standard operation, inline functions
+and `email.sent`. 183 of the 205 compile; what is left is 8.1h's and
+8.1i's (`translations.<message>`, provider operations and a package's
+action, a test's `fakes:`, `batches.*` and `clock.advance`).
 
-The differential harness is `jadpo_test::compiled`: `differential(project,
-folder)` compiles the project into a workspace kept at `folder` (the
-generated crate as `app/`, and `harness/`, a binary depending on it and
-on `jadpo-test`), with the repository's `Cargo.lock` and `[profile.*]`
-tables copied in, builds the harness with `cargo build --offline` into a
-target folder of its own there, and runs it on the project. The harness
-(`compiled::harness`) runs every test with records, seed 1, on the
-interpreter and then on the compiled program (`jadpo_test::run_with`
-runs tests on any executor), in one process and on one PostgreSQL
-server, and compares the two runs (`jadpo_test::differential`), printing
-how many it compared and how many passed, or the first line that differs
-with both sides. Its files are written only when they change and the
-folder is kept (`target/jadpo-compiled/<project>/` in the gate), so the
-runtime crates and `jadpo-test` are compiled once, and a later run
-compiles the generated crate and links the harness: on the ten-core Mac,
-lightly loaded, 73 s the first time and 7 s after for one project. One
-crate per project for now; 8.1j compiles the corpus as one crate, in one
-rustc invocation, in a CI job of its own.
+The differential harness is `jadpo_test::compiled`:
+`differential_all(projects, folder)` compiles each project into a
+workspace kept at `folder`, a crate of its own for each (`app-<n>`, by
+its place, named `jadpo-compiled-<n>`), and `harness/`, one binary
+depending on them all and on `jadpo-test` and holding each crate's
+`program` by place, with the repository's `Cargo.lock` and `[profile.*]`
+tables copied in; builds the harness with `cargo build --offline` into a
+target folder of its own there, once; and runs it on each project in
+turn, a few at a time (`differential` does it for one). The harness
+(`compiled::harness`, given the program's place and the project's
+folder) runs every test with records, seed 1, on the interpreter and
+then on that compiled program (`jadpo_test::run_with` runs tests on any
+executor), in one process and on one PostgreSQL server, and compares the
+two runs (`jadpo_test::differential`), printing how many it compared and
+how many passed, or the first line that differs with both sides; a
+project with no tests compares none, its program still made. Its files
+are written only when they change and the folder is kept
+(`target/jadpo-compiled/corpus/` in the gate), so the runtime crates and
+`jadpo-test` are compiled once, and a later run compiles the generated
+crates that changed and links the harness once (chunk 8.1g; 8.1f built a
+harness per project). The gate's compiled step
+(`crates/jadpo-cli/tests/compiled.rs`) runs every project of the corpus
+that checks, the pages' and the teaching examples', and requires every
+one that compiles to give the same records both ways and every project of
+areas 1 to 4 to compile: 208 projects, 332 tests, 41 left with a form not
+compiled yet, and a project of its own whose `return` inside an inline
+function leaves its function. On the ten-core Mac, lightly loaded, it takes 60 s the
+first time, most of it building the runtime crates, as one project's
+harness did, and 22 s after. One crate per project for now; 8.1j
+compiles the corpus as one crate, in one rustc invocation, in a CI job of
+its own.
 
 The first route is area 7's `todos` project: `POST /todos` creates a
 record through an action and `GET /todos/{todo_id}` reads it through a
@@ -2833,7 +2887,7 @@ package find theirs by number too: a package's `generate:`, `stream:` and
 what is logged, recorded and faked. The plan's format was `jadpo runtime
 plan 4`; it is 5 since chunk 8.1f added compiled code's site plans
 (§2.5, "Compiled code"), and 6 since chunk 8.1n added a database
-connection's `tls`.
+connection's `tls`, and 7 since chunk 8.1g added the locales.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
