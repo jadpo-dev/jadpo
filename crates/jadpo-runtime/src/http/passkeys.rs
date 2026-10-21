@@ -125,7 +125,6 @@ fn binding_cookie(plan: &IdentityPlan) -> Option<String> {
 }
 
 /// Answers `step` for `caller` (none on the sign-in routes).
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn answer(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -133,14 +132,9 @@ pub(crate) async fn answer(
     request: &Request,
     request_id: &str,
     step: PasskeyStep,
-    segments: &[String],
     caller: Option<&Caller>,
 ) -> Response {
-    let mut response = match run(
-        app, executor, ctx, request, request_id, step, segments, caller,
-    )
-    .await
-    {
+    let mut response = match run(app, executor, ctx, request, request_id, step, caller).await {
         Ok(response) => response,
         Err(stopped) => *stopped,
     };
@@ -150,7 +144,6 @@ pub(crate) async fn answer(
     response
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn run(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -158,7 +151,6 @@ async fn run(
     request: &Request,
     request_id: &str,
     step: PasskeyStep,
-    segments: &[String],
     caller: Option<&Caller>,
 ) -> Result<Response, Stop> {
     let started = ctx.started();
@@ -193,8 +185,8 @@ async fn run(
         PasskeyStep::RegisterOptions => site.register_options(ctx, request, caller).await,
         PasskeyStep::Register => site.register(ctx, request, caller).await,
         PasskeyStep::List => site.list(ctx, request, caller).await,
-        PasskeyStep::Rename => site.rename(ctx, request, segments, caller).await,
-        PasskeyStep::Remove => site.remove(ctx, request, segments, caller).await,
+        PasskeyStep::Rename => site.rename(ctx, request, caller).await,
+        PasskeyStep::Remove => site.remove(ctx, request, caller).await,
     }
 }
 
@@ -838,10 +830,9 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        segments: &[String],
         caller: Option<&Caller>,
     ) -> Result<Response, Stop> {
-        let id = self.passkey_id(segments)?;
+        let id = self.passkey_id(request)?;
         let body = self.body(request, &["name"])?;
         let (user, _, _) = self.holder(caller)?;
         let name = body
@@ -875,10 +866,9 @@ impl Site<'_> {
         &self,
         ctx: &mut Ctx<'_>,
         request: &Request,
-        segments: &[String],
         caller: Option<&Caller>,
     ) -> Result<Response, Stop> {
-        let id = self.passkey_id(segments)?;
+        let id = self.passkey_id(request)?;
         self.no_body(request)?;
         let (user, _, _) = self.holder(caller)?;
         let Some(database) = ctx.host().database(&self.plan.store) else {
@@ -965,10 +955,10 @@ impl Site<'_> {
     }
 
     /// The `{passkey_id}` the path names, or 404 when it can't be one.
-    fn passkey_id(&self, segments: &[String]) -> Result<[u8; 16], Stop> {
-        segments
-            .last()
-            .and_then(|text| parse_uuid(text))
+    fn passkey_id(&self, request: &Request) -> Result<[u8; 16], Stop> {
+        super::trie::segments(&request.path)
+            .next_back()
+            .and_then(|text| parse_uuid(&super::decoded(text)))
             .ok_or_else(|| self.fail(NOT_FOUND))
     }
 

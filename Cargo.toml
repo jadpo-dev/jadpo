@@ -263,6 +263,11 @@ openssl = { version = "=0.10.81", default-features = false }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
 webpki-roots = { version = "=1.0.10", default-features = false }
+# Counts a test binary's allocations (jadpo-runtime's route-allocation test
+# only, chunk 8.1k): the system allocator behind atomic counters, MIT, no
+# dependencies. The workspace forbids `unsafe`, which a global allocator
+# of our own would need.
+stats_alloc = "=0.1.10"
 # A test's own certificates (jadpo-host-native's tests only): an authority
 # and a server's certificate it signs, made as the test runs.
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }

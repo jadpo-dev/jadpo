@@ -508,8 +508,10 @@ fn send_as(
     clock: i64,
     client: &super::address::ClientAddress,
 ) -> Response {
+    let routes = super::Routes::new(table, &[]);
     let app = App {
         table,
+        routes: &routes,
         codecs: Codecs {
             codecs: &CODECS,
             validators: &[],
@@ -622,8 +624,10 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
 fn a_worker_reuses_its_readiness_check_for_a_second() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
+    let routes = super::Routes::new(&table, &[]);
     let app = App {
         table: &table,
+        routes: &routes,
         codecs: Codecs {
             codecs: &CODECS,
             validators: &[],
@@ -687,8 +691,10 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
 fn a_host_without_a_clock_is_refused_rather_than_run_at_1970() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
+    let routes = super::Routes::new(&table, &[]);
     let app = App {
         table: &table,
+        routes: &routes,
         codecs: Codecs {
             codecs: &CODECS,
             validators: &[],
@@ -1105,8 +1111,10 @@ fn a_route_without_input_refuses_a_query_string_and_a_body() {
 #[test]
 fn what_a_request_emits_is_left_for_after_its_response() {
     let table = table(Some("main"), false);
+    let routes = super::Routes::new(&table, &[]);
     let app = App {
         table: &table,
+        routes: &routes,
         codecs: Codecs {
             codecs: &CODECS,
             validators: &[],
@@ -1175,8 +1183,10 @@ fn no_request_is_ever_the_system() {
         random: true,
         ..Fake::default()
     };
+    let routes = super::Routes::new(&table, &[]);
     let app = App {
         table: &table,
+        routes: &routes,
         codecs: Codecs {
             codecs: &CODECS,
             validators: &[],
