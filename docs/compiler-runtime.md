@@ -3007,7 +3007,10 @@ build on aarch64 macOS: 30,513,808 bytes without the feature and
 30,629,520 with it (26,698,936 and 26,865,496 stripped), about 0.4%, as
 most of a deployable is the standard library's locale and time-zone
 data; what the feature buys is that a deployable reaches no fake, crash
-point or test section at all.
+point or test section at all. A Workers module (chunk 8.2b, "A Workers
+deployable" below) is built without it the same way, and measured on
+teaching example 23 at 20,421,673 bytes without it and 21,893,057 with
+it, about 7%, its code a quarter larger.
 
 **One connections table and the driver factory** (chunk 8.1d, from the
 Phase 7 architecture review; area 11, "Connecting in `app.jadpo`" and
@@ -3159,6 +3162,57 @@ the routes in the trie with the whole table kept, which leaves a route
 nobody serves in the binary; and a deployable's plan built only from the
 callables it reaches, which needs every number the runtime names a
 callable by to stay right (chunk 8.1o3).
+
+**A Workers deployable** (chunk 8.2b; area 14, "A Workers deployable").
+`jadpo build` builds a deployable with `target: Target.wasm` the way it
+builds a native one, into the same cargo target, with the same lock,
+toolchain, remapped paths and `SOURCE_DATE_EPOCH`: its workspace
+(`jadpo_codegen::deployable::workspace` with `Host::Workers`) holds the
+program's crate and a `cdylib`, `jadpo-worker-<deployable>`, which
+exports the Worker's `fetch` with `#[wasm_bindgen(wasm_bindgen =
+jadpo_host_workers::wasm_bindgen)]`, so it depends on the Workers host
+alone, and hands it the same `jadpo_runtime::deployable::Deployable` the
+native host's `main` is given (the program, the stamp and each store's
+migrations, moved into the runtime from `jadpo-host-native` for both).
+The Workers host's features are the drivers the deployable reaches
+(`Drivers`): `postgres` when the project keeps a database, since every
+deployable's tick reaches each store, and `smtp`, a feature added
+beside it, when 8.1o2's `reaches` finds an SMTP connection; the package
+driver always. It is built
+`--target wasm32-unknown-unknown --lib` in release, and
+`jadpo_codegen::workers::bind` runs wasm-bindgen's library
+(`wasm-bindgen-cli-support` at the lock's release, as the host's tests
+do) in its `web` form, refusing a module that carries JavaScript of its
+own, which no Worker file would upload. `build/target/<deployable>/`,
+cleared first, gets the module, its JavaScript, Jadpo's shim
+(`worker.mjs`, which instantiates the module once per isolate with
+`initSync` and hands `fetch` its request, `env` and `ctx`) and
+`wrangler.json` (`workers::wrangler`: the Worker's name with dashes, the
+shim as `main`, the compatibility date 2026-10-01, `no_bundle` with a rule
+per kind, and each setting without a default as a required secret).
+The screen gives the module's size raw and gzipped (miniz_oxide's deflate
+at level 6 and gzip's 18 bytes). Until chunk 8.2d,
+`jadpo_host_workers::deployable::fetch` makes the program once per
+isolate and answers every request 503. Proved
+(`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group):
+teaching example 23 declared as a kiosk on Workers, built (42 s cold on
+the ten-core Mac, seconds warm), its files and Wrangler file as above,
+its stamp's target `wasm` in the manifest, its module linking
+PostgreSQL's driver and naming none of the `testing` symbols, then run by
+the pinned workerd from the files as the Wrangler file names them, the
+plan read inside the module and the Worker answering. Measured on that
+module: 19,665,209 bytes bound (6.5 MB gzipped), of which 14.0 MB is data,
+mostly the locale data chunk 8.2c cuts, 4.5 MB code and 1.1 MB the name
+section; as cargo built it, 20,421,673 bytes without the `testing`
+feature and 21,893,057 with it (6.6 and 7.1 MB gzipped), the code 4.9 MB
+against 6.0 MB. Until 8.2d the module doesn't reach the HTTP component,
+the runner or the drivers, so these are the program and the runtime it
+calls, not yet a serving Worker. *Rejected:* exports defined in the
+Workers host, which can't name the program without the generated crate
+registering it through an export of its own anyway; a direct dependency
+on `wasm-bindgen`, at a version the generator would have to know; `wasm-opt`, which `binaryen`
+would have to be downloaded for (chunk 9.2 tunes the module); and
+`vars` for settings, which take a value the build doesn't have.
 
 **Provider call sites by number** (chunk 8.1d2, split from 8.1d). A
 provider call's site plan (`jadpo_std::provider::CallSite`) names the

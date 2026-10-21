@@ -1,13 +1,17 @@
-//! A native deployable's workspace (roadmap chunk 8.1o;
-//! docs/compiler-runtime.md §2.6, "A native deployable", and §2.8): the
-//! program's crate, a binary named after the deployable whose `main` hands
-//! it, its build stamp and each store's migrations to the native host, the
-//! toolchain pinned and the runtime crates' lock beside them, the same
-//! files every time.
+//! A deployable's workspace (roadmap chunks 8.1o and 8.2b;
+//! docs/compiler-runtime.md §2.6, "A native deployable" and "A Workers
+//! deployable", and §2.8): the program's crate, a binary named after the
+//! deployable whose `main` hands it, its build stamp and each store's
+//! migrations to the native host, or for Workers a `cdylib` exporting the
+//! Worker's `fetch`, which hands the same three to the Workers host,
+//! linking only the drivers it reaches; the toolchain pinned and the
+//! runtime crates' lock beside them, the same files every time. Then what
+//! a Worker is deployed from: Jadpo's module shim and the Wrangler file.
 
 use std::collections::BTreeMap;
 
-use jadpo_codegen::deployable::{Deployable, Stamp, workspace};
+use jadpo_codegen::deployable::{Deployable, Drivers, Host, Stamp, workspace};
+use jadpo_codegen::workers;
 use jadpo_db::{Database, File, Layout, Project};
 use jadpo_plan::Plan;
 use jadpo_std::RuntimePlan;
@@ -39,6 +43,7 @@ fn plan() -> Plan {
 fn deployable(stores: &BTreeMap<String, Vec<(String, String)>>) -> Deployable<'_> {
     Deployable {
         name: "kiosk",
+        host: Host::Native,
         stamp: Stamp {
             build: "b_3c41d07a9e12",
             commit: Some("8d113e6"),
@@ -157,4 +162,113 @@ fn a_build_with_no_commit_says_so() {
     assert!(main.contains("commit: None"), "{main}");
     assert!(main.contains("modified: true"), "{main}");
     assert!(main.contains("stores: &[]"), "{main}");
+}
+
+#[test]
+fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
+    let mut stores = BTreeMap::new();
+    stores.insert(
+        "main".to_string(),
+        vec![("20261019T2016_initial".to_string(), "4b1d".to_string())],
+    );
+    let plan = plan();
+    let mut worker = deployable(&stores);
+    worker.host = Host::Workers(Drivers {
+        postgres: true,
+        smtp: false,
+    });
+    worker.stamp.target = "wasm";
+    let generated = workspace(&plan, &worker).expect("written");
+    let files = &generated.files;
+    assert!(
+        text(files, "Cargo.toml").contains("members = [\"program\", \"deployable\"]"),
+        "{:?}",
+        files.keys()
+    );
+    assert!(text(files, "program/Cargo.toml").contains("name = \"jadpo-program-kiosk\""));
+    // A `cdylib` named after the deployable, on the Workers host with the
+    // one driver it reaches beyond HTTP, without the `testing` feature.
+    let manifest = text(files, "deployable/Cargo.toml");
+    for held in [
+        "name = \"jadpo-worker-kiosk\"",
+        "crate-type = [\"cdylib\"]",
+        "jadpo-program = { path = \"../program\", package = \"jadpo-program-kiosk\" }",
+        "jadpo-host-workers = { path = \"/opt/jadpo/crates/jadpo-host-workers\", features = [\"postgres\"] }",
+    ] {
+        assert!(manifest.contains(held), "{held} isn't in:\n{manifest}");
+    }
+    assert!(!manifest.contains("testing"), "{manifest}");
+    assert!(!manifest.contains("jadpo-host-native"), "{manifest}");
+    assert!(!files.contains_key("deployable/src/main.rs"));
+    let lib = text(files, "deployable/src/lib.rs");
+    syn::parse_file(&lib).expect("Rust");
+    for held in [
+        "wasm_bindgen = jadpo_host_workers::wasm_bindgen",
+        "pub fn fetch(request: JsValue, env: JsValue, ctx: JsValue) -> JsValue",
+        "jadpo_host_workers::deployable::fetch(&DEPLOYABLE, request, env, ctx)",
+        "program: jadpo_program::program",
+        "build: \"b_3c41d07a9e12\"",
+        "deployable: \"kiosk\"",
+        "target: \"wasm\"",
+        "name: \"20261019T2016_initial\"",
+    ] {
+        assert!(lib.contains(held), "{held} isn't in:\n{lib}");
+    }
+    assert_eq!(workspace(&plan, &worker).expect("written"), generated);
+
+    // A Worker that reaches no database and no SMTP server links neither.
+    worker.host = Host::Workers(Drivers::default());
+    let bare = workspace(&plan, &worker).expect("written");
+    let manifest = text(&bare.files, "deployable/Cargo.toml");
+    assert!(
+        manifest.contains("jadpo-host-workers = { path = \"/opt/jadpo/crates/jadpo-host-workers\", features = [] }"),
+        "{manifest}"
+    );
+    worker.host = Host::Workers(Drivers {
+        postgres: true,
+        smtp: true,
+    });
+    let both = workspace(&plan, &worker).expect("written");
+    assert!(
+        text(&both.files, "deployable/Cargo.toml").contains("features = [\"postgres\", \"smtp\"]")
+    );
+}
+
+#[test]
+fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
+    let shim = workers::shim("back_office");
+    for held in [
+        "import module from \"./back_office.wasm\";",
+        "import { initSync, fetch as handleFetch } from \"./back_office.js\";",
+        "initSync({ module });",
+        "export default {",
+        "return handleFetch(request, env, ctx);",
+    ] {
+        assert!(shim.contains(held), "{held} isn't in:\n{shim}");
+    }
+    let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
+        "back_office",
+        &["DATABASE_URL".to_string(), "MAIL_SENDER".to_string()],
+    ))
+    .expect("JSON");
+    assert_eq!(
+        wrangler,
+        serde_json::json!({
+            "name": "back-office",
+            "main": "worker.mjs",
+            "compatibility_date": workers::COMPATIBILITY_DATE,
+            "no_bundle": true,
+            "find_additional_modules": true,
+            "rules": [
+                { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
+                { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
+            ],
+            "secrets": { "required": ["DATABASE_URL", "MAIL_SENDER"] },
+        })
+    );
+    // With no setting to give, there is no secret to require.
+    let bare: serde_json::Value =
+        serde_json::from_str(&workers::wrangler("web", &[])).expect("JSON");
+    assert_eq!(bare["name"], "web");
+    assert!(bare.get("secrets").is_none(), "{bare}");
 }

@@ -1,33 +1,40 @@
-//! `jadpo build` (area 14, "The `jadpo` command"; roadmap chunks 8.1o
-//! and 8.1o2; docs/compiler-runtime.md §2.6, "A native deployable", and
-//! §2.8): checks the project as `jadpo check` does, writing the same
-//! derived files, and stops at its errors; otherwise writes each
-//! deployable's Rust into `build/rust/<deployable>/` and compiles it in
-//! release, offline, with the toolchain this Jadpo pins and the runtime
-//! crates' lock, into one native binary in `build/target/<deployable>/`,
-//! beside the OpenAPI documents of the APIs it serves and each
-//! `<api>.failures.<locale>.json` (area 10).
+//! `jadpo build` (area 14, "The `jadpo` command"; roadmap chunks 8.1o,
+//! 8.1o2 and 8.2b; docs/compiler-runtime.md §2.6, "A native deployable"
+//! and "A Workers deployable", and §2.8): checks the project as `jadpo
+//! check` does, writing the same derived files, and stops at its errors;
+//! otherwise writes each deployable's Rust into `build/rust/<deployable>/`
+//! and compiles it in release, offline, with the toolchain this Jadpo pins
+//! and the runtime crates' lock, into `build/target/<deployable>/`, beside
+//! the OpenAPI documents of the APIs it serves and each
+//! `<api>.failures.<locale>.json` (area 10): natively one binary; for
+//! Workers (`Target.wasm`) a WebAssembly module bound by wasm-bindgen's
+//! library, Jadpo's module shim and a Wrangler file, the module's size
+//! shown raw and gzipped.
 //!
 //! `jadpo build` builds every deployable, `jadpo build <deployable>` one.
 //! With no `deployables:` declared there is one, `app`, which serves every
 //! API and runs everything, natively (area 14, question 14); a declared
 //! one serves only its APIs' routes and runs only the background work its
-//! `runs:` names (`jadpo_plan::Plan::for_deployable`). One built for
-//! `Target.wasm` is refused as not built yet: WebAssembly on Workers is
-//! roadmap chunk 8.2. Each deployable's build stamp (area 18;
-//! [`crate::stamp`]) is a constant in its binary and on every event it
-//! logs: the build id; the commit, and whether the tree held changes it
-//! doesn't (a project git doesn't track counts as changed, with no
-//! commit); the compiler; the deployable; and the target.
+//! `runs:` names (`jadpo_plan::Plan::for_deployable`), and a Worker links
+//! only the drivers it reaches. Each deployable's build stamp (area 18;
+//! [`crate::stamp`]) is a constant in its binary or module and on every
+//! event it logs: the build id; the commit, and whether the tree held
+//! changes it doesn't (a project git doesn't track counts as changed, with
+//! no commit); the compiler; the deployable; and the target, `native` or
+//! `wasm`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use jadpo_check::deployables::Deployable;
+use jadpo_check::deployables::{Deployable, Reached};
+use jadpo_codegen::deployable::{Drivers, Host};
+use jadpo_codegen::workers;
 use jadpo_diag::{Decider, Diagnostic, nearest, rule};
+use jadpo_plan::Plan;
 use jadpo_std::DeployTarget;
+use jadpo_std::connections::ConnectionDriver;
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
 
 use crate::check::{Checked, checked, reported};
@@ -60,12 +67,6 @@ pub fn build(call: &Call) -> Reply {
         },
         None => declared.list.iter().collect(),
     };
-    if let Some(wasm) = chosen
-        .iter()
-        .find(|deployable| deployable.builds_for() == DeployTarget::Wasm)
-    {
-        return Reply::failed(not_built_yet(wasm, declared));
-    }
     let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
     let graph = jadpo_check::graph::graph(db, project).digest();
     let source = stamp::commit(&root);
@@ -125,6 +126,7 @@ pub fn build(call: &Call) -> Reply {
         remap.push((home, "/cargo".to_string()));
     }
     let runtime = sources.display().to_string();
+    let reaches = jadpo_check::deployables::reaches(db, project);
     let mut settings: Vec<String> = Vec::new();
     let mut built = Vec::new();
     for deployable in chosen {
@@ -135,6 +137,17 @@ pub fn build(call: &Call) -> Reply {
         let plan = jadpo_plan::Plan::build(db, project)
             .for_deployable(&deployable.serves, deployable.runs)
             .with_build(build.clone());
+        let host = match deployable.builds_for() {
+            DeployTarget::Native => Host::Native,
+            DeployTarget::Wasm => {
+                let reached = declared
+                    .list
+                    .iter()
+                    .position(|other| other.name == deployable.name)
+                    .and_then(|at| reaches.get(at));
+                Host::Workers(drivers(&plan, reached))
+            }
+        };
         settings = plan
             .runtime()
             .config
@@ -147,6 +160,7 @@ pub fn build(call: &Call) -> Reply {
             &plan,
             &jadpo_codegen::deployable::Deployable {
                 name,
+                host,
                 stamp: jadpo_codegen::deployable::Stamp {
                     build: &build,
                     commit: source.commit.as_deref(),
@@ -177,6 +191,7 @@ pub fn build(call: &Call) -> Reply {
         let compiled = jadpo_codegen::deployable::build(&jadpo_codegen::deployable::Release {
             folder: &folder,
             name,
+            host,
             target: &rust.join("target"),
             remap: &remap,
             epoch,
@@ -194,10 +209,67 @@ pub fn build(call: &Call) -> Reply {
             }
         };
         let out = format!("build/target/{name}");
-        let binary = format!("{out}/{name}");
-        if let Err(error) = place(&root, &compiled, &binary) {
-            return Reply::failed(write_failed(&binary, &error));
+        // What an earlier build left there, perhaps for the other target,
+        // goes first.
+        if let Err(error) = cleared(&root.join(&out)) {
+            return Reply::failed(write_failed(&format!("{out}/"), &error));
         }
+        let artifact = match host {
+            Host::Native => {
+                let binary = format!("{out}/{name}");
+                if let Err(error) = place(&root, &compiled, &binary) {
+                    return Reply::failed(write_failed(&binary, &error));
+                }
+                Artifact::Native { binary }
+            }
+            Host::Workers(_) => {
+                say(&format!("Binding `{name}`"));
+                let bound = match workers::bind(&compiled, name) {
+                    Ok(bound) => bound,
+                    Err(error) => {
+                        return Reply::failed(failed(
+                            format!("`{name}`'s module couldn't be bound"),
+                            format!(
+                                "wasm-bindgen couldn't bind the module cargo built for it, which is Jadpo's own mistake: {error}."
+                            ),
+                        ));
+                    }
+                };
+                let required: Vec<String> = plan
+                    .runtime()
+                    .config
+                    .fields
+                    .iter()
+                    .filter(|field| field.default.is_none())
+                    .map(|field| field.variable.clone())
+                    .collect();
+                let module = format!("{out}/{name}.wasm");
+                let wrangler = format!("{out}/{}", workers::WRANGLER);
+                let (bytes, gzip) = (bound.wasm.len(), gzipped(&bound.wasm));
+                for (path, contents) in [
+                    (module.clone(), bound.wasm),
+                    (format!("{out}/{name}.js"), bound.js.into_bytes()),
+                    (
+                        format!("{out}/{}", workers::SHIM),
+                        workers::shim(name).into_bytes(),
+                    ),
+                    (
+                        wrangler.clone(),
+                        workers::wrangler(name, &required).into_bytes(),
+                    ),
+                ] {
+                    if let Err(error) = write_new(&root, &path, &contents) {
+                        return Reply::failed(write_failed(&path, &error));
+                    }
+                }
+                Artifact::Worker {
+                    wrangler,
+                    module,
+                    bytes,
+                    gzipped: gzip,
+                }
+            }
+        };
         let openapi = match documents(
             &root,
             &written,
@@ -211,7 +283,7 @@ pub fn build(call: &Call) -> Reply {
             name: name.to_string(),
             declared: deployable.at.is_some(),
             target,
-            binary,
+            artifact,
             openapi,
             build,
             serves: deployable.serves.clone(),
@@ -275,49 +347,49 @@ fn unknown(name: &str, declared: &jadpo_check::deployables::Deployables) -> Diag
         })
 }
 
-/// `deployable` is built for Workers, which comes with chunk 8.2.
-fn not_built_yet(
-    deployable: &Deployable,
-    declared: &jadpo_check::deployables::Deployables,
-) -> Diagnostic {
-    let native = declared
-        .list
-        .iter()
-        .find(|other| other.builds_for() == DeployTarget::Native);
-    Diagnostic::new(
-        &rule::TOOLCHAIN_NOT_BUILT_YET,
-        format!(
-            "`{}` is built for Workers, which `jadpo build` can't do yet",
-            deployable.name
-        ),
-    )
-    .reason(format!(
-        "`{}` declares `target: Target.wasm`; building WebAssembly for Cloudflare Workers comes with chunk 8.2 of the roadmap. `jadpo check` already holds it to what Workers runs.",
-        deployable.name
-    ))
-    .next(match native {
-        Some(native) => format!(
-            "Build a native deployable by name, `jadpo build {}`",
-            native.name
-        ),
-        None => format!(
-            "Give `{}` `target: Target.native` to build it as a server for now",
-            deployable.name
-        ),
-    })
+/// The drivers a Worker built from `plan` links beyond the package
+/// driver: PostgreSQL when the project keeps a database, since every
+/// deployable's tick reaches each store, and SMTP when it reaches an SMTP
+/// connection (`reached`, as `jadpo check` follows it).
+fn drivers(plan: &Plan, reached: Option<&Reached>) -> Drivers {
+    let connections = &plan.runtime().connections;
+    Drivers {
+        postgres: connections
+            .iter()
+            .any(|connection| matches!(connection.driver, ConnectionDriver::Postgres { .. })),
+        smtp: connections.iter().any(|connection| {
+            matches!(connection.driver, ConnectionDriver::Smtp(_))
+                && reached.is_some_and(|reached| reached.connections.contains_key(&connection.name))
+        }),
+    }
 }
 
-/// One deployable's binary, as a build wrote it.
+/// One deployable as a build wrote it.
 struct Binary {
     name: String,
     /// Whether `deployables:` declares it, rather than it being `app`.
     declared: bool,
     target: &'static str,
-    binary: String,
+    artifact: Artifact,
     openapi: Vec<String>,
     build: String,
     serves: Vec<String>,
     runs: Vec<&'static str>,
+}
+
+/// What a deployable is deployed from, by path from the project's root.
+enum Artifact {
+    /// A server's binary.
+    Native { binary: String },
+    /// A Worker: its Wrangler file and its module, beside the module's
+    /// JavaScript and Jadpo's shim, and the module's size, raw and
+    /// gzipped.
+    Worker {
+        wrangler: String,
+        module: String,
+        bytes: usize,
+        gzipped: usize,
+    },
 }
 
 /// What a build wrote and the stamp its binaries carry.
@@ -333,9 +405,10 @@ struct Built {
     seconds: f64,
 }
 
-/// The success screen: where each binary is, its build id and, for a
-/// declared deployable, what it serves and runs; then the commit and the
-/// settings they read, the outcome and the one thing to do next.
+/// The success screen: where each binary or Worker is, a module's size,
+/// its build id and, for a declared deployable, what it serves and runs;
+/// then the commit and the settings they read, the outcome and the one
+/// thing to do next.
 fn shown(built: Built) -> Reply {
     let mut screen = Screen::new();
     let mut shared = vec![(
@@ -350,10 +423,23 @@ fn shown(built: Built) -> Reply {
     }
     let one = built.binaries.len() == 1;
     for binary in &built.binaries {
-        let mut fields = vec![
-            ("binary".to_string(), binary.binary.clone()),
-            ("build".to_string(), binary.build.clone()),
-        ];
+        let mut fields = match &binary.artifact {
+            Artifact::Native { binary } => vec![("binary".to_string(), binary.clone())],
+            Artifact::Worker {
+                wrangler,
+                module,
+                bytes,
+                gzipped,
+            } => vec![
+                ("worker".to_string(), wrangler.clone()),
+                ("module".to_string(), module.clone()),
+                (
+                    "size".to_string(),
+                    format!("{}, {} gzipped", size(*bytes), size(*gzipped)),
+                ),
+            ],
+        };
+        fields.push(("build".to_string(), binary.build.clone()));
         if binary.declared {
             if !binary.serves.is_empty() {
                 fields.push(("serves".to_string(), binary.serves.join(", ")));
@@ -370,59 +456,107 @@ fn shown(built: Built) -> Reply {
     if !shared.is_empty() {
         screen.push(Block::fields(shared));
     }
+    let mut alerts = Vec::new();
     if built.modified {
-        screen.push(Block::Alerts(vec![match built.commit {
+        alerts.push(match built.commit {
             Some(_) => {
                 "Built from changes not committed: only this tree explains its events".to_string()
             }
             None => "Built from files git doesn't track: no commit explains its events".to_string(),
-        }]));
+        });
     }
-    let names: Vec<&str> = built
+    let workers: Vec<String> = built
         .binaries
         .iter()
-        .map(|binary| binary.name.as_str())
+        .filter(|binary| matches!(binary.artifact, Artifact::Worker { .. }))
+        .map(|binary| format!("`{}`", binary.name))
         .collect();
-    // `kiosk`, `kiosk and office`, `kiosk, office and edge`: one fact,
-    // which plain output joins to the next with a comma.
-    let named = match names.as_slice() {
-        [rest @ .., last] if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
-        _ => names.join(""),
-    };
+    if !workers.is_empty() {
+        alerts.push(format!(
+            "{} {} 503 to every request: serving on Workers is chunk 8.2d",
+            joined(&workers),
+            if workers.len() == 1 {
+                "answers"
+            } else {
+                "answer"
+            }
+        ));
+    }
+    if !alerts.is_empty() {
+        screen.push(Block::Alerts(alerts));
+    }
+    let names: Vec<String> = built
+        .binaries
+        .iter()
+        .map(|binary| binary.name.clone())
+        .collect();
+    // `native`, `wasm`, or `wasm and native`, as the deployables come.
+    let mut targets: Vec<String> = Vec::new();
+    for binary in &built.binaries {
+        if !targets.iter().any(|target| target == binary.target) {
+            targets.push(binary.target.to_string());
+        }
+    }
     screen.push(Block::summary(
         Outcome::Success,
         "built",
         [
-            Fact::plain(named),
-            Fact::plain(format!("native in {:.1} s", built.seconds)),
+            Fact::plain(joined(&names)),
+            Fact::plain(format!("{} in {:.1} s", joined(&targets), built.seconds)),
         ],
     ));
-    let Some(first) = built.binaries.first() else {
+    if built.binaries.is_empty() {
         return Reply::screen(screen, Json::Null);
-    };
-    screen.push(if built.migrations {
-        Block::hint(
+    }
+    let native = built
+        .binaries
+        .iter()
+        .find_map(|binary| match &binary.artifact {
+            Artifact::Native { binary } => Some(binary.as_str()),
+            Artifact::Worker { .. } => None,
+        });
+    if built.migrations {
+        screen.push(Block::hint(
             "jadpo migrate apply",
             if one {
                 "it starts only once its database has every migration"
             } else {
                 "they start only once their database has every migration"
             },
-        )
-    } else {
-        Block::hint(
-            format!("./{}", first.binary),
+        ));
+    } else if let Some(binary) = native {
+        screen.push(Block::hint(
+            format!("./{binary}"),
             "runs it, reading its settings from the environment",
-        )
-    });
+        ));
+    }
     let data = Json::object([
         (
             "deployables",
             Json::array(built.binaries.iter().map(|binary| {
+                let (native, wrangler, module) = match &binary.artifact {
+                    Artifact::Native { binary } => (binary.as_str().into(), Json::Null, Json::Null),
+                    Artifact::Worker {
+                        wrangler,
+                        module,
+                        bytes,
+                        gzipped,
+                    } => (
+                        Json::Null,
+                        wrangler.as_str().into(),
+                        Json::object([
+                            ("path", module.as_str().into()),
+                            ("bytes", (*bytes).into()),
+                            ("gzip_bytes", (*gzipped).into()),
+                        ]),
+                    ),
+                };
                 Json::object([
                     ("deployable", binary.name.as_str().into()),
                     ("target", binary.target.into()),
-                    ("binary", binary.binary.as_str().into()),
+                    ("binary", native),
+                    ("wrangler", wrangler),
+                    ("module", module),
                     (
                         "openapi",
                         Json::array(binary.openapi.iter().map(String::as_str)),
@@ -450,6 +584,32 @@ fn shown(built: Built) -> Reply {
     Reply::screen(screen, data)
 }
 
+/// `kiosk`, `kiosk and office`, `kiosk, office and edge`: one fact,
+/// which plain output joins to the next with a comma.
+fn joined(names: &[String]) -> String {
+    match names {
+        [rest @ .., last] if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => names.join(""),
+    }
+}
+
+/// `bytes` for people, in decimal units as Cloudflare states its limits:
+/// `912 bytes`, `412 KB`, `4.1 MB`.
+fn size(bytes: usize) -> String {
+    match bytes {
+        0..1_000 => format!("{bytes} bytes"),
+        1_000..999_500 => format!("{} KB", (bytes + 500) / 1_000),
+        _ => format!("{:.1} MB", bytes as f64 / 1_000_000.0),
+    }
+}
+
+/// How many bytes `data` takes gzipped at zlib's default level, as
+/// Wrangler reports an upload's: the deflated data and gzip's 18 bytes
+/// around it (RFC 1952).
+fn gzipped(data: &[u8]) -> usize {
+    miniz_oxide::deflate::compress_to_vec(data, 6).len() + 18
+}
+
 /// The folder holding the runtime crates this Jadpo was built from.
 fn runtime_sources() -> PathBuf {
     let cli = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -466,6 +626,23 @@ fn commit_time(root: &Path) -> Option<u64> {
         .output()
         .ok()?;
     String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+}
+
+/// Removes `folder` and what it holds, if it is there.
+fn cleared(folder: &Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(folder) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
+/// Writes `bytes` to `to`, from the project's root, as a new file.
+fn write_new(root: &Path, to: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let to = root.join(to);
+    if let Some(folder) = to.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    std::fs::write(to, bytes)
 }
 
 /// Copies the compiled binary to `to`, from the project's root, as a new
@@ -550,6 +727,34 @@ fn write_failed(path: &str, error: &std::io::Error) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_size_is_given_in_decimal_units() {
+        assert_eq!(size(912), "912 bytes");
+        assert_eq!(size(412_300), "412 KB");
+        assert_eq!(size(999_499), "999 KB");
+        assert_eq!(size(999_500), "1.0 MB");
+        assert_eq!(size(19_665_209), "19.7 MB");
+    }
+
+    #[test]
+    fn a_size_gzipped_is_the_deflated_data_and_gzips_frame() {
+        let data = b"jadpo ".repeat(10_000);
+        let deflated = miniz_oxide::deflate::compress_to_vec(&data, 6).len();
+        assert_eq!(gzipped(&data), deflated + 18);
+        assert!(gzipped(&data) < data.len() / 20);
+    }
+
+    #[test]
+    fn names_and_targets_are_joined_as_one_fact() {
+        let words = |list: &[&str]| list.iter().map(|word| word.to_string()).collect::<Vec<_>>();
+        assert_eq!(joined(&words(&["kiosk"])), "kiosk");
+        assert_eq!(joined(&words(&["wasm", "native"])), "wasm and native");
+        assert_eq!(
+            joined(&words(&["kiosk", "office", "edge"])),
+            "kiosk, office and edge"
+        );
+    }
 
     #[test]
     fn only_the_last_lines_of_what_cargo_said_are_kept() {

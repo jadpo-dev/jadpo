@@ -11,7 +11,8 @@ autotests = false
 
 # A compiler crate (docs/compiler-runtime.md §2.1 and §2.5): it reads the
 # plan and writes Rust that depends only on the runtime crates and the
-# shared leaf, so it reaches no runtime crate itself, and drives cargo.
+# shared leaf, so it reaches no runtime crate itself, and drives cargo
+# and, for a Workers deployable, wasm-bindgen's library.
 [dependencies]
 jadpo-graph.workspace = true
 jadpo-plan.workspace = true
@@ -21,7 +22,12 @@ jadpo-std = { workspace = true, features = ["testing"] }
 prettyplease.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
+# The Wrangler file's strings (chunk 8.2b).
+serde_json.workspace = true
 syn.workspace = true
+# A Workers deployable's module bound by wasm-bindgen's own library, at
+# exactly the release the Workers host binds with (chunk 8.2b).
+wasm-bindgen-cli-support.workspace = true
 
 [dev-dependencies]
 jadpo-check.workspace = true

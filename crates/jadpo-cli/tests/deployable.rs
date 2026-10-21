@@ -40,7 +40,7 @@ use serde_json::Value;
 /// `build/` and `.jadpo/`, which a run keeps: what an earlier run added is
 /// removed, and a file left as it was keeps its time, so cargo builds only
 /// what changed.
-fn copy_folder(from: &Path, to: &Path) {
+pub(crate) fn copy_folder(from: &Path, to: &Path) {
     fs::create_dir_all(to).expect("folders");
     for entry in fs::read_dir(to).expect("a folder") {
         let entry = entry.expect("an entry");

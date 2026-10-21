@@ -2482,17 +2482,32 @@ whose entry names them.
   test starts (TCP, TLS from a trusted and an untrusted authority,
   HTTP), an aborted call's connection let go while the invocation goes
   on; a step of the gate's `wasm32` group. §2.6's "The Workers host".
-- [ ] **8.2b A Workers deployable from `jadpo build`** `opus · xhigh`,
-  after 8.2a and 8.1o2: `jadpo build <deployable>` for a `Target.wasm`
-  deployable: its Rust (the program's crate and a `cdylib` exporting the
-  Worker's handlers through `jadpo-host-workers`, linking only the
-  drivers it reaches) built for `wasm32-unknown-unknown` in release,
-  offline and `--locked`, bound by wasm-bindgen's library, with Jadpo's
-  module shim and a Wrangler file (`wrangler.json`: the main module, no
-  bundling, the compatibility date, the settings it reads) in
-  `build/target/<deployable>/`; the build stamp's target `wasm`; the
-  module's size, raw and compressed, on the build's screen, and the Wasm
-  size measured with and without the `testing` feature.
+- [x] **8.2b A Workers deployable from `jadpo build`** `opus · xhigh`,
+  after 8.2a and 8.1o2. Built (area 14, "A Workers deployable"): `jadpo
+  build [<deployable>]` builds a `Target.wasm` deployable, no longer
+  refused: its program's crate and a `cdylib`, `jadpo-worker-<name>`,
+  exporting the Worker's `fetch` through `jadpo-host-workers`'s own
+  wasm-bindgen and handing it the program, the stamp and each store's
+  migrations (`jadpo_runtime::deployable::Deployable`, now shared with
+  the native host), linking PostgreSQL's driver when the project keeps a
+  database and SMTP's (a new `smtp` feature) when it reaches an SMTP
+  connection; built for `wasm32-unknown-unknown` in release, offline and
+  `--locked`, into the cargo target native deployables share, and bound
+  by wasm-bindgen's library at the lock's release
+  (`jadpo_codegen::workers::bind`); in `build/target/<deployable>/` the
+  module, its JavaScript, Jadpo's shim `worker.mjs` and `wrangler.json`
+  (the Worker's name with dashes, the shim as `main`, no bundling with a
+  rule per kind, compatibility date 2026-10-01, each setting without a
+  default a required secret); the stamp's target `wasm`; the screen's
+  `worker`, `module` and `size` (raw and gzipped) and `--json`'s
+  `wrangler` and `module`. Until 8.2d the Worker makes its program once
+  per isolate and answers every request 503, which the screen's alert
+  says. Proved (`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32`
+  group): example 23 declared as a kiosk on Workers, built in 42 s cold,
+  holding no `testing` symbol, and loaded by the pinned workerd from its
+  files. Its module 19.7 MB bound, 6.5 MB gzipped (14.0 MB data, mostly
+  locale data, 4.5 MB code); as cargo built it, 20.4 MB without the
+  `testing` feature and 21.9 MB with it (6.6 and 7.1 MB gzipped).
 - [ ] **8.2c Locale data for the supported locales** `opus · xhigh`,
   after 8.1o (from chunk 5.3): a deployable carries locale data only for
   its application's supported locales (today all 533 are compiled in:

@@ -453,10 +453,12 @@ pub static COMMANDS: &[Command] = &[
                       build stamp: the build id, the commit, whether the tree had changes, the \
                       compiler, the deployable and the target. `deployables:` in app.jadpo names \
                       each one, what it serves and runs and its target; with none declared there \
-                      is one, `app`, which runs everything. One built for Target.wasm isn't built \
-                      yet. It compiles offline in release with the toolchain and the runtime's \
-                      lock this Jadpo was built with, keeping each one's Rust in \
-                      build/rust/<deployable>/.",
+                      is one, `app`, which runs everything. One built for Target.wasm becomes a \
+                      WebAssembly module for Cloudflare Workers instead, beside Jadpo's module \
+                      shim and a wrangler.json naming the settings it needs, its size shown raw \
+                      and gzipped; it answers 503 until Workers serving is built. It compiles \
+                      offline in release with the toolchain and the runtime's lock this Jadpo was \
+                      built with, keeping each one's Rust in build/rust/<deployable>/.",
         arguments: &[Argument {
             name: "deployable",
             description: "The deployable to build; every one when left out",

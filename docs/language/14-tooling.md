@@ -51,7 +51,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
-| `jadpo build [<deployable>]` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Built (chunk 8.1o) for the one deployable an app that declares none has, `app`, natively, with `--json`: it checks as `jadpo check` does, writing the same files, and stops at its errors; otherwise it writes `build/target/app/app` and `build/target/app/openapi/` with each API's document and failure files, built with the toolchain and lock this Jadpo pins; see [A native deployable](#a-native-deployable). Since chunk 8.1o2 every declared deployable, or the one named, each in `build/target/<deployable>/` beside only its own APIs' documents; one built for `Target.wasm` is `toolchain.not_built_yet` until chunk 8.2; see [Declared deployables](#declared-deployables) |
+| `jadpo build [<deployable>]` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Built (chunk 8.1o) for the one deployable an app that declares none has, `app`, natively, with `--json`: it checks as `jadpo check` does, writing the same files, and stops at its errors; otherwise it writes `build/target/app/app` and `build/target/app/openapi/` with each API's document and failure files, built with the toolchain and lock this Jadpo pins; see [A native deployable](#a-native-deployable). Since chunk 8.1o2 every declared deployable, or the one named, each in `build/target/<deployable>/` beside only its own APIs' documents; see [Declared deployables](#declared-deployables). Since chunk 8.2b one built for `Target.wasm` as a WebAssembly module with Jadpo's module shim and a Wrangler file, the module's size on the screen; see [A Workers deployable](#a-workers-deployable) |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The settings `config.jadpo` declares are read from the environment over `.env.local` and checked first (chunk 5.1): a missing or invalid value stops the app starting and is shown by setting and variable, never by value, and a save of `.env.local` is checked like a save of source, keeping the last good version serving. Each database opens at the address its connection's `url:` setting holds, or the one `--url` names, or else a disposable PostgreSQL for the session (for a store whose address no variable gives), with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line. Since chunk 6.2b, a line for each schedule run and skipped tick (a paused schedule's once), with its trace's id, outcome, what it emitted or its failure and its time, and a line for each alert when it starts; the address of each database it started is in `build/dev/stores.json` while it runs, for `jadpo schedules` and `jadpo why`. Since chunk 6.7, ctrl-c or SIGTERM stops it cleanly: the server drains, its background work giving back what it holds, and it exits 0; a second signal ends it at once (area 12, "Running background work"). Since chunk 5.13b, a save that leaves a file empty that had text is taken as an editor's save in place between its truncate and its write, not yet saved: the reload waits for the file's text, up to 2 seconds, so an empty routes file, which checks cleanly with no routes, never replaces the version serving; a file still empty then reloads as saved ("Watching saves" in Decisions; `jadpo test --watch` waits the same way). Since chunk 7.2d, every provider call is faked by default, with no credential needed, unless the connection's `development: { sandbox: }` lets it through to the provider's sandbox, never live; `--fake <connection>` and `--sandbox <operation>` change which for one session only, each request's line lists its calls, and each call is logged for `jadpo calls` (area 11, "Provider calls in development"). Since chunk 7.5f, each step an action with several changing calls reached is a line under its request's line, and a delivery whose action reached steps gets a line of its own, with `jadpo deliveries show <id>` when it needs an operator (area 12). Decided 2026-10-16 (area 11), not built: the services the app's connections declare started with it |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8), and `signature` for a connection's generated webhook since chunk 7.7 (area 11), listed under `webhooks  /webhooks` when the app declares no `webhooks` API |
@@ -977,7 +977,7 @@ application {
   deployable's tick deletes what has expired, which any instance may.
 - **What it is built for.** `target:` is `Target.native`, a server, or
   `Target.wasm`, WebAssembly on Cloudflare Workers, which `jadpo build`
-  builds from chunk 8.2. A deployable with no `target:` has none, as the
+  builds since chunk 8.2b. A deployable with no `target:` has none, as the
   one an app that declares none has, `app`, and is built natively
   (Richard, 2026-10-21; Decisions).
 - **What each reaches.** From the routes of the APIs it serves, the
@@ -1008,8 +1008,9 @@ application {
   `build/rust/<deployable>/`, all compiled into one cargo target, so the
   runtime crates compile once for them all. A name the app doesn't
   declare is `cli.build_arguments`, with the nearest; a deployable built
-  for `Target.wasm` is `toolchain.not_built_yet`, naming a native one to
-  build. Each binary's stamp names it, and its build id is its own: the
+  for `Target.wasm` is built for Workers since chunk 8.2b ([A Workers
+  deployable](#a-workers-deployable)). Each binary's stamp names it, and
+  its build id is its own: the
   build id digests the deployable's declaration with the graph's digest
   (area 18), the whole project's until a deployable is compiled from only
   what it reaches (roadmap chunk 8.1o3), and `jadpo check` writes each
@@ -1017,7 +1018,9 @@ application {
 
 ```text
 $ jadpo build
-  binary    build/target/web/web
+  worker    build/target/web/wrangler.json
+  module    build/target/web/web.wasm
+  size      19.7 MB, 6.5 MB gzipped
   build     b_1c5e09d2a7f3
   serves    main
   runs      subscribers
@@ -1030,12 +1033,101 @@ $ jadpo build
   commit    8d113e6
   settings  DATABASE_URL
 
-✓ built  web and back_office · native in 61.3 s
+▲ alert  `web` answers 503 to every request: serving on Workers is chunk 8.2d
+
+✓ built  web and back_office · wasm and native in 61.3 s
 → jadpo migrate apply  they start only once their database has every migration
 ```
 
-With `web` built for `Target.wasm`, as above, `jadpo build` stops before
-building either, and `jadpo build back_office` builds the one it can.
+Until chunk 8.2b, `web`, built for `Target.wasm`, was refused as
+`toolchain.not_built_yet`.
+
+### A Workers deployable
+
+Built in chunk 8.2b, each the most conservative reading where the pages
+leave a choice open (Decisions, "A Workers deployable"). The Worker's
+handlers come with their chunks: `fetch` serving a request with 8.2d, the
+cron's `scheduled` with 8.2f and the queue's with 8.2k.
+
+- **What `jadpo build` writes.** For a deployable with `target:
+  Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
+  crate and a `cdylib`, `jadpo-worker-<deployable>`, exporting the
+  Worker's `fetch` through the Workers host, with the program, its build
+  stamp and each store's migrations as a native binary is given them. It
+  links the package driver, which every Worker has, PostgreSQL's when the
+  project keeps a database (every deployable's tick reaches each store),
+  SMTP's when the deployable reaches an SMTP connection, and no other.
+  It is built for `wasm32-unknown-unknown` in release, offline and
+  `--locked`, without the runtime's `testing` feature, into the cargo
+  target the native deployables share, then bound by wasm-bindgen's own
+  library at the release the lock holds, so nothing is downloaded and no
+  command-line tool has to match. Into `build/target/<deployable>/`, after
+  what an earlier build left there: `<deployable>.wasm`, the module;
+  `<deployable>.js`, wasm-bindgen's JavaScript for it; `worker.mjs`,
+  Jadpo's module shim, which instantiates the module once per isolate and
+  hands each request, the Worker's `env` and the invocation's `ctx` to it;
+  `wrangler.json`; and the documents of the APIs it serves.
+- **The Wrangler file.** `name`, the deployable's name with each `_` a
+  `-`, since Cloudflare takes letters, digits and dashes; `main`, the
+  shim; `compatibility_date`, the date the Workers host is tested at under
+  the workerd pinned in `tools/workers/` (2026-10-01); `no_bundle` and
+  `find_additional_modules`, with a rule for each kind of file (`.mjs` and
+  `.js` as ES modules, `.wasm` as compiled WebAssembly), so the files are
+  uploaded as they are written; and `secrets: { required: [ ] }`, the
+  variable of each setting without a `default:`. A binding on Workers is a
+  variable or a secret, and a required secret is Wrangler's one way to
+  name a binding that must be set without giving its value, so `wrangler
+  deploy` refuses until each is set; a setting with a default is left to
+  it. The cron trigger (chunk 8.2f) and the queues' consumers (8.2k) join
+  the file with their chunks, and 8.2k checks it against Wrangler itself.
+- **The build stamp.** Its target is `wasm`; the module holds the stamp as
+  a constant, as a binary does, and the manifest gives the deployable's
+  target as `wasm`.
+- **The screen.** For each Worker, `worker`, its Wrangler file; `module`,
+  the module; `size`, the module's bytes raw and gzipped at zlib's default
+  level, as Wrangler reports an upload, in decimal units, as Cloudflare
+  states its limits; then its build id and what it serves and runs. The
+  `--json` data gives `wrangler` and the module's `path`, `bytes` and
+  `gzip_bytes`, with `binary` null.
+- **What it answers for now.** Until chunk 8.2d builds the Worker's
+  `fetch` (the settings read from the bindings, the stores' migrations
+  compared, each request served through the runtime), the module makes its
+  program once per isolate, so its plan is read, and answers every request
+  `503` with `unavailable`; the screen says so in an alert.
+
+```text
+$ jadpo build kiosk
+  worker    build/target/kiosk/wrangler.json
+  module    build/target/kiosk/kiosk.wasm
+  size      19.7 MB, 6.5 MB gzipped
+  build     b_1c5e09d2a7f3
+  serves    main
+  runs      schedules, subscribers
+  commit    8d113e6
+  settings  DATABASE_URL
+
+▲ alert  `kiosk` answers 503 to every request: serving on Workers is chunk 8.2d
+
+✓ built  kiosk · wasm in 42.3 s
+→ jadpo migrate apply  it starts only once its database has every migration
+```
+
+```json
+{
+  "name": "kiosk",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "no_bundle": true,
+  "find_additional_modules": true,
+  "rules": [
+    { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
+    { "type": "CompiledWasm", "globs": ["**/*.wasm"] }
+  ],
+  "secrets": {
+    "required": ["DATABASE_URL"]
+  }
+}
+```
 
 ### Command errors
 
@@ -2168,6 +2260,7 @@ what other areas carried here and where this page answers it.
     in one process. Built in chunk 8.1o for the one deployable an app that
     declares none has, `app`, natively ([A native deployable](#a-native-deployable));
     declaring them in chunk 8.1o2 ([Declared deployables](#declared-deployables)),
+    one built for Workers in chunk 8.2b ([A Workers deployable](#a-workers-deployable)),
     each compiled from only what it reaches in chunk 8.1o3.
 15. **Which commands manage integrations?** (carried from area 11) The
     command table above has no `jadpo integration add` or `update`, no
@@ -2211,6 +2304,7 @@ what other areas carried here and where this page answers it.
 
 | Topic | Decision | Date |
 |---|---|---|
+| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 19.7 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answers every request 503 until chunk 8.2d (decided for Richard, the conservative reading) | 2026-10-21 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |

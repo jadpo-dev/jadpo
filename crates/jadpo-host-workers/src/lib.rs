@@ -17,6 +17,10 @@
 //!   through `fetch()`, aborted through an `AbortSignal` when its time is
 //!   up and following no redirect, for the package driver and for the
 //!   runtime's own fetches.
+//! - [`deployable`]: what a module `jadpo build` writes for a
+//!   `Target.wasm` deployable calls from the handlers it exports (chunk
+//!   8.2b), and [`wasm_bindgen`], re-exported so that crate exports them
+//!   through this one's.
 //!
 //! The crate builds for wasm32-unknown-unknown, which is what it is for,
 //! and natively, where its bindings compile but are never called, so the
@@ -37,6 +41,7 @@
     )
 )]
 
+pub mod deployable;
 mod fetch;
 mod js;
 mod timer;
@@ -58,6 +63,10 @@ use wasm_bindgen::{JsCast, JsValue};
 pub use fetch::{WorkersFetch, WorkersOutbound};
 pub use js::ExecutionContext;
 pub use transport::{WorkersStream, WorkersTransport};
+/// The release of wasm-bindgen this crate binds with, for the handlers a
+/// deployable's crate exports (`#[wasm_bindgen(wasm_bindgen = …)]`), so
+/// that crate depends on this one alone.
+pub use wasm_bindgen;
 
 /// How long the work a response leaves may run on Workers: `waitUntil`
 /// keeps an invocation 30 seconds past its response. Work handed on runs

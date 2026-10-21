@@ -51,51 +51,10 @@ use serde_json::{Map, Value, json};
 use crate::http::{AppHandler, Handler, MakeHandler, WorkerThread, serve};
 use crate::{Drivers, Runtime, supplies};
 
-/// What a generated deployable's `main` hands [`run`].
-#[derive(Clone, Copy, Debug)]
-pub struct Deployable {
-    /// The compiled program on the calling thread: the generated crate's
-    /// `program`, which decodes its plan once for the process.
-    pub program: fn() -> Result<Program, Unreadable>,
-    pub stamp: Stamp,
-    /// Each database the project keeps migrations in, with its migrations
-    /// in the order they apply, as the project held them when it was built.
-    pub stores: &'static [Store],
-}
-
-/// The build stamp (area 18, "Production builds"; docs/compiler-runtime.md
-/// §2.8): a constant in the binary, and on every event it logs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Stamp {
-    /// The build id, `b_` and twelve hex digits of a digest of the source
-    /// the deployable reaches, the compiler, the target and the lock.
-    pub build: &'static str,
-    /// The commit it was built from, when the project is in git.
-    pub commit: Option<&'static str>,
-    /// Whether the tree held changes the commit doesn't, or had no commit.
-    pub modified: bool,
-    /// The Jadpo version that built it.
-    pub compiler: &'static str,
-    pub deployable: &'static str,
-    /// `native`.
-    pub target: &'static str,
-}
-
-/// A database the project keeps migrations in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Store {
-    /// The store's connection.
-    pub name: &'static str,
-    pub migrations: &'static [Migration],
-}
-
-/// One migration of a store: its folder's name and the digest the store
-/// records for it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Migration {
-    pub name: &'static str,
-    pub digest: &'static str,
-}
+/// What a generated deployable's `main` hands [`run`]: the program, its
+/// build stamp and each store's migrations, shared with the Workers host
+/// (chunk 8.2b).
+pub use jadpo_runtime::deployable::{Deployable, Migration, Stamp, Store};
 
 /// The port a deployable listens on when `PORT` doesn't say.
 pub const DEFAULT_PORT: u16 = 8080;
