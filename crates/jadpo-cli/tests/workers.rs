@@ -1,18 +1,21 @@
-//! A Workers deployable, built and served by workerd (roadmap chunks 8.2b
-//! and 8.2d; docs/compiler-runtime.md §2.6, "A Workers deployable"; area
-//! 14, "A Workers deployable"): teaching example 23, the repair café,
-//! declared as one kiosk built for `Target.wasm`. `jadpo build` writes it in
-//! `build/target/kiosk/` as a WebAssembly module bound by wasm-bindgen's
-//! library, the JavaScript that binds it, Jadpo's module shim and a
-//! Wrangler file naming them, the setting it needs and the compatibility
-//! date; its stamp's target is `wasm`, the screen shows the module's size
-//! raw and gzipped, and the module links the PostgreSQL driver the café's
+//! A Workers deployable, built and served by workerd (roadmap chunks 8.2b,
+//! 8.2d and 8.2i; docs/compiler-runtime.md §2.6, "A Workers deployable"
+//! and "PostgreSQL through Hyperdrive"; area 14, "A Workers deployable"):
+//! teaching example 23, the repair café, declared as one kiosk built for
+//! `Target.wasm`. `jadpo build` writes it in `build/target/kiosk/` as a
+//! WebAssembly module bound by wasm-bindgen's library, the JavaScript that
+//! binds it, Jadpo's module shim and a Wrangler file naming them, its
+//! database's address as a Hyperdrive binding, with the id the build is
+//! given or, without one, an alert saying so, and the compatibility date;
+//! its stamp's target is `wasm`, the screen shows the module's size raw
+//! and gzipped, and the module links the PostgreSQL driver the café's
 //! database needs, the runtime's HTTP component, and none of the testing
 //! machinery.
 //!
 //! workerd, Cloudflare's own Workers runtime, pinned in `tools/workers/`,
 //! then runs the files as the Wrangler file describes them, against a
-//! PostgreSQL database on this machine reached through `connect()`.
+//! PostgreSQL database on this machine reached through workerd's
+//! Hyperdrive binding, which hands `connect()` to the database's server.
 //! Without its database's address the Worker answers 503 and logs
 //! `runtime.startup_failed` naming the setting's variable, once for its
 //! isolate; against a database that hasn't applied its last migration it
@@ -73,8 +76,13 @@ fn repair_cafe() -> PathBuf {
 
 /// `jadpo` with `args` in `root`, which must succeed.
 fn jadpo(root: &Path, args: &[&str]) -> jadpo_cli::Output {
+    jadpo_in(root, args, Environment::empty())
+}
+
+/// `jadpo` with `args` in `root` and `environment`, which must succeed.
+fn jadpo_in(root: &Path, args: &[&str], environment: Environment) -> jadpo_cli::Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    let output = run(&args, &Environment::empty().with_cwd(root));
+    let output = run(&args, &environment.with_cwd(root));
     assert_eq!(
         output.code, 0,
         "{args:?}: {}{}",
@@ -145,8 +153,9 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     );
 
     // The Wrangler file: the shim as the main module, uploaded with the
-    // files beside it as they are, the compatibility date, and the setting
-    // the kiosk needs, by its variable.
+    // files beside it as they are, the compatibility date, and the
+    // database's address as a Hyperdrive binding, by its setting's
+    // variable, with no id, since the build was given none.
     let wrangler: Value = serde_json::from_str(
         &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
     )
@@ -158,10 +167,16 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         wrangler["compatibility_date"],
         jadpo_codegen::workers::COMPATIBILITY_DATE
     );
+    assert!(wrangler.get("secrets").is_none(), "{wrangler}");
     assert_eq!(
-        wrangler["secrets"]["required"],
-        serde_json::json!(["DATABASE_URL"]),
+        wrangler["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL" }]),
         "{wrangler}"
+    );
+    assert_eq!(
+        kiosk["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL", "id": null }]),
+        "{built}"
     );
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
     assert!(shim.contains("from \"./kiosk.js\""), "{shim}");
@@ -211,20 +226,49 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         assert!(names(&module, krate, path), "it lacks {krate}::{path}");
     }
 
-    // The screen names the Worker's files and the module's size, and no
-    // longer says the Worker answers nothing.
+    // The screen names the Worker's files, the module's size and its
+    // database's Hyperdrive binding, and says the binding has no id, which
+    // `wrangler deploy` needs, nor its Hyperdrive's caching off.
     let screen = jadpo(&root, &["build", "kiosk"]).stdout;
     for shown in [
         "worker: build/target/kiosk/wrangler.json",
         "module: build/target/kiosk/kiosk.wasm",
         "MB gzipped",
+        "database: DATABASE_URL through Hyperdrive, no id",
         "build: b_",
         "settings: DATABASE_URL",
+        "`DATABASE_URL` has no Hyperdrive id",
+        "caching off",
+        "`JADPO_HYPERDRIVE_DATABASE_URL`",
         "built: kiosk, wasm in ",
     ] {
         assert!(screen.contains(shown), "{shown} isn't in:\n{screen}");
     }
     assert!(!screen.contains("503"), "{screen}");
+
+    // Given its Hyperdrive's id, the build writes it into the Wrangler
+    // file, and the screen names it.
+    const ID: &str = "c020574a5623407bbe0ccd192bab9545";
+    let given = jadpo_in(
+        &root,
+        &["build", "kiosk"],
+        Environment::empty().with_var("JADPO_HYPERDRIVE_DATABASE_URL", ID),
+    )
+    .stdout;
+    assert!(
+        given.contains(&format!("database: DATABASE_URL through Hyperdrive {ID}")),
+        "{given}"
+    );
+    assert!(!given.contains("has no Hyperdrive id"), "{given}");
+    let wrangler: Value = serde_json::from_str(
+        &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
+    )
+    .expect("JSON");
+    assert_eq!(
+        wrangler["hyperdrive"],
+        serde_json::json!([{ "binding": "DATABASE_URL", "id": ID }]),
+        "{wrangler}"
+    );
 
     if !jadpo_test::live() {
         return;
@@ -258,7 +302,9 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     drop(worker);
 
     // Against a database that hasn't applied its last migration it serves
-    // nothing either, naming the migration.
+    // nothing either, naming the migration. The database is reached
+    // through the Hyperdrive binding the Wrangler file names, which workerd
+    // hands to the database's server, as Cloudflare hands it to Hyperdrive.
     let worker = Workerd::start(&out, &wrangler, &[("DATABASE_URL", &database.worker)]);
     let (status, body) = worker.send("POST", "/repairs", &[], LAMP);
     assert_eq!(status, 503, "{body}\n{}", worker.log());
@@ -270,7 +316,7 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     assert_eq!(problem["store"], "main", "{failed:?}");
     assert_eq!(problem["pending"], serde_json::json!([last.name]));
     assert!(
-        !worker.log().contains(&database.worker),
+        !worker.log().contains(&database.worker) && !worker.log().contains("hyperdrive.local"),
         "the log holds the database's address:\n{}",
         worker.log()
     );
@@ -433,8 +479,11 @@ struct Workerd {
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
     /// the modules beside it by the file's rules, and its compatibility
-    /// date, given the text bindings `bindings`, its outbound network
-    /// reaching this machine.
+    /// date, given `bindings`, its outbound network reaching this machine.
+    /// A binding the Wrangler file names as Hyperdrive's is given as
+    /// workerd's Hyperdrive binding for the database at that address, which
+    /// hands `connect()` to its server, as `wrangler dev` does with a local
+    /// connection string; any other is text.
     fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("workers-workerd");
         let _ = fs::remove_dir_all(&dir);
@@ -464,9 +513,31 @@ impl Workerd {
                 fs::copy(&path, dir.join(path.file_name().expect("a name"))).expect("copied");
             }
         }
+        let pooled: Vec<&str> = wrangler["hyperdrive"]
+            .as_array()
+            .map(|bindings| {
+                bindings
+                    .iter()
+                    .filter_map(|binding| binding["binding"].as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut services = Vec::new();
         let bindings: Vec<String> = bindings
             .iter()
-            .map(|(name, value)| format!("(name = \"{name}\", text = \"{value}\")"))
+            .map(|(name, value)| {
+                if !pooled.contains(name) {
+                    return format!("(name = \"{name}\", text = \"{value}\")");
+                }
+                let (user, password, server, database) = parts(value);
+                let service = format!("hyperdrive-{}", name.to_ascii_lowercase());
+                services.push(format!(
+                    "(name = \"{service}\", external = (address = \"{server}\", tcp = ())),"
+                ));
+                format!(
+                    "(name = \"{name}\", hyperdrive = (designator = \"{service}\", database = \"{database}\", user = \"{user}\", password = \"{password}\", scheme = \"postgresql\"))"
+                )
+            })
             .collect();
         let port = TcpListener::bind("127.0.0.1:0")
             .and_then(|listener| listener.local_addr())
@@ -481,6 +552,7 @@ impl Workerd {
                  \x20 services = [\n\
                  \x20   (name = \"kiosk\", worker = .kiosk),\n\
                  \x20   (name = \"machine\", network = (allow = [\"public\", \"private\", \"local\"])),\n\
+                 \x20   {}\n\
                  \x20 ],\n\
                  \x20 sockets = [(name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\")],\n\
                  );\n\n\
@@ -490,6 +562,7 @@ impl Workerd {
                  \x20 bindings = [{}],\n\
                  \x20 globalOutbound = \"machine\",\n\
                  );\n",
+                services.join("\n    "),
                 modules.join(", "),
                 bindings.join(", "),
             ),
@@ -606,6 +679,22 @@ impl Drop for Workerd {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A PostgreSQL address's user, password, server (`host:port`) and
+/// database: what workerd's Hyperdrive binding is given.
+fn parts(url: &str) -> (String, String, String, String) {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let (user_info, rest) = rest.rsplit_once('@').unwrap_or(("", rest));
+    let (user, password) = user_info.split_once(':').unwrap_or((user_info, ""));
+    let (server, database) = rest.split_once('/').unwrap_or((rest, ""));
+    let database = database.split('?').next().unwrap_or_default();
+    (
+        user.to_string(),
+        password.to_string(),
+        server.to_string(),
+        database.to_string(),
+    )
 }
 
 /// A chunked body's text.

@@ -9,7 +9,9 @@
 //! `<api>.failures.<locale>.json` (area 10): natively one binary; for
 //! Workers (`Target.wasm`) a WebAssembly module bound by wasm-bindgen's
 //! library, Jadpo's module shim and a Wrangler file, the module's size
-//! shown raw and gzipped. Each carries the CLDR data of the app's
+//! shown raw and gzipped, each database's address a Hyperdrive binding
+//! whose id is read from `JADPO_HYPERDRIVE_<variable>` (chunk 8.2i). Each
+//! carries the CLDR data of the app's
 //! supported locales only (chunk 8.2c), from `build/rust/cldr/`, where
 //! `jadpo test` and `jadpo dev` keep every locale.
 //!
@@ -242,6 +244,7 @@ pub fn build(call: &Call) -> Reply {
                         ));
                     }
                 };
+                let hyperdrive = hyperdrive(&plan, call);
                 let required: Vec<String> = plan
                     .runtime()
                     .config
@@ -249,6 +252,11 @@ pub fn build(call: &Call) -> Reply {
                     .iter()
                     .filter(|field| field.default.is_none())
                     .map(|field| field.variable.clone())
+                    .filter(|variable| {
+                        !hyperdrive
+                            .iter()
+                            .any(|binding| &binding.binding == variable)
+                    })
                     .collect();
                 let module = format!("{out}/{name}.wasm");
                 let wrangler = format!("{out}/{}", workers::WRANGLER);
@@ -262,7 +270,7 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::wrangler(name, &required).into_bytes(),
+                        workers::wrangler(name, &required, &hyperdrive).into_bytes(),
                     ),
                 ] {
                     if let Err(error) = write_new(&root, &path, &contents) {
@@ -274,6 +282,7 @@ pub fn build(call: &Call) -> Reply {
                     module,
                     bytes,
                     gzipped: gzip,
+                    hyperdrive,
                 }
             }
         };
@@ -408,6 +417,43 @@ fn drivers(plan: &Plan, reached: Option<&Reached>) -> Drivers {
     }
 }
 
+/// The Hyperdrive binding of each database's address a Worker reads (area
+/// 5, "PostgreSQL through Hyperdrive"; chunk 8.2i): its setting's variable,
+/// and the id of the Hyperdrive configuration `JADPO_HYPERDRIVE_<variable>`
+/// names in the build's environment, if it names one.
+fn hyperdrive(plan: &Plan, call: &Call) -> Vec<workers::Hyperdrive> {
+    let runtime = plan.runtime();
+    let mut bindings: Vec<workers::Hyperdrive> = Vec::new();
+    for connection in &runtime.connections {
+        let ConnectionDriver::Postgres { url: Some(at), .. } = connection.driver else {
+            continue;
+        };
+        let Some(field) = runtime.config.fields.get(at as usize) else {
+            continue;
+        };
+        if bindings
+            .iter()
+            .any(|binding| binding.binding == field.variable)
+        {
+            continue;
+        }
+        let id = call
+            .environment
+            .var(&format!("{HYPERDRIVE_ID}{}", field.variable))
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty());
+        bindings.push(workers::Hyperdrive {
+            binding: field.variable.clone(),
+            id,
+        });
+    }
+    bindings
+}
+
+/// What a Hyperdrive binding's id is read from, before its variable:
+/// `JADPO_HYPERDRIVE_DATABASE_URL`.
+const HYPERDRIVE_ID: &str = "JADPO_HYPERDRIVE_";
+
 /// One deployable as a build wrote it.
 struct Binary {
     name: String,
@@ -426,13 +472,14 @@ enum Artifact {
     /// A server's binary.
     Native { binary: String },
     /// A Worker: its Wrangler file and its module, beside the module's
-    /// JavaScript and Jadpo's shim, and the module's size, raw and
-    /// gzipped.
+    /// JavaScript and Jadpo's shim, the module's size, raw and gzipped,
+    /// and its databases' Hyperdrive bindings.
     Worker {
         wrangler: String,
         module: String,
         bytes: usize,
         gzipped: usize,
+        hyperdrive: Vec<workers::Hyperdrive>,
     },
 }
 
@@ -474,14 +521,28 @@ fn shown(built: Built) -> Reply {
                 module,
                 bytes,
                 gzipped,
-            } => vec![
-                ("worker".to_string(), wrangler.clone()),
-                ("module".to_string(), module.clone()),
-                (
-                    "size".to_string(),
-                    format!("{}, {} gzipped", size(*bytes), size(*gzipped)),
-                ),
-            ],
+                hyperdrive,
+            } => {
+                let mut fields = vec![
+                    ("worker".to_string(), wrangler.clone()),
+                    ("module".to_string(), module.clone()),
+                    (
+                        "size".to_string(),
+                        format!("{}, {} gzipped", size(*bytes), size(*gzipped)),
+                    ),
+                ];
+                if !hyperdrive.is_empty() {
+                    let through: Vec<String> = hyperdrive
+                        .iter()
+                        .map(|binding| match &binding.id {
+                            Some(id) => format!("{} through Hyperdrive {id}", binding.binding),
+                            None => format!("{} through Hyperdrive, no id", binding.binding),
+                        })
+                        .collect();
+                    fields.push(("database".to_string(), through.join(", ")));
+                }
+                fields
+            }
         };
         fields.push(("build".to_string(), binary.build.clone()));
         if binary.declared {
@@ -501,6 +562,17 @@ fn shown(built: Built) -> Reply {
         screen.push(Block::fields(shared));
     }
     let mut alerts = Vec::new();
+    for binary in &built.binaries {
+        let Artifact::Worker { hyperdrive, .. } = &binary.artifact else {
+            continue;
+        };
+        for binding in hyperdrive.iter().filter(|binding| binding.id.is_none()) {
+            let variable = &binding.binding;
+            alerts.push(format!(
+                "`{variable}` has no Hyperdrive id: create one with caching off and build with it in `{HYPERDRIVE_ID}{variable}`"
+            ));
+        }
+    }
     if built.modified {
         alerts.push(match built.commit {
             Some(_) => {
@@ -561,13 +633,16 @@ fn shown(built: Built) -> Reply {
         (
             "deployables",
             Json::array(built.binaries.iter().map(|binary| {
-                let (native, wrangler, module) = match &binary.artifact {
-                    Artifact::Native { binary } => (binary.as_str().into(), Json::Null, Json::Null),
+                let (native, wrangler, module, hyperdrive) = match &binary.artifact {
+                    Artifact::Native { binary } => {
+                        (binary.as_str().into(), Json::Null, Json::Null, Json::Null)
+                    }
                     Artifact::Worker {
                         wrangler,
                         module,
                         bytes,
                         gzipped,
+                        hyperdrive,
                     } => (
                         Json::Null,
                         wrangler.as_str().into(),
@@ -576,6 +651,12 @@ fn shown(built: Built) -> Reply {
                             ("bytes", (*bytes).into()),
                             ("gzip_bytes", (*gzipped).into()),
                         ]),
+                        Json::array(hyperdrive.iter().map(|binding| {
+                            Json::object([
+                                ("binding", binding.binding.as_str().into()),
+                                ("id", binding.id.as_deref().map_or(Json::Null, Json::from)),
+                            ])
+                        })),
                     ),
                 };
                 Json::object([
@@ -584,6 +665,7 @@ fn shown(built: Built) -> Reply {
                     ("binary", native),
                     ("wrangler", wrangler),
                     ("module", module),
+                    ("hyperdrive", hyperdrive),
                     (
                         "openapi",
                         Json::array(binary.openapi.iter().map(String::as_str)),

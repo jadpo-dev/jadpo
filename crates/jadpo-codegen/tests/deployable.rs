@@ -248,7 +248,17 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     }
     let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
         "back_office",
-        &["DATABASE_URL".to_string(), "MAIL_SENDER".to_string()],
+        &["MAIL_SENDER".to_string()],
+        &[
+            workers::Hyperdrive {
+                binding: "DATABASE_URL".to_string(),
+                id: Some("c020574a5623407bbe0ccd192bab9545".to_string()),
+            },
+            workers::Hyperdrive {
+                binding: "LEDGER_URL".to_string(),
+                id: None,
+            },
+        ],
     ))
     .expect("JSON");
     assert_eq!(
@@ -263,12 +273,21 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
                 { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
             ],
-            "secrets": { "required": ["DATABASE_URL", "MAIL_SENDER"] },
+            "secrets": { "required": ["MAIL_SENDER"] },
+            // Each database's address is a Hyperdrive binding (chunk
+            // 8.2i), with the id the build was given; without one, Wrangler
+            // refuses to deploy until it has one.
+            "hyperdrive": [
+                { "binding": "DATABASE_URL", "id": "c020574a5623407bbe0ccd192bab9545" },
+                { "binding": "LEDGER_URL" },
+            ],
         })
     );
-    // With no setting to give, there is no secret to require.
+    // With no setting to give, there is no secret to require and no
+    // binding to name.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[])).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], &[])).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
+    assert!(bare.get("hyperdrive").is_none(), "{bare}");
 }

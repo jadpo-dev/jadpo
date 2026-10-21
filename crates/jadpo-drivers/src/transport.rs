@@ -117,6 +117,16 @@ pub trait Transport {
         let _ = stream;
         None
     }
+
+    /// Whether `endpoint` is the platform's own database pooler, which the
+    /// host reaches inside the platform rather than over a network:
+    /// Cloudflare's Hyperdrive, whose binding gave the address, on Workers
+    /// (chunk 8.2i). A driver reaches it without TLS, which the pooler
+    /// itself uses to the database. None natively.
+    fn is_pooler(&self, endpoint: &Endpoint) -> bool {
+        let _ = endpoint;
+        false
+    }
 }
 
 /// `work`'s output, or `None` when `millis` passed first on `transport`'s

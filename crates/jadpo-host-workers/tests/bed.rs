@@ -5,8 +5,10 @@
 //! the workerd pinned in tools/workers/ (installed there by `npm ci` the
 //! first time a bed starts, never globally), beside the servers it
 //! reaches: an echo over TCP, the same behind TLS signed by an authority
-//! workerd is told to trust, and again by one it isn't, and HTTP over
-//! plain TCP and over TLS. One bed per test process, started by the first
+//! workerd is told to trust, and again by one it isn't, HTTP over plain
+//! TCP and over TLS, and PostgreSQL's side of a connection over TLS,
+//! signed by each authority (chunk 8.2i); and a Hyperdrive binding whose
+//! service is the echo. One bed per test process, started by the first
 //! test that asks for it and stopped, with its folder removed, once the
 //! process has ended.
 
@@ -37,6 +39,12 @@ pub struct Bed {
     pub http: u16,
     /// HTTP over TLS, for `localhost`, signed by the trusted authority.
     pub https: u16,
+    /// PostgreSQL's answer to an SSL request, then TLS for
+    /// `db.example.test` signed by the trusted authority, a startup and
+    /// each simple query answered.
+    pub postgres_tls: u16,
+    /// The same, signed by the authority workerd doesn't trust.
+    pub postgres_untrusted: u16,
     /// workerd's output.
     log: PathBuf,
     _workerd: Mutex<Child>,
@@ -58,13 +66,15 @@ impl Bed {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("the bed's folder");
 
-        let trusted = Authority::signing("localhost");
-        let untrusted = Authority::signing("localhost");
+        let trusted = Authority::signing_for(&["localhost", "db.example.test"]);
+        let untrusted = Authority::signing_for(&["localhost", "db.example.test"]);
         let plain = serve(None, echo);
         let echo_tls = serve(Some(trusted.server_config()), echo);
         let echo_untrusted = serve(Some(untrusted.server_config()), echo);
         let http = serve(None, answer);
         let https = serve(Some(trusted.server_config()), answer);
+        let postgres_tls = serve_postgres(trusted.server_config());
+        let postgres_untrusted = serve_postgres(untrusted.server_config());
 
         let wasm = probe(&root);
         let mut bindgen = wasm_bindgen_cli_support::Bindgen::new();
@@ -79,7 +89,7 @@ impl Bed {
         std::fs::write(dir.join("worker.mjs"), SHIM).expect("the shim");
         std::fs::write(dir.join("authority.pem"), &trusted.root_pem).expect("the authority");
         let port = free_port();
-        std::fs::write(dir.join("config.capnp"), config(port, https)).expect("the config");
+        std::fs::write(dir.join("config.capnp"), config(port, https, plain)).expect("the config");
 
         let log = dir.join("workerd.log");
         let out = std::fs::File::create(&log).expect("workerd's log");
@@ -99,6 +109,8 @@ impl Bed {
             echo_untrusted,
             http,
             https,
+            postgres_tls,
+            postgres_untrusted,
             log,
             _workerd: Mutex::new(child),
         };
@@ -143,8 +155,9 @@ impl Bed {
 
 /// workerd's configuration: the probe, served on `port`, reaching this
 /// machine through a network that trusts the test's authority, given two
-/// text bindings.
-fn config(port: u16, https: u16) -> String {
+/// text bindings and a Hyperdrive binding whose service is the echo on
+/// `echo`, as a database's would be its server.
+fn config(port: u16, https: u16, echo: u16) -> String {
     format!(
         r#"using Workerd = import "/workerd/workerd.capnp";
 
@@ -155,6 +168,7 @@ const config :Workerd.Config = (
       allow = ["public", "private", "local"],
       tlsOptions = (trustedCertificates = [embed "authority.pem"]),
     )),
+    (name = "pooled", external = (address = "127.0.0.1:{echo}", tcp = ())),
   ],
   sockets = [(name = "http", address = "127.0.0.1:{port}", http = (), service = "probe")],
 );
@@ -169,6 +183,13 @@ const probe :Workerd.Worker = (
   bindings = [
     (name = "GREETING", text = "hello"),
     (name = "REACH", text = "https://localhost:{https}"),
+    (name = "DATABASE", hyperdrive = (
+      designator = "pooled",
+      database = "repair cafe",
+      user = "kiosk",
+      password = "p@ss/word!",
+      scheme = "postgresql",
+    )),
   ],
   globalOutbound = "internet",
 );
@@ -400,6 +421,63 @@ fn echo(link: &mut dyn Link) {
     }
     let _ = link.write_all(format!("pong:{}\n", line.trim_end()).as_bytes());
     let _ = link.flush();
+}
+
+/// PostgreSQL's side of a connection over TLS, on a port of this machine
+/// as [`serve`] gives one: `S` to the SSL request, then TLS with `tls`, the
+/// startup answered as a server that asks for no password, and each simple
+/// query answered as done, until the client says it is leaving.
+fn serve_postgres(tls: Arc<rustls::ServerConfig>) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port on this machine");
+    let port = listener.local_addr().expect("its address").port();
+    let listeners = [Some(listener), TcpListener::bind(("::1", port)).ok()];
+    for listener in listeners.into_iter().flatten() {
+        let tls = tls.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let tls = tls.clone();
+                std::thread::spawn(move || {
+                    let _ = postgres(stream, tls);
+                });
+            }
+        });
+    }
+    port
+}
+
+/// One connection of [`serve_postgres`].
+fn postgres(mut stream: TcpStream, tls: Arc<rustls::ServerConfig>) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    let mut request = [0u8; 8];
+    stream.read_exact(&mut request)?;
+    stream.write_all(b"S")?;
+    let connection = rustls::ServerConnection::new(tls).map_err(std::io::Error::other)?;
+    let mut link = rustls::StreamOwned::new(connection, stream);
+    // The startup message: its length, then the rest.
+    let mut length = [0u8; 4];
+    link.read_exact(&mut length)?;
+    let mut rest = vec![0u8; (u32::from_be_bytes(length) as usize).saturating_sub(4)];
+    link.read_exact(&mut rest)?;
+    // Signed in, and ready for a query.
+    link.write_all(&[b'R', 0, 0, 0, 8, 0, 0, 0, 0, b'Z', 0, 0, 0, 5, b'I'])?;
+    link.flush()?;
+    loop {
+        let mut head = [0u8; 5];
+        link.read_exact(&mut head)?;
+        let [kind, length @ ..] = head;
+        let mut body = vec![0u8; (u32::from_be_bytes(length) as usize).saturating_sub(4)];
+        link.read_exact(&mut body)?;
+        if kind != b'Q' {
+            return Ok(());
+        }
+        let tag = b"SELECT 1\0";
+        let mut done = vec![b'C'];
+        done.extend_from_slice(&(4 + tag.len() as u32).to_be_bytes());
+        done.extend_from_slice(tag);
+        done.extend_from_slice(&[b'Z', 0, 0, 0, 5, b'I']);
+        link.write_all(&done)?;
+        link.flush()?;
+    }
 }
 
 /// A small HTTP/1.1 server's answers, by path, each closing its connection:
