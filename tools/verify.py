@@ -217,9 +217,12 @@ POSTGRES = [
 # (kept, so a later run compiles only what changed), and its tests run
 # interpreted and compiled with the same records, against the run's
 # server. The `compiled` group, a CI job of its own (chunk 8.1j); its
-# summary lines are shown.
-COMPILED = ('compiled code: the corpus interpreted and compiled with the same records',
-            [('jadpo-cli', 'compiled')], [])
+# summary lines are shown. Beside it, a native deployable (chunk 8.1o):
+# teaching example 23 built by `jadpo build` in release, its build kept in
+# target/jadpo-compiled/deployable/ too, then started against the run's
+# server, refusing to start out of date, serving and draining on SIGTERM.
+COMPILED = ('compiled code: the corpus interpreted and compiled with the same records, and a deployable',
+            [('jadpo-cli', 'compiled'), ('jadpo-cli', 'deployable')], [])
 COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 
 

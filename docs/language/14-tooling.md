@@ -43,7 +43,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
-| `jadpo build` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Decided, not built: comes with compiled deployables (Phase 8) |
+| `jadpo build` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Built (chunk 8.1o) for the one deployable an app that declares none has, `app`, natively, with `--json`: it checks as `jadpo check` does, writing the same files, and stops at its errors; otherwise it writes `build/target/app/app` and `build/target/app/openapi/` with each API's document and failure files, built with the toolchain and lock this Jadpo pins; see [A native deployable](#a-native-deployable). Declared `deployables:` are chunk 8.1o2 |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The settings `config.jadpo` declares are read from the environment over `.env.local` and checked first (chunk 5.1): a missing or invalid value stops the app starting and is shown by setting and variable, never by value, and a save of `.env.local` is checked like a save of source, keeping the last good version serving. Each database opens at the address its connection's `url:` setting holds, or the one `--url` names, or else a disposable PostgreSQL for the session (for a store whose address no variable gives), with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line. Since chunk 6.2b, a line for each schedule run and skipped tick (a paused schedule's once), with its trace's id, outcome, what it emitted or its failure and its time, and a line for each alert when it starts; the address of each database it started is in `build/dev/stores.json` while it runs, for `jadpo schedules` and `jadpo why`. Since chunk 6.7, ctrl-c or SIGTERM stops it cleanly: the server drains, its background work giving back what it holds, and it exits 0; a second signal ends it at once (area 12, "Running background work"). Since chunk 5.13b, a save that leaves a file empty that had text is taken as an editor's save in place between its truncate and its write, not yet saved: the reload waits for the file's text, up to 2 seconds, so an empty routes file, which checks cleanly with no routes, never replaces the version serving; a file still empty then reloads as saved ("Watching saves" in Decisions; `jadpo test --watch` waits the same way). Since chunk 7.2d, every provider call is faked by default, with no credential needed, unless the connection's `development: { sandbox: }` lets it through to the provider's sandbox, never live; `--fake <connection>` and `--sandbox <operation>` change which for one session only, each request's line lists its calls, and each call is logged for `jadpo calls` (area 11, "Provider calls in development"). Since chunk 7.5f, each step an action with several changing calls reached is a line under its request's line, and a delivery whose action reached steps gets a line of its own, with `jadpo deliveries show <id>` when it needs an operator (area 12). Decided 2026-10-16 (area 11), not built: the services the app's connections declare started with it |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8), and `signature` for a connection's generated webhook since chunk 7.7 (area 11), listed under `webhooks  /webhooks` when the app declares no `webhooks` API |
@@ -334,6 +334,7 @@ build/
   openapi/openapi.json
   compatibility/              public failure codes
   approval/                   the behaviour review subject
+  rust/                       a deployable's Rust and cargo's builds of it (jadpo build only)
   target/                     the runnable app (jadpo build only)
 ```
 
@@ -838,6 +839,84 @@ with `toolchain.target_*` errors. `jadpo check` reports the same errors, so
 a project that passes `check` also builds (question 11). Area 8 asks the
 same for a protected route with no authentication set up.
 
+### A native deployable
+
+Built in chunk 8.1o, each the most conservative reading where the pages
+leave a choice open; declared `deployables:` (question 14), each compiled
+from what it reaches, and `jadpo check` refusing a driver a deployable's
+target can't run (area 11, question 24) are chunk 8.1o2.
+
+- **One deployable, `app`.** An app with no `deployables:` has one
+  deployable, called `app`, which serves every API and runs everything,
+  natively. `jadpo build` and `jadpo build app` build it; any other name
+  is `cli.build_arguments`.
+- **What `jadpo build` writes.** It checks as `jadpo check` does, writing
+  the same files in `build/`, and stops at the first error with the same
+  screen, ending `✗ build stopped`. Otherwise it writes the deployable's
+  Rust into `build/rust/` (the program's crate and a binary named after
+  the deployable, the toolchain this Jadpo pins in `rust-toolchain.toml`,
+  the runtime crates' `Cargo.lock`) and compiles it in release, offline,
+  `--locked`, with the paths it was built from remapped and
+  `SOURCE_DATE_EPOCH` fixed (`SOURCE_DATE_EPOCH` when it is set, else the
+  commit's time), into `build/target/app/app`, with each API's OpenAPI
+  document and `<api>.failures.<locale>.json` copied into
+  `build/target/app/openapi/`. It is built without the runtime's
+  `testing` feature. cargo failing is `toolchain.build_failed`, since the
+  Rust Jadpo writes always compiles; a file it can't write is
+  `toolchain.artifact_write_failed`. This Jadpo compiles a deployable
+  against the runtime crates it was built from, in its own checkout.
+- **The build stamp** (area 18): the build id, `b_` and the first twelve
+  hex digits of a SHA-256 over the digest of every node of the graph,
+  the compiler's version, the target and `jadpo.lock`; the commit `git`
+  says the project is at, and whether its tree holds changes the commit
+  doesn't (`build/` and `.jadpo/` aside), a project git doesn't track
+  having no commit and counting as changed; the compiler; the deployable;
+  and the target. The binary holds it as a constant, and the runtime plan
+  it holds records the build id where `jadpo dev` records the graph's
+  digest (area 11, "Deploys").
+- **Starting.** The binary reads only the variables its settings name,
+  through the runtime's `config::load`, and refuses to start, naming each
+  setting and its variable, never the value, when one is missing or
+  invalid (area 10). It builds each connection's driver through the
+  factory; one it can't build is listed as it starts and answered
+  `misconfigured` when used. A database whose connection names no
+  `url:`, which only `jadpo dev` and `jadpo test` give one, stops the
+  start. Each database the project keeps migrations in is compared with
+  the migrations the build holds: one not applied, or one applied that
+  the build doesn't have or that changed since, stops the start (area 5);
+  one it can't reach yet is waited for, trying again after 1 second,
+  doubling to 10, since a database that is down is not a configuration
+  error (area 10). It then listens on `PORT` (8080 when unset) on `HOST`
+  (every IPv4 interface when unset), a worker per core.
+- **Running and stopping.** Each worker serves and ticks through the
+  runtime's `Serving` on its own `NativeHost`. The first SIGTERM or
+  ctrl-c stops it: it accepts nothing more, answers the requests it is
+  reading, lets its background work give back what it holds, and ends
+  with code 0; a second ends it at once. A start that fails ends with
+  code 1.
+- **What it logs.** One JSON object a line on standard output, its keys
+  sorted, each with the stamp's fields (`build`, `commit`, `modified`,
+  `compiler`, `deployable`, `target`): `runtime.startup_failed` with
+  every problem that stopped the start (`problems`, each with a
+  `problem` code, the setting, variable or store it is about, and a
+  `message`), `runtime.waiting` while a database can't be reached,
+  `runtime.started` with the address and workers and each connection
+  whose driver wasn't built (`unbuilt`), `operation.failed` for a fault
+  behind a 500 with its classification, route, `request_id` and `.jadpo`
+  frames (areas 4 and 17), and `runtime.stopped`. The rest of a
+  deployable's log comes with area 16's telemetry.
+
+```text
+$ jadpo build
+  binary    build/target/app/app
+  build     b_e20fc10f5474
+  commit    8d113e6
+  settings  DATABASE_URL
+
+✓ built  app · native in 49.1 s
+→ jadpo migrate apply  it starts only once its database has every migration
+```
+
 ### Command errors
 
 Every error that only a command raises, so `jadpo check` cannot show it with a
@@ -850,9 +929,6 @@ each command is built.
 | `cli.ai_arguments` | `ai` | AI command has invalid arguments |
 | `cli.api_arguments` | `api` | Api command has invalid arguments |
 | `cli.build_arguments` | `build` | Build command has invalid arguments |
-| `cli.build_experiment_scope` | `build` | Experimental target only builds qualified fixtures |
-| `cli.build_experiment_unavailable` | `build` | Shared-Rust experiment checkout was not found |
-| `cli.build_tool_failed` | `build` | Experimental target build failed |
 | `cli.check_arguments` | `check` | Check command has invalid arguments |
 | `cli.config_arguments` | `config` | Config command has invalid arguments |
 | `cli.config_prompt_failed` | `config` | Secure configuration prompt failed |
@@ -995,7 +1071,7 @@ each command is built.
 | `publish.example_missing` | `package check` | Package's function has no example, or a failure it raises is shown by none (area 11, "Publishing errors") |
 | `publish.sample_missing` | `package check` | Package's recipes have no sample app with one domain to compile in (area 11, "Publishing errors") |
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
-| `runtime.startup_failed` | the running app | Generated runtime failed during startup |
+| `runtime.startup_failed` | the running app | Generated runtime failed during startup; since chunk 8.1o a native deployable's log event, with every problem that stopped it ([A native deployable](#a-native-deployable)) |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
 | `runs.unavailable` | `runs unfinished` | Unfinished runs' database couldn't be read |
 | `schedules.lease_held` | `schedules run`, `deliveries retry` | Schedule is already running |
@@ -1011,6 +1087,7 @@ each command is built.
 | `toolchain.artifact_promote_failed` | `artifacts`, `build` | Staged build artifacts could not be promoted |
 | `toolchain.artifact_stage_failed` | `artifacts`, `build` | Build staging directory could not be created |
 | `toolchain.artifact_write_failed` | `check`, `build` | Generated file could not be written |
+| `toolchain.build_failed` | `build` | Rust compiler couldn't build the deployable |
 | `toolchain.project_not_found` | any command | Project path does not exist |
 | `toolchain.project_read_failed` | any command | Project directory could not be read |
 | `toolchain.scaffold_destination_exists` | `new` | Scaffold destination is an existing file |
@@ -1171,7 +1248,7 @@ is decided but not built yet.
 | Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5; completion since chunk 5.5a3. |
 | Agent tools | The catalogues and the similar-helper check are built (chunk 1.7), the check a declinable error (chunk 5.4b); `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
 | Suggestions | Built (chunk 5.5x): `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore` and `found`; `share`, `suggestions { }` and the committed taught record built in chunk 5.5y, against a fake of Jadpo HQ (HQ itself comes after the first build). |
-| Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
+| Build-only errors | `jadpo build` is built for the one deployable an app that declares none has (chunk 8.1o); its `toolchain.target_*` errors come with declared deployables (chunk 8.1o2). |
 
 ### Consistency with the rest of the language
 
@@ -1309,7 +1386,9 @@ what other areas carried here and where this page answers it.
     (`Target.native` or `Target.wasm`, decision register 2026-10-13); each is
     compiled from what it reaches; with none declared, one deployable runs
     everything; `jadpo build <deployable>` builds one and `jadpo dev` runs all
-    in one process.
+    in one process. Built in chunk 8.1o for the one deployable an app that
+    declares none has, `app`, natively ([A native deployable](#a-native-deployable));
+    declaring them is chunk 8.1o2.
 15. **Which commands manage integrations?** (carried from area 11) The
     command table above has no `jadpo integration add` or `update`, no
     contract diff and no adapter conformance run. Which of these does the

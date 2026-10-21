@@ -60,6 +60,7 @@ Build and check
   check         Check the project for errors
   test          Run tests
   dev           Run the app and reload on every save
+  build         Build the app to deploy
   fmt           Format source files
   package       Show, check, import and install packages
 
@@ -134,6 +135,7 @@ Build and check
   check         Check the project for errors
   test          Run tests
   dev           Run the app and reload on every save
+  build         Build the app to deploy
   fmt           Format source files
   package       Show, check, import and install packages
 
@@ -312,6 +314,7 @@ fn help_json_is_the_whole_command_reference() {
             "check",
             "test",
             "dev",
+            "build",
             "fmt",
             "package",
             "migrate",
@@ -491,12 +494,12 @@ fn an_unknown_command_with_nothing_near_points_at_help() {
 
 #[test]
 fn commands_that_are_not_built_yet_are_unknown() {
-    let output = jadpo(&["build"]);
+    let output = jadpo(&["new"]);
     assert_eq!(output.code, 2);
     assert!(
         output
             .stderr
-            .starts_with("error: `build` isn't a jadpo command"),
+            .starts_with("error: `new` isn't a jadpo command"),
         "{}",
         output.stderr
     );
@@ -715,6 +718,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "check\tCheck the project for errors",
             "test\tRun tests",
             "dev\tRun the app and reload on every save",
+            "build\tBuild the app to deploy",
             "fmt\tFormat source files",
             "package\tShow, check, import and install packages",
             "migrate\tWrite and apply migrations",

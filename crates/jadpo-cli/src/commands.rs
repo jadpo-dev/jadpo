@@ -8,6 +8,7 @@ use crate::completion;
 
 pub use crate::ai::ai;
 pub use crate::api::api;
+pub use crate::build::build;
 pub use crate::calls::calls;
 pub use crate::check::check;
 pub use crate::config::config;

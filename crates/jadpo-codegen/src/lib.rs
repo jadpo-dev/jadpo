@@ -37,6 +37,7 @@
 
 mod body;
 pub mod cargo;
+pub mod deployable;
 mod entries;
 mod names;
 

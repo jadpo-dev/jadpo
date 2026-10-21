@@ -6,6 +6,7 @@ mod ai;
 mod ai_record;
 mod ai_usage;
 mod api;
+mod build;
 mod calls;
 mod check;
 mod commands;

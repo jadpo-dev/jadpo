@@ -52,7 +52,66 @@ pub fn check(call: &Call) -> Reply {
         },
     };
     let started = Instant::now();
-    let mut loaded = jadpo_db::load(&target);
+    let checked = checked(call, &target);
+    reported(&cwd, checked, started.elapsed(), "check failed")
+}
+
+/// What `jadpo check` shows of `checked`, run from `cwd` in `elapsed`:
+/// each diagnostic, then the summary, whose headline is `failed` when
+/// there are errors.
+pub(crate) fn reported(
+    cwd: &std::path::Path,
+    checked: Checked,
+    elapsed: Duration,
+    failed: &str,
+) -> Reply {
+    let Checked {
+        loaded,
+        mut diagnostics,
+        written,
+    } = checked;
+    let db = &loaded.db;
+    let layout = loaded.project.layout(db);
+    let files = loaded.project.files(db);
+    let mut sources: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
+    // A linked package's problems are shown in its checkout, where they
+    // are fixed.
+    if !loaded.links.is_empty() {
+        jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
+    }
+    let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
+    let root = jadpo_db::shown_root(cwd, &loaded.root);
+    // The scoped review and the unconfirmed calls (chunk 7.2e2), for a
+    // project only.
+    let reviews: &[jadpo_check::review::ProviderReview] = if layout == Layout::Project {
+        jadpo_check::review::review(db, loaded.project)
+    } else {
+        &[]
+    };
+    report(
+        diagnostics,
+        sources,
+        root,
+        &paths,
+        loaded.unreadable.len(),
+        (layout, written, reviews),
+        (elapsed, failed),
+    )
+}
+
+/// A project, or the files and folders named, checked as `jadpo check`
+/// checks them, with the derived files written for a project.
+pub(crate) struct Checked {
+    pub loaded: jadpo_db::Loaded,
+    pub diagnostics: Vec<Diagnostic>,
+    /// The derived files written, by path from the project's root.
+    pub written: Vec<String>,
+}
+
+/// Checks `target` as `jadpo check` does, and writes a project's derived
+/// files in `build/`: what `jadpo build` starts from too.
+pub(crate) fn checked(call: &Call, target: &std::path::Path) -> Checked {
+    let mut loaded = jadpo_db::load(target);
     let cache = crate::package_cache::apply(&call.environment, &mut loaded);
     let db = &loaded.db;
     let mut diagnostics: Vec<Diagnostic> = loaded
@@ -114,32 +173,11 @@ pub fn check(call: &Call) -> Reply {
             Err(problem) => diagnostics.push(*problem),
         }
     }
-    let elapsed = started.elapsed();
-    let files = loaded.project.files(db);
-    let mut sources: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
-    // A linked package's problems are shown in its checkout, where they
-    // are fixed.
-    if !loaded.links.is_empty() {
-        jadpo_db::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
-    }
-    let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
-    let root = jadpo_db::shown_root(&cwd, &loaded.root);
-    // The scoped review and the unconfirmed calls (chunk 7.2e2), for a
-    // project only.
-    let reviews: &[jadpo_check::review::ProviderReview] = if layout == Layout::Project {
-        jadpo_check::review::review(db, loaded.project)
-    } else {
-        &[]
-    };
-    report(
+    Checked {
+        loaded,
         diagnostics,
-        sources,
-        root,
-        &paths,
-        loaded.unreadable.len(),
-        (layout, written, reviews),
-        elapsed,
-    )
+        written,
+    }
 }
 
 fn count(n: usize, one: &str, many: &str) -> String {
@@ -153,7 +191,7 @@ fn report(
     paths: &[&String],
     unreadable: usize,
     (layout, written, reviews): (Layout, Vec<String>, &[jadpo_check::review::ProviderReview]),
-    elapsed: Duration,
+    (elapsed, failed): (Duration, &str),
 ) -> Reply {
     let errors = diagnostics.len();
     let mut facts = Vec::new();
@@ -171,7 +209,7 @@ fn report(
     }
     facts.push(Fact::plain(files));
     let (outcome, headline) = if errors > 0 {
-        (Outcome::Failure, "check failed")
+        (Outcome::Failure, failed)
     } else {
         (Outcome::Success, "checked")
     };

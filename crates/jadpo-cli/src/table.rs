@@ -438,6 +438,46 @@ pub static COMMANDS: &[Command] = &[
         run: commands::dev,
     },
     Command {
+        name: "build",
+        synonyms: &[],
+        group: "Build and check",
+        summary: "Build the app to deploy",
+        description: "Check the project as `jadpo check` does, then compile it into one native \
+                      binary in build/target/<deployable>/, beside its APIs' OpenAPI documents and \
+                      the failure texts their clients show. The binary reads its settings from the \
+                      environment as it starts, refuses to start against a database that hasn't \
+                      applied every migration, listens on PORT (8080 when unset), and drains on \
+                      SIGTERM. Every event it logs carries its build stamp: the build id, the commit, \
+                      whether the tree had changes, the compiler, the deployable and the target. \
+                      With no `deployables:` in app.jadpo there is one deployable, `app`, which runs \
+                      everything. It compiles offline in release with the toolchain and the runtime's \
+                      lock this Jadpo was built with, keeping its Rust in build/rust/.",
+        arguments: &[Argument {
+            name: "deployable",
+            description: "The deployable to build: `app` when none is declared",
+            required: false,
+            values: Values::Fixed(&[]),
+        }],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "Build the app you are in",
+                command: "jadpo build",
+            },
+            Example {
+                description: "Print where it was written and its build stamp as data",
+                command: "jadpo build --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_BUILD_ARGUMENTS,
+        raises: &[
+            &rule::TOOLCHAIN_BUILD_FAILED,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::build,
+    },
+    Command {
         name: "fmt",
         synonyms: &["format"],
         group: "Build and check",

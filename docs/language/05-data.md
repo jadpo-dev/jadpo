@@ -1170,8 +1170,11 @@ migration {
   the project doesn't have or one that changed since. `jadpo migrate status`
   lists the migrations and which a database has applied. Until
   configuration gives each connection its URL (area 10), both take it with
-  `--url`. The application's refusal to start against a database that
-  does not match comes with the compiled deployables (Phase 8).
+  `--url`. Since chunk 8.1o a native deployable built by `jadpo build`
+  refuses to start against a database that hasn't applied every migration
+  it was built with, or applied one it doesn't have or that changed
+  since, naming the store and the migrations (area 14, "A native
+  deployable").
 
 ### Computed backfills
 
@@ -3040,9 +3043,9 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   area 14's tooling; until then a field renamed by hand reads as one
   removed and one added.
 - Each connection's URL comes from configuration (area 10); until then
-  `jadpo migrate` takes it with `--url`, and the application's refusal to
-  start against a database that doesn't match comes with the compiled
-  deployables (Phase 8).
+  `jadpo migrate` takes it with `--url`; the application's refusal to
+  start against a database that doesn't match came with the native
+  deployable (chunk 8.1o).
 
 ### Carried to later areas
 
