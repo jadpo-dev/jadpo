@@ -4903,10 +4903,10 @@ Not yet:
   with the request timelines (area 17), and the record's entry in the
   personal-data report with the report (area 15), all after the first
   build.
-- On Cloudflare Workers, the cron tick and the `trigger:` adapter:
-  roadmap 8.2. Delivery after commit in `waitUntil` and the budgets are
-  built (chunks 8.2a and 8.2d), and work an invocation didn't reach handed
-  on to a fresh invocation of the Worker (chunk 8.2h).
+- On Cloudflare Workers, the `trigger:` adapter: roadmap 8.2g. Delivery
+  after commit in `waitUntil` and the budgets are built (chunks 8.2a and
+  8.2d), the cron tick (chunk 8.2f), and work an invocation didn't reach
+  handed on to a fresh invocation of the Worker (chunk 8.2h).
 - Sending the metrics and the alerts' log events to a monitoring tool
   waits for telemetry (area 16), and the console's timeline for area 17.
 
