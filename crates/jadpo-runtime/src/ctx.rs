@@ -121,6 +121,17 @@ pub struct System {
     pub tenant: Option<[u8; 16]>,
 }
 
+impl System {
+    /// The system limited to no tenant, reaching only the records every
+    /// tenant shares: a webhook's reply action and `on_first_sign_in:`'s,
+    /// which run inside a request no tenant's event starts (area 9,
+    /// "Background work"; chunk 7.9b). Never `None`, which is every
+    /// tenant, a schedule's.
+    pub const NO_TENANT: System = System {
+        tenant: Some(crate::outbox::NO_TENANT),
+    };
+}
+
 /// An action's transaction and outbox, kept open after its body succeeded
 /// for whoever asked the boundary to hold it ([`Ctx::hold`]): the HTTP
 /// component, which writes the request's idempotency key into the same

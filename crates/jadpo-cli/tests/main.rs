@@ -103,6 +103,7 @@ mod suggest;
 mod suggest_share;
 mod system;
 mod system_statements;
+mod system_tenants;
 mod tenant_reach;
 #[path = "test.rs"]
 mod test_command;

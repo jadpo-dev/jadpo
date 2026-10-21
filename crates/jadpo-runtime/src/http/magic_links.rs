@@ -1243,7 +1243,8 @@ impl Site<'_> {
         // its transaction while this one runs in its own.
         let waiting = ctx.take_boundary();
         let runner = ctx.runner();
-        ctx.become_system(System { tenant: None });
+        // As the system, reaching no tenant's records (chunk 7.9b).
+        ctx.become_system(System::NO_TENANT);
         let outcome = self.executor.run(ctx, callable, vec![first]).await;
         ctx.restore_runner(runner);
         ctx.give_boundary(waiting);

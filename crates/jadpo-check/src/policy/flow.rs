@@ -907,10 +907,15 @@ fn walked<'db>(
         entities: Entities::new(db, project),
         personal,
     };
+    let reply = kind == Kind::Action
+        && crate::webhooks::webhooks(db, project)
+            .routes
+            .iter()
+            .any(|route| route.replies.iter().any(|(_, action)| action == key));
     Some(flow.walk(
         callable.file(db).path(db).clone(),
         key.name().to_string(),
-        kind,
+        (kind, reply),
         &checked.body,
     ))
 }
@@ -941,12 +946,13 @@ impl<'a> Flow<'a> {
         &self,
         path: String,
         name: String,
-        kind: Kind,
+        (kind, reply): (Kind, bool),
         body: &Body,
     ) -> (Summary, Vec<Diagnostic>) {
         let listed = kind == Kind::Action;
         let mut walk = Walk::blank(body, path, name.clone());
         walk.personal = self.personal;
+        walk.reply = reply;
         walk.line = listed
             .then(|| self.prover.policies.root().action(&name).cloned())
             .flatten();
@@ -1142,6 +1148,9 @@ struct Walk<'b> {
     tenant_ids: Vec<Src>,
     /// The walk for what reaches a model ([`Flow::personal`]).
     personal: bool,
+    /// Whether it is an action a connection's `webhooks: { replies: }`
+    /// names, whose reply goes to whoever sent the webhook (chunk 7.9b).
+    reply: bool,
     /// The parts of its parameters that reach a model ([`Summary::prompted`]).
     prompted: BTreeSet<(usize, Vec<String>, String)>,
     /// What reaches a model that `ai:` doesn't allow ([`models`]).
@@ -1206,6 +1215,7 @@ impl<'b> Walk<'b> {
             batches: Vec::new(),
             tenant_ids: Vec::new(),
             personal: false,
+            reply: false,
             prompted: BTreeSet::new(),
             exposures: Vec::new(),
             exposed: BTreeSet::new(),
@@ -1493,6 +1503,9 @@ impl Walk<'_> {
                             && let Some(collection) = collection_type(&self.body.site(*value).ty)
                         {
                             self.collection(flow, &collection, *value, &prov);
+                        }
+                        if self.report && self.reply && !self.personal {
+                            self.replied(flow, *value, &prov);
                         }
                         self.returns.union(&prov);
                     }
@@ -2763,6 +2776,92 @@ impl Walk<'_> {
                 self.name
             )),
         );
+    }
+
+    /// The reply a webhook's reply action returns from `value` (area 11,
+    /// "Webhooks that need a reply"; Richard, 2026-10-21): it goes back to
+    /// whoever sent the webhook, so it is an output to `Access.public`, and
+    /// every field it carries, or that decided it, is one anyone at all may
+    /// read. A record the action created holds what it set, or is new.
+    fn replied(&mut self, flow: &Flow<'_>, value: SiteId, prov: &Prov) {
+        for src in prov.flat() {
+            let (src, decided) = match shallow(src) {
+                Src::Decided(inner) => (shallow(*inner), true),
+                other => (other, false),
+            };
+            let (entity, fields, reached) = match src {
+                Src::Field {
+                    entity,
+                    field,
+                    reached,
+                    ..
+                } => (entity, vec![field], reached),
+                Src::Record {
+                    entity,
+                    reached,
+                    given,
+                    ..
+                } => {
+                    let fields = flow
+                        .entities
+                        .get(&entity)
+                        .map(|model| {
+                            model
+                                .fields
+                                .iter()
+                                .filter(|field| !given.contains(&field.name))
+                                .map(|field| field.name.clone())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (entity, fields, reached)
+                }
+                _ => continue,
+            };
+            let mut anyone = vec![Fact::Grant(Grant::Public)];
+            if reached
+                .ways
+                .iter()
+                .any(|way| !way.is_empty() && way.iter().all(|facts| facts.contains(&Fact::Fresh)))
+            {
+                anyone.push(Fact::Fresh);
+            }
+            let Some(from) = fields
+                .into_iter()
+                .find(|field| !flow.prover.field_readable(&entity, field, &anyone))
+            else {
+                continue;
+            };
+            let readers = flow.prover.readers(&entity, &from);
+            let (label, keeps, next) = if decided {
+                (
+                    format!("decided by `{entity}.{from}`"),
+                    "Which reply is sent shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.",
+                    "Decide the reply by what anyone at all may read".to_string(),
+                )
+            } else {
+                (
+                    format!("from `{entity}.{from}`"),
+                    "A value passed through a variable or another type keeps its field's rules.",
+                    format!("Leave `{entity}.{from}` out of the reply"),
+                )
+            };
+            self.problems.push(
+                Diagnostic::new(
+                    &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                    format!(
+                        "`{}`'s reply carries `{entity}.{from}`, which not everyone may read",
+                        self.name
+                    ),
+                )
+                .at(self.span(value), label)
+                .reason(format!(
+                    "A webhook's reply goes back to whoever sent the webhook, so it is an output to `Access.public`, and {readers} `{from}`. {keeps}"
+                ))
+                .next(next),
+            );
+            return;
+        }
     }
 
     /// A call passing `value` to the action `callee`, whose parameter
