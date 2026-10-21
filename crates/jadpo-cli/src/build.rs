@@ -125,6 +125,9 @@ pub fn build(call: &Call) -> Reply {
     // The variables the deployables' settings read, each once, in the
     // order they come: each reads only those of what it reaches.
     let mut settings: Vec<String> = Vec::new();
+    // Each `max_concurrent:` a Worker reaches, which counts in each of its
+    // instances (area 11, "Decisions", 2026-10-21).
+    let caps = jadpo_check::deployables::per_instance(db, project);
     let mut built = Vec::new();
     for deployable in chosen {
         let name = deployable.name.as_str();
@@ -309,6 +312,11 @@ pub fn build(call: &Call) -> Reply {
             build,
             serves: deployable.serves.clone(),
             runs: deployable.runs_words(),
+            per_instance: caps
+                .iter()
+                .filter(|cap| cap.deployable == name)
+                .map(|cap| (cap.connection.clone(), cap.cap))
+                .collect(),
         });
     }
     let elapsed = started.elapsed();
@@ -469,6 +477,9 @@ struct Binary {
     build: String,
     serves: Vec<String>,
     runs: Vec<&'static str>,
+    /// Each connection's `max_concurrent:` a Worker reaches, which each of
+    /// its instances counts on its own.
+    per_instance: Vec<(String, u32)>,
 }
 
 /// What a deployable is deployed from, by path from the project's root.
@@ -501,7 +512,8 @@ struct Built {
 }
 
 /// The success screen: where each binary or Worker is, a module's size,
-/// its build id and, for a declared deployable, what it serves and runs;
+/// its build id and, for a declared deployable, what it serves and runs
+/// and, for a Worker, each cap on calls it counts in each instance;
 /// then the commit and the settings they read, the outcome and the one
 /// thing to do next.
 fn shown(built: Built) -> Reply {
@@ -556,6 +568,9 @@ fn shown(built: Built) -> Reply {
             if !binary.runs.is_empty() {
                 fields.push(("runs".to_string(), binary.runs.join(", ")));
             }
+        }
+        if !binary.per_instance.is_empty() {
+            fields.push(("calls".to_string(), calls(&binary.per_instance)));
         }
         if one {
             fields.append(&mut shared);
@@ -680,6 +695,15 @@ fn shown(built: Built) -> Reply {
                         Json::array(binary.serves.iter().map(String::as_str)),
                     ),
                     ("runs", Json::array(binary.runs.iter().copied())),
+                    (
+                        "per_instance",
+                        Json::array(binary.per_instance.iter().map(|(connection, cap)| {
+                            Json::object([
+                                ("connection", connection.as_str().into()),
+                                ("max_concurrent", (*cap).into()),
+                            ])
+                        })),
+                    ),
                 ])
             })),
         ),
@@ -704,6 +728,17 @@ fn joined(names: &[String]) -> String {
         [rest @ .., last] if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
         _ => names.join(""),
     }
+}
+
+/// `pdf 2 at once in each instance`, `pdf 2 and ocr 4 at once in each
+/// instance`: a Worker's caps on calls, which Workers counts in each of
+/// the instances it runs as traffic needs.
+fn calls(caps: &[(String, u32)]) -> String {
+    let each: Vec<String> = caps
+        .iter()
+        .map(|(connection, cap)| format!("{connection} {cap}"))
+        .collect();
+    format!("{} at once in each instance", joined(&each))
 }
 
 /// `bytes` for people, in decimal units as Cloudflare states its limits:
@@ -867,6 +902,73 @@ mod tests {
             joined(&words(&["kiosk", "office", "edge"])),
             "kiosk, office and edge"
         );
+    }
+
+    /// A Worker's caps on calls are said on its block, each counted in
+    /// each instance (area 11, "Decisions", 2026-10-21; chunk 8.2m).
+    #[test]
+    fn a_workers_caps_on_calls_are_said_to_count_in_each_instance() {
+        let worker = |per_instance: Vec<(String, u32)>| Binary {
+            name: "edge".to_string(),
+            declared: true,
+            target: "wasm",
+            artifact: Artifact::Worker {
+                wrangler: "build/target/edge/wrangler.json".to_string(),
+                module: "build/target/edge/edge.wasm".to_string(),
+                bytes: 12_800_000,
+                gzipped: 4_000_000,
+                hyperdrive: Vec::new(),
+            },
+            openapi: Vec::new(),
+            build: "b_1c5e09d2a7f3".to_string(),
+            serves: vec!["main".to_string()],
+            runs: Vec::new(),
+            per_instance,
+        };
+        let shown_as = |per_instance: Vec<(String, u32)>, mode: jadpo_term::Mode| {
+            let reply = shown(Built {
+                binaries: vec![worker(per_instance)],
+                commit: Some("8d113e6".to_string()),
+                modified: false,
+                settings: Vec::new(),
+                migrations: false,
+                seconds: 1.0,
+            });
+            let Reply::Done {
+                text: crate::run::Text::Screen(screen),
+                data,
+            } = reply
+            else {
+                panic!("a screen");
+            };
+            (screen.render(&jadpo_term::Style::new(mode)), data.to_line())
+        };
+        let one = vec![("pdf".to_string(), 2)];
+        let (rich, data) = shown_as(one.clone(), jadpo_term::Mode::Rich);
+        assert!(
+            rich.contains("  serves    main\n  calls     pdf 2 at once in each instance\n"),
+            "{rich}"
+        );
+        assert!(
+            data.contains(r#""per_instance":[{"connection":"pdf","max_concurrent":2}]"#),
+            "{data}"
+        );
+        let (plain, _) = shown_as(one, jadpo_term::Mode::Plain);
+        assert!(
+            plain.contains("  calls: pdf 2 at once in each instance\n"),
+            "{plain}"
+        );
+        let (two, _) = shown_as(
+            vec![("pdf".to_string(), 2), ("ocr".to_string(), 4)],
+            jadpo_term::Mode::Rich,
+        );
+        assert!(
+            two.contains("  calls     pdf 2 and ocr 4 at once in each instance\n"),
+            "{two}"
+        );
+        let (none, data) = shown_as(Vec::new(), jadpo_term::Mode::Rich);
+        assert!(!none.contains("calls"), "{none}");
+        assert!(data.contains(r#""per_instance":[]"#), "{data}");
     }
 
     #[test]

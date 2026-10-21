@@ -678,3 +678,42 @@ fn a_schedule_more_often_than_a_minute_is_refused_where_workers_runs_it() {
         CLEAN
     );
 }
+
+#[test]
+fn a_client_address_other_than_cloudflares_is_refused_for_a_worker() {
+    // Area 10, "Client addresses": on Workers the address is Cloudflare's
+    // `CF-Connecting-IP` and nothing else (chunk 8.2m).
+    let found = |source: &str, kiosk: &str| {
+        let client = format!("    client_address: {{\n        source: {source}\n    }}\n");
+        problems(&format!("{client}{}", declared(kiosk, NATIVE)))
+    };
+    let forwarded_for = "ClientAddressSource.forwarded_for\n        hops: 1";
+    assert_eq!(
+        found(forwarded_for, WASM),
+        [
+            "app.jadpo deployable.target_unsupported: `kiosk` can't read the client's address from `X-Forwarded-For` on Workers"
+        ]
+    );
+    assert_eq!(
+        found("ClientAddressSource.forwarded\n        hops: 2", WASM),
+        [
+            "app.jadpo deployable.target_unsupported: `kiosk` can't read the client's address from `Forwarded` on Workers"
+        ]
+    );
+    assert_eq!(
+        found("ClientAddressSource.connection", WASM),
+        [
+            "app.jadpo deployable.target_unsupported: `kiosk` can't read the client's address from the connection on Workers"
+        ]
+    );
+    // Cloudflare's own header is what a Worker reads, and a server reads
+    // any source.
+    assert_eq!(found("ClientAddressSource.cloudflare", WASM), CLEAN);
+    assert_eq!(found(forwarded_for, NATIVE), CLEAN);
+    assert_eq!(found(forwarded_for, ""), CLEAN);
+    // A declaration with a problem of its own is reported once, as that.
+    assert_eq!(
+        found("ClientAddressSource.forwarded_for", WASM),
+        ["app.jadpo configuration.client_address_hops_invalid: `forwarded_for` needs `hops:`"]
+    );
+}
