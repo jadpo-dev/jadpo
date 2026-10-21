@@ -252,7 +252,17 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     }
     let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
         "back_office",
-        &["DATABASE_URL".to_string(), "MAIL_SENDER".to_string()],
+        &["MAIL_SENDER".to_string()],
+        &[
+            workers::Hyperdrive {
+                binding: "DATABASE_URL".to_string(),
+                id: Some("c020574a5623407bbe0ccd192bab9545".to_string()),
+            },
+            workers::Hyperdrive {
+                binding: "LEDGER_URL".to_string(),
+                id: None,
+            },
+        ],
         true,
     ))
     .expect("JSON");
@@ -268,16 +278,25 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
                 { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
             ],
-            "secrets": { "required": ["DATABASE_URL", "MAIL_SENDER"] },
+            "secrets": { "required": ["MAIL_SENDER"] },
+            // Each database's address is a Hyperdrive binding (chunk
+            // 8.2i), with the id the build was given; without one, Wrangler
+            // refuses to deploy until it has one.
+            "hyperdrive": [
+                { "binding": "DATABASE_URL", "id": "c020574a5623407bbe0ccd192bab9545" },
+                { "binding": "LEDGER_URL" },
+            ],
             "triggers": { "crons": ["* * * * *"] },
         })
     );
-    // With no setting to give, there is no secret to require, and with no
-    // store for its tick to keep or sweep, no cron to run it.
+    // With no setting to give, there is no secret to require and no
+    // binding to name, and with no store for its tick to keep or sweep, no
+    // cron to run it.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[], false)).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], &[], false)).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
+    assert!(bare.get("hyperdrive").is_none(), "{bare}");
     assert!(bare.get("triggers").is_none(), "{bare}");
 }
 
@@ -290,7 +309,7 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
             .expect("numbered");
     let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
-        workers::wrangler("web", &["DATABASE_URL".to_string()], true),
+        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true),
         &bindings,
     ))
     .expect("JSON");
@@ -317,6 +336,6 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         wrangler["triggers"]["crons"],
         serde_json::json!(["* * * * *"])
     );
-    let plain = workers::wrangler("web", &[], false);
+    let plain = workers::wrangler("web", &[], &[], false);
     assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }

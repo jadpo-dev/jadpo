@@ -54,6 +54,19 @@ pub async fn fetch(
             host.budget_ms(Invocation::HandedOn)
         ),
         "/echo" => echo(&param("host"), number("port"), &param("tls")).await,
+        "/pooler" => {
+            let endpoint = Endpoint::Tcp {
+                host: param("host"),
+                port: u16::try_from(number("port")).unwrap_or(0),
+            };
+            if WorkersTransport.is_pooler(&endpoint) {
+                "pooler".to_string()
+            } else {
+                "not a pooler".to_string()
+            }
+        }
+        #[cfg(feature = "postgres")]
+        "/postgres" => postgres(number("port")).await,
         "/unix" => match WorkersTransport
             .connect(&Endpoint::Unix {
                 dir: "/tmp".to_string(),
@@ -363,6 +376,70 @@ async fn echo(host: &str, port: u64, tls: &str) -> String {
     match within(&transport, 5_000, talk).await {
         Some(Ok(answer)) => format!("answer:{answer}"),
         Some(Err(error)) => failed(&error),
+        None => "error:timed out".to_string(),
+    }
+}
+
+/// The Workers transport, with every connection to `db.example.test` sent
+/// to this machine, where the test's server is: the name is still what the
+/// certificate is checked for, so the server counts as elsewhere.
+#[cfg(feature = "postgres")]
+struct Elsewhere;
+
+#[cfg(feature = "postgres")]
+impl Transport for Elsewhere {
+    fn connect(
+        &self,
+        endpoint: &Endpoint,
+    ) -> jadpo_runtime::LocalFuture<'_, io::Result<Box<dyn Stream>>> {
+        let endpoint = match endpoint {
+            Endpoint::Tcp { host, port } if host == "db.example.test" => Endpoint::Tcp {
+                host: "localhost".to_string(),
+                port: *port,
+            },
+            other => other.clone(),
+        };
+        Box::pin(async move { WorkersTransport.connect(&endpoint).await })
+    }
+
+    fn upgrade<'a>(
+        &'a self,
+        stream: Box<dyn Stream>,
+        name: &'a str,
+        trust: Trust<'a>,
+    ) -> jadpo_runtime::LocalFuture<'a, io::Result<Box<dyn Stream>>> {
+        WorkersTransport.upgrade(stream, name, trust)
+    }
+
+    fn spawn(&self, task: jadpo_runtime::LocalFuture<'static, ()>) {
+        WorkersTransport.spawn(task);
+    }
+
+    fn sleep(&self, millis: u64) -> jadpo_runtime::LocalFuture<'_, ()> {
+        WorkersTransport.sleep(millis)
+    }
+}
+
+/// A statement run on PostgreSQL at `db.example.test` on `port`, over TLS
+/// checked against workerd's roots: `ran`, or how the store refused.
+#[cfg(feature = "postgres")]
+async fn postgres(port: u64) -> String {
+    use jadpo_runtime::StoreError;
+    let url = format!("postgresql://jadpo@db.example.test:{port}/app");
+    let store = match jadpo_drivers::postgres::Postgres::new(&url, Rc::new(Elsewhere)) {
+        Ok(store) => store,
+        Err(error) => return format!("error:{error:?}"),
+    };
+    let ran = within(
+        &WorkersTransport,
+        10_000,
+        store.batch_outside_transaction("SELECT 1"),
+    )
+    .await;
+    match ran {
+        Some(Ok(())) => "ran".to_string(),
+        Some(Err(StoreError::Fault(why))) => format!("fault:{why}"),
+        Some(Err(other)) => format!("error:{other:?}"),
         None => "error:timed out".to_string(),
     }
 }
