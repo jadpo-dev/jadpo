@@ -355,7 +355,7 @@ fn a_models_answer_is_a_step_a_retry_replays() {
         return;
     };
     let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     let host = Faked::new(&harness)
         .with("pay", Rc::clone(&driver))
         .with("local_model", driver);

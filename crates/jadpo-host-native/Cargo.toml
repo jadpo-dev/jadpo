@@ -22,9 +22,10 @@ jadpo-drivers = { workspace = true, features = ["postgres", "package", "smtp"] }
 tokio = { workspace = true, features = ["rt", "net", "sync", "time", "signal"] }
 bytes.workspace = true
 # HTTP/1.1 (docs/compiler-runtime.md §2.6), pinned exactly: hyper reads and
-# writes requests, hyper-util adapts tokio's sockets, http-body-util reads a
-# body whole and writes one.
-hyper = { workspace = true, features = ["server", "http1"] }
+# writes requests, served and sent (`client`, chunk 8.1m: the package
+# driver's calls over kept connections), hyper-util adapts tokio's sockets,
+# http-body-util reads a body whole and writes one.
+hyper = { workspace = true, features = ["server", "client", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }
 http-body-util.workspace = true
 # The operating system's cryptographic generator (area 19, "Randomness").

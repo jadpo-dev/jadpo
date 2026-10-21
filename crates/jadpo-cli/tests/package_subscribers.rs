@@ -234,7 +234,7 @@ async fn send(
 fn faked(
     harness: &Harness<jadpo_host_native::Postgres>,
 ) -> Faked<&Harness<jadpo_host_native::Postgres>> {
-    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch::new()));
     Faked::new(harness)
         .with("payments", Rc::clone(&driver))
         .with("payments_eu", driver)
