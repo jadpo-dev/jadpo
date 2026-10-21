@@ -1073,13 +1073,15 @@ its `scheduled` ticking at the minute's cron in chunk 8.2f, its work
 handed on and its streamed answers in chunk 8.2h, each the most
 conservative reading where the pages leave a choice open (Decisions, "A
 Workers deployable" and "A Worker's start"; area 12, "The tick on
-Workers" and Decisions, "Work handed on, on Workers"). The queue's
-handler comes with 8.2k.
+Workers" and Decisions, "Work handed on, on Workers"), and its `queue`
+consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
+7.7c2").
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
   crate and a `cdylib`, `jadpo-worker-<deployable>`, exporting the
-  Worker's `fetch`, and `hand_on` for work handed on (chunk 8.2h),
+  Worker's `fetch`, `scheduled` and `queue`, and `hand_on` for work
+  handed on (chunk 8.2h),
   through the Workers host, with the program, its build stamp and each
   store's migrations as a native binary is given them. It
   links the package driver, which every Worker has, PostgreSQL's when the
@@ -1102,8 +1104,10 @@ handler comes with 8.2k.
   shim; `compatibility_date`, the date the Workers host is tested at under
   the workerd pinned in `tools/workers/` (2026-10-01); `no_bundle` and
   `find_additional_modules`, with a rule for each kind of file (`.mjs` and
-  `.js` as ES modules, `.wasm` as compiled WebAssembly), so the files are
-  uploaded as they are written; `secrets: { required: [ ] }`, the
+  `.js` as ES modules, `.wasm` as compiled WebAssembly, the latter with
+  `fallthrough: false`, since Wrangler warns of a rule that hides its own
+  default without saying so), so the files are uploaded as they are
+  written; `secrets: { required: [ ] }`, the
   variable of each setting without a `default:`; and, since chunk 8.2i,
   `hyperdrive: [ ]`, each database's address setting as a Hyperdrive
   binding by its variable, with its configuration's `id` when the build's
@@ -1122,9 +1126,14 @@ handler comes with 8.2k.
   `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
   service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
   hands what one invocation's 30 seconds didn't reach on to a fresh one
-  (chunk 8.2h; area 12, "Running background work"). The
-  queues' consumers (8.2k) join the file with their chunk, which checks it
-  against Wrangler itself.
+  (chunk 8.2h; area 12, "Running background work"). Each queue on
+  Cloudflare Queues the Worker receives is a consumer under `queues: {
+  consumers: [ ] }`: its `queue`, `max_batch_size` 10,
+  `max_batch_timeout` 5, `max_retries` 3 and its `dead_letter_queue`
+  (chunk 8.2k; area 11, "Chosen in chunk 7.7c2"). Wrangler's own `deploy
+  --dry-run`, pinned in `tools/workers/`, accepts the file with no
+  account and no warning, run in the tests with every network
+  connection refused.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
   target as `wasm`.
@@ -1187,11 +1196,22 @@ handler comes with 8.2k.
   minutes. Out of date, it logs why as a request does and ticks nothing.
   An `every:` under a minute is refused for a Worker that runs the
   schedules ([`deployable.target_unsupported`](#deployable-target-unsupported)).
+- **A queue.** Each batch Cloudflare Queues hands the Worker's `queue`
+  starts the isolate as a request does and, once its databases are
+  current, is kept through the runtime's consumer: each message kept once
+  as its event, a repeat and one parked for an operator acknowledged with
+  it (`ack()`), and one the store can't take now retried after 10 seconds
+  doubled per attempt, at most 5 minutes (`retry({ delaySeconds })`), each
+  on its own; then the kept events' deliveries run in `waitUntil`, handed
+  on past its 30 seconds as a response's work is. Out of date, or a batch
+  from a queue it doesn't receive, every message is retried the same way,
+  and `queue.retried` logged with the queue, how many and why.
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,
   `runtime.started` and `operation.failed` for a fault behind a 500 with
-  its `.jadpo` frames.
+  its `.jadpo` frames, and `queue.retried` for a batch with a message
+  retried.
 
 ```text
 $ jadpo build kiosk

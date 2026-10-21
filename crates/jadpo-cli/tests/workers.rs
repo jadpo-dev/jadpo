@@ -78,6 +78,9 @@ use serde_json::Value;
 use crate::deployable::{apply, copy_folder, count, migrations, rows};
 use crate::support::fake_sqs::FakeSqs;
 
+/// Cloudflare Queues' consumer (chunk 8.2k), on the harness below.
+mod queues;
+
 /// The café declares one kiosk, built for Workers, serving its API and
 /// running its subscribers and schedules, its rate limits counted in
 /// Cloudflare's rate-limiting binding (chunk 8.2m2).
@@ -1809,8 +1812,10 @@ struct Workerd {
 
 /// The test's cron: each request runs the bound Worker's `scheduled`
 /// handler for the time its `?at=` gives, in milliseconds, and answers
-/// with how it ended.
-const CRON: &str = "export default {\n  async fetch(request, env) {\n    const at = Number(new URL(request.url).searchParams.get(\"at\"));\n    const ended = await env.WORKER.scheduled({ scheduledTime: new Date(at), cron: \"* * * * *\" });\n    return Response.json(ended);\n  },\n};\n";
+/// with how it ended; a request to `/queue` hands the bound Worker's
+/// `queue` handler the batch its body gives, as Cloudflare Queues does
+/// (chunk 8.2k, `queues.rs`), and answers with how each message was.
+const CRON: &str = "export default {\n  async fetch(request, env) {\n    if (new URL(request.url).pathname === \"/queue\") {\n      const { queue, messages } = await request.json();\n      const answered = await env.WORKER.queue(queue, messages.map((message) => ({ ...message, timestamp: new Date() })));\n      return Response.json(answered);\n    }\n    const at = Number(new URL(request.url).searchParams.get(\"at\"));\n    const ended = await env.WORKER.scheduled({ scheduledTime: new Date(at), cron: \"* * * * *\" });\n    return Response.json(ended);\n  },\n};\n";
 
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
