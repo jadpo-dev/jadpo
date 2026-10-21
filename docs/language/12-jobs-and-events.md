@@ -5083,6 +5083,13 @@ Not yet:
     *Superseded 2026-10-19* by "Outbox placement, settled" (Decisions):
     a schedule's lease goes in `schedules: { store: }`, not always the
     main store, and each store an action writes keeps its own outbox.
+    *Richard (2026-10-21):* `ScheduleTrigger.external` is the native
+    deployable's `tick` command: `<deployable> tick` reads the settings,
+    checks migrations as `serve` does, runs one tick against the
+    schedules' store and exits, so a Kubernetes CronJob, ECS task or
+    systemd timer runs it each minute. No HTTP endpoint and no tick
+    secret; a scheduler that can only call a URL needs its own wrapper.
+    On Workers the cron trigger calls the Worker's scheduled handler.
 17. **Can a request's whole effect be traced through events?** Raised by
     Richard (2026-10-13). *Recommendation:* yes, always on. An event is
     stored with the trace context of the action that emitted it (W3C
