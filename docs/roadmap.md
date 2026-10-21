@@ -2657,8 +2657,9 @@ whose entry names them.
   model writes again, and 18
   stories' subscriber deliveries and an 18-item batch run, 2 seconds
   each, past one invocation's 30 seconds and finished by the invocation
-  each handed on to; natively, work carried on from its message alone
-  (`tests/background_budget.rs`).
+  each handed on to, then the minute's cron telling a summary the
+  budget's end cut short; natively, work carried on from its message
+  alone (`tests/background_budget.rs`).
 - [ ] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d:
   PostgreSQL through Cloudflare's pooling: a database connection's
   address from a Hyperdrive binding on Workers, its caching required off,
