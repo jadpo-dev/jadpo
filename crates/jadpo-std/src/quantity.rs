@@ -12,7 +12,9 @@
 use crate::{Builtin, Rounding};
 
 /// A kind of physical quantity, with `DataSize` and `Bitrate`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum QuantityKind {
     Length,
     Area,

@@ -116,33 +116,27 @@ impl Types {
     }
 
     // --- numbered plans ---------------------------------------------------
+    //
+    // Numbered while the plan is built; once it is, they belong to the
+    // runtime's plan (`Plan::runtime`), which every reader reads them from
+    // (chunk 8.1a).
 
-    pub fn validator(&self, id: ValidatorId) -> Option<&ValidatorPlan> {
-        self.validators.get(id.0 as usize)
-    }
-
-    /// Every validator plan, by number.
-    pub fn validators(&self) -> &[ValidatorPlan] {
-        &self.validators
-    }
-
-    pub fn shape(&self, id: ShapeId) -> Option<&ShapePlan> {
+    pub(crate) fn shape(&self, id: ShapeId) -> Option<&ShapePlan> {
         self.shapes.get(id.0 as usize)
     }
 
-    /// Every shape plan, by number.
-    pub fn shapes(&self) -> &[ShapePlan] {
-        &self.shapes
-    }
-
-    pub fn failure(&self, id: FailureId) -> Option<&FailurePlan> {
+    pub(crate) fn failure(&self, id: FailureId) -> Option<&FailurePlan> {
         self.failures.get(id.0 as usize)
     }
 
-    /// Every failure plan, by number: what the runtime raises a missing
-    /// record's failure from.
-    pub fn failures(&self) -> &[FailurePlan] {
-        &self.failures
+    /// The validator, shape and failure plans numbered so far, handed to
+    /// the runtime's plan as the plan is finished, leaving none here.
+    pub(crate) fn take_tables(&mut self) -> (Vec<ValidatorPlan>, Vec<ShapePlan>, Vec<FailurePlan>) {
+        (
+            std::mem::take(&mut self.validators),
+            std::mem::take(&mut self.shapes),
+            std::mem::take(&mut self.failures),
+        )
     }
 
     /// The number of `ty`'s validator, numbering it on first use.

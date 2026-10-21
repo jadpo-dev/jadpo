@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use crate::{Builtin, Dur, Num, Rounding, TextFormat, UuidVersion, VectorDistance};
 
 /// The rules one declaration adds: a type's block, or a field's settings.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Rules {
     pub min: Option<Num>,
     pub max: Option<Num>,
@@ -51,7 +51,8 @@ pub struct Rules {
     /// `Email`'s check is; or the standard type held as a whole number
     /// whose range `min` and `max` are (chunk 5.5n), which names it only.
     /// Only the standard library sets it; no block can write it.
-    pub standard: Option<&'static str>,
+    #[serde(with = "crate::standard::named::optional")]
+    pub standard: Option<crate::standard::named::Name>,
     /// A coordinate, a `Latitude` or a `Longitude` (area 20, question 2):
     /// kept as the shortest decimal of the nearest IEEE double, rounded as
     /// it is built, as a `Vector`'s items are kept as single-precision

@@ -17,7 +17,7 @@ use std::task::{Context, Wake, Waker};
 
 use jadpo_value::Value;
 
-use crate::{Ctx, LocalFuture, Outcome, Places, RuntimePlan, Started};
+use crate::{Ctx, LocalFuture, Outcome, Places, Plan, Started};
 
 /// Runs a program's callables: where each frame is ([`Executor::places`]),
 /// what the runtime reads of the program's plan ([`Executor::plan`]) and
@@ -34,8 +34,8 @@ pub trait Executor {
 
     /// What the runtime reads of the program's plan (chunk 7.9e): nothing,
     /// for an executor that only runs callables.
-    fn plan(&self) -> RuntimePlan<'_> {
-        RuntimePlan::NONE
+    fn plan(&self) -> Plan<'_> {
+        Plan::NONE
     }
 
     /// What the program started with (chunk 7.9e): its settings' values

@@ -33,10 +33,13 @@
 //!   kinds, its result and the Rust function that runs it in
 //!   `jadpo-value`, which the Jadpo stubs in `jadpo-check` are tested
 //!   against.
+//! - [`RuntimePlan`]: what the runtime reads of a program, as one value,
+//!   and [`canonical`], the byte encoding compiled code holds it in
+//!   (chunk 8.1a).
 //!
 //! It depends on no other workspace crate, so compiler and runtime crates
-//! may both depend on it. Its one dependency is `regex`, the linear-time
-//! engine `pattern:` needs on every target (area 2, question 9).
+//! may both depend on it. Its dependencies, each pure Rust and built for
+//! wasm32, are listed with their reasons in its `Cargo.toml`.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); tests may still unwrap.
@@ -56,6 +59,7 @@ pub mod across;
 pub mod ai;
 pub mod batch;
 mod builtin;
+pub mod canonical;
 pub mod config;
 pub mod constant;
 pub mod email;
@@ -83,6 +87,7 @@ pub mod quantity;
 pub mod read;
 pub mod receiving;
 mod rules;
+mod runtime_plan;
 pub mod schedule;
 pub mod sphere;
 pub mod standard;
@@ -126,6 +131,7 @@ pub use rules::{
     decode_key, is_email, is_ip_address, is_key_text, is_sign_in_code, is_sign_in_token, is_url,
     uuid_version,
 };
+pub use runtime_plan::{RuntimePlan, Unreadable};
 pub use standard::{
     CALENDAR_PERIOD, DATE_RANGE, FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, Part,
     RANGE, RANGE_FIELDS, RANGE_ITEMS, STANDARD_TYPES, StandardType, range_type, standard_type,

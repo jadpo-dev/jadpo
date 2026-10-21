@@ -246,7 +246,7 @@ Rust 1.88 or later).
 
 | Crate | Responsibility | wasm32 |
 |---|---|---|
-| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard types' data entries and storage codec, the standard library's enums Rust interprets, the typed operation table; the plans both executors run, as plain data (type and failure plans, constants, read, write and purge plans, the route, settings, JSON, translation and prompt tables) | yes |
+| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard types' data entries and storage codec, the standard library's enums Rust interprets, the typed operation table; the plans both executors run, as plain data (type and failure plans, constants, read, write and purge plans, the route, settings, JSON, translation and prompt tables), and the runtime's plan as one value with its canonical byte encoding | yes |
 | `jadpo-diag` | Rule catalogue, diagnostic model, edits | |
 | `jadpo-syntax` | Lexer, parser, lossless syntax tree, typed AST, `jadpo.ungram` | |
 | `jadpo-fmt` | Formatter | |
@@ -277,7 +277,19 @@ values), what each standard-library operation takes and gives
 its text form, JSON shape, storage and validator), with the storage codec
 that binds a value to its column (`standard::storage::bind`). The plans the
 runtime runs are its plain data, so compiled code needs nothing from a
-compiler crate.
+compiler crate. Since chunk 8.1a what the runtime reads of a program is
+one owned value, `RuntimePlan` (§2.5, "The plan compiled code holds"),
+written in `canonical`, the canonical byte encoding: a format of its own
+on serde's data model, so a plan type takes part by deriving `Serialize`
+and `Deserialize`; numbers in LEB128, as short as they can be (signed
+ones zigzagged), text and lists after their lengths, a struct's fields in
+order with no names, an enum's variant by its place, a map's entries in
+the order of their keys' bytes whatever order the map holds them in, no
+floats, and nesting held to 256 levels, so a value has exactly one
+encoding and a reader refuses any other. What a plan points at in the
+standard library's tables rather than holds (a standard type's name, a
+standard enum's codes, an array's inner column type) is written by name
+and read back as the table's own (`standard::named`).
 
 **`jadpo-sql`** writes every PostgreSQL text, each a function given the
 columns, conditions and values its caller chose, so the graph, the checker
@@ -1158,6 +1170,36 @@ run (dev profile) and for deployment (release). The differential run
 compiles every corpus project as a module of one crate: one rustc
 invocation for the corpus.
 
+**The plan compiled code holds** (chunk 8.1a, from the Phase 4 and
+Phase 6 reviews). Everything the runtime reads of a program besides its
+callables' bodies is one owned value, `jadpo_std::RuntimePlan`: the
+validator, shape and failure plans, the JSON table, the route table with
+its codecs, the settings, subscribers, batches, schedules, purges, stores
+of files, providers, `ai:`, prompts and their recordings. `jadpo-plan`
+builds it as a section of its plan (`Plan::runtime`, the type table's
+numbered plans moved into it as the plan is finished), and an executor
+hands the runtime a view of it, `jadpo_runtime::Plan`, through
+`Executor::plan`. Each thread loads it once (`jadpo_runtime::Loaded`):
+its validators compiled once for the process and shared behind an `Arc`
+(`Loaded::compile`, so a project's patterns are compiled once), its
+shapes made per thread, since values never cross threads (§2.6). The
+interpreter's `Program` is such a thread, and reads its own validators
+and shapes from the same `Loaded`. Compiled code holds the plan as a
+constant in its canonical bytes (`RuntimePlan::encode`: a header naming
+the format, then the plan in `jadpo_std::canonical`, §2.1), decodes it
+once as it starts (`RuntimePlan::decode`) and loads it on each worker the
+same way; the site plans its generated code names (each read's, write's
+and call's) join the same plan with the code generator (roadmap 8.1f).
+The same project always gives the same bytes, and the bytes always read
+back to an equal plan that writes them again: a test plans every page's
+project and every teaching example, and plans each example twice from a
+fresh database, so a plan holding anything in hash order would show
+(`crates/jadpo-plan/tests/runtime_plan.rs`). *Rejected:* generating the
+plan as Rust literals, which multiplies the code rustc compiles for every
+application against "Keeping rustc time down", and rebuilding it at start
+from the project, which needs the compiler a deployable doesn't carry;
+decoding a few kilobytes once per process costs less than either.
+
 **Frames.** Both executors keep a shadow stack of `(callable, site)` in
 the context; each site maps to a `.jadpo` file and line through a table
 from the graph (a static array in compiled code). A fault renders its
@@ -1470,7 +1512,7 @@ schedule) and says whether it `finished`, so a Workers cron run can't
 overrun however much is due, and the next run carries on; the budget is a
 batch count. Area 12's
 hourly purge schedule calls it since chunk 6.2c, with the plan's purge
-and its period as the program started with it (`RuntimePlan::purge`,
+and its period as the program started with it (`Plan::purge`,
 from `Started` since chunk 7.9e); a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
 budget, and another runs it on the tick
@@ -1502,8 +1544,9 @@ and rate-limit counters, so an address is always counted on one thread;
 hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name,
 the operating system's randomness and tokio's timer. Since chunk 6.9
 what a host does with a request and a tick is the runtime's
-(`jadpo_runtime::serve::Serving`, over an `Application`, an executor
-that gives its route table and codecs): it answers with `serve_request`,
+(`jadpo_runtime::serve::Serving`, over any executor, whose plan gives
+the route table and codecs, `Plan::app`; an `Application` trait gave them
+until chunk 8.1a): it answers with `serve_request`,
 hands what the response left to `runner::after_response`, runs the tick,
 and tells an `Observer` of each request and tick. The native server's
 handler that serves an application is `jadpo_host_native::http::AppHandler`,
@@ -2103,7 +2146,7 @@ budget lasts; once that is spent it gives its lease back and is handed
 on to a fresh invocation (`run_within`, `Ran::HandedOn`; chunk 6.7);
 `resume` picks up runs whose lease lapsed, for 6.2's minute tick; `status` and `cancel` read the
 row and keep a cancel. The runner reads the batches from the executor's
-plan (`RuntimePlan::batches`), so compiled code runs the same runner. In an
+plan (`Plan::batches`), so compiled code runs the same runner. In an
 application with a tenant the plan's `BatchTenant` names which saved
 values hold the tenant's id, and each page runs as the system limited to
 the one tenant they name, or to none (`outbox::named_tenant`, shared
@@ -2283,13 +2326,15 @@ an email's sender and a mail package's mapping, a queue's mapping and a
 magic link's origin. Until this chunk a mail package's call and a
 queue's read the program's value even under a test's `config:`, which
 area 13 says the code a test calls reads too. The plan the runtime reads
-is one borrowed view, `jadpo_runtime::RuntimePlan` (the JSON table with
-the program's validators and shapes, the failures, settings, routes,
+is one borrowed view (`jadpo_runtime::Plan` since chunk 8.1a, borrowed
+from the one owned `RuntimePlan`, §2.5: the JSON table with the
+program's validators and shapes, the failures, settings, routes,
 subscribers and event numbers, batches, schedules, purges, file stores,
 providers, `ai:`, prompts and prompt recordings), from which the runtime
-builds what each of its parts runs with (`RuntimePlan::events`,
-`batches`, `providers`, `webhooks`, `receiving`, `polls`, `ai` and
-`purge`, given the `Started` their credentials and periods come from).
+builds what each of its parts runs with (`Plan::events`, `batches`,
+`providers`, `webhooks`, `receiving`, `polls`, `ai`, `purge` and, since
+chunk 8.1a, the HTTP component's `app`, given the `Started` their
+credentials and periods come from).
 The `Executor` is left with `places`, `callable`, `plan`, `started`, a
 test's `settings` and `clock`, `recording` (which runs the package's own
 decoders) and `run` and `row`, where it had twenty methods, fourteen of
@@ -2303,9 +2348,9 @@ their values through `Ctx::setting`) and the credentials before it builds
 its request, so an executor only maps what comes back to its own stop.
 The runtime's own calls (an email through a mail package, a queue's
 receive and acknowledgement, a poll) go through the same entry point.
-Chunk 8.1 makes `RuntimePlan` the one plan with a canonical byte encoding
-that compiled code holds as constants, and builds each connection's
-driver from it and `Started`.
+Chunk 8.1a made that view's plan one owned value with a canonical byte
+encoding, which compiled code holds as a constant (§2.5); chunk 8.1d
+builds each connection's driver from it and `Started`.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -2465,7 +2510,7 @@ the interpreter runs it through `fakes::script`, which writes a value as
 the provider sends it (`fakes::as_sent`) and hands it to the fake its host
 gives for the connection (`Capability::script`). `jadpo test`'s runner
 wraps each test's host in `capability::Faked` with one fake in every
-connection the plan names (`RuntimePlan::provider_connections`), and after the run
+connection the plan names (`Plan::provider_connections`), and after the run
 reports a script the calls ran past or left answers in
 (`fakes::Usage`; `test.fake_exhausted`, `test.fake_unused`). `jadpo dev`
 gives its `NativeHost` one driver for every provider connection
@@ -2587,7 +2632,7 @@ and time, its store and its events by key. The plan holds each as a
 `jadpo_std::provider::WebhookPlan` on `ProviderPlan::webhooks`, its events
 numbered in the JSON table as every event is, and `jadpo_std::system::
 RECEIVED_EVENTS` joins that store's schema. The runtime reads them from
-the plan with the secrets the program started with (`RuntimePlan::webhooks`,
+the plan with the secrets the program started with (`Plan::webhooks`,
 `provider::Credentials` in `Started`), and the
 HTTP component answers a request at a webhook's path before routing
 (`jadpo_runtime::webhooks::answer`), after its address's rate limit:

@@ -2015,20 +2015,23 @@ order. 8.1b can run beside 8.1a, and 8.1l and 8.1m, which touch only the
 native host, each beside any of 8.1f to 8.1j. What the Phase 4 review
 asked for is decided in §2.5 first, in the chunk that builds it.
 
-- [ ] **8.1a One runtime plan and its encoding** `opus · high`, after
-  7.9e: the plan the runtime reads made one owned value,
-  `jadpo_std::RuntimePlan` (the type table's validators, shapes and
-  failures, the JSON table, the route table with its codecs, the
-  settings, subscribers, batches, schedules, purges, file stores,
-  providers, `ai:`, prompts and their recordings), which `jadpo-plan`
-  builds and each thread loads once (`jadpo_runtime::Loaded`: its
-  validators compiled once and shared, its shapes made per thread), the
-  view the runtime's parts read (`jadpo_runtime::Plan`) borrowed from it
-  alone; its canonical byte encoding (`jadpo_std::canonical`, on serde's
-  data model: fields in order, maps in key order, no floats), which
-  decodes to an equal plan and encodes to the same bytes again for every
-  page's project and teaching example; the HTTP component's `App` built
-  from it, so the `Application` trait goes (from 7.9e).
+- [x] **8.1a One runtime plan and its encoding** `opus · high`. Built:
+  what the runtime reads of a program as one owned value,
+  `jadpo_std::RuntimePlan` (the validator, shape and failure plans, the
+  JSON table, the route table with its codecs, settings, subscribers,
+  batches, schedules, purges, stores of files, providers, `ai:`, prompts
+  and their recordings), built by `jadpo-plan` as `Plan::runtime`, the
+  type table's numbered plans moved into it; each thread loading it once
+  (`jadpo_runtime::Loaded`: validators compiled once and shared, shapes
+  per thread), the interpreter's `Program` among them, and the view the
+  runtime's parts read renamed `jadpo_runtime::Plan`, borrowed from it;
+  its canonical byte encoding (`jadpo_std::canonical`, on serde's data
+  model, with `RuntimePlan::encode` and `decode` behind a format header),
+  every page's project and teaching example reading back equal and
+  writing the same bytes again, each example the same planned twice; the
+  HTTP component's `App` built from the plan (`Plan::app`), so
+  `serve::Application` is gone. How compiled code holds it is §2.5's "The
+  plan compiled code holds".
 - [ ] **8.1b The upgrade hook and SMTP over it** `opus · high`, after
   7.9e: `Transport::upgrade`, rustls natively, turning a driver's stream
   into TLS with the server's name checked; the SMTP conversation

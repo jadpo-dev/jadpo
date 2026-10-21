@@ -26,7 +26,7 @@ use jadpo_interp::Program;
 use jadpo_runtime::budget::RUN_LIMIT_MS;
 use jadpo_runtime::capability::{Answer, Call, Capability, Fake, Faked, Repeat, Scripted};
 use jadpo_runtime::runner::{Deferred, run_deferred, sweep};
-use jadpo_runtime::{Ctx, Executor, Host, LocalFuture, Outcome, Places, RuntimePlan, SqlValue};
+use jadpo_runtime::{Ctx, Executor, Host, LocalFuture, Outcome, Places, Plan, SqlValue};
 use jadpo_std::subscriber::{EventsPlan, Target};
 use jadpo_term::Environment;
 use jadpo_test::host::{Harness, Timer};
@@ -255,13 +255,13 @@ impl Executor for Stand<'_> {
         Executor::callable(self.program, key)
     }
 
-    fn plan(&self) -> RuntimePlan<'_> {
+    fn plan(&self) -> Plan<'_> {
         let program = Executor::plan(self.program);
-        RuntimePlan {
+        Plan {
             json: program.json,
             events: Some(&self.events),
             event_numbers: program.event_numbers,
-            ..RuntimePlan::NONE
+            ..Plan::NONE
         }
     }
 

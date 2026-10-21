@@ -264,7 +264,7 @@ enum Via<'p> {
 /// (chunk 7.9e): the plan it is made in and its site as the plan decodes
 /// it.
 pub struct Calling<'a, S> {
-    pub plan: crate::RuntimePlan<'a>,
+    pub plan: crate::Plan<'a>,
     pub site: &'a S,
 }
 

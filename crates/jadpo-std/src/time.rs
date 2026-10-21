@@ -7,7 +7,9 @@ use std::cmp::Ordering;
 use std::fmt;
 
 /// A length of time, to the millisecond.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct Dur {
     pub millis: i128,
 }

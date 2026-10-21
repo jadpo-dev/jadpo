@@ -116,7 +116,7 @@ pub fn answer_at(
 /// each type its prompt is asked for as ([`check`]), at `ctx`: what `jadpo
 /// test` runs for each. `None` when the plan holds no such recording.
 pub fn check_file(
-    plan: &crate::RuntimePlan<'_>,
+    plan: &crate::Plan<'_>,
     ctx: &mut Ctx<'_>,
     file: &str,
 ) -> Option<Result<(), Unread>> {
