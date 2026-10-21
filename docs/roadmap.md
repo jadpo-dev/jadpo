@@ -2505,9 +2505,10 @@ whose entry names them.
   says. Proved (`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32`
   group): example 23 declared as a kiosk on Workers, built in 42 s cold,
   holding no `testing` symbol, and loaded by the pinned workerd from its
-  files. Its module 19.7 MB bound, 6.5 MB gzipped (14.0 MB data, mostly
-  locale data, 4.5 MB code); as cargo built it, 20.4 MB without the
-  `testing` feature and 21.9 MB with it (6.6 and 7.1 MB gzipped).
+  files. Its module, with 8.2c's locale data, 9.5 MB bound, 3.0 MB
+  gzipped (4.5 MB code, 3.9 MB data, 1.1 MB names; 19.7 MB with every
+  locale); as cargo built it, 10.2 MB without the `testing` feature and
+  11.7 MB with it (3.1 and 3.6 MB gzipped).
 - [x] **8.2c Locale data for the supported locales** `opus · xhigh`,
   after 8.1o (from chunk 5.3). Built (area 10, "Locales"; §2.6, "The
   locale data a deployable carries"): `jadpo-cldr`, a tooling crate,

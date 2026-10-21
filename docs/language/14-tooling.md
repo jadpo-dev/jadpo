@@ -1020,7 +1020,7 @@ application {
 $ jadpo build
   worker    build/target/web/wrangler.json
   module    build/target/web/web.wasm
-  size      19.7 MB, 6.5 MB gzipped
+  size      9.5 MB, 3.0 MB gzipped
   build     b_1c5e09d2a7f3
   serves    main
   runs      subscribers
@@ -1099,7 +1099,7 @@ cron's `scheduled` with 8.2f and the queue's with 8.2k.
 $ jadpo build kiosk
   worker    build/target/kiosk/wrangler.json
   module    build/target/kiosk/kiosk.wasm
-  size      19.7 MB, 6.5 MB gzipped
+  size      9.5 MB, 3.0 MB gzipped
   build     b_1c5e09d2a7f3
   serves    main
   runs      schedules, subscribers
@@ -2304,7 +2304,7 @@ what other areas carried here and where this page answers it.
 
 | Topic | Decision | Date |
 |---|---|---|
-| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 19.7 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answers every request 503 until chunk 8.2d (decided for Richard, the conservative reading) | 2026-10-21 |
+| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answers every request 503 until chunk 8.2d (decided for Richard, the conservative reading) | 2026-10-21 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |

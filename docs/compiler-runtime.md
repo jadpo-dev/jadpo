@@ -3013,8 +3013,8 @@ most of a deployable is the standard library's locale and time-zone
 data; what the feature buys is that a deployable reaches no fake, crash
 point or test section at all. A Workers module (chunk 8.2b, "A Workers
 deployable" below) is built without it the same way, and measured on
-teaching example 23 at 20,421,673 bytes without it and 21,893,057 with
-it, about 7%, its code a quarter larger.
+teaching example 23 at 10,246,720 bytes without it and 11,702,013 with
+it, about 14%, its code a quarter larger.
 
 **One connections table and the driver factory** (chunk 8.1d, from the
 Phase 7 architecture review; area 11, "Connecting in `app.jadpo`" and
@@ -3205,11 +3205,12 @@ its stamp's target `wasm` in the manifest, its module linking
 PostgreSQL's driver and naming none of the `testing` symbols, then run by
 the pinned workerd from the files as the Wrangler file names them, the
 plan read inside the module and the Worker answering. Measured on that
-module: 19,665,209 bytes bound (6.5 MB gzipped), of which 14.0 MB is data,
-mostly the locale data chunk 8.2c cuts, 4.5 MB code and 1.1 MB the name
-section; as cargo built it, 20,421,673 bytes without the `testing`
-feature and 21,893,057 with it (6.6 and 7.1 MB gzipped), the code 4.9 MB
-against 6.0 MB. Until 8.2d the module doesn't reach the HTTP component,
+module, with 8.2c's locale data for its one supported locale: 9,494,470
+bytes bound (3.0 MB gzipped), of which 4.5 MB is code, 3.9 MB data and
+1.1 MB the name section (19,665,209 bytes, 6.5 MB gzipped, with every
+locale's data, before 8.2c); as cargo built it, 10,246,720 bytes without
+the `testing` feature and 11,702,013 with it (3.1 and 3.6 MB gzipped),
+the code 4.9 MB against 6.0 MB. Until 8.2d the module doesn't reach the HTTP component,
 the runner or the drivers, so these are the program and the runtime it
 calls, not yet a serving Worker. *Rejected:* exports defined in the
 Workers host, which can't name the program without the generated crate
