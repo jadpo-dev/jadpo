@@ -2579,14 +2579,27 @@ whose entry names them.
   bound and 4.0 MB gzipped (9.5 and 3.0 MB before): past the 3 MB
   Cloudflare documents for its Free plan, inside the Paid plan's 10 MB
   (8.2n measures it on the real plan; 9.2 tunes it).
-- [ ] **8.2e Route tests on workerd with the same records** `opus ·
-  xhigh`, after 8.2d: the vertical slice's proof: a project's route
-  tests run on its compiled program inside workerd and each test's
-  record compared with the interpreter's (`jadpo_test::differential`),
-  the program built for wasm32 with the `testing` feature behind a
-  handler that runs one test by its key, its test database a copy on the
-  run's server reached over `connect()`; area 7's `todos` and a teaching
-  example passing with the same records, in the `compiled` group.
+- [x] **8.2e Route tests on workerd with the same records** `opus ·
+  xhigh`, after 8.2d. Built (§2.6, "Route tests on workerd"): a test's
+  run one function whichever executor runs it and wherever,
+  `jadpo_runtime::test_run::once` (its seed, clock, fakes, record,
+  settings, deliveries between steps, crash points and batches run to
+  their end, with `Caught`, `rows` and `AtClock` moved there), the
+  runner keeping the choosing, the databases, the crash runs and the
+  judging, which a run made elsewhere goes through too;
+  `jadpo_test::workerd`, a test Worker of a project's compiled programs
+  built for wasm32 with the `testing` feature
+  (`jadpo_host_workers::testing`, a feature only `jadpo-test` turns on),
+  whose `fetch` runs one test by its key on a copy of each store's
+  database made on a server it reaches over `connect()` (the run's when
+  named by a URL, else one on `127.0.0.1`), answering the record's lines,
+  the rows and how the run ended, judged, crashed again and compared with
+  the interpreter's (`differential::compare`). Proved in the `compiled`
+  group: area 7's `todos` (3) and teaching example 23's route tests (4)
+  passing inside workerd with the interpreter's records. Its module 44.6
+  MB bound in the dev profile; 226 s from nothing locally under a load
+  average of 150 to 330, 24 s warm (15 s of it binding, 2 s the tests),
+  beside the corpus in the same step.
 - [ ] **8.2f The cron tick** `opus · xhigh`, after 8.2d: the Worker's
   `scheduled` handler calling `schedules::tick` within the cron's 15
   minutes, the minute's cron trigger written into the Wrangler file; an
