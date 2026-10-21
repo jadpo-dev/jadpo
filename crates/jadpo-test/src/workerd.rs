@@ -441,7 +441,7 @@ impl Workerd {
         .map_err(|error| format!("workerd's configuration wasn't written: {error}"))?;
         let log = out.join("workerd.log");
         let file = fs::File::create(&log).map_err(|error| error.to_string())?;
-        let child = Command::new(binary()?)
+        let child = Command::new(crate::workerd_install::workerd()?)
             .args(["serve", "config.capnp"])
             .current_dir(out)
             .stdin(Stdio::null())
@@ -538,47 +538,6 @@ impl Drop for Workerd {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
-}
-
-/// workerd: `JADPO_WORKERD`, else the one pinned in `tools/workers/`,
-/// installed there by `npm ci --ignore-scripts` when it isn't yet, as the
-/// Workers host's tests install it; never globally.
-fn binary() -> Result<PathBuf, String> {
-    if let Ok(path) = std::env::var("JADPO_WORKERD") {
-        return Ok(PathBuf::from(path));
-    }
-    let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers");
-    if let Some(found) = installed(&tools) {
-        return Ok(found);
-    }
-    // No install scripts: the platform's package carries the binary.
-    let output = Command::new("npm")
-        .args(["ci", "--ignore-scripts", "--no-audit", "--no-fund"])
-        .current_dir(&tools)
-        .output()
-        .map_err(|error| {
-            format!(
-                "npm didn't run: workerd is installed with Node's npm into tools/workers/: {error}"
-            )
-        })?;
-    // Another step of the gate may have installed it meanwhile.
-    installed(&tools).ok_or_else(|| {
-        format!(
-            "`npm ci` in tools/workers/ gave no workerd for this platform:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-    })
-}
-
-/// The binary of the platform's own workerd package, rather than npm's
-/// wrapper, which would run it as a child of its own.
-fn installed(tools: &Path) -> Option<PathBuf> {
-    fs::read_dir(tools.join("node_modules/@cloudflare"))
-        .ok()?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with("workerd-"))
-        .map(|entry| entry.path().join("bin/workerd"))
-        .find(|binary| binary.is_file())
 }
 
 #[cfg(test)]

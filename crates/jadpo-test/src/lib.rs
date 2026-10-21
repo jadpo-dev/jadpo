@@ -49,6 +49,7 @@ mod screen;
 mod select;
 pub mod watch;
 pub mod workerd;
+pub mod workerd_install;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

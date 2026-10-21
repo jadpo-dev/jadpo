@@ -623,37 +623,8 @@ fn dechunk(mut body: &str) -> String {
 }
 
 /// workerd: `JADPO_WORKERD`, else the one pinned in `tools/workers/`,
-/// installed there by `npm ci` when it isn't yet (as the Workers host's
-/// tests install it).
+/// installed there by `npm ci` when it isn't yet, one process at a time
+/// (`jadpo_test::workerd_install`).
 fn workerd() -> PathBuf {
-    if let Ok(path) = std::env::var("JADPO_WORKERD") {
-        return PathBuf::from(path);
-    }
-    let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers");
-    if let Some(found) = installed(&tools) {
-        return found;
-    }
-    // No install scripts: the platform's package carries the binary.
-    let output = Command::new("npm")
-        .args(["ci", "--ignore-scripts", "--no-audit", "--no-fund"])
-        .current_dir(&tools)
-        .output()
-        .expect("npm runs: workerd is installed with Node's npm, into tools/workers/");
-    assert!(
-        output.status.success(),
-        "`npm ci` in tools/workers/ failed:\n{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    installed(&tools).expect("npm installed workerd for this platform")
-}
-
-/// The binary of the platform's own workerd package, rather than npm's
-/// wrapper, which would run it as a child of its own.
-fn installed(tools: &Path) -> Option<PathBuf> {
-    fs::read_dir(tools.join("node_modules/@cloudflare"))
-        .ok()?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_name().to_string_lossy().starts_with("workerd-"))
-        .map(|entry| entry.path().join("bin/workerd"))
-        .find(|binary| binary.is_file())
+    jadpo_test::workerd_install::workerd().unwrap_or_else(|why| panic!("{why}"))
 }
