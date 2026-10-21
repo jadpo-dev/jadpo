@@ -392,7 +392,7 @@ pub fn as_sent(
     value: &jadpo_value::Value,
     coder: Option<&dyn jadpo_value::json::Coder>,
 ) -> Option<std::rc::Rc<str>> {
-    let (_, op) = providers.plan.operation(connection, operation)?;
+    let (_, op) = providers.operation(connection, operation)?;
     let codec = providers.json.codec_of(op.output?)?;
     let codecs = jadpo_value::json::Codecs {
         coder,

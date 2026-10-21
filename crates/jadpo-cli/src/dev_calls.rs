@@ -110,13 +110,19 @@ pub(crate) fn setup(
 ) -> Result<Setup, Box<Diagnostic>> {
     let plan = prepared.plan().providers();
     let config = prepared.plan().config();
+    let connection_name = |at: u32| prepared.plan().connection_name(at);
     for named in &session.fake {
-        if !plan.connections.iter().any(|known| known.name == *named) {
+        if prepared.plan().package_connection(named).is_none() {
             return Err(Box::new(arguments(
                 format!("`--fake {named}` names no connection to a provider"),
                 format!(
                     "`--fake` keeps every call of one of the app's provider connections faked: {}.",
-                    listed(plan.connections.iter().map(|known| known.name.as_str()))
+                    listed(
+                        prepared
+                            .plan()
+                            .package_connections()
+                            .map(|(_, name, _)| name)
+                    )
                 ),
             )));
         }
@@ -127,11 +133,11 @@ pub(crate) fn setup(
             .operations
             .iter()
             .filter_map(|op| {
-                let connection = plan.connections.get(op.connection as usize)?;
-                let full = format!("{}.{}", connection.name, op.name);
+                let connection = connection_name(op.connection)?;
+                let full = format!("{connection}.{}", op.name);
                 let resource = op.name.split('.').next().unwrap_or_default();
-                (full == *named || format!("{}.{resource}", connection.name) == *named)
-                    .then(|| (connection.name.clone(), op.name.clone()))
+                (full == *named || format!("{connection}.{resource}") == *named)
+                    .then(|| (connection.to_string(), op.name.clone()))
             })
             .collect();
         if found.is_empty() {
@@ -143,8 +149,7 @@ pub(crate) fn setup(
                         plan.operations
                             .iter()
                             .filter_map(|op| {
-                                let connection = plan.connections.get(op.connection as usize)?;
-                                Some(format!("{}.{}", connection.name, op.name))
+                                Some(format!("{}.{}", connection_name(op.connection)?, op.name))
                             })
                             .collect::<Vec<_>>()
                             .iter()
@@ -173,24 +178,21 @@ pub(crate) fn setup(
             .operations
             .iter()
             .filter(|op| op.recording.is_some())
-            .filter_map(|op| {
-                let connection = plan.connections.get(op.connection as usize)?;
-                Some(format!("{}.{}", connection.name, op.name))
-            })
+            .filter_map(|op| Some(format!("{}.{}", connection_name(op.connection)?, op.name)))
             .collect(),
         ..Setup::default()
     };
-    for connection in &plan.connections {
+    for (_, name, connection) in prepared.plan().package_connections() {
         let mut sandbox: Vec<String> = Vec::new();
-        if !session.fake.contains(&connection.name) {
+        if !session.fake.iter().any(|faked| faked == name) {
             sandbox.extend(connection.sandbox.iter().cloned());
             for (named, op) in &asked {
-                if *named == connection.name && !sandbox.contains(op) {
+                if named == name && !sandbox.contains(op) {
                     sandbox.push(op.clone());
                 }
             }
         }
-        let missing = unset.get(&connection.name).cloned().unwrap_or_default();
+        let missing = unset.get(name).cloned().unwrap_or_default();
         if !sandbox.is_empty() && missing.is_empty() {
             // Never live (area 11): the environment the connection's
             // setting chooses must be the sandbox.
@@ -205,16 +207,14 @@ pub(crate) fn setup(
                         Diagnostic::new(
                             &rule::CLI_DEV_START_FAILED,
                             format!(
-                                "`{}` lets calls through to its provider, and its environment is live",
-                                connection.name
+                                "`{name}` lets calls through to its provider, and its environment is live"
                             ),
                         )
                         .reason(format!(
                             "`jadpo dev` lets the operations `development: {{ sandbox: }}` names through to the provider's sandbox, never its live API, and `{variable}` chooses `live`."
                         ))
                         .next(format!(
-                            "Set `{variable}` to `sandbox` in `.env.local`, or run `jadpo dev --fake {}`",
-                            connection.name
+                            "Set `{variable}` to `sandbox` in `.env.local`, or run `jadpo dev --fake {name}`"
                         )),
                     ));
                 }
@@ -228,7 +228,7 @@ pub(crate) fn setup(
             (Vec::new(), missing)
         };
         out.connections.push(ConnectionSetup {
-            name: connection.name.clone(),
+            name: name.to_string(),
             sandbox,
             unset,
         });
@@ -256,7 +256,7 @@ fn arguments(headline: String, reason: String) -> Diagnostic {
 /// by its number in the configuration's plan.
 pub(crate) fn provider_settings(prepared: &Prepared) -> BTreeMap<String, Vec<u32>> {
     let mut out: BTreeMap<String, Vec<u32>> = BTreeMap::new();
-    for connection in &prepared.plan().providers().connections {
+    for (_, name, connection) in prepared.plan().package_connections() {
         let mut read = Vec::new();
         if let Some((_, at)) = connection.credential {
             read.push(at);
@@ -266,7 +266,7 @@ pub(crate) fn provider_settings(prepared: &Prepared) -> BTreeMap<String, Vec<u32
             Address::Setting(at) => read.push(*at),
             Address::Unknown => {}
         }
-        out.insert(connection.name.clone(), read);
+        out.insert(name.to_string(), read);
     }
     out
 }

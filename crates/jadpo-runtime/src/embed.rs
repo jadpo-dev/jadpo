@@ -466,7 +466,7 @@ fn package_vectors(
     embed: &jadpo_std::ai::PackageEmbed,
     text: &str,
 ) -> Result<Rc<str>, Done> {
-    let Some((_, op)) = providers.plan.operation(connection, &embed.operation) else {
+    let Some((_, op)) = providers.operation(connection, &embed.operation) else {
         return Err(Done::Fault(FaultKind::Defect(format!(
             "`{connection}.{}`, which the plan doesn't have",
             embed.operation

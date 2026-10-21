@@ -872,7 +872,10 @@ pub fn serve_to(
     // Every store of files on this machine's disk, under `.jadpo/files/`
     // (area 16, "Files"; chunk 6.4b), so nothing leaves it.
     let files = root.join(DEV_FILES);
-    if !first.prepared.plan().file_stores().is_empty() {
+    if jadpo_std::connections::files(first.prepared.plan().connections())
+        .next()
+        .is_some()
+    {
         let _ = crate::suggestions::local_folder(&root);
     }
     let make_setup = Arc::clone(&setup);
@@ -887,11 +890,8 @@ pub fn serve_to(
                 Ok(current) => Arc::clone(&current.0),
                 Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
             };
-            current
-                .plan()
-                .file_stores()
-                .iter()
-                .any(|store| store.name == connection)
+            jadpo_std::connections::files(current.plan().connections())
+                .any(|(name, _)| name == connection)
         });
         // Every provider connection the program running now has: faked,
         // or let through to the sandbox, each call logged (chunk 7.2d).
@@ -935,12 +935,7 @@ pub fn serve_to(
                     Ok(current) => Arc::clone(&current.0),
                     Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
                 };
-                current
-                    .plan()
-                    .providers()
-                    .connections
-                    .iter()
-                    .any(|known| known.name == connection)
+                current.plan().package_connection(connection).is_some()
             })
             .with_call_log(Rc::new(DevCalls {
                 log: crate::dev_calls::DevLog(Arc::clone(&make_log)),
@@ -1375,7 +1370,7 @@ fn start_config(
     }
     // An SMTP connection's settings that nothing gives: the inbox catches
     // every mail, so its server is never reached (chunk 7.3c2).
-    for smtp in &prepared.plan().events().emails.smtp {
+    for (_, smtp) in jadpo_std::connections::smtp(prepared.plan().connections()) {
         let host = match smtp.host {
             jadpo_std::email::SmtpHost::Setting(at) => Some(at),
             jadpo_std::email::SmtpHost::Written(_) => None,

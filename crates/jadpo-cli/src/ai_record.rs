@@ -167,14 +167,8 @@ fn recorded(call: &Call) -> Reply {
     let connection = ai.plan.connection.clone();
     // A package's connection: never live, never a stand-in credential.
     if matches!(ai.plan.driver, AiDriver::Package(_))
-        && let Some(chosen) = ready
-            .prepared
-            .plan()
-            .providers()
-            .connections
-            .iter()
-            .find(|known| known.name == connection)
-        && let Some(refused) = crate::package_record::refusal(&ready, chosen, COMMAND)
+        && let Some(chosen) = ready.prepared.plan().package_connection(&connection)
+        && let Some(refused) = crate::package_record::refusal(&ready, &connection, chosen, COMMAND)
     {
         return Reply::failed(*refused);
     }

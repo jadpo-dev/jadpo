@@ -333,13 +333,7 @@ impl<E: Executor> Stored<'_, E> {
             stores: self.databases.stores(),
         };
         let host = TestHost::new(self.databases)
-            .with_file_stores(
-                executor
-                    .plan()
-                    .file_stores
-                    .iter()
-                    .map(|store| store.name.as_str()),
-            )
+            .with_file_stores(executor.plan().file_stores())
             .with_mail(executor.plan().mail_connection().map(str::to_string));
         let (outcome, undelivered, reached, crashed) = {
             let host = faked(&host, &connections, &fake, models, &ai);

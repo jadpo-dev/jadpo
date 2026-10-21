@@ -12,8 +12,8 @@ use crate::ai::AiPlan;
 use crate::batch::BatchPlan;
 use crate::canonical;
 use crate::config::ConfigPlan;
+use crate::connections::Connection;
 use crate::embed::PromptRecording;
-use crate::files::FilesConnection;
 use crate::http::{JsonTable, RouteTable};
 use crate::prompt::PromptPlan;
 use crate::provider::ProviderPlan;
@@ -52,10 +52,12 @@ pub struct RuntimePlan {
     pub schedules: SchedulesPlan,
     /// Each lifecycle's purge, by entity, in entity order (area 5).
     pub purges: Vec<PurgePlan>,
-    /// The connections that keep files (area 16, chunk 6.4b).
-    pub file_stores: Vec<FilesConnection>,
-    /// The connections to provider packages, their operations, webhooks,
-    /// queues and polls (area 11).
+    /// Every connection, in name order, with its driver, the settings
+    /// that driver is built from and the targets it runs on (area 11;
+    /// chunk 8.1d): what a host builds each connection's driver from.
+    pub connections: Vec<Connection>,
+    /// The operations of the provider packages' connections, their
+    /// webhooks, queues and polls (area 11).
     pub providers: ProviderPlan,
     /// The connection `ai:` names and its models (area 21), when the
     /// application asks a model.
@@ -91,7 +93,7 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 1\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 2\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding. The same plan always gives the same bytes;

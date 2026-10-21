@@ -33,6 +33,9 @@ pub struct Started {
     settings: Vec<Option<Value>>,
     keys: Keys,
     credentials: Credentials,
+    /// The settings each connection's driver is built from, as given
+    /// (chunk 8.1d): what a host's driver factory reads.
+    drivers: DriverSettings,
     auth: AuthSettings,
     client: ClientAddress,
     /// How long each of the plan's purges waits, in milliseconds, in their
@@ -105,10 +108,8 @@ impl Started {
                 .config
                 .map(|config| Keys::read(config, values))
                 .unwrap_or_default(),
-            credentials: plan
-                .providers
-                .map(|providers| Credentials::read(providers, values))
-                .unwrap_or_default(),
+            credentials: Credentials::read(plan.connections, plan.providers, values),
+            drivers: DriverSettings::read(plan.connections, values),
             auth: AuthSettings::read(routes.and_then(|routes| routes.identity.as_ref()), values),
             // A source the target doesn't accept is the deployable's
             // problem to report as it starts (chunk 8.2); until then the
@@ -141,6 +142,14 @@ impl Started {
         &self.credentials
     }
 
+    /// The value setting number `at` was given as text, when a
+    /// connection's driver is built from it (chunk 8.1d): a database's
+    /// address, an SMTP server's name and sign-in. Secrets included, which
+    /// only a driver reads; `None` for a setting no driver reads.
+    pub fn driver_setting(&self, at: u32) -> Option<&str> {
+        self.drivers.0.get(&at).map(String::as_str)
+    }
+
     /// What signing in reads: the signing keys and the browser session's
     /// origin.
     pub fn auth(&self) -> &AuthSettings {
@@ -164,6 +173,32 @@ impl Started {
     pub(crate) fn with_client(mut self, client: ClientAddress) -> Started {
         self.client = client;
         self
+    }
+}
+
+/// The settings the connections' drivers are built from, as given, by
+/// number: never printed, since a database's address and an SMTP
+/// password are among them.
+#[derive(Default)]
+struct DriverSettings(std::collections::BTreeMap<u32, String>);
+
+impl DriverSettings {
+    /// What `values` give the settings each connection in `table` but a
+    /// package's is built from: a package's are read as each call is made.
+    fn read(table: &[jadpo_std::connections::Connection], values: &ConfigValues) -> DriverSettings {
+        DriverSettings(
+            table
+                .iter()
+                .filter(|connection| {
+                    !matches!(
+                        connection.driver,
+                        jadpo_std::connections::ConnectionDriver::Package(_)
+                    )
+                })
+                .flat_map(|connection| connection.driver.settings())
+                .filter_map(|at| Some((at, values.text_at(at)?.to_string())))
+                .collect(),
+        )
     }
 }
 

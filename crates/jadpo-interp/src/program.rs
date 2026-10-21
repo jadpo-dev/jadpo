@@ -407,13 +407,9 @@ impl Program {
             ),
             None => host,
         };
-        let host = self
-            .plan()
-            .providers()
-            .connections
-            .iter()
-            .fold(host, |host, connection| {
-                host.with(&connection.name, std::rc::Rc::clone(&fake))
+        let host = jadpo_std::connections::packages(self.plan().connections())
+            .fold(host, |host, (_, name, _)| {
+                host.with(name, std::rc::Rc::clone(&fake))
             });
         let mut ctx = Ctx::new(self.places(), &host, Env::default());
         let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));

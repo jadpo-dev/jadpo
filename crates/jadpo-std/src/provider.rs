@@ -203,14 +203,15 @@ pub fn time_named(name: &str) -> bool {
         .any(|end| name.len() > end.len() && name.ends_with(end))
 }
 
-/// Every connection to a provider package an application calls, and the
-/// operations it calls through them.
+/// The operations an application calls through its connections to
+/// provider packages, whose connections, each a
+/// [`crate::connections::ConnectionDriver::Package`], are in the plan's
+/// connections table (chunk 8.1d).
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProviderPlan {
     /// The application's name, which every derived idempotency key is
     /// made from (area 12, "Keys").
     pub application: String,
-    pub connections: Vec<ConnectionPlan>,
     pub operations: Vec<OperationPlan>,
     /// Each connection given a webhook secret, whose provider's events the
     /// runtime receives at its generated route (area 11, "Receiving from
@@ -281,20 +282,20 @@ pub struct RecordedPlan {
 
 impl ProviderPlan {
     /// Operation `operation` (`bookings.create`) of connection
-    /// `connection`, with the connection.
-    pub fn operation(
-        &self,
+    /// `connection`, with the connection, from the plan's connections
+    /// table `table`.
+    pub fn operation<'a>(
+        &'a self,
+        table: &'a [crate::connections::Connection],
         connection: &str,
         operation: &str,
-    ) -> Option<(&ConnectionPlan, &OperationPlan)> {
-        let found = self.operations.iter().find(|op| {
-            op.name == operation
-                && self
-                    .connections
-                    .get(op.connection as usize)
-                    .is_some_and(|plan| plan.name == connection)
-        })?;
-        Some((self.connections.get(found.connection as usize)?, found))
+    ) -> Option<(&'a ConnectionPlan, &'a OperationPlan)> {
+        let (at, _) = crate::connections::named(table, connection)?;
+        let found = self
+            .operations
+            .iter()
+            .find(|op| op.name == operation && op.connection == at)?;
+        Some((crate::connections::package(table, at)?, found))
     }
 }
 
@@ -378,11 +379,10 @@ pub struct IdempotencyPlan {
     pub replays_failures: bool,
 }
 
-/// One connection to a provider package.
+/// How calls through one connection to a provider package are made: its
+/// entry's driver in the plan's connections table, which holds its name.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ConnectionPlan {
-    /// Its name in `connections:`, `couriers`.
-    pub name: String,
     /// The package's name and version, `AcmeCouriers.v1`.
     pub package: String,
     pub address: Address,
@@ -426,7 +426,8 @@ pub enum PathPart {
 /// An operation an application calls.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OperationPlan {
-    /// Its connection's place in [`ProviderPlan::connections`].
+    /// Its connection's number: its place in the plan's connections
+    /// table (chunk 8.1d).
     pub connection: u32,
     /// `bookings.create`.
     pub name: String,
