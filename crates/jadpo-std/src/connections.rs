@@ -104,6 +104,11 @@ pub enum ConnectionDriver {
     /// `Driver.cloudflare_queues`, a queue whose batches Cloudflare pushes
     /// to the app's consumer on Workers (area 11, "Queues"; chunk 7.7c2).
     CloudflareQueues(CloudflareQueue),
+    /// `Driver.cloudflare_rate_limits`, Cloudflare's rate-limiting binding,
+    /// a store `rate_limits:` counts route rate limits in on Workers (area
+    /// 16, "Rate limits"; chunk 8.2m2): the first of the namespaces its
+    /// bindings are numbered from, `namespace:`.
+    CloudflareRateLimits { namespace: u32 },
     /// A provider package (area 11, "Calling"): the package driver, JSON
     /// over HTTP, and how each call through it is made.
     Package(Box<ConnectionPlan>),
@@ -113,11 +118,12 @@ impl ConnectionDriver {
     /// The targets it runs on (area 11, "Targets"): a package that calls
     /// an HTTP API, and every network driver, everywhere; the disk and a
     /// service Jadpo runs beside the deployable (`runs:`) only natively;
-    /// Cloudflare's queues only on Workers.
+    /// Cloudflare's queues and rate-limiting binding only on Workers.
     pub fn targets(&self) -> Vec<Target> {
         match self {
             ConnectionDriver::Disk { .. } => vec![Target::Native],
-            ConnectionDriver::CloudflareQueues(_) => vec![Target::Workers],
+            ConnectionDriver::CloudflareQueues(_)
+            | ConnectionDriver::CloudflareRateLimits { .. } => vec![Target::Workers],
             ConnectionDriver::Package(plan) if plan.address == Address::Unknown => {
                 vec![Target::Native]
             }
@@ -139,6 +145,7 @@ impl ConnectionDriver {
             ConnectionDriver::Smtp(_) => "Driver.smtp",
             ConnectionDriver::OpenAiCompatible { .. } => "Driver.openai_compatible",
             ConnectionDriver::CloudflareQueues(_) => "Driver.cloudflare_queues",
+            ConnectionDriver::CloudflareRateLimits { .. } => "Driver.cloudflare_rate_limits",
             ConnectionDriver::Package(_) => "package",
         }
     }
@@ -169,7 +176,9 @@ impl ConnectionDriver {
                 AiUrl::Setting(at) => vec![*at],
                 AiUrl::Written(_) => Vec::new(),
             },
-            ConnectionDriver::Disk { .. } | ConnectionDriver::CloudflareQueues(_) => Vec::new(),
+            ConnectionDriver::Disk { .. }
+            | ConnectionDriver::CloudflareQueues(_)
+            | ConnectionDriver::CloudflareRateLimits { .. } => Vec::new(),
             ConnectionDriver::Package(plan) => {
                 let address = match plan.address {
                     Address::Hosts { environment, .. } => Some(environment),
@@ -312,6 +321,12 @@ mod tests {
             }),
         );
         assert!(queue.runs_on(Target::Workers) && !queue.runs_on(Target::Native));
+        let limits = Connection::new(
+            "limits",
+            ConnectionDriver::CloudflareRateLimits { namespace: 1001 },
+        );
+        assert_eq!(limits.targets, [Target::Workers]);
+        assert!(limits.driver.settings().is_empty());
         let api = Connection::new("couriers", package(Address::Setting(0)));
         assert_eq!(api.targets, EVERY_TARGET);
         let service = Connection::new("pdfs", package(Address::Unknown));

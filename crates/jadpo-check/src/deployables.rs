@@ -26,9 +26,11 @@
 //! declares a target is refused each one whose driver that target can't
 //! run, naming the alternative ([`target_problems`]): the disk and a
 //! service Jadpo runs (`runs:`) without `host:` on Workers, a Cloudflare
-//! queue in a native deployable, and SMTP on port 25, which Workers
-//! blocks. Its `max_concurrent:` caps on Workers count per instance,
-//! which [`per_instance`] lists for the network report.
+//! queue or rate-limiting binding in a native deployable, and SMTP on port
+//! 25, which Workers blocks; and one built for Workers that serves an API
+//! needs a store its rate limits are counted in (area 16; chunk 8.2m2).
+//! Its `max_concurrent:` caps on Workers count per instance, which
+//! [`per_instance`] lists for the network report.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -699,6 +701,9 @@ pub enum Via {
     Email,
     /// The batch runs it carries on write or read files there.
     Batches,
+    /// It counts its routes' rate limits there, the store `rate_limits:`
+    /// names (area 16; chunk 8.2m2).
+    RateLimits,
 }
 
 impl Via {
@@ -711,6 +716,7 @@ impl Via {
             Via::Receiving => "by receiving its queue".to_string(),
             Via::Email => "by sending the app's email".to_string(),
             Via::Batches => "in the batch runs it carries on".to_string(),
+            Via::RateLimits => "by counting its routes' rate limits there".to_string(),
         }
     }
 }
@@ -781,6 +787,13 @@ fn reach(
                 .filter(|(_, body)| starts_batches(body))
                 .map(|(key, _)| key.clone()),
         );
+    }
+    // Every request it answers past its health checks is rate-limited, in
+    // the store `rate_limits:` names.
+    if !deployable.serves.is_empty()
+        && let Some((store, _)) = &crate::rate_limits::rate_limits(db, project).store
+    {
+        connection(&mut out, store, Via::RateLimits);
     }
     let packages = &crate::connections::package_connections(db, project).connections;
     if deployable.runs.subscribers {
@@ -882,11 +895,26 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let packages = &crate::connections::package_connections(db, project).connections;
     let smtp = &crate::emails::smtp_connections(db, project).list;
     let declared = connection_spans(db, project);
+    let stored = crate::rate_limits::rate_limits(db, project).written;
     let mut out = Vec::new();
     for (deployable, reached) in deployables.list.iter().zip(reaches) {
         let Some((target, at)) = &deployable.target else {
             continue;
         };
+        if *target == DeployTarget::Wasm && !deployable.serves.is_empty() && !stored {
+            out.push(
+                Diagnostic::new(
+                    &rule::RATE_LIMITS_STORE_REQUIRED,
+                    format!(
+                        "`{}` has nowhere to count its rate limits on Workers",
+                        deployable.name
+                    ),
+                )
+                .at(at.clone(), "built for Workers")
+                .reason("Every route is rate-limited, and a Worker's instances share no memory, so on Workers the counts are kept in a store: Cloudflare's rate-limiting binding, or Redis. `app.jadpo` names none in `rate_limits: { store: }`.")
+                .next("Declare a connection with `driver: Driver.cloudflare_rate_limits` and a `namespace:` in `connections:`, and add `rate_limits: { store: <its name> }` to `application { }`"),
+            );
+        }
         for (name, via) in &reached.connections {
             let refusal = match (target, kinds.kind(name)) {
                 (DeployTarget::Wasm, Some(ConnectionKind::Files)) => Some(Refusal {
@@ -941,6 +969,24 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                         reason: "A Worker can open TCP connections, but not to port 25; mail servers take mail from apps on port 587, submission.".to_string(),
                         next: format!(
                             "Give `{name}` `port: 587`, or send email from a `Target.native` deployable"
+                        ),
+                    })
+                }
+                (DeployTarget::Native, Some(ConnectionKind::CloudflareRateLimits)) => {
+                    Some(Refusal {
+                        message: format!(
+                            "`{}` can't count its rate limits in `{name}` natively: Cloudflare's rate-limiting binding is only a Worker's",
+                            deployable.name
+                        ),
+                        label: "`Driver.cloudflare_rate_limits`",
+                        reason: format!(
+                            "Cloudflare's rate-limiting binding is given to a Worker by Cloudflare, and a native server has none; `{}` reaches `{name}` {}.",
+                            deployable.name,
+                            via.words()
+                        ),
+                        next: format!(
+                            "Count rate limits in a connection with `driver: Driver.redis`, which every target reaches, or build `{}` for `Target.wasm`",
+                            deployable.name
                         ),
                     })
                 }

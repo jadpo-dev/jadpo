@@ -326,7 +326,7 @@ fn a_cap_on_calls_from_workers_is_said_to_count_per_instance() {
     let files = [
         (
             "app.jadpo",
-            "application {\n    connections: {\n        pdf: {\n            package: AcmePdf.v1\n            domains: [desk]\n            host: config.pdf_url\n            max_concurrent: 2\n        }\n    }\n    deployables: {\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n",
+            "application {\n    connections: {\n        pdf: {\n            package: AcmePdf.v1\n            domains: [desk]\n            host: config.pdf_url\n            max_concurrent: 2\n        }\n        limits: {\n            driver: Driver.cloudflare_rate_limits\n            namespace: 1001\n        }\n    }\n    rate_limits: {\n        store: limits\n    }\n    deployables: {\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n",
         ),
         ("config.jadpo", "config {\n    pdf_url: Url\n}\n"),
         (

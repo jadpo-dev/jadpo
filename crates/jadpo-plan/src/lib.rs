@@ -982,6 +982,7 @@ impl Plan {
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();
+        routes.rate_limits = jadpo_check::rate_limits::store_plan(db, project);
         // The connection `ai:` names, its address and its models (area 21;
         // chunk 5.5v3).
         let ai = {

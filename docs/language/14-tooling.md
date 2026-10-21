@@ -946,6 +946,14 @@ application {
             prefix: /backstage
         }
     }
+    connections: {
+        cache: {
+            driver: Driver.redis
+        }
+    }
+    rate_limits: {
+        store: cache
+    }
     deployables: {
         web: {
             serves: [main]
@@ -993,7 +1001,10 @@ application {
   S3's API, such as Cloudflare R2), a service Jadpo runs without `host:`
   (`host:` with where it is hosted), and SMTP on port 25 (port 587);
   natively, a Cloudflare queue, which only a Worker receives (a package
-  over Cloudflare's HTTP pull API). A deployable built for Workers that
+  over Cloudflare's HTTP pull API), and Cloudflare's rate-limiting
+  binding as the store of its rate limits (Redis). One built for Workers
+  that serves an API needs that store, `rate_limits: { store: }` (area
+  16, "Rate limits"; `rate_limits.store_required`). A deployable built for Workers that
   reaches a connection with `max_concurrent:` is listed under "On
   Workers" once `jadpo check` passes: Workers runs as many instances as
   traffic needs, and each counts the cap on its own (area 11, Decisions).
@@ -1076,8 +1087,11 @@ each the most conservative reading where the pages leave a choice open
   variable or a secret, and a required secret is Wrangler's one way to
   name a binding that must be set without giving its value, so `wrangler
   deploy` refuses until each is set; a setting with a default is left to
-  it. The cron trigger (chunk 8.2f) and the queues' consumers (8.2k) join
-  the file with their chunks, and 8.2k checks it against Wrangler itself.
+  it. With rate limits counted in Cloudflare's binding, `ratelimits`: a
+  binding for each limit, its name, its `namespace_id` and `simple: {
+  limit, period }` (area 16, "Rate limits"; chunk 8.2m2). The cron trigger
+  (chunk 8.2f) and the queues' consumers (8.2k) join the file with their
+  chunks, and 8.2k checks it against Wrangler itself.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
   target as `wasm`.
@@ -1114,8 +1128,9 @@ each the most conservative reading where the pages leave a choice open
   limits and the failure envelope. The client's address is
   `CF-Connecting-IP`, which Cloudflare sets on every request (area 10);
   the work a response leaves runs after it in `waitUntil`, within its 30
-  seconds; rate limits are counted in the isolate's memory until area
-  16's store on Workers comes (chunk 8.2m2). A streamed answer
+  seconds; rate limits are counted in the store `rate_limits:` names,
+  Cloudflare's rate-limiting binding, and in the isolate's memory only
+  while it can't be asked (area 16, "Rate limits"; chunk 8.2m2). A streamed answer
   (`ai.stream`) is sent whole once it ends until chunk 8.2h sends it as
   it comes.
 - **What it logs.** One JSON object a line on the console, which Workers
@@ -1959,7 +1974,8 @@ A deployable that declares a target is held to the connections it
 reaches, from the routes of the APIs it serves and the background work it
 runs: the disk and a service Jadpo runs (`runs:`) without `host:` aren't
 on Workers, SMTP on port 25 is blocked there, and only a Worker receives
-a Cloudflare queue (area 11, question 24). Each refusal names what to use
+a Cloudflare queue or counts in Cloudflare's rate-limiting binding (area
+11, question 24; area 16, "Rate limits"). Each refusal names what to use
 instead. A bakery keeps its suppliers' price sheets on its disk:
 
 ```jadpo check project=e-deployable-target-unsupported file=app.jadpo hidden
@@ -2097,6 +2113,10 @@ and its edge, which serves the API that keeps them, is built for Workers:
 ```jadpo check project=e-deployable-target-unsupported expect=deployable.target_unsupported file=app.jadpo
 application {
     connections: {
+        limits: {
+            driver: Driver.cloudflare_rate_limits
+            namespace: 1001
+        }
         sheets: {
             driver: Driver.disk
             path: "/var/lib/bakery/sheets"
@@ -2108,16 +2128,19 @@ application {
             target: Target.wasm
         }
     }
+    rate_limits: {
+        store: limits
+    }
 }
 ```
 
 ```text output
 error: `edge` can't use `sheets` on Workers, which has no disk
- --> app.jadpo:11:21
+ --> app.jadpo:15:21
    |
- 3 |         sheets: {
+ 7 |         sheets: {
    |         ------ `Driver.disk`
-11 |             target: Target.wasm
+15 |             target: Target.wasm
    |                     ^^^^^^^^^^^ built for Workers
   reason: `sheets` keeps files on the server's own disk (`Driver.disk`), and a Worker has none; `edge` uses it through `keep_prices`.
   next: Keep `sheets`'s files through a package over S3's API, such as Cloudflare R2, or use them from a `Target.native` deployable (agent)

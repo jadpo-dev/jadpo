@@ -262,7 +262,14 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::wrangler(name, &required).into_bytes(),
+                        workers::rate_limited(
+                            workers::wrangler(name, &required),
+                            plan.routes()
+                                .rate_limits
+                                .as_ref()
+                                .map_or(&[][..], |store| &store.bindings),
+                        )
+                        .into_bytes(),
                     ),
                 ] {
                     if let Err(error) = write_new(&root, &path, &contents) {

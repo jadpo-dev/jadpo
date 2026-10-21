@@ -272,3 +272,39 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
 }
+
+/// Each limit counted in Cloudflare's rate-limiting binding is a binding
+/// of the Worker's own in its Wrangler file, its namespace id as text and
+/// its window in seconds (chunk 8.2m2).
+#[test]
+fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
+    let bindings =
+        jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
+            .expect("numbered");
+    let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
+        workers::wrangler("web", &["DATABASE_URL".to_string()]),
+        &bindings,
+    ))
+    .expect("JSON");
+    assert_eq!(
+        wrangler["ratelimits"],
+        serde_json::json!([
+            {
+                "name": "LIMITS_120_PER_60S",
+                "namespace_id": "1001",
+                "simple": { "limit": 120, "period": 60 },
+            },
+            {
+                "name": "LIMITS_600_PER_60S",
+                "namespace_id": "1002",
+                "simple": { "limit": 600, "period": 60 },
+            },
+        ])
+    );
+    assert_eq!(
+        wrangler["secrets"]["required"],
+        serde_json::json!(["DATABASE_URL"])
+    );
+    let plain = workers::wrangler("web", &[]);
+    assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
+}
