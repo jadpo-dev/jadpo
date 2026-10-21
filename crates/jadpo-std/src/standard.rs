@@ -36,6 +36,7 @@ pub mod lists;
 pub mod markup;
 pub mod media;
 pub mod modulus;
+pub mod named;
 pub mod opening_hours;
 pub mod person_names_data;
 pub mod phones;

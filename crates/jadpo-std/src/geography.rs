@@ -14,7 +14,9 @@ pub const SRID: u32 = 4326;
 /// One position: its longitude and latitude in degrees and its altitude
 /// above the ellipsoid in metres where it has one, each a double by its
 /// bits, so a shape is compared and ordered exactly.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct Coordinates {
     pub longitude: u64,
     pub latitude: u64,
@@ -46,7 +48,9 @@ impl Coordinates {
 
 /// One of the six geometries, as `geography` holds it: a polygon's rings
 /// the outer first, each closed and in the order its points were given.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Shape {
     Point(Coordinates),
     LineString(Vec<Coordinates>),

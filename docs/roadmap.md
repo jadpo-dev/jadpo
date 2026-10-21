@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-20. This page is the only list of outstanding work: the
+**Updated:** 2026-10-21. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -2029,39 +2029,157 @@ side by side, then 7.9d, then 7.9e).
 
 ## Phase 8 — Compiled deployables
 
-- [ ] **8.1 Native:** `opus · xhigh` graph to Rust; every test passes interpreted and
-  compiled. Includes TLS for database connections (a hook on the driver's
-  `Transport`, rustls natively), and an outcome and effect record (SQL, row
-  counts, events) both executors write, for the differential comparison.
-  From the Phase 4 review, decided in §2.5 first: a typed per-route entry
-  so generated code decodes a request straight into its structs; plan data
-  embedded as constants rather than rebuilt at start; a route trie and no
-  per-request allocation for paths, labels and failure lookups; the native
-  host accepting asynchronously and spreading connections round-robin,
-  with one rate-limit count per caller across its worker threads (today
-  each thread counts its own, so a caller on several gets several
-  allowances).
-  From the Phase 6 review: one `RuntimePlan` with a canonical byte
-  encoding behind a smaller `Executor` (places, plan, run); 6.9's
-  deployable handler; the corpus compiled as one generated crate, in its
-  own CI job with a time budget.
-  From the Phase 7 review: one connections table (name, driver, settings,
-  targets) and a runtime factory building each driver from the plan and
-  7.9e's `Started`, hosts supplying only transports, dev and tests
-  wrapping it with `Faked`, `jadpo check` refusing a driver per target
-  (area 11, question 24); `Transport::upgrade` (rustls natively) for
-  STARTTLS and PostgreSQL's TLS, the SMTP conversation moved into
-  `jadpo_drivers::smtp` over it; `NativeFetch` replaced by a pooled,
-  cancellable hyper client with one rustls connector per worker; webhooks
-  a `Run::Webhook` entry in the route trie; provider call sites carrying
-  plan numbers, not names; a `testing` feature and a dev/test plan
-  section so fakes, recordings and crash points stay out of deployables.
-  From chunk 7.9e: its borrowed `RuntimePlan` made that one plan, with
-  the route table and its codecs, so the HTTP component builds its `App`
-  and the `Application` trait goes; every context made from its
-  executor (`Ctx::of`), so none waits for its program's first run to
-  reach `Started` (`Ctx::start_from`); `Executor::recording` run by the
-  runtime once a package's functions are reached through the executor.
+Chunk 8.1, compiled native code with every test passing interpreted and
+compiled, was split on 2026-10-21 into the chunks below, taken in this
+order. 8.1b can run beside 8.1a, and 8.1l and 8.1m, which touch only the
+native host, each beside any of 8.1f to 8.1j. What the Phase 4 review
+asked for is decided in §2.5 first, in the chunk that builds it.
+
+- [x] **8.1a One runtime plan and its encoding** `opus · high`. Built:
+  what the runtime reads of a program as one owned value,
+  `jadpo_std::RuntimePlan` (the validator, shape and failure plans, the
+  JSON table, the route table with its codecs, settings, subscribers,
+  batches, schedules, purges, stores of files, providers, `ai:`, prompts
+  and their recordings), built by `jadpo-plan` as `Plan::runtime`, the
+  type table's numbered plans moved into it; each thread loading it once
+  (`jadpo_runtime::Loaded`: validators compiled once and shared, shapes
+  per thread), the interpreter's `Program` among them, and the view the
+  runtime's parts read renamed `jadpo_runtime::Plan`, borrowed from it;
+  its canonical byte encoding (`jadpo_std::canonical`, on serde's data
+  model, with `RuntimePlan::encode` and `decode` behind a format header),
+  every page's project and teaching example reading back equal and
+  writing the same bytes again, each example the same planned twice; the
+  HTTP component's `App` built from the plan (`Plan::app`), so
+  `serve::Application` is gone. How compiled code holds it is §2.5's "The
+  plan compiled code holds".
+- [ ] **8.1b The upgrade hook and SMTP over it** `opus · high`, after
+  7.9e: `Transport::upgrade`, rustls natively, turning a driver's stream
+  into TLS with the server's name checked; the SMTP conversation
+  (`EHLO`, `STARTTLS`, `AUTH`, the message) moved from
+  `jadpo_host_native::smtp` into `jadpo_drivers::smtp` over `Transport`,
+  so a host supplies only the socket and the upgrade, area 16's rules
+  kept (TLS always but to this machine, port 465 speaking TLS from the
+  start); proved against a server on this machine with a certificate the
+  test makes.
+- [ ] **8.1c The outcome-and-effect record** `opus · high`, after 8.1a:
+  what each invocation did, written by the runtime whichever executor
+  runs it, in the order it happened: each statement's SQL text, its
+  parameters' types and its row count, each event written with its
+  payload, each outside call's connection, operation and answer, and the
+  outcome (a value, a failure's code and fields, a fault's kind and site,
+  a failed assertion's values); `jadpo test` keeps it per test in a
+  canonical form with the final database's rows, and
+  `jadpo_test::differential` compares two runs' records and prints both
+  sides of the first difference. Proved by the corpus run twice with no
+  difference, and a perturbed run whose difference it names.
+- [ ] **8.1d One connections table and the driver factory** `opus ·
+  high`, after 8.1a and 8.1b: the plan's connections table (each
+  connection's name, driver, settings and the targets its driver runs
+  on, from area 11's `connections:`), and one factory in `jadpo-drivers`
+  building each connection's driver from it and 7.9e's `Started`
+  (PostgreSQL, the package driver, `Driver.openai_compatible`, SMTP, the
+  disk, Cloudflare Queues) over the transports a host supplies, so
+  `NativeHost`'s `with_store`, `with_providers`, `with_models` and
+  `with_mail` give way to it and `jadpo dev` and `jadpo test` wrap what
+  it builds with `Faked`; provider call sites carrying their connection's
+  and operation's numbers in the plan, not their names.
+- [ ] **8.1e A smaller executor and the `testing` feature** `opus ·
+  high`, after 8.1c and 8.1d: the `Executor` down to its places, its plan
+  and running a callable: callables found by key through the plan, each
+  test's `config:` and `clock:` and the recordings in a dev and test
+  section of the plan, `Executor::recording` run by the runtime once a
+  package's functions are reached through the executor, and every
+  context made from its executor (`Ctx::of`), so `Ctx::start_from` goes
+  (from 7.9e); a `testing` cargo feature on the runtime crates carrying
+  the fakes, recordings, crash points and that section, so a deployable
+  built without it holds none of them.
+- [ ] **8.1f Compiled code: the first route** `opus · xhigh`, after 8.1c
+  and 8.1e: `jadpo-codegen` writing a checked project as one Rust crate
+  from its graph and plan (`quote!` into `syn`, printed with
+  `prettyplease`, §2.5): a module per domain, functions as `fn` and
+  actions and queries as `async fn(&mut Ctx, …)` over the interpreter's
+  `jadpo_value::Value`, so only control flow differs (a struct per type
+  comes with 8.1p), checked arithmetic faulting at its site, and the
+  plan's bytes (8.1a) embedded as a constant and decoded once at start,
+  decided in §2.5 first, with its read, write and call sites' plans added
+  to it; the compiled program's `Executor`; a harness running a project's
+  tests through both executors and comparing their records (8.1c); one
+  route that creates a record and one that reads it, with their route
+  tests, passing compiled and interpreted with the same records; a body
+  form not compiled yet refused by name, so what is left shows.
+- [ ] **8.1g Compiled code: areas 1 to 4** `opus · xhigh`, after 8.1f:
+  every body form areas 1 to 4 build (functions, failures, `attempt`,
+  outcome `match`, constructions, a proven one never checked again,
+  collections and inline functions, constants, the standard library
+  through `jadpo_value::run`, effects through `effects::run`, assertions
+  with their values), the pages' projects for those areas passing
+  compiled with the same records.
+- [ ] **8.1h Compiled code: data, routes and identity** `opus · xhigh`,
+  after 8.1g: areas 5 to 9 and 13's test forms: queries, `get`, writes
+  and transitions through `jadpo_runtime::store`, callers and `call_as`,
+  sessions, tokens and keys, route, fixture and seed tests, batches and
+  an export's rows, the pages' projects for those areas passing compiled.
+- [ ] **8.1i Compiled code: events, packages and the rest** `opus ·
+  xhigh`, after 8.1h: areas 10 to 12, 16 and 19 to 21: settings and a
+  test's `config:`, translations, `emit` and the deliveries between a
+  test's steps, schedules and `schedule.run()`, provider calls with
+  their fakes and recordings, files, email and `email.sent`,
+  `ai.generate`, `ai.stream` and `ai.embed` with the `ai` fake, prompts,
+  magic links and webhook replies.
+- [ ] **8.1j The corpus compiled** `opus · xhigh`, after 8.1i: every
+  page's project and teaching example compiled as modules of one
+  generated crate, one rustc invocation in the dev profile (§2.5), in a
+  CI job of its own with a time budget, every test passing interpreted
+  and compiled with the same records; the gate's Phase 8 differential
+  step (§2.7).
+- [ ] **8.1k The route trie** `opus · high`, after 8.1a: decided in §2.5
+  first, routes matched through a trie built once from the route table
+  (a fixed segment before a placeholder, as now), webhooks a
+  `Run::Webhook` entry in it rather than answered before routing, and no
+  allocation per request for paths, labels or failure lookups, counted by
+  a test's allocator.
+- [ ] **8.1l Native accept and one rate-limit count** `opus · xhigh`,
+  after 8.1d: decided in §2.5 first, the native listener accepting
+  asynchronously and handing connections to its workers round-robin, and
+  the rate limits counted once per caller and address across the worker
+  threads, in the same bounded memory (today each thread counts its own,
+  so a client reaching several gets several allowances); §2.6's
+  "Single-threaded by design" rewritten for it.
+- [ ] **8.1m A pooled HTTP client** `opus · xhigh`, after 8.1l:
+  `NativeFetch` replaced by a pooled, cancellable hyper client with one
+  rustls connector per worker: connections kept per host, a call's
+  timeout or a dropped future ending its exchange, streamed answers read
+  as they come, the outbound guard kept (HTTPS, public addresses, no
+  redirect).
+- [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m, **needs
+  Richard** before it starts: PostgreSQL's TLS through
+  `Transport::upgrade`, live-tested against a server the harness starts
+  with a certificate it makes. The pages don't say when a database
+  connection must use TLS, nor how one names a private certificate
+  authority (Amazon RDS's and Cloud SQL's aren't in the public roots).
+  *Recommendation:* as area 16 decides for SMTP: TLS always, checked
+  against Mozilla's roots compiled in, except to this machine (a Unix
+  socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a
+  `Certificate` setting holding its server's authority; a server
+  elsewhere without TLS is reached only when the connection says so in
+  `app.jadpo`, which the review report lists; `sslmode` in the URL is
+  refused, since the connection decides.
+- [ ] **8.1o A native deployable** `opus · xhigh`, after 8.1j and 8.1n:
+  `deployables: { }` read from `app.jadpo` (area 14, question 14; with
+  none declared, one deployable runs everything) and `jadpo build`
+  writing a native deployable into `build/target/` (area 14) with each
+  API's `<api>.failures.<locale>.json`, its toolchain pinned and its build
+  stamp (§2.8, area 18); 6.9's deployable handler: the binary reading its
+  settings through `config::load`, building its drivers through 8.1d's
+  factory, refusing to start against migrations not applied (area 5),
+  serving and ticking through `Serving` on `NativeHost` and draining on
+  SIGTERM; `jadpo check` refusing a driver or package a deployable's
+  target can't run, naming the alternative (area 11, question 24).
+- [ ] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
+  8.1k: decided in §2.5 first, a struct or enum per type with codecs from
+  its type plan, and each route's entry decoding a request straight into
+  its input's struct and writing its output from its output's, `Value`
+  kept where the runtime and the standard library take one.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in

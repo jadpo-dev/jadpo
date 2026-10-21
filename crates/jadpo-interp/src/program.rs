@@ -1,10 +1,11 @@
 //! A checked project ready to run, in two parts. [`Prepared`] is what
-//! every thread shares behind an `Arc`: the plan (`jadpo-plan`), each type's
-//! rules compiled into a validator once, and the frame table. [`Program`]
-//! is one thread's view of it, with what can't cross threads because the
-//! runtime's values are `Rc`-shared (§2.6): the plan's constants and shapes
-//! decoded into values. The test runner prepares a project once and makes
-//! a `Program` on each thread it runs tests on.
+//! every thread shares behind an `Arc`: the plan (`jadpo-plan`), the
+//! runtime plan's validators compiled once, and the frame table.
+//! [`Program`] is one thread's view of it, with what can't cross threads
+//! because the runtime's values are `Rc`-shared (§2.6): the plan's
+//! constants decoded into values and the runtime plan loaded, its shapes
+//! made ([`jadpo_runtime::Loaded`], chunk 8.1a). The test runner prepares a
+//! project once and makes a `Program` on each thread it runs tests on.
 
 use std::fmt;
 use std::rc::Rc;
@@ -15,8 +16,8 @@ use jadpo_diag::Diagnostic;
 use jadpo_graph::Key;
 use jadpo_plan::{ConstId, FailureId, Plan, ShapeId, ValidatorId};
 use jadpo_runtime::{
-    CallablePlace, Ctx, Env, Executor, Failure, FaultKind, Frame, LocalFuture, MemoryHost, Outcome,
-    Places, Report, RuntimePlan, SitePlace, Started,
+    CallablePlace, Ctx, Env, Executor, Failure, FaultKind, Frame, Loaded, LocalFuture, MemoryHost,
+    Outcome, Places, Report, SitePlace, Started,
 };
 use jadpo_value::{Validator, Value};
 
@@ -27,8 +28,9 @@ use crate::values::{Codec, Shape};
 #[derive(Debug)]
 pub struct Prepared {
     plan: Plan,
-    /// The plan's validators, compiled, by number.
-    validators: Vec<Validator>,
+    /// The runtime plan's validators, compiled, by number: what every
+    /// thread's loaded runtime plan shares.
+    validators: Arc<[Validator]>,
     places: Places,
 }
 
@@ -73,14 +75,7 @@ impl Prepared {
     }
 
     fn from_plan(plan: Plan) -> Arc<Prepared> {
-        let validators = plan
-            .types()
-            .validators()
-            .iter()
-            .map(|plan| {
-                Validator::new(plan.builtin, plan.rules.clone()).with_across(plan.across.clone())
-            })
-            .collect();
+        let validators = Loaded::compile(plan.runtime());
         let mut places = Places::new();
         for callable in plan.callables() {
             places.push(CallablePlace {
@@ -181,8 +176,9 @@ pub struct Program {
     prepared: Arc<Prepared>,
     /// The plan's constants as values, by number.
     constants: Vec<Value>,
-    /// The plan's shapes with their names as values hold them, by number.
-    shapes: Vec<Shape>,
+    /// The runtime plan on this thread: its shapes with their names as
+    /// values hold them, and the validators every thread shares.
+    loaded: Loaded,
     /// Whether constructions the checker proved are checked again as they
     /// run ([`Program::with_proof_checks`]).
     proof_checks: bool,
@@ -225,14 +221,16 @@ impl fmt::Display for CallError {
 impl Program {
     /// This thread's view of `prepared`.
     pub fn new(prepared: Arc<Prepared>) -> Program {
-        let types = prepared.plan.types();
         let constants = prepared
             .plan
             .constants()
             .iter()
             .map(Value::constant)
             .collect();
-        let shapes = types.shapes().iter().map(Shape::new).collect();
+        let loaded = Loaded::sharing(
+            Arc::clone(prepared.plan.shared_runtime()),
+            Arc::clone(&prepared.validators),
+        );
         // Until it is given the settings an application started with, a
         // program reads the ones a test run does: each `test:` value and
         // default.
@@ -246,7 +244,7 @@ impl Program {
         let mut program = Program {
             prepared,
             constants,
-            shapes,
+            loaded,
             proof_checks: false,
             started: Rc::new(Started::default()),
         };
@@ -304,26 +302,10 @@ impl Program {
         }
     }
 
-    /// What the runtime reads of its plan (chunk 7.9e), with this thread's
-    /// validators and shapes: what [`Executor::plan`] gives.
-    pub fn runtime_plan(&self) -> RuntimePlan<'_> {
-        let plan = self.plan();
-        RuntimePlan {
-            json: self.stored_json(),
-            failures: plan.types().failures(),
-            config: Some(plan.config()),
-            routes: Some(plan.routes()),
-            events: Some(plan.events()),
-            event_numbers: &plan.json().events,
-            batches: plan.batches(),
-            schedules: Some(plan.schedules()),
-            purges: plan.purges(),
-            file_stores: plan.file_stores(),
-            providers: Some(plan.providers()),
-            ai: plan.ai(),
-            prompts: Some(plan.prompts()),
-            prompt_recordings: plan.prompt_recordings(),
-        }
+    /// What the runtime reads of its plan (chunks 7.9e and 8.1a), with
+    /// this thread's validators and shapes: what [`Executor::plan`] gives.
+    pub fn runtime_plan(&self) -> jadpo_runtime::Plan<'_> {
+        self.loaded.plan()
     }
 
     /// The name of setting number `at`.
@@ -486,7 +468,7 @@ impl Program {
         let unlimited = self.unlimited()?;
         self.start_in(ctx);
         let calling = jadpo_runtime::ai::Calling {
-            plan: RuntimePlan {
+            plan: jadpo_runtime::Plan {
                 ai: Some(&unlimited),
                 ..self.runtime_plan()
             },
@@ -516,7 +498,7 @@ impl Program {
         let unlimited = self.unlimited()?;
         self.start_in(ctx);
         let calling = jadpo_runtime::ai::Calling {
-            plan: RuntimePlan {
+            plan: jadpo_runtime::Plan {
                 ai: Some(&unlimited),
                 ..self.runtime_plan()
             },
@@ -543,7 +525,7 @@ impl Program {
         let unlimited = self.unlimited()?;
         self.start_in(ctx);
         let calling = jadpo_runtime::ai::Calling {
-            plan: RuntimePlan {
+            plan: jadpo_runtime::Plan {
                 ai: Some(&unlimited),
                 ..self.runtime_plan()
             },
@@ -565,20 +547,9 @@ impl Program {
 
     /// What the runtime's HTTP component answers this program's routes
     /// with (area 7): the route table and its codecs, with this thread's
-    /// validators and shapes.
+    /// validators and shapes, as the runtime builds it from the plan.
     pub fn app(&self) -> jadpo_runtime::http::App<'_> {
-        let table = self.plan().routes();
-        jadpo_runtime::http::App {
-            table,
-            codecs: jadpo_value::json::Codecs {
-                codecs: &table.codecs,
-                validators: &self.prepared.validators,
-                shapes: &self.shapes,
-                coder: None,
-            },
-            failures: self.plan().types().failures(),
-            json: self.stored_json(),
-        }
+        self.runtime_plan().app()
     }
 
     /// What the runtime's entry point for operations with effects runs
@@ -626,21 +597,13 @@ impl Program {
     /// what [`Program::stored_json`] numbers, and a prompt's fields are
     /// written with (area 21).
     pub(crate) fn json_codecs(&self) -> jadpo_value::json::Codecs<'_> {
-        jadpo_value::json::Codecs {
-            codecs: &self.plan().json().codecs,
-            validators: &self.prepared.validators,
-            shapes: &self.shapes,
-            coder: None,
-        }
+        self.stored_json().codecs
     }
 
     /// The codecs a JSON-held column is written and read with (chunk
     /// 5.5w2b): `json.read`'s, numbered by the plan's JSON table.
     pub fn stored_json(&self) -> jadpo_runtime::JsonCodecs<'_> {
-        jadpo_runtime::JsonCodecs {
-            codecs: self.json_codecs(),
-            types: &self.plan().json().types,
-        }
+        self.runtime_plan().json
     }
 
     /// The latest migration's backfills worked out in Jadpo, in a program
@@ -713,7 +676,7 @@ impl Program {
     }
 
     pub(crate) fn shape(&self, id: ShapeId) -> Option<&Shape> {
-        self.shapes.get(id.0 as usize)
+        self.loaded.shapes().get(id.0 as usize)
     }
 
     /// Failure `id`, with the fields given in `values` placed by `slots`,
@@ -724,14 +687,7 @@ impl Program {
         slots: &[Option<u32>],
         values: Vec<Value>,
     ) -> Option<Failure> {
-        Failure::of(self.plan().types().failure(id)?, slots, values)
-    }
-}
-
-/// What a host serves (chunk 6.9): the interpreter's route table and codecs.
-impl jadpo_runtime::serve::Application for Program {
-    fn app(&self) -> jadpo_runtime::http::App<'_> {
-        Program::app(self)
+        Failure::of(self.plan().failure(id)?, slots, values)
     }
 }
 
@@ -744,7 +700,7 @@ impl Executor for Program {
         Program::plan(self).find(key)
     }
 
-    fn plan(&self) -> RuntimePlan<'_> {
+    fn plan(&self) -> jadpo_runtime::Plan<'_> {
         self.runtime_plan()
     }
 

@@ -4,7 +4,7 @@
 
 /// Every subscriber, and where an action that writes no store keeps the
 /// events it emits.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EventsPlan {
     /// In key order.
     pub subscribers: Vec<SubscriberPlan>,
@@ -48,7 +48,7 @@ impl EventsPlan {
 }
 
 /// One subscriber (area 12, "Subscribers").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SubscriberPlan {
     /// Its identity key, which each delivery record names: `subscriber
     /// planning.update_statistics`.
@@ -113,7 +113,7 @@ impl SubscriberPlan {
 /// What a delivery hands its event to (area 12; chunk 7.0c): a
 /// subscriber's action, or a capability's operation, as sending an email
 /// is emitting it (area 16, "Email").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Target {
     /// The action it runs, by callable number, each argument a path read
     /// from the event: empty for the event itself.
@@ -138,7 +138,7 @@ pub enum Target {
 
 /// Whether an outside call may be sent again (area 11, "Idempotency";
 /// area 12, "Delivery: at least once, safe to repeat"; chunk 7.0c).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Repeat {
     /// It changes nothing, or its package marks it safe to repeat.
     Safe,
@@ -152,7 +152,7 @@ pub enum Repeat {
 }
 
 /// Where a delivery's tenant comes from (area 9, "Background work").
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TenantFrom {
     /// The application has no tenant: nothing limits the system.
     Untenanted,

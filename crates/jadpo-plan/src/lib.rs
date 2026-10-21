@@ -51,8 +51,8 @@ use jadpo_check::types::{callables_of, typed_body};
 use jadpo_db::{Db, Project};
 use jadpo_graph::body::Body;
 use jadpo_graph::{Key, Kind, TypeRef};
-pub use jadpo_std::Isolation;
 pub use jadpo_std::http::RouteTable;
+pub use jadpo_std::{Isolation, RuntimePlan};
 
 pub use constant::Constant;
 pub use jadpo_std::read::{MissingPlan, MissingValue};
@@ -353,54 +353,27 @@ pub struct Plan {
     entities: Vec<EntityPlan>,
     /// Every write site's plan, in the order the callables are numbered.
     writes: Vec<WriteSitePlan>,
-    /// Every lifecycle's purge, by entity name.
-    purges: Vec<PurgePlan>,
-    /// Every route, with the codecs its types cross the boundary with
-    /// (area 7, chunk 4.1).
-    routes: RouteTable,
-    /// Every setting `config { }` declares, and the codecs their values
-    /// are read by (area 10, chunk 5.1).
-    config: jadpo_std::config::ConfigPlan,
+    /// What the runtime reads of the program (chunk 8.1a): the validator,
+    /// shape and failure plans, the JSON table, every route with its
+    /// codecs, the settings, subscribers, batches, schedules, purges,
+    /// stores of files, providers, `ai:`, prompts and their recordings,
+    /// shared with every thread's runtime.
+    runtime: Arc<RuntimePlan>,
     /// Every translation key and its message in each supported locale
     /// (area 10, chunk 5.3b), which the runtime formats a call from.
     translations: jadpo_std::translation::TranslationPlan,
     /// The locales the application supports, when it declares them (area
     /// 10, chunk 5.3c): what `locale.from_accept_language` chooses among.
     locales: Option<jadpo_std::LocalePlan>,
-    /// The codecs `json.read` and `json.write` run with (area 19, chunk
-    /// 5.5g): the wire's, for each type a call reads or writes.
-    json: jadpo_std::http::JsonTable,
-    /// Every prompt that checks, which `prompts.render` fills (area 21,
-    /// chunk 5.5v2).
-    prompts: jadpo_std::prompt::PromptPlan,
-    /// Every subscriber, and the store an action that writes none keeps
-    /// its events in (area 12, chunk 6.1b).
-    events: jadpo_std::subscriber::EventsPlan,
-    /// Every schedule, where their state is kept and the stores the tick
-    /// sweeps (area 12, chunk 6.2).
-    schedules: jadpo_std::schedule::SchedulesPlan,
     /// The latest migration's backfills `jadpo migrate apply` works out in
     /// Jadpo (chunk 5.6b2), in a plan built for it.
     backfills: Vec<BackfillPlan>,
     /// The structured fields the latest migration reads or writes as JSON
     /// in Jadpo (chunk 5.9c), in a plan built for it.
     migration_json: Vec<MigrationJson>,
-    /// Every `batches.each` call, by the number its site decodes (area
-    /// 12, chunk 6.4).
-    batches: Vec<jadpo_std::batch::BatchPlan>,
-    /// Each `batches.each` site's number's place in `batches`.
+    /// Each `batches.each` site's number's place in the runtime plan's
+    /// batches.
     batch_numbers: Vec<Option<u32>>,
-    /// The connections that keep files (area 16, chunk 6.4b).
-    file_stores: Vec<jadpo_std::files::FilesConnection>,
-    /// The connections to provider packages and their operations (area
-    /// 11, chunk 7.2c).
-    providers: jadpo_std::provider::ProviderPlan,
-    /// The connection `ai:` names and the models it gives (area 21; chunk
-    /// 5.5v3), when the application asks a model.
-    ai: Option<jadpo_std::ai::AiPlan>,
-    /// Every recording of a prompt's answer (area 21, "Tests"; chunk
-    /// 5.5v4).
-    prompt_recordings: Vec<jadpo_std::embed::PromptRecording>,
     /// The `SigningKey` setting a record's answers are encrypted with,
     /// by its number: `application { steps: { encryption_key: } }` (area
     /// 12; chunk 7.5b).
@@ -1137,6 +1110,24 @@ impl Plan {
                 })
                 .collect()
         };
+        let (validators, shapes, failures) = types.take_tables();
+        let runtime = RuntimePlan {
+            validators,
+            shapes,
+            failures,
+            json,
+            config,
+            routes,
+            events,
+            batches,
+            schedules,
+            purges,
+            file_stores: jadpo_check::data::files_connections(db, project).clone(),
+            providers,
+            ai,
+            prompts,
+            prompt_recordings,
+        };
         Plan {
             callables,
             by_key,
@@ -1146,23 +1137,12 @@ impl Plan {
             queries,
             entities,
             writes,
-            purges,
-            routes,
-            config,
+            runtime: Arc::new(runtime),
             translations: jadpo_check::translations::plan(db, project),
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
-            json,
-            prompts,
-            events,
-            schedules,
             backfills,
             migration_json,
-            batches,
             batch_numbers,
-            file_stores: jadpo_check::data::files_connections(db, project).clone(),
-            providers,
-            ai,
-            prompt_recordings,
             steps_key,
             build,
         }
@@ -1180,50 +1160,85 @@ impl Plan {
         self.steps_key
     }
 
+    /// What the runtime reads of the program (chunk 8.1a), which every
+    /// part below that the runtime runs with is read from.
+    pub fn runtime(&self) -> &RuntimePlan {
+        &self.runtime
+    }
+
+    /// The same, shared: what each thread's runtime loads (chunk 8.1a).
+    pub fn shared_runtime(&self) -> &Arc<RuntimePlan> {
+        &self.runtime
+    }
+
+    /// Every validator plan, by number.
+    pub fn validators(&self) -> &[ValidatorPlan] {
+        &self.runtime.validators
+    }
+
+    /// Every shape plan, by number.
+    pub fn shapes(&self) -> &[ShapePlan] {
+        &self.runtime.shapes
+    }
+
+    /// Every failure plan, by number: what the runtime raises a missing
+    /// record's failure from.
+    pub fn failures(&self) -> &[FailurePlan] {
+        &self.runtime.failures
+    }
+
+    pub fn failure(&self, id: FailureId) -> Option<&FailurePlan> {
+        self.runtime.failures.get(id.0 as usize)
+    }
+
+    pub fn shape(&self, id: ShapeId) -> Option<&ShapePlan> {
+        self.runtime.shapes.get(id.0 as usize)
+    }
+
     /// The connections to provider packages and the operations called
     /// through them (area 11, chunk 7.2c).
     pub fn providers(&self) -> &jadpo_std::provider::ProviderPlan {
-        &self.providers
+        &self.runtime.providers
     }
 
     /// The connection every `ai` call goes through, and its models (area
     /// 21; chunk 5.5v3).
     pub fn ai(&self) -> Option<&jadpo_std::ai::AiPlan> {
-        self.ai.as_ref()
+        self.runtime.ai.as_ref()
     }
 
     /// Every recording of a prompt's answer (chunk 5.5v4).
     pub fn prompt_recordings(&self) -> &[jadpo_std::embed::PromptRecording] {
-        &self.prompt_recordings
+        &self.runtime.prompt_recordings
     }
 
     /// Every `batches.each` call's run (area 12, chunk 6.4).
     pub fn batches(&self) -> &[jadpo_std::batch::BatchPlan] {
-        &self.batches
+        &self.runtime.batches
     }
 
     /// The connections that keep files, which a host gives a driver for
     /// (area 16, chunk 6.4b).
     pub fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
-        &self.file_stores
+        &self.runtime.file_stores
     }
 
     /// The run of the `batches.each` call whose site decodes `number`.
     pub fn batch(&self, number: u32) -> Option<&jadpo_std::batch::BatchPlan> {
         let at = (*self.batch_numbers.get(number as usize)?)?;
-        self.batches.get(at as usize)
+        self.runtime.batches.get(at as usize)
     }
 
     /// Every subscriber, and where an action that writes no store keeps
     /// its events (area 12, chunk 6.1b).
     pub fn events(&self) -> &jadpo_std::subscriber::EventsPlan {
-        &self.events
+        &self.runtime.events
     }
 
     /// Every schedule, where their state is kept, and the stores the tick
     /// sweeps (area 12, chunk 6.2).
     pub fn schedules(&self) -> &jadpo_std::schedule::SchedulesPlan {
-        &self.schedules
+        &self.runtime.schedules
     }
 
     /// The structured fields the latest migration reads or writes as JSON
@@ -1343,17 +1358,17 @@ impl Plan {
     /// Every lifecycle's purge, by entity name (area 5): what the built-in
     /// purge schedule runs (area 12).
     pub fn purges(&self) -> &[PurgePlan] {
-        &self.purges
+        &self.runtime.purges
     }
 
     /// Every route and the codecs its types use (area 7).
     pub fn routes(&self) -> &RouteTable {
-        &self.routes
+        &self.runtime.routes
     }
 
     /// The settings and their codecs (area 10).
     pub fn config(&self) -> &jadpo_std::config::ConfigPlan {
-        &self.config
+        &self.runtime.config
     }
 
     /// The translation keys and their messages (area 10).
@@ -1363,7 +1378,7 @@ impl Plan {
 
     /// Every prompt that checks, by its place (area 21).
     pub fn prompts(&self) -> &jadpo_std::prompt::PromptPlan {
-        &self.prompts
+        &self.runtime.prompts
     }
 
     /// The locales the application supports, when it declares them.
@@ -1373,12 +1388,15 @@ impl Plan {
 
     /// The codecs `json.read` and `json.write` run with (area 19).
     pub fn json(&self) -> &jadpo_std::http::JsonTable {
-        &self.json
+        &self.runtime.json
     }
 
     /// The purge of the entity called `entity`, when its lifecycle has one.
     pub fn purge(&self, entity: &str) -> Option<&PurgePlan> {
-        self.purges.iter().find(|plan| plan.entity == entity)
+        self.runtime
+            .purges
+            .iter()
+            .find(|plan| plan.entity == entity)
     }
 }
 

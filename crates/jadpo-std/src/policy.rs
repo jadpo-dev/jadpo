@@ -20,7 +20,9 @@
 use crate::read::{Param, SqlType};
 
 /// Which part of the caller a statement's parameter is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum CallerPart {
     /// The signed-in user's `id`; `NULL` for a service or no one.
     User,
@@ -93,7 +95,7 @@ pub enum Callers {
 /// service's keys needs `read` on its record, and revoking one or issuing
 /// a key `update`. Its first parameters are the runtime's own, as the
 /// statement without policy takes them; the caller's follow, in order.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Gated {
     pub sql: String,
     /// The parameters after the runtime's own: the caller's parts, and

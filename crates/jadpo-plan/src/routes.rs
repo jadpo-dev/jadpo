@@ -54,10 +54,11 @@ pub fn standard_codecs(types: &[TypeRef]) -> StandardCodecs {
     let mut codecs = Codecs::new(&mut plans);
     let ids = types.iter().map(|ty| codecs.codec(ty)).collect();
     let codecs = codecs.into_codecs();
+    let (validators, shapes, _) = plans.take_tables();
     StandardCodecs {
         codecs,
-        validators: plans.validators().to_vec(),
-        shapes: plans.shapes().to_vec(),
+        validators,
+        shapes,
         ids,
     }
 }
