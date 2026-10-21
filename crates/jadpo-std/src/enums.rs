@@ -307,6 +307,42 @@ std_enum! {
 }
 
 std_enum! {
+    /// What a deployable is compiled for (area 14, question 14; decision
+    /// register 2026-10-13): `deployables: { api: { target: Target.wasm } }`.
+    DeployTarget: "Target" {
+        /// A native process on a server.
+        Native: "native",
+        /// WebAssembly on Cloudflare Workers (roadmap chunk 8.2).
+        Wasm: "wasm",
+    }
+}
+
+impl DeployTarget {
+    /// The host it runs on, which decides the drivers it can build (area
+    /// 11, question 24).
+    pub fn host(self) -> crate::connections::Target {
+        match self {
+            DeployTarget::Native => crate::connections::Target::Native,
+            DeployTarget::Wasm => crate::connections::Target::Workers,
+        }
+    }
+}
+
+std_enum! {
+    /// The background work a deployable runs besides the routes it serves
+    /// (area 14, question 14): `runs: [Trigger.schedules,
+    /// Trigger.subscribers]`.
+    Trigger: "Trigger" {
+        /// The schedules, each entity's purge and each poll, on the tick.
+        Schedules: "schedules",
+        /// Each event's and email's deliveries, after its action commits
+        /// and from the outbox on the tick, and the queues `receiving:`
+        /// reads.
+        Subscribers: "subscribers",
+    }
+}
+
+std_enum! {
     /// Which of a provider package's hosts a connection reaches (area 11,
     /// "Connecting in `app.jadpo`"): the `environment:` setting a
     /// connection to a package with `hosts:` reads (chunk 7.1c).
@@ -668,6 +704,8 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
+        (DeployTarget::NAME, DeployTarget::NAMES.to_vec()),
+        (Trigger::NAME, Trigger::NAMES.to_vec()),
         (
             ProviderEnvironment::NAME,
             ProviderEnvironment::NAMES.to_vec(),
@@ -749,6 +787,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
         Driver::NAME => position(Driver::NAMES),
+        DeployTarget::NAME => position(DeployTarget::NAMES),
+        Trigger::NAME => position(Trigger::NAMES),
         ProviderEnvironment::NAME => position(ProviderEnvironment::NAMES),
         SuccessStatus::NAME => position(SuccessStatus::NAMES),
         HttpMethod::NAME => position(HttpMethod::NAMES),

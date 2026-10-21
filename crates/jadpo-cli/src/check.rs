@@ -88,15 +88,46 @@ pub(crate) fn reported(
     } else {
         &[]
     };
+    // Each cap on calls a deployable built for Workers counts per instance
+    // (area 11, "Decisions", 2026-10-21; chunk 8.1o2).
+    let per_instance = if layout == Layout::Project && diagnostics.is_empty() {
+        jadpo_check::deployables::per_instance(db, loaded.project)
+    } else {
+        Vec::new()
+    };
     report(
         diagnostics,
         sources,
         root,
         &paths,
         loaded.unreadable.len(),
-        (layout, written, reviews),
+        (layout, written, reviews, &per_instance),
         (elapsed, failed),
     )
+}
+
+/// What `jadpo check` says once it passes of each `max_concurrent:` a
+/// deployable built for Workers reaches: Workers runs as many instances as
+/// traffic needs, and each counts the cap on its own.
+fn per_instance_block(caps: &[(String, u32, String)]) -> Block {
+    let mut lines = vec![
+        "`max_concurrent:` caps calls in each instance, and Workers runs as".to_string(),
+        "many as traffic needs; a provider's own rate limit holds them to a total.".to_string(),
+    ];
+    let width = caps
+        .iter()
+        .map(|(name, _, _)| name.len())
+        .max()
+        .unwrap_or(0);
+    for (connection, cap, deployable) in caps {
+        lines.push(format!(
+            "  {connection:width$}  {cap} at once in each instance of `{deployable}`"
+        ));
+    }
+    Block::Section {
+        heading: "On Workers".to_string(),
+        lines,
+    }
 }
 
 /// A project, or the files and folders named, checked as `jadpo check`
@@ -161,10 +192,11 @@ pub(crate) fn checked(call: &Call, target: &std::path::Path) -> Checked {
         let mut surfaces = derived::surfaces(db, loaded.project);
         surfaces.extend(derived::network(db, loaded.project));
         surfaces.extend(derived::providers(db, loaded.project));
+        let stamp = derived::stamp(db, loaded.project, &loaded.root, graph, errors);
         match derived::write(
             &loaded.root,
             graph,
-            errors,
+            &stamp,
             &openapi,
             permissions.as_ref(),
             &surfaces,
@@ -190,7 +222,12 @@ fn report(
     root: Option<String>,
     paths: &[&String],
     unreadable: usize,
-    (layout, written, reviews): (Layout, Vec<String>, &[jadpo_check::review::ProviderReview]),
+    (layout, written, reviews, per_instance): (
+        Layout,
+        Vec<String>,
+        &[jadpo_check::review::ProviderReview],
+        &[(String, u32, String)],
+    ),
     (elapsed, failed): (Duration, &str),
 ) -> Reply {
     let errors = diagnostics.len();
@@ -225,6 +262,9 @@ fn report(
         for block in crate::provider_review::check_blocks(reviews) {
             screen.push(block);
         }
+        if !per_instance.is_empty() {
+            screen.push(per_instance_block(per_instance));
+        }
     }
     screen.push(Block::summary(outcome, headline, facts));
     let data = Json::object([
@@ -241,6 +281,16 @@ fn report(
         ("errors", errors.into()),
         ("build", Json::array(written)),
         ("providers", crate::provider_review::json(reviews)),
+        (
+            "per_instance",
+            Json::array(per_instance.iter().map(|(connection, cap, deployable)| {
+                Json::object([
+                    ("connection", connection.as_str().into()),
+                    ("max_concurrent", (*cap).into()),
+                    ("deployable", deployable.as_str().into()),
+                ])
+            })),
+        ),
     ]);
     Reply::Report {
         screen,

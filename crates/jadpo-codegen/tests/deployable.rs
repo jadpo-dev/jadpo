@@ -90,8 +90,14 @@ fn a_deployable_is_its_program_and_a_binary_named_after_it() {
     assert_eq!(text(files, "Cargo.lock"), "# the runtime crates' lock\n");
     // The program, as `generate` writes it, holding the plan's bytes
     // without the dev and test section.
+    // Its package is named after the deployable, so the programs of
+    // several deployables built into one cargo target never share a
+    // unit (chunk 8.1o2).
     let program = text(files, "program/Cargo.toml");
-    assert!(program.contains("name = \"jadpo-program\""), "{program}");
+    assert!(
+        program.contains("name = \"jadpo-program-kiosk\""),
+        "{program}"
+    );
     assert!(
         program.contains("jadpo-runtime = { path = \"/opt/jadpo/crates/jadpo-runtime\" }"),
         "{program}"
@@ -106,7 +112,9 @@ fn a_deployable_is_its_program_and_a_binary_named_after_it() {
     let binary = text(files, "deployable/Cargo.toml");
     assert!(binary.contains("name = \"kiosk\""), "{binary}");
     assert!(
-        binary.contains("jadpo-program = { path = \"../program\" }"),
+        binary.contains(
+            "jadpo-program = { path = \"../program\", package = \"jadpo-program-kiosk\" }"
+        ),
         "{binary}"
     );
     assert!(

@@ -109,11 +109,12 @@ pub use builtin::{Builtin, KEY_SIZE, SIGNING_KEY_MIN};
 pub use constant::{Constant, Hidden};
 pub use enums::{
     Access, AuthenticationMethod, AuthenticationStrength, BatchState, ClientAddressSource,
-    CodeForm, ComponentStyle, CsvFormat, Driver, Dst, FieldAccess, FieldChange, Generated,
-    HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE, MembershipScope, MoneyDisplay,
-    MoneyPrecision, MoneySign, Month, OnDelete, ProviderEnvironment, Rounding, RouteAuthentication,
-    SignInMethod, SignInRefusal, SuccessStatus, Tenancy, TextDirection, TextFormat,
-    TranslationReview, UuidVersion, VectorDistance, Weekday, ZONE, enums, variant_ordinal,
+    CodeForm, ComponentStyle, CsvFormat, DeployTarget, Driver, Dst, FieldAccess, FieldChange,
+    Generated, HttpMethod, Idempotency, IndexKind, InvalidDay, LOCALE, MembershipScope,
+    MoneyDisplay, MoneyPrecision, MoneySign, Month, OnDelete, ProviderEnvironment, Rounding,
+    RouteAuthentication, SignInMethod, SignInRefusal, SuccessStatus, Tenancy, TextDirection,
+    TextFormat, TranslationReview, Trigger, UuidVersion, VectorDistance, Weekday, ZONE, enums,
+    variant_ordinal,
 };
 pub use format::{BuiltinFormat, Component, FormatLength, FormatPart, TimeFormatSpec};
 pub use isolation::Isolation;
@@ -136,7 +137,7 @@ pub use rules::{
     decode_key, is_email, is_ip_address, is_key_text, is_sign_in_code, is_sign_in_token, is_url,
     uuid_version,
 };
-pub use runtime_plan::{RuntimePlan, Unreadable};
+pub use runtime_plan::{Runs, RuntimePlan, Unreadable};
 pub use standard::{
     CALENDAR_PERIOD, DATE_RANGE, FILE_TYPE, FILE_TYPES, INSTANT_RANGE, INSTANT_RANGE_FIELDS, Part,
     RANGE, RANGE_FIELDS, RANGE_ITEMS, STANDARD_TYPES, StandardType, range_type, standard_type,

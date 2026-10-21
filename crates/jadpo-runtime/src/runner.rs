@@ -46,6 +46,7 @@ use std::collections::VecDeque;
 use std::ops::ControlFlow;
 use std::rc::Rc;
 
+use jadpo_std::Runs;
 use jadpo_std::subscriber::Target;
 use jadpo_value::{Validator, Value};
 
@@ -128,8 +129,12 @@ pub async fn settle_within(
     use crate::outbox::{FAILED, OUTCOME_UNKNOWN, SUCCEEDED};
     let host = ctx.host();
     let budget = Budget::of(host, u64::from(jadpo_std::http::MAX_DEADLINE_MS));
+    // A route that waits for follow-on work is served only where it runs:
+    // `jadpo check` refuses one in a deployable that doesn't run
+    // subscribers (`deployable.settle_unrun`).
+    let runs = Runs::EVERYTHING;
     let mut queue: VecDeque<Piece> = VecDeque::new();
-    split(work, &mut queue);
+    split(runs, work, &mut queue);
     // Work left before it, which isn't this route's to wait for.
     let earlier = ctx.take_deferred();
     let settled = loop {
@@ -187,7 +192,7 @@ pub async fn settle_within(
                 }
             }
         };
-        split(ctx.take_deferred(), &mut queue);
+        split(runs, ctx.take_deferred(), &mut queue);
         if !done {
             break Settled::Unsettled;
         }
@@ -322,13 +327,21 @@ enum Piece {
 
 /// `work`'s deliveries and batch runs, each a piece of its own, at the
 /// back of `queue`.
-fn split(work: Vec<Deferred>, queue: &mut VecDeque<Piece>) {
+///
+/// What the program doesn't run is dropped here, the one place work joins
+/// a runner (area 14, "Declared deployables"; chunk 8.1o2): a delivery in
+/// a deployable that doesn't run `Trigger.subscribers`, and a batch run in
+/// one that doesn't run `Trigger.schedules`. Each is committed already, a
+/// delivery in its outbox and a batch run on its row, so the tick of a
+/// deployable that runs it picks it up.
+fn split(runs: Runs, work: Vec<Deferred>, queue: &mut VecDeque<Piece>) {
     for next in work {
         match next {
-            Deferred::Deliveries(deliveries) => {
+            Deferred::Deliveries(deliveries) if runs.subscribers => {
                 queue.extend(deliveries.into_iter().map(Piece::Delivery));
             }
-            Deferred::Batch(start) => queue.push_back(Piece::Batch(start)),
+            Deferred::Batch(start) if runs.schedules => queue.push_back(Piece::Batch(start)),
+            Deferred::Deliveries(_) | Deferred::Batch(_) => {}
         }
     }
 }
@@ -365,8 +378,9 @@ async fn drive(
     work: Vec<Deferred>,
     now: Option<i64>,
 ) -> Worked {
+    let runs = executor.plan().runs;
     let mut queue: VecDeque<Piece> = VecDeque::new();
-    split(work, &mut queue);
+    split(runs, work, &mut queue);
     let mut outcomes = Vec::new();
     let mut ran = false;
     while let Some(piece) = queue.pop_front() {
@@ -398,7 +412,7 @@ async fn drive(
             Piece::Batch(start) => {
                 let (ran, more) =
                     Box::pin(crate::batches::run_within(executor, host, budget, &start)).await;
-                split(more, &mut queue);
+                split(runs, more, &mut queue);
                 Some(match ran {
                     crate::batches::Ran::Failed(why) => Outcome::Fault(Box::new(crate::Fault {
                         kind: FaultKind::Defect(format!("a batch run stopped: {why}")),
@@ -408,7 +422,7 @@ async fn drive(
                 })
             }
         };
-        split(ctx.take_deferred(), &mut queue);
+        split(runs, ctx.take_deferred(), &mut queue);
         outcomes.extend(outcome);
     }
     Worked {
@@ -1632,6 +1646,65 @@ mod tests {
 
     use super::*;
     use crate::{ActionBody, Caller, Database, Event, Failure, Places, Row, block_on};
+
+    /// Work joins a runner only where its deployable runs it (chunk
+    /// 8.1o2): a delivery where subscribers run, a batch run where
+    /// schedules do.
+    #[test]
+    fn a_program_runs_only_the_background_work_its_deployable_runs() {
+        let work = || {
+            vec![
+                Deferred::Deliveries(vec![crate::outbox::Delivery {
+                    store: "main".to_string(),
+                    id: [1; 16],
+                    outbox: [2; 16],
+                    subscriber: "subscriber pin_it".to_string(),
+                    event: "type NoteAdded".to_string(),
+                    value: Value::Unit,
+                    emitted_at: 0,
+                    trace: None,
+                    depth: 0,
+                }]),
+                Deferred::Batch(crate::batches::BatchStart {
+                    store: "main".to_string(),
+                    run: [3; 16],
+                }),
+            ]
+        };
+        let kinds = |runs: Runs| {
+            let mut queue = VecDeque::new();
+            split(runs, work(), &mut queue);
+            queue
+                .iter()
+                .map(|piece| match piece {
+                    Piece::Delivery(_) => "delivery",
+                    Piece::Batch(_) => "batch",
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(kinds(Runs::EVERYTHING), ["delivery", "batch"]);
+        assert_eq!(
+            kinds(Runs {
+                schedules: true,
+                subscribers: false
+            }),
+            ["batch"]
+        );
+        assert_eq!(
+            kinds(Runs {
+                schedules: false,
+                subscribers: true
+            }),
+            ["delivery"]
+        );
+        assert!(
+            kinds(Runs {
+                schedules: false,
+                subscribers: false
+            })
+            .is_empty()
+        );
+    }
 
     /// What reached the store, and in which order.
     #[derive(Default)]

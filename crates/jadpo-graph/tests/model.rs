@@ -106,6 +106,7 @@ fn the_manifest_names_nodes_by_key_and_lists_edges_on_them() {
     let stamp = Stamp {
         compiler: "1.2.3".into(),
         errors: 0,
+        ..Stamp::default()
     };
     let document = manifest(&graph, &stamp).to_document();
     assert!(

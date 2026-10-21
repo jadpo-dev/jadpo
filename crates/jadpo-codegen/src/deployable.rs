@@ -11,7 +11,10 @@
 //! - `Cargo.lock`, the runtime crates' lock, which the build keeps to
 //!   ([`build`] adds the two packages to it and builds `--locked`);
 //! - `program/`, the project's crate as [`crate::generate`] writes it,
-//!   named `jadpo-program`;
+//!   named `jadpo-program-<deployable>`, so the programs of several
+//!   deployables built into one cargo target never share a unit (cargo
+//!   names a path package's unit by its name and its path within its
+//!   workspace, which is `program` in each; chunk 8.1o2);
 //! - `deployable/`, a binary named after the deployable, depending on the
 //!   program and the native host without the `testing` feature, whose
 //!   `main` hands the native host the program, the build stamp and each
@@ -33,8 +36,14 @@ use quote::quote;
 use crate::cargo::Failed;
 use crate::{Error, Generated, Options, generate, printed};
 
-/// The program's package.
+/// The program's package, before the deployable's name: the binary
+/// depends on it as `jadpo-program`.
 pub const PROGRAM: &str = "jadpo-program";
+
+/// The program's package for deployable `name`: `jadpo-program-kiosk`.
+pub fn program_package(name: &str) -> String {
+    format!("{PROGRAM}-{name}")
+}
 
 /// The binary's package; the binary is named after the deployable.
 pub const BINARY: &str = "jadpo-deployable";
@@ -75,7 +84,7 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
     let program = generate(
         plan,
         &Options {
-            name: PROGRAM.to_string(),
+            name: program_package(deployable.name),
             runtime: deployable.runtime.to_string(),
         },
     )?;
@@ -114,9 +123,10 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
              path = \"src/main.rs\"\n\
              \n\
              [dependencies]\n\
-             {PROGRAM} = {{ path = \"../program\" }}\n\
+             {PROGRAM} = {{ path = \"../program\", package = \"{program}\" }}\n\
              jadpo-host-native = {{ path = \"{runtime}/jadpo-host-native\" }}\n",
             name = deployable.name,
+            program = program_package(deployable.name),
         )
         .into_bytes(),
     );
