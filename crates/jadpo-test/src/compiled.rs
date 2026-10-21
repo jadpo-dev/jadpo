@@ -125,7 +125,7 @@ const UNSERVED: &str = "the server can't serve the project's migrations: ";
 const ENTRIES: &str = "a route's typed entry differs from the codec walk: ";
 
 /// The finished run in `ran`.
-fn done(ran: Ran) -> Result<Box<Run>, Problem> {
+pub(crate) fn done(ran: Ran) -> Result<Box<Run>, Problem> {
     match ran {
         Ran::Done(run) => Ok(run),
         Ran::Unmigrated { store, error } => Err(Problem::Unserved(format!("{store}: {error:?}"))),
@@ -223,14 +223,14 @@ pub fn harness(programs: &[MakeProgram]) -> ExitCode {
 }
 
 /// The folder holding the workspace's crates, this one's among them.
-fn sources() -> PathBuf {
+pub(crate) fn sources() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map_or_else(|| PathBuf::from(".."), Path::to_path_buf)
 }
 
 /// Writes `bytes` to `path` unless it holds them already.
-fn write(path: &Path, bytes: &[u8]) -> Result<(), Problem> {
+pub(crate) fn write(path: &Path, bytes: &[u8]) -> Result<(), Problem> {
     if std::fs::read(path).is_ok_and(|there| there == bytes) {
         return Ok(());
     }
@@ -242,7 +242,7 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), Problem> {
 
 /// The `[profile.*]` tables of the workspace's own manifest, which the
 /// harness's builds the same way (the password crates optimised).
-fn profiles(manifest: &str) -> String {
+pub(crate) fn profiles(manifest: &str) -> String {
     let mut out = String::new();
     let mut inside = false;
     for line in manifest.lines() {
@@ -267,7 +267,7 @@ pub fn differential(folder: &Path, work: &Path) -> Result<Compared, Problem> {
 }
 
 /// The crate every project is compiled into, in the harness's workspace.
-const CRATE: &str = "compiled";
+pub(crate) const CRATE: &str = "compiled";
 
 /// Compiles each project at `folders` into the harness workspace at
 /// `work`, as a module of one crate (`compiled/src/p<n>/`, by its place in
@@ -335,7 +335,10 @@ pub fn differential_all(
 
 /// `work` done for each of `items` with its place, on a few threads at
 /// once, the results in `items`' order.
-fn shared_out<T: Sync, R: Send>(items: &[T], work: impl Fn(usize, &T) -> R + Sync) -> Vec<R> {
+pub(crate) fn shared_out<T: Sync, R: Send>(
+    items: &[T],
+    work: impl Fn(usize, &T) -> R + Sync,
+) -> Vec<R> {
     let next = std::sync::atomic::AtomicUsize::new(0);
     let threads = std::thread::available_parallelism()
         .map_or(1, std::num::NonZeroUsize::get)
@@ -371,7 +374,7 @@ fn shared_out<T: Sync, R: Send>(items: &[T], work: impl Fn(usize, &T) -> R + Syn
 /// Removes each project's module in the crate at `folder` that isn't one
 /// of `compiled`'s, left by an earlier run over other projects, so the
 /// folder holds what is compiled.
-fn remove_stale_modules(folder: &Path, compiled: &[usize]) -> Result<(), Problem> {
+pub(crate) fn remove_stale_modules(folder: &Path, compiled: &[usize]) -> Result<(), Problem> {
     let Ok(entries) = std::fs::read_dir(folder.join("src")) else {
         return Ok(());
     };
@@ -391,7 +394,7 @@ fn remove_stale_modules(folder: &Path, compiled: &[usize]) -> Result<(), Problem
 }
 
 /// The module the project at `folder` compiles to, named for its `place`.
-fn generated(folder: &Path, place: usize) -> Result<jadpo_codegen::Generated, Problem> {
+pub(crate) fn generated(folder: &Path, place: usize) -> Result<jadpo_codegen::Generated, Problem> {
     let loaded = jadpo_db::load(folder);
     let errors: Vec<String> = jadpo_check::check(&loaded.db, loaded.project)
         .iter()

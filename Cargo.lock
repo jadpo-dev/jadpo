@@ -1970,6 +1970,7 @@ dependencies = [
  "jadpo-drivers",
  "jadpo-graph",
  "jadpo-host-native",
+ "jadpo-host-workers",
  "jadpo-interp",
  "jadpo-runtime",
  "jadpo-std",
