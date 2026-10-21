@@ -39,6 +39,7 @@ mod deliveries;
 mod delivery_limits;
 mod dev_inbox;
 mod dev_provider_calls;
+mod driver_factory;
 mod emails;
 mod events;
 mod field_rules_on_read;

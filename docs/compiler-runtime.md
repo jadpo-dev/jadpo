@@ -1174,8 +1174,9 @@ invocation for the corpus.
 Phase 6 reviews). Everything the runtime reads of a program besides its
 callables' bodies is one owned value, `jadpo_std::RuntimePlan`: the
 validator, shape and failure plans, the JSON table, the route table with
-its codecs, the settings, subscribers, batches, schedules, purges, stores
-of files, providers, `ai:`, prompts and their recordings. `jadpo-plan`
+its codecs, the settings, subscribers, batches, schedules, purges, the
+connections table (chunk 8.1d, §2.6), providers' operations, `ai:`,
+prompts and their recordings. `jadpo-plan`
 builds it as a section of its plan (`Plan::runtime`, the type table's
 numbered plans moved into it as the plan is finished), and an executor
 hands the runtime a view of it, `jadpo_runtime::Plan`, through
@@ -2407,7 +2408,72 @@ The runtime's own calls (an email through a mail package, a queue's
 receive and acknowledgement, a poll) go through the same entry point.
 Chunk 8.1a made that view's plan one owned value with a canonical byte
 encoding, which compiled code holds as a constant (§2.5); chunk 8.1d
-builds each connection's driver from it and `Started`.
+builds each connection's driver from it and `Started` ("One connections
+table and the driver factory" below).
+
+**One connections table and the driver factory** (chunk 8.1d, from the
+Phase 7 architecture review; area 11, "Connecting in `app.jadpo`" and
+"Targets"). The plan lists every connection `connections:` declares
+once, in name order, `RuntimePlan::connections`
+(`jadpo_std::connections::Connection`: its name, its driver with the
+settings that driver is built from, by number, and the targets it runs
+on), where five places listed them before: the provider plan's
+connections, the email plan's SMTP servers, `ai:`'s model connection, the
+stores of files and the Cloudflare queues. A connection's number is its
+place there: an `OperationPlan` names its connection by it, and
+`provider::Credentials` keeps each credential by it. `ConnectionDriver`
+is `Postgres { url }`, `Redis { url }`, `Disk { path }`, `Smtp` (its
+server, port and sign-in settings), `OpenAiCompatible { url }`,
+`CloudflareQueues` (its queue and dead-letter queue) or `Package` (how
+each call through it is made, the old `ConnectionPlan`, without its
+name). Each driver's targets are recorded now
+(`ConnectionDriver::targets`: the disk and a service Jadpo runs, `runs:`,
+natively only; Cloudflare's queues on Workers only; every network driver
+and an HTTP package everywhere), for `jadpo check` to refuse a
+deployable's mismatch in 8.1o. The parts of the plan that use a
+connection keep only what is their own and name it: `ai:` how it fills
+`ai` (an `AiPlan`, whose built-in driver's `url:` its requests are
+built from, so it is kept there too), `receiving:` how a queue's messages
+become events (the Wrangler consumer is written from its
+`QueuePlan`), `email:` which connection sends. `jadpo_runtime::Target`
+(native or Workers) moved into `jadpo_std::connections` with it.
+`Started` holds, beside the credentials, the text each connection's
+driver is built from (`Started::driver_setting`: a database's address,
+an SMTP server's name and sign-in, secrets included, never printed).
+`jadpo_drivers::factory` builds every connection's driver from the table
+and `Started` (`Drivers::build`) over what the host supplies
+(`factory::Supplies`: the target, the `Transport`, HTTP as a
+`package::Fetch`, a `factory::Disk`): PostgreSQL over the transport, one
+package driver over HTTP shared by every package and
+`Driver.openai_compatible` connection, the SMTP driver for its server
+over the transport, the disk's store, and nothing for a Cloudflare
+queue, whose batches come to the Workers consumer. A connection it can't
+build (a target its driver doesn't run on, a part the host doesn't
+supply, a setting with no value, a driver this build lacks) is kept as
+`factory::Unbuilt` with why, for the deployable to report as it starts
+(8.1o); its driver is then none, which the runtime answers
+`misconfigured`. Natively `jadpo_host_native::supplies()` gives tokio's
+sockets with rustls and `NativeFetch` (no disk yet: a deployable's disk
+at `path:` comes with the files capability), and `NativeHost::
+with_drivers` takes what it builds, where `with_providers`, `with_models`
+and `with_mail` gave a closure-chosen driver each; `with_store` and
+`with_files` remain for a store or a disk given in the factory's place
+(`jadpo dev`'s own databases and `.jadpo/files/`, a test's). `jadpo dev`
+builds each worker's drivers from the program it starts with and puts
+its fakes in front with `capability::Faked::choosing`, which picks a
+fake as each connection is asked for from the program running now (the
+inbox for `email:`'s connection, `DevProviders` for a package's), since
+saving the project changes them; `AppHandler` serves any
+`http::Served` host, the native host or it faked. The model's built-in
+driver is the factory's, so a model connection added while `jadpo dev`
+runs is reached from its next start. `jadpo package record`, `jadpo ai
+record` and `jadpo package conform` build their one connection's driver
+the same way (`Drivers::keeping`). `jadpo test` builds none: a test
+reaches no real driver, so its host gives each connection's stand-in by
+kind from the table (the in-memory files, the mail fake, a package's and
+`ai`'s fakes through `Faked`), as before. *Rejected:* a closure per
+driver kind on the host, which is what grew to four; building drivers
+inside the runtime, which would tie it to the transports the hosts own.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -2571,8 +2637,8 @@ wraps each test's host in `capability::Faked` with one fake in every
 connection the plan names (`Plan::provider_connections`), and after the run
 reports a script the calls ran past or left answers in
 (`fakes::Usage`; `test.fake_exhausted`, `test.fake_unused`). `jadpo dev`
-gives its `NativeHost` one driver for every provider connection
-(`NativeHost::with_providers`), `jadpo_cli::dev_calls::DevProviders`: the
+puts one fake in front of every provider connection (chosen through
+`Faked::choosing` since chunk 8.1d), `jadpo_cli::dev_calls::DevProviders`: the
 package driver for the operations the plan's `ConnectionPlan::sandbox`
 (the connection's `development: { sandbox: }`) or `--sandbox` lets
 through, the fake otherwise, answering what `jadpo calls script` left
@@ -2629,8 +2695,8 @@ construction's broken rule. A call takes `Ctx::next_step`, and its answer
 is kept with a digest of its request (`Ctx::keep_reused`) for area 6's
 rerun, or, after an action's first changing call, it is a step of the
 record (`steps::step` with `changes: false`). The native host gives
-`JsonHttp` for the model connection (`NativeHost::with_models`), which
-`jadpo dev` sets; `ai::AiFake` is in its place in every test, scripted by
+`JsonHttp` for the model connection, built by the driver factory since
+chunk 8.1d; `ai::AiFake` is in its place in every test, scripted by
 `Callee::AiFake` and read by `Callee::AiRequests` through
 `Capability::requests`.
 

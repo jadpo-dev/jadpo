@@ -2096,17 +2096,33 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   sides. Proved by the corpus run twice with no difference (473 tests)
   and perturbed runs named at an assertion and at a row (§2.5,
   "Differential test").
-- [ ] **8.1d One connections table and the driver factory** `opus ·
-  high`, after 8.1a and 8.1b: the plan's connections table (each
-  connection's name, driver, settings and the targets its driver runs
-  on, from area 11's `connections:`), and one factory in `jadpo-drivers`
-  building each connection's driver from it and 7.9e's `Started`
-  (PostgreSQL, the package driver, `Driver.openai_compatible`, SMTP, the
-  disk, Cloudflare Queues) over the transports a host supplies, so
-  `NativeHost`'s `with_store`, `with_providers`, `with_models` and
-  `with_mail` give way to it and `jadpo dev` and `jadpo test` wrap what
-  it builds with `Faked`; provider call sites carrying their connection's
-  and operation's numbers in the plan, not their names.
+- [x] **8.1d One connections table and the driver factory** `opus ·
+  high`. Built: the plan's connections table
+  (`RuntimePlan::connections`, `jadpo_std::connections`: each
+  connection's name, its driver with the settings it is built from, and
+  the targets it runs on), folding the provider plan's connections, the
+  email plan's SMTP servers, the stores of files, and listing `ai:`'s and
+  the Cloudflare queues' connections, a provider operation's connection
+  and each credential kept by its number there; `Started` holding the
+  text each driver is built from; `jadpo_drivers::factory`
+  (`Drivers::build`) building PostgreSQL, the package driver,
+  `Driver.openai_compatible`, SMTP, the disk and Cloudflare Queues from
+  them over the host's `Supplies`, and keeping what it can't build with
+  why, so a deployable builds a real SMTP driver from the plan;
+  `NativeHost::with_drivers` in place of `with_providers`, `with_models`
+  and `with_mail`, `jadpo dev` putting its fakes in front with
+  `Faked::choosing`, and the record tools building their one connection's
+  driver the same way. `jadpo test` builds none (no test reaches a real
+  driver). §2.6's "One connections table and the driver factory".
+- [ ] **8.1d2 Provider call sites by number** `opus · high`, after 8.1d,
+  before 8.1f (split from 8.1d on 2026-10-21): a provider call's site
+  plan carrying its operation's number in the plan's provider operations
+  (whose plan carries its connection's number in the connections table),
+  so `provider::Calling` and the interpreter's provider calls find it by
+  number rather than by the connection's and operation's names, and the
+  runtime's own calls (an email through a mail package, a queue's receive
+  and acknowledgement, a poll) carry their operations' numbers in their
+  plans too; the names stay in what is logged and faked.
 - [ ] **8.1e A smaller executor and the `testing` feature** `opus ·
   high`, after 8.1c and 8.1d: the `Executor` down to its places, its plan
   and running a callable: callables found by key through the plan, each
@@ -2117,8 +2133,8 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   (from 7.9e); a `testing` cargo feature on the runtime crates carrying
   the fakes, recordings, crash points and that section, so a deployable
   built without it holds none of them.
-- [ ] **8.1f Compiled code: the first route** `opus · xhigh`, after 8.1c
-  and 8.1e: `jadpo-codegen` writing a checked project as one Rust crate
+- [ ] **8.1f Compiled code: the first route** `opus · xhigh`, after 8.1c,
+  8.1d2 and 8.1e: `jadpo-codegen` writing a checked project as one Rust crate
   from its graph and plan (`quote!` into `syn`, printed with
   `prettyplease`, §2.5): a module per domain, functions as `fn` and
   actions and queries as `async fn(&mut Ctx, …)` over the interpreter's
