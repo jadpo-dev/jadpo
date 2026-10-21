@@ -88,6 +88,7 @@ pub mod breaker;
 pub mod budget;
 pub mod call_log;
 pub mod capability;
+pub mod compiled;
 pub mod config;
 #[cfg(feature = "testing")]
 pub mod crashes;
@@ -108,6 +109,7 @@ pub mod http;
 pub mod lease;
 mod limits;
 mod migrate;
+pub mod operators;
 pub mod outbox;
 mod outcome;
 mod outside;

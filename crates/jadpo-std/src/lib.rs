@@ -60,6 +60,7 @@ pub mod ai;
 pub mod batch;
 mod builtin;
 pub mod canonical;
+pub mod compiled;
 pub mod config;
 pub mod connections;
 pub mod constant;

@@ -1524,6 +1524,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jadpo-codegen"
+version = "0.1.0"
+dependencies = [
+ "jadpo-check",
+ "jadpo-db",
+ "jadpo-graph",
+ "jadpo-plan",
+ "jadpo-std",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "jadpo-db"
 version = "0.1.0"
 dependencies = [
@@ -1691,6 +1706,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "jadpo-check",
+ "jadpo-codegen",
  "jadpo-db",
  "jadpo-diag",
  "jadpo-drivers",
@@ -1698,6 +1714,7 @@ dependencies = [
  "jadpo-host-native",
  "jadpo-interp",
  "jadpo-runtime",
+ "jadpo-std",
  "jadpo-term",
  "serde_json",
 ]
@@ -2340,6 +2357,16 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "prettyplease"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
+dependencies = [
+ "proc-macro2",
+ "syn 3.0.9",
+]
 
 [[package]]
 name = "primefield"

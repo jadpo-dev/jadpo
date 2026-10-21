@@ -4,6 +4,7 @@
 
 mod calendar;
 mod colour;
+mod compiled;
 mod formats;
 mod geodesics;
 mod geospatial;

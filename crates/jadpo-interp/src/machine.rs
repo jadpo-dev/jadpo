@@ -2233,7 +2233,8 @@ impl<'p> Machine<'p> {
         Ok(Flow::Next)
     }
 
-    /// An operator on two values, at its site.
+    /// An operator on two values, at its site, run by the runtime's one
+    /// implementation of the operators, which compiled code runs too.
     fn apply(
         &self,
         ctx: &mut Ctx<'_>,
@@ -2242,35 +2243,33 @@ impl<'p> Machine<'p> {
         right: &Value,
         at: SiteId,
     ) -> Result<Value, Stop> {
-        let ordered = |wanted: fn(std::cmp::Ordering) -> bool| {
-            ops::order(left, right).map(|ordering| Value::Bool(wanted(ordering)))
-        };
+        use jadpo_runtime::operators::{Operator, operate};
         // An amount scaled by a number rounds by its type's `rounding:`
         // (area 19).
         let rounding = match self.decoded(at) {
             Some(Decoded::Rounding(rounding)) => *rounding,
             _ => jadpo_value::Rounding::HalfEven,
         };
-        let result = match op {
-            BinaryOp::Equal => Ok(Value::Bool(ops::equal(left, right))),
-            BinaryOp::NotEqual => Ok(Value::Bool(!ops::equal(left, right))),
-            BinaryOp::Less => ordered(std::cmp::Ordering::is_lt),
-            BinaryOp::LessEqual => ordered(std::cmp::Ordering::is_le),
-            BinaryOp::Greater => ordered(std::cmp::Ordering::is_gt),
-            BinaryOp::GreaterEqual => ordered(std::cmp::Ordering::is_ge),
-            BinaryOp::Add => ops::add(left, right),
-            BinaryOp::Subtract => ops::subtract(left, right),
-            BinaryOp::Multiply => ops::multiply_rounded(left, right, rounding),
-            BinaryOp::Divide => ops::divide_rounded(left, right, rounding),
-            BinaryOp::Remainder => ops::remainder(left, right),
-            BinaryOp::In => ops::contains(right, left)
-                .map(Value::Bool)
-                .ok_or(jadpo_value::Fault::Shape),
+        let operator = match op {
+            BinaryOp::Equal => Operator::Equal,
+            BinaryOp::NotEqual => Operator::NotEqual,
+            BinaryOp::Less => Operator::Less,
+            BinaryOp::LessEqual => Operator::LessEqual,
+            BinaryOp::Greater => Operator::Greater,
+            BinaryOp::GreaterEqual => Operator::GreaterEqual,
+            BinaryOp::In => Operator::In,
+            BinaryOp::Add => Operator::Add,
+            BinaryOp::Subtract => Operator::Subtract,
+            BinaryOp::Multiply => Operator::Multiply,
+            BinaryOp::Divide => Operator::Divide,
+            BinaryOp::Remainder => Operator::Remainder,
             // A query's condition (area 6).
             BinaryOp::Matches => return Err(self.not_built_yet(ctx, "matches", at)),
-            BinaryOp::And | BinaryOp::Or => Err(jadpo_value::Fault::Shape),
+            BinaryOp::And | BinaryOp::Or => {
+                return Err(self.value_fault(ctx, jadpo_value::Fault::Shape, at));
+            }
         };
-        result.map_err(|fault| match fault {
+        operate(operator, left, right, rounding).map_err(|fault| match fault {
             // Two amounts in different currencies, which the operator's
             // `attempt` maps (area 19).
             jadpo_value::Fault::Broke(rule) => Stop::Invalid {

@@ -508,7 +508,7 @@ pub struct OperationPlan {
 /// What the call at one site needs (chunk 7.2c2): the operation it calls,
 /// by number (chunk 8.1d2), the fields of its output its code reads, the
 /// only ones decoded, and whether its `attempt` maps `timed_out:`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CallSite {
     pub called: Called,
     /// The output's fields read, by name; `None` when the whole value is
@@ -520,7 +520,7 @@ pub struct CallSite {
 }
 
 /// The operation a call's site calls (chunk 8.1d2).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Called {
     /// Its number in the plan's provider operations.
     Operation(u32),
