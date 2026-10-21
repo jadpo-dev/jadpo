@@ -18,7 +18,10 @@
 //! holds no sweeping, the office's no booking. The kiosk books a repair
 //! but doesn't know the staff's route and, ticking, runs no schedule; the
 //! office lists the repair's notes but doesn't book, and runs its
-//! schedule.
+//! schedule. Once `schedules: { trigger: ScheduleTrigger.external }`
+//! leaves its ticks to another scheduler (chunk 8.2g), the office's server
+//! never ticks, and `office tick` reads its settings, runs the schedule due
+//! once, logs `runtime.ticked` and ends.
 //!
 //! A deployable carries the locale data of its app's supported locales
 //! only (chunk 8.2c; area 10, "Locales"): a shop supporting `en_gb` and
@@ -451,8 +454,19 @@ pub(crate) fn apply(connection: &str, migrations: &[jadpo_std::Migration]) {
 /// The deployable at `binary` started with only `variables` in its
 /// environment, and its log lines as they come.
 fn start(binary: &Path, variables: &[(&str, &str)]) -> (Child, Receiver<Value>) {
+    start_with(binary, &[], variables)
+}
+
+/// The deployable at `binary` started with `arguments` and only
+/// `variables` in its environment, and its log lines as they come.
+fn start_with(
+    binary: &Path,
+    arguments: &[&str],
+    variables: &[(&str, &str)],
+) -> (Child, Receiver<Value>) {
     let mut command = Command::new(binary);
     command
+        .args(arguments)
         .env_clear()
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -920,6 +934,74 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         .expect("kill runs");
     assert_eq!(next(&lines, 30)["event"], "runtime.stopped");
     assert_eq!(ended(&mut child, 30), Some(0));
+
+    // Ticked by another scheduler (area 12, question 16; chunk 8.2g): the
+    // office's server never ticks, and `office tick` runs one tick and
+    // ends, as often as the build says.
+    let app = fs::read_to_string(root.join("app.jadpo")).expect("read");
+    let external = app.replace(
+        "    events: {\n        store: main\n    }\n",
+        "    events: {\n        store: main\n    }\n    schedules: {\n        trigger: ScheduleTrigger.external\n    }\n",
+    );
+    assert_ne!(app, external);
+    fs::write(root.join("app.jadpo"), external).expect("written");
+    let output = jadpo(&root, &["build", "office", "--json"]);
+    let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
+    let built = &document["data"];
+    let office = deployable(built, "office");
+    assert_eq!(
+        office["tick"],
+        serde_json::json!({ "command": "build/target/office/office tick", "every_ms": 1000 }),
+        "{built}"
+    );
+    let binary = root.join("build/target/office/office");
+    let before = count(&connection, "jadpo_schedule_runs");
+    let (mut child, lines) = start(&binary, &settings);
+    let started = next(&lines, 60);
+    assert_eq!(started["event"], "runtime.started", "{started}");
+    assert_eq!(started["trigger"], "external", "{started}");
+    std::thread::sleep(Duration::from_millis(2_500));
+    assert_eq!(
+        count(&connection, "jadpo_schedule_runs"),
+        before,
+        "the office's server ticked"
+    );
+    Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert_eq!(next(&lines, 30)["event"], "runtime.stopped");
+    assert_eq!(ended(&mut child, 30), Some(0));
+
+    // A tick reads its settings as serving does.
+    let (mut child, lines) = start_with(&binary, &["tick"], &[]);
+    let failed = next(&lines, 30);
+    assert_eq!(failed["event"], "runtime.startup_failed", "{failed}");
+    assert_eq!(
+        failed["problems"][0]["variable"], "DATABASE_URL",
+        "{failed}"
+    );
+    assert_eq!(ended(&mut child, 30), Some(1));
+
+    // One tick runs the schedule due, says so, and ends.
+    let (mut child, lines) = start_with(&binary, &["tick"], &[("DATABASE_URL", url.as_str())]);
+    let ticked = next(&lines, 60);
+    assert_eq!(ticked["event"], "runtime.ticked", "{ticked}");
+    stamped(&ticked, built, office);
+    assert_eq!(ticked["ran"][0]["schedule"], "sweep", "{ticked}");
+    assert_eq!(ticked["ran"][0]["outcome"], "succeeded", "{ticked}");
+    assert_eq!(ticked["problems"], serde_json::json!([]), "{ticked}");
+    assert_eq!(ended(&mut child, 30), Some(0));
+    assert_eq!(count(&connection, "jadpo_schedule_runs"), before + 1);
+
+    // Anything else is no command.
+    let (mut child, lines) = start_with(&binary, &["ticks"], &[]);
+    let failed = next(&lines, 30);
+    assert_eq!(
+        failed["problems"][0]["problem"], "command_unknown",
+        "{failed}"
+    );
+    assert_eq!(ended(&mut child, 30), Some(2));
 }
 
 #[cfg(unix)]

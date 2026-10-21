@@ -1,8 +1,9 @@
 //! Area 12's schedules (chunk 6.2): each schedule read into a
 //! [`ScheduleModel`] (how often it runs and the action of its own domain
-//! it runs, with no arguments), `application { schedules: { store: } }`,
-//! where every schedule's state and lease are kept, and the problems found
-//! on the way.
+//! it runs, with no arguments), `application { schedules: { store:
+//! trigger: } }`, where every schedule's state and lease are kept and what
+//! ticks a native deployable (chunk 8.2g), and the problems found on the
+//! way.
 //!
 //! A schedule runs as the system with no tenant (area 9, `Access.system`;
 //! area 12, "A schedule and tenants"), so what its action reaches that
@@ -334,6 +335,9 @@ pub struct SchedulesRead {
     /// named, or the only database. `None` with several databases and
     /// none named, or none at all.
     pub store: Option<String>,
+    /// What ticks a native deployable (area 12, question 16; chunk 8.2g):
+    /// the server's own timer unless `trigger:` says otherwise.
+    pub trigger: jadpo_std::ScheduleTrigger,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -373,12 +377,18 @@ pub fn schedules_settings(db: &dyn Db, project: Project) -> Arc<SchedulesRead> {
                 out.problems.push(
                     Diagnostic::new(&rule::SCHEDULE_SETTINGS_INVALID, "`schedules:` holds no block")
                         .at(node_span(path, member.syntax()), "not a block")
-                        .reason("`schedules: { store: <connection> }` names the database every schedule's state and lease are kept in.")
+                        .reason("`schedules: { store: <connection> }` names the database every schedule's state and lease are kept in, and `trigger:` what ticks a native deployable.")
                         .next("Write `schedules: { store: main }`, naming a database connection"),
                 );
             }
             for (setting, entry) in tree::members(block) {
                 let name = tree::name_text(&setting).unwrap_or_default();
+                if name == "trigger" {
+                    if let Some(trigger) = trigger(path, &entry, &mut out.problems) {
+                        out.trigger = trigger;
+                    }
+                    continue;
+                }
                 if name != "store" {
                     out.problems.push(
                         Diagnostic::new(
@@ -386,7 +396,7 @@ pub fn schedules_settings(db: &dyn Db, project: Project) -> Arc<SchedulesRead> {
                             format!("`{name}` isn't a schedules setting"),
                         )
                         .at(node_span(path, setting.syntax()), "not a setting")
-                        .reason("`schedules:` holds one setting, `store:`, the database every schedule's state and lease are kept in.")
+                        .reason("`schedules:` holds `store:`, the database every schedule's state and lease are kept in, and `trigger:`, what ticks a native deployable.")
                         .next(format!("Remove `{name}:`")),
                     );
                     continue;
@@ -423,6 +433,60 @@ pub fn schedules_settings(db: &dyn Db, project: Project) -> Arc<SchedulesRead> {
         }
     }
     Arc::new(out)
+}
+
+/// `trigger:`'s value, a `ScheduleTrigger`, or the problem with it.
+fn trigger(
+    path: &str,
+    entry: &ast::Member,
+    problems: &mut Vec<Diagnostic>,
+) -> Option<jadpo_std::ScheduleTrigger> {
+    use jadpo_std::ScheduleTrigger;
+    let value = entry.value();
+    let names = match value.as_ref().map(crate::types::Const::from_expr) {
+        Some(crate::types::Const::Path(names)) => names,
+        _ => Vec::new(),
+    };
+    if let [host, variant] = names.as_slice()
+        && host == ScheduleTrigger::NAME
+        && let Some(trigger) = ScheduleTrigger::from_name(variant)
+    {
+        return Some(trigger);
+    }
+    let written = value
+        .as_ref()
+        .map(|value| tree::written(value.syntax()))
+        .unwrap_or_default();
+    let span = value.as_ref().map_or_else(
+        || node_span(path, entry.syntax()),
+        |value| node_span(path, value.syntax()),
+    );
+    let variant = match names.as_slice() {
+        [_, variant] => variant.as_str(),
+        _ => written.as_str(),
+    };
+    // Cloudflare's cron, Kubernetes' CronJob and a timer are each some
+    // other scheduler, or the server's own.
+    let near = match variant {
+        "cron" | "cloudflare_cron" | "cronjob" | "command" | "tick" => Some("external"),
+        "timer" | "server" | "internal" => Some("native"),
+        _ => nearest(variant, ScheduleTrigger::NAMES.iter().copied()),
+    };
+    let problem = Diagnostic::new(
+        &rule::SCHEDULE_SETTINGS_INVALID,
+        format!("`{written}` isn't a schedule trigger"),
+    )
+    .at(span.clone(), "not a `ScheduleTrigger`")
+    .reason(
+        "A native deployable ticks on the server's own timer, `ScheduleTrigger.native`, or when another scheduler runs its `tick` command, `ScheduleTrigger.external`; a Worker always ticks on Cloudflare's cron.",
+    );
+    problems.push(match near {
+        Some(near) => problem
+            .next(format!("Use `ScheduleTrigger.{near}` instead"))
+            .edit(span, format!("ScheduleTrigger.{near}")),
+        None => problem.next("Use `ScheduleTrigger.native` or `ScheduleTrigger.external`"),
+    });
+    None
 }
 
 /// Reads one schedule.
