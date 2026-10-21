@@ -755,6 +755,7 @@ pub(crate) async fn keep_claimed(
     let now = crate::steps::wall(ctx);
     let trace = ctx.trace();
     let subscribers: Vec<String> = executor
+        .plan()
         .events()
         .map(|events| {
             events

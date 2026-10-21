@@ -50,7 +50,7 @@ use jadpo_value::json::Problem;
 
 use crate::budget::Budget;
 use crate::outbox::{Delivery, micros};
-use crate::provider::{Done, Functions, Providers, Site};
+use crate::provider::{Calling, Done, Functions, Site};
 use crate::runner::Deferred;
 use crate::webhooks::{Kept, keep, read};
 use crate::{Clock, Ctx, Env, Executor, Host, SqlType, SqlValue, StoreError};
@@ -98,7 +98,10 @@ pub const OLD_MESSAGE_ACTIONS: &str = "DELETE FROM \"jadpo_operator_actions\" WH
 #[derive(Clone, Copy, Debug)]
 pub struct Receiving<'a> {
     pub queues: &'a [QueuePlan],
-    pub providers: Providers<'a>,
+    /// The connections' operations, and the codecs a mapping's input is
+    /// read with as the call writes it.
+    pub providers: &'a jadpo_std::provider::ProviderPlan,
+    pub json: crate::JsonCodecs<'a>,
 }
 
 /// What became of one message.
@@ -157,7 +160,7 @@ impl Received {
 /// queue's messages, a batch at a time while each brings some.
 pub async fn receive(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> Received {
     let mut out = Received::default();
-    let Some(receiving) = executor.receiving() else {
+    let Some(receiving) = executor.plan().receiving() else {
         return out;
     };
     let host = budget.host();
@@ -269,7 +272,7 @@ pub async fn consume(
     now: i64,
 ) -> Consumed {
     let mut out = Consumed::default();
-    let plan = executor.receiving().and_then(|receiving| {
+    let plan = executor.plan().receiving().and_then(|receiving| {
         receiving.queues.iter().find(|plan| {
             matches!(&plan.source, QueueSource::Cloudflare(cloudflare) if cloudflare.queue == queue)
         })
@@ -310,8 +313,8 @@ pub async fn consume(
 
 /// A context for the runtime's own work at `now`: no request, no seed.
 pub(crate) fn system_ctx<'p>(executor: &'p dyn Executor, host: &'p dyn Host, now: i64) -> Ctx<'p> {
-    Ctx::new(
-        executor.places(),
+    Ctx::of(
+        executor,
         host,
         Env {
             seed: None,
@@ -380,41 +383,18 @@ impl Functions for NoFunctions {
     }
 }
 
-/// The values of the settings a call through `connection` reads, for its
-/// address, as the program started with them.
-fn settings_of(
-    executor: &dyn Executor,
-    providers: &Providers<'_>,
-    connection: &str,
-) -> Vec<(u32, Value)> {
-    providers
-        .plan
-        .connections
-        .iter()
-        .find(|known| known.name == connection)
-        .map(crate::provider::settings_read)
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|at| Some((at, executor.setting(at)?)))
-        .collect()
-}
-
 /// An operation's input from its mapping, as the provider's JSON, read
 /// back with the input's codec as the call writes it; `handle` for
-/// `message.handle`.
+/// `message.handle`, and each setting it reads as `ctx` reads it.
 fn input(
-    executor: &dyn Executor,
+    ctx: &Ctx<'_>,
     receiving: &Receiving<'_>,
     queue: &QueuePlan,
     operation: &str,
     mapped: &[(String, Mapped)],
     handle: Option<&str>,
 ) -> Result<Option<Value>, StoreError> {
-    let Some((_, op)) = receiving
-        .providers
-        .plan
-        .operation(&queue.connection, operation)
-    else {
+    let Some((_, op)) = receiving.providers.operation(&queue.connection, operation) else {
         return Err(StoreError::Fault(format!(
             "`{}.{operation}`, which the plan doesn't have",
             queue.connection
@@ -430,10 +410,10 @@ fn input(
             Mapped::Int(n) => serde_json::Value::from(*n),
             Mapped::Bool(flag) => serde_json::Value::from(*flag),
             Mapped::Handle => serde_json::Value::from(handle.unwrap_or_default()),
-            Mapped::Setting(at) => match executor.setting(*at) {
-                Some(Value::Text(text)) => serde_json::Value::from(&*text),
-                Some(Value::Int(n)) => serde_json::Value::from(n),
-                Some(Value::Bool(flag)) => serde_json::Value::from(flag),
+            Mapped::Setting(at) => match ctx.setting(*at) {
+                Some(Value::Text(text)) => serde_json::Value::from(&**text),
+                Some(Value::Int(n)) => serde_json::Value::from(*n),
+                Some(Value::Bool(flag)) => serde_json::Value::from(*flag),
                 // A setting nothing gives: the connection is misconfigured.
                 _ => return Err(StoreError::Unavailable),
             },
@@ -447,7 +427,7 @@ fn input(
             "a mapping's input that isn't JSON".into(),
         ));
     };
-    read(receiving.providers.json, number, &json, &numbers)
+    read(receiving.json, number, &json, &numbers)
         .map(Some)
         .map_err(|problems| {
             StoreError::Fault(format!(
@@ -471,20 +451,12 @@ fn described(problems: &[Problem]) -> String {
 /// why it gave none.
 async fn call(
     executor: &dyn Executor,
-    receiving: &Receiving<'_>,
     queue: &QueuePlan,
     ctx: &mut Ctx<'_>,
     operation: &str,
     input: Option<Value>,
 ) -> Result<Value, StoreError> {
-    call_through(
-        executor,
-        &receiving.providers,
-        (&queue.connection, operation),
-        ctx,
-        input,
-    )
-    .await
+    call_through(executor, (&queue.connection, operation), ctx, input).await
 }
 
 /// Calls `operation` of `connection` with `input` from the runtime's own
@@ -492,26 +464,22 @@ async fn call(
 /// none, never naming a value. A poll's call too (chunk 7.6c).
 pub(crate) async fn call_through(
     executor: &dyn Executor,
-    providers: &Providers<'_>,
     (connection, operation): (&str, &str),
     ctx: &mut Ctx<'_>,
     input: Option<Value>,
 ) -> Result<Value, StoreError> {
-    let settings = settings_of(executor, providers, connection);
     let site = CallSite::default();
-    let done = crate::provider::call(
-        ctx,
-        providers,
-        (connection, operation),
-        input,
-        &settings,
-        Site {
+    let calling = Calling {
+        plan: executor.plan(),
+        connection,
+        operation,
+        site: Site {
             call: &site,
             functions: &NoFunctions,
             at: 0,
         },
-    )
-    .await;
+    };
+    let done = crate::provider::call(ctx, calling, input).await;
     match done {
         Done::Value(value) => Ok(value),
         Done::Failed(failure) => Err(StoreError::Fault(format!(
@@ -536,15 +504,8 @@ async fn fetch(
     plan: &ReceivePlan,
     ctx: &mut Ctx<'_>,
 ) -> Result<Vec<(String, String)>, StoreError> {
-    let given = input(
-        executor,
-        receiving,
-        queue,
-        &plan.operation,
-        &plan.input,
-        None,
-    )?;
-    let answer = call(executor, receiving, queue, ctx, &plan.operation, given).await?;
+    let given = input(ctx, receiving, queue, &plan.operation, &plan.input, None)?;
+    let answer = call(executor, queue, ctx, &plan.operation, given).await?;
     let list = match at(&answer, &plan.messages) {
         Some(Value::List(items)) => items.to_vec(),
         // A provider that leaves the list out when it is empty.
@@ -587,7 +548,7 @@ async fn acknowledge(
     handle: &str,
 ) {
     let Ok(given) = input(
-        executor,
+        ctx,
         receiving,
         queue,
         &plan.operation,
@@ -596,7 +557,7 @@ async fn acknowledge(
     ) else {
         return;
     };
-    let _ = call(executor, receiving, queue, ctx, &plan.operation, given).await;
+    let _ = call(executor, queue, ctx, &plan.operation, given).await;
 }
 
 /// What a message of `queue` with `body` becomes, in `ctx`.
@@ -606,7 +567,7 @@ pub async fn take(
     ctx: &mut Ctx<'_>,
     body: &str,
 ) -> Taken {
-    let Some(events) = executor.events() else {
+    let Some(events) = executor.plan().events() else {
         return Taken::Left(StoreError::Fault("a program with no events".into()));
     };
     let json = events.json;

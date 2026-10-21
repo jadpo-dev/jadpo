@@ -73,8 +73,6 @@ pub struct Effects<'a> {
     pub events: &'a EventsPlan,
     /// The settings, which name a key setting in a defect.
     pub config: &'a ConfigPlan,
-    /// The key settings' keys.
-    pub keys: &'a Keys,
 }
 
 /// The key settings' keys, by the setting's number: what a `crypto` call's
@@ -379,11 +377,14 @@ fn crypto(
         .params
         .iter()
         .position(|param| matches!(param.kind, Kind::Builtin(builtin) if builtin.is_key()));
+    // The key settings' keys, as the program started with them (chunk
+    // 7.9e).
+    let started = ctx.started();
     let keys = match key_at.map(|place| values.get(place)) {
         None => None,
         Some(Some(Value::Int(setting))) => {
             let setting = u32::try_from(*setting).unwrap_or(u32::MAX);
-            match effects.keys.get(setting) {
+            match started.keys().get(setting) {
                 Some(keys) => Some(keys),
                 None => {
                     let name = effects

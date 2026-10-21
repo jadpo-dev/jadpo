@@ -513,8 +513,6 @@ fn send_as(
     client: &super::address::ClientAddress,
 ) -> Response {
     let app = App {
-        auth: &super::signed::AuthSettings::NONE,
-        client,
         table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -530,6 +528,7 @@ fn send_as(
         clock: crate::Clock::fixed(clock),
     };
     let mut ctx = Ctx::new(&program.places, host, env);
+    ctx.start(Rc::new(crate::Started::default().with_client(*client)));
     block_on(handle(&app, program, &mut ctx, request, "req_1")).expect("nothing waits")
 }
 
@@ -628,8 +627,6 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let app = App {
-        auth: &super::signed::AuthSettings::NONE,
-        client: &super::address::ClientAddress::CONNECTION,
         table: &table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -695,8 +692,6 @@ fn a_host_without_a_clock_is_refused_rather_than_run_at_1970() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let app = App {
-        auth: &super::signed::AuthSettings::NONE,
-        client: &super::address::ClientAddress::CONNECTION,
         table: &table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -1115,8 +1110,6 @@ fn a_route_without_input_refuses_a_query_string_and_a_body() {
 fn what_a_request_emits_is_left_for_after_its_response() {
     let table = table(Some("main"), false);
     let app = App {
-        auth: &super::signed::AuthSettings::NONE,
-        client: &super::address::ClientAddress::CONNECTION,
         table: &table,
         codecs: Codecs {
             codecs: &CODECS,
@@ -1187,8 +1180,6 @@ fn no_request_is_ever_the_system() {
         ..Fake::default()
     };
     let app = App {
-        auth: &super::signed::AuthSettings::NONE,
-        client: &super::address::ClientAddress::CONNECTION,
         table: &table,
         codecs: Codecs {
             codecs: &CODECS,

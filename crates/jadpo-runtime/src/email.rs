@@ -76,7 +76,7 @@ async fn rendered(
         }
         _ => return Err(defect(ctx, "an email with no subject")),
     };
-    let from = sender(executor, ctx, emails)?;
+    let from = sender(ctx, emails)?;
     let html = render(
         executor,
         ctx,
@@ -156,19 +156,13 @@ async fn rendered(
 }
 
 /// Who every email is from: `email: { from: }`.
-fn sender(
-    executor: &dyn Executor,
-    ctx: &mut Ctx<'_>,
-    emails: &EmailsPlan,
-) -> Result<Value, Outcome> {
+fn sender(ctx: &mut Ctx<'_>, emails: &EmailsPlan) -> Result<Value, Outcome> {
     match &emails.from {
         Some(Sender::Address(address)) => Ok(Value::text(address)),
-        Some(Sender::Setting(at)) => {
-            match ctx.setting(*at).cloned().or_else(|| executor.setting(*at)) {
-                Some(value) => Ok(value),
-                None => Err(defect(ctx, "an email whose `from:` setting has no value")),
-            }
-        }
+        Some(Sender::Setting(at)) => match ctx.setting(*at).cloned() {
+            Some(value) => Ok(value),
+            None => Err(defect(ctx, "an email whose `from:` setting has no value")),
+        },
         None => Err(defect(ctx, "an email with no `from:`")),
     }
 }
@@ -185,7 +179,7 @@ async fn magic_link(
     plan: &MagicLinkEmailPlan,
     value: &Value,
 ) -> Result<Value, Outcome> {
-    let minted = match crate::http::magic_links::mint(executor, ctx, plan, value).await {
+    let minted = match crate::http::magic_links::mint(ctx, plan, value).await {
         Ok(Some(minted)) => minted,
         Ok(None) => return Err(Outcome::Value(Value::Unit)),
         Err("unavailable") => return Err(Outcome::Failed(Box::new(crate::unavailable()))),
@@ -313,7 +307,7 @@ async fn magic_link(
             wrap(executor, ctx, layout_text, text, &subject_value, &locale).await?,
         ),
     };
-    let from = sender(executor, ctx, emails)?;
+    let from = sender(ctx, emails)?;
     Ok(Value::record(
         MESSAGE,
         MESSAGE_FIELDS
@@ -404,7 +398,8 @@ pub async fn send_package(
 ) -> Outcome {
     let name = format!("{connection}.{}", jadpo_std::email::SEND);
     let rejected = |code: &str| Outcome::Failed(Box::new(crate::Failure::new(&name, code, code)));
-    let Some(providers) = executor.package_calls() else {
+    let program = executor.plan();
+    let Some(providers) = program.providers else {
         return defect(ctx, "an email through a package this build doesn't have");
     };
     let field = |name: &str| match message {
@@ -428,13 +423,13 @@ pub async fn send_package(
     if total > plan.attachments {
         return rejected(jadpo_std::email::MESSAGE_REJECTED);
     }
-    let Some((connection_plan, op)) = providers.plan.operation(connection, &plan.operation) else {
+    let Some((_, op)) = providers.operation(connection, &plan.operation) else {
         return defect(ctx, "an email package's operation this build doesn't have");
     };
     let Some(number) = op.input else {
         return defect(ctx, "an email package's operation that takes no input");
     };
-    let built = mail_json(executor, &plan.input, message, None);
+    let built = mail_json(ctx, &plan.input, message, None);
     let Some(built) = built else {
         // A setting nothing gives: the connection is misconfigured.
         return Outcome::Failed(Box::new(crate::misconfigured()));
@@ -443,7 +438,7 @@ pub async fn send_package(
     let Some((json, numbers)) = jadpo_value::json::parse(text.as_bytes()) else {
         return defect(ctx, "an email package's input that isn't JSON");
     };
-    let input = match crate::webhooks::read(providers.json, number, &json, &numbers) {
+    let input = match crate::webhooks::read(program.json, number, &json, &numbers) {
         Ok(input) => input,
         Err(problems) => {
             let described: Vec<String> = problems
@@ -464,24 +459,18 @@ pub async fn send_package(
     // media type, is left out of the provider's input rather than sent as
     // `null`, which a provider needn't take.
     let input = left_out_when_none(input);
-    let settings: Vec<(u32, Value)> = crate::provider::settings_read(connection_plan)
-        .into_iter()
-        .filter_map(|at| Some((at, executor.setting(at)?)))
-        .collect();
     let site = jadpo_std::provider::CallSite::default();
-    let done = crate::provider::call(
-        ctx,
-        &providers,
-        (connection, &plan.operation),
-        Some(input),
-        &settings,
-        crate::provider::Site {
+    let calling = crate::provider::Calling {
+        plan: program,
+        connection,
+        operation: &plan.operation,
+        site: crate::provider::Site {
             call: &site,
             functions: &crate::receiving::NoFunctions,
             at: 0,
         },
-    )
-    .await;
+    };
+    let done = crate::provider::call(ctx, calling, Some(input)).await;
     match done {
         crate::provider::Done::Value(answer) => {
             let receipt = plan.receipt.as_ref().and_then(|path| {
@@ -536,9 +525,10 @@ fn left_out_when_none(value: Value) -> Value {
 }
 
 /// The JSON a mapping's input gives, from `message` and, inside `each:`,
-/// the attachment `item`: `None` when a setting it reads has no value.
+/// the attachment `item`, each setting it reads as `ctx` reads it: `None`
+/// when one has no value.
 fn mail_json(
-    executor: &dyn Executor,
+    ctx: &Ctx<'_>,
     input: &[(String, MailInput)],
     message: &Value,
     item: Option<&Value>,
@@ -555,13 +545,13 @@ fn mail_json(
             MailInput::Text(text) => serde_json::Value::from(text.as_str()),
             MailInput::Int(n) => serde_json::Value::from(*n),
             MailInput::Bool(flag) => serde_json::Value::from(*flag),
-            MailInput::Setting(at) => match executor.setting(*at)? {
-                Value::Text(text) => serde_json::Value::from(&*text),
-                Value::Int(n) => serde_json::Value::from(n),
-                Value::Bool(flag) => serde_json::Value::from(flag),
+            MailInput::Setting(at) => match ctx.setting(*at)? {
+                Value::Text(text) => serde_json::Value::from(&**text),
+                Value::Int(n) => serde_json::Value::from(*n),
+                Value::Bool(flag) => serde_json::Value::from(*flag),
                 _ => return None,
             },
-            MailInput::Object(fields) => mail_json(executor, fields, message, item)?,
+            MailInput::Object(fields) => mail_json(ctx, fields, message, item)?,
             MailInput::Each(fields) => {
                 let items = match part(Some(message), "attachments") {
                     Value::List(items) => items.to_vec(),
@@ -570,7 +560,7 @@ fn mail_json(
                 serde_json::Value::Array(
                     items
                         .iter()
-                        .map(|each| mail_json(executor, fields, message, Some(each)))
+                        .map(|each| mail_json(ctx, fields, message, Some(each)))
                         .collect::<Option<Vec<_>>>()?,
                 )
             }

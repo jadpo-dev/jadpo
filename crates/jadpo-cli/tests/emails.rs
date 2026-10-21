@@ -24,7 +24,7 @@ use jadpo_interp::Program;
 use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::files::MemoryFiles;
 use jadpo_runtime::runner::{Deferred, run_deferred};
-use jadpo_runtime::{Executor, Host, Outcome, SqlValue};
+use jadpo_runtime::{Executor, Frame, Host, Outcome, SqlValue};
 use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
@@ -1052,4 +1052,60 @@ fn a_test_catches_mail_sent_through_a_mail_package() {
     let tested = jadpo(&root, &["test", "--seed", "1"]);
     assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
     assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
+}
+
+/// A test's own value for a setting, its `config:`, reaches the mail
+/// package an email of its step goes through, as every other read of a
+/// setting in the test does (area 13, "Configuration in tests"; chunk
+/// 7.9e): the email is sent to the Resend the test names, not the one the
+/// application started with.
+#[test]
+fn a_tests_own_settings_reach_the_mail_package_its_email_goes_through() {
+    let started = FakeProvider::start();
+    let tested = FakeProvider::start();
+    let Some(loaded) = load_resend("test-settings", &started.url) else {
+        return;
+    };
+    started.answer(200, r#"{"id":"re-2"}"#);
+    tested.answer(200, r#"{"id":"re-3"}"#);
+    let program = &loaded.program;
+    let host_setting = program
+        .plan()
+        .config()
+        .fields
+        .iter()
+        .position(|field| field.name == "resend_host")
+        .and_then(|at| u32::try_from(at).ok())
+        .expect("the `resend_host` setting");
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let cards = Rc::new(MemoryFiles::new());
+    let host = through_resend(&harness, &cards);
+    Runtime::new().expect("runtime").block_on(async {
+        let join = program.plan().find("join").expect("the action");
+        let mut ctx = harness.ctx_on(program.places(), &host);
+        ctx.set_settings(vec![(host_setting, Value::text(&tested.url))]);
+        ctx.deliver_between_steps(1);
+        let joined = program
+            .run(
+                &mut ctx,
+                join,
+                vec![
+                    Value::text("ana@example.test"),
+                    Value::text("Ana"),
+                    plan("premium"),
+                    locale("en_gb"),
+                ],
+            )
+            .await;
+        assert!(matches!(joined, Outcome::Value(_)), "{joined:?}");
+        let delivered =
+            jadpo_runtime::test_steps::after_step(program, &mut ctx, false, Frame::ENTRY).await;
+        assert!(delivered.is_ok(), "{delivered:?}");
+        assert_eq!(
+            deliveries(&harness, "ana@example.test").await,
+            vec![("succeeded".to_string(), None)]
+        );
+    });
+    assert_eq!(tested.requests().len(), 1);
+    assert!(started.requests().is_empty());
 }

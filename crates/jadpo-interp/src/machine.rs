@@ -579,7 +579,9 @@ impl<'p> Machine<'p> {
             FakeAnswer::Condition(FakeCondition::Misconfigured) => Script::Misconfigured,
         };
         ctx.at(at.0);
-        let providers = self.program.providers();
+        let Some(providers) = self.program.providers() else {
+            return Err("a scripted answer in a program with no provider plan");
+        };
         jadpo_runtime::fakes::script(
             ctx,
             &providers,
@@ -2187,11 +2189,9 @@ impl<'p> Machine<'p> {
                 });
             }
             Expr::Config { .. } => match self.decoded(id) {
-                Some(Decoded::Config(Some(setting))) => match ctx
-                    .setting(*setting)
-                    .cloned()
-                    .or_else(|| self.program.setting(*setting))
-                {
+                // A test's own value, else the one the program started
+                // with (chunk 7.9e).
+                Some(Decoded::Config(Some(setting))) => match ctx.setting(*setting).cloned() {
                     Some(value) => self.values.push(value),
                     None => {
                         let name = self.program.setting_name(*setting);

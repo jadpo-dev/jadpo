@@ -142,7 +142,7 @@ pub async fn after_step(
     if ctx.background().between_steps().is_none() || ctx.in_action() {
         return Ok(());
     }
-    let Some(events) = executor.events() else {
+    let Some(events) = executor.plan().events() else {
         return Ok(());
     };
     if events.plan.subscribers.is_empty() {
@@ -163,6 +163,7 @@ pub async fn after_step(
         return Ok(());
     }
     let stores = executor
+        .plan()
         .schedules()
         .map(|plan| plan.stores.clone())
         .unwrap_or_default();

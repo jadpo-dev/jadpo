@@ -161,7 +161,8 @@ async fn run(
     segments: &[String],
     caller: Option<&Caller>,
 ) -> Result<Response, Stop> {
-    let (Some(plan), Some(origin)) = (app.table.identity.as_ref(), app.auth.origin()) else {
+    let started = ctx.started();
+    let (Some(plan), Some(origin)) = (app.table.identity.as_ref(), started.auth().origin()) else {
         return Err(stop(AUTHENTICATION_MISCONFIGURED, request_id));
     };
     let Some(passkeys) = plan.passkeys.as_ref() else {

@@ -10,15 +10,20 @@
 //! instead (§2.6, chunk 3.1), which drives it.
 
 use std::future::Future;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Wake, Waker};
 
 use jadpo_value::Value;
 
-use crate::{Ctx, LocalFuture, Outcome, Places};
+use crate::{Ctx, LocalFuture, Outcome, Places, RuntimePlan, Started};
 
-/// Runs a program's callables.
+/// Runs a program's callables: where each frame is ([`Executor::places`]),
+/// what the runtime reads of the program's plan ([`Executor::plan`]) and
+/// what it started with ([`Executor::started`]), and running a callable
+/// ([`Executor::run`]). The runtime builds what each of its parts runs
+/// with from those (chunk 7.9e), so an executor bundles none of it.
 pub trait Executor {
     /// Where every frame is: the callables' numbers, labels, files and
     /// sites.
@@ -27,6 +32,20 @@ pub trait Executor {
     /// The number of the callable with identity key `key`.
     fn callable(&self, key: &str) -> Option<u32>;
 
+    /// What the runtime reads of the program's plan (chunk 7.9e): nothing,
+    /// for an executor that only runs callables.
+    fn plan(&self) -> RuntimePlan<'_> {
+        RuntimePlan::NONE
+    }
+
+    /// What the program started with (chunk 7.9e): its settings' values
+    /// and what is held apart from them, which every context the runtime
+    /// makes for it is given ([`Ctx::of`]). `None` for an executor that
+    /// keeps no settings.
+    fn started(&self) -> Option<Rc<Started>> {
+        None
+    }
+
     /// The values callable `callable` gives some settings itself, by their
     /// numbers: a test's `config:` (area 13). None for anything else.
     fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
@@ -34,98 +53,11 @@ pub trait Executor {
         Vec::new()
     }
 
-    /// The value the program started with for setting number `at`: its
-    /// variable's, its `test:` or its `default:` (area 10). What an email's
-    /// `from:` reads (area 16; chunk 7.3). None for an executor that keeps
-    /// no settings.
-    fn setting(&self, at: u32) -> Option<Value> {
-        let _ = at;
-        None
-    }
-
     /// Where callable `callable`'s clock starts, in milliseconds since
     /// 1970-01-01T00:00:00Z: a test's `clock:` (area 13). None for anything
     /// else, which runs at its host's time or the test default.
     fn clock(&self, callable: u32) -> Option<i64> {
         let _ = callable;
-        None
-    }
-
-    /// What the program's batches run with (area 12, chunk 6.4): each
-    /// `batches.each` call's plan and the codecs its saved values are
-    /// kept in. None for a program that starts none.
-    fn batches(&self) -> Option<crate::batches::Batches<'_>> {
-        None
-    }
-
-    /// The program's subscribers and the codecs its events' payloads are
-    /// read with (area 12, chunk 6.1b): what the runner delivers an event
-    /// with. `None` for a program that has none to deliver to.
-    fn events(&self) -> Option<crate::outbox::Events<'_>> {
-        None
-    }
-
-    /// The program's webhooks, the secrets they are checked with and the
-    /// codecs their events are read with (area 11, "Receiving from
-    /// outside"; chunk 7.7). `None` for a program that receives none.
-    fn webhooks(&self) -> Option<crate::webhooks::Webhooks<'_>> {
-        None
-    }
-
-    /// The program's queues and how a call through their connections is
-    /// made (area 12, "Events from outside"; chunk 7.7c). `None` for a
-    /// program that receives none.
-    fn receiving(&self) -> Option<crate::receiving::Receiving<'_>> {
-        None
-    }
-
-    /// The program's polls and how a call through their connections is
-    /// made (area 11, "Polls"; chunk 7.6c). `None` for a program that
-    /// runs none.
-    fn polls(&self) -> Option<crate::polls::Polls<'_>> {
-        None
-    }
-
-    /// The program's schedules, where their state is kept, and the stores
-    /// the tick sweeps (area 12, chunk 6.2). `None` for a program the tick
-    /// has nothing to do for.
-    fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
-        None
-    }
-
-    /// The purge of the entity called `entity` (area 5, "Lifecycle"), which
-    /// its built-in schedule runs (chunk 6.2c), with how long it waits, in
-    /// milliseconds: its `after:`, or the value the program started with
-    /// for the setting it reads; `None` when that setting holds no
-    /// duration. `None` for an entity that isn't purged.
-    fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
-        let _ = entity;
-        None
-    }
-
-    /// The connections the program keeps files in (area 16; chunk 6.4b):
-    /// what a test's host gives its store of files for, and no other
-    /// connection (chunk 7.1c).
-    fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
-        &[]
-    }
-
-    /// The program's connections to provider packages (area 11; chunk
-    /// 7.2d): what a test's host gives a package's fake for.
-    fn provider_connections(&self) -> Vec<&str> {
-        Vec::new()
-    }
-
-    /// What a provider call runs with outside an action's site: an email
-    /// sent through a mail package (area 16; chunk 7.3c). `None` for a
-    /// program with no provider packages.
-    fn package_calls(&self) -> Option<crate::provider::Providers<'_>> {
-        None
-    }
-
-    /// The connection `ai:` names (area 21; chunk 5.5v3): what a test's
-    /// host gives the `ai` fake for, and a native host its driver for.
-    fn ai_connection(&self) -> Option<&str> {
         None
     }
 
@@ -139,19 +71,6 @@ pub trait Executor {
         ctx: &mut Ctx<'_>,
         file: &str,
     ) -> Option<Result<(), crate::recorded::Unread>> {
-        let _ = (ctx, file);
-        None
-    }
-
-    /// Reads the recording of a prompt's answer at `file` through each
-    /// type its prompt is asked for as (area 21, "Tests"; chunk 5.5v4):
-    /// what `jadpo test` runs for each. `None` when the program holds no
-    /// such recording.
-    fn prompt_recording(
-        &self,
-        ctx: &mut Ctx<'_>,
-        file: &str,
-    ) -> Option<Result<(), crate::prompt_recordings::Unread>> {
         let _ = (ctx, file);
         None
     }

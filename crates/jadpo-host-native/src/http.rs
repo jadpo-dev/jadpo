@@ -628,8 +628,6 @@ mod tests {
     struct Bare {
         places: jadpo_runtime::Places,
         table: jadpo_std::http::RouteTable,
-        auth: jadpo_runtime::http::signed::AuthSettings,
-        client: jadpo_runtime::http::address::ClientAddress,
     }
 
     impl Bare {
@@ -637,8 +635,6 @@ mod tests {
             Bare {
                 places: jadpo_runtime::Places::default(),
                 table: jadpo_std::http::RouteTable::default(),
-                auth: jadpo_runtime::http::signed::AuthSettings::NONE,
-                client: jadpo_runtime::http::address::ClientAddress::CONNECTION,
             }
         }
     }
@@ -674,8 +670,6 @@ mod tests {
                 },
                 failures: &[],
                 json: jadpo_runtime::JsonCodecs::NONE,
-                auth: &self.auth,
-                client: &self.client,
             }
         }
     }

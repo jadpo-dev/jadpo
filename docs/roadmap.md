@@ -1987,14 +1987,25 @@ side by side, then 7.9d, then 7.9e).
   answer, `unavailable`; `stream::exchange`, `ai::sent` and
   `provider::retried` gone. Choices in area 12's decisions table, "One
   outside-call path, chosen in chunk 7.9d".
-- [ ] **7.9e The runtime's start-up state** `opus · xhigh`, after 7.9d:
+- [x] **7.9e The runtime's start-up state** `opus · xhigh`, after 7.9d:
   `jadpo_runtime::Started::new(plan, values, target)` holding the decoded
   settings, keys, credentials, sign-in settings, client address and purge
   periods `Program` holds today, reached through `Ctx`; runtime entry
   points taking `(ctx, site, input)` so the interpreter's eight copies of
   per-call glue go; settings resolved one way (email and receiving honour
   a test's `config:` as `ai` does); the `Executor` shrunk toward places,
-  plan and run.
+  plan and run. Built: `Started` as listed, reached through
+  `Ctx::started`, which every context the runtime makes for a program is
+  given (`Ctx::of`) and a test harness's is given as the program first
+  runs there; every setting read through `Ctx::setting`, a test's own
+  value else the program's, so an email through a mail package honours a
+  test's `config:` and a queue's mapping reads its settings the same way;
+  `jadpo_runtime::RuntimePlan`, the plan the runtime reads, from which it
+  builds each part's view, leaving the `Executor` `places`, `callable`,
+  `plan`, `started`, a test's `settings` and `clock`, `recording`, `run`
+  and `row`; `provider::call`, `ai::generate`, `stream::stream` and
+  `embed::embed` each taking the context, the site (`provider::Calling`,
+  `ai::Calling`) and the input, the runtime's own calls too.
 
 ## Phase 8 — Compiled deployables
 
@@ -2025,6 +2036,12 @@ side by side, then 7.9d, then 7.9e).
   a `Run::Webhook` entry in the route trie; provider call sites carrying
   plan numbers, not names; a `testing` feature and a dev/test plan
   section so fakes, recordings and crash points stay out of deployables.
+  From chunk 7.9e: its borrowed `RuntimePlan` made that one plan, with
+  the route table and its codecs, so the HTTP component builds its `App`
+  and the `Application` trait goes; every context made from its
+  executor (`Ctx::of`), so none waits for its program's first run to
+  reach `Started` (`Ctx::start_from`); `Executor::recording` run by the
+  runtime once a package's functions are reached through the executor.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in

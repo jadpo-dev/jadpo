@@ -25,9 +25,8 @@ use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::budget::RUN_LIMIT_MS;
 use jadpo_runtime::capability::{Answer, Call, Capability, Fake, Faked, Repeat, Scripted};
-use jadpo_runtime::outbox::Events;
 use jadpo_runtime::runner::{Deferred, run_deferred, sweep};
-use jadpo_runtime::{Ctx, Executor, Host, LocalFuture, Outcome, Places, SqlValue};
+use jadpo_runtime::{Ctx, Executor, Host, LocalFuture, Outcome, Places, RuntimePlan, SqlValue};
 use jadpo_std::subscriber::{EventsPlan, Target};
 use jadpo_term::Environment;
 use jadpo_test::host::{Harness, Timer};
@@ -220,7 +219,7 @@ struct Stand<'a> {
 
 impl<'a> Stand<'a> {
     fn new(program: &'a Program, relay: Relay) -> Stand<'a> {
-        let mut events = program.events().expect("subscribers").plan.clone();
+        let mut events = program.plan().events().clone();
         let subscriber = events
             .subscribers
             .iter_mut()
@@ -256,12 +255,14 @@ impl Executor for Stand<'_> {
         Executor::callable(self.program, key)
     }
 
-    fn events(&self) -> Option<Events<'_>> {
-        let events = self.program.events()?;
-        Some(Events {
-            plan: &self.events,
-            ..events
-        })
+    fn plan(&self) -> RuntimePlan<'_> {
+        let program = Executor::plan(self.program);
+        RuntimePlan {
+            json: program.json,
+            events: Some(&self.events),
+            event_numbers: program.event_numbers,
+            ..RuntimePlan::NONE
+        }
     }
 
     fn run<'a, 'p: 'a>(

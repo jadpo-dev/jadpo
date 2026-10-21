@@ -968,8 +968,9 @@ and `Effect::Emit { event }`, whose payload is written as its type's
 contract JSON and kept, with its subscribers, in the running action's
 outbox. What they need of the program comes as `Effects` (the plan's JSON
 table with the program's validators and shapes, the events' numbers and
-subscribers, the settings and the keys), which the interpreter builds
-from its plan and compiled code will hold as statics. A refusal comes
+subscribers, and the settings), which the interpreter builds from its plan
+and compiled code will hold as statics, and the keys as the program
+started with them, which the context reaches (`Ctx::started`, chunk 7.9e). A refusal comes
 back as `Refused::Broke` (a condition the call's `attempt` maps, with how
 a report names it and, for `mismatch`, its `DecodeProblem`),
 `Refused::Fault` or `Refused::Defect`, which the executor raises at its
@@ -1468,8 +1469,9 @@ a run stops after `batches` batches (`PURGE_BATCHES`, 20, for the
 schedule) and says whether it `finished`, so a Workers cron run can't
 overrun however much is due, and the next run carries on; the budget is a
 batch count. Area 12's
-hourly purge schedule calls it since chunk 6.2c, through the executor's
-`purge`, which gives the plan and its period; a live test calls it
+hourly purge schedule calls it since chunk 6.2c, with the plan's purge
+and its period as the program started with it (`RuntimePlan::purge`,
+from `Started` since chunk 7.9e); a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
 budget, and another runs it on the tick
 (`crates/jadpo-cli/tests/purge_schedule.rs`).
@@ -1590,8 +1592,9 @@ setting) and a browser session's `origin:` (a `Url` setting) into the
 or key ends. `http::signed` is the runtime's host-agnostic signing:
 `Settings::read` derives each method's key (BLAKE3 `derive_key`) from the
 values the application started with, current and `_PREVIOUS`, held by the
-program and handed to the HTTP component in `App::auth`, never in a value
-code reads; a signed part is base64url JSON `Claims` and a keyed BLAKE3
+program's `Started` (chunk 7.9e; `App::auth` until then), which the HTTP
+component reaches through the request's context, never in a value code
+reads; a signed part is base64url JSON `Claims` and a keyed BLAKE3
 tag, compared in constant time, the same natively and on wasm32. With a
 delay, `http::identity::authenticate` signs a request in from a good
 signed part without a statement, unless the route is `fresh`; otherwise it
@@ -1885,7 +1888,8 @@ for the default rate limits, `jadpo dev`'s request lines and the request
 timeline, is chosen in the runtime from plan data and not by a host:
 `application { client_address: }` is `RouteTable::client_address`, read
 with the settings the app started with into `http::address::ClientAddress`
-(`ClientAddress::read(plan, values, Target)`), which `App::client` carries.
+(`ClientAddress::read(plan, values, Target)`), which the program's
+`Started` holds and the context reaches (chunk 7.9e).
 `serve_request` sets the chosen address on the context (`Ctx::client`) and on
 the response (`Response::client`) before anything else runs, and
 `by_address` counts that. A host only gives the connection's address
@@ -1912,7 +1916,8 @@ the value; `check` gives the same readings as `set`, `default`, `missing`
 or `invalid` for `jadpo config check`. A test run reads `test:` values,
 defaults and secrets it makes at random (`Mode::Test`). The checked values
 are text, `Send`, so every worker thread decodes them into its own values
-(`Program::with_config`), and a secret's text is held there and nowhere
+(`Started::new`, which `Program::with_config` calls; chunk 7.9e), and a
+secret's text is held there and nowhere
 else (its `Debug` leaves it out); the interpreter reads a setting like a
 constant. Nothing here is interpreter-only, so the compiled deployables
 (Phase 8) call the same function with the Worker's bindings.
@@ -2041,8 +2046,8 @@ their problems and cancels.
 domain taking nothing) and where their state is kept
 (`schedules_settings`: `schedules: { store: }` or the only database, else
 `schedule.store_required`); the plan holds the schedule table
-(`jadpo_std::schedule::SchedulesPlan`, `Plan::schedules`, which
-`Executor::schedules` gives the runtime) with the stores holding the
+(`jadpo_std::schedule::SchedulesPlan`, `Plan::schedules`, which the
+runtime reads from `Executor::plan`) with the stores holding the
 runtime's own tables, and the stores sessions and service keys are kept
 in. `jadpo_runtime::schedules::tick(executor, host,
 now)` is the one entry point every host calls: it makes and touches each
@@ -2097,8 +2102,8 @@ or a fault, `boundary::Undo`), then `finished:`, while its invocation's
 budget lasts; once that is spent it gives its lease back and is handed
 on to a fresh invocation (`run_within`, `Ran::HandedOn`; chunk 6.7);
 `resume` picks up runs whose lease lapsed, for 6.2's minute tick; `status` and `cancel` read the
-row and keep a cancel. An executor gives the runner its batches through
-`Executor::batches`, so compiled code runs the same runner. In an
+row and keep a cancel. The runner reads the batches from the executor's
+plan (`RuntimePlan::batches`), so compiled code runs the same runner. In an
 application with a tenant the plan's `BatchTenant` names which saved
 values hold the tenant's id, and each page runs as the system limited to
 the one tenant they name, or to none (`outbox::named_tenant`, shared
@@ -2254,6 +2259,54 @@ given back once answered (a stream's once its answer starts to come), and
 a package fills `ai`, for the `ai` calls through its connection
 (`ai::max_concurrent_of`).
 
+**The start-up state and the runtime's plan** (chunk 7.9e, from the
+Phase 7 architecture review). What a program started with is one runtime
+value, `jadpo_runtime::Started`, made on each thread by
+`Started::new(plan, values, target)` from the plan, the checked settings
+(`config::load`'s `ConfigValues`, or none) and the target it runs on:
+each setting's value decoded (never a secret's), the key settings' keys
+(`effects::Keys`), each connection's credential and each webhook's secret
+(`provider::Credentials`), what signing in reads
+(`http::signed::AuthSettings`), how a client's address is chosen on that
+target (`http::address::ClientAddress`; the interpreter runs on
+`Target::Native`, and Workers' host makes its own in chunk 8.2) and how
+long each purge waits. The context reaches it (`Ctx::started`): the
+runtime gives it to every context it makes for a program
+(`Ctx::of(executor, host, env)`: a request's, a delivery's, a tick's, a
+batch's), and a context a test's harness makes from the program's places
+alone is given it as the program first runs there (`Ctx::start_from`,
+which the interpreter's `run` and the HTTP component's `handle` call). So
+a setting is read one way wherever it is read: `Ctx::setting`, a test's
+own value (its `config:`, `Ctx::set_settings`) or else the one the
+program started with, for `config.<name>`, a call's address and model,
+an email's sender and a mail package's mapping, a queue's mapping and a
+magic link's origin. Until this chunk a mail package's call and a
+queue's read the program's value even under a test's `config:`, which
+area 13 says the code a test calls reads too. The plan the runtime reads
+is one borrowed view, `jadpo_runtime::RuntimePlan` (the JSON table with
+the program's validators and shapes, the failures, settings, routes,
+subscribers and event numbers, batches, schedules, purges, file stores,
+providers, `ai:`, prompts and prompt recordings), from which the runtime
+builds what each of its parts runs with (`RuntimePlan::events`,
+`batches`, `providers`, `webhooks`, `receiving`, `polls`, `ai` and
+`purge`, given the `Started` their credentials and periods come from).
+The `Executor` is left with `places`, `callable`, `plan`, `started`, a
+test's `settings` and `clock`, `recording` (which runs the package's own
+decoders) and `run` and `row`, where it had twenty methods, fourteen of
+them bundling plan parts with the JSON codecs or the credentials. Each
+call kind's site is one entry point taking the context, the site and the
+input: `provider::call(ctx, provider::Calling { plan, connection,
+operation, site }, input)`, and `ai::generate`, `stream::stream` and
+`embed::embed(ctx, ai::Calling { plan, site }, input)`, each finding the
+plan's connection or `ai:`, the settings it reads (its `settings_read`,
+their values through `Ctx::setting`) and the credentials before it builds
+its request, so an executor only maps what comes back to its own stop.
+The runtime's own calls (an email through a mail package, a queue's
+receive and acknowledgement, a poll) go through the same entry point.
+Chunk 8.1 makes `RuntimePlan` the one plan with a canonical byte encoding
+that compiled code holds as constants, and builds each connection's
+driver from it and `Started`.
+
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
 before a call goes out (`Ctx::close_snapshot`), so no transaction is
@@ -2370,9 +2423,10 @@ provider operation's call is `Callee::Provider` (its connection and
 (`jadpo_std::provider`: each connection's address, credential setting,
 timeout, `idempotency:` and `error_code:`, and each public operation's
 method, path, input and output numbered in the JSON table, `output_at:`,
-`failed_when:`, `Repeat` and failures), the credentials `Program` holds
-apart as it holds the keys (`provider::Credentials`), and the values of
-the settings its address reads. The runtime writes the input with the
+`failed_when:`, `Repeat` and failures), the credentials the program
+started with, held apart as the keys are (`provider::Credentials`, in
+`Started`), and the values of the settings its address reads, as its
+context reads them (chunk 7.9e). The runtime writes the input with the
 JSON table's codec, a provider package's `wire_name:` spellings
 included (`FieldPlan::wire`, a variant's codec's `wire`), fills the
 path, the query or the body, adds the credential and, for a keyed call,
@@ -2411,7 +2465,7 @@ the interpreter runs it through `fakes::script`, which writes a value as
 the provider sends it (`fakes::as_sent`) and hands it to the fake its host
 gives for the connection (`Capability::script`). `jadpo test`'s runner
 wraps each test's host in `capability::Faked` with one fake in every
-connection `Executor::provider_connections` names, and after the run
+connection the plan names (`RuntimePlan::provider_connections`), and after the run
 reports a script the calls ran past or left answers in
 (`fakes::Usage`; `test.fake_exhausted`, `test.fake_unused`). `jadpo dev`
 gives its `NativeHost` one driver for every provider connection
@@ -2519,7 +2573,7 @@ found by `jadpo_check::prompt_recordings` and planned as
 its prompt's `ai.generate` sites decode into; `recorded(...)` lowers to
 `AiFakeAnswer::Recorded`, which the interpreter scripts with the answer
 `prompt_recordings::answer` fills (area 11's `recorded::filled_value`),
-and `jadpo test` runs `Executor::prompt_recording` for each as a
+and `jadpo test` runs `prompt_recordings::check_file` for each as a
 `recording` test, listing stale ones as `Run::alerts`.
 
 **Webhooks as events** (chunk 7.7; area 11, "Chosen in chunk 7.7"). The
@@ -2532,8 +2586,9 @@ given a secret into a `webhooks::WebhookModel`: its route under the
 and time, its store and its events by key. The plan holds each as a
 `jadpo_std::provider::WebhookPlan` on `ProviderPlan::webhooks`, its events
 numbered in the JSON table as every event is, and `jadpo_std::system::
-RECEIVED_EVENTS` joins that store's schema. The executor gives them with
-the secrets `provider::Credentials` holds (`Executor::webhooks`), and the
+RECEIVED_EVENTS` joins that store's schema. The runtime reads them from
+the plan with the secrets the program started with (`RuntimePlan::webhooks`,
+`provider::Credentials` in `Started`), and the
 HTTP component answers a request at a webhook's path before routing
 (`jadpo_runtime::webhooks::answer`), after its address's rate limit:
 `webhooks::check` reads the scheme's signature (pure, over the raw body,

@@ -574,8 +574,8 @@ pub enum Done {
 }
 
 /// The settings a call through `connection` reads, by number: its
-/// environment's, or its `host:`'s. The executor gives their values to
-/// [`call`].
+/// environment's, or its `host:`'s, whose values [`call`] reads at the
+/// call's context.
 pub fn settings_read(connection: &ConnectionPlan) -> Vec<u32> {
     match &connection.address {
         Address::Hosts { environment, .. } => vec![*environment],
@@ -584,10 +584,63 @@ pub fn settings_read(connection: &ConnectionPlan) -> Vec<u32> {
     }
 }
 
-/// Calls operation `operation` (`bookings.create`) of connection
-/// `connection` with `input`, from `ctx` at `site`: `settings` gives the
-/// values of the settings [`settings_read`] names.
-pub async fn call(
+/// A provider call's site in a program, as an executor hands it to
+/// [`call`] (chunk 7.9e): the plan it is made in, the connection and
+/// operation it calls, and its site.
+#[derive(Clone, Copy)]
+pub struct Calling<'a> {
+    pub plan: crate::RuntimePlan<'a>,
+    /// The connection, `couriers`, and the operation, `bookings.create`.
+    pub connection: &'a str,
+    pub operation: &'a str,
+    pub site: Site<'a>,
+}
+
+impl fmt::Debug for Calling<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Calling")
+            .field("connection", &self.connection)
+            .field("operation", &self.operation)
+            .field("site", &self.site)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Calls operation `calling.operation` of connection `calling.connection`
+/// with `input`, from `ctx` at `calling.site`: what both executors run at
+/// a call's site, and the runtime's own calls too (an email through a mail
+/// package, a queue's, a poll's). The program's connections come from
+/// `calling.plan`, their credentials and the values of the settings its
+/// address reads from what `ctx` reaches: a test's own, else the ones the
+/// program started with (chunk 7.9e).
+pub async fn call(ctx: &mut Ctx<'_>, calling: Calling<'_>, input: Option<Value>) -> Done {
+    let started = ctx.started();
+    let Some(providers) = calling.plan.providers(&started) else {
+        return Done::Fault(FaultKind::Defect(
+            "a provider called in a program with no provider plan".into(),
+        ));
+    };
+    let settings = match providers
+        .plan
+        .operation(calling.connection, calling.operation)
+    {
+        Some((plan, _)) => ctx.settings_of(settings_read(plan)),
+        None => Vec::new(),
+    };
+    made(
+        ctx,
+        &providers,
+        (calling.connection, calling.operation),
+        input,
+        &settings,
+        calling.site,
+    )
+    .await
+}
+
+/// [`call`], with `providers` and the values `settings` gives the settings
+/// [`settings_read`] names.
+async fn made(
     ctx: &mut Ctx<'_>,
     providers: &Providers<'_>,
     (connection, operation): (&str, &str),

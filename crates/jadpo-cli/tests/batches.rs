@@ -881,7 +881,7 @@ fn the_runner_reaches_batches_only_through_the_executor() {
     let root = project("executor");
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let batches = Executor::batches(&program).expect("its batches");
+    let batches = program.runtime_plan().batches().expect("its batches");
     let names: Vec<&str> = batches
         .plans
         .iter()

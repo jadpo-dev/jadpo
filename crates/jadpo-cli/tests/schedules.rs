@@ -562,7 +562,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
     );
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let plan = program.schedules().expect("schedules");
+    let plan = program.runtime_plan().schedules().expect("schedules");
     let [census] = plan.schedules.as_slice() else {
         panic!("one schedule: {plan:?}");
     };

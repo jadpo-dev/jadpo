@@ -148,10 +148,12 @@ fn one<E: Executor>(
     if test.kind == TestKind::Recording {
         let env = TestEnv::new(&test.key);
         let host = env.host();
-        let mut ctx = Ctx::new(executor.places(), &host, env.env);
+        let mut ctx = Ctx::of(executor, &host, env.env);
         // A recording of a prompt's answer, read through each type the
         // prompt is asked for as (chunk 5.5v4).
-        if let Some(read) = executor.prompt_recording(&mut ctx, &test.file) {
+        if let Some(read) =
+            jadpo_runtime::prompt_recordings::check_file(&executor.plan(), &mut ctx, &test.file)
+        {
             return read
                 .err()
                 .map(|unread| Box::new(outcome::prompt_recording(sources, test, &unread, rerun)));
@@ -202,7 +204,7 @@ fn one<E: Executor>(
     // Every model asked answers through the `ai` fake (area 21, "Tests"):
     // nothing reaches a model from a test.
     let ai = Rc::new(AiFake::new());
-    let models = executor.ai_connection();
+    let models = executor.plan().ai_connection();
     // Only a test that calls an action, query or fixture, sends a request
     // through a route or runs a schedule can touch a store.
     if let (
@@ -259,7 +261,7 @@ fn one<E: Executor>(
     }
     let host = env.host();
     let host = faked(&host, &connections, &fake, models, &ai);
-    let mut ctx = Ctx::new(places, &host, env.env);
+    let mut ctx = Ctx::of(executor, &host, env.env);
     ctx.set_settings(executor.settings(callable));
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
     let outcome = ran.unwrap_or_else(|_| {
@@ -284,11 +286,9 @@ fn one<E: Executor>(
 /// fake stands in for every connection that fills it (area 13, "One fake
 /// per capability"; chunk 7.3c).
 fn faked_connections<E: Executor>(executor: &E) -> Vec<&str> {
-    let mail = executor
-        .events()
-        .and_then(|events| events.plan.emails.connection.as_deref());
-    executor
-        .provider_connections()
+    let plan = executor.plan();
+    let mail = plan.mail_connection();
+    plan.provider_connections()
         .into_iter()
         .filter(|connection| Some(*connection) != mail)
         .collect()
@@ -327,7 +327,7 @@ impl<E: Executor> Stored<'_, E> {
         let fake = Rc::new(ProviderFake::new());
         let connections = faked_connections(executor);
         let ai = Rc::new(AiFake::new());
-        let models = executor.ai_connection();
+        let models = executor.plan().ai_connection();
         let mut env = self.env.clone();
         env.database = TestDatabase::Copied {
             stores: self.databases.stores(),
@@ -335,18 +335,15 @@ impl<E: Executor> Stored<'_, E> {
         let host = TestHost::new(self.databases)
             .with_file_stores(
                 executor
-                    .file_stores()
+                    .plan()
+                    .file_stores
                     .iter()
                     .map(|store| store.name.as_str()),
             )
-            .with_mail(
-                executor
-                    .events()
-                    .and_then(|events| events.plan.emails.connection.clone()),
-            );
+            .with_mail(executor.plan().mail_connection().map(str::to_string));
         let (outcome, undelivered, reached, crashed) = {
             let host = faked(&host, &connections, &fake, models, &ai);
-            let mut ctx = Ctx::new(places, &host, env.env);
+            let mut ctx = Ctx::of(executor, &host, env.env);
             ctx.set_settings(executor.settings(self.callable));
             // What each step emits is delivered before the next statement,
             // in an order the run's seed decides (chunk 6.11).

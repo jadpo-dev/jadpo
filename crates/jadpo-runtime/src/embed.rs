@@ -87,9 +87,29 @@ fn broke(rule: RuleKey) -> Done {
 }
 
 /// Asks the model for the embedding of each text `given` holds, as
-/// `site`'s vector type; `settings` gives the values of the settings
-/// [`settings_read`] names.
+/// `calling.site`'s vector type: what both executors run at an `ai.embed`
+/// or `ai.embed_all` call's site.
 pub async fn embed(
+    ctx: &mut Ctx<'_>,
+    calling: crate::ai::Calling<'_, EmbedSite>,
+    given: Value,
+) -> Done {
+    let started = ctx.started();
+    let (ai, settings) = match calling.ai(
+        ctx,
+        &started,
+        |ai| settings_read(ai, calling.site),
+        "an embedding asked in a program that names no model",
+    ) {
+        Ok(made) => made,
+        Err(done) => return done,
+    };
+    embedded(ctx, &ai, calling.site, given, &settings).await
+}
+
+/// [`embed`], with `ai` and the values `settings` gives the settings
+/// [`settings_read`] names.
+async fn embedded(
     ctx: &mut Ctx<'_>,
     ai: &Ai<'_>,
     site: &EmbedSite,

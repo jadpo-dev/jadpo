@@ -38,8 +38,9 @@ pub async fn register(
             at,
         );
     };
+    let started = ctx.started();
     let (Some(origin), Some(options), Some(finish)) = (
-        app.auth.origin().map(str::to_string),
+        started.auth().origin().map(str::to_string),
         route(app, PasskeyStep::RegisterOptions),
         route(app, PasskeyStep::Register),
     ) else {
@@ -54,7 +55,8 @@ pub async fn register(
     };
     // Signed in as `as:` signs in: a browser session of the user's own.
     let headers =
-        match identity::test_credentials(ctx, app.table, app.auth, options.index, user).await {
+        match identity::test_credentials(ctx, app.table, started.auth(), options.index, user).await
+        {
             Ok(headers) => headers,
             Err(fault) => return Stored::Fault(fault),
         };
@@ -112,7 +114,7 @@ pub async fn sign_in(
         return defect(ctx, "`test_passkeys.sign_in` given no `TestPasskey`", at);
     };
     let (Some(origin), Some(options), Some(finish), Some(cookie)) = (
-        app.auth.origin().map(str::to_string),
+        ctx.started().auth().origin().map(str::to_string),
         route(app, PasskeyStep::SignInOptions),
         route(app, PasskeyStep::SignIn),
         app.table

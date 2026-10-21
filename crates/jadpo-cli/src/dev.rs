@@ -277,7 +277,7 @@ impl Observer for Lines {
     /// A line for each run, and for each alert the tick raised (chunk
     /// 6.2b; raised by the tick since chunk 6.9).
     fn ticked(&self, program: &dyn Application, ticked: &Ticked, now: i64) {
-        let Some(plan) = program.schedules() else {
+        let Some(plan) = program.plan().schedules() else {
             return;
         };
         let name = |key: &str| {
