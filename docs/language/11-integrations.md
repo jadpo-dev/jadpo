@@ -3419,7 +3419,11 @@ answers, keyed by the event's name in lower_snake_case. The action takes
 the event and returns the reply type, which runs inside the request after the signature
 check and may read and write like any action. A repeat gets the stored
 reply, and the package encodes the reply (Twilio's XML waits for an XML
-byte format in a Jadpo release).
+byte format in a Jadpo release). The action runs as the system with no
+tenant, and its reply goes back to whoever sent the webhook, so it is
+held to area 9's output proof as an output to `Access.public`: what it
+carries, or what decided it, is what anyone at all may read (Richard,
+2026-10-21).
 
 ```jadpo fragment
 // packages/twilio/v2010/events/incoming_call.jadpo
@@ -9078,8 +9082,9 @@ each the most conservative reading where the pages left it open:
   is `subscriber.event_invalid`: it isn't kept in the outbox.
 - **Answering.** After the signature and the body are read, the event's
   id is claimed in `jadpo_received_events` (its new `reply` column empty)
-  in a statement of its own; the action runs as the system, in its own
-  transaction, as `on_first_sign_in:`'s does; its reply is encoded with
+  in a statement of its own; the action runs as the system, reaching no
+  tenant's records (chunk 7.9b), in its own transaction, as
+  `on_first_sign_in:`'s does; its reply is encoded with
   the reply type's codec on the provider's wire and sent `200` as
   `application/json`, and kept over the claim once the action has
   committed. A repeat that finds the reply is answered with it, one that
@@ -9869,3 +9874,4 @@ packages and extension points, as each note says; 26 was decided then.
 | Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |
 | Default timeouts (Richard, 2026-10-20) | A connection's `timeout:` defaults to 3s, its attempts staying 3, so one call's 9 seconds fit a route's 10-second default deadline; `ai.generate`'s to 25s and `ai.embed`'s to 5s (area 21). At 10s a call could take 30 seconds, and the deadline sum refused almost every route that calls out (option A, Richard) | 2026-10-20 |
 | Polls claimed once (Phase 7 review, chunk 7.9c) | A poll's row keeps the interval it was last claimed under, `jadpo_polls.every_ms`. One statement claims it when it is due or has never run, or when it was claimed under another interval than the connection's now and is due later than a whole new interval away, the interval shortened since; the claim records the interval it was made under. So a second tick at the same moment, or an instance whose clock is behind, never calls the provider again within the interval. The column may be `NULL`, since a migration adds it to a table that may hold rows, and a row without it counts once as claimed under another interval (decided for Richard, the conservative reading) | 2026-10-21 |
+| A webhook's reply (Phase 7 review, chunk 7.9b) | The reply action runs as the system with no tenant, never every tenant, and what only `Access.public` lets it in to is `policy.system_grant_missing` at its `replies:` entry. Its reply goes back to whoever sent the webhook, so the checker holds it to area 9's output proof as an output to `Access.public`: each field it carries, or that decided it, is one anyone at all may read (`policy.output_field_unproved`), a record the action created holding what it set (Richard, 2026-10-21) | 2026-10-21 |

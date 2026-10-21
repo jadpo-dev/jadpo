@@ -1945,7 +1945,7 @@ side by side, then 7.9d, then 7.9e).
   and a delivery's taking the same steps and parking an unkeyed change
   too, and OpenAPI saying where a key is kept; choices in area 12's
   decisions table, "Keys and replays, chosen in chunk 7.9a".
-- [ ] **7.9b Phase 7 review fixes: policy and privacy** `opus · xhigh`:
+- [x] **7.9b Phase 7 review fixes: policy and privacy** `opus · xhigh`:
   `to_models: false` and `personal_data: { allowed: }` count what a
   condition decides (an `if`, a `match`, a `list.filter` on a marked
   field), only a `for` loop's list dropped, and a write storing marked
@@ -1953,7 +1953,20 @@ side by side, then 7.9d, then 7.9e).
   to area 9's output proof as an output to `Access.public`; the
   magic-link `send:` action run with the tenant of its delivery, reply
   actions and `on_first_sign_in:` with no tenant, and
-  `policy.system_grant_missing` checked for all three.
+  `policy.system_grant_missing` checked for all three. Built: the walk
+  for what reaches a model counts what an `if`, a `match`, a filter's
+  predicate or a `return` after one decided, and leaves out only what a
+  loop goes through (the records and rows of a `for`'s list, `list.map`'s
+  and `list.count`'s), but for what decided which items it has; a create,
+  update or transition storing a marked field's value, or one it decided,
+  in a field without its marks is `semantic.ai_field_unmarked`, a
+  parameter checked where it is passed and an event's part where a
+  subscriber passes it; a reply action's reply proved readable by
+  anyone at all (`policy.output_field_unproved`); `System::NO_TENANT` for
+  reply actions and `on_first_sign_in:`, the `send:` action given
+  `outbox::tenant` of its delivery, and `policy.system_grant_missing` at
+  each one's `replies:`, `send:` or `on_first_sign_in:`. Choices in the
+  Decisions of areas 21, 9, 11, 8 and 12 (Richard, 2026-10-21).
 - [x] **7.9c Phase 7 review fixes: ticks, queues and budgets** `opus ·
   high`. Built: a poll's row keeps the interval it was claimed under
   (`jadpo_polls.every_ms`, 26-delivery-desk's migration adding it), so
@@ -2006,6 +2019,13 @@ side by side, then 7.9d, then 7.9e).
   and `row`; `provider::call`, `ai::generate`, `stream::stream` and
   `embed::embed` each taking the context, the site (`provider::Calling`,
   `ai::Calling`) and the input, the runtime's own calls too.
+
+- [ ] **7.9g Privacy gaps found in 7.9b** `opus · high` (backlog): a
+  model's answer carries what its prompt was built from, so a field read
+  off it (`.summary` of health notes) is checked like its sources when
+  stored or sent again; and a webhook reply that counts or tests for
+  records only the system may read is held to the output proof, since
+  whether a record exists reaches whoever sent the webhook.
 
 ## Phase 8 — Compiled deployables
 

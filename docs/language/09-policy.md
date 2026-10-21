@@ -196,6 +196,16 @@ still lets in no request. No request is ever the system: only the
 runtime's runner makes the system caller, and every request, and every
 call a test makes with a caller or without one, runs as someone else.
 
+The runtime runs three of the application's actions as the system inside
+a request too (Richard, 2026-10-21): the magic-link `send:` action,
+delivered as a subscriber of `jadpo.MagicLinkEmail` with its delivery's
+tenant, which is none; a webhook's reply action; and `on_first_sign_in:`'s.
+Each reaches no tenant's records, only those every tenant shares, since
+no tenant's event starts it and "no tenant" means every tenant only for
+a schedule; and each is let in only by `Access.system`, so a grant or a
+line under `actions:` naming `Access.public` and not `Access.system` that
+one reaches is `policy.system_grant_missing`, where the action is named.
+
 Which tenant a subscriber or a batch's run works in is named by a value:
 the event's field of the tenant's `id` type, or what the run saves of it.
 A caller could pass the id of a tenant they don't belong to, so that value
@@ -788,7 +798,10 @@ entity Project {
   compile (`policy.output_field_unproved`); the fix is a second query with a
   narrower output. The same holds for the record a query includes through
   a reference: everyone who may read the record must be able to read what
-  it refers to.
+  it refers to. A webhook's reply (area 11) goes back to whoever sent the
+  webhook, so it is an output to `Access.public`: every field it carries,
+  or that decided it, is one anyone at all may read, though its action
+  runs as the system (Richard, 2026-10-21).
 - **Conditions and orders.** Which records pass a condition, and the order
   they come in, show the fields they test, so a query, `get`, include or
   write may filter or order on a field only when everyone who may run it
@@ -2276,9 +2289,12 @@ error: `send_due` runs as the system, which only `Access.public` lets update `Re
 check failed: 1 error, 1 file
 ```
 
-Every action background work reaches lets the system in by its own line
-under `actions:`, wherever it is called from, as it does a request, so a
-line naming only `Access.public` is refused however deep (chunk 6.6b):
+The magic-link `send:` action, a webhook's reply action and
+`on_first_sign_in:`'s run as the system too, and are checked the same way,
+where each is named (chunk 7.9b). Every action background work reaches
+lets the system in by its own line under `actions:`, wherever it is
+called from, as it does a request, so a line naming only `Access.public`
+is refused however deep (chunk 6.6b):
 
 ```jadpo check project=e-system-grant-missing-line expect=policy.system_grant_missing
 type Note = Text {
@@ -4284,3 +4300,4 @@ Not yet:
 | Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |
 | Lines of the actions background work calls (chosen in chunk 6.6b) | Every action a schedule, a subscriber or a batch reaches, itself or through another, is checked against its own line under `actions:`, so a line naming `Access.public` and not `Access.system` is `policy.system_grant_missing` however deep; a listed action's line decides the creates, updates, deletes and transitions of its own body wherever it is called from, as the plan builds them, for a route as for background work (Phase 6 review: before, only the action run was read for its line, and what it called used its entities' grants) | 2026-10-19 |
 | The tenant background work names (Phase 6 review) | The tenant id an event or a batch run names must come from a record of that tenant the action read or wrote under its caller's policy, proved from the provenance 6.1c tracks; otherwise `policy.event_tenant_unproved`, so a caller can't aim system work at a tenant they don't belong to (Richard, as recommended) | 2026-10-19 |
+| The system inside a request, and a webhook's reply (Phase 7 review, chunk 7.9b) | The magic-link `send:` action runs with its delivery's tenant, as a subscriber's does, which for `jadpo.MagicLinkEmail` is none; a webhook's reply action and `on_first_sign_in:`'s run with no tenant, never every tenant; each reaches only records every tenant shares, and what only `Access.public` lets it in to is `policy.system_grant_missing` at where it is named, as for background work. A webhook's reply is an output to `Access.public`: each field it carries, or that decided it, is one anyone at all may read, a record the action created holding what it set (`policy.output_field_unproved`), proved in the checker where routes' outputs are (Richard, 2026-10-21) | 2026-10-21 |

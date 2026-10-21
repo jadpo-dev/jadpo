@@ -1422,3 +1422,72 @@ fn only_a_test_builds_a_first_sign_in() {
         "{found:?}"
     );
 }
+
+/// A record only anyone at all may create, which the system never may.
+const SIGN_UP: &str = r#"entity SignUp {
+    id: Uuid
+    address: Email
+
+    policy: {
+        create: [GRANTS]
+        read: [Access.system]
+    }
+}
+"#;
+
+/// `on_first_sign_in:`'s action runs as the system, which a grant
+/// naming only `Access.public` never lets in (chunk 7.9b).
+#[test]
+fn on_first_sign_in_runs_as_the_system() {
+    let code = |grants: &str| {
+        format!(
+            "{}\n/// Signs a new member up, noting the address.\naction create_member(first: FirstSignIn) -> Member.id {{\n    var address: Email = match first.address {{\n        some(given) -> given\n        none -> \"nobody@notes.example\"\n    }}\n    var noted: SignUp = SignUp.create {{\n        set: {{\n            address: address\n        }}\n    }}\n    var member: Member = Member.create {{\n        set: {{\n            email: address\n            nickname: \"new\"\n            backup: noted.address\n        }}\n    }}\n    return member.id\n}}\n",
+            SIGN_UP.replace("GRANTS", grants)
+        )
+    };
+    let found = with(SENDS, LINK, FIRST, &code("Access.public"));
+    assert!(
+        has(
+            &found,
+            "policy.system_grant_missing: `create_member` runs as the system, which only `Access.public` lets create `SignUp`"
+        ),
+        "{found:?}"
+    );
+    let found = with(SENDS, LINK, FIRST, &code("Access.public, Access.system"));
+    assert!(!has(&found, "policy.system_grant_missing"), "{found:?}");
+}
+
+/// The magic-link `send:` action runs as the system too.
+#[test]
+fn the_apps_own_sending_runs_as_the_system() {
+    let entity = |grants: &str| {
+        (
+            "domains/accounts/entities/sign_up.jadpo",
+            SIGN_UP.replace("GRANTS", grants),
+        )
+    };
+    let send = (
+        "domains/accounts/actions/send_sign_in_link.jadpo",
+        "use accounts/entities { SignUp }\n\n/// Notes who asked, then hands the link to the application's own sender.\naction send_sign_in_link(request: MagicLinkRequest) -> Unit {\n    var noted: SignUp = SignUp.create {\n        set: {\n            address: request.address\n        }\n    }\n}\n",
+    );
+    let public = entity("Access.public");
+    let found = project(
+        NAMED,
+        "send: accounts.send_sign_in_link",
+        &[send, (public.0, public.1.as_str())],
+    );
+    assert!(
+        has(
+            &found,
+            "policy.system_grant_missing: `accounts.send_sign_in_link` runs as the system, which only `Access.public` lets create `SignUp`"
+        ),
+        "{found:?}"
+    );
+    let both = entity("Access.public, Access.system");
+    let found = project(
+        NAMED,
+        "send: accounts.send_sign_in_link",
+        &[send, (both.0, both.1.as_str())],
+    );
+    assert!(!has(&found, "policy.system_grant_missing"), "{found:?}");
+}
