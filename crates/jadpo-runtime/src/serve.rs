@@ -163,6 +163,6 @@ impl Serving {
 
     /// How often the host's timer ticks for the version being served now.
     pub fn tick_every_ms(&self) -> u64 {
-        schedules::tick_every_ms(self.program().schedules())
+        schedules::tick_every_ms(self.program().plan().schedules())
     }
 }

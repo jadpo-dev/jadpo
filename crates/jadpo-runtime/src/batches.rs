@@ -551,7 +551,7 @@ async fn run_inner(
     start: &BatchStart,
     left: &mut Vec<Deferred>,
 ) -> Ran {
-    let Some(batches) = executor.batches() else {
+    let Some(batches) = executor.plan().batches() else {
         return Ran::Failed("the program runs no batches".into());
     };
     let Some(database) = host.database(&start.store) else {
@@ -738,7 +738,7 @@ async fn step(
         seed: None,
         clock: Clock::fixed(now),
     };
-    let mut ctx = Ctx::new(executor.places(), host, env);
+    let mut ctx = Ctx::of(executor, host, env);
     // Its items run as deep in a chain of events as the action that
     // started the run, so what they emit is one deeper than the event
     // that set it off, and a loop through a batch stops as any does
@@ -1378,7 +1378,7 @@ fn with_at(value: &Value, path: &[String], new: Value) -> Value {
 /// from each store, oldest first.
 pub async fn waiting(executor: &dyn Executor, host: &dyn Host, now: i64) -> Vec<BatchStart> {
     let mut out = Vec::new();
-    let Some(batches) = executor.batches() else {
+    let Some(batches) = executor.plan().batches() else {
         return out;
     };
     let mut stores: Vec<&str> = batches
@@ -1454,7 +1454,7 @@ pub async fn resume_within(
 /// never deleted. How many runs and cancels it deleted.
 pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
     use crate::schedules::{DELETE_BATCH, DELETE_BATCHES};
-    let Some(batches) = executor.batches() else {
+    let Some(batches) = executor.plan().batches() else {
         return 0;
     };
     let mut stores: Vec<&str> = batches

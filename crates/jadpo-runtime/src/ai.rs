@@ -102,7 +102,7 @@ pub enum Done {
 
 /// The settings a call reads, by number, for its model and its address,
 /// and for a package filling `ai` every other its operation's call reads:
-/// the executor gives their values to [`generate`].
+/// [`generate`] reads their values at the call's context.
 pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
     let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
     // The day's cost limit, a `Money` setting (chunk 5.5v5).
@@ -259,10 +259,73 @@ enum Via<'p> {
     },
 }
 
+/// An `ai` call's site in a program, as an executor hands it to
+/// [`generate`], [`crate::stream::stream`] or [`crate::embed::embed`]
+/// (chunk 7.9e): the plan it is made in and its site as the plan decodes
+/// it.
+pub struct Calling<'a, S> {
+    pub plan: crate::RuntimePlan<'a>,
+    pub site: &'a S,
+}
+
+impl<S> Clone for Calling<'_, S> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S> Copy for Calling<'_, S> {}
+
+impl<S> std::fmt::Debug for Calling<'_, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Calling").finish_non_exhaustive()
+    }
+}
+
+impl<'a, S> Calling<'a, S> {
+    /// What the call runs with, its credentials from `started`, and the
+    /// values of the settings `read` names it reads at `ctx`: a test's
+    /// own, else the ones the program started with. The fault its site
+    /// raises, saying `what`, in a program that asks no model.
+    pub(crate) fn ai(
+        self,
+        ctx: &Ctx<'_>,
+        started: &'a crate::Started,
+        read: impl FnOnce(&Ai<'a>) -> Vec<u32>,
+        what: &str,
+    ) -> Result<(Ai<'a>, Vec<(u32, Value)>), Done> {
+        let Some(ai) = self.plan.ai(started) else {
+            return Err(Done::Fault(FaultKind::Defect(what.to_string())));
+        };
+        let settings = ctx.settings_of(read(&ai));
+        Ok((ai, settings))
+    }
+}
+
 /// Asks the model for an answer to `prompt`, a value of the prompt's type
-/// `site` renders, as `site`'s type; `settings` gives the values of the
-/// settings [`settings_read`] names.
+/// `calling.site` renders, as the site's type: what both executors run at
+/// an `ai.generate` call's site.
 pub async fn generate(
+    ctx: &mut Ctx<'_>,
+    calling: Calling<'_, GenerateSite>,
+    prompt: Value,
+) -> Done {
+    let started = ctx.started();
+    let (ai, settings) = match calling.ai(
+        ctx,
+        &started,
+        |ai| settings_read(ai, calling.site),
+        "a model asked in a program that names none",
+    ) {
+        Ok(made) => made,
+        Err(done) => return done,
+    };
+    generated(ctx, &ai, calling.site, prompt, &settings).await
+}
+
+/// [`generate`], with `ai` and the values `settings` gives the settings
+/// [`settings_read`] names.
+async fn generated(
     ctx: &mut Ctx<'_>,
     ai: &Ai<'_>,
     site: &GenerateSite,
@@ -1864,7 +1927,7 @@ mod tests {
                 let model =
                     jadpo_value::standard::parse("local/llama3.2", "ModelId").expect("a model");
                 let prompt = Value::record("AnswerQuestion", Vec::new());
-                match generate(ctx, &self.ai, self.site, prompt, &[(0, model)]).await {
+                match generated(ctx, &self.ai, self.site, prompt, &[(0, model)]).await {
                     Done::Value(value) => self.answers.push(value),
                     other => panic!("{other:?}"),
                 }
@@ -2108,7 +2171,7 @@ mod tests {
         );
         let model = jadpo_value::standard::parse("local/llama3.2", "ModelId").expect("a model");
         let prompt = Value::record("AnswerQuestion", Vec::new());
-        let done = crate::block_on(generate(&mut ctx, &ai, &site, prompt, &[(0, model)]))
+        let done = crate::block_on(generated(&mut ctx, &ai, &site, prompt, &[(0, model)]))
             .expect("nothing waits");
         assert!(matches!(done, Done::Value(_)), "{done:?}");
         assert_eq!(fake.requests("local_model", "answer_question").len(), 2);

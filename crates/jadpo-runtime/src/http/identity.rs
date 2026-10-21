@@ -246,9 +246,11 @@ pub(crate) async fn authenticate(
     let Some(identity) = &table.identity else {
         return Err(Refused::new(INVALID_CREDENTIALS));
     };
+    // What signing in reads, as the program started with it.
+    let started = ctx.started();
     let signing = Signing {
         identity,
-        settings: app.auth,
+        settings: started.auth(),
         route,
     };
     if let Some(token) = found.cookies.first().copied() {
@@ -338,7 +340,7 @@ pub(crate) async fn authenticate(
         if matches!(route.run, Run::Exchange) {
             let (Some(delay), Some(signer), SqlValue::Uuid(principal)) = (
                 identity.revocation_delay_ms,
-                app.auth.key(AuthenticationMethod::ServiceKey),
+                started.auth().key(AuthenticationMethod::ServiceKey),
                 id,
             ) else {
                 return Err(Refused::new(AUTHENTICATION_MISCONFIGURED));

@@ -822,7 +822,7 @@ pub async fn run_now(
         seed: None,
         clock: Clock::fixed(now),
     };
-    let mut ctx = Ctx::new(executor.places(), host, env);
+    let mut ctx = Ctx::of(executor, host, env);
     let run = ctx
         .new_id()
         .ok_or_else(|| StoreError::Fault("no random bytes for a run's id".into()))?;

@@ -1336,8 +1336,11 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         }
         let runtime = jadpo_host_native::Runtime::new()
             .map_err(|error| jadpo_runtime::StoreError::Fault(error.to_string()))?;
-        let plan = jadpo_runtime::Executor::schedules(&program)
-            .and_then(|plan| plan.schedule(&key).cloned())
+        let plan = program
+            .plan()
+            .schedules()
+            .schedule(&key)
+            .cloned()
             .ok_or_else(|| {
                 jadpo_runtime::StoreError::Fault(format!("no schedule `{key}` to run"))
             })?;

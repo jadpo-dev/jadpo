@@ -32,7 +32,6 @@ use jadpo_value::Value;
 
 use crate::budget::Budget;
 use crate::outbox::{Delivery, micros};
-use crate::provider::Providers;
 use crate::runner::Deferred;
 use crate::webhooks::{Kept, keep_claimed};
 use crate::{Ctx, Executor, SqlValue, StoreError};
@@ -55,14 +54,6 @@ pub const AGAIN: &str = "UPDATE \"jadpo_polls\" SET \"next_at\" = $2 WHERE \"pol
 /// already: a row when the answer changed.
 pub const CHANGED: &str = "UPDATE \"jadpo_polls\" SET \"digest\" = $2, \"last_change\" = $3 WHERE \"poll\" = $1 AND \"digest\" IS DISTINCT FROM $2 RETURNING \"poll\"";
 
-/// What the runtime runs a program's polls with: their plan, and how a
-/// call through their connections is made.
-#[derive(Clone, Copy, Debug)]
-pub struct Polls<'a> {
-    pub polls: &'a [PollPlan],
-    pub providers: Providers<'a>,
-}
-
 /// What one tick's polls did.
 #[derive(Debug, Default)]
 pub struct Polled {
@@ -78,11 +69,11 @@ pub struct Polled {
 /// Runs every poll of `executor`'s that is due at `now`, within `budget`.
 pub async fn poll(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> Polled {
     let mut out = Polled::default();
-    let Some(polls) = executor.polls() else {
+    let Some(polls) = executor.plan().polls() else {
         return out;
     };
     let host = budget.host();
-    for plan in polls.polls {
+    for plan in polls {
         if budget.spent() {
             break;
         }
@@ -121,7 +112,7 @@ pub async fn poll(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> Pol
         };
         out.called += 1;
         let mut ctx = crate::receiving::system_ctx(executor, host, now);
-        match taken(executor, &polls, plan, &mut ctx, last).await {
+        match taken(executor, plan, &mut ctx, last).await {
             Ok(Some(deliveries)) => {
                 out.changed += 1;
                 if !deliveries.is_empty() {
@@ -151,22 +142,16 @@ pub async fn poll(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> Pol
 /// for an answer that changed nothing.
 async fn taken(
     executor: &dyn Executor,
-    polls: &Polls<'_>,
     plan: &PollPlan,
     ctx: &mut Ctx<'_>,
     last: Option<String>,
 ) -> Result<Option<Vec<Delivery>>, StoreError> {
-    let Some(events) = executor.events() else {
+    let Some(events) = executor.plan().events() else {
         return Err(StoreError::Fault("a program with no events".into()));
     };
-    let answer = crate::receiving::call_through(
-        executor,
-        &polls.providers,
-        (&plan.connection, &plan.operation),
-        ctx,
-        None,
-    )
-    .await?;
+    let answer =
+        crate::receiving::call_through(executor, (&plan.connection, &plan.operation), ctx, None)
+            .await?;
     let named = format!("`{}.{}`", plan.connection, plan.operation);
     let Value::Record(record) = &answer else {
         return Err(StoreError::Fault(format!("{named} gave no object")));

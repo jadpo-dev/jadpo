@@ -392,7 +392,7 @@ pub struct Tally {
 /// carries on with what this one didn't reach. What it did.
 pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked {
     let mut ticked = Ticked::default();
-    let Some(plan) = executor.schedules() else {
+    let Some(plan) = executor.plan().schedules() else {
         return ticked;
     };
     let budget = Budget::start(host, Invocation::Tick);
@@ -804,7 +804,7 @@ async fn serve(
         seed: None,
         clock: Clock::fixed(now),
     };
-    let ctx = Ctx::new(executor.places(), host, env);
+    let ctx = Ctx::of(executor, host, env);
     let claimed = Claimed {
         lease,
         due_slot: now,
@@ -834,7 +834,7 @@ async fn take_due(
         seed: None,
         clock: Clock::fixed(now),
     };
-    let mut ctx = Ctx::new(executor.places(), host, env);
+    let mut ctx = Ctx::of(executor, host, env);
     let skipped = if state.paused {
         Some(Skipped::Paused)
     } else if state.lease_until.is_some_and(|until| until > now) {
@@ -1173,7 +1173,9 @@ async fn run_purge(
         code: code.to_string(),
         kind: kind.map(str::to_string),
     };
-    let Some((plan, after)) = executor.purge(entity) else {
+    // How long it waits, as the program started with it.
+    let started = executor.started().unwrap_or_else(crate::started::unstarted);
+    let Some((plan, after)) = executor.plan().purge(entity, &started) else {
         return (failed("internal_fault", None), None);
     };
     let run = crate::purge::purge_after(host, plan, now, crate::PURGE_BATCHES, after.unwrap_or(0));

@@ -58,10 +58,9 @@ pub struct Spec<'a> {
     pub action: &'a str,
     /// The build it runs under.
     pub build: &'a str,
-    /// The key settings' keys, and the number of the `SigningKey` setting
-    /// `application { steps: { encryption_key: } }` names, whose ring the
-    /// record's keys are derived from.
-    pub keys: &'a crate::effects::Keys,
+    /// The number of the `SigningKey` setting `application { steps: {
+    /// encryption_key: } }` names, whose ring, as the program started with
+    /// it, the record's keys are derived from.
     pub setting: Option<u32>,
 }
 
@@ -397,7 +396,8 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
     let (Some(spec), Some(generation)) = (spec, ctx.resumable()) else {
         return Ok(false);
     };
-    let Some(ring) = spec.setting.and_then(|at| spec.keys.get(at)) else {
+    let started = ctx.started();
+    let Some(ring) = spec.setting.and_then(|at| started.keys().get(at)) else {
         return Err(Unanswered::Fault(FaultKind::Defect(
             "the key `application { steps: { encryption_key: } }` names has no value in this run"
                 .into(),

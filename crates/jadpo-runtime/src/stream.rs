@@ -659,9 +659,29 @@ pub fn settings_read(ai: &Ai<'_>, site: &StreamSite) -> Vec<u32> {
 }
 
 /// Asks the model for its answer to `prompt`, a value of the prompt's
-/// type `site` renders, as it is written; `settings` gives the values of
-/// the settings [`settings_read`] names.
+/// type `calling.site` renders, as it is written: what both executors run
+/// at an `ai.stream` call's site.
 pub async fn stream(
+    ctx: &mut Ctx<'_>,
+    calling: crate::ai::Calling<'_, StreamSite>,
+    prompt: Value,
+) -> Done {
+    let started = ctx.started();
+    let (ai, settings) = match calling.ai(
+        ctx,
+        &started,
+        |ai| settings_read(ai, calling.site),
+        "a model asked in a program that names none",
+    ) {
+        Ok(made) => made,
+        Err(done) => return done,
+    };
+    streamed(ctx, &ai, calling.site, prompt, &settings).await
+}
+
+/// [`stream`], with `ai` and the values `settings` gives the settings
+/// [`settings_read`] names.
+async fn streamed(
     ctx: &mut Ctx<'_>,
     ai: &Ai<'_>,
     site: &StreamSite,

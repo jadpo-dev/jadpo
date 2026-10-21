@@ -103,6 +103,7 @@ pub mod outbox;
 mod outcome;
 mod outside;
 mod places;
+mod plan;
 mod policy;
 pub mod polls;
 pub mod prompt_recordings;
@@ -120,6 +121,7 @@ pub mod schedules;
 pub mod serve;
 pub mod sigv4;
 pub mod slots;
+mod started;
 pub mod statements;
 pub mod steps;
 mod store;
@@ -154,6 +156,7 @@ pub use migrate::{
 };
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};
+pub use plan::RuntimePlan;
 pub use policy::{admit, call_as};
 pub use purge::{PURGE_BATCHES, Purged, purge, purge_after};
 pub use ratelimit::{Allowed, RateLimits};
@@ -162,4 +165,5 @@ pub use read::{
     not_permitted, stored_value, to_sql, uuid_text,
 };
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
+pub use started::Started;
 pub use store::{StoreOp, Stored, store};

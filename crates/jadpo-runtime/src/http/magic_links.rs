@@ -183,7 +183,8 @@ async fn run(
     request_id: &str,
     step: MagicLinkStep,
 ) -> Result<Response, Stop> {
-    let (Some(plan), Some(origin)) = (app.table.identity.as_ref(), app.auth.origin()) else {
+    let started = ctx.started();
+    let (Some(plan), Some(origin)) = (app.table.identity.as_ref(), started.auth().origin()) else {
         return Err(stop(AUTHENTICATION_MISCONFIGURED, request_id));
     };
     let Some(magic) = plan.magic_links.as_ref() else {
@@ -415,6 +416,7 @@ impl Site<'_> {
     fn locale(&self, asked: Option<u32>, accept: Option<&str>) -> Option<u32> {
         let email = self
             .executor
+            .plan()
             .events()
             .and_then(|events| events.plan.emails.email(MAGIC_LINK_EMAIL).cloned())?;
         let jadpo_std::email::BuiltinEmail::MagicLink(mail) = email.builtin.as_ref()?;
@@ -1697,7 +1699,6 @@ pub(crate) struct Minted {
 /// their verifiers and the address sealed under the link's token. `Err`
 /// with what the delivery is settled with when it can't.
 pub(crate) async fn mint(
-    executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     plan: &MagicLinkEmailPlan,
     value: &Value,
@@ -1713,12 +1714,8 @@ pub(crate) async fn mint(
     let Some(request) = parse_uuid(request) else {
         return Err("a magic-link email whose request isn't an id");
     };
-    let origin = match ctx
-        .setting(plan.origin)
-        .cloned()
-        .or_else(|| executor.setting(plan.origin))
-    {
-        Some(Value::Text(origin)) => super::signed::origin_of(&origin),
+    let origin = match ctx.setting(plan.origin) {
+        Some(Value::Text(origin)) => super::signed::origin_of(origin),
         _ => None,
     };
     let Some(origin) = origin else {
@@ -1764,7 +1761,6 @@ pub(crate) async fn mint(
 /// locale the request chose. `Ok(None)` when the request was used,
 /// replaced or has expired since, and nothing is sent.
 pub(crate) async fn request_value(
-    executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     plan: &MagicLinkEmailPlan,
     value: &Value,
@@ -1776,7 +1772,7 @@ pub(crate) async fn request_value(
     let Some(locale @ Value::Variant(_)) = locale else {
         return Err("a magic-link email with no locale");
     };
-    let Some(minted) = mint(executor, ctx, plan, value).await? else {
+    let Some(minted) = mint(ctx, plan, value).await? else {
         return Ok(None);
     };
     Ok(Some(Value::record(

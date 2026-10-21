@@ -247,7 +247,7 @@ pub(crate) fn read_payload(key: &str, payload: &str) -> Option<Result<Value, Str
 
 /// The identity keys of the subscribers that listen for `event`.
 fn listening(executor: &dyn Executor, event: &SignInEvent) -> Vec<String> {
-    executor.events().map_or_else(Vec::new, |events| {
+    executor.plan().events().map_or_else(Vec::new, |events| {
         events
             .plan
             .subscribers_of(event.key())

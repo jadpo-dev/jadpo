@@ -384,7 +384,7 @@ async fn drive(
             seed: None,
             clock: Clock::fixed(now),
         };
-        let mut ctx = Ctx::new(executor.places(), host, env);
+        let mut ctx = Ctx::of(executor, host, env);
         let outcome = match piece {
             Piece::Delivery(delivery) => {
                 attempt_delivery(executor, &mut ctx, budget, delivery, None)
@@ -488,6 +488,7 @@ pub(crate) async fn attempt_delivery(
         && let Some(log) = ctx.host().call_log()
     {
         let name = executor
+            .plan()
             .events()
             .and_then(|events| events.plan.subscriber(&subscriber))
             .map_or(subscriber.as_str(), |plan| plan.name.as_str());
@@ -522,7 +523,7 @@ async fn attempt(
             PENDING,
         ));
     }
-    let events = executor.events()?;
+    let events = executor.plan().events()?;
     let host = ctx.host();
     let database = host.database(&delivery.store)?;
     // Its lease, and its next attempt, count from when it is claimed: the
@@ -800,8 +801,7 @@ async fn attempt(
                 .map(|jadpo_std::email::BuiltinEmail::MagicLink(plan)| plan.clone());
             let made = match &plan {
                 Some(plan) => {
-                    crate::http::magic_links::request_value(executor, ctx, plan, &delivery.value)
-                        .await
+                    crate::http::magic_links::request_value(ctx, plan, &delivery.value).await
                 }
                 None => Err("a sign-in email this build doesn't have"),
             };
@@ -1033,7 +1033,7 @@ pub(crate) async fn sweep_within(
     store: &str,
     now: i64,
 ) -> Result<Vec<Outcome>, StoreError> {
-    let Some(events) = executor.events() else {
+    let Some(events) = executor.plan().events() else {
         return Ok(Vec::new());
     };
     let work = due(&events, host, store, now).await?;
@@ -1517,7 +1517,7 @@ impl crate::Backfills for InJadpo<'_> {
             _ => None,
         };
         let host = MemoryHost::new();
-        let mut ctx = Ctx::new(self.executor.places(), &host, Env::default());
+        let mut ctx = Ctx::of(self.executor, &host, Env::default());
         let mut out: Vec<SqlValue> = Vec::with_capacity(rows.len());
         let mut stop: Option<Unworked> = None;
         let places = self.executor.places();

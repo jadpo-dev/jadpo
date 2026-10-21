@@ -202,6 +202,11 @@ pub struct Ctx<'p> {
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
+    /// What the program running in it started with (chunk 7.9e): its
+    /// settings' values, keys, credentials, sign-in settings, how a
+    /// request's client address is chosen and its purges' periods. `None`
+    /// until the runtime gives it ([`Ctx::of`], [`Ctx::start`]).
+    started: Option<std::rc::Rc<crate::Started>>,
     /// What background work carries while it runs.
     background: Background,
     /// What it reaches outside itself, through its host.
@@ -305,6 +310,7 @@ impl<'p> Ctx<'p> {
             unpoliced: false,
             deadline: None,
             settings: Vec::new(),
+            started: None,
             background: Background::default(),
             capabilities: Capabilities::new(host, env.seed),
             call_key: None,
@@ -319,6 +325,51 @@ impl<'p> Ctx<'p> {
             shown: Vec::new(),
             streams: Vec::new(),
             ai_spent: (0, 0),
+        }
+    }
+
+    /// A context for one invocation of `executor`'s program on `host`,
+    /// under `env`: its frames named from the program's places, and what
+    /// the program started with given to it (chunk 7.9e). What the
+    /// runtime makes a context with for work of its own: a request, a
+    /// delivery, a tick.
+    pub fn of(executor: &'p dyn crate::Executor, host: &'p dyn Host, env: Env) -> Ctx<'p> {
+        let mut ctx = Ctx::new(executor.places(), host, env);
+        if let Some(started) = executor.started() {
+            ctx.start(started);
+        }
+        ctx
+    }
+
+    /// Gives it what the program running in it started with: its
+    /// settings' values and what is held apart from them (chunk 7.9e).
+    pub fn start(&mut self, started: std::rc::Rc<crate::Started>) {
+        self.started = Some(started);
+    }
+
+    /// Gives it what `executor`'s program started with, unless it has
+    /// been given that already: a context made from the program's places
+    /// alone, as a test's harness makes one, reaches the program's
+    /// start-up state as the program first runs in it.
+    pub fn start_from(&mut self, executor: &dyn crate::Executor) {
+        if self.started.is_none()
+            && let Some(started) = executor.started()
+        {
+            self.started = Some(started);
+        }
+    }
+
+    /// Whether it has been given what its program started with.
+    pub fn is_started(&self) -> bool {
+        self.started.is_some()
+    }
+
+    /// What the program running in it started with (chunk 7.9e): nothing,
+    /// no setting with a value, until it is given that.
+    pub fn started(&self) -> std::rc::Rc<crate::Started> {
+        match &self.started {
+            Some(started) => std::rc::Rc::clone(started),
+            None => crate::started::unstarted(),
         }
     }
 
@@ -1106,13 +1157,27 @@ impl<'p> Ctx<'p> {
         self.settings = settings;
     }
 
-    /// The value this invocation gives setting number `at`, if it has its
-    /// own.
+    /// The value setting number `at` has in this invocation, read one way
+    /// wherever a setting is read (chunk 7.9e): its own, a test's
+    /// `config:` (area 13), else the one its program started with. `None`
+    /// when neither gives one, and for a secret, which code never reads.
     pub fn setting(&self, at: u32) -> Option<&Value> {
         self.settings
             .iter()
             .find(|(number, _)| *number == at)
             .map(|(_, value)| value)
+            .or_else(|| self.started.as_deref()?.setting(at))
+    }
+
+    /// The values of the settings numbered `numbers` in this invocation,
+    /// each read as [`Ctx::setting`] reads it: what a call's site hands the
+    /// part of the runtime that makes its request, its address's and its
+    /// model's settings among them. One no value reached is left out.
+    pub fn settings_of(&self, numbers: impl IntoIterator<Item = u32>) -> Vec<(u32, Value)> {
+        numbers
+            .into_iter()
+            .filter_map(|at| Some((at, self.setting(at)?.clone())))
+            .collect()
     }
 
     /// `clock.now`: the time the invocation's clock reads, in milliseconds

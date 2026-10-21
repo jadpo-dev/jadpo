@@ -158,13 +158,6 @@ pub struct App<'a> {
     /// The codecs a JSON-held column a route's query reads is read with
     /// (chunk 5.5w2b): the plan's JSON table's.
     pub json: crate::JsonCodecs<'a>,
-    /// What signing in reads from the settings the application started
-    /// with: each method's signing key and the browser session's origin
-    /// (area 8; area 10, "Signing keys").
-    pub auth: &'a signed::AuthSettings,
-    /// How the address a request counts as is chosen from its headers and
-    /// its connection (area 10, "Client addresses").
-    pub client: &'a address::ClientAddress,
 }
 
 /// The failures the runtime answers with itself (area 7, "How failures
@@ -313,7 +306,7 @@ pub async fn serve_request(
         seed: None,
         clock: Clock::fixed(now),
     };
-    let mut ctx = Ctx::new(executor.places(), host, env);
+    let mut ctx = Ctx::of(executor, host, env);
     let id = request_id(&ctx, answered);
     let mut response =
         answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await;
@@ -325,7 +318,8 @@ pub async fn serve_request(
 
 /// Answers `request` with `app`'s routes, running what a route runs with
 /// `executor` against `ctx`, whose stack is empty: what a route test's
-/// request goes through, in the test's own context.
+/// request goes through, in the test's own context, which reaches what the
+/// program started with.
 pub async fn handle(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -333,6 +327,7 @@ pub async fn handle(
     request: &Request,
     request_id: &str,
 ) -> Response {
+    ctx.start_from(executor);
     answer_request(app, executor, ctx, request, request_id, None).await
 }
 
@@ -346,7 +341,9 @@ async fn answer_request(
 ) -> Response {
     // A request is never the system, whatever context it is answered in.
     ctx.background_mut().set_system(None);
-    ctx.set_client(app.client.of(request));
+    // Its client's address, chosen as the program started choosing it.
+    let client = ctx.started().client().of(request);
+    ctx.set_client(client);
     // The cookie binding a `same_browser:` magic link to this browser, for
     // `magic_links.redeem` in the application's own route (chunk 7.3b3).
     ctx.set_sign_in_cookie(
@@ -398,7 +395,8 @@ async fn respond(
     // A webhook's route is the runtime's own (area 11, "Receiving from
     // outside"; chunk 7.7), counted against its address before anything
     // in it is read, whatever credential it carries.
-    let webhooks = executor.webhooks();
+    let started = ctx.started();
+    let webhooks = executor.plan().webhooks(&started);
     let webhook = segments
         .as_ref()
         .zip(webhooks.as_ref())
@@ -1696,7 +1694,9 @@ pub async fn test_request(
         }
     }
     if let Some(caller) = caller {
-        let headers = identity::test_credentials(ctx, app.table, app.auth, route, caller).await?;
+        let started = ctx.started();
+        let headers =
+            identity::test_credentials(ctx, app.table, started.auth(), route, caller).await?;
         request.headers.extend(headers);
     }
     Ok(Some(request))

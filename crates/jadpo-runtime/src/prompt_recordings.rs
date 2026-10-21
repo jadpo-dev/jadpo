@@ -17,8 +17,8 @@
 //! of the repository as placeholders, as a provider's recording does
 //! (area 11, chunk 7.2d2): each is filled with a generated value of its
 //! type when the recording is read. [`check`] is what `jadpo test` runs
-//! for each one: the answer decoded through every type the prompt's calls
-//! ask for. [`answer`] is what a test's `recorded("<name>")` answers with.
+//! for each one ([`check_file`]): the answer decoded through every type the
+//! prompt's calls ask for. [`answer`] is what a test's `recorded("<name>")` answers with.
 //! [`recording_text`] is what `jadpo ai record` keeps (chunk 5.5v4b), asked
 //! with a prompt's values `jadpo dev` logged ([`values_written`],
 //! [`values_read`]).
@@ -110,6 +110,21 @@ pub fn answer_at(
         uuid: &mut uuid,
     };
     answer(json, number, text, &mut making)
+}
+
+/// Reads the recording of a prompt's answer at `file` in `plan` through
+/// each type its prompt is asked for as ([`check`]), at `ctx`: what `jadpo
+/// test` runs for each. `None` when the plan holds no such recording.
+pub fn check_file(
+    plan: &crate::RuntimePlan<'_>,
+    ctx: &mut Ctx<'_>,
+    file: &str,
+) -> Option<Result<(), Unread>> {
+    let recording = plan
+        .prompt_recordings
+        .iter()
+        .find(|recording| recording.file == file)?;
+    Some(check(ctx, &plan.json, recording))
 }
 
 /// Reads `recording` as `jadpo test` does (chunk 5.5v4): one JSON object

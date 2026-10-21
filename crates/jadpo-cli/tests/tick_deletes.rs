@@ -377,7 +377,7 @@ fn load(name: &str) -> Option<(Program, jadpo_test::database::TestDatabases, Sto
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let plan = program.schedules().expect("the tick's plan");
+    let plan = program.runtime_plan().schedules().expect("the tick's plan");
     assert_eq!(plan.stores, ["main", "tallies"]);
     assert_eq!(plan.sessions.as_deref(), Some("main"));
     assert_eq!(plan.keys.as_deref(), Some("tallies"));

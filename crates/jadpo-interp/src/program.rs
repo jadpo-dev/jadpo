@@ -7,6 +7,7 @@
 //! a `Program` on each thread it runs tests on.
 
 use std::fmt;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use jadpo_db::{Db, Project};
@@ -15,7 +16,7 @@ use jadpo_graph::Key;
 use jadpo_plan::{ConstId, FailureId, Plan, ShapeId, ValidatorId};
 use jadpo_runtime::{
     CallablePlace, Ctx, Env, Executor, Failure, FaultKind, Frame, LocalFuture, MemoryHost, Outcome,
-    Places, Report, SitePlace,
+    Places, Report, RuntimePlan, SitePlace, Started,
 };
 use jadpo_value::{Validator, Value};
 
@@ -185,25 +186,12 @@ pub struct Program {
     /// Whether constructions the checker proved are checked again as they
     /// run ([`Program::with_proof_checks`]).
     proof_checks: bool,
-    /// The settings' values, decoded, by the setting's number in the plan:
-    /// `None` for one no value reached ([`Program::with_config`]).
-    settings: Vec<Option<Value>>,
-    /// The key settings' keys: what a `crypto` call's `key:
-    /// config.<name>` gives it (area 19).
-    keys: jadpo_runtime::effects::Keys,
-    /// Each provider connection's credential, held apart as the keys are,
-    /// since code never reads one (area 11; chunk 7.2c).
-    credentials: jadpo_runtime::provider::Credentials,
-    /// What signing in reads from them: the signing keys and the browser
-    /// session's origin (area 8).
-    auth: jadpo_runtime::http::signed::AuthSettings,
-    /// How a request's client address is chosen (area 10, "Client
-    /// addresses").
-    client: jadpo_runtime::http::address::ClientAddress,
-    /// How long each purge waits, in milliseconds, in the order of the
-    /// plan's purges: its `after:`, or the value of the setting it reads
-    /// (chunk 6.2c); `None` when that holds no duration.
-    purge_after: Vec<Option<i64>>,
+    /// What it started with (chunk 7.9e): its settings' values, decoded,
+    /// and what is held apart from them, the keys, the credentials, what
+    /// signing in reads, how a client's address is chosen and how long
+    /// each purge waits ([`Program::with_config`]). Every context its
+    /// callables run in reaches it.
+    started: Rc<Started>,
 }
 
 /// Why a call couldn't start.
@@ -255,41 +243,15 @@ impl Program {
                 &|_: &mut [u8]| false,
             )
             .ok();
-        let settings = values
-            .as_ref()
-            .map(|values| Self::decoded(&prepared, values))
-            .unwrap_or_default();
-        let keys = values
-            .as_ref()
-            .map(|values| jadpo_runtime::effects::Keys::read(prepared.plan.config(), values))
-            .unwrap_or_default();
-        let credentials = values
-            .as_ref()
-            .map(|values| {
-                jadpo_runtime::provider::Credentials::read(prepared.plan.providers(), values)
-            })
-            .unwrap_or_default();
-        let auth = values
-            .as_ref()
-            .map(|values| Self::auth(&prepared, values))
-            .unwrap_or_default();
-        let client = values
-            .as_ref()
-            .map(|values| Self::client(&prepared, values))
-            .unwrap_or_default();
-        let purge_after = Self::purge_periods(&prepared, values.as_ref());
-        Program {
+        let mut program = Program {
             prepared,
             constants,
             shapes,
             proof_checks: false,
-            settings,
-            keys,
-            credentials,
-            auth,
-            client,
-            purge_after,
-        }
+            started: Rc::new(Started::default()),
+        };
+        program.started = Rc::new(program.start(values.as_ref()));
+        program
     }
 
     /// Reads every callable of `project` and prepares it on this thread. A
@@ -310,92 +272,58 @@ impl Program {
     }
 
     /// The same program reading `values` as its settings (area 10): what
-    /// the application started with, or a test run's.
-    /// The key settings' keys, held apart from the values code reads: what
-    /// the runtime derives a record's keys from (chunk 7.5b).
-    pub(crate) fn effect_keys(&self) -> &jadpo_runtime::effects::Keys {
-        &self.keys
-    }
-
+    /// the application started with, or a test run's. The interpreter runs
+    /// natively, in `jadpo dev` and `jadpo test`, so a client's address is
+    /// chosen as on the native target.
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
-        self.settings = Self::decoded(&self.prepared, values);
-        self.keys = jadpo_runtime::effects::Keys::read(self.prepared.plan.config(), values);
-        self.credentials =
-            jadpo_runtime::provider::Credentials::read(self.prepared.plan.providers(), values);
-        self.auth = Self::auth(&self.prepared, values);
-        self.client = Self::client(&self.prepared, values);
-        self.purge_after = Self::purge_periods(&self.prepared, Some(values));
+        self.started = Rc::new(self.start(Some(values)));
         self
     }
 
-    /// How long each of the plan's purges waits with `values` as the
-    /// settings, in milliseconds.
-    fn purge_periods(
-        prepared: &Prepared,
-        values: Option<&jadpo_runtime::config::ConfigValues>,
-    ) -> Vec<Option<i64>> {
-        prepared
-            .plan
-            .purges()
-            .iter()
-            .map(|purge| match (purge.after_setting, values) {
-                (None, _) => Some(purge.after),
-                (Some(_), Some(values)) => prepared.purge_after(values, purge),
-                (Some(_), None) => None,
-            })
-            .collect()
-    }
-
-    /// How the address of a client is chosen with `values` as the
-    /// settings: what `client_address:` says on the native target, or the
-    /// connection's own address.
-    fn client(
-        prepared: &Prepared,
-        values: &jadpo_runtime::config::ConfigValues,
-    ) -> jadpo_runtime::http::address::ClientAddress {
-        jadpo_runtime::http::address::ClientAddress::read(
-            prepared.plan.routes().client_address.as_ref(),
+    /// What it starts with, its settings given `values` (chunk 7.9e).
+    fn start(&self, values: Option<&jadpo_runtime::config::ConfigValues>) -> Started {
+        Started::new(
+            &self.runtime_plan(),
             values,
             jadpo_runtime::http::address::Target::Native,
         )
-        .unwrap_or_default()
     }
 
-    /// What signing in reads from `values`.
-    fn auth(
-        prepared: &Prepared,
-        values: &jadpo_runtime::config::ConfigValues,
-    ) -> jadpo_runtime::http::signed::AuthSettings {
-        jadpo_runtime::http::signed::AuthSettings::read(
-            prepared.plan.routes().identity.as_ref(),
-            values,
-        )
+    /// What it started with: its settings' values and what is held apart
+    /// from them (chunk 7.9e).
+    pub fn started(&self) -> &Rc<Started> {
+        &self.started
     }
 
-    /// The settings `values` hold, decoded, by their numbers.
-    fn decoded(
-        prepared: &Prepared,
-        values: &jadpo_runtime::config::ConfigValues,
-    ) -> Vec<Option<Value>> {
-        let config = prepared.plan.config();
-        config
-            .fields
-            .iter()
-            .enumerate()
-            .map(|(at, field)| {
-                // Code never reads a secret, so none is held here.
-                if field.secret {
-                    return None;
-                }
-                let text = values.text_at(at as u32)?;
-                jadpo_runtime::config::decode(config, &prepared.validators, field, text).ok()
-            })
-            .collect()
+    /// Gives `ctx` what it started with, unless `ctx` was given that
+    /// already: a context made from its places alone, as a test's harness
+    /// makes one, reaches it as one of its callables first runs there.
+    fn start_in(&self, ctx: &mut Ctx<'_>) {
+        if !ctx.is_started() {
+            ctx.start(Rc::clone(&self.started));
+        }
     }
 
-    /// The value of setting number `at`.
-    pub(crate) fn setting(&self, at: u32) -> Option<Value> {
-        self.settings.get(at as usize).cloned().flatten()
+    /// What the runtime reads of its plan (chunk 7.9e), with this thread's
+    /// validators and shapes: what [`Executor::plan`] gives.
+    pub fn runtime_plan(&self) -> RuntimePlan<'_> {
+        let plan = self.plan();
+        RuntimePlan {
+            json: self.stored_json(),
+            failures: plan.types().failures(),
+            config: Some(plan.config()),
+            routes: Some(plan.routes()),
+            events: Some(plan.events()),
+            event_numbers: &plan.json().events,
+            batches: plan.batches(),
+            schedules: Some(plan.schedules()),
+            purges: plan.purges(),
+            file_stores: plan.file_stores(),
+            providers: Some(plan.providers()),
+            ai: plan.ai(),
+            prompts: Some(plan.prompts()),
+            prompt_recordings: plan.prompt_recordings(),
+        }
     }
 
     /// The name of setting number `at`.
@@ -527,30 +455,19 @@ impl Program {
         input: Option<Value>,
     ) -> jadpo_runtime::provider::Done {
         use jadpo_runtime::provider;
-        let providers = self.providers();
-        let settings: Vec<(u32, Value)> = providers
-            .plan
-            .operation(connection, operation)
-            .map(|(plan, _)| provider::settings_read(plan))
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|number| Some((number, self.setting(number)?)))
-            .collect();
+        self.start_in(ctx);
         let whole = jadpo_std::provider::CallSite::default();
-        let site = provider::Site {
-            call: &whole,
-            functions: self,
-            at: Frame::ENTRY,
+        let calling = provider::Calling {
+            plan: self.runtime_plan(),
+            connection,
+            operation,
+            site: provider::Site {
+                call: &whole,
+                functions: self,
+                at: Frame::ENTRY,
+            },
         };
-        provider::call(
-            ctx,
-            &providers,
-            (connection, operation),
-            input,
-            &settings,
-            site,
-        )
-        .await
+        provider::call(ctx, calling, input).await
     }
 
     /// Asks the model prompt `prompt` (`answer_question`) with `value`, a
@@ -564,22 +481,18 @@ impl Program {
         value: Value,
     ) -> Option<jadpo_runtime::ai::Done> {
         let site = self.generate_site_of(prompt)?;
-        let ai = self.ai()?;
         // The developer's own one call, outside any running app, which no
         // store counts against the app's limits (chunk 5.5v5).
-        let unlimited = jadpo_std::ai::AiPlan {
-            limits: None,
-            ..ai.plan.clone()
+        let unlimited = self.unlimited()?;
+        self.start_in(ctx);
+        let calling = jadpo_runtime::ai::Calling {
+            plan: RuntimePlan {
+                ai: Some(&unlimited),
+                ..self.runtime_plan()
+            },
+            site,
         };
-        let ai = jadpo_runtime::ai::Ai {
-            plan: &unlimited,
-            ..ai
-        };
-        let settings: Vec<(u32, Value)> = jadpo_runtime::ai::settings_read(&ai, site)
-            .into_iter()
-            .filter_map(|number| Some((number, self.setting(number)?)))
-            .collect();
-        Some(jadpo_runtime::ai::generate(ctx, &ai, site, value, &settings).await)
+        Some(jadpo_runtime::ai::generate(ctx, calling, value).await)
     }
 
     /// Streams prompt `prompt` with `value`, as the first `ai.stream` call
@@ -600,20 +513,16 @@ impl Program {
                 _ => None,
             })
         })?;
-        let ai = self.ai()?;
-        let unlimited = jadpo_std::ai::AiPlan {
-            limits: None,
-            ..ai.plan.clone()
+        let unlimited = self.unlimited()?;
+        self.start_in(ctx);
+        let calling = jadpo_runtime::ai::Calling {
+            plan: RuntimePlan {
+                ai: Some(&unlimited),
+                ..self.runtime_plan()
+            },
+            site,
         };
-        let ai = jadpo_runtime::ai::Ai {
-            plan: &unlimited,
-            ..ai
-        };
-        let settings: Vec<(u32, Value)> = jadpo_runtime::stream::settings_read(&ai, site)
-            .into_iter()
-            .filter_map(|number| Some((number, self.setting(number)?)))
-            .collect();
-        Some(jadpo_runtime::stream::stream(ctx, &ai, site, value, &settings).await)
+        Some(jadpo_runtime::stream::stream(ctx, calling, value).await)
     }
 
     /// Embeds `text` as the program's first `ai.embed` call does, outside
@@ -631,21 +540,27 @@ impl Program {
                 _ => None,
             })
         })?;
-        let ai = self.ai()?;
-        let unlimited = jadpo_std::ai::AiPlan {
-            limits: None,
-            ..ai.plan.clone()
+        let unlimited = self.unlimited()?;
+        self.start_in(ctx);
+        let calling = jadpo_runtime::ai::Calling {
+            plan: RuntimePlan {
+                ai: Some(&unlimited),
+                ..self.runtime_plan()
+            },
+            site,
         };
-        let ai = jadpo_runtime::ai::Ai {
-            plan: &unlimited,
-            ..ai
-        };
-        let settings: Vec<(u32, Value)> = jadpo_runtime::embed::settings_read(&ai, site)
-            .into_iter()
-            .filter_map(|number| Some((number, self.setting(number)?)))
-            .collect();
         let given = Value::Text(text.into());
-        Some(jadpo_runtime::embed::embed(ctx, &ai, site, given, &settings).await)
+        Some(jadpo_runtime::embed::embed(ctx, calling, given).await)
+    }
+
+    /// The program's `ai:` with no limits: a developer's own call, outside
+    /// any running app, which no store counts (chunk 5.5v5). `None` for a
+    /// program that asks no model.
+    fn unlimited(&self) -> Option<jadpo_std::ai::AiPlan> {
+        Some(jadpo_std::ai::AiPlan {
+            limits: None,
+            ..self.plan().ai()?.clone()
+        })
     }
 
     /// What the runtime's HTTP component answers this program's routes
@@ -663,22 +578,26 @@ impl Program {
             },
             failures: self.plan().types().failures(),
             json: self.stored_json(),
-            auth: &self.auth,
-            client: &self.client,
         }
     }
 
     /// What the runtime's entry point for operations with effects runs
-    /// them with (chunk 7.0b): the plan's JSON table, events and settings,
-    /// and the keys.
+    /// them with (chunk 7.0b): the plan's JSON table, events and settings.
     pub(crate) fn effects(&self) -> jadpo_runtime::effects::Effects<'_> {
         jadpo_runtime::effects::Effects {
             json: self.stored_json(),
             event_numbers: &self.plan().json().events,
             events: self.plan().events(),
             config: self.plan().config(),
-            keys: &self.keys,
         }
+    }
+
+    /// What a provider call runs with (area 11, chunk 7.2c): the plan's
+    /// connections and operations, the JSON codecs their types are written
+    /// and read with, the failures they raise and the credentials it
+    /// started with.
+    pub(crate) fn providers(&self) -> Option<jadpo_runtime::provider::Providers<'_>> {
+        self.runtime_plan().providers(&self.started)
     }
 
     /// What an `ai` call runs with (area 21, chunk 5.5v3): the connection
@@ -686,12 +605,7 @@ impl Program {
     /// fields and the answers' types are written and read with; `None`
     /// for a program that asks no model.
     pub fn ai(&self) -> Option<jadpo_runtime::ai::Ai<'_>> {
-        Some(jadpo_runtime::ai::Ai {
-            plan: self.plan().ai()?,
-            prompts: self.plan().prompts(),
-            json: self.stored_json(),
-            providers: Some(self.providers()),
-        })
+        self.runtime_plan().ai(&self.started)
     }
 
     /// The first `ai.generate` call of prompt `prompt`, as its site
@@ -706,19 +620,6 @@ impl Program {
                 _ => None,
             })
         })
-    }
-
-    /// What a provider call runs with (area 11, chunk 7.2c): the plan's
-    /// connections and operations, the JSON codecs their types are written
-    /// and read with, the failures they raise and the credentials.
-    pub(crate) fn providers(&self) -> jadpo_runtime::provider::Providers<'_> {
-        jadpo_runtime::provider::Providers {
-            plan: self.plan().providers(),
-            json: self.stored_json(),
-            failures: self.plan().types().failures(),
-            credentials: &self.credentials,
-            application: &self.plan().providers().application,
-        }
     }
 
     /// The plan's JSON codecs, with this thread's validators and shapes:
@@ -840,13 +741,21 @@ impl Executor for Program {
     }
 
     fn callable(&self, key: &str) -> Option<u32> {
-        self.plan().find(key)
+        Program::plan(self).find(key)
+    }
+
+    fn plan(&self) -> RuntimePlan<'_> {
+        self.runtime_plan()
+    }
+
+    fn started(&self) -> Option<Rc<Started>> {
+        Some(Rc::clone(&self.started))
     }
 
     fn settings(&self, callable: u32) -> Vec<(u32, Value)> {
-        let config = self.plan().config();
-        self.plan()
-            .callable(callable)
+        let plan = Program::plan(self);
+        let config = plan.config();
+        plan.callable(callable)
             .into_iter()
             .flat_map(|plan| plan.settings.iter())
             .filter_map(|(at, text)| {
@@ -860,78 +769,7 @@ impl Executor for Program {
     }
 
     fn clock(&self, callable: u32) -> Option<i64> {
-        self.plan().callable(callable)?.clock
-    }
-
-    fn setting(&self, at: u32) -> Option<Value> {
-        Program::setting(self, at)
-    }
-
-    fn batches(&self) -> Option<jadpo_runtime::batches::Batches<'_>> {
-        let plans = self.plan().batches();
-        (!plans.is_empty()).then(|| jadpo_runtime::batches::Batches {
-            plans,
-            json: self.stored_json(),
-            failures: self.plan().types().failures(),
-        })
-    }
-
-    fn events(&self) -> Option<jadpo_runtime::outbox::Events<'_>> {
-        Some(jadpo_runtime::outbox::Events {
-            plan: self.plan().events(),
-            json: self.stored_json(),
-            numbers: &self.plan().json().events,
-        })
-    }
-
-    fn webhooks(&self) -> Option<jadpo_runtime::webhooks::Webhooks<'_>> {
-        let plan = &self.plan().providers().webhooks;
-        (!plan.is_empty()).then(|| jadpo_runtime::webhooks::Webhooks {
-            plan,
-            credentials: &self.credentials,
-            json: self.stored_json(),
-        })
-    }
-
-    fn package_calls(&self) -> Option<jadpo_runtime::provider::Providers<'_>> {
-        Some(self.providers())
-    }
-
-    fn receiving(&self) -> Option<jadpo_runtime::receiving::Receiving<'_>> {
-        let queues = &self.plan().providers().queues;
-        (!queues.is_empty()).then(|| jadpo_runtime::receiving::Receiving {
-            queues,
-            providers: self.providers(),
-        })
-    }
-
-    fn polls(&self) -> Option<jadpo_runtime::polls::Polls<'_>> {
-        let polls = &self.plan().providers().polls;
-        (!polls.is_empty()).then(|| jadpo_runtime::polls::Polls {
-            polls,
-            providers: self.providers(),
-        })
-    }
-
-    fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
-        Some(self.plan().schedules())
-    }
-
-    fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
-        self.plan().file_stores()
-    }
-
-    fn provider_connections(&self) -> Vec<&str> {
-        self.plan()
-            .providers()
-            .connections
-            .iter()
-            .map(|connection| connection.name.as_str())
-            .collect()
-    }
-
-    fn ai_connection(&self) -> Option<&str> {
-        self.plan().ai().map(|ai| ai.connection.as_str())
+        Program::plan(self).callable(callable)?.clock
     }
 
     fn recording(
@@ -939,8 +777,7 @@ impl Executor for Program {
         ctx: &mut Ctx<'_>,
         file: &str,
     ) -> Option<Result<(), jadpo_runtime::recorded::Unread>> {
-        let recorded = self
-            .plan()
+        let recorded = Program::plan(self)
             .providers()
             .recorded
             .iter()
@@ -948,6 +785,7 @@ impl Executor for Program {
         let Some(op) = &recorded.plan else {
             return Some(Err(jadpo_runtime::recorded::Unread::NoOperation));
         };
+        self.start_in(ctx);
         Some(jadpo_runtime::recorded::check(
             ctx,
             &self.stored_json(),
@@ -957,35 +795,13 @@ impl Executor for Program {
         ))
     }
 
-    fn prompt_recording(
-        &self,
-        ctx: &mut Ctx<'_>,
-        file: &str,
-    ) -> Option<Result<(), jadpo_runtime::prompt_recordings::Unread>> {
-        let recording = self
-            .plan()
-            .prompt_recordings()
-            .iter()
-            .find(|recording| recording.file == file)?;
-        Some(jadpo_runtime::prompt_recordings::check(
-            ctx,
-            &self.stored_json(),
-            recording,
-        ))
-    }
-
-    fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
-        let purges = self.plan().purges();
-        let at = purges.iter().position(|plan| plan.entity == entity)?;
-        Some((&purges[at], self.purge_after.get(at).copied().flatten()))
-    }
-
     fn run<'a, 'p: 'a>(
         &'a self,
         ctx: &'a mut Ctx<'p>,
         callable: u32,
         args: Vec<Value>,
     ) -> LocalFuture<'a, Outcome> {
+        self.start_in(ctx);
         Box::pin(async move {
             drive::outcome(drive::invoke(self, ctx, callable, args, Frame::ENTRY, false).await)
         })
@@ -998,6 +814,7 @@ impl Executor for Program {
         item: Value,
         saved: &'a [Value],
     ) -> LocalFuture<'a, Outcome> {
+        self.start_in(ctx);
         Box::pin(async move { drive::row(self, ctx, row, item, saved) })
     }
 }

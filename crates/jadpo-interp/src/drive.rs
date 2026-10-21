@@ -100,15 +100,15 @@ async fn body(
                     }
                     Target::Generate => {
                         let site = machine.generate_site(at).cloned();
-                        generate(program, ctx, site.as_ref(), args, at.0).await
+                        ai(program, ctx, Asked::Generate(site.as_ref()), args, at.0).await
                     }
                     Target::Stream => {
                         let site = machine.stream_site(at).cloned();
-                        stream(program, ctx, site.as_ref(), args, at.0).await
+                        ai(program, ctx, Asked::Stream(site.as_ref()), args, at.0).await
                     }
                     Target::Embed => {
                         let site = machine.embed_site(at).cloned();
-                        embed(program, ctx, site.as_ref(), args, at.0).await
+                        ai(program, ctx, Asked::Embed(site.as_ref()), args, at.0).await
                     }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
@@ -351,7 +351,7 @@ async fn batch(
 ) -> Result<Value, Stop> {
     use jadpo_runtime::batches;
     use jadpo_std::batch::BatchOp;
-    let Some(program_batches) = jadpo_runtime::Executor::batches(program) else {
+    let Some(program_batches) = program.runtime_plan().batches() else {
         return Err(Stop::Fault(ctx.fault(
             FaultKind::Defect("a batch in a program that runs none".into()),
             at,
@@ -434,79 +434,58 @@ async fn provider(
     at: u32,
 ) -> Result<Value, Stop> {
     use jadpo_runtime::provider::{self, Done};
-    let providers = program.providers();
-    // The settings its address is read from: a test's own value, or the
-    // application's.
-    let settings: Vec<(u32, Value)> = providers
-        .plan
-        .operation(connection, operation)
-        .map(|(plan, _)| provider::settings_read(plan))
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|number| {
-            let value = ctx
-                .setting(number)
-                .cloned()
-                .or_else(|| program.setting(number))?;
-            Some((number, value))
-        })
-        .collect();
-    let input = args.into_iter().next();
     // The package's own decoders and encoders run here, at the call's
     // site (chunk 7.2c2).
-    let site = provider::Site {
-        call,
-        functions: program,
-        at,
+    let calling = provider::Calling {
+        plan: program.runtime_plan(),
+        connection,
+        operation,
+        site: provider::Site {
+            call,
+            functions: program,
+            at,
+        },
     };
-    match provider::call(
-        ctx,
-        &providers,
-        (connection, operation),
-        input,
-        &settings,
-        site,
-    )
-    .await
-    {
+    match provider::call(ctx, calling, args.into_iter().next()).await {
         Done::Value(value) => Ok(value),
         Done::Failed(failure) => Err(Stop::Failed(failure)),
         Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
     }
 }
 
-/// `ai.generate(prompt, as: T)` at site `at` (area 21, chunk 5.5v3): the
-/// runtime renders the prompt, asks the model through the connection
-/// `ai:` names and decodes its answer; a condition it ends in is the
-/// call's, for its `attempt` to map.
-async fn generate(
+/// An `ai` call at site `at` (area 21): `ai.generate(prompt, as: T)`
+/// (chunk 5.5v3), `ai.stream(prompt)` (chunk 5.5v6), `ai.embed(text, as:
+/// V)` or `ai.embed_all(texts, as: V)` (chunk 5.5v4), which the runtime
+/// answers through the connection `ai:` names; a condition it ends in is
+/// the call's, for its `attempt` to map.
+async fn ai(
     program: &Program,
     ctx: &mut Ctx<'_>,
-    site: Option<&jadpo_std::ai::GenerateSite>,
+    asked: Asked<'_>,
     args: Vec<Value>,
     at: u32,
 ) -> Result<Value, Stop> {
-    use jadpo_runtime::ai::{self, Done};
-    let (Some(site), Some(ai)) = (site, program.ai()) else {
-        return Err(Stop::Fault(ctx.fault(
-            FaultKind::Defect("a model asked in a program that names none".into()),
-            at,
-        )));
+    use jadpo_runtime::ai::{Calling, Done};
+    let plan = program.runtime_plan();
+    let given = args.into_iter().next().unwrap_or(Value::Unit);
+    let done = match asked {
+        Asked::Generate(Some(site)) => {
+            jadpo_runtime::ai::generate(ctx, Calling { plan, site }, given).await
+        }
+        Asked::Stream(Some(site)) => {
+            jadpo_runtime::stream::stream(ctx, Calling { plan, site }, given).await
+        }
+        Asked::Embed(Some(site)) => {
+            jadpo_runtime::embed::embed(ctx, Calling { plan, site }, given).await
+        }
+        Asked::Generate(None) | Asked::Stream(None) => Done::Fault(FaultKind::Defect(
+            "a model asked in a program that names none".into(),
+        )),
+        Asked::Embed(None) => Done::Fault(FaultKind::Defect(
+            "an embedding asked in a program that names no model".into(),
+        )),
     };
-    // The settings its model and address are read from: a test's own
-    // value, or the application's.
-    let settings: Vec<(u32, Value)> = ai::settings_read(&ai, site)
-        .into_iter()
-        .filter_map(|number| {
-            let value = ctx
-                .setting(number)
-                .cloned()
-                .or_else(|| program.setting(number))?;
-            Some((number, value))
-        })
-        .collect();
-    let prompt = args.into_iter().next().unwrap_or(Value::Unit);
-    match ai::generate(ctx, &ai, site, prompt, &settings).await {
+    match done {
         Done::Value(value) => Ok(value),
         Done::Broke { rule, problem } => Err(Stop::Invalid {
             rule,
@@ -519,88 +498,11 @@ async fn generate(
     }
 }
 
-/// `ai.stream(prompt)` at site `at` (area 21, chunk 5.5v6): the runtime
-/// renders the prompt and asks the model through the connection `ai:`
-/// names, reading until the answer's first piece comes; a condition it
-/// ends in before then is the call's, for its `attempt` to map.
-async fn stream(
-    program: &Program,
-    ctx: &mut Ctx<'_>,
-    site: Option<&jadpo_std::ai::StreamSite>,
-    args: Vec<Value>,
-    at: u32,
-) -> Result<Value, Stop> {
-    use jadpo_runtime::ai::Done;
-    let (Some(site), Some(ai)) = (site, program.ai()) else {
-        return Err(Stop::Fault(ctx.fault(
-            FaultKind::Defect("a model asked in a program that names none".into()),
-            at,
-        )));
-    };
-    let settings: Vec<(u32, Value)> = jadpo_runtime::stream::settings_read(&ai, site)
-        .into_iter()
-        .filter_map(|number| {
-            let value = ctx
-                .setting(number)
-                .cloned()
-                .or_else(|| program.setting(number))?;
-            Some((number, value))
-        })
-        .collect();
-    let prompt = args.into_iter().next().unwrap_or(Value::Unit);
-    match jadpo_runtime::stream::stream(ctx, &ai, site, prompt, &settings).await {
-        Done::Value(value) => Ok(value),
-        Done::Broke { rule, problem } => Err(Stop::Invalid {
-            rule,
-            written: rule.word().to_string(),
-            problem,
-            name: None,
-        }),
-        Done::Failed(failure) => Err(Stop::Failed(failure)),
-        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
-    }
-}
-
-/// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` at site `at`
-/// (area 21, chunk 5.5v4): the runtime asks the model through the
-/// connection `ai:` names for each text's embedding, read as `V`; a
-/// condition it ends in is the call's, for its `attempt` to map.
-async fn embed(
-    program: &Program,
-    ctx: &mut Ctx<'_>,
-    site: Option<&jadpo_std::embed::EmbedSite>,
-    args: Vec<Value>,
-    at: u32,
-) -> Result<Value, Stop> {
-    use jadpo_runtime::ai::Done;
-    let (Some(site), Some(ai)) = (site, program.ai()) else {
-        return Err(Stop::Fault(ctx.fault(
-            FaultKind::Defect("an embedding asked in a program that names no model".into()),
-            at,
-        )));
-    };
-    let settings: Vec<(u32, Value)> = jadpo_runtime::embed::settings_read(&ai, site)
-        .into_iter()
-        .filter_map(|number| {
-            let value = ctx
-                .setting(number)
-                .cloned()
-                .or_else(|| program.setting(number))?;
-            Some((number, value))
-        })
-        .collect();
-    let texts = args.into_iter().next().unwrap_or(Value::Unit);
-    match jadpo_runtime::embed::embed(ctx, &ai, site, texts, &settings).await {
-        Done::Value(value) => Ok(value),
-        Done::Broke { rule, problem } => Err(Stop::Invalid {
-            rule,
-            written: rule.word().to_string(),
-            problem,
-            name: None,
-        }),
-        Done::Failed(failure) => Err(Stop::Failed(failure)),
-        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
-    }
+/// An `ai` call's site, as the plan decodes it.
+enum Asked<'s> {
+    Generate(Option<&'s jadpo_std::ai::GenerateSite>),
+    Stream(Option<&'s jadpo_std::ai::StreamSite>),
+    Embed(Option<&'s jadpo_std::embed::EmbedSite>),
 }
 
 /// A provider package's own function `function`, a field's decoder or
@@ -708,7 +610,6 @@ impl<'p> ActionBody<'p> for Action<'_> {
             plan: callable.record.as_ref()?,
             action: callable.key.as_str(),
             build: plan.build_id(),
-            keys: self.program.effect_keys(),
             setting: plan.steps_key(),
         })
     }

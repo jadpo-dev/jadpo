@@ -550,7 +550,7 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
         jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
     );
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let events = program.events().expect("subscribers");
+    let events = program.runtime_plan().events().expect("subscribers");
     assert_eq!(events.plan.subscribers.len(), 2);
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
