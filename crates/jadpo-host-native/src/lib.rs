@@ -423,11 +423,11 @@ impl Host for NativeHost {
     /// once the host is draining, since what it would run waits in the
     /// store for the next process. Called only from work this thread's
     /// `LocalSet` runs, as everything a worker defers is.
-    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+    fn hand_on(&self, work: jadpo_runtime::runner::HandOn) {
         if self.background.stopped() {
             return;
         }
-        tokio::task::spawn_local(self.track(work));
+        tokio::task::spawn_local(self.track(work.run()));
     }
 
     /// Finishes once [`NativeHost::drain`] begins.

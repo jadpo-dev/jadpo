@@ -2656,8 +2656,10 @@ host's monotonic clock and keeps a tenth back, at most 5 seconds, for
 giving claims back: `runner::drive` takes a piece only while it isn't
 `spent`, and what it doesn't reach stays in the store (a delivery
 `pending`, a batch run on its row), handed on by `after_response` to a
-fresh invocation (`Host::hand_on`, natively a task of its own) when the
-invocation ran something, else left for the tick. One helper runs an
+fresh invocation (`Host::hand_on`, given a `runner::HandOn`: natively a
+task of its own running it, on Workers a request to the Worker itself
+naming each piece by its record, chunk 8.2h) when the invocation ran
+something, else left for the tick. One helper runs an
 action within it, `runner::within_budget`: the body raced against
 `Budget::cut` (the run limit or what is left before the time kept back,
 whichever is sooner, or the host shutting down, `Host::stopping`),
@@ -2819,7 +2821,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
 | Transactions | Read committed or repeatable read by what the action does, a snapshot closed before each outside call and row versions checked after it (chunk 7.4), a batch's item that calls a batch of its own (chunk 7.4b), rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
-| Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
+| Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, what one invocation leaves handed on to a fresh one (chunk 8.2h), swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2g) | Cloudflare cron |
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6), the binding counted in since chunk 8.2m2; the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
@@ -3353,7 +3355,7 @@ no connection address, so the client is `CF-Connecting-IP`) and served
 by `Serving` on that host, sharing the isolate's `http::Worker`, its
 deferred work run through `waitUntil`; the `Response` is built with each
 header appended, no body for a status that has none, and a streamed
-answer read whole until chunk 8.2h. Proved under workerd
+answer sent as a `ReadableStream` since chunk 8.2h (below). Proved under workerd
 (`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group, now
 given the run's PostgreSQL, which CI's `wasm32` job starts as the others
 do; a local run's listens on a Unix socket, which `connect()` can't
@@ -3576,6 +3578,56 @@ pooler by its name's `.hyperdrive.local` suffix, which natively is an
 mDNS name like any other; and the binding's own `connect()`, which the
 transport would have to hold the binding for when the host's name
 reaches it already.
+
+**After the response on Workers** (chunk 8.2h; area 12, "Running
+background work"; area 7, "Streaming a model's answer"). Work an
+invocation's 30 seconds didn't reach goes on in a fresh invocation of the
+Worker. `Host::hand_on` is given a `runner::HandOn` (the executor, the
+host and the pieces left), which natively runs on the host that handed it
+on (`HandOn::run`) and on Workers is sent as its message
+(`HandOn::message`): JSON naming each delivery by its id and each batch
+run by its run's, with its store, never an event's value.
+`WorkersHost::hand_on` calls `handOn(message)` on the service binding
+`JADPO_HAND_ON`, which `jadpo build` writes into the Wrangler file of a
+Worker that runs subscribers or schedules, bound to the Worker's own
+`JadpoHandOn` entrypoint, a `WorkerEntrypoint` class the shim exports
+beside the default export, so no request from outside reaches it; the
+calling invocation keeps itself alive with `waitUntil` until the call
+returns. `jadpo_host_workers::deployable::hand_on`, which the generated
+crate exports as `hand_on`, starts the isolate as `fetch` does, builds
+its drivers on a host of its own and, in that invocation's `waitUntil`,
+once its stores are current, calls `runner::carry_on`: each delivery is
+read back from its record in one statement a store (`outbox::HANDED_ON`,
+`DUE`'s columns for the ids given, still `pending` or `running`), so one
+run or given up meanwhile is left out, each batch run taken from its row,
+and the pieces run as an invocation of kind `HandedOn`, handing on in turn
+what they don't reach. A call that fails, as past the platform's limit on
+invocations one request chains, leaves the work in the store for the
+minute's cron. A streamed answer is the `Response`'s body as a
+`ReadableStream` over an underlying source of the host's own
+(`streamed::body`): each `pull` reads the next event through
+`EventStream::next_written`, on the host the request was served on and
+held to its times as natively, and enqueues its bytes, closing after the
+last; the source's callbacks are let go once it ends. A client that goes
+away ends the request, and Workers ends its `fetch()` to the model with
+it: workerd finds the client gone when it next sends it a piece, rather
+than calling the source's `cancel`, which, when a platform does call it,
+stops the read in hand and drops the stream, aborting that `fetch()`
+itself; when Cloudflare's edge finds a client gone is for chunk 8.2n.
+Proved under workerd (`crates/jadpo-cli/tests/workers.rs`) by a news desk
+of its own whose model is a server the test starts: a draft's first piece
+reaching the client before the model writes the rest, a client that goes
+away closing the model's connection once the model writes again,
+eighteen stories filed in one request each summarised
+by a subscriber in two seconds, and a batch run over eighteen clippings
+the same, both past one invocation's budget and finished by the
+invocation each handed on to, then the minute's cron (chunk 8.2f)
+telling the at most one summary the budget's end cut short; natively, `tests/background_budget.rs` carries
+work on from its message alone, a delivery run meanwhile left out.
+*Rejected:* a queue (area 12, Decisions, "Work handed on, on Workers");
+a request to the Worker's own URL, which reaches its public `fetch`; and a
+`TransformStream` written by a task of its own, which would read the
+model's answer ahead of the client rather than as it is taken.
 
 **The locale data a deployable carries** (chunk 8.2c; area 10,
 "Locales"). `jadpo test`, `jadpo dev` and the compiled step run with
@@ -3927,7 +3979,8 @@ digest. Once the action commits, the HTTP component takes it into
 `timeout:` and the route's deadline on the host's monotonic clock, which
 `Serving` attaches its host to. The native host sends it as a chunked body
 fed by a task on the worker's thread, which stops when hyper drops the body
-for a client that went away; `NativeFetch::open` reads the provider's
+for a client that went away, and the Workers host as a `ReadableStream`
+read as the client takes it (chunk 8.2h); `NativeFetch::open` reads the provider's
 answer as it comes on the worker's thread and closes its connection when
 the body is dropped (chunk 8.1m). `JsonHttp::stream` hands over a success's body as it comes;
 `Fetch::open` defaults to the whole body. A route test reads every event
@@ -4101,9 +4154,9 @@ never called, so the workspace builds, lints and tests as one.
   refusal waiting the window's length), and in the isolate's memory, one
   table an isolate, while it can't be asked, the fallback area 16 allows
   (chunk 8.2m2); and Workers' budgets (`budget_for`): 30 seconds after a response
-  and for work handed on, 15 minutes for the cron. Work handed on is
-  dropped, the tick taking it up, until chunk 8.2h decides how a Worker
-  starts a fresh invocation; a database needs the crate's `postgres`
+  and for work handed on, 15 minutes for the cron. Work handed on starts
+  a fresh invocation of the Worker through its binding to itself (chunk
+  8.2h, "After the response on Workers"); a database needs the crate's `postgres`
   feature, so a deployable that keeps none links no driver for one; the
   passkey ceremonies are `WorkersPasskeys`, below.
 - **`WorkersTransport`** opens every connection with `secureTransport:
@@ -4200,7 +4253,8 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
   the schedules due and sweeps each store's outbox,
   each within the budget the host gives it (30 seconds after a response,
   15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2a),
-  and what one leaves goes on in a fresh invocation (`Host::hand_on`).
+  and what one leaves goes on in a fresh invocation (`Host::hand_on`), a
+  request to the Worker itself through a service binding (chunk 8.2h).
 - PostgreSQL goes through Hyperdrive over `connect()` sockets with
   tokio-postgres, as in workers-rs's
   [example](https://raw.githubusercontent.com/cloudflare/workers-rs/main/examples/tokio-postgres/src/lib.rs),

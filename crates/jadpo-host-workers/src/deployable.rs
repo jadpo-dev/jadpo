@@ -35,8 +35,11 @@
 //! again at each such mark of the cron's minute, one tick after another,
 //! and ends with the minute, the next minute's cron going on from there.
 //!
-//! The queue's handler is chunk 8.2k's; a streamed answer is read whole
-//! and sent at its end until chunk 8.2h sends it as a `ReadableStream`.
+//! A streamed answer is sent as a `ReadableStream`, each event as it is
+//! read ([`crate::streamed`]); and [`hand_on`] is the fresh invocation
+//! work handed on starts, a request to the Worker itself through a service
+//! binding to its `JadpoHandOn` entrypoint (chunk 8.2h). The queue's
+//! handler is chunk 8.2k's.
 
 use std::cell::{Cell, OnceCell};
 use std::fmt;
@@ -51,6 +54,7 @@ use jadpo_runtime::deployable::{
 };
 use jadpo_runtime::http::address::{ClientAddress, Target};
 use jadpo_runtime::http::{self, BODY_LIMIT, Request, Response, Worker};
+use jadpo_runtime::runner;
 use jadpo_runtime::serve::Serving;
 use jadpo_runtime::{Executor, Host};
 use jadpo_std::http::RateLimitStore;
@@ -107,6 +111,35 @@ pub fn scheduled(
         Ok(JsValue::UNDEFINED)
     })
     .into()
+}
+
+/// The `handOn` of the Worker's `JadpoHandOn` entrypoint for
+/// `deployable` (chunk 8.2h; area 12, "Running background work"): a fresh
+/// invocation taking on the work an invocation whose budget was spent
+/// handed on, which `work` names by its records
+/// ([`runner::HandOn::message`]). It starts the isolate as `fetch` does
+/// and, once the stores are current, carries the work on in its own
+/// `waitUntil`, with Workers' 30 seconds ([`runner::carry_on`]); it
+/// answers at once, so the invocation that handed it on can end. Work it
+/// can't take on waits in the store for the minute's cron.
+pub fn hand_on(deployable: &Deployable, work: String, env: JsValue, ctx: JsValue) -> JsValue {
+    let host = WorkersHost::new(env, ctx);
+    let Some(isolate) = isolate(deployable, &host) else {
+        return JsValue::UNDEFINED;
+    };
+    let deployable = *deployable;
+    let host = Rc::new(host.with_drivers(drivers(&isolate.program)));
+    let fresh = Rc::clone(&host);
+    host.defer(Box::pin(async move {
+        if !ready(&deployable, &fresh, &isolate).await {
+            return;
+        }
+        let program = Rc::clone(&isolate.program) as Rc<dyn Executor>;
+        if let Some(carried) = runner::carry_on(program, fresh as Rc<dyn Host>, &work) {
+            carried.await;
+        }
+    }));
+    JsValue::UNDEFINED
 }
 
 /// The runtime's answer to `request`, on a host of its own.
@@ -418,14 +451,9 @@ fn target(url: &str) -> (String, Option<String>) {
 }
 
 /// The runtime's response as Workers' `Response`, or the error making it
-/// threw. A streamed answer is read whole first, until chunk 8.2h sends it
-/// as a `ReadableStream`.
+/// threw. A streamed answer is its body as a `ReadableStream`, each event
+/// sent as it is read (chunk 8.2h, [`crate::streamed`]).
 async fn write(mut response: Response) -> Result<JsValue, JsValue> {
-    if let Some(stream) = response.stream.take() {
-        while let Some(event) = stream.next_written().await {
-            response.body.extend_from_slice(&event);
-        }
-    }
     let init = ResponseInit::new();
     init.set_status(response.status);
     let headers = Headers::new()?;
@@ -434,6 +462,11 @@ async fn write(mut response: Response) -> Result<JsValue, JsValue> {
         let _ = headers.append(name, value);
     }
     init.set_headers(&headers);
+    if let Some(stream) = response.stream.take() {
+        let body = crate::streamed::body(stream)?;
+        return web_sys::Response::new_with_opt_readable_stream_and_init(Some(&body), &init)
+            .map(JsValue::from);
+    }
     // A status that has no body is given none.
     let bodiless = response.body.is_empty() || matches!(response.status, 101 | 204 | 205 | 304);
     let body = (!bodiless).then(|| Uint8Array::from(response.body.as_slice()));

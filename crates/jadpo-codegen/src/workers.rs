@@ -10,7 +10,8 @@
 //!
 //! - `worker.mjs`, the shim: the module instantiated once per isolate and
 //!   the Worker's handlers, `fetch` and `scheduled`, handed to the ones the
-//!   module exports;
+//!   module exports, with the `JadpoHandOn` entrypoint a fresh invocation
+//!   takes work handed on through;
 //! - `<deployable>.js`, the JavaScript wasm-bindgen writes for the module
 //!   (its `web` form, which takes the module it is given);
 //! - `<deployable>.wasm`, the module;
@@ -19,8 +20,10 @@
 //!   compatibility date Jadpo's Workers host is run under, each setting
 //!   the deployable needs set, by its variable, each database's address
 //!   as a Hyperdrive binding (chunk 8.2i), the minute's cron trigger when
-//!   its tick has something to do, and the rate-limiting bindings its rate
-//!   limits are counted in ([`rate_limited`]).
+//!   its tick has something to do, the service binding to its own
+//!   `JadpoHandOn` through which it hands work on when it runs background
+//!   work (chunk 8.2h), and the rate-limiting bindings its rate limits are
+//!   counted in ([`rate_limited`]).
 
 use std::path::Path;
 
@@ -69,15 +72,28 @@ pub fn bind(module: &Path, name: &str) -> Result<Bound, String> {
     Ok(Bound { js, wasm })
 }
 
+/// The binding through which a Worker hands work on to a fresh invocation
+/// of itself: a service binding to its own [`HAND_ON_ENTRYPOINT`] (chunk
+/// 8.2h), as `jadpo_host_workers::HAND_ON_BINDING` reads it.
+pub const HAND_ON_BINDING: &str = "JADPO_HAND_ON";
+
+/// The shim's named entrypoint for work handed on, as
+/// `jadpo_host_workers::HAND_ON_ENTRYPOINT` names it: not the default
+/// export, so no request from outside reaches it.
+pub const HAND_ON_ENTRYPOINT: &str = "JadpoHandOn";
+
 /// The module Workers runs first: `name`'s module instantiated once per
-/// isolate, and the Worker's `fetch` and `scheduled` the module's.
+/// isolate, the Worker's `fetch` and `scheduled` the module's, and its
+/// [`HAND_ON_ENTRYPOINT`], whose `handOn` takes on work another invocation
+/// handed on.
 pub fn shim(name: &str) -> String {
     format!(
         "// The deployable `{name}` for Cloudflare Workers, written by `jadpo build`; don't edit it.\n\
          // Its module is instantiated once per isolate, and each handler hands\n\
          // the module's its event, the Worker's `env` and the invocation's `ctx`.\n\
+         import {{ WorkerEntrypoint }} from \"cloudflare:workers\";\n\
          import module from \"./{name}.wasm\";\n\
-         import {{ initSync, fetch as handleFetch, scheduled as handleScheduled }} from \"./{name}.js\";\n\
+         import {{ initSync, fetch as handleFetch, scheduled as handleScheduled, hand_on as handleHandOn }} from \"./{name}.js\";\n\
          \n\
          initSync({{ module }});\n\
          \n\
@@ -88,7 +104,16 @@ pub fn shim(name: &str) -> String {
          \x20 scheduled(controller, env, ctx) {{\n\
          \x20   return handleScheduled(controller, env, ctx);\n\
          \x20 }},\n\
-         }};\n"
+         }};\n\
+         \n\
+         // Work another invocation of this Worker handed on, which this one\n\
+         // carries on in its own time; reached only through the Worker's\n\
+         // binding to itself.\n\
+         export class {HAND_ON_ENTRYPOINT} extends WorkerEntrypoint {{\n\
+         \x20 handOn(work) {{\n\
+         \x20   return handleHandOn(work, this.env, this.ctx);\n\
+         \x20 }}\n\
+         }}\n"
     )
 }
 
@@ -122,8 +147,15 @@ pub struct Hyperdrive {
 /// has one; without one, Wrangler refuses to deploy until it is given
 /// (chunk 8.2i). When it `ticks`, its tick having a store to keep or
 /// sweep, the minute's cron trigger runs its `scheduled` handler (chunk
-/// 8.2f).
-pub fn wrangler(name: &str, required: &[String], hyperdrive: &[Hyperdrive], ticks: bool) -> String {
+/// 8.2f). When it `hands_on`, running background work, the Worker is bound
+/// to its own [`HAND_ON_ENTRYPOINT`] as [`HAND_ON_BINDING`] (chunk 8.2h).
+pub fn wrangler(
+    name: &str,
+    required: &[String],
+    hyperdrive: &[Hyperdrive],
+    ticks: bool,
+    hands_on: bool,
+) -> String {
     let quoted = |text: &str| serde_json::Value::from(text).to_string();
     let mut out = format!(
         "{{\n\
@@ -168,6 +200,14 @@ pub fn wrangler(name: &str, required: &[String], hyperdrive: &[Hyperdrive], tick
         out.push_str(&format!(
             ",\n  \"triggers\": {{\n    \"crons\": [{}]\n  }}",
             quoted(EVERY_MINUTE)
+        ));
+    }
+    if hands_on {
+        out.push_str(&format!(
+            ",\n  \"services\": [\n    {{ \"binding\": {}, \"service\": {}, \"entrypoint\": {} }}\n  ]",
+            quoted(HAND_ON_BINDING),
+            quoted(&worker_name(name)),
+            quoted(HAND_ON_ENTRYPOINT),
         ));
     }
     out.push_str("\n}\n");

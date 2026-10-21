@@ -523,6 +523,10 @@ data: {"error":{"code":"unavailable","message":"A dependency is temporarily unav
 - **A client that goes away** stops the stream: the runtime stops reading
   the model's answer and closes its connection to the provider at once,
   so nothing more is spent. What the action committed stays committed.
+  On every host: natively the body is a chunked one fed as each event is
+  read; on Workers a `ReadableStream` pulled as the client reads, and a
+  client that goes away ends the request, which ends the model's call
+  with it (chunk 8.2h).
 - **Answers 200 and waits for nothing.** A streaming route takes no other
   `status:` and no `settle:` (`route.stream_invalid`).
 - **Idempotency.** A stream is never kept for a repeat: an
