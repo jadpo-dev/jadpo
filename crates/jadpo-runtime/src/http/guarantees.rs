@@ -520,6 +520,7 @@ fn send_as(
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
+        entries: None,
     };
     let env = Env {
         seed: Some(1),
@@ -636,6 +637,7 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
+        entries: None,
     };
     let host = Fake {
         still: Some(Cell::new(5_000)),
@@ -703,6 +705,7 @@ fn a_host_without_a_clock_is_refused_rather_than_run_at_1970() {
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
+        entries: None,
     };
     let host = Fake {
         no_wall_clock: true,
@@ -1123,6 +1126,7 @@ fn what_a_request_emits_is_left_for_after_its_response() {
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
+        entries: None,
     };
     let worker = super::Worker::default();
     let program = Program::new(Ends::Emits);
@@ -1195,6 +1199,7 @@ fn no_request_is_ever_the_system() {
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
+        entries: None,
     };
     let worker = super::Worker::default();
     let served = block_on(super::serve_request(

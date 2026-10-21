@@ -83,9 +83,12 @@ pub trait Coder: std::fmt::Debug {
     fn unwritten(&self, rule: &str);
 }
 
+mod doc;
 mod document;
+pub mod reading;
 mod wire;
 
+pub use doc::{Doc, Item, Items, Kind, Members};
 pub use document::{Numbers, parse};
 
 /// What a provider sent in `encoding`, one of the built-in encodings, as
@@ -172,6 +175,106 @@ impl Path {
         self.numbers = Some(Rc::new(numbers.clone()));
         self
     }
+
+    /// The place `parts` names from the top, in a document whose numbers
+    /// are `numbers`: where a generated reader hands a part of a document
+    /// to [`Codecs::read`] (chunk 8.1p).
+    pub fn of(parts: Vec<String>, numbers: Option<Rc<Numbers>>) -> Path {
+        Path {
+            shown: parts.clone(),
+            at: parts,
+            numbers,
+        }
+    }
+}
+
+/// What an object's field is given, by its member (area 2), as
+/// [`presence`] decides it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Presence {
+    /// Nothing: it holds what it holds when absent.
+    Left,
+    /// `none`.
+    None,
+    /// Nothing, though it must be given: `required`.
+    Missing,
+    /// Its member's value, read by its codec.
+    Read,
+}
+
+/// What a field is given when its member is missing (`None`), `null`
+/// (`Some(true)`) or anything else: left to what it holds when `absent`
+/// says it holds something; `none` when a provider's open shape leaves
+/// out a nullable member (chunk 7.7c) or an optional `Input` field without
+/// a default, `omittable`, is sent as `null`; otherwise read, or missing.
+/// The one rule both the codec walk and compiled code's readers follow.
+pub fn presence(
+    member: Option<bool>,
+    absent: bool,
+    open_nullable: bool,
+    omittable: bool,
+) -> Presence {
+    match member {
+        None if absent => Presence::Left,
+        None if open_nullable => Presence::None,
+        None => Presence::Missing,
+        Some(true) if omittable => Presence::None,
+        Some(_) => Presence::Read,
+    }
+}
+
+/// A scalar of `builtin` from `item`, as the contract sends one: a
+/// standard type's canonical text by its entry (chunk 5.5w3), or a
+/// representation's text, `true` or `false`, or a whole number; the rule
+/// broken when it isn't one. `None` for a standard type sent as an object
+/// of its members, which [`Codecs::read`] reads member by member. The one
+/// reader of scalars both the codec walk and compiled code's readers call.
+pub fn scalar(builtin: Builtin, item: Item<'_>) -> Option<Result<Value, &'static str>> {
+    use jadpo_std::standard::{Holds, Json};
+    match jadpo_std::standard::of_builtin(builtin) {
+        Some(entry) => match (entry.json, entry.holds) {
+            (Json::Parts(_), _) => None,
+            (_, Holds::Builtin(held)) => Some(match item.text() {
+                Some(text) if item.kind() == Kind::String => {
+                    crate::standard::scalar_text(held, &text)
+                }
+                _ => Err("type"),
+            }),
+            _ => Some(Err("type")),
+        },
+        None => Some(match item.kind() {
+            Kind::String => match item.text() {
+                Some(text) => crate::standard::scalar_text(builtin, &text),
+                None => Err("type"),
+            },
+            Kind::Bool if builtin.representation() == Builtin::Bool => {
+                item.as_bool().map(Value::Bool).ok_or("type")
+            }
+            Kind::Number if builtin.representation() == Builtin::Int => {
+                item.as_i64().map(Value::Int).ok_or("type")
+            }
+            _ => Err("type"),
+        }),
+    }
+}
+
+/// `values`, read in order, as a list, or as a set when `set`: `None` for
+/// a set that repeats one (area 2, question 5).
+pub fn collected(values: Vec<Value>, set: bool) -> Option<Value> {
+    if !set {
+        return Some(Value::list(values));
+    }
+    let count = values.len();
+    let value = Value::set(values);
+    (value.items().map_or(0, <[Value]>::len) == count).then_some(value)
+}
+
+/// A value its type's rules refused: the rule, as a problem names it, and
+/// a vector's item that broke it, by its place (chunk 5.8c).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Broken {
+    pub rule: String,
+    pub item: Option<usize>,
 }
 
 impl Codecs<'_> {
@@ -237,13 +340,15 @@ impl Codecs<'_> {
             Codec::Scalar {
                 builtin, validator, ..
             } => {
-                let value = match (jadpo_std::standard::of_builtin(*builtin), json) {
-                    // A standard type, as its entry says the contract sends
-                    // it: its canonical text, or an object of its members,
+                let value = match scalar(*builtin, Item::Json(json)) {
+                    Some(value) => value,
+                    // A standard type sent as an object of its members,
                     // each problem at its member (chunk 5.5w3).
-                    (Some(entry), json) => match crate::standard::json::read(entry, json) {
-                        Ok(value) => Ok(value),
-                        Err(refused) => {
+                    None => match jadpo_std::standard::of_builtin(*builtin)
+                        .map(|entry| crate::standard::json::read(entry, json))
+                    {
+                        Some(Ok(value)) => Ok(value),
+                        Some(Err(refused)) => {
                             for one in refused {
                                 let at = match one.member {
                                     Some(member) => path.with(member),
@@ -253,21 +358,8 @@ impl Codecs<'_> {
                             }
                             return None;
                         }
+                        None => Err("type"),
                     },
-                    (None, serde_json::Value::String(text)) => {
-                        crate::standard::scalar_text(*builtin, text)
-                    }
-                    (None, serde_json::Value::Bool(flag))
-                        if builtin.representation() == Builtin::Bool =>
-                    {
-                        Ok(Value::Bool(*flag))
-                    }
-                    (None, serde_json::Value::Number(number))
-                        if builtin.representation() == Builtin::Int =>
-                    {
-                        number.as_i64().map(Value::Int).ok_or("type")
-                    }
-                    _ => Err("type"),
                 };
                 match value {
                     Ok(value) => self.checked(*validator, value, path, problems),
@@ -409,16 +501,9 @@ impl Codecs<'_> {
                 if problems.len() > before {
                     return None;
                 }
-                let value = if set {
-                    let count = values.len();
-                    let value = Value::set(values);
-                    if value.items().map_or(0, <[Value]>::len) != count {
-                        Self::problem(problems, path, "duplicate");
-                        return None;
-                    }
-                    value
-                } else {
-                    Value::list(values)
+                let Some(value) = collected(values, set) else {
+                    Self::problem(problems, path, "duplicate");
+                    return None;
                 };
                 self.checked(*validator, value, path, problems)
             }
@@ -710,20 +795,25 @@ impl Codecs<'_> {
                 continue;
             };
             let at = path.with(name);
-            match entries.get(name) {
-                None if absent => {}
-                // A provider leaving out a member its type may hold `none`
-                // in sends `none` (chunk 7.7c): SQS leaves `Messages` out
-                // when its queue is empty.
-                None if shape.open() && matches!(self.codec(*codec), Some(Codec::Nullable(_))) => {
-                    given.push((Some(slot as u32), Value::None));
-                }
-                None => Self::problem(problems, &at, "required"),
-                Some(serde_json::Value::Null) if shape.omittable(slot) => {
-                    given.push((Some(slot as u32), Value::None));
-                }
-                Some(json) => {
-                    if let Some(value) = self.read(*codec, json, &at, problems) {
+            let member = entries.get(name);
+            // A provider leaving out a member its type may hold `none` in
+            // sends `none` (chunk 7.7c): SQS leaves `Messages` out when its
+            // queue is empty.
+            let open_nullable =
+                shape.open() && matches!(self.codec(*codec), Some(Codec::Nullable(_)));
+            match presence(
+                member.map(serde_json::Value::is_null),
+                absent,
+                open_nullable,
+                shape.omittable(slot),
+            ) {
+                Presence::Left => {}
+                Presence::None => given.push((Some(slot as u32), Value::None)),
+                Presence::Missing => Self::problem(problems, &at, "required"),
+                Presence::Read => {
+                    if let Some(json) = member
+                        && let Some(value) = self.read(*codec, json, &at, problems)
+                    {
                         given.push((Some(slot as u32), value));
                     }
                 }
@@ -845,19 +935,7 @@ impl Codecs<'_> {
             }) => {
                 // A whole number with a text form of its own (an HTTP
                 // status, basis points) is read as `text.parse` reads it.
-                let whole = self
-                    .validators
-                    .get(validator.0 as usize)
-                    .and_then(Validator::standard)
-                    .and_then(jadpo_std::standard_type)
-                    .filter(|entry| {
-                        matches!(entry.holds, jadpo_std::standard::Holds::Whole { .. })
-                    });
-                let value = match whole {
-                    Some(entry) => crate::standard::read(entry, text).map_err(|_| "type"),
-                    None => crate::standard::scalar_text(*builtin, text),
-                };
-                match value {
+                match self.text_scalar(*builtin, *validator, text) {
                     Ok(value) => self.checked(*validator, value, path, problems),
                     Err(rule) => {
                         Self::problem(problems, path, rule);
@@ -1003,32 +1081,73 @@ impl Codecs<'_> {
         path: &Path,
         problems: &mut Vec<Problem>,
     ) -> Option<Value> {
-        let Some(validator) = self.validators.get(validator.0 as usize) else {
-            return Some(value);
-        };
-        let Some(value) = validator.store(value) else {
-            Self::problem(problems, path, "max");
-            return None;
-        };
-        match validator.check(&value) {
-            Ok(()) => Some(value),
-            // A rule across an object's fields is reported by its name, at
-            // the object's path (area 2, "Rules across fields").
-            Err(invalid) => {
-                // A vector's item past what its half-precision index holds
-                // is reported at its place, as one past a decimal's digits
-                // is (chunk 5.8c).
-                let at = match validator.vector_holding(&value) {
-                    Some((key, Some(item))) if key == invalid.key() => path.with(item.to_string()),
-                    _ => path.clone(),
+        match self.check(validator, value) {
+            Ok(value) => Some(value),
+            Err(broken) => {
+                let at = match broken.item {
+                    Some(item) => path.with(item.to_string()),
+                    None => path.clone(),
                 };
-                Self::problem(
-                    problems,
-                    &at,
-                    invalid.name().unwrap_or(invalid.key().word()),
-                );
+                Self::problem(problems, &at, &broken.rule);
                 None
             }
+        }
+    }
+
+    /// `value` stored at its type's scale (`max` when it can't be) and
+    /// checked against validator `validator`'s rules: a rule across an
+    /// object's fields by its name (area 2, "Rules across fields"), and a
+    /// vector's item past what its half-precision index holds at its
+    /// place, as one past a decimal's digits is (chunk 5.8c).
+    pub fn check(
+        &self,
+        validator: jadpo_std::types::ValidatorId,
+        value: Value,
+    ) -> Result<Value, Broken> {
+        let Some(validator) = self.validators.get(validator.0 as usize) else {
+            return Ok(value);
+        };
+        let Some(value) = validator.store(value) else {
+            return Err(Broken {
+                rule: "max".to_string(),
+                item: None,
+            });
+        };
+        match validator.check(&value) {
+            Ok(()) => Ok(value),
+            Err(invalid) => {
+                let item = match validator.vector_holding(&value) {
+                    Some((key, Some(item))) if key == invalid.key() => Some(item),
+                    _ => None,
+                };
+                Err(Broken {
+                    rule: invalid.name().unwrap_or(invalid.key().word()).to_string(),
+                    item,
+                })
+            }
+        }
+    }
+
+    /// A scalar of `builtin` from text (a placeholder, a query string's
+    /// value, a header, a map's key): a whole number with a text form of
+    /// its own (an HTTP status, basis points) as `text.parse` reads it,
+    /// anything else by its representation's text. Not yet checked
+    /// against validator `validator`'s rules.
+    pub fn text_scalar(
+        &self,
+        builtin: Builtin,
+        validator: jadpo_std::types::ValidatorId,
+        text: &str,
+    ) -> Result<Value, &'static str> {
+        let whole = self
+            .validators
+            .get(validator.0 as usize)
+            .and_then(Validator::standard)
+            .and_then(jadpo_std::standard_type)
+            .filter(|entry| matches!(entry.holds, jadpo_std::standard::Holds::Whole { .. }));
+        match whole {
+            Some(entry) => crate::standard::read(entry, text).map_err(|_| "type"),
+            None => crate::standard::scalar_text(builtin, text),
         }
     }
 
@@ -1479,7 +1598,7 @@ fn key_text(key: &Value) -> String {
 
 /// A scalar written as JSON: a representation as area 2 writes it, and a
 /// standard type as the contract sends it, by its entry (chunk 5.5w3).
-fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
+pub fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
     match value {
         Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
         Value::Int(n) if int_as_number => {

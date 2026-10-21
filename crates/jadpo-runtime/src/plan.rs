@@ -302,6 +302,7 @@ impl<'a> Plan<'a> {
             },
             failures: self.failures,
             json: self.json,
+            entries: None,
         }
     }
 

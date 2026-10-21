@@ -103,6 +103,7 @@ fn a_project_is_one_crate_the_same_each_time() {
             "plan-testing.bin",
             "plan.bin",
             "src/app.rs",
+            "src/entries.rs",
             "src/lib.rs"
         ]
     );
@@ -179,6 +180,7 @@ fn projects_are_modules_of_one_crate() {
         paths,
         [
             "src/p7/app.rs",
+            "src/p7/entries.rs",
             "src/p7/mod.rs",
             "src/p7/plan-testing.bin",
             "src/p7/plan.bin"
@@ -204,6 +206,136 @@ fn projects_are_modules_of_one_crate() {
     let lib = text(&holding, "src/lib.rs");
     assert!(lib.contains("pub mod p7;\npub mod p2;"), "{lib}");
     assert!(lib.contains("= &[p7::program, p2::program];"), "{lib}");
+}
+
+/// A shop that prices a line: a route with an input of an enum, a
+/// number with rules, an optional note and a list, a placeholder, and an
+/// output with a payload variant.
+const SHOP: &str = r#"type Quantity = Int {
+    min: 1
+    max: 99
+}
+
+type ShopNumber = Int {
+    min: 1
+}
+
+type Pence = Int {}
+
+type Extra = Text {
+    max_length: 40
+}
+
+type Note = Text {
+    max_length: 200
+}
+
+type RibbonColour = Text {
+    max_length: 20
+}
+
+type Size = Enum {
+    small
+    large
+}
+
+type Wrapping = Enum {
+    plain
+    ribbon: {
+        colour: RibbonColour
+    }
+}
+
+type OrderLine = Input {
+    size: Size
+    quantity: Quantity
+    note: Note?
+    extras: List<Extra>
+}
+
+type Priced = Output {
+    size: Size
+    pence: Pence
+    wrapping: Wrapping
+}
+
+action price(shop: ShopNumber, input: OrderLine) -> Priced {
+    return Priced {
+        size: input.size
+        pence: Pence(input.quantity * 250 + shop)
+        wrapping: Wrapping.plain
+    }
+}
+
+policy {
+    actions: {
+        price: [Access.public]
+    }
+}
+
+routes Shop {
+    prefix: /shops
+
+    POST /{shop: ShopNumber}/price {
+        authentication: RouteAuthentication.none
+        input: OrderLine
+        output: Priced
+        run: price(shop, input)
+    }
+}
+"#;
+
+/// Each route has a typed entry (chunk 8.1p): its placeholder read from
+/// text, its input's members by name in declared order with the members
+/// it doesn't declare refused, its enum's variants by their wire names,
+/// and its output written member by member; each of its types' codecs a
+/// function of its own, the runtime's rules called by number.
+#[test]
+fn a_route_is_read_and_written_by_its_typed_entry() {
+    let planned = plan(&[("main.jadpo", SHOP)]);
+    let generated = generate(&planned, &options()).expect("it compiles");
+    let entries = text(&generated, "src/entries.rs");
+    assert!(
+        entries.contains("pub(super) fn entry(n: u32) -> Option<&'static Entry>"),
+        "{entries}"
+    );
+    assert!(
+        entries.contains("static ROUTE_0: Entry = Entry {"),
+        "{entries}"
+    );
+    assert!(entries.contains("params: &[p"), "{entries}");
+    assert!(entries.contains("input: Some(i"), "{entries}");
+    assert!(entries.contains("output: Some(w"), "{entries}");
+    // The input's fields in declared order, then the members it doesn't
+    // declare.
+    let size = entries.find("At::Member(at, \"size\")").expect("size");
+    let quantity = entries
+        .find("At::Member(at, \"quantity\")")
+        .expect("quantity");
+    let note = entries.find("At::Member(at, \"note\")").expect("note");
+    assert!(size < quantity && quantity < note, "{entries}");
+    assert!(
+        entries.contains("r.unknown(m, &[\"size\", \"quantity\", \"note\", \"extras\"], at);"),
+        "{entries}"
+    );
+    assert!(entries.contains("r.list(item, at, r"), "{entries}");
+    // The enum by its wire names, a payload variant by its tag.
+    assert!(
+        entries.contains("\"small\" => Some(Value::variant(\"Size\", 0, \"small\", Vec::new())),"),
+        "{entries}"
+    );
+    assert!(entries.contains("let tag = r.tag(&m, at)?;"), "{entries}");
+    // The output member by member, a variant's tag and fields.
+    assert!(
+        entries.contains("out.push_str(\"\\\"pence\\\":\");"),
+        "{entries}"
+    );
+    assert!(
+        entries.contains("out.push_str(\"{\\\"tag\\\":\\\"ribbon\\\"\");"),
+        "{entries}"
+    );
+    let lib = text(&generated, "src/lib.rs");
+    assert!(lib.contains("routes: entries::entry,"), "{lib}");
 }
 
 /// Areas 1 to 4 (chunk 8.1g): a loop, the standard library, an inline

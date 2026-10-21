@@ -4113,6 +4113,7 @@ builds it.
 
 | Topic | Decision | Date |
 |---|---|---|
+| Passkeys on Workers | Built for Workers on jadpo-value's pure-Rust ES256 and RSA checks (signature, challenge, origin, counter), since the WebAuthn library runs only natively; `passkey:` and its magic-link recovery work on both targets (Richard; built in chunk 8.2) | 2026-10-21 |
 | Unnamed singletons | Carried from area 1 (and the owner's 2026-10-04 selection): `application { }` and `principal { }` carry no name; the application's principal setting is removed | 2026-10-12 |
 | Root files | Carried from area 1: `app.jadpo` holds the application and principal; `authentication.jadpo` holds the methods | 2026-10-12 |
 | Colon rule | Carried from area 3: every member is `name: value`, so `user: { }`, `browser_session: { }` | 2026-10-12 |

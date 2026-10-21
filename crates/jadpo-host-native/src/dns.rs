@@ -288,9 +288,15 @@ mod tests {
 
     #[test]
     fn a_server_on_this_machine_is_asked_over_udp_then_tcp() {
-        let udp = UdpSocket::bind("127.0.0.1:0").expect("a socket");
-        let server = udp.local_addr().expect("its address");
-        let tcp = std::net::TcpListener::bind(server).expect("the same port over TCP");
+        // Another test can take the UDP port's number over TCP first; try again.
+        let (udp, server, tcp) = (0..50)
+            .find_map(|_| {
+                let udp = UdpSocket::bind("127.0.0.1:0").ok()?;
+                let server = udp.local_addr().ok()?;
+                let tcp = std::net::TcpListener::bind(server).ok()?;
+                Some((udp, server, tcp))
+            })
+            .expect("one port free over UDP and TCP");
         let records = ["v=DMARC1; p=reject", "x".repeat(300).leak() as &str];
         let answering = std::thread::spawn(move || {
             let mut buffer = [0u8; 512];

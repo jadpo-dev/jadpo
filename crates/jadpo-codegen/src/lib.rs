@@ -19,7 +19,10 @@
 //!   `app` for the project's root, holding each callable's function: a
 //!   plain `fn` for a function, an `async fn` for an action, fixture, test
 //!   or seed, all over the runtime's values (`jadpo_value::Value`), as the
-//!   interpreter's are.
+//!   interpreter's are;
+//! - `src/entries.rs`: each route's typed entry (chunk 8.1p), a reader for
+//!   each type a route reads and a writer for each type it writes,
+//!   generated from the route table's codecs.
 //!
 //! [`module`] writes a project instead as a module of a crate holding
 //! several, `src/p<n>/`, its root `mod.rs` and its plan's bytes in that
@@ -35,6 +38,7 @@
 mod body;
 pub mod cargo;
 pub mod deployable;
+mod entries;
 mod names;
 
 use std::collections::BTreeMap;
@@ -345,6 +349,8 @@ fn project(plan: &Plan, layout: &Layout) -> Result<Generated, Error> {
     let root_tokens = root(plan, &module_names, &table, &rows, included);
     files.insert(root_file.clone(), printed(&root_file, root_tokens)?);
     let source = layout.source();
+    let path = format!("{source}/entries.rs");
+    files.insert(path.clone(), printed(&path, entries::module(plan))?);
     for (module, functions) in code {
         let path = format!("{source}/{module}.rs");
         let doc = Literal::string(&format!(
@@ -415,6 +421,7 @@ fn root(
         #![allow(unused, clippy::all)]
 
         #(pub mod #modules;)*
+        mod entries;
 
         use jadpo_runtime::compiled::{Callable, Code, Place, Program, Row, Shared};
 
@@ -436,6 +443,7 @@ fn root(
             places: PLACES,
             callable,
             row,
+            routes: entries::entry,
             shared: &SHARED,
         };
 

@@ -1157,10 +1157,10 @@ interpreter turned a missing record and a refusal into failures itself.
 **Code generation.** `quote!` into a `syn` tree, printed with
 [prettyplease](https://github.com/dtolnay/prettyplease): deterministic,
 never fails to format, about twenty times faster than rustfmt, and
-readable when the executors differ. One module per domain; a struct or
-enum per type with codecs from the type plan; functions as `fn`, actions
-and queries as `async fn(&mut Ctx, …)`; checked arithmetic that returns a
-fault, never panics. *Rejected:* string templates, whose malformed output
+readable when the executors differ. One module per domain; each route's
+codecs generated from the type plan ("A typed per-route entry" below);
+functions as `fn`, actions and queries as `async fn(&mut Ctx, …)`;
+checked arithmetic that returns a fault, never panics. *Rejected:* string templates, whose malformed output
 only rustc catches.
 
 **Keeping rustc time down.** The runtime crates are compiled once per
@@ -1222,15 +1222,18 @@ the runtime plan's bytes from `encode_deployable` and `encode`, held as
 and each site's line, start, end and anchor: plain data in a `const`
 array, "Frames" below), the callables by number (a `match` giving each
 one's function, tests, fixtures and seeds under `testing`) and
-`program()`; and a module per domain (`domains/<domain>/`), per other top
-folder (`shared/`, `tests/`) and `app` for the root's files. Each
+`program()`; a module per domain (`domains/<domain>/`), per other top
+folder (`shared/`, `tests/`) and `app` for the root's files; and, since
+chunk 8.1p, `entries`, each route's typed entry ("A typed per-route
+entry" below). Each
 callable is a function named by its number and label,
 `c3_action_make_thing`: a function, a library function and a constant's
 body a plain `fn(&mut Ctx, &Program, Value…) -> Ran`, and an action,
 fixture, test or seed an `async fn` of the same shape, every value the
-interpreter's `jadpo_value::Value` (a struct per type is 8.1p). A
-program decodes its plan once per process, on the first thread that
-asks, and loads it on each thread as the interpreter does
+interpreter's `jadpo_value::Value` (why not a struct per type: "A typed
+per-route entry" below). A program decodes its plan once per process, on
+the first thread that asks, and loads it on each thread as the
+interpreter does
 (`Loaded::sharing`: validators compiled once, shapes and constants per
 thread).
 
@@ -1585,6 +1588,118 @@ the runtime's own receiving into the plan's routes, the API listing and
 when a webhook's plan already lives with its provider and its secrets
 with what the program started with; and a map from whole paths, which
 can't hold placeholders.
+
+**A typed per-route entry** (chunk 8.1p, decided before it was built,
+from the Phase 4 review). Compiled code reads each route's request and
+writes its answer with code generated from the route's types' plans,
+rather than walking the codec table as the interpreter does
+(`jadpo_value::json::Codecs::read` and `write`, "the codec walk"). A
+project's crate holds `entries.rs`: a reader, `r<codec>`, for each codec
+a route reads (a placeholder's, its input's, and each codec they reach
+through fields, items, payloads and `T?`) and a writer, `w<codec>`, for
+each codec it writes (its output's, the same way), each written from the
+codec, its shape and its validator's number; and each route's entry,
+`jadpo_runtime::http::Entry`: a reader per placeholder, the input's
+reader and the output's writer. The crate gives the entries by route
+number (`Code::routes`), compiled code's `Program::app` hands them to the
+HTTP component (`App::entries`), and the interpreter's app has none, so
+the interpreter is unchanged and stays the reference.
+
+Everything around the codecs stays the runtime's, in one function both
+executors go through, `http::read_request`: a placeholder's text
+percent-decoded, a query string or a body the route doesn't read refused
+as an unknown field, a body refused when it isn't sent as JSON or is
+empty, the header fields put in place of any member of their names, and
+what was found answered `invalid_input`. So a request is refused for the
+same reasons, in the same order, with the same body, whichever executor
+reads it; the arguments made from what was read, idempotency, the
+boundary, the envelope and the status are as they were.
+
+*Reading.* A body is read in place: `jadpo_value::json::Doc` parses it
+once into a flat list of nodes over its bytes, a string or a number a span
+of the text and a string decoded only when it holds an escape. It accepts
+exactly what `json::parse` accepts (RFC 8259 as `serde_json` reads it, no
+member named twice, looked for by a set past 16 members so no body is read
+in quadratic time, 128 levels deep, a number only when it is finite),
+which a seeded comparison of the two over generated documents holds it to.
+A generated reader walks it in the codec walk's order and calls the codec
+walk's own rules for everything but the order: whether a field is missing,
+`null` or read (`json::presence`), a scalar read by `json::scalar`, the
+one reader of scalars both call, and checked by the program's validator
+by number (`Codecs::check`), a list's or a set's items
+(`json::collected`), the members an object doesn't declare, in name
+order, and the value built by the type's shape (`Shape::build_slots`,
+which `Shape::build` calls too). Members are found by their names as
+literals, a plain variant by its wire name and a payload variant by its
+`tag`. A problem's place is a chain of borrowed steps on the stack
+(`json::reading::At`), written out only when a problem is reported, so a
+request with none makes no path at all. What a reader builds is the
+interpreter's `Value`, so an action is given the same arguments.
+
+*Writing.* A writer writes the `Value` the action or query gave: an
+object's members in declared order, their names as literals, an `Input`'s
+field left out and a standard problem's `none` member left out as the
+codec walk leaves them; a variant by its wire name, a payload variant with
+its `tag`; a list's items; a scalar by `json::write_scalar`, the codec
+walk's. Anything but the record of its own type with one value per field,
+the variant or the list its type expects is handed to the codec walk, so
+a writer never has to agree with it about a value the program didn't
+give.
+
+*Where the boundary to `Value` sits.* Bodies stay over `Value` (8.1f), and
+so do the store, the boundary, effects and the standard library, so a
+reader's result is the `Value` an action is called with and a writer
+reads the `Value` it returns. A codec the generator doesn't walk itself is
+read and written by the codec walk at that place, from a `serde_json`
+value made of that part of the document alone, with its path and the
+document's numbers: a map, a standard type sent as its parts (`Money`,
+`ZonedTime`), a geometry, a feature, a vector's float, a page, a standard
+enum read ignoring case (`Currency`, `Locale`), a `Jwk`, and a placeholder
+of a type that is neither a scalar nor a plain enum.
+
+*No Rust struct per type yet.* A struct read from a request would be
+turned into a `Value` at once, since everything that takes it is over
+`Value`: a conversion added, and nothing reading the struct. A struct
+pays once bodies are typed (locals and parameters of a type's struct, a
+field read a Rust field read, a `Value` made only at the runtime's entry
+points), which is a second representation of every value to keep in step
+through every site function; that is listed among 9.2's optimisations, to
+be built if profiling shows a body's own work matters beside the
+request's edge and the store.
+
+*Kept in step.* The differential run sends every compiled route test's
+request through the entries. Beside it, the harness reads a seeded set of
+requests for every route of every project with the entries and with the
+codec walk (`Program::app` and `Program::walked_app`), and writes a set of
+values both ways (`jadpo_test::entries`): each value the input's type
+holds, written by the codec walk, then each place in the first two
+removed, given again, or set to other kinds and edge values; members the
+type doesn't declare; bodies that aren't JSON or an object; other content
+types; query strings with keys given twice; header fields left in the
+body; and each placeholder given its type's text and other text. The
+first difference fails the compiled step with the request and both
+results: 5,832 requests and values across the corpus on this machine
+(example 22 left out for its pgvector, which CI has).
+
+*The win*, measured on example 23's `POST /repairs` (a `RepairRequest` of
+an enum and a text with rules, answered with a `RepairTicket` of a UUID,
+the enum, an optional UUID and an optional instant), release build, per
+request: reading it took 26 allocations (2,148 bytes) and 1.35 µs by the
+codec walk, and 8 (716 bytes) and 0.57 µs by its entry; writing the answer
+took 1.05 µs by the codec walk and 0.89 µs by its entry, with the same 17
+allocations, each scalar's canonical text and the body's growth, which
+both share (medians of three runs of 200,000, on the ten-core Mac under
+other agents' load, one-minute load average 40 to 110). The corpus's
+crate grew by 8,528 lines of entries, 4.6% of its 186,686.
+
+*Rejected:* a Rust struct per type now (above); one walk over a document
+read in place for both executors, which would speed `jadpo dev` too but
+change the reference the differential compares against in the same step,
+and still looks each field's codec, shape and member name up as it reads
+(`Shape::json_name` and `standard_type` are a hash lookup each);
+generating each scalar's reading and rules as well, a second copy of
+every type's rules; and a reader per route rather than per codec, which
+writes a type's walk again for each route that reads it.
 
 **Frames.** Both executors keep a shadow stack of `(callable, site)` in
 the context; each site maps to a `.jadpo` file and line through a table
@@ -3842,8 +3957,10 @@ than a measure.
 "Compiled code") is the gate's `compiled` group, a step of its own using
 the run's server: every project of the corpus that checks compiled as
 modules of one crate, one rustc invocation in the dev profile, every
-test run interpreted and compiled with the same records, and its counts
-shown under the step. It builds the compiler a second time, into the
+test run interpreted and compiled with the same records, every route's
+typed entry reading a seeded set of requests and writing a set of values
+as the codec walk does (chunk 8.1p, §2.5's "A typed per-route entry"),
+and its counts shown under the step. It builds the compiler a second time, into the
 harness's own target folder, and inside the `tests` job it shared a
 four-core runner with sixty other steps: the step took 628 s there and
 the job 13 min 20 s (chunk 8.1i's pull request). So CI runs it as a job
