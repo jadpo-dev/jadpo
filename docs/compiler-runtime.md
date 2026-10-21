@@ -3228,12 +3228,12 @@ action, route and setting and a test leaving a kiosk's id alone, its own
 action changing it) and live (`deployable.rs`: the kiosk's binary holds
 no sweeping, the office's no booking). Measured on teaching example 23,
 release, aarch64 macOS, against the whole program each held before: the
-café's `app` 21,085,280 bytes to 21,084,096 (17.17 MB stripped either
-way: it reaches all but its tests and fixture, which the `testing`
+café's `app` 21,103,600 bytes to 21,085,888 (17.19 to 17.17 MB
+stripped: it reaches all but its tests and fixture, which the `testing`
 feature already left out); declared as the kiosk and office above, the
-kiosk 21,105,600 to 21,084,320 bytes and the office 21,067,472 to
-20,505,248 (17.19 to 17.17 MB and 17.16 to 16.68 MB stripped); and the
-kiosk on Workers 9,490,137 to 9,482,030 bytes (3.05 MB gzipped either
+kiosk 21,123,920 to 21,086,144 bytes and the office 21,085,776 to
+20,507,088 (17.21 to 17.17 MB and 17.17 to 16.68 MB stripped); and the
+kiosk on Workers 12,808,367 to 12,800,144 bytes (3.98 MB gzipped either
 way). A program is a small part of a deployable beside the runtime and
 its locale data. *Rejected:* keeping the whole plan
 and leaving out only the code of the callables a deployable doesn't

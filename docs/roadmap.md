@@ -2454,10 +2454,10 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   action, route and setting or a test and changed by its own action, and
   live: the kiosk's binary holds no sweeping, the office's no booking.
   Example 23, release, aarch64 macOS, against the whole program: `app`
-  21.09 to 21.08 MB (17.17 MB stripped either way), declared as a kiosk
-  and an office 21.11 to 21.08 MB and 21.07 to 20.51 MB, and the kiosk on
-  Workers 9.49 to 9.48 MB (3.05 MB gzipped): the runtime and its locale
-  data are most of a deployable.
+  21.10 to 21.09 MB (17.19 to 17.17 MB stripped), declared as a kiosk
+  and an office 21.12 to 21.09 MB and 21.09 to 20.51 MB, and the kiosk
+  on Workers 12.81 to 12.80 MB (3.98 MB gzipped): the runtime and its
+  locale data are most of a deployable.
 - [x] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
   8.1k. Built, decided first (§2.5, "A typed per-route entry"): each
   route's codecs generated from its types' plans, `entries.rs` in a
