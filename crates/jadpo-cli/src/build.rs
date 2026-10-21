@@ -1,62 +1,49 @@
-//! `jadpo build` (area 14, "The `jadpo` command"; roadmap chunk 8.1o;
-//! docs/compiler-runtime.md §2.6, "A native deployable", and §2.8): checks
-//! the project as `jadpo check` does, writing the same derived files, and
-//! stops at its errors; otherwise writes the deployable's Rust into
-//! `build/rust/` and compiles it in release, offline, with the toolchain
-//! this Jadpo pins and the runtime crates' lock, into one native binary in
-//! `build/target/<deployable>/`, beside its APIs' OpenAPI documents and
-//! each `<api>.failures.<locale>.json` (area 10). The binary carries the
-//! CLDR data of the app's supported locales only (chunk 8.2c), where
-//! `jadpo test` and `jadpo dev` keep every locale.
+//! `jadpo build` (area 14, "The `jadpo` command"; roadmap chunks 8.1o
+//! and 8.1o2; docs/compiler-runtime.md §2.6, "A native deployable", and
+//! §2.8): checks the project as `jadpo check` does, writing the same
+//! derived files, and stops at its errors; otherwise writes each
+//! deployable's Rust into `build/rust/<deployable>/` and compiles it in
+//! release, offline, with the toolchain this Jadpo pins and the runtime
+//! crates' lock, into one native binary in `build/target/<deployable>/`,
+//! beside the OpenAPI documents of the APIs it serves and each
+//! `<api>.failures.<locale>.json` (area 10). Each binary carries the CLDR
+//! data of the app's supported locales only (chunk 8.2c), from
+//! `build/rust/cldr/`, where `jadpo test` and `jadpo dev` keep every
+//! locale.
 //!
-//! With no `deployables:` declared there is one deployable, `app`, which
-//! runs everything natively (area 14, question 14). Its build stamp
-//! (area 18) is a constant in the binary and on every event it logs: the
-//! build id, `b_` and twelve hex digits of a SHA-256 over the source it
-//! reaches (the graph's digest), the compiler, the target and the
-//! package lock; the commit, and whether the tree held changes it doesn't
-//! (a project git doesn't track counts as changed, with no commit); the
-//! compiler; the deployable; and the target.
+//! `jadpo build` builds every deployable, `jadpo build <deployable>` one.
+//! With no `deployables:` declared there is one, `app`, which serves every
+//! API and runs everything, natively (area 14, question 14); a declared
+//! one serves only its APIs' routes and runs only the background work its
+//! `runs:` names (`jadpo_plan::Plan::for_deployable`). One built for
+//! `Target.wasm` is refused as not built yet: WebAssembly on Workers is
+//! roadmap chunk 8.2. Each deployable's build stamp (area 18;
+//! [`crate::stamp`]) is a constant in its binary and on every event it
+//! logs: the build id; the commit, and whether the tree held changes it
+//! doesn't (a project git doesn't track counts as changed, with no
+//! commit); the compiler; the deployable; and the target.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use jadpo_diag::{Decider, Diagnostic, rule};
+use jadpo_check::deployables::Deployable;
+use jadpo_diag::{Decider, Diagnostic, nearest, rule};
+use jadpo_std::DeployTarget;
 use jadpo_term::{Block, Fact, Json, Outcome, Screen};
-use sha2::{Digest, Sha256};
 
 use crate::check::{Checked, checked, reported};
 use crate::fmt::project_needed;
 use crate::help::VERSION;
 use crate::run::{Call, Reply, say};
-
-/// The one deployable of an app that declares none: it runs everything.
-pub const APP: &str = "app";
-
-/// The target a deployable is built for until WebAssembly is (chunk 8.2).
-const TARGET: &str = "native";
+use crate::stamp;
 
 pub fn build(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_needed("build");
     };
-    if let Some(name) = call.arguments.first()
-        && name != APP
-    {
-        return Reply::failed(
-            Diagnostic::new(
-                &rule::CLI_BUILD_ARGUMENTS,
-                format!("`{name}` isn't one of the app's deployables"),
-            )
-            .reason(format!(
-                "The app declares no `deployables:` in `app.jadpo`, so it has one deployable, `{APP}`, which runs everything."
-            ))
-            .next(format!("Run `jadpo build`, or `jadpo build {APP}`")),
-        );
-    }
     let started = Instant::now();
     say("Checking");
     let checked = checked(call, &root);
@@ -66,14 +53,25 @@ pub fn build(call: &Call) -> Reply {
     let Checked {
         loaded, written, ..
     } = checked;
-    say("Writing the deployable");
     let db = &loaded.db;
     let project = loaded.project;
+    let declared = jadpo_check::deployables::deployables(db, project);
+    let chosen: Vec<&Deployable> = match call.arguments.first() {
+        Some(name) => match declared.get(name) {
+            Some(deployable) => vec![deployable],
+            None => return Reply::failed(unknown(name, declared)),
+        },
+        None => declared.list.iter().collect(),
+    };
+    if let Some(wasm) = chosen
+        .iter()
+        .find(|deployable| deployable.builds_for() == DeployTarget::Wasm)
+    {
+        return Reply::failed(not_built_yet(wasm, declared));
+    }
     let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
-    let plan = jadpo_plan::Plan::build(db, project);
-    let build = build_id(plan.build_id(), VERSION, TARGET, &lock);
-    let plan = plan.with_build(build.clone());
-    let (commit, modified) = commit(&root);
+    let graph = jadpo_check::graph::graph(db, project).digest();
+    let source = stamp::commit(&root);
     let stores: BTreeMap<String, Vec<(String, String)>> =
         jadpo_check::data::migrations::store_steps(jadpo_check::data::migrations::migrations(
             db, project,
@@ -86,13 +84,6 @@ pub fn build(call: &Call) -> Reply {
                 .collect();
             (store, migrations)
         })
-        .collect();
-    let settings: Vec<String> = plan
-        .runtime()
-        .config
-        .fields
-        .iter()
-        .map(|field| field.variable.clone())
         .collect();
     let sources = runtime_sources();
     let (toolchain, runtime_lock) = match (
@@ -110,75 +101,22 @@ pub fn build(call: &Call) -> Reply {
             ));
         }
     };
-    let folder = root.join("build/rust");
-    let runtime = sources.display().to_string();
-    // The CLDR data for the supported locales only (area 10, "Locales"):
-    // `jadpo test` and `jadpo dev` keep every locale, the deployable
-    // carries these.
-    let tags: Vec<&str> = plan
-        .runtime()
-        .locales
-        .as_ref()
-        .map(|locales| {
-            locales
-                .supported
-                .iter()
-                .filter_map(|&ordinal| jadpo_std::LOCALES.get(ordinal as usize))
-                .map(|(_, tag)| *tag)
-                .collect()
-        })
-        .unwrap_or_default();
-    let cldr = match jadpo_cldr::export(&tags, &folder.join(".cldr-export")) {
+    // Every deployable's workspace is under one folder and builds into one
+    // target, its paths remapped alike, so the runtime crates compile once
+    // for them all.
+    let rust = root.join("build/rust");
+    let cldr = match carried_locales(db, project, &rust) {
         Ok(cldr) => cldr,
-        Err(error) => {
-            return Reply::failed(failed(
-                "The deployable's locale data couldn't be written".to_string(),
-                format!(
-                    "Jadpo exports the CLDR data of the app's supported locales for the deployable, and that failed, which is Jadpo's own mistake: {error}."
-                ),
-            ));
-        }
+        Err(problem) => return Reply::failed(*problem),
     };
-    let workspace = match jadpo_codegen::deployable::workspace(
-        &plan,
-        &jadpo_codegen::deployable::Deployable {
-            name: APP,
-            stamp: jadpo_codegen::deployable::Stamp {
-                build: &build,
-                commit: commit.as_deref(),
-                modified,
-                compiler: VERSION,
-                target: TARGET,
-            },
-            stores: &stores,
-            runtime: &runtime,
-            toolchain: &toolchain,
-            lock: &runtime_lock,
-            cldr: &cldr,
-        },
-    ) {
-        Ok(workspace) => workspace,
-        Err(error) => {
-            return Reply::failed(failed(
-                "The deployable's Rust couldn't be written".to_string(),
-                format!(
-                    "Jadpo wrote Rust it can't compile, which is Jadpo's own mistake: {error}."
-                ),
-            ));
-        }
-    };
-    if let Err(error) = workspace.write(&folder) {
-        return Reply::failed(write_failed("build/rust/", &error));
-    }
-    say("Compiling the deployable");
     let epoch = call
         .environment
         .var("SOURCE_DATE_EPOCH")
         .and_then(|epoch| epoch.parse().ok())
-        .or_else(|| commit.as_ref().and_then(|_| commit_time(&root)))
+        .or_else(|| source.commit.as_ref().and_then(|_| commit_time(&root)))
         .unwrap_or(0);
     let mut remap = vec![
-        (folder.clone(), "/jadpo/build".to_string()),
+        (rust.clone(), "/jadpo/build".to_string()),
         (sources.clone(), "/jadpo/runtime".to_string()),
     ];
     if let Some(home) = call
@@ -193,52 +131,243 @@ pub fn build(call: &Call) -> Reply {
     {
         remap.push((home, "/cargo".to_string()));
     }
-    let compiled = jadpo_codegen::deployable::build(&jadpo_codegen::deployable::Release {
-        folder: &folder,
-        name: APP,
-        target: &folder.join("target"),
-        remap: &remap,
-        epoch,
-    });
-    let compiled = match compiled {
-        Ok(binary) => binary,
-        Err(error) => {
-            return Reply::failed(failed(
-                "The deployable didn't compile".to_string(),
-                format!(
-                    "cargo couldn't build the Rust Jadpo wrote for it in `build/rust/`, which is Jadpo's own mistake or a toolchain it can't run: {}",
-                    last_lines(&error.to_string(), 12)
-                ),
-            ));
+    let runtime = sources.display().to_string();
+    let mut settings: Vec<String> = Vec::new();
+    let mut built = Vec::new();
+    for deployable in chosen {
+        let name = deployable.name.as_str();
+        say(&format!("Writing `{name}`"));
+        let target = deployable.builds_for().name();
+        let build = stamp::build_id(&stamp::source(&graph, deployable), VERSION, target, &lock);
+        let plan = jadpo_plan::Plan::build(db, project)
+            .for_deployable(&deployable.serves, deployable.runs)
+            .with_build(build.clone());
+        settings = plan
+            .runtime()
+            .config
+            .fields
+            .iter()
+            .map(|field| field.variable.clone())
+            .collect();
+        let folder = rust.join(name);
+        let workspace = match jadpo_codegen::deployable::workspace(
+            &plan,
+            &jadpo_codegen::deployable::Deployable {
+                name,
+                stamp: jadpo_codegen::deployable::Stamp {
+                    build: &build,
+                    commit: source.commit.as_deref(),
+                    modified: source.modified,
+                    compiler: VERSION,
+                    target,
+                },
+                stores: &stores,
+                runtime: &runtime,
+                toolchain: &toolchain,
+                lock: &runtime_lock,
+            },
+        ) {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                return Reply::failed(failed(
+                    format!("`{name}`'s Rust couldn't be written"),
+                    format!(
+                        "Jadpo wrote Rust it can't compile, which is Jadpo's own mistake: {error}."
+                    ),
+                ));
+            }
+        };
+        if let Err(error) = workspace.write(&folder) {
+            return Reply::failed(write_failed(&format!("build/rust/{name}/"), &error));
         }
-    };
-    let out = format!("build/target/{APP}");
-    let binary = format!("{out}/{APP}");
-    if let Err(error) = place(&root, &compiled, &binary) {
-        return Reply::failed(write_failed(&binary, &error));
+        say(&format!("Compiling `{name}`"));
+        let compiled = jadpo_codegen::deployable::build(&jadpo_codegen::deployable::Release {
+            folder: &folder,
+            name,
+            target: &rust.join("target"),
+            remap: &remap,
+            epoch,
+            cldr: &cldr,
+        });
+        let compiled = match compiled {
+            Ok(binary) => binary,
+            Err(error) => {
+                return Reply::failed(failed(
+                    format!("`{name}` didn't compile"),
+                    format!(
+                        "cargo couldn't build the Rust Jadpo wrote for it in `build/rust/{name}/`, which is Jadpo's own mistake or a toolchain it can't run: {}",
+                        last_lines(&error.to_string(), 12)
+                    ),
+                ));
+            }
+        };
+        let out = format!("build/target/{name}");
+        let binary = format!("{out}/{name}");
+        if let Err(error) = place(&root, &compiled, &binary) {
+            return Reply::failed(write_failed(&binary, &error));
+        }
+        let openapi = match documents(
+            &root,
+            &written,
+            &deployable.serves,
+            &format!("{out}/openapi"),
+        ) {
+            Ok(documents) => documents,
+            Err(error) => return Reply::failed(write_failed(&format!("{out}/openapi/"), &error)),
+        };
+        built.push(Binary {
+            name: name.to_string(),
+            declared: deployable.at.is_some(),
+            target,
+            binary,
+            openapi,
+            build,
+            serves: deployable.serves.clone(),
+            runs: deployable.runs_words(),
+        });
     }
-    let openapi = match documents(&root, &written, &format!("{out}/openapi")) {
-        Ok(documents) => documents,
-        Err(error) => return Reply::failed(write_failed(&format!("{out}/openapi/"), &error)),
-    };
     let elapsed = started.elapsed();
-    built(Built {
-        binary,
-        openapi,
-        build,
-        commit,
-        modified,
+    shown(Built {
+        binaries: built,
+        commit: source.commit,
+        modified: source.modified,
         settings,
         migrations: !stores.is_empty(),
         seconds: elapsed.as_secs_f64(),
     })
 }
 
-/// What a build wrote and the stamp it carries.
-struct Built {
+/// Writes the CLDR data every deployable carries, its app's supported
+/// locales' only (area 10, "Locales"; chunk 8.2c), into `rust`'s `cldr/`,
+/// each file only where it changed: the folder. The locales are the app's,
+/// so every deployable reads the one folder and the runtime crates compile
+/// once for them all.
+fn carried_locales(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    rust: &Path,
+) -> Result<PathBuf, Box<Diagnostic>> {
+    let tags: Vec<&str> = jadpo_check::locales::locales(db, project)
+        .plan
+        .as_ref()
+        .map(|locales| {
+            locales
+                .supported
+                .iter()
+                .filter_map(|&ordinal| jadpo_std::LOCALES.get(ordinal as usize))
+                .map(|(_, tag)| *tag)
+                .collect()
+        })
+        .unwrap_or_default();
+    let files = jadpo_cldr::export(&tags, &rust.join(".cldr-export")).map_err(|error| {
+        Box::new(failed(
+            "The deployables' locale data couldn't be written".to_string(),
+            format!(
+                "Jadpo exports the CLDR data of the app's supported locales for its deployables, and that failed, which is Jadpo's own mistake: {error}."
+            ),
+        ))
+    })?;
+    let folder = rust.join("cldr");
+    jadpo_codegen::Generated { files }
+        .write(&folder)
+        .map_err(|error| Box::new(write_failed("build/rust/cldr/", &error)))?;
+    Ok(folder)
+}
+
+/// The project's deployables, for Tab completion: each declared one, or
+/// `app`.
+pub(crate) fn names(cwd: &Path) -> Vec<(String, &'static str)> {
+    let Some(root) = jadpo_db::find_root(cwd) else {
+        return Vec::new();
+    };
+    let loaded = jadpo_db::load(&root);
+    jadpo_check::deployables::deployables(&loaded.db, loaded.project)
+        .list
+        .iter()
+        .map(|deployable| (deployable.name.clone(), "Deployable"))
+        .collect()
+}
+
+/// A name `jadpo build` was given that isn't one of the deployables.
+fn unknown(name: &str, declared: &jadpo_check::deployables::Deployables) -> Diagnostic {
+    let problem = Diagnostic::new(
+        &rule::CLI_BUILD_ARGUMENTS,
+        format!("`{name}` isn't one of the app's deployables"),
+    );
+    if !declared.declared {
+        return problem
+            .reason(format!(
+                "The app declares no `deployables:` in `app.jadpo`, so it has one deployable, `{}`, which runs everything.",
+                jadpo_check::deployables::APP
+            ))
+            .next(format!(
+                "Run `jadpo build`, or `jadpo build {}`",
+                jadpo_check::deployables::APP
+            ));
+    }
+    let names = declared.names();
+    let near = nearest(name, names.iter().copied());
+    let listed: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+    problem
+        .reason(format!(
+            "`app.jadpo` declares {}.{}",
+            listed.join(", "),
+            near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+        ))
+        .next(match near {
+            Some(near) => format!("Run `jadpo build {near}`"),
+            None => "Run `jadpo build` to build them all, or name one of them".to_string(),
+        })
+}
+
+/// `deployable` is built for Workers, which comes with chunk 8.2.
+fn not_built_yet(
+    deployable: &Deployable,
+    declared: &jadpo_check::deployables::Deployables,
+) -> Diagnostic {
+    let native = declared
+        .list
+        .iter()
+        .find(|other| other.builds_for() == DeployTarget::Native);
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!(
+            "`{}` is built for Workers, which `jadpo build` can't do yet",
+            deployable.name
+        ),
+    )
+    .reason(format!(
+        "`{}` declares `target: Target.wasm`; building WebAssembly for Cloudflare Workers comes with chunk 8.2 of the roadmap. `jadpo check` already holds it to what Workers runs.",
+        deployable.name
+    ))
+    .next(match native {
+        Some(native) => format!(
+            "Build a native deployable by name, `jadpo build {}`",
+            native.name
+        ),
+        None => format!(
+            "Give `{}` `target: Target.native` to build it as a server for now",
+            deployable.name
+        ),
+    })
+}
+
+/// One deployable's binary, as a build wrote it.
+struct Binary {
+    name: String,
+    /// Whether `deployables:` declares it, rather than it being `app`.
+    declared: bool,
+    target: &'static str,
     binary: String,
     openapi: Vec<String>,
     build: String,
+    serves: Vec<String>,
+    runs: Vec<&'static str>,
+}
+
+/// What a build wrote and the stamp its binaries carry.
+struct Built {
+    binaries: Vec<Binary>,
     commit: Option<String>,
     modified: bool,
     /// The variables its settings read.
@@ -249,22 +378,43 @@ struct Built {
     seconds: f64,
 }
 
-/// The success screen: where the binary is, its stamp and what it reads,
-/// then the outcome and the one thing to do next.
-fn built(built: Built) -> Reply {
-    let mut fields = vec![("binary".to_string(), built.binary.clone())];
-    fields.push(("build".to_string(), built.build.clone()));
-    fields.push((
+/// The success screen: where each binary is, its build id and, for a
+/// declared deployable, what it serves and runs; then the commit and the
+/// settings they read, the outcome and the one thing to do next.
+fn shown(built: Built) -> Reply {
+    let mut screen = Screen::new();
+    let mut shared = vec![(
         "commit".to_string(),
         built.commit.as_deref().map_or_else(
             || "none".to_string(),
             |commit| commit.chars().take(7).collect::<String>(),
         ),
-    ));
+    )];
     if !built.settings.is_empty() {
-        fields.push(("settings".to_string(), built.settings.join(", ")));
+        shared.push(("settings".to_string(), built.settings.join(", ")));
     }
-    let mut screen = Screen::new().with(Block::fields(fields));
+    let one = built.binaries.len() == 1;
+    for binary in &built.binaries {
+        let mut fields = vec![
+            ("binary".to_string(), binary.binary.clone()),
+            ("build".to_string(), binary.build.clone()),
+        ];
+        if binary.declared {
+            if !binary.serves.is_empty() {
+                fields.push(("serves".to_string(), binary.serves.join(", ")));
+            }
+            if !binary.runs.is_empty() {
+                fields.push(("runs".to_string(), binary.runs.join(", ")));
+            }
+        }
+        if one {
+            fields.append(&mut shared);
+        }
+        screen.push(Block::fields(fields));
+    }
+    if !shared.is_empty() {
+        screen.push(Block::fields(shared));
+    }
     if built.modified {
         screen.push(Block::Alerts(vec![match built.commit {
             Some(_) => {
@@ -273,34 +423,64 @@ fn built(built: Built) -> Reply {
             None => "Built from files git doesn't track: no commit explains its events".to_string(),
         }]));
     }
+    let names: Vec<&str> = built
+        .binaries
+        .iter()
+        .map(|binary| binary.name.as_str())
+        .collect();
+    // `kiosk`, `kiosk and office`, `kiosk, office and edge`: one fact,
+    // which plain output joins to the next with a comma.
+    let named = match names.as_slice() {
+        [rest @ .., last] if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => names.join(""),
+    };
     screen.push(Block::summary(
         Outcome::Success,
         "built",
         [
-            Fact::plain(APP),
-            Fact::plain(format!("{TARGET} in {:.1} s", built.seconds)),
+            Fact::plain(named),
+            Fact::plain(format!("native in {:.1} s", built.seconds)),
         ],
     ));
+    let Some(first) = built.binaries.first() else {
+        return Reply::screen(screen, Json::Null);
+    };
     screen.push(if built.migrations {
         Block::hint(
             "jadpo migrate apply",
-            "it starts only once its database has every migration",
+            if one {
+                "it starts only once its database has every migration"
+            } else {
+                "they start only once their database has every migration"
+            },
         )
     } else {
         Block::hint(
-            format!("./{}", built.binary),
+            format!("./{}", first.binary),
             "runs it, reading its settings from the environment",
         )
     });
     let data = Json::object([
-        ("deployable", APP.into()),
-        ("target", TARGET.into()),
-        ("binary", built.binary.as_str().into()),
         (
-            "openapi",
-            Json::array(built.openapi.iter().map(String::as_str)),
+            "deployables",
+            Json::array(built.binaries.iter().map(|binary| {
+                Json::object([
+                    ("deployable", binary.name.as_str().into()),
+                    ("target", binary.target.into()),
+                    ("binary", binary.binary.as_str().into()),
+                    (
+                        "openapi",
+                        Json::array(binary.openapi.iter().map(String::as_str)),
+                    ),
+                    ("build", binary.build.as_str().into()),
+                    (
+                        "serves",
+                        Json::array(binary.serves.iter().map(String::as_str)),
+                    ),
+                    ("runs", Json::array(binary.runs.iter().copied())),
+                ])
+            })),
         ),
-        ("build", built.build.as_str().into()),
         (
             "commit",
             built.commit.as_deref().map_or(Json::Null, Json::from),
@@ -322,60 +502,6 @@ fn runtime_sources() -> PathBuf {
         .map_or_else(|| cli.to_path_buf(), Path::to_path_buf)
 }
 
-/// Area 18's build id: `b_` and the first twelve hex digits of a SHA-256
-/// over the source's digest, the compiler, the target and the package
-/// lock.
-pub fn build_id(source: &str, compiler: &str, target: &str, lock: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    for part in [
-        b"jadpo build id 1".as_slice(),
-        source.as_bytes(),
-        compiler.as_bytes(),
-        target.as_bytes(),
-        lock,
-    ] {
-        hasher.update((part.len() as u64).to_le_bytes());
-        hasher.update(part);
-    }
-    let digest = hasher.finalize();
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("b_{}", &hex[..12])
-}
-
-/// The commit the project at `root` was built from, and whether its tree
-/// holds changes the commit doesn't: no commit, and changed, when git
-/// doesn't track the project.
-fn commit(root: &Path) -> (Option<String>, bool) {
-    let git = |args: &[&str]| {
-        Command::new("git")
-            .arg("-C")
-            .arg(root)
-            .args(args)
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-    };
-    let Some(commit) = git(&["rev-parse", "HEAD"]) else {
-        return (None, true);
-    };
-    if git(&["ls-files", "--error-unmatch", "app.jadpo"]).is_none() {
-        return (None, true);
-    }
-    let changes = git(&[
-        "status",
-        "--porcelain",
-        "--",
-        ".",
-        ":(exclude)build",
-        ":(exclude).jadpo",
-    ]);
-    (
-        Some(commit),
-        changes.is_none_or(|changes| !changes.is_empty()),
-    )
-}
-
 /// When the commit at `root` was made, in seconds since 1970.
 fn commit_time(root: &Path) -> Option<u64> {
     let output = Command::new("git")
@@ -387,19 +513,31 @@ fn commit_time(root: &Path) -> Option<u64> {
     String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
-/// Copies the compiled binary to `to`, from the project's root.
+/// Copies the compiled binary to `to`, from the project's root, as a new
+/// file: macOS kills a binary copied over one it has run, whose signature
+/// it keeps for that file.
 fn place(root: &Path, compiled: &Path, to: &str) -> std::io::Result<()> {
     let to = root.join(to);
     if let Some(folder) = to.parent() {
         std::fs::create_dir_all(folder)?;
     }
+    match std::fs::remove_file(&to) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     std::fs::copy(compiled, &to).map(|_| ())
 }
 
 /// Copies each OpenAPI document and failure file the check wrote in
-/// `build/openapi/` into `to`, which holds nothing else: their paths, from
-/// the project's root.
-fn documents(root: &Path, written: &[String], to: &str) -> std::io::Result<Vec<String>> {
+/// `build/openapi/` for an API in `serves` into `to`, which holds nothing
+/// else: their paths, from the project's root.
+fn documents(
+    root: &Path,
+    written: &[String],
+    serves: &[String],
+    to: &str,
+) -> std::io::Result<Vec<String>> {
     let folder = root.join(to);
     if folder.exists() {
         std::fs::remove_dir_all(&folder)?;
@@ -414,6 +552,12 @@ fn documents(root: &Path, written: &[String], to: &str) -> std::io::Result<Vec<S
         let Some(name) = Path::new(path).file_name() else {
             continue;
         };
+        // `<api>.json`, `<api>.failures.<locale>.json`.
+        let api = name.to_string_lossy();
+        let api = api.split('.').next().unwrap_or_default();
+        if !serves.iter().any(|served| served == api) {
+            continue;
+        }
         std::fs::create_dir_all(&folder)?;
         std::fs::copy(root.join(path), folder.join(name))?;
         out.push(format!("{to}/{}", name.to_string_lossy()));
@@ -451,21 +595,6 @@ fn write_failed(path: &str, error: &std::io::Error) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_build_id_digests_the_source_the_compiler_the_target_and_the_lock() {
-        let id = build_id("4b1d", "0.1.0", "native", b"");
-        assert!(id.starts_with("b_") && id.len() == 14, "{id}");
-        assert_eq!(id, build_id("4b1d", "0.1.0", "native", b""));
-        for other in [
-            build_id("4b1e", "0.1.0", "native", b""),
-            build_id("4b1d", "0.1.1", "native", b""),
-            build_id("4b1d", "0.1.0", "wasm", b""),
-            build_id("4b1d", "0.1.0", "native", b"link ../couriers\n"),
-        ] {
-            assert_ne!(id, other);
-        }
-    }
 
     #[test]
     fn only_the_last_lines_of_what_cargo_said_are_kept() {

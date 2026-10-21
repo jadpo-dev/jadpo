@@ -23,6 +23,7 @@ pub mod constants;
 pub mod data;
 pub mod databases;
 pub mod declines;
+pub mod deployables;
 pub mod emails;
 pub mod events;
 mod failures;
@@ -293,6 +294,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(types::call_problems(db, project).iter().cloned());
+        out.extend(
+            deployables::deployable_problems(db, project)
+                .iter()
+                .cloned(),
+        );
         out.extend(
             data::migrations::migration_problems(db, project)
                 .iter()

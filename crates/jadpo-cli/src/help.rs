@@ -89,6 +89,7 @@ fn argument_row(argument: &Argument) -> Row {
         | Values::TestPath
         | Values::Query
         | Values::Schedule
+        | Values::Deployable
         | Values::Id => row,
     }
 }
@@ -137,6 +138,7 @@ fn argument_json(argument: &Argument) -> Json {
         Values::Path | Values::TestPath => ("path", Json::array(Vec::<Json>::new())),
         Values::Query => ("query", Json::array(Vec::<Json>::new())),
         Values::Schedule => ("schedule", Json::array(Vec::<Json>::new())),
+        Values::Deployable => ("deployable", Json::array(Vec::<Json>::new())),
         Values::Id => ("id", Json::array(Vec::<Json>::new())),
     };
     Json::object([

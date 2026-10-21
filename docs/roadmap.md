@@ -2375,19 +2375,50 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   not applied, then booking a repair, answering its readiness check and a
   request whose body arrived after SIGTERM, and ending with code 0 (49 s
   cold, seconds warm). §2.6's "A native deployable".
-- [ ] **8.1o2 Declared deployables** `opus · xhigh`, after 8.1o:
-  `deployables: { }` read from `app.jadpo` (area 14, question 14: what
-  each serves, `serves: [main, webhooks]`, and runs, `runs:
-  [Trigger.schedules, Trigger.subscribers]`, and its target,
-  `Target.native` or `Target.wasm`), each compiled from what it reaches
-  and serving and running only that, `jadpo build <deployable>`, the
-  manifest's `source` and `deployables` with their build ids (area 18);
-  `jadpo check` refusing a driver or package a deployable's target can't
-  run, naming the alternative (area 11, question 24), `Driver.disk` and
-  a service on Workers and `Driver.cloudflare_queues` in a native
-  deployable among them. Area 11 says that refusal waits for deployables
-  to be declared, so whether the one deployable of an app that declares
-  none is held to a target by `jadpo check` is decided there.
+- [x] **8.1o2 Declared deployables** `opus · xhigh`, after 8.1o; split
+  on 2026-10-21, a deployable compiled from only what it reaches going to
+  8.1o3. Built (area 14, "Declared deployables"): `deployables: { }` read
+  from `app.jadpo`, each with `serves:`, `runs:` (`Trigger.schedules`,
+  `Trigger.subscribers`) and `target:` (`Target.native`, `Target.wasm`),
+  or `app` alone with no target when none is declared (Richard,
+  2026-10-21), and `deployable.invalid`, `api_unknown`, `trigger_unknown`,
+  `target_unknown`, `empty`, `unserved` (an API with routes, or the app's
+  schedules or subscribers, that no deployable takes) and `settle_unrun`;
+  what each reaches, from its APIs' routes, webhooks' replies, schedules,
+  subscribers and batch runs through every callable's calls to the
+  connections they use, its polls, webhooks, queues and email
+  (`jadpo_check::deployables::reaches`); a deployable that declares a
+  target refused each connection it reaches that the target can't run,
+  naming the alternative (`deployable.target_unsupported`: the disk, a
+  service without `host:` and SMTP on port 25 on Workers, a Cloudflare
+  queue natively), and `jadpo check`'s "On Workers" listing each
+  `max_concurrent:` a Workers deployable reaches, counted per instance;
+  each deployable's plan serving only its APIs' routes and webhooks and
+  running only its triggers (`Plan::for_deployable`, `RuntimePlan::runs`,
+  plan format 9; the runner and the tick hold to it); `jadpo build
+  [<deployable>]`, each into `build/target/<deployable>/` beside its own
+  APIs' documents from `build/rust/<deployable>/`, one cargo target for
+  all, the program named `jadpo-program-<deployable>` so their units
+  don't collide, each binary placed as a new file (macOS kills one copied
+  over a binary it ran), a `Target.wasm` one `toolchain.not_built_yet`;
+  the manifest's `source` and `deployables`, each one's target and build
+  id, which digests a declared deployable's declaration with the graph's
+  digest (`jadpo_cli::stamp`). Proved live
+  (`crates/jadpo-cli/tests/deployable.rs`): example 23 declared as a
+  kiosk serving `main` and running the subscribers and an office serving
+  `staff` and running a schedule each second, the kiosk booking and
+  refusing the staff's route without running the schedule, the office
+  the other way round and running it (20 s warm).
+- [ ] **8.1o3 A deployable compiled from what it reaches**
+  `opus · xhigh`, after 8.1o2: each deployable's program holding only the
+  callables, sites and plan parts it reaches (8.1o2's `reaches`, with
+  every callable the runtime names by number or key, a webhook reply's
+  action, a package's `decode:` and `encode:`, an email's templates, kept
+  whole), the settings it reads and the connections it builds only those
+  it reaches, and its build id digesting that subgraph rather than the
+  whole graph (area 18, "A build id is a digest"), so a change it doesn't
+  reach leaves its id alone; the binary's size measured against the whole
+  program's.
 - [x] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
   8.1k. Built, decided first (§2.5, "A typed per-route entry"): each
   route's codecs generated from its types' plans, `entries.rs` in a
@@ -2414,6 +2445,54 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   build: reading the request 26 allocations and 1.35 µs by the walk, 8
   and 0.57 µs by its entry; writing the answer 1.05 µs against 0.89 µs,
   17 allocations either way.
+
+Chunk 8.2, WebAssembly on Cloudflare Workers, was split on 2026-10-21
+into the chunks below, taken in this order. All but 8.2n run on this
+machine with no Cloudflare account and no network past it: workerd,
+Cloudflare's own Workers runtime, pinned in `tools/workers/` and
+installed there by `npm ci` (never globally), and wasm-bindgen's Rust
+library at the version the lock holds, so a build downloads nothing.
+8.2a can run beside 8.1o2 and 8.1p; 8.2c beside 8.2a and 8.2b; 8.2l
+beside any chunk after 8.2a; 8.2m beside 8.2d; 8.2f and 8.2i beside
+each other. Two refusals the entry listed, `Driver.disk` on Workers
+and `Driver.cloudflare_queues` in a native deployable, are 8.1o2's,
+whose entry names them.
+
+- [x] **8.2a The Workers host** `opus · xhigh`, after 8.1o. Built:
+  `jadpo-host-workers` over wasm-bindgen with Jadpo's own bindings to
+  `connect()`, `ctx.waitUntil`, `fetch`, `setTimeout` and `crypto`
+  (workers-rs rejected: its `start_tls` unwraps and its build tool
+  downloads unpinned tools): `WorkersHost`, the runtime's `Host` for one
+  invocation (Web Crypto's randomness, `Date.now()` and a monotonic clock
+  from it, timers on `setTimeout`, settings from the bindings, `defer`
+  through `waitUntil`, rate limits in the isolate's memory, the factory's
+  drivers per invocation, and 6.7's budgets set to Workers': 30 s after a
+  response and for work handed on, 15 minutes for the cron);
+  `WorkersTransport` over `connect()` and `startTls()` (checked for the
+  name, a connection's own authority refused, a failure before anything
+  has gone through over TLS a failed check); `WorkersFetch`, aborted
+  through an `AbortSignal` at its timeout, whole or streamed, following no
+  redirect (`redirect: "manual"`), and `WorkersOutbound`, the outbound
+  guard the same way (HTTPS only, no address written as one that isn't
+  public, `jadpo_runtime::public_address` now shared with the native
+  host); `supplies()` for the factory. Proved by sixteen tests of a probe
+  Worker built for wasm32, bound by wasm-bindgen's library at the lock's
+  release and run under workerd 1.20261007.1, pinned in
+  `tools/workers/` and installed there by `npm ci`, against servers the
+  test starts (TCP, TLS from a trusted and an untrusted authority,
+  HTTP), an aborted call's connection let go while the invocation goes
+  on; a step of the gate's `wasm32` group. §2.6's "The Workers host".
+- [ ] **8.2b A Workers deployable from `jadpo build`** `opus · xhigh`,
+  after 8.2a and 8.1o2: `jadpo build <deployable>` for a `Target.wasm`
+  deployable: its Rust (the program's crate and a `cdylib` exporting the
+  Worker's handlers through `jadpo-host-workers`, linking only the
+  drivers it reaches) built for `wasm32-unknown-unknown` in release,
+  offline and `--locked`, bound by wasm-bindgen's library, with Jadpo's
+  module shim and a Wrangler file (`wrangler.json`: the main module, no
+  bundling, the compatibility date, the settings it reads) in
+  `build/target/<deployable>/`; the build stamp's target `wasm`; the
+  module's size, raw and compressed, on the build's screen, and the Wasm
+  size measured with and without the `testing` feature.
 - [x] **8.2c Locale data for the supported locales** `opus · xhigh`,
   after 8.1o (from chunk 5.3). Built (area 10, "Locales"; §2.6, "The
   locale data a deployable carries"): `jadpo-cldr`, a tooling crate,
@@ -2421,7 +2500,8 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   (each marker's entries their lookups walk through, down to `und`;
   every locale's collation, since `list.sort_by` takes any `Locale`;
   every marker with one entry) into `build/rust/cldr/`, which `jadpo
-  build` compiles in through `ICU4X_DATA_DIR`, native and Workers alike;
+  build` compiles into each deployable it builds through
+  `ICU4X_DATA_DIR`, one folder for them all, native and Workers alike;
   `jadpo test` and `jadpo dev` keep every locale. Decided in the chunk
   (area 10, 2026-10-21): a `Locale` the app doesn't support reaching
   `text.format`, `temporal.format_relative` or a message is written in
@@ -2434,31 +2514,95 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   module running every operation (`jadpo-value`'s `formats` example,
   release) 18.5 MB to 8.5 MB, 6.1 to 2.7 MB gzipped, 0.9 MB of it every
   locale's collation.
-- [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
-  commit, PostgreSQL through Cloudflare's pooling; the client's address from
-  `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
-  5.1c), and a `client_address:` source other than `cloudflare` refused when
-  a project is built for Workers (area 10, "Client addresses"), which needs
-  deployables declared first.
-  From the Phase 6 review: the `trigger:` adapter; an `every:` under a
-  minute an error naming the schedule (area 12, decided 2026-10-19); a
-  batch carried on in a fresh invocation; 6.7's budgets set to Workers'
-  (30 s for `waitUntil`, 15 minutes' wall time for the cron).
-  From chunk 7.7c2: the queue handler calling `receiving::consume` and
+- [ ] **8.2d One route on workerd** `opus · xhigh`, after 8.2b: the
+  Worker's `fetch` handler, as 8.1o's native one: settings read from the
+  bindings through `config::load`, every problem logged as
+  `runtime.startup_failed`, the stores' migrations compared once per
+  isolate, the program made once per isolate and its drivers per request
+  (a socket belongs to the request that opened it), each request through
+  `Serving` with the client's address from `CF-Connecting-IP`
+  (`ClientAddress::read` with `Target::Workers`, built in 5.1c), and its
+  events as JSON lines with the stamp; a database on this machine over
+  `connect()`. Proved by a teaching example built for Workers and served
+  by workerd against the run's PostgreSQL, a record created and read
+  back (§2.7's Phase 8 row).
+- [ ] **8.2e Route tests on workerd with the same records** `opus ·
+  xhigh`, after 8.2d: the vertical slice's proof: a project's route
+  tests run on its compiled program inside workerd and each test's
+  record compared with the interpreter's (`jadpo_test::differential`),
+  the program built for wasm32 with the `testing` feature behind a
+  handler that runs one test by its key, its test database a copy on the
+  run's server reached over `connect()`; area 7's `todos` and a teaching
+  example passing with the same records, in the `compiled` group.
+- [ ] **8.2f The cron tick** `opus · xhigh`, after 8.2d: the Worker's
+  `scheduled` handler calling `schedules::tick` within the cron's 15
+  minutes, the minute's cron trigger written into the Wrangler file; an
+  `every:` under a minute an error naming the schedule when a Workers
+  deployable reaches it (area 12, decided 2026-10-19); SQS through
+  `receiving:` looped inside the minute's cron every 10 seconds, or its
+  delay documented. Proved through workerd's scheduled entry.
+- [ ] **8.2g The `trigger:` adapter** `opus · high`, after 8.2f:
+  `schedules: { trigger: }` (area 12, question 16): the native timer,
+  Cloudflare's cron, or an external tick another scheduler calls. The
+  external tick's surface isn't on the pages, so the chunk starts by
+  asking Richard with a recommendation.
+- [ ] **8.2h After the response** `opus · xhigh`, after 8.2d: outbox
+  delivery after commit in `waitUntil`, within its 30 seconds, the
+  minute's cron sweeping what it leaves; a batch carried on in a fresh
+  invocation (`Host::hand_on`: a request to the Worker itself or a
+  queue, chosen here); a route's streamed answer (`ai.stream`) sent as a
+  `ReadableStream`. Proved under workerd by a subscriber and a batch run
+  longer than one invocation's budget.
+- [ ] **8.2i PostgreSQL through Hyperdrive** `opus · xhigh`, after 8.2d:
+  PostgreSQL through Cloudflare's pooling: a database connection's
+  address from a Hyperdrive binding on Workers, its caching required off,
+  unnamed statements and no session state kept (§2.6), TLS to it through
+  `startTls()`, a check that fails at the first write after it, where
+  Workers reports one, classified as natively; how a connection names
+  its binding is decided here, or asked. Proved under workerd's Hyperdrive binding against the run's
+  PostgreSQL.
+- [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
+  and 8.2i: the six connections an invocation may hold, counted across
+  `Transport` and `Fetch` and shared with `waitUntil`, a seventh waiting
+  for one; `max_concurrent:`'s slots per isolate (decided 2026-10-21)
+  handing a free slot to a request waiting on another's without one
+  request's promise settled from another's, which Workers doesn't allow.
+  Proved under workerd.
+- [ ] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
+  (from chunk 7.7c2): the queue handler calling `receiving::consume` and
   answering each message (`ack()`, `retry({ delaySeconds })`), the kept
   events' deliveries in `waitUntil`; `wrangler_queues` written into the
   Wrangler file, its setting names and Jadpo's queue-name form checked
-  against Wrangler's own; `Driver.cloudflare_queues` refused in a native
-  deployable.
-  From the Phase 7 review: the six connections an invocation may hold,
-  counted across `Transport` and `Fetch` and shared with `waitUntil`;
-  `max_concurrent:` per isolate on Workers, said in the deploy report and
-  by `jadpo check` (decided, Richard, 2026-10-21); SQS through `receiving:` looped inside
-  the minute's cron or its delay documented; passkeys on Workers built on
-  jadpo-value's pure-Rust ES256 and RSA checks (decided, Richard,
-  2026-10-21); `Driver.disk` refused on Workers; the `Fetch` aborting
-  through an `AbortSignal`, `redirect: "manual"` for the outbound guard;
-  the Wasm size measured with and without the `testing` feature.
+  against Wrangler's own (Wrangler pinned in `tools/workers/`, its
+  `deploy --dry-run`, no account). Proved through workerd's queue entry.
+- [ ] **8.2l Passkeys on Workers** `opus · high`, after 8.2a: passkeys
+  built on jadpo-value's pure-Rust ES256 and RSA checks (decided
+  2026-10-21): registration with no attestation and discoverable sign-in,
+  the challenge, origin, relying party, flags and counter checked as
+  `webauthn-rs` checks them, given by the Workers host; held to
+  `webauthn-rs`'s answers natively through the test authenticator, and a
+  passkey registered and signed in with under workerd.
+- [ ] **8.2m What `jadpo check` and `jadpo build` say for Workers**
+  `opus · high`, after 8.2b: a `client_address:` source other than
+  `cloudflare` refused for a Workers deployable (area 10, "Client
+  addresses"; beside 8.1o2's `jadpo_check::deployables::target_problems`);
+  `max_concurrent:` counted per isolate said on `jadpo build`'s screen
+  (decided 2026-10-21; `jadpo check`'s "On Workers" says it since 8.1o2,
+  which also refuses SMTP on port 25 on Workers).
+- [ ] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d:
+  area 16's counters on Workers kept in the store `rate_limits: { store: }`
+  names, Cloudflare's rate-limiting binding taken as a driver, in place of
+  8.2a's count in the isolate's memory, which the page allows only as a
+  fallback.
+- [ ] **8.2n A real deploy** `opus · high`, after 8.2a to 8.2m2, **needs
+  Richard** (his Cloudflare account): a teaching example deployed with
+  Hyperdrive's caching off to a real PostgreSQL, the cron and a queue,
+  its Wrangler file accepted by `wrangler deploy`; its cold start against
+  the one-second limit, its module against the plan's size limit, and
+  the client's address and the six connections on the real edge,
+  measured; whether the outbound guard's names can reach a private
+  address there checked.
+
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well

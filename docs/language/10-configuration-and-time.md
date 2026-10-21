@@ -708,7 +708,7 @@ On Workers there is no connection address to fall back to, and Cloudflare sets
 Workers uses without a `client_address:`. An address Cloudflare did not give
 is unknown there, and requests with no known address share one allowance. A
 source other than `cloudflare` is refused when the project is built for
-Workers; that check comes with deployables in chunk 8.2
+Workers; that check comes with chunk 8.2m, once deployables are declared
 (`ClientAddress::read` already refuses it for that target).
 
 ## Checking values before the app starts
@@ -6202,7 +6202,7 @@ the app doesn't support is written in (see Locales).
 | A library package's own messages, and whether an app can reword them | 11 | Built in chunk 7.1b3 ("Jadpo's and packages' text") |
 | `config.typo` should report the configuration field | 10 | Fixed (chunk 5.1): `configuration.field_unknown` |
 | `jadpo fmt` writes `temporal.format (` with a space | 14 | Bug |
-| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built (chunk 5.1c, question 12); a source other than `cloudflare` refused for Workers comes with chunk 8.2 |
+| Trusted proxies: which proxies a deployment trusts to say a client's address (`X-Forwarded-For`, `Forwarded`, Cloudflare's `CF-Connecting-IP`) | 7, 10, 16 | Built (chunk 5.1c, question 12); a source other than `cloudflare` refused for Workers comes with chunk 8.2m |
 | GDPR: retention periods as settings, alongside personal-data marking, erasure and export | 15 | Moved to area 15 |
 
 ### Open questions

@@ -46,6 +46,7 @@ mod schedules;
 mod share;
 mod spam;
 mod sql;
+mod stamp;
 mod suggest;
 mod suggestions;
 mod table;

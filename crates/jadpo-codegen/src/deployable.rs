@@ -11,20 +11,22 @@
 //! - `Cargo.lock`, the runtime crates' lock, which the build keeps to
 //!   ([`build`] adds the two packages to it and builds `--locked`);
 //! - `program/`, the project's crate as [`crate::generate`] writes it,
-//!   named `jadpo-program`;
+//!   named `jadpo-program-<deployable>`, so the programs of several
+//!   deployables built into one cargo target never share a unit (cargo
+//!   names a path package's unit by its name and its path within its
+//!   workspace, which is `program` in each; chunk 8.1o2);
 //! - `deployable/`, a binary named after the deployable, depending on the
 //!   program and the native host without the `testing` feature, whose
 //!   `main` hands the native host the program, the build stamp and each
-//!   store's migrations (`jadpo_host_native::deployable::run`);
-//! - `cldr/`, the Unicode CLDR data it carries: ICU4X's compiled data for
-//!   the application's supported locales only, as `jadpo-cldr` exports it
-//!   (area 10, "Locales"; chunk 8.2c).
+//!   store's migrations (`jadpo_host_native::deployable::run`).
 //!
 //! [`build`] runs cargo over it with the paths it was built from remapped
 //! and `SOURCE_DATE_EPOCH` fixed, so the binary holds no machine's paths
 //! (reproducible builds are a goal CI can check, §2.8), and with
-//! `ICU4X_DATA_DIR` naming `cldr/`, so ICU4X's data crates compile that
-//! data in place of every locale's.
+//! `ICU4X_DATA_DIR` naming the folder of the Unicode CLDR data it
+//! carries, the application's supported locales' only as `jadpo-cldr`
+//! exports it (area 10, "Locales"; chunk 8.2c), so ICU4X's data crates
+//! compile that in place of every locale's.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -38,15 +40,17 @@ use quote::quote;
 use crate::cargo::Failed;
 use crate::{Error, Generated, Options, generate, printed};
 
-/// The program's package.
+/// The program's package, before the deployable's name: the binary
+/// depends on it as `jadpo-program`.
 pub const PROGRAM: &str = "jadpo-program";
+
+/// The program's package for deployable `name`: `jadpo-program-kiosk`.
+pub fn program_package(name: &str) -> String {
+    format!("{PROGRAM}-{name}")
+}
 
 /// The binary's package; the binary is named after the deployable.
 pub const BINARY: &str = "jadpo-deployable";
-
-/// The folder of the workspace holding the CLDR data the deployable
-/// carries.
-pub const CLDR: &str = "cldr";
 
 /// The build stamp a deployable carries (area 18, "Production builds").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,10 +80,6 @@ pub struct Deployable<'a> {
     pub toolchain: &'a str,
     /// The runtime crates' `Cargo.lock`.
     pub lock: &'a [u8],
-    /// The CLDR data it carries, each file by name, as
-    /// `jadpo_cldr::export` gives it for the application's supported
-    /// locales.
-    pub cldr: &'a BTreeMap<String, Vec<u8>>,
 }
 
 /// The workspace `deployable` of the program `plan` compiles to, by path
@@ -88,7 +88,7 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
     let program = generate(
         plan,
         &Options {
-            name: PROGRAM.to_string(),
+            name: program_package(deployable.name),
             runtime: deployable.runtime.to_string(),
         },
     )?;
@@ -111,9 +111,6 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
         deployable.toolchain.as_bytes().to_vec(),
     );
     files.insert("Cargo.lock".to_string(), deployable.lock.to_vec());
-    for (name, bytes) in deployable.cldr {
-        files.insert(format!("{CLDR}/{name}"), bytes.clone());
-    }
     let runtime = deployable.runtime.trim_end_matches('/');
     files.insert(
         "deployable/Cargo.toml".to_string(),
@@ -130,9 +127,10 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
              path = \"src/main.rs\"\n\
              \n\
              [dependencies]\n\
-             {PROGRAM} = {{ path = \"../program\" }}\n\
+             {PROGRAM} = {{ path = \"../program\", package = \"{program}\" }}\n\
              jadpo-host-native = {{ path = \"{runtime}/jadpo-host-native\" }}\n",
             name = deployable.name,
+            program = program_package(deployable.name),
         )
         .into_bytes(),
     );
@@ -217,10 +215,15 @@ pub struct Release<'a> {
     /// The seconds since 1970 the build is dated, for whatever reads
     /// `SOURCE_DATE_EPOCH`.
     pub epoch: u64,
+    /// The folder of the CLDR data it carries, `jadpo_cldr::export`'s
+    /// files, which ICU4X's data crates compile in place of their own;
+    /// the same folder for every deployable of an app, whose locales are
+    /// the app's, so a shared target compiles them once.
+    pub cldr: &'a Path,
 }
 
 /// Builds `release`'s binary in the release profile, offline and keeping
-/// to the lock, with the CLDR data in its workspace's `cldr/`: its path.
+/// to the lock, with the CLDR data in `release.cldr`: its path.
 pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
     // The two generated packages join the runtime crates' lock; nothing
     // else in it moves, which the build then holds it to.
@@ -259,8 +262,8 @@ fn run(release: &Release<'_>, args: &[&str]) -> Result<(), Failed> {
         flags.push("=");
         flags.push(to);
     }
-    let cldr = std::path::absolute(release.folder.join(CLDR))
-        .map_err(|error| Failed::Start(error.to_string()))?;
+    let cldr =
+        std::path::absolute(release.cldr).map_err(|error| Failed::Start(error.to_string()))?;
     let output = Command::new(crate::cargo::cargo())
         .current_dir(release.folder)
         .args(args)

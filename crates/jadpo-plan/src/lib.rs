@@ -967,25 +967,7 @@ impl Plan {
                 .copied()
         });
         let schedules = schedules_plan(db, project, &by_key, &purges);
-        let build = {
-            let mut nodes: Vec<(String, String)> = graph
-                .ids()
-                .map(|id| {
-                    let node = graph.node(id);
-                    let digest = node.digest.as_ref().map(|d| d.short()).unwrap_or_default();
-                    (node.key.as_str().to_string(), digest)
-                })
-                .collect();
-            nodes.sort();
-            let mut hasher = blake3::Hasher::new();
-            for (key, digest) in &nodes {
-                for part in [key, digest] {
-                    hasher.update(&(part.len() as u64).to_le_bytes());
-                    hasher.update(part.as_bytes());
-                }
-            }
-            hasher.finalize().to_hex()[..32].to_string()
-        };
+        let build = graph.digest();
         let steps_key = jadpo_check::types::steps_settings(db, project)
             .encryption_key
             .as_ref()
@@ -1202,6 +1184,7 @@ impl Plan {
             actions,
             build: build.clone(),
             steps_key,
+            runs: jadpo_std::Runs::EVERYTHING,
             testing,
         };
         Plan {
@@ -1241,6 +1224,33 @@ impl Plan {
     pub fn with_build(mut self, build: String) -> Plan {
         Arc::make_mut(&mut self.runtime).build = build.clone();
         self.build = build;
+        self
+    }
+
+    /// The same plan as a declared deployable runs it (area 14, "Declared
+    /// deployables"; chunk 8.1o2): only the routes of the APIs in `serves`
+    /// (the webhooks' among them when it names `webhooks`), and only the
+    /// background work `runs` names. Health's routes stay, whatever it
+    /// serves.
+    pub fn for_deployable(mut self, serves: &[String], runs: jadpo_std::Runs) -> Plan {
+        let runtime = Arc::make_mut(&mut self.runtime);
+        let served: Vec<bool> = runtime
+            .routes
+            .apis
+            .iter()
+            .map(|api| serves.contains(&api.name))
+            .collect();
+        runtime
+            .routes
+            .routes
+            .retain(|route| served.get(route.api as usize).copied().unwrap_or(false));
+        if !serves
+            .iter()
+            .any(|api| api == jadpo_check::webhooks::DEFAULT_PREFIX)
+        {
+            runtime.providers.webhooks.clear();
+        }
+        runtime.runs = runs;
         self
     }
 

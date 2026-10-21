@@ -9,6 +9,14 @@ rules:
   - syntax.suggestions_duplicate_option
   - type.suggestions_value_invalid
   - semantic.multiple_suggestions
+  - deployable.invalid
+  - deployable.api_unknown
+  - deployable.trigger_unknown
+  - deployable.target_unknown
+  - deployable.empty
+  - deployable.unserved
+  - deployable.settle_unrun
+  - deployable.target_unsupported
 ---
 
 # Tooling
@@ -43,7 +51,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo test --watch` | Reruns the affected tests on every save | Built (chunk 2.3): each save reruns the tests that reach a node whose digest changed since the last run, within the path, name and kind given; a broken build shows its errors and runs nothing; `--json` writes one envelope per line; ctrl-c quits |
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
-| `jadpo build` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Built (chunk 8.1o) for the one deployable an app that declares none has, `app`, natively, with `--json`: it checks as `jadpo check` does, writing the same files, and stops at its errors; otherwise it writes `build/target/app/app` and `build/target/app/openapi/` with each API's document and failure files, built with the toolchain and lock this Jadpo pins; see [A native deployable](#a-native-deployable). Declared `deployables:` are chunk 8.1o2 |
+| `jadpo build [<deployable>]` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Built (chunk 8.1o) for the one deployable an app that declares none has, `app`, natively, with `--json`: it checks as `jadpo check` does, writing the same files, and stops at its errors; otherwise it writes `build/target/app/app` and `build/target/app/openapi/` with each API's document and failure files, built with the toolchain and lock this Jadpo pins; see [A native deployable](#a-native-deployable). Since chunk 8.1o2 every declared deployable, or the one named, each in `build/target/<deployable>/` beside only its own APIs' documents; one built for `Target.wasm` is `toolchain.not_built_yet` until chunk 8.2; see [Declared deployables](#declared-deployables) |
 | `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The settings `config.jadpo` declares are read from the environment over `.env.local` and checked first (chunk 5.1): a missing or invalid value stops the app starting and is shown by setting and variable, never by value, and a save of `.env.local` is checked like a save of source, keeping the last good version serving. Each database opens at the address its connection's `url:` setting holds, or the one `--url` names, or else a disposable PostgreSQL for the session (for a store whose address no variable gives), with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line. Since chunk 6.2b, a line for each schedule run and skipped tick (a paused schedule's once), with its trace's id, outcome, what it emitted or its failure and its time, and a line for each alert when it starts; the address of each database it started is in `build/dev/stores.json` while it runs, for `jadpo schedules` and `jadpo why`. Since chunk 6.7, ctrl-c or SIGTERM stops it cleanly: the server drains, its background work giving back what it holds, and it exits 0; a second signal ends it at once (area 12, "Running background work"). Since chunk 5.13b, a save that leaves a file empty that had text is taken as an editor's save in place between its truncate and its write, not yet saved: the reload waits for the file's text, up to 2 seconds, so an empty routes file, which checks cleanly with no routes, never replaces the version serving; a file still empty then reloads as saved ("Watching saves" in Decisions; `jadpo test --watch` waits the same way). Since chunk 7.2d, every provider call is faked by default, with no credential needed, unless the connection's `development: { sandbox: }` lets it through to the provider's sandbox, never live; `--fake <connection>` and `--sandbox <operation>` change which for one session only, each request's line lists its calls, and each call is logged for `jadpo calls` (area 11, "Provider calls in development"). Since chunk 7.5f, each step an action with several changing calls reached is a line under its request's line, and a delivery whose action reached steps gets a line of its own, with `jadpo deliveries show <id>` when it needs an operator (area 12). Decided 2026-10-16 (area 11), not built: the services the app's connections declare started with it |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8), and `signature` for a connection's generated webhook since chunk 7.7 (area 11), listed under `webhooks  /webhooks` when the app declares no `webhooks` API |
@@ -842,9 +850,11 @@ same for a protected route with no authentication set up.
 ### A native deployable
 
 Built in chunk 8.1o, each the most conservative reading where the pages
-leave a choice open; declared `deployables:` (question 14), each compiled
-from what it reaches, and `jadpo check` refusing a driver a deployable's
-target can't run (area 11, question 24) are chunk 8.1o2.
+leave a choice open; declared `deployables:` (question 14) and `jadpo
+check` refusing a driver a deployable's target can't run (area 11,
+question 24) were built in chunk 8.1o2 ([Declared
+deployables](#declared-deployables)), and each compiled from only what it
+reaches is chunk 8.1o3.
 
 - **One deployable, `app`.** An app with no `deployables:` has one
   deployable, called `app`, which serves every API and runs everything,
@@ -853,7 +863,8 @@ target can't run (area 11, question 24) are chunk 8.1o2.
 - **What `jadpo build` writes.** It checks as `jadpo check` does, writing
   the same files in `build/`, and stops at the first error with the same
   screen, ending `✗ build stopped`. Otherwise it writes the deployable's
-  Rust into `build/rust/` (the program's crate and a binary named after
+  Rust into `build/rust/app/` since chunk 8.1o2, `build/rust/` before
+  (the program's crate, `jadpo-program-app`, and a binary named after
   the deployable, the toolchain this Jadpo pins in `rust-toolchain.toml`,
   the runtime crates' `Cargo.lock`) and compiles it in release, offline,
   `--locked`, with the paths it was built from remapped and
@@ -866,7 +877,8 @@ target can't run (area 11, question 24) are chunk 8.1o2.
   `toolchain.artifact_write_failed`. This Jadpo compiles a deployable
   against the runtime crates it was built from, in its own checkout.
 - **The build stamp** (area 18): the build id, `b_` and the first twelve
-  hex digits of a SHA-256 over the digest of every node of the graph,
+  hex digits of a SHA-256 over the digest of every node of the graph
+  (with a declared deployable's declaration since chunk 8.1o2),
   the compiler's version, the target and `jadpo.lock`; the commit `git`
   says the project is at, and whether its tree holds changes the commit
   doesn't (`build/` and `.jadpo/` aside), a project git doesn't track
@@ -916,6 +928,114 @@ $ jadpo build
 ✓ built  app · native in 49.1 s
 → jadpo migrate apply  it starts only once its database has every migration
 ```
+
+### Declared deployables
+
+Built in chunk 8.1o2 (question 14), each the most conservative reading
+where the pages leave a choice open. `application { deployables: { } }`
+in `app.jadpo` names each program the app is built into, what it serves,
+what it runs and what it is built for:
+
+```jadpo check project=deployables file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /
+        }
+        backstage: {
+            prefix: /backstage
+        }
+    }
+    deployables: {
+        web: {
+            serves: [main]
+            runs: [Trigger.subscribers]
+            target: Target.wasm
+        }
+        back_office: {
+            serves: [backstage]
+            runs: [Trigger.schedules]
+            target: Target.native
+        }
+    }
+}
+```
+
+- **What it serves.** `serves:` lists APIs by name: those `apis:`
+  declares, or `main`, and `webhooks` once a connection receives
+  webhooks. A deployable answers only those APIs' routes, each API's
+  `openapi.json` among them, and a webhook only when it serves
+  `webhooks`; every one answers its health checks. Two may serve one API.
+- **What it runs.** `runs:` lists the background work it runs:
+  `Trigger.schedules`, the app's schedules, each entity's purge, each
+  poll and a batch run picked up again; and `Trigger.subscribers`, each
+  delivery of an event or an email, after its action commits and from
+  the outbox, and the queues `receiving:` reads. An action it serves
+  still writes its events to the outbox, for one that runs them; a
+  delivery in a deployable that doesn't run subscribers, or a batch run
+  in one that doesn't run schedules, waits for one that does. Every
+  deployable's tick deletes what has expired, which any instance may.
+- **What it is built for.** `target:` is `Target.native`, a server, or
+  `Target.wasm`, WebAssembly on Cloudflare Workers, which `jadpo build`
+  builds from chunk 8.2. A deployable with no `target:` has none, as the
+  one an app that declares none has, `app`, and is built natively
+  (Richard, 2026-10-21; Decisions).
+- **What each reaches.** From the routes of the APIs it serves, the
+  webhooks' replies, the actions its schedules and subscribers run and
+  the batch runs it carries on, through every callable they call, to the
+  connections they use: a store of files, a provider's operation, a
+  package's action, `ai:`'s model; with its polls, the webhooks it
+  receives, the queues `receiving:` reads and `email:`'s connection.
+- **Its target, checked** (area 11, question 24). A deployable that
+  declares a target is refused each connection it reaches whose driver
+  that target can't run, naming the alternative
+  (`deployable.target_unsupported`): on Workers, the disk (a package over
+  S3's API, such as Cloudflare R2), a service Jadpo runs without `host:`
+  (`host:` with where it is hosted), and SMTP on port 25 (port 587);
+  natively, a Cloudflare queue, which only a Worker receives (a package
+  over Cloudflare's HTTP pull API). A deployable built for Workers that
+  reaches a connection with `max_concurrent:` is listed under "On
+  Workers" once `jadpo check` passes: Workers runs as many instances as
+  traffic needs, and each counts the cap on its own (area 11, Decisions).
+- **Nothing left unserved.** Once `deployables:` is declared, every API
+  with routes needs a deployable that serves it, and the app's schedules
+  and subscribers one that runs them (`deployable.unserved`); a route
+  with `settle:` is served only where subscribers run
+  (`deployable.settle_unrun`).
+- **The build.** `jadpo build` builds every deployable and `jadpo build
+  <deployable>` one, each into `build/target/<deployable>/` with the
+  documents of the APIs it serves, its Rust in
+  `build/rust/<deployable>/`, all compiled into one cargo target, so the
+  runtime crates compile once for them all. A name the app doesn't
+  declare is `cli.build_arguments`, with the nearest; a deployable built
+  for `Target.wasm` is `toolchain.not_built_yet`, naming a native one to
+  build. Each binary's stamp names it, and its build id is its own: the
+  build id digests the deployable's declaration with the graph's digest
+  (area 18), the whole project's until a deployable is compiled from only
+  what it reaches (roadmap chunk 8.1o3), and `jadpo check` writes each
+  deployable's target and build id in the manifest.
+
+```text
+$ jadpo build
+  binary    build/target/web/web
+  build     b_1c5e09d2a7f3
+  serves    main
+  runs      subscribers
+
+  binary    build/target/back_office/back_office
+  build     b_e20fc10f5474
+  serves    backstage
+  runs      schedules
+
+  commit    8d113e6
+  settings  DATABASE_URL
+
+✓ built  web and back_office · native in 61.3 s
+→ jadpo migrate apply  they start only once their database has every migration
+```
+
+With `web` built for `Target.wasm`, as above, `jadpo build` stops before
+building either, and `jadpo build back_office` builds the one it can.
 
 ### Command errors
 
@@ -1229,6 +1349,665 @@ error: `suggestions { }` is declared twice
 check failed: 1 error, 1 file
 ```
 
+### `deployable.invalid`
+
+`deployables:` names each deployable with a block holding `serves:`, a
+list of APIs, `runs:`, a list of triggers, and `target:`, and nothing
+else; an entry is listed once:
+
+```jadpo check project=e-deployable-invalid expect=deployable.invalid file=app.jadpo
+application {
+    deployables: {
+        kiosk: {
+            serves: main
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: `kiosk`'s `serves:` isn't a list
+ --> app.jadpo:4:21
+  |
+4 |             serves: main
+  |                     ^^^^ not a list
+  reason: `serves:` is a list, `serves: [<api>]`.
+  next: Write `serves: [<api>]` (agent)
+  rule: deployable.invalid
+  help: docs/language/14-tooling.html#deployable-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `deployable.api_unknown`
+
+`serves:` names APIs the app has: those `apis:` declares, or `main`, and
+`webhooks` once a connection receives webhooks:
+
+```jadpo check project=e-deployable-api-unknown expect=deployable.api_unknown file=app.jadpo
+application {
+    deployables: {
+        kiosk: {
+            serves: [mian]
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: `mian` isn't one of the app's APIs
+ --> app.jadpo:4:22
+  |
+4 |             serves: [mian]
+  |                      ^^^^ no such API
+  reason: `serves:` names APIs the app has: `main`. Did you mean `main`?
+  next: Use `main` instead of `mian` (agent)
+  rule: deployable.api_unknown
+  help: docs/language/14-tooling.html#deployable-api-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `deployable.trigger_unknown`
+
+`runs:` lists `Trigger.schedules` and `Trigger.subscribers`:
+
+```jadpo check project=e-deployable-trigger-unknown expect=deployable.trigger_unknown file=app.jadpo
+application {
+    deployables: {
+        kiosk: {
+            serves: [main]
+            runs: [Trigger.jobs]
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: `Trigger.jobs` isn't background work a deployable runs
+ --> app.jadpo:5:20
+  |
+5 |             runs: [Trigger.jobs]
+  |                    ^^^^^^^^^^^^ not a `Trigger`
+  reason: `runs:` lists `Trigger.schedules`, the schedules, purges and polls, and `Trigger.subscribers`, the deliveries of events and emails.
+  next: Use `Trigger.schedules` or `Trigger.subscribers` (agent)
+  rule: deployable.trigger_unknown
+  help: docs/language/14-tooling.html#deployable-trigger-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `deployable.target_unknown`
+
+A deployable is built for `Target.native` or `Target.wasm`; Workers is
+where WebAssembly runs:
+
+```jadpo check project=e-deployable-target-unknown expect=deployable.target_unknown file=app.jadpo
+application {
+    deployables: {
+        kiosk: {
+            serves: [main]
+            target: Target.workers
+        }
+    }
+}
+```
+
+```text output
+error: `Target.workers` isn't a target
+ --> app.jadpo:5:21
+  |
+5 |             target: Target.workers
+  |                     ^^^^^^^^^^^^^^ not a `Target`
+  reason: A deployable is built for `Target.native`, a server, or `Target.wasm`, WebAssembly on Cloudflare Workers. Did you mean `Target.wasm`?
+  next: Use `Target.wasm` instead (agent)
+  rule: deployable.target_unknown
+  help: docs/language/14-tooling.html#deployable-target-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `deployable.empty`
+
+A deployable that serves no API and runs no background work would only
+answer its health checks:
+
+```jadpo check project=e-deployable-empty expect=deployable.empty file=app.jadpo
+application {
+    deployables: {
+        kiosk: {
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: `kiosk` serves nothing and runs nothing
+ --> app.jadpo:3:9
+  |
+3 |         kiosk: {
+  |         ^^^^^ does nothing
+  reason: A deployable serves APIs, `serves: [main]`, runs background work, `runs: [Trigger.schedules]`, or both; one that does neither would only answer its health checks.
+  next: Give `kiosk` `serves:` or `runs:`, or remove it (agent)
+  rule: deployable.empty
+  help: docs/language/14-tooling.html#deployable-empty
+
+check failed: 1 error, 1 file
+```
+
+### `deployable.unserved`
+
+Once `deployables:` is declared, an API's routes are served only by a
+deployable that names it, and background work runs only where its
+trigger is listed, so nothing the app declares is left unserved. The
+desk's `backstage` API has a route:
+
+```jadpo check project=e-deployable-unserved file=domains/desk/types/line.jadpo hidden
+/// A line of text.
+type Line = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-deployable-unserved file=domains/desk/types/remark.jadpo hidden
+use desk/types { Line }
+
+/// What is said.
+type Remark = Input {
+    line: Line
+}
+```
+
+```jadpo check project=e-deployable-unserved file=domains/desk/types/echoed.jadpo hidden
+use desk/types { Line }
+
+/// What is said back.
+type Echoed = Output {
+    line: Line
+}
+```
+
+```jadpo check project=e-deployable-unserved file=domains/desk/actions/echo.jadpo hidden
+use desk/types { Echoed, Remark }
+
+/// Says the words back.
+action echo(input: Remark) -> Echoed {
+    return Echoed {
+        line: input.line
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved file=policy.jadpo hidden
+use desk
+
+policy {
+    actions: {
+        desk.echo: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved file=domains/desk/routes/backstage.jadpo
+use desk/types { Echoed, Remark }
+use desk/actions { echo }
+
+/// The desk backstage.
+routes Backstage {
+    prefix: /backstage
+    api: backstage
+
+    /// Says it back.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Remark
+        output: Echoed
+        run: echo(input)
+    }
+}
+```
+
+```jadpo check project=e-deployable-unserved file=api/backstage.jadpo_record hidden
+// Generated by Jadpo from the routes of API backstage; update it with `jadpo api update`, never by hand.
+record api 1
+
+POST /backstage
+    authentication none
+    input Remark (body)
+    output Echoed
+    status 200
+
+GET /backstage/openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+output Echoed
+    line: Text { max_length: 40 }
+
+input Remark
+    line: Text { max_length: 40 }
+```
+
+but the one deployable serves only `main`:
+
+```jadpo check project=e-deployable-unserved expect=deployable.unserved file=app.jadpo
+application {
+    apis: {
+        main: {
+            prefix: /
+        }
+        backstage: {
+            prefix: /backstage
+        }
+    }
+    deployables: {
+        kiosk: {
+            serves: [main]
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: No deployable serves the API `backstage`
+ --> app.jadpo:10:5
+   |
+10 |     deployables: {
+   |     ^^^^^^^^^^^ none serves it
+  reason: Once `deployables:` is declared, an API's routes are served only by a deployable whose `serves:` names it, and `backstage` has 1 route.
+  next: Add `backstage` to a deployable's `serves:` (agent)
+  rule: deployable.unserved
+  help: docs/language/14-tooling.html#deployable-unserved
+
+check failed: 1 error, 7 files
+```
+
+### `deployable.settle_unrun`
+
+A route with `settle:` waits for the subscribers of what its action
+emits, so the deployable that serves it runs them. The notes board waits
+for each note to be pinned up:
+
+```jadpo check project=e-deployable-settle-unrun file=app.jadpo hidden
+application {
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/types/note_text.jadpo hidden
+/// A note's text.
+type NoteText = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/types/new_note.jadpo hidden
+use board/types { NoteText }
+
+/// A note to add.
+type NewNote = Input {
+    text: NoteText
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/types/note_view.jadpo hidden
+use board/entities { Note }
+use board/types { NoteText }
+
+/// A note as the board shows it.
+type NoteView = Output {
+    id: Note.id
+    text: NoteText
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/entities/note.jadpo hidden
+use board/types { NoteText }
+
+/// A note on the board.
+entity Note {
+    id: Uuid
+    text: NoteText
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/events/note_added.jadpo hidden
+use board/types { NoteText }
+
+/// A note was added.
+type NoteAdded = Event {
+    text: NoteText
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/actions/add_note.jadpo hidden
+use board/entities { Note }
+use board/types { NewNote, NoteView }
+use board/events { NoteAdded }
+
+/// Adds a note.
+action add_note(input: NewNote) -> NoteView {
+    var note: Note = Note.create {
+        set: {
+            text: input.text
+        }
+    }
+    emit NoteAdded {
+        text: input.text
+    }
+    return NoteView {
+        id: note.id
+        text: note.text
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/actions/pin_note.jadpo hidden
+use board/types { NoteText }
+
+/// Pins a note up.
+action pin_note(pinned: NoteText) -> Unit {
+    assert pinned == pinned
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/subscribers/pin_it.jadpo hidden
+use board/actions { pin_note }
+use board/events { NoteAdded }
+
+/// Pins each note up.
+subscriber pin_it {
+    on: NoteAdded
+    run: pin_note(event.text)
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/queries/note_for.jadpo hidden
+use board/entities { Note, NoteNotFound }
+use board/types { NoteView }
+
+query note_for(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/routes/notes.jadpo migrate=initial
+use board/types { NewNote, NoteView }
+use board/actions { add_note }
+use board/queries { note_for }
+
+/// The notes board.
+routes Notes {
+    prefix: /notes
+
+    /// Adds a note, once it is pinned up.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewNote
+        output: NoteView
+        status: SuccessStatus.created
+        run: add_note(input)
+        settle: {
+            answer: note_for(result.id)
+            within: 2s
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-settle-unrun file=domains/board/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain board; update it with `jadpo records update`, never by hand.
+record events 1
+
+event NoteAdded
+    text: Text { max_length: 200 }
+```
+
+```jadpo check project=e-deployable-settle-unrun file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+POST /notes
+    authentication none
+    input NewNote (body)
+    output NoteView
+    status 201
+    settle within 2s
+    fails note_not_found
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+input NewNote
+    text: Text { max_length: 200 }
+
+output NoteView
+    id: Uuid
+    text: Text { max_length: 200 }
+
+failure note_not_found
+    status 404
+```
+
+and the kiosk serves it, while the worker runs the subscribers:
+
+```jadpo check project=e-deployable-settle-unrun expect=deployable.settle_unrun file=app.jadpo
+application {
+    deployables: {
+        kiosk: {
+            serves: [main]
+            target: Target.native
+        }
+        worker: {
+            runs: [Trigger.subscribers]
+            target: Target.native
+        }
+    }
+}
+```
+
+```text output
+error: `POST /notes` waits for follow-on work `kiosk` doesn't run
+ --> app.jadpo:3:9
+  |
+3 |         kiosk: {
+  |         ^^^^^ doesn't run subscribers
+  reason: `POST /notes` in `main` has `settle:`, so it waits for the subscribers of what its action emits, and a deployable runs them only when its `runs:` lists `Trigger.subscribers`.
+  next: Add `Trigger.subscribers` to `kiosk`'s `runs:` (agent)
+  rule: deployable.settle_unrun
+  help: docs/language/14-tooling.html#deployable-settle-unrun
+
+check failed: 1 error, 11 files
+```
+
+### `deployable.target_unsupported`
+
+A deployable that declares a target is held to the connections it
+reaches, from the routes of the APIs it serves and the background work it
+runs: the disk and a service Jadpo runs (`runs:`) without `host:` aren't
+on Workers, SMTP on port 25 is blocked there, and only a Worker receives
+a Cloudflare queue (area 11, question 24). Each refusal names what to use
+instead. A bakery keeps its suppliers' price sheets on its disk:
+
+```jadpo check project=e-deployable-target-unsupported file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/types/new_sheet.jadpo hidden
+use bakery/types { SheetText }
+
+/// A price sheet to keep.
+type NewSheet = Input {
+    text: SheetText
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/types/sheet_kept.jadpo hidden
+use bakery/entities { PriceSheet }
+
+/// The sheet as kept.
+type SheetKept = Output {
+    id: PriceSheet.id
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/entities/price_sheet.jadpo hidden
+/// A supplier's price sheet, kept as it was sent.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/actions/keep_prices.jadpo
+use app { sheets }
+use bakery/entities { PriceSheet }
+use bakery/types { NewSheet, SheetKept }
+use bakery/failures { SheetNotKept }
+
+/// Keeps a price sheet as it was sent.
+action keep_prices(input: NewSheet) fails SheetNotKept -> SheetKept {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(input.text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    var filed: PriceSheet = PriceSheet.create {
+        set: {
+            sheet: sheet
+        }
+    }
+    return SheetKept {
+        id: filed.id
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=domains/bakery/routes/tariffs.jadpo hidden migrate=initial
+use bakery/types { NewSheet, SheetKept }
+use bakery/actions { keep_prices }
+
+/// The suppliers' tariffs.
+routes Tariffs {
+    prefix: /tariffs
+
+    /// Keeps a price sheet.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: NewSheet
+        output: SheetKept
+        status: SuccessStatus.created
+        run: keep_prices(input)
+    }
+}
+```
+
+```jadpo check project=e-deployable-target-unsupported file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /tariffs
+    authentication none
+    input NewSheet (body)
+    output SheetKept
+    status 201
+    fails sheet_not_kept
+
+input NewSheet
+    text: Text { min_length: 1, max_length: 100000 }
+
+output SheetKept
+    id: Uuid
+
+failure sheet_not_kept
+    status 503
+    message "There was no room to keep the sheet."
+```
+
+and its edge, which serves the API that keeps them, is built for Workers:
+
+```jadpo check project=e-deployable-target-unsupported expect=deployable.target_unsupported file=app.jadpo
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```text output
+error: `edge` can't use `sheets` on Workers, which has no disk
+ --> app.jadpo:11:21
+   |
+ 3 |         sheets: {
+   |         ------ `Driver.disk`
+11 |             target: Target.wasm
+   |                     ^^^^^^^^^^^ built for Workers
+  reason: `sheets` keeps files on the server's own disk (`Driver.disk`), and a Worker has none; `edge` uses it through `keep_prices`.
+  next: Keep `sheets`'s files through a package over S3's API, such as Cloudflare R2, or use them from a `Target.native` deployable (agent)
+  rule: deployable.target_unsupported
+  help: docs/language/14-tooling.html#deployable-target-unsupported
+
+check failed: 1 error, 8 files
+```
+
 ## Review
 
 ### Status
@@ -1388,7 +2167,8 @@ what other areas carried here and where this page answers it.
     everything; `jadpo build <deployable>` builds one and `jadpo dev` runs all
     in one process. Built in chunk 8.1o for the one deployable an app that
     declares none has, `app`, natively ([A native deployable](#a-native-deployable));
-    declaring them is chunk 8.1o2.
+    declaring them in chunk 8.1o2 ([Declared deployables](#declared-deployables)),
+    each compiled from only what it reaches in chunk 8.1o3.
 15. **Which commands manage integrations?** (carried from area 11) The
     command table above has no `jadpo integration add` or `update`, no
     contract diff and no adapter conformance run. Which of these does the

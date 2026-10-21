@@ -32,6 +32,7 @@ mod crypto;
 mod data_formats;
 mod declines;
 mod decode_problems;
+mod deployables;
 mod determinism;
 mod domain_names;
 mod email_partials;

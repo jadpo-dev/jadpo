@@ -1,0 +1,79 @@
+[package]
+name = "jadpo-host-workers"
+description = "The Workers host: the runtime's capabilities over Cloudflare Workers' JavaScript APIs, through wasm-bindgen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+# A runtime crate (docs/compiler-runtime.md §2.1 and §2.6, "The Workers
+# host"): it builds for wasm32-unknown-unknown, which is what it is for, and
+# natively too, where its bindings to Workers' JavaScript compile but are
+# never called, so the workspace builds, lints and tests as one.
+[dependencies]
+jadpo-runtime.workspace = true
+jadpo-std.workspace = true
+# The drivers' `Transport` and the package driver's `Fetch`, and the
+# factory's supplies (chunk 8.1d). A deployable turns on the drivers it
+# reaches; the host needs only the package driver's `Fetch`.
+jadpo-drivers = { workspace = true, features = ["package"] }
+# The byte streams a driver reads and writes (`Transport`'s `Stream`).
+tokio.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = [
+    "AbortController",
+    "AbortSignal",
+    "Headers",
+    "ReadableStream",
+    "ReadableStreamDefaultReader",
+    "Request",
+    "RequestInit",
+    "RequestRedirect",
+    "Response",
+    "ResponseInit",
+    "Url",
+    "UrlSearchParams",
+    "WritableStream",
+    "WritableStreamDefaultWriter",
+] }
+
+[features]
+# PostgreSQL over `connect()`, for a deployable that keeps data: the
+# drivers it doesn't reach are left out of its module.
+postgres = ["jadpo-drivers/postgres"]
+# A test's server on this machine reached over HTTPS by the outbound guard
+# (`WorkersOutbound::reaching`): never built outside a test.
+test-outbound = []
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
+
+# The probe Worker its tests run under workerd (tests/workerd.rs): built for
+# wasm32 by the test itself, with `test-outbound`, and natively by `cargo
+# test` and clippy like any example.
+[[example]]
+name = "probe"
+crate-type = ["cdylib"]
+
+[dev-dependencies]
+# The probe's reads and writes over a transport's stream.
+tokio = { workspace = true, features = ["io-util"] }
+
+# What the tests that run the probe need, natively only: the probe, an
+# example, is built for wasm32 with the crate's dev-dependencies.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# Turns the probe's module into the module and the JavaScript workerd runs.
+wasm-bindgen-cli-support.workspace = true
+# Reads cargo's messages for where it put the probe.
+serde_json.workspace = true
+# The test's TLS servers and the authority workerd is told to trust.
+rustls.workspace = true
+rcgen.workspace = true
+
+[lints]
+workspace = true

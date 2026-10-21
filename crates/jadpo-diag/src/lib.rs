@@ -384,6 +384,22 @@ rules! {
         "14-tooling.html#command-errors", "Deliveries' database couldn't be read";
     DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
         "14-tooling.html#command-errors", "Delivery or schedule run isn't in a state the action applies to";
+    DEPLOYABLE_API_UNKNOWN: "deployable.api_unknown", area 14, Error, Agent,
+        "14-tooling.html#deployable-api-unknown", "Deployable serves an API the app doesn't have";
+    DEPLOYABLE_EMPTY: "deployable.empty", area 14, Error, Agent,
+        "14-tooling.html#deployable-empty", "Deployable serves nothing and runs nothing";
+    DEPLOYABLE_INVALID: "deployable.invalid", area 14, Error, Agent,
+        "14-tooling.html#deployable-invalid", "Deployable is written in a form `deployables:` doesn't take";
+    DEPLOYABLE_SETTLE_UNRUN: "deployable.settle_unrun", area 14, Error, Agent,
+        "14-tooling.html#deployable-settle-unrun", "Route waits for follow-on work its deployable doesn't run";
+    DEPLOYABLE_TARGET_UNKNOWN: "deployable.target_unknown", area 14, Error, Agent,
+        "14-tooling.html#deployable-target-unknown", "Deployable's target isn't one Jadpo builds for";
+    DEPLOYABLE_TARGET_UNSUPPORTED: "deployable.target_unsupported", area 14, Error, Agent,
+        "14-tooling.html#deployable-target-unsupported", "Deployable reaches a connection its target can't run";
+    DEPLOYABLE_TRIGGER_UNKNOWN: "deployable.trigger_unknown", area 14, Error, Agent,
+        "14-tooling.html#deployable-trigger-unknown", "Deployable runs something that isn't a trigger";
+    DEPLOYABLE_UNSERVED: "deployable.unserved", area 14, Error, Agent,
+        "14-tooling.html#deployable-unserved", "No deployable serves an API, or runs the background work, the app has";
     EFFECT_CALL_IN_LOOP: "effect.call_in_loop", area 3, Error, Agent,
         "03-logic.html#effect-call-in-loop", "Outside call inside a `for` loop";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,

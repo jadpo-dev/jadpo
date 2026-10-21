@@ -105,25 +105,47 @@ pub fn providers(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(Stri
     ]
 }
 
+/// What the manifest says of the check that wrote it (area 18): the
+/// compiler, how many errors it found, the commit the project is at and
+/// whether its tree was modified, and each deployable's target and build
+/// id ([`crate::stamp`]; chunk 8.1o2).
+pub fn stamp(
+    db: &dyn jadpo_db::Db,
+    project: jadpo_db::Project,
+    root: &Path,
+    graph: &Graph,
+    errors: usize,
+) -> Stamp {
+    let lock = std::fs::read(root.join(jadpo_db::LOCK)).unwrap_or_default();
+    let digest = graph.digest();
+    Stamp {
+        compiler: VERSION.to_string(),
+        errors,
+        source: Some(crate::stamp::commit(root)),
+        deployables: crate::stamp::deployables(
+            &jadpo_check::deployables::deployables(db, project).list,
+            &digest,
+            VERSION,
+            &lock,
+        ),
+    }
+}
+
 /// Writes every derived file; the paths written, relative to the root.
 pub fn write(
     root: &Path,
     graph: &Graph,
-    errors: usize,
+    stamp: &Stamp,
     openapi: &[(String, jadpo_graph::json::Value)],
     permissions: Option<&jadpo_check::policy::report::Report>,
     surfaces: &[(String, String)],
 ) -> Result<Vec<String>, Box<Diagnostic>> {
-    let stamp = Stamp {
-        compiler: VERSION.to_string(),
-        errors,
-    };
     let libraries = catalogue::libraries(graph);
     let failures = catalogue::failures(graph);
     let mut files = vec![
         (
             "build/manifest.json".to_string(),
-            manifest(graph, &stamp).to_document(),
+            manifest(graph, stamp).to_document(),
         ),
         (
             "build/catalogue/libraries.md".to_string(),

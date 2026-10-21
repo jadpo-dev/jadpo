@@ -42,6 +42,7 @@ fn checked(files: &[(String, String)]) -> (String, Graph) {
     let stamp = Stamp {
         compiler: "test".into(),
         errors,
+        ..Stamp::default()
     };
     (manifest(&graph, &stamp).to_document(), graph)
 }

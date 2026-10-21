@@ -90,3 +90,48 @@ fn with_none_declared_the_one_deployable_is_app() {
         output.stderr
     );
 }
+
+/// The café declares a kiosk serving `main`, built natively, and an edge
+/// built for Workers (chunk 8.1o2).
+const DECLARED: &str = "application {\n    deployables: {\n        kiosk: {\n            serves: [main]\n            target: Target.native\n        }\n        edge: {\n            serves: [main]\n            target: Target.wasm\n        }\n    }\n}\n";
+
+#[test]
+fn a_declared_deployable_is_built_by_its_name() {
+    let root = project("declared", &[("app.jadpo", DECLARED)]);
+    let output = jadpo(&root, &["build", "kisok"]);
+    assert_eq!(output.code, 2, "{}{}", output.stdout, output.stderr);
+    for expected in [
+        "error: `kisok` isn't one of the app's deployables",
+        "`app.jadpo` declares `edge`, `kiosk`. Did you mean `kiosk`?",
+        "Run `jadpo build kiosk`",
+        "rule: cli.build_arguments",
+    ] {
+        assert!(
+            output.stderr.contains(expected),
+            "{expected}: {}",
+            output.stderr
+        );
+    }
+}
+
+#[test]
+fn a_deployable_built_for_workers_is_not_built_yet() {
+    let root = project("workers", &[("app.jadpo", DECLARED)]);
+    for args in [&["build", "edge"][..], &["build"][..]] {
+        let output = jadpo(&root, args);
+        assert_eq!(output.code, 1, "{}{}", output.stdout, output.stderr);
+        for expected in [
+            "error: `edge` is built for Workers, which `jadpo build` can't do yet",
+            "Build a native deployable by name, `jadpo build kiosk`",
+            "rule: toolchain.not_built_yet",
+        ] {
+            assert!(
+                output.stderr.contains(expected),
+                "{args:?} {expected}: {}",
+                output.stderr
+            );
+        }
+        assert!(!root.join("build/rust").exists());
+        assert!(!root.join("build/target").exists());
+    }
+}

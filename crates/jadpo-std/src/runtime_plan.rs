@@ -95,12 +95,47 @@ pub struct RuntimePlan {
     /// `SigningKey` setting its answers are sealed with, by number.
     pub build: String,
     pub steps_key: Option<u32>,
+    /// The background work this program runs besides the routes it serves
+    /// (area 14, "Declared deployables"; chunk 8.1o2): everything but in a
+    /// declared deployable that runs less.
+    pub runs: Runs,
     /// The dev and test section: each test's key and what it gives
     /// itself, and the recordings (chunk 8.1e). Written after the rest
     /// ([`RuntimePlan::encode`]), not as one of its fields.
     #[cfg(feature = "testing")]
     #[serde(skip)]
     pub testing: crate::testing::TestingPlan,
+}
+
+/// The background work a program runs besides the routes it serves (area
+/// 14, "Declared deployables"; chunk 8.1o2): `runs: [Trigger.schedules,
+/// Trigger.subscribers]`. `jadpo dev`, `jadpo test` and the one deployable
+/// of an app that declares none run both. Whatever it runs, a program
+/// answers its health checks and its tick does the runtime's own
+/// housekeeping, deleting what has expired, which any instance may do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Runs {
+    /// `Trigger.schedules`: the schedules, each entity's purge and each
+    /// poll on the tick, and a batch run the tick picks up again.
+    pub schedules: bool,
+    /// `Trigger.subscribers`: each delivery of an event or an email, after
+    /// its action commits and from the outbox on the tick, and the queues
+    /// `receiving:` reads.
+    pub subscribers: bool,
+}
+
+impl Runs {
+    /// Both: what a program runs unless a declared deployable says less.
+    pub const EVERYTHING: Runs = Runs {
+        schedules: true,
+        subscribers: true,
+    };
+}
+
+impl Default for Runs {
+    fn default() -> Runs {
+        Runs::EVERYTHING
+    }
 }
 
 /// Why bytes didn't read as a runtime plan.
@@ -133,7 +168,7 @@ impl std::error::Error for Unreadable {}
 impl RuntimePlan {
     /// What the bytes of a plan start with: what they are, and the format,
     /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 8\n";
+    pub const HEADER: &'static [u8] = b"jadpo runtime plan 9\n";
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding, then, with the `testing` feature, its dev

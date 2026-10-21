@@ -300,6 +300,46 @@ pub trait Outbound {
     ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>>;
 }
 
+/// Whether `ip` is an address on the public internet, what an
+/// [`Outbound`] reaches: not loopback, private, link-local, shared
+/// (100.64/10), reserved, documentation, benchmarking, unspecified,
+/// broadcast or multicast; IPv4 inside IPv6 judged as itself. One
+/// answer for every host's guard (the native host's since chunk 7.7b,
+/// moved here for the Workers host's in chunk 8.2a).
+pub fn public_address(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..128).contains(&b))
+                || (a == 192 && b == 0 && c == 0)
+                || (a == 198 && (18..20).contains(&b)))
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped().or_else(|| v6.to_ipv4()) {
+                return public_address(IpAddr::V4(v4));
+            }
+            let [first, second, ..] = v6.segments();
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || first & 0xfe00 == 0xfc00
+                || first & 0xffc0 == 0xfe80
+                || first == 0x2001 && second == 0x0db8
+                || first == 0x0064 && second == 0xff9b)
+        }
+    }
+}
+
 /// The platform: the capabilities one invocation runs against.
 pub trait Host {
     /// The driver of the outside capability connection `connection` fills
@@ -372,7 +412,7 @@ pub trait Host {
     /// and a margin ([`crate::budget`], [`crate::lease`]). At most the
     /// 15-minute limit of a run. Natively and under `jadpo dev`, and on a
     /// host that says nothing, that limit; on Workers its platform's, 30
-    /// seconds after a response and 15 minutes for the cron (chunk 8.2).
+    /// seconds after a response and 15 minutes for the cron (chunk 8.2a).
     fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
         let _ = invocation;
         crate::budget::GENEROUS_MS
@@ -400,7 +440,7 @@ pub trait Host {
     /// invocation whose budget was spent hands on, a batch run carried on
     /// and the work it hadn't reached (chunk 6.7). Natively a task of its
     /// own on the worker's thread; on Workers a fresh invocation (chunk
-    /// 8.2). A host with nothing to run it on, as a test's or a tool's,
+    /// 8.2h). A host with nothing to run it on, as a test's or a tool's,
     /// drops it: what it held was given back, and the minute tick takes it
     /// up.
     fn hand_on(&self, work: LocalFuture<'static, ()>) {
