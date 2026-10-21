@@ -22,7 +22,11 @@
 //!
 //! [`build`] runs cargo over it with the paths it was built from remapped
 //! and `SOURCE_DATE_EPOCH` fixed, so the binary holds no machine's paths
-//! (reproducible builds are a goal CI can check, §2.8).
+//! (reproducible builds are a goal CI can check, §2.8), and with
+//! `ICU4X_DATA_DIR` naming the folder of the Unicode CLDR data it
+//! carries, the application's supported locales' only as `jadpo-cldr`
+//! exports it (area 10, "Locales"; chunk 8.2c), so ICU4X's data crates
+//! compile that in place of every locale's.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -211,10 +215,15 @@ pub struct Release<'a> {
     /// The seconds since 1970 the build is dated, for whatever reads
     /// `SOURCE_DATE_EPOCH`.
     pub epoch: u64,
+    /// The folder of the CLDR data it carries, `jadpo_cldr::export`'s
+    /// files, which ICU4X's data crates compile in place of their own;
+    /// the same folder for every deployable of an app, whose locales are
+    /// the app's, so a shared target compiles them once.
+    pub cldr: &'a Path,
 }
 
 /// Builds `release`'s binary in the release profile, offline and keeping
-/// to the lock: its path.
+/// to the lock, with the CLDR data in `release.cldr`: its path.
 pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
     // The two generated packages join the runtime crates' lock; nothing
     // else in it moves, which the build then holds it to.
@@ -253,6 +262,8 @@ fn run(release: &Release<'_>, args: &[&str]) -> Result<(), Failed> {
         flags.push("=");
         flags.push(to);
     }
+    let cldr =
+        std::path::absolute(release.cldr).map_err(|error| Failed::Start(error.to_string()))?;
     let output = Command::new(crate::cargo::cargo())
         .current_dir(release.folder)
         .args(args)
@@ -260,6 +271,10 @@ fn run(release: &Release<'_>, args: &[&str]) -> Result<(), Failed> {
         .env("CARGO_ENCODED_RUSTFLAGS", flags)
         .env_remove("RUSTFLAGS")
         .env("SOURCE_DATE_EPOCH", release.epoch.to_string())
+        // ICU4X's data crates read the data the deployable carries from
+        // here, in place of the full set they ship with; `include!` reads
+        // a relative path from the including file, so it is absolute.
+        .env("ICU4X_DATA_DIR", cldr)
         .output()
         .map_err(|error| Failed::Start(error.to_string()))?;
     if output.status.success() {

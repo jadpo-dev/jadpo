@@ -2493,14 +2493,27 @@ whose entry names them.
   `build/target/<deployable>/`; the build stamp's target `wasm`; the
   module's size, raw and compressed, on the build's screen, and the Wasm
   size measured with and without the `testing` feature.
-- [ ] **8.2c Locale data for the supported locales** `opus · xhigh`,
-  after 8.1o (from chunk 5.3): a deployable carries locale data only for
-  its application's supported locales (today all 533 are compiled in:
-  about 3.5 MB of a 3.9 MB module, 1.2 MB gzipped), chosen as `jadpo
-  build` builds it, native and Workers alike, `jadpo test` and `jadpo
-  dev` keeping every locale; a value written in a locale the deployable
-  doesn't carry falls back as area 10 says, or the chunk asks Richard;
-  the sizes before and after recorded.
+- [x] **8.2c Locale data for the supported locales** `opus · xhigh`,
+  after 8.1o (from chunk 5.3). Built (area 10, "Locales"; §2.6, "The
+  locale data a deployable carries"): `jadpo-cldr`, a tooling crate,
+  bakes ICU4X's compiled data again for a deployable's supported locales
+  (each marker's entries their lookups walk through, down to `und`;
+  every locale's collation, since `list.sort_by` takes any `Locale`;
+  every marker with one entry) into `build/rust/cldr/`, which `jadpo
+  build` compiles into each deployable it builds through
+  `ICU4X_DATA_DIR`, one folder for them all, native and Workers alike;
+  `jadpo test` and `jadpo dev` keep every locale. Decided in the chunk
+  (area 10, 2026-10-21): a `Locale` the app doesn't support reaching
+  `text.format`, `temporal.format_relative` or a message is written in
+  the supported locale a header naming it would get, else `default:`, on
+  every target (formatting wrote it in its own words, a message
+  faulted). Proved live by a shop supporting `en_gb` and `fr_fr`, built
+  and run: no German or Spanish weekday in its binary, and its answers
+  are `jadpo dev`'s. Before and after: the shop's native binary 31.3 MB
+  to 21.0 MB (27.4 to 17.1 MB stripped; release, aarch64 macOS); a wasm32
+  module running every operation (`jadpo-value`'s `formats` example,
+  release) 18.5 MB to 8.5 MB, 6.1 to 2.7 MB gzipped, 0.9 MB of it every
+  locale's collation.
 - [ ] **8.2d One route on workerd** `opus · xhigh`, after 8.2b: the
   Worker's `fetch` handler, as 8.1o's native one: settings read from the
   bindings through `config::load`, every problem logged as
