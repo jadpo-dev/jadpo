@@ -1288,7 +1288,7 @@ webhook's and health path's label (`POST /todos`) is made once and a
 response shares it (`Response::route` an `Arc<str>`); and a page cursor's
 failure is recognised by its key rather than by making one. A dedicated
 test binary counts allocations with a counting global allocator
-(`crates/jadpo-runtime/tests/route_allocations.rs`, through `stats_alloc`,
+(`crates/jadpo-runtime/tests/route_allocations/main.rs`, through `stats_alloc`,
 since the workspace forbids `unsafe`), and a unit test checks the trie
 against the table's search on every method and a spread of paths.
 *Rejected:* a `Run::Webhook` in the route table itself, which would put
@@ -3305,7 +3305,9 @@ crate's integration tests are one binary (since chunk 3.11: `autotests =
 false`, one `[[test]]` called `integration`, and `tests/main.rs` declaring
 each test file as a module, which the crate-graph test checks, so no file
 is left out), so the workspace links eleven integration binaries rather
-than fifty-odd; a named step runs its test files by name
+than fifty-odd; jadpo-runtime has one more, `route_allocations` (chunk
+8.1k, its own folder under `tests/`), with no harness, so the counting
+allocator it installs sees no other test's work; a named step runs its test files by name
 filter (`proofs::`), fails if a filter matches no test, and `compiler
 tests` skips those files, so no test runs twice. Each step prints `ok` or
 `FAILED` as it finishes, then the failures' output with a command that

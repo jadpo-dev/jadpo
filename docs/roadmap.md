@@ -2193,7 +2193,7 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   `Run` in the route table, no longer matched in front of it; and no
   allocation per request for paths, labels or the cursor failure's
   lookup, counted by a test binary's allocator
-  (`crates/jadpo-runtime/tests/route_allocations.rs`).
+  (`crates/jadpo-runtime/tests/route_allocations/main.rs`).
 - [x] **8.1l Native accept and one rate-limit count** `opus · xhigh`,
   after 8.1d. Built: the native acceptor a thread of its own awaiting the
   listener on a current-thread runtime and handing each connection to the

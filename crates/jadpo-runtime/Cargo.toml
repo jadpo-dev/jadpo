@@ -39,10 +39,11 @@ name = "integration"
 path = "tests/main.rs"
 
 # Its own binary, with no harness, so its counting allocator sees only
-# what routing a request allocates (chunk 8.1k).
+# what routing a request allocates (chunk 8.1k): in a folder, so it is no
+# file of the one integration binary's (§2.7).
 [[test]]
 name = "route_allocations"
-path = "tests/route_allocations.rs"
+path = "tests/route_allocations/main.rs"
 harness = false
 
 [lints]
