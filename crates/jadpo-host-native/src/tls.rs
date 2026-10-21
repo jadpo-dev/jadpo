@@ -11,7 +11,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, OnceLock};
 
 use jadpo_drivers::Stream;
-use rustls::pki_types::{CertificateDer, ServerName};
+use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 
 /// The configuration every connection is secured with: Mozilla's roots.
@@ -33,7 +33,7 @@ pub fn config() -> io::Result<Arc<ClientConfig>> {
 pub fn trusting(authority: &[u8]) -> io::Result<Arc<ClientConfig>> {
     let mut roots = RootCertStore::empty();
     roots
-        .add(CertificateDer::from(authority.to_vec()))
+        .add(authority.to_vec().into())
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
     built(roots)
 }

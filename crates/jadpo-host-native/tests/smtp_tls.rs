@@ -19,7 +19,7 @@ use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability};
 use jadpo_value::Value;
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, KeyUsagePurpose};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
 /// An authority made for one test, and a server certificate it signed.
 struct Authority {
@@ -63,7 +63,7 @@ impl Authority {
         .expect("versions")
         .with_no_client_auth()
         .with_single_cert(
-            vec![CertificateDer::from(self.certificate.clone())],
+            vec![self.certificate.clone().into()],
             PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(self.key.clone())),
         )
         .expect("a server configuration");

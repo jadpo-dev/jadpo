@@ -6,6 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+autotests = false
 
 # A runtime crate (docs/compiler-runtime.md §2.1 and §2.6) that never builds
 # for wasm32: it is listed in [workspace.metadata.targets] native_only, so
@@ -42,6 +43,10 @@ openssl.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 webpki-roots.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
 
 [dev-dependencies]
 rcgen.workspace = true
