@@ -2435,11 +2435,11 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   deployable.
   From the Phase 7 review: the six connections an invocation may hold,
   counted across `Transport` and `Fetch` and shared with `waitUntil`;
-  `max_concurrent:` per isolate said in the deploy report, or decided
-  otherwise (**needs Richard**); SQS through `receiving:` looped inside
+  `max_concurrent:` per isolate on Workers, said in the deploy report and
+  by `jadpo check` (decided, Richard, 2026-10-21); SQS through `receiving:` looped inside
   the minute's cron or its delay documented; passkeys on Workers built on
-  jadpo-value's pure-Rust checks or `passkey:` refused there (**needs
-  Richard**); `Driver.disk` refused on Workers; the `Fetch` aborting
+  jadpo-value's pure-Rust ES256 and RSA checks (decided, Richard,
+  2026-10-21); `Driver.disk` refused on Workers; the `Fetch` aborting
   through an `AbortSignal`, `redirect: "manual"` for the outbound guard;
   the Wasm size measured with and without the `testing` feature.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
