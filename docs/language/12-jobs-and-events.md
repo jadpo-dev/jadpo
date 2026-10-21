@@ -76,7 +76,7 @@ schedule chore_census {
   `schedules: { store: }` names (area 5), or the only database when there
   is one; with several and none named, or none at all, each schedule is
   `schedule.store_required`. `schedules:` holds only `store:` until the
-  `trigger:` adapter (question 16) comes with Workers (roadmap 8.2). The
+  `trigger:` adapter (question 16) comes with Workers (roadmap 8.2g). The
   state and run tables are in the migration snapshot only when a schedule
   is declared or an entity purges.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
@@ -115,7 +115,7 @@ once a minute, or as often as the shortest `every:` when that is shorter,
 at least once a second. Natively it is the server's timer on its first
 worker's thread, at each whole period of UTC; `jadpo dev` ticks, and a
 test's or a tool's host doesn't. On Workers it is the cron trigger
-(roadmap 8.2), where an `every:` under a minute is an error naming the
+(roadmap 8.2f), where an `every:` under a minute is an error naming the
 schedule, since a minute's cron can't run it (decided 2026-10-19). Each
 state row keeps the last tick that reached it. Then, each step starting
 only while the tick's budget lasts, the tick:
@@ -2133,7 +2133,7 @@ stops short.
   to its host, which runs them once the response has been handed back:
   natively a task on the worker thread that answered, with that worker's
   program, so no thread needs a program of its own; on Workers
-  `waitUntil` (roadmap 8.2). What a host does with a request (answer it,
+  `waitUntil` (since chunk 8.2a). What a host does with a request (answer it,
   hand on what it left) and with a tick is one runtime type every host
   wraps, so a native server and `jadpo dev` serve through the same
   handler, `jadpo dev` only listening to print its lines. Each piece
@@ -2144,9 +2144,9 @@ stops short.
 - **A budget for each invocation.** Every invocation that runs background
   work (after a response, the tick, or work handed on) is given a budget
   by its host, at most the 15-minute limit of a run: natively and under
-  `jadpo dev` that limit; a test's host may give less, and Workers' (30
-  seconds after a response, 15 minutes for the cron) are set in roadmap
-  8.2. A tenth of it, at most 5 seconds, is kept back for giving claims
+  `jadpo dev` that limit; a test's host may give less, and Workers' are
+  30 seconds after a response and for work handed on, 15 minutes for the
+  cron (chunk 8.2a). A tenth of it, at most 5 seconds, is kept back for giving claims
   back: once no more than that is left, the runner takes no more work.
 - **A run's limit within the budget.** A subscriber's or a schedule's
   action runs until the 15-minute limit or what is left of the budget

@@ -3895,8 +3895,9 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   ways in.
 - A setting loosened past its limit, until acceptances (area 18).
 - Passkeys on Workers: `webauthn-rs` 0.5 verifies with OpenSSL, which
-  doesn't build for wasm32, so the Workers host waits for a pure-Rust
-  release (its 0.6 line, on RustCrypto, is a pre-release).
+  doesn't build for wasm32, so the Workers host checks them with
+  jadpo-value's pure-Rust ES256 and RSA (decided 2026-10-21; roadmap
+  8.2l).
 - OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting
   routes and `on_behalf_of:` (decided 2026-10-16, area 11); no roadmap chunk
   yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers,

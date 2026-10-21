@@ -10,7 +10,8 @@
 //! answered and each tick: `jadpo dev` prints its lines from them, and a
 //! deployable's log comes with the hosts' log sink (area 16). The native
 //! server's handler wraps it (`jadpo_host_native::http::AppHandler`);
-//! Workers' fetch and scheduled events call the same two (chunk 8.2).
+//! Workers' fetch and scheduled events call the same two (chunks 8.2d
+//! and 8.2f).
 //!
 //! What it serves is any [`Executor`]: the interpreter, or compiled code
 //! (Phase 8). The route table and codecs a request is answered with come
