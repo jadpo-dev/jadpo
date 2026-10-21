@@ -1007,10 +1007,13 @@ application {
   S3's API, such as Cloudflare R2), a service Jadpo runs without `host:`
   (`host:` with where it is hosted), and SMTP on port 25 (port 587);
   natively, a Cloudflare queue, which only a Worker receives (a package
-  over Cloudflare's HTTP pull API). A deployable built for Workers that
-  reaches a connection with `max_concurrent:` is listed under "On
-  Workers" once `jadpo check` passes: Workers runs as many instances as
-  traffic needs, and each counts the cap on its own (area 11, Decisions).
+  over Cloudflare's HTTP pull API). One built for Workers is refused a
+  `client_address:` source other than `cloudflare`, at its `source:`
+  (area 10, "Client addresses"; chunk 8.2m). A deployable built for
+  Workers that reaches a connection with `max_concurrent:` is listed
+  under "On Workers" once `jadpo check` passes, and `jadpo build` says it
+  on the Worker's `calls` line: Workers runs as many instances as traffic
+  needs, and each counts the cap on its own (area 11, Decisions).
 - **Nothing left unserved.** Once `deployables:` is declared, every API
   with routes needs a deployable that serves it, and the app's schedules
   and subscribers one that runs them (`deployable.unserved`); a route
@@ -1039,6 +1042,7 @@ $ jadpo build
   build     b_1c5e09d2a7f3
   serves    main
   runs      subscribers
+  calls     pdf 2 at once in each instance
 
   binary    build/target/back_office/back_office
   build     b_e20fc10f5474
@@ -1102,9 +1106,13 @@ Workers"). The queue's handler comes with 8.2k.
 - **The screen.** For each Worker, `worker`, its Wrangler file; `module`,
   the module; `size`, the module's bytes raw and gzipped at zlib's default
   level, as Wrangler reports an upload, in decimal units, as Cloudflare
-  states its limits; then its build id and what it serves and runs. The
+  states its limits; then its build id and what it serves and runs; and
+  `calls`, each connection's `max_concurrent:` it reaches, counted in each
+  instance (`pdf 2 and ocr 4 at once in each instance`; chunk 8.2m). The
   `--json` data gives `wrangler` and the module's `path`, `bytes` and
-  `gzip_bytes`, with `binary` null.
+  `gzip_bytes`, with `binary` null, and every deployable's
+  `per_instance`, each `connection` and its `max_concurrent`, empty but
+  on a Worker that reaches a cap.
 - **Starting.** A Worker has no start of its own, so an isolate starts
   at its first request, as a native binary starts as its process does:
   it makes its program once, reads only the variables its settings name
@@ -1994,8 +2002,10 @@ on Workers, SMTP on port 25 is blocked there, and only a Worker receives
 a Cloudflare queue (area 11, question 24). One built for Workers that
 runs the schedules is held to them too: its tick is the minute's cron, so
 a schedule more often than once a minute is refused at its `every:`
-(area 12, decided 2026-10-19; chunk 8.2f). Each refusal names what to
-use instead. A bakery keeps its suppliers' price sheets on its disk:
+(area 12, decided 2026-10-19; chunk 8.2f), and so is its `client_address:`:
+Cloudflare's `CF-Connecting-IP` is the only source a Worker reads (area
+10, "Client addresses"; chunk 8.2m). Each refusal names what to use
+instead. A bakery keeps its suppliers' price sheets on its disk:
 
 ```jadpo check project=e-deployable-target-unsupported file=app.jadpo hidden
 application {
@@ -2223,6 +2233,40 @@ error: `edge` can't run `oven_check` every 30 seconds on Workers, whose cron run
 check failed: 1 error, 3 files
 ```
 
+A third bakery reads its customers' addresses from its load balancer's
+`X-Forwarded-For`, and serves them from Workers:
+
+```jadpo check project=e-deployable-client-address-workers expect=deployable.target_unsupported file=app.jadpo
+application {
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hops: 1
+    }
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```text output
+error: `edge` can't read the client's address from `X-Forwarded-For` on Workers
+ --> app.jadpo:3:17
+  |
+3 |         source: ClientAddressSource.forwarded_for
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not read on Workers
+9 |             target: Target.wasm
+  |                     ----------- built for Workers
+  reason: Cloudflare writes the client's address in `CF-Connecting-IP` on every request, overwriting a caller's, and a Worker has no connection address of its own, so `cloudflare` is the only source a Worker reads; `edge` would refuse to start.
+  next: Use `ClientAddressSource.cloudflare` without `hops:`, or build `edge` with `Target.native` (agent)
+  rule: deployable.target_unsupported
+  help: docs/language/14-tooling.html#deployable-target-unsupported
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -2428,7 +2472,8 @@ what other areas carried here and where this page answers it.
 | Topic | Decision | Date |
 |---|---|---|
 | A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answered every request 503 until chunk 8.2d built its `fetch` (decided for Richard, the conservative reading) | 2026-10-21 |
-| A Worker's start | Chosen in chunk 8.2d, each reversible: an isolate starts at its first request, reading its settings from the bindings and checking `client_address:` once, a failure logged once and every request of the isolate answered 503 `unavailable`, since a Worker's bindings change only with a new version; its stores' migrations compared at each request until they are current and not again for the isolate, a store behind, ahead or out of reach answered 503 and logged each time, so a migration applied after a deploy is picked up without one; `runtime.started` logged once an isolate is current; the log on the console, one JSON line an event; the HTTP component's per-worker state (request numbers, the readiness check reused for a second) kept per isolate; a streamed answer sent whole until chunk 8.2h; a `client_address:` source other than `cloudflare` stopping the start as `client_address_refused` until `jadpo check` refuses it (chunk 8.2m) | 2026-10-21 |
+| A Worker's start | Chosen in chunk 8.2d, each reversible: an isolate starts at its first request, reading its settings from the bindings and checking `client_address:` once, a failure logged once and every request of the isolate answered 503 `unavailable`, since a Worker's bindings change only with a new version; its stores' migrations compared at each request until they are current and not again for the isolate, a store behind, ahead or out of reach answered 503 and logged each time, so a migration applied after a deploy is picked up without one; `runtime.started` logged once an isolate is current; the log on the console, one JSON line an event; the HTTP component's per-worker state (request numbers, the readiness check reused for a second) kept per isolate; a streamed answer sent whole until chunk 8.2h; a `client_address:` source other than `cloudflare` stopping the start as `client_address_refused`, which `jadpo check` refuses since chunk 8.2m | 2026-10-21 |
+| What `jadpo check` and `jadpo build` say for Workers | Chosen in chunk 8.2m, each reversible: a `client_address:` source other than `cloudflare` is `deployable.target_unsupported`, one more thing a target can't run, rather than a rule of its own, at its `source:` with the deployable's `target:` beside it, once for each Workers deployable, any deployable on Workers being held to it since the Worker's start refuses it whatever it serves; a `client_address:` with a problem of its own is reported as that alone; the build screen says a Worker's caps on calls as one field, `calls`, after what it serves and runs, rather than repeating `jadpo check`'s "On Workers" section, since `jadpo build` checks first and each Worker's block is where its facts are read | 2026-10-21 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |

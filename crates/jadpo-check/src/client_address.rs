@@ -30,6 +30,8 @@ pub struct ClientAddress {
     /// What it reads cleanly as; `None` when nothing is declared, and when
     /// what is declared has a problem.
     pub plan: Option<ClientAddressPlan>,
+    /// Where its `source:` is written, when it reads cleanly.
+    pub source_at: Option<Span>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -64,7 +66,10 @@ pub fn client_address(db: &dyn Db, project: Project) -> ClientAddress {
                 path: &found.path,
                 problems: &mut out.problems,
             };
-            out.plan = reader.read(&at, &member);
+            if let Some((plan, source_at)) = reader.read(&at, &member) {
+                out.plan = Some(plan);
+                out.source_at = Some(source_at);
+            }
         }
     }
     out
@@ -92,7 +97,8 @@ enum Count {
 }
 
 impl Reader<'_> {
-    fn read(&mut self, at: &Span, member: &ast::Member) -> Option<ClientAddressPlan> {
+    /// The plan, with where its `source:` is written.
+    fn read(&mut self, at: &Span, member: &ast::Member) -> Option<(ClientAddressPlan, Span)> {
         let Some(list) = member.block() else {
             self.problems.push(
                 Diagnostic::new(
@@ -179,7 +185,8 @@ impl Reader<'_> {
             source,
             ClientAddressSource::ForwardedFor | ClientAddressSource::Forwarded
         );
-        match (counts, hops) {
+        let at_source = source_span.clone();
+        let plan = match (counts, hops) {
             (true, None) => {
                 self.problems.push(hops_invalid(
                     format!("`{}` needs `hops:`", source.name()),
@@ -217,7 +224,8 @@ impl Reader<'_> {
                 None
             }
             (false, None) => Some(ClientAddressPlan { source, hops: None }),
-        }
+        };
+        plan.map(|plan| (plan, at_source))
     }
 
     /// `ClientAddressSource.x`.

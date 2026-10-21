@@ -44,7 +44,7 @@ use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::body::{Body, Callee};
 use jadpo_graph::{Detail, EdgeKind, Key, Kind};
 use jadpo_std::batch::BatchOp;
-use jadpo_std::{DeployTarget, Runs, Trigger};
+use jadpo_std::{ClientAddressSource, DeployTarget, Runs, Trigger};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use crate::config::singletons;
@@ -1053,8 +1053,56 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         if *target == DeployTarget::Wasm && deployable.runs.schedules {
             out.extend(too_often(db, project, deployable, at));
         }
+        if *target == DeployTarget::Wasm {
+            out.extend(client_address_unread(db, project, deployable, at));
+        }
     }
     out
+}
+
+/// A `client_address:` source other than `cloudflare`, which `deployable`,
+/// built for Workers, can't read: Cloudflare writes the client's address
+/// in `CF-Connecting-IP` on every request, overwriting a caller's, and a
+/// Worker has no connection address of its own (area 10, "Client
+/// addresses"). The Worker would refuse to start (chunk 8.2d); its error
+/// is at the `source:` (chunk 8.2m).
+fn client_address_unread(
+    db: &dyn Db,
+    project: Project,
+    deployable: &Deployable,
+    at: &Span,
+) -> Option<Diagnostic> {
+    let declared = crate::client_address::client_address(db, project);
+    let (Some(plan), Some(source_at)) = (&declared.plan, &declared.source_at) else {
+        return None;
+    };
+    let from = match plan.source {
+        ClientAddressSource::Cloudflare => return None,
+        ClientAddressSource::Connection => "the connection",
+        ClientAddressSource::ForwardedFor => "`X-Forwarded-For`",
+        ClientAddressSource::Forwarded => "`Forwarded`",
+    };
+    let name = &deployable.name;
+    let without = if plan.hops.is_some() {
+        " without `hops:`"
+    } else {
+        ""
+    };
+    Some(
+        Diagnostic::new(
+            &rule::DEPLOYABLE_TARGET_UNSUPPORTED,
+            format!("`{name}` can't read the client's address from {from} on Workers"),
+        )
+        .at(source_at.clone(), "not read on Workers")
+        .also(at.clone(), "built for Workers")
+        .reason(format!(
+            "Cloudflare writes the client's address in `CF-Connecting-IP` on every request, overwriting a caller's, and a Worker has no connection address of its own, so `cloudflare` is the only source a Worker reads; `{name}` would refuse to start."
+        ))
+        .next(format!(
+            "Use `{}.cloudflare`{without}, or build `{name}` with `Target.native`",
+            ClientAddressSource::NAME
+        )),
+    )
 }
 
 /// How often Cloudflare's cron trigger runs a Worker at most: once a
