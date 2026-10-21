@@ -1831,10 +1831,13 @@ earlier in the action checks that nobody changed it in between. If someone
 did, the runtime throws the attempt away and runs the whole action again,
 with fresh reads and a fresh `clock.now`. That is safe because an action's
 outside call comes before its writes and carries an idempotency key, so a
-rerun repeats it harmlessly (area 11). An action with several changing
-calls is the exception: once its record exists, a rerun replays the
-recorded calls and keeps the record's `clock.now` ("Several outside
-calls", below). After three
+rerun repeats it harmlessly (area 11). A changing call with no key is the
+exception: once it has gone out, the action isn't run again but stops as
+`outcome_unknown`, for an operator, since sending it again could act twice
+(area 16, "Parked, never sent again blindly"; chunk 7.9a). An action with
+several changing calls is the other: once its record exists, a rerun
+replays the recorded calls and keeps the record's `clock.now` ("Several
+outside calls", below). After three
 attempts within a second, the existing retry budget, the request fails
 `unavailable` and the client may try again. Authors write nothing for this.
 
@@ -1909,7 +1912,10 @@ through:
 - **A change reruns the action.** A concurrent change throws the attempt
   away and runs the action again, within the existing budget of three
   attempts. Its keyed calls take the same steps again, so each repeats
-  under the key it was first sent with (area 11). A reference to a record
+  under the key it was first sent with (area 11); a change found at the
+  commit of a route's or a delivery's held transaction does the same. An
+  unkeyed change that went out stops it as `outcome_unknown` instead
+  (chunk 7.9a). A reference to a record
   loaded before a call that was deleted while the call was out is a
   concurrent change too, so the rerun's fresh read finds the record gone.
 - **A batch's items** (chunk 7.4b). An item of a run whose `each:` action

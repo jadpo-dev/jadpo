@@ -969,6 +969,14 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
 
   A crash that left the fake's effects other than the run without one (a
   call that acted under a new key) is a fault in Jadpo, `test.fault`.
+  Since a crash sends its step again, and the `ai` fake or a call with no
+  key answers it with the next scripted answer, as a model or provider
+  asked again would answer afresh, `test.fake_exhausted` and
+  `test.fake_unused` are judged on the run without a crash only; and a
+  request or delivery a crash sends again keeps none of the `ai` answers
+  the crashed run was given, as a restarted runner keeps none, so a model
+  asked before the steps is asked again and a different answer diverges
+  there as it would in production (chunk 7.9a).
   Live tests in `crates/jadpo-cli/tests/step_crashes.rs`; choices in
   area 12's decisions table, "Tests, chosen in chunk 7.5d".
 - **One fake per capability**, under design C: `email.sent` lists the mail

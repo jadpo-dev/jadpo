@@ -962,6 +962,7 @@ async fn run_with_caller(
     }
     // The key, on every route but a `GET`.
     let mut guard = None;
+    let mut client_key = None;
     if route.method != HttpMethod::Get {
         let key = match idempotency::key(request) {
             Ok(key) => key,
@@ -975,21 +976,28 @@ async fn run_with_caller(
         if key.is_none() && required {
             return runtime_failure(KEY_REQUIRED, request_id, None);
         }
-        if let (Some(key), Some(store)) = (key, &route.keys) {
-            guard = Some(Guard {
-                store: store.clone(),
-                scope,
-                key,
-                digest: idempotency::digest(codecs, route, &params, input.as_ref()),
-                at: ctx.now(),
-            });
+        match (key, &route.keys) {
+            (Some(key), Some(store)) => {
+                guard = Some(Guard {
+                    store: store.clone(),
+                    scope,
+                    key,
+                    digest: idempotency::digest(codecs, route, &params, input.as_ref()),
+                    at: ctx.now(),
+                });
+            }
+            (Some(key), None) => client_key = Some((scope, key)),
+            (None, _) => {}
         }
     }
-    // What a provider call's key is derived from (area 12, "Keys"; chunk
-    // 7.2c): the client's key in its caller's scope, else the request's id.
-    match &guard {
-        Some(guard) => ctx.set_call_key(guard.scope.clone(), guard.key.clone()),
-        None => ctx.set_call_key("request", request_id),
+    // What a provider call's key is derived from (area 12, "Keys"; chunks
+    // 7.2c and 7.9a): the client's key in its caller's scope, kept or not,
+    // so a retry under it sends the keys the first request sent; else the
+    // request's id.
+    match (&guard, client_key) {
+        (Some(guard), _) => ctx.set_call_key(guard.scope.clone(), guard.key.clone()),
+        (None, Some((scope, key))) => ctx.set_call_key(scope, key),
+        (None, None) => ctx.set_call_key("request", request_id),
     }
     ctx.set_request_id(request_id);
     let claimed = Cell::new(false);
@@ -1004,9 +1012,24 @@ async fn run_with_caller(
     // Sent again, its keyed calls take the steps they took, so each goes
     // under the key it went under.
     let steps = ctx.steps();
+    // Where its calls start in the invocation's log, and whether an
+    // unkeyed change among them went out before a concurrent change was
+    // found at the commit: then it isn't run again, but answered
+    // `outcome_unknown`, kept for its key (chunk 7.9a).
+    let mark = ctx.capabilities().calls().len();
+    let mut parked = false;
     loop {
+        // Each run, after a concurrent change at the commit too, takes the
+        // steps the first took.
+        ctx.set_steps(steps);
         let first = attempt == 1 || std::mem::take(&mut again);
         let work = async {
+            if parked {
+                return Ok(Outcome::Failed(Box::new(crate::Failure {
+                    frames: ctx.frames(),
+                    ..crate::outcome_unknown()
+                })));
+            }
             if first && let Some(guard) = &guard {
                 match idempotency::claim(ctx, guard, route.deadline_ms).await {
                     Claim::Claimed => claimed.set(true),
@@ -1132,7 +1155,9 @@ async fn run_with_caller(
             let _ = ctx.take_held();
             idempotency::release(ctx, guard).await;
             claimed.set(false);
-            ctx.set_steps(steps);
+            // Sent again, as a client's retry is, to a runner that kept
+            // none of the models' answers this one had (chunk 7.9a).
+            ctx.forget_reused();
             again = true;
             continue;
         }
@@ -1197,7 +1222,16 @@ async fn run_with_caller(
         match committed {
             Ok(()) => {}
             // Another transaction changed what the action read, found as
-            // it commits: the whole action runs again, as the boundary
+            // it commits, after an unkeyed change went out: it isn't run
+            // again, but answered `outcome_unknown` (chunk 7.9a).
+            Err(crate::StoreError::ConcurrentChange)
+                if matches!(route.run, Run::Action(_))
+                    && ctx.capabilities().may_have_acted(mark) =>
+            {
+                parked = true;
+                continue;
+            }
+            // Otherwise the whole action runs again, as the boundary
             // reruns one (area 6), within the same budget and deadline.
             Err(crate::StoreError::ConcurrentChange)
                 if attempt < crate::RERUN_ATTEMPTS && matches!(route.run, Run::Action(_)) =>

@@ -8353,12 +8353,15 @@ Provider calls, each choice the most conservative reading:
   `app.jadpo` names it); the environment the host its environment setting
   chose, `live` or `sandbox`, or the address a `host:` setting gives. In
   a route, the caller's idempotency scope and the client's
-  `Idempotency-Key`, or `request` and the request's id; in a subscriber,
-  `delivery` and the delivery's id; anywhere else (a schedule, a test's
-  call) a key made from the invocation's randomness the first time a call
-  needs one. The step counts the invocation's keyed calls from 1, and an
-  action run again after a concurrent change takes the same steps; the
-  generation is 0 until a provider's `new_key_on:` (chunk 7.5).
+  `Idempotency-Key`, whether or not a store keeps it, or `request` and the
+  request's id; in a subscriber, `delivery` and the delivery's id, but a
+  sign-in email's attempt a key of its own (area 16, "Built-in emails");
+  anywhere else (a schedule, a test's call) a key made from the
+  invocation's randomness the first time a call needs one. The step
+  counts the invocation's keyed calls from 1, a delivery's attempt from 1
+  wherever it runs, and an action run again after a concurrent change
+  takes the same steps; the generation is 0 until a provider's
+  `new_key_on:` (chunks 7.5 and 7.9a).
 - **Where it is sent.** HTTPS, or plain HTTP only to this machine
   (`localhost`, `127.x.x.x`, `[::1]`), which is how a test reaches its
   server; any other address, or a connection whose address or credential

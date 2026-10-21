@@ -223,6 +223,7 @@ pub async fn embed(
             repeat: Repeat::Safe,
             changes: false,
             window_ms: None,
+            did_nothing: &[],
         },
     )
     .await;

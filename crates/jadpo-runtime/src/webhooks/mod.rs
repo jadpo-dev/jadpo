@@ -730,7 +730,7 @@ pub(crate) async fn keep(
     value: Value,
     payload: String,
 ) -> Result<Option<Vec<Delivery>>, StoreError> {
-    let now = ctx.now();
+    let now = crate::steps::wall(ctx);
     let claim = vec![
         SqlValue::Text(kept.source.clone()),
         SqlValue::Text(id.to_string()),
@@ -750,7 +750,9 @@ pub(crate) async fn keep_claimed(
     value: Value,
     payload: String,
 ) -> Result<Option<Vec<Delivery>>, StoreError> {
-    let now = ctx.now();
+    // Stamped at the host's time as it is kept, never at a fixed clock's
+    // (chunk 7.9a).
+    let now = crate::steps::wall(ctx);
     let trace = ctx.trace();
     let subscribers: Vec<String> = executor
         .events()

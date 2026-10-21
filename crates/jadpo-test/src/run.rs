@@ -376,14 +376,23 @@ impl<E: Executor> Stored<'_, E> {
                 undelivered.as_ref(),
             ))),
         };
-        let failure = outcome::fakes_used(
-            places,
-            self.sources,
-            test,
-            &usage(&fake, &ai),
-            failure,
-            self.rerun,
-        );
+        // A crash sends its step again, and a fake keeping no key for it
+        // (the `ai` fake, a call with no key) answers it with the next
+        // answer, as a model or provider asked again answers afresh: how
+        // often each scripted operation was called is judged on the run
+        // without a crash only (chunk 7.9a).
+        let failure = if crash.is_none() {
+            outcome::fakes_used(
+                places,
+                self.sources,
+                test,
+                &usage(&fake, &ai),
+                failure,
+                self.rerun,
+            )
+        } else {
+            failure
+        };
         let kept = host.finish(failure.is_some());
         Ran {
             failure: failure.map(|mut failure| {

@@ -350,6 +350,11 @@ provider {
         sandbox: "https://sandbox.texter.example"
     }
     credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
+        window: 24h
+        max_length: 255
+    }
     error_code: "error.code"
 }
 "#
@@ -363,6 +368,7 @@ provider {
         path: "/v1/messages"
         input: SignInMessage
         changes: true
+        idempotent: true
         source: PackageSource.written
     }
 }
@@ -1525,6 +1531,62 @@ fn the_apps_own_sending_is_given_a_fresh_link_and_code_each_attempt() {
     let confirmed = live.confirm(&mut browser, &format!("{{\"token\":\"{token}\"}}"));
     assert_eq!(confirmed.status, 200, "{}", text(&confirmed));
     assert!(browser.signed_in());
+}
+
+/// The key the application's own sending's call went under.
+fn key_of(call: &jadpo_runtime::capability::Call) -> String {
+    call.key.as_ref().expect("a keyed call").key.clone()
+}
+
+/// Each attempt of the application's own sending makes a link and a code
+/// of its own, so it goes under a key of its own: a provider that replays
+/// a key's first answer still sends the latest link, rather than the
+/// person keeping one the retry ended (chunk 7.9a).
+#[test]
+fn the_apps_own_sending_sends_each_attempts_link_under_a_key_of_its_own() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("own_sending_keys", Variant::OwnSending);
+    // Texter's answers are lost for the whole first attempt: it may have
+    // sent the first link.
+    for _ in 0..3 {
+        live.host.texter.script(
+            "messages.send",
+            jadpo_runtime::capability::Scripted::Answer(Answer::Unknown),
+        );
+    }
+    let mut browser = Browser::default();
+    let asked = live.ask(&mut browser, "ada@example.com");
+    assert_eq!(asked.status, 202, "{}", text(&asked));
+    let sent = live.host.texter.sent();
+    assert_eq!(sent.len(), 3, "{sent:?}");
+    let first_key = key_of(&sent[0]);
+    assert!(
+        sent.iter().all(|call| key_of(call) == first_key),
+        "one attempt's link goes under one key"
+    );
+    live.at(START + 5 * MINUTE);
+    live.runtime
+        .block_on(jadpo_runtime::runner::sweep(
+            &live.program,
+            &live.host,
+            "main",
+            START + 5 * MINUTE,
+        ))
+        .expect("sweeps");
+    let sent = live.host.texter.sent();
+    assert_eq!(sent.len(), 4, "{sent:?}");
+    assert_ne!(handed(&sent[3]).1, handed(&sent[0]).1, "a link of its own");
+    assert_ne!(key_of(&sent[3]), first_key, "under a key of its own");
+    let token = handed(&sent[3])
+        .1
+        .rsplit('=')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let confirmed = live.confirm(&mut browser, &format!("{{\"token\":\"{token}\"}}"));
+    assert_eq!(confirmed.status, 200, "{}", text(&confirmed));
 }
 
 // --- the application's own routes (chunk 7.3b3) ------------------------------
