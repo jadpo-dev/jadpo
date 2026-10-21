@@ -2236,6 +2236,12 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   HTTP and loopback names and addresses, following no redirect and
   refusing an answer longer than asked for. §2.6's "A pooled HTTP
   client".
+- [ ] **8.1m2 A flaky test after the pooled client** `opus · high` (found
+  in chunk 8.1k): `provider_wire::a_whole_answer_is_decoded_by_the_packages_function`
+  once got nothing at `data` from the test's local fake provider and
+  passed on rerun; find the cause (likely a pooled connection reused
+  after the fake closed it, or a read racing the body, since 8.1m) and fix
+  it in the client or the fake, not by retrying.
 - [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m:
   PostgreSQL's TLS through
   `Transport::upgrade`, live-tested against a server the harness starts
