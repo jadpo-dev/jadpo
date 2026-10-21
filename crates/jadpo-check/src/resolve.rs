@@ -26,6 +26,7 @@ use jadpo_syntax::habits;
 use crate::case::{is_lower_snake, starts_upper, to_snake};
 use crate::lookups::{Lookup, NameView};
 use crate::naming::{name_case, reserved};
+use crate::not_type;
 use crate::std_lib::{Namespace, StdNames};
 use crate::tree::{self, dotted, node_span};
 
@@ -257,9 +258,8 @@ impl Names<'_> {
                             if let Some(key) = variant.member_key() {
                                 self.member_name(key.names().next(), "variant", out);
                             }
-                            if let Some(value) = variant.value() {
-                                self.type_expr(&value, Want::Type, out);
-                            }
+                            // A variant given a value is `type.enum_label`,
+                            // which the declaration check reports.
                             self.fields(variant.block(), out);
                         }
                         _ => {}
@@ -288,7 +288,8 @@ impl Names<'_> {
                     if !crate::types::looks_like_type(&value) {
                         continue;
                     }
-                    self.type_expr(&value, Want::Type, &mut walk.out);
+                    let field = tree::name_text(&name).unwrap_or_default();
+                    self.field_type(("field", &field), &value, &mut walk.out);
                     if let Expr::RecordExpr(record) = &value {
                         walk.member_values(record.member_list());
                     }
@@ -322,13 +323,31 @@ impl Names<'_> {
                 Some("optional") => continue,
                 _ => {}
             }
+            // A provider package's variant gives its spelling on the wire
+            // beside its fields (area 11).
+            if crate::types::is_wire_name(&field) {
+                continue;
+            }
             if let Some(key) = field.member_key() {
                 self.member_name(key.names().next(), "field", out);
             }
+            let name = key.as_deref().unwrap_or_default();
             if let Some(value) = field.value() {
-                self.type_expr(&value, Want::Type, out);
+                self.field_type(("field", name), &value, out);
+            } else if let Some(block) = field.block() {
+                out.push(not_type::block(self.path, name, &block));
             }
         }
+    }
+
+    /// A field's or setting's type as written (area 2, "Field types"): a
+    /// value or a call there is `type.not_a_type`, naming the field.
+    fn field_type(&self, field: not_type::Field<'_>, value: &Expr, out: &mut Vec<Diagnostic>) {
+        if let Some(found) = not_type::in_value(self.path, value, Some(self.types)) {
+            out.push(found.diagnostic(Some(field)));
+            return;
+        }
+        self.type_expr(value, Want::Type, out);
     }
 
     fn member_name(&self, name: Option<ast::Name>, word: &str, out: &mut Vec<Diagnostic>) {
@@ -408,15 +427,22 @@ impl Names<'_> {
 
     /// The types of the settings `config { }` declares (area 10).
     fn settings(&self, decl: &ast::SingletonDecl, out: &mut Vec<Diagnostic>) {
-        for (_, member) in tree::members(decl.member_list()) {
+        for (name, member) in tree::members(decl.member_list()) {
             let Some(value) = member.value() else {
                 continue;
             };
-            self.type_expr(&value, Want::Type, out);
+            let setting = tree::name_text(&name).unwrap_or_default();
+            self.field_type(("setting", &setting), &value, out);
         }
     }
 
     pub fn ty(&self, ty: Option<Type>, want: Want, out: &mut Vec<Diagnostic>) {
+        if let Some(written) = &ty
+            && let Some(found) = not_type::in_type(self.path, written, self.types)
+        {
+            out.push(found.diagnostic(None));
+            return;
+        }
         match ty {
             Some(Type::PathType(path_type)) => {
                 let names: Vec<ast::NameRef> = path_type
@@ -464,6 +490,14 @@ impl Names<'_> {
     /// A type written as a member's value: `Count`, `Todo.id`, `List<Tag>`,
     /// `Name?`, `ProductName { optional: true }`.
     pub(crate) fn type_expr(&self, expr: &Expr, want: Want, out: &mut Vec<Diagnostic>) {
+        // An enum's variant is a value wherever a type goes; a call or a
+        // literal is reported by the places that read a field's type.
+        if let Some(found @ not_type::Found::Variant { .. }) =
+            not_type::in_value(self.path, expr, Some(self.types))
+        {
+            out.push(found.diagnostic(None));
+            return;
+        }
         match expr {
             Expr::NameRef(name) => self.type_name(name, want, out),
             Expr::FieldExpr(_) => {

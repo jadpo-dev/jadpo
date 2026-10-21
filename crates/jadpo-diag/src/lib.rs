@@ -1194,6 +1194,8 @@ rules! {
         "02-values-and-types.html#type-duplicate-variant-field", "Variant field is given twice";
     TYPE_ENUM_EMPTY: "type.enum_empty", area 2, Error, Agent,
         "02-values-and-types.html#type-enum-empty", "Enum declares no variants";
+    TYPE_ENUM_LABEL: "type.enum_label", area 2, Error, Agent,
+        "02-values-and-types.html#type-enum-label", "Enum variant is given a label or a value";
     TYPE_FIELD_ON_NON_RECORD: "type.field_on_non_record", area 2, Error, Agent,
         "02-values-and-types.html#type-field-on-non-record", "Field is read from a value without fields";
     TYPE_FIELD_UNPROVED: "type.field_unproved", area 2, Error, Agent,
@@ -1264,6 +1266,8 @@ rules! {
         "03-logic.html#type-named-argument-unknown", "Named argument is not a parameter";
     TYPE_NAMED_ARGUMENT_UNSUPPORTED: "type.named_argument_unsupported", area 3, Error, Agent,
         "03-logic.html#type-named-argument-unsupported", "Callable does not take named arguments";
+    TYPE_NOT_A_TYPE: "type.not_a_type", area 2, Error, Agent,
+        "02-values-and-types.html#type-not-a-type", "Field's type is written as a value or a call";
     TYPE_NOT_A_VALUE: "type.not_a_value", area 3, Error, Agent,
         "03-logic.html#type-not-a-value", "Declaration named where a value is read";
     TYPE_NOT_RECORD: "type.not_record", area 2, Error, Agent,

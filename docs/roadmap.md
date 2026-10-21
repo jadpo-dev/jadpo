@@ -2019,6 +2019,23 @@ side by side, then 7.9d, then 7.9e).
   and `row`; `provider::call`, `ai::generate`, `stream::stream` and
   `embed::embed` each taking the context, the site (`provider::Calling`,
   `ai::Calling`) and the input, the runtime's own calls too.
+- [x] **7.9f Fixes Richard found in the editor** `opus · high` (found
+  2026-10-21): a field's type written as a value or a call (`Test.a`,
+  `Test("x")`) refused, naming the field, in every object type (an input,
+  a failure's fields, an event's, an entity's, a setting's), never
+  silently dropped; an enum member given a label (`a: "A"`) refused,
+  pointing at translations; the language server completing an entity's
+  fields after `FoundItem.` in a type position. Built: `type.not_a_type`
+  (area 2) for a call, a literal, a block of fields or an enum's variant
+  where a field's or setting's type goes, in every block of fields, an
+  entity and `config { }`, and for a variant anywhere a type goes (a
+  signature, `List<Status.open>`), with the edit writing the type; such a
+  field kept with a type that absorbs, so it is never dropped; `[Tag]`
+  in a field is `syntax.collection_type`; `type.enum_label` (area 2) for
+  a variant given a label or value, its next step the translation; after
+  `Owner.` in a type position, written as a member's value or in a
+  signature, the language server offers its fields, an enum's variants
+  with fields, or a variant's fields, never a plain variant.
 
 - [ ] **7.9g Privacy gaps found in 7.9b** `opus · high` (backlog): a
   model's answer carries what its prompt was built from, so a field read
@@ -2154,13 +2171,14 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   timeout or a dropped future ending its exchange, streamed answers read
   as they come, the outbound guard kept (HTTPS, public addresses, no
   redirect).
-- [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m, **needs
-  Richard** before it starts: PostgreSQL's TLS through
+- [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m:
+  PostgreSQL's TLS through
   `Transport::upgrade`, live-tested against a server the harness starts
   with a certificate it makes. The pages don't say when a database
   connection must use TLS, nor how one names a private certificate
   authority (Amazon RDS's and Cloud SQL's aren't in the public roots).
-  *Recommendation:* as area 16 decides for SMTP: TLS always, checked
+  *Decided (Richard, 2026-10-21), area 5's decisions table:* as area 16
+  decides for SMTP: TLS always, checked
   against Mozilla's roots compiled in, except to this machine (a Unix
   socket, `localhost`, `127.0.0.1`, `::1`); a connection may name a
   `Certificate` setting holding its server's authority; a server

@@ -354,6 +354,11 @@ impl Decls<'_> {
     /// `Type.field` naming a field `Owner` doesn't have.
     fn unknown_field_type(&mut self, names: &[String], head: &SyntaxNode) -> bool {
         let host = &names[0];
+        // `Enum.variant` is a value, which resolution reports as
+        // `type.not_a_type` (chunk 7.9f).
+        if names.len() == 2 && crate::not_type::is_enum(self.table, host) {
+            return false;
+        }
         // A built-in type's fields name a type only where it is a standard
         // object (`LocalTime.hour`); a batch type's are read from the
         // value the runtime gives, never named (chunk 6.6b).
@@ -774,7 +779,7 @@ impl Decls<'_> {
         // `wire_name:`, with the variant and where.
         let mut wires: BTreeMap<String, (String, Span)> = BTreeMap::new();
         for item in list.iter().flat_map(|list| list.member_items()) {
-            let (name, block) = match item {
+            let (name, block) = match &item {
                 MemberItem::BareMember(variant) => (variant.name(), None),
                 MemberItem::Member(variant) => (
                     variant.member_key().and_then(|key| key.names().next()),
@@ -787,6 +792,17 @@ impl Decls<'_> {
                 continue;
             };
             let span = self.span(name.syntax());
+            if let MemberItem::Member(variant) = &item
+                && let Some(value) = variant.value()
+            {
+                self.out.push(enum_label(
+                    host,
+                    &text,
+                    &value,
+                    self.span(value.syntax()),
+                    self.span(variant.syntax()),
+                ));
+            }
             if let Some(first) = seen.get(&text) {
                 self.out.push(
                     Diagnostic::new(
@@ -3085,4 +3101,40 @@ fn wire_clash(
         "A provider sends each of `{host}`'s spellings for one thing, so two can't share `{spelling}`: one would be read as both."
     ))
     .next(format!("Give `{name}` the provider's own spelling, or remove it"))
+}
+
+/// `a: "A"` in an enum (area 2, "Enums"; chunk 7.9f): a variant is a name,
+/// or a name with a block of its fields, and never carries a label, whose
+/// wording lives in the domain's translations (area 10, "Enums with
+/// wording").
+fn enum_label(host: &str, variant: &str, value: &Expr, at: Span, whole: Span) -> Diagnostic {
+    let written = tree::written(value.syntax());
+    let label = matches!(value, Expr::Literal(_)) && written.starts_with('"');
+    let problem = if label {
+        Diagnostic::new(
+            &rule::TYPE_ENUM_LABEL,
+            format!("`{host}.{variant}` is given a label"),
+        )
+        .at(at, "a label")
+        .reason(format!(
+            "Enums have no display labels: a variant is a name, or a name with a block of its fields. Wording for readers lives in the domain's translations, which give each value of `{host}` its wording in every locale."
+        ))
+        .next(format!(
+            "Write `{variant}` alone, and give its wording in the domain's translations: `{}: {{ {variant}: {written} }}`",
+            crate::case::to_snake(crate::types::shown(host))
+        ))
+    } else {
+        Diagnostic::new(
+            &rule::TYPE_ENUM_LABEL,
+            format!("`{host}.{variant}` is given a value"),
+        )
+        .at(at, "not a block of fields")
+        .reason(
+            "A variant is a name, or a name with a block of its fields, `name: { field: Type }`; it is given nothing else.",
+        )
+        .next(format!(
+            "Write `{variant}` alone, or give its fields in a block"
+        ))
+    };
+    problem.edit(whole, variant.to_string())
 }

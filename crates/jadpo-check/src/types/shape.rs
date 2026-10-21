@@ -432,6 +432,10 @@ fn line(member: &ast::Member, base: FieldsBase) -> Line {
             _ => Line::NotAList("optional"),
         };
     }
+    if is_wire_name(member) {
+        // A provider package's variant's spelling on the wire (area 11).
+        return Line::Other;
+    }
     match value {
         Some(value) if looks_like_type(&value) => Line::Field {
             name: key,
@@ -440,6 +444,16 @@ fn line(member: &ast::Member, base: FieldsBase) -> Line {
                 Expr::RecordExpr(record) => field_settings(record.member_list()),
                 _ => Vec::new(),
             },
+        },
+        // A value, a call or a block of fields where the type goes is
+        // reported where it is written (`type.not_a_type`, chunk 7.9f),
+        // and nothing after `:` by the parser; the field stays, its type
+        // absorbing what is built from it, so it is never dropped. An
+        // entity's other members are its sections, which area 5 checks.
+        _ if base != FieldsBase::Entity => Line::Field {
+            name: key,
+            ty: TypeRef::Invalid,
+            settings: Vec::new(),
         },
         _ => Line::Other,
     }
