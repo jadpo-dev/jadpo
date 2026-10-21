@@ -23,8 +23,10 @@
 //!   (`jadpo_host_native::deployable::run`); for Workers, a `cdylib`,
 //!   `jadpo-worker-<deployable>`, depending on the program and the Workers
 //!   host with only the drivers the deployable reaches ([`Drivers`]),
-//!   which exports the Worker's `fetch` through the host's wasm-bindgen,
-//!   handing it the same three (`jadpo_host_workers::deployable::fetch`).
+//!   which exports the Worker's `fetch` and its `JadpoHandOn`
+//!   entrypoint's `hand_on` through the host's wasm-bindgen, handing each
+//!   the same three (`jadpo_host_workers::deployable::fetch` and
+//!   `hand_on`).
 //!
 //! [`build`] runs cargo over it, for `wasm32-unknown-unknown` when it is
 //! a Worker, with the paths it was built from remapped and
@@ -273,6 +275,16 @@ fn worker_rs(deployable: &Deployable<'_>) -> proc_macro2::TokenStream {
         )]
         pub fn fetch(request: JsValue, env: JsValue, ctx: JsValue) -> JsValue {
             jadpo_host_workers::deployable::fetch(&DEPLOYABLE, request, env, ctx)
+        }
+
+        /// The `handOn` of the Worker's `JadpoHandOn` entrypoint: Jadpo's
+        /// module shim hands it the work another invocation handed on,
+        /// with the Worker's `env` and this invocation's `ctx`.
+        #[jadpo_host_workers::wasm_bindgen::prelude::wasm_bindgen(
+            wasm_bindgen = jadpo_host_workers::wasm_bindgen
+        )]
+        pub fn hand_on(work: String, env: JsValue, ctx: JsValue) -> JsValue {
+            jadpo_host_workers::deployable::hand_on(&DEPLOYABLE, work, env, ctx)
         }
     }
 }

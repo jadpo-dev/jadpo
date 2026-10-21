@@ -1050,8 +1050,9 @@ each the most conservative reading where the pages leave a choice open
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
   crate and a `cdylib`, `jadpo-worker-<deployable>`, exporting the
-  Worker's `fetch` through the Workers host, with the program, its build
-  stamp and each store's migrations as a native binary is given them. It
+  Worker's `fetch`, and `hand_on` for work handed on (chunk 8.2h),
+  through the Workers host, with the program, its build stamp and each
+  store's migrations as a native binary is given them. It
   links the package driver, which every Worker has, PostgreSQL's when the
   project keeps a database (every deployable's tick reaches each store),
   SMTP's when the deployable reaches an SMTP connection, and no other.
@@ -1063,8 +1064,10 @@ each the most conservative reading where the pages leave a choice open
   what an earlier build left there: `<deployable>.wasm`, the module;
   `<deployable>.js`, wasm-bindgen's JavaScript for it; `worker.mjs`,
   Jadpo's module shim, which instantiates the module once per isolate and
-  hands each request, the Worker's `env` and the invocation's `ctx` to it;
-  `wrangler.json`; and the documents of the APIs it serves.
+  hands each request, the Worker's `env` and the invocation's `ctx` to it,
+  and exports `JadpoHandOn`, a named entrypoint whose `handOn` takes on
+  work another invocation handed on (chunk 8.2h); `wrangler.json`; and
+  the documents of the APIs it serves.
 - **The Wrangler file.** `name`, the deployable's name with each `_` a
   `-`, since Cloudflare takes letters, digits and dashes; `main`, the
   shim; `compatibility_date`, the date the Workers host is tested at under
@@ -1076,8 +1079,13 @@ each the most conservative reading where the pages leave a choice open
   variable or a secret, and a required secret is Wrangler's one way to
   name a binding that must be set without giving its value, so `wrangler
   deploy` refuses until each is set; a setting with a default is left to
-  it. The cron trigger (chunk 8.2f) and the queues' consumers (8.2k) join
-  the file with their chunks, and 8.2k checks it against Wrangler itself.
+  it. A Worker that runs subscribers or schedules is bound to its own
+  `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
+  service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
+  hands what one invocation's 30 seconds didn't reach on to a fresh one
+  (chunk 8.2h; area 12, "Running background work"). The cron trigger
+  (chunk 8.2f) and the queues' consumers (8.2k) join the file with their
+  chunks, and 8.2k checks it against Wrangler itself.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
   target as `wasm`.
@@ -1114,10 +1122,13 @@ each the most conservative reading where the pages leave a choice open
   limits and the failure envelope. The client's address is
   `CF-Connecting-IP`, which Cloudflare sets on every request (area 10);
   the work a response leaves runs after it in `waitUntil`, within its 30
-  seconds; rate limits are counted in the isolate's memory until area
-  16's store on Workers comes (chunk 8.2m2). A streamed answer
-  (`ai.stream`) is sent whole once it ends until chunk 8.2h sends it as
-  it comes.
+  seconds, and what that doesn't reach is handed on to a fresh invocation
+  of the Worker through its binding to itself, which carries it on with
+  30 seconds of its own (chunk 8.2h); rate limits are counted in the
+  isolate's memory until area 16's store on Workers comes (chunk 8.2m2).
+  A streamed answer (`ai.stream`) is a `ReadableStream`, each event sent
+  as it is read, and a client that goes away ends the request and with
+  it the model's call (chunk 8.2h).
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,

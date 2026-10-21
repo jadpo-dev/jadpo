@@ -250,6 +250,9 @@ pub fn build(call: &Call) -> Reply {
                     .filter(|field| field.default.is_none())
                     .map(|field| field.variable.clone())
                     .collect();
+                // A Worker that runs background work hands what one
+                // invocation doesn't reach on to a fresh one of itself.
+                let hands_on = deployable.runs.subscribers || deployable.runs.schedules;
                 let module = format!("{out}/{name}.wasm");
                 let wrangler = format!("{out}/{}", workers::WRANGLER);
                 let (bytes, gzip) = (bound.wasm.len(), gzipped(&bound.wasm));
@@ -262,7 +265,7 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::wrangler(name, &required).into_bytes(),
+                        workers::wrangler(name, &required, hands_on).into_bytes(),
                     ),
                 ] {
                     if let Err(error) = write_new(&root, &path, &contents) {

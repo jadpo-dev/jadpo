@@ -1079,7 +1079,7 @@ pub(crate) async fn due(
     store: &str,
     now: i64,
 ) -> Result<Vec<Delivery>, StoreError> {
-    use crate::outbox::{DUE, PARK, SWEEP_BATCH, Trace, failure_json, micros};
+    use crate::outbox::{DUE, SWEEP_BATCH, micros};
     let database = host
         .database(store)
         .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
@@ -1100,6 +1100,19 @@ pub(crate) async fn due(
     let rows = database
         .query_once(DUE, &[micros(now), SqlValue::Int8(i64::from(SWEEP_BATCH))])
         .await?;
+    Ok(deliveries(events, database, store, rows).await)
+}
+
+/// The deliveries `rows` hold, read as [`crate::outbox::DUE`] reads them
+/// from `store`, each with its event read as its type; one whose payload
+/// no longer reads is parked with its problem, never dropped.
+async fn deliveries(
+    events: &crate::outbox::Events<'_>,
+    database: &dyn crate::Database,
+    store: &str,
+    rows: Vec<crate::Row>,
+) -> Vec<Delivery> {
+    use crate::outbox::{PARK, Trace, failure_json};
     let mut work = Vec::new();
     for row in rows {
         let (
@@ -1165,7 +1178,7 @@ pub(crate) async fn due(
             }
         }
     }
-    Ok(work)
+    work
 }
 
 /// Runs `work` and what it sets off within `budget`, as the tick runs
@@ -1216,13 +1229,176 @@ fn invocation(
             return;
         }
         let fresh = Rc::clone(&host);
-        host.hand_on(invocation(
+        host.hand_on(HandOn {
             executor,
-            fresh,
-            worked.left,
-            Invocation::HandedOn,
-        ));
+            host: fresh,
+            work: worked.left,
+        });
     })
+}
+
+/// What an invocation whose budget was spent hands on to a fresh one
+/// (chunk 6.7; area 12, "Running background work"): the deliveries it
+/// didn't reach and the batch runs it handed on by time, each with a
+/// record of its own in the store. Its host runs it as a fresh invocation
+/// with a budget of its own ([`Host::hand_on`]): natively on the host that
+/// handed it on, [`HandOn::run`]; on Workers in a fresh invocation of the
+/// Worker, which is sent [`HandOn::message`], each piece named by its
+/// record, and reads it back ([`carry_on`]; chunk 8.2h).
+pub struct HandOn {
+    executor: Rc<dyn Executor>,
+    host: Rc<dyn Host>,
+    work: Vec<Deferred>,
+}
+
+impl std::fmt::Debug for HandOn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HandOn")
+            .field("work", &self.work)
+            .finish_non_exhaustive()
+    }
+}
+
+impl HandOn {
+    /// The work handed on.
+    pub fn work(&self) -> &[Deferred] {
+        &self.work
+    }
+
+    /// It run as a fresh invocation on the host that handed it on, with a
+    /// budget of its own, handing on in turn what it doesn't reach.
+    pub fn run(self) -> LocalFuture<'static, ()> {
+        invocation(self.executor, self.host, self.work, Invocation::HandedOn)
+    }
+
+    /// It as JSON naming each piece by its record and store, in order, for
+    /// a fresh invocation elsewhere to read back ([`carry_on`]): a
+    /// delivery by its id, a batch run by its run's. It holds no event's
+    /// value, so nothing an application keeps travels in it.
+    pub fn message(&self) -> String {
+        let mut pieces = Vec::new();
+        for piece in &self.work {
+            match piece {
+                Deferred::Deliveries(deliveries) => {
+                    pieces.extend(deliveries.iter().map(|delivery| {
+                        serde_json::json!({
+                            "store": delivery.store,
+                            "delivery": crate::deliveries::hex(&delivery.id),
+                        })
+                    }));
+                }
+                Deferred::Batch(start) => pieces.push(serde_json::json!({
+                    "store": start.store,
+                    "batch": crate::deliveries::hex(&start.run),
+                })),
+            }
+        }
+        serde_json::json!({ "handed_on": pieces }).to_string()
+    }
+}
+
+/// One piece of work a [`HandOn::message`] names.
+enum Named {
+    Delivery { store: String, id: [u8; 16] },
+    Batch(crate::batches::BatchStart),
+}
+
+/// The pieces `message` names, in order; `None` when it isn't a
+/// [`HandOn::message`].
+fn named(message: &str) -> Option<Vec<Named>> {
+    let document: serde_json::Value = serde_json::from_str(message).ok()?;
+    let mut pieces = Vec::new();
+    for piece in document.get("handed_on")?.as_array()? {
+        let store = piece.get("store")?.as_str()?.to_string();
+        let id = |key: &str| piece.get(key).and_then(|id| id.as_str()).map(id_from_hex);
+        pieces.push(match (id("delivery"), id("batch")) {
+            (Some(id), None) => Named::Delivery { store, id: id? },
+            (None, Some(run)) => Named::Batch(crate::batches::BatchStart { store, run: run? }),
+            _ => return None,
+        });
+    }
+    Some(pieces)
+}
+
+/// An id from its 32 hexadecimal digits.
+fn id_from_hex(text: &str) -> Option<[u8; 16]> {
+    if text.len() != 32 {
+        return None;
+    }
+    let mut id = [0u8; 16];
+    for (at, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(text.get(at * 2..at * 2 + 2)?, 16).ok()?;
+    }
+    Some(id)
+}
+
+/// The work `message` names ([`HandOn::message`]) run on `host` as a fresh
+/// invocation with a budget of its own, as [`HandOn::run`] runs it: each
+/// delivery read back from its record, as the sweep reads one, unless it
+/// has run or been given up since, and each batch run from its row; what
+/// it doesn't reach is handed on in turn. `None` when `message` isn't one,
+/// what it names left for the tick.
+pub fn carry_on(
+    executor: Rc<dyn Executor>,
+    host: Rc<dyn Host>,
+    message: &str,
+) -> Option<LocalFuture<'static, ()>> {
+    let pieces = named(message)?;
+    Some(Box::pin(async move {
+        let work = read_back(executor.as_ref(), host.as_ref(), pieces).await;
+        if work.is_empty() {
+            return;
+        }
+        invocation(executor, host, work, Invocation::HandedOn).await;
+    }))
+}
+
+/// The work `pieces` name as the runner runs it, in their order: each
+/// store's deliveries read in one statement; one a store can't give is
+/// left for the tick.
+async fn read_back(executor: &dyn Executor, host: &dyn Host, pieces: Vec<Named>) -> Vec<Deferred> {
+    let mut wanted: Vec<(&str, Vec<SqlValue>)> = Vec::new();
+    for piece in &pieces {
+        if let Named::Delivery { store, id } = piece {
+            match wanted.iter_mut().find(|(named, _)| named == store) {
+                Some((_, ids)) => ids.push(SqlValue::Uuid(*id)),
+                None => wanted.push((store, vec![SqlValue::Uuid(*id)])),
+            }
+        }
+    }
+    let mut found: Vec<Delivery> = Vec::new();
+    if let Some(events) = executor.plan().events() {
+        for (store, ids) in wanted {
+            let Some(database) = host.database(store) else {
+                continue;
+            };
+            let Ok(rows) = database
+                .query_once(
+                    crate::outbox::HANDED_ON,
+                    &[SqlValue::Array(crate::SqlType::Uuid, ids)],
+                )
+                .await
+            else {
+                continue;
+            };
+            found.extend(deliveries(&events, database, store, rows).await);
+        }
+    }
+    let mut work = Vec::new();
+    for piece in pieces {
+        match piece {
+            Named::Delivery { store, id } => {
+                if let Some(at) = found
+                    .iter()
+                    .position(|delivery| delivery.id == id && delivery.store == store)
+                {
+                    work.push(Deferred::Deliveries(vec![found.swap_remove(at)]));
+                }
+            }
+            Named::Batch(start) => work.push(Deferred::Batch(start)),
+        }
+    }
+    work
 }
 
 /// Runs `callable` once for each of `items`, its arguments, in order,
@@ -1829,8 +2005,8 @@ mod tests {
             self.deferred.borrow_mut().push(work);
         }
 
-        fn hand_on(&self, work: LocalFuture<'static, ()>) {
-            self.handed.borrow_mut().push(work);
+        fn hand_on(&self, work: HandOn) {
+            self.handed.borrow_mut().push(work.run());
         }
 
         fn monotonic_ms(&self) -> Option<u64> {

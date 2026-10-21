@@ -37,6 +37,7 @@ web-sys = { workspace = true, features = [
     "AbortSignal",
     "Headers",
     "ReadableStream",
+    "ReadableStreamDefaultController",
     "ReadableStreamDefaultReader",
     "Request",
     "RequestInit",

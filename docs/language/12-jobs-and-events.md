@@ -2168,9 +2168,15 @@ stops short.
 - **Work not reached waits in the store.** A delivery an invocation didn't
   reach stays `pending`, and a batch run waits on its row. What an
   invocation after a response left goes on in a fresh invocation with a
-  budget of its own (natively a task of its own), once the invocation ran
-  something; one that could run nothing leaves it for the tick rather than
-  hand it on for ever. The tick finds what is due at its time, then runs
+  budget of its own, once the invocation ran something; one that could
+  run nothing leaves it for the tick rather than hand it on for ever.
+  Natively that is a task of its own; on Workers a request to the Worker
+  itself, through a service binding to its own `JadpoHandOn` entrypoint,
+  naming each piece by its record, which the fresh invocation reads back
+  and runs in its own `waitUntil`, with 30 seconds of its own (decided
+  2026-10-21, chunk 8.2h; Decisions, "Work handed on, on Workers"). A
+  hand-on the platform refuses, as past its limit on invocations one
+  request chains, leaves the work in the store for the minute's cron. The tick finds what is due at its time, then runs
   each piece under the host's clock as that piece starts, so work that
   takes time never claims with a lease already past.
 - **Stopping gives back as it was.** A native server asked to stop
@@ -4873,6 +4879,12 @@ the host's clock, and an unkeyed change never sent again on a rerun
 ("Several changing calls in one action"; live tests in
 `crates/jadpo-cli/tests/step_replays.rs`; decisions table, "Keys and
 replays, chosen in chunk 7.9a").
+Built in chunk 8.2h: on Workers, what an invocation's 30 seconds didn't
+reach handed on to a fresh invocation of the Worker, a request to itself
+naming each piece by its record ("Running background work"; decisions
+table, "Work handed on, on Workers"); proved under workerd with a
+subscriber's deliveries and a batch run each longer than one
+invocation's budget (`crates/jadpo-cli/tests/workers.rs`).
 
 Not yet:
 
@@ -4887,9 +4899,10 @@ Not yet:
   with the request timelines (area 17), and the record's entry in the
   personal-data report with the report (area 15), all after the first
   build.
-- On Cloudflare Workers, the cron tick, outbox delivery after commit, the
-  `trigger:` adapter, a batch run carried on in a fresh invocation and
-  the budgets: roadmap 8.2.
+- On Cloudflare Workers, the cron tick and the `trigger:` adapter:
+  roadmap 8.2. Delivery after commit in `waitUntil` and the budgets are
+  built (chunks 8.2a and 8.2d), and work an invocation didn't reach handed
+  on to a fresh invocation of the Worker (chunk 8.2h).
 - Sending the metrics and the alerts' log events to a monitoring tool
   waits for telemetry (area 16), and the console's timeline for area 17.
 
@@ -5202,6 +5215,7 @@ Not yet:
 | An event's tenant (after chunk 6.1b) | An event belongs to the tenant its one field holding a tenant's id names (e.g. `household_id: Household.id`), so the tenant is written in the event where a reviewer sees it; an event with no such field, or more than one, reaches no tenant's records (Richard, as recommended) | 2026-10-19 |
 | A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended; several naming the same tenant count as that one: "Schedule and batch defaults") | 2026-10-19 |
 | `jadpo schedules run` (after chunk 6.2b) | Against `jadpo dev` it runs the schedule straight away and shows the outcome; against a deployed application it marks the schedule due, so the application's own server runs it on its next tick under the lease, and the command waits for that run's record and shows it, so a deployment's settings and secrets never leave its servers (Richard, as recommended) | 2026-10-19 |
+| Work handed on, on Workers (chosen in chunk 8.2h) | `Host::hand_on` on Workers is a request to the Worker itself, through a service binding (`JADPO_HAND_ON`, which `jadpo build` writes into the Wrangler file of a Worker that runs background work) to a named entrypoint of its own shim (`JadpoHandOn`), never its default export, so nothing from outside reaches it. It is sent JSON naming each piece by its record and store, never an event's value; the fresh invocation reads each delivery back from its record, leaving out one run or given up since, and each batch run from its row, and carries them on in its own `waitUntil` with Workers' 30 seconds, handing on in turn; the invocation that handed it on is kept until that call returns. A hand-on that fails, as past the platform's limit on invocations one request chains, leaves the work in the store for the minute's cron. Rejected: a queue, which needs a queue made in the account and a consumer for every Worker, delays each hand-on by its batching, and would tie background work to chunk 8.2k's consumer; and a request to the Worker's own URL, which would reach its public `fetch` and need a secret to tell itself from a caller. Whether Cloudflare gives each handed-on invocation its own 30 seconds once the one that called it has ended is checked on the real deploy (chunk 8.2n) (decided for Richard, the conservative reading) | 2026-10-21 |
 | An `every:` under a minute on Workers (Phase 6 review) | An error naming the schedule when a Workers deployable reaches it, since a minute's cron can't run it and Jadpo has no warnings (Richard, as recommended) | 2026-10-19 |
 | Schedule and batch defaults (Phase 6 review) | What the code does is decided: a schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` (Richard, as recommended) | 2026-10-19 |
 | A batch's `key:` with tenants (Phase 6 review) | In an application with a tenant, `key:` is unique per call, run tenant and key, so two tenants' runs with the same key never meet (Richard, as recommended) | 2026-10-19 |

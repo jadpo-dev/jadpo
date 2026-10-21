@@ -8,9 +8,12 @@
 //!   ([`supplies`]), randomness from Web Crypto's `getRandomValues`, the
 //!   wall clock (`Date.now()`) and a monotonic clock made from it, timers
 //!   on `setTimeout`, settings from the Worker's bindings, the work a
-//!   response leaves run through `ctx.waitUntil`, rate limits counted in
-//!   the isolate's memory, and Workers' budgets for background work (30
-//!   seconds after a response, 15 minutes for the cron).
+//!   response leaves run through `ctx.waitUntil` and the work an
+//!   invocation hands on run in a fresh one, a request to the Worker
+//!   itself through a service binding ([`HAND_ON_BINDING`]), rate limits
+//!   counted in the isolate's memory, and Workers' budgets for background
+//!   work (30 seconds after a response and for work handed on, 15 minutes
+//!   for the cron).
 //! - [`WorkersTransport`]: the drivers' `Transport` over `connect()` from
 //!   `cloudflare:sockets`, upgraded with `startTls()`.
 //! - [`WorkersFetch`] and [`WorkersOutbound`]: HTTP out of the Worker
@@ -21,8 +24,10 @@
 //!   `Target.wasm` deployable calls from the handlers it exports (chunk
 //!   8.2b): `fetch` serving each request through the runtime, the settings
 //!   read from the bindings and the stores' migrations compared once per
-//!   isolate (chunk 8.2d); and [`wasm_bindgen`], re-exported so that crate
-//!   exports them through this one's.
+//!   isolate (chunk 8.2d), its streamed answers sent as a `ReadableStream`
+//!   and `hand_on` taking on work handed on (chunk 8.2h); and
+//!   [`wasm_bindgen`], re-exported so that crate exports them through this
+//!   one's.
 //!
 //! The crate builds for wasm32-unknown-unknown, which is what it is for,
 //! and natively, where its bindings compile but are never called, so the
@@ -47,6 +52,7 @@ pub mod deployable;
 mod fetch;
 mod js;
 mod passkeys;
+mod streamed;
 mod timer;
 mod transport;
 
@@ -79,6 +85,17 @@ pub const AFTER_RESPONSE_MS: u64 = 30_000;
 
 /// How long a cron-triggered invocation may run: 15 minutes of wall time.
 pub const CRON_MS: u64 = 15 * 60 * 1000;
+
+/// The binding a Worker starts a fresh invocation of itself through, for
+/// work handed on (chunk 8.2h; area 12, "Running background work"): a
+/// service binding to its own [`HAND_ON_ENTRYPOINT`], which `jadpo build`
+/// writes into the Wrangler file.
+pub const HAND_ON_BINDING: &str = "JADPO_HAND_ON";
+
+/// The named entrypoint Jadpo's module shim exports for work handed on:
+/// its `handOn(work)` takes the work on in an invocation of its own. Not
+/// the Worker's default export, so nothing from outside reaches it.
+pub const HAND_ON_ENTRYPOINT: &str = "JadpoHandOn";
 
 /// What each kind of background work may run for on Workers (area 12,
 /// "Running background work").
@@ -231,6 +248,43 @@ impl Host for WorkersHost {
             Ok(JsValue::UNDEFINED)
         });
         let _ = ctx.wait_until(&promise);
+    }
+
+    /// A fresh invocation of the Worker, with Workers' 30 seconds of its
+    /// own (chunk 8.2h): a request to itself through the service binding
+    /// [`HAND_ON_BINDING`], sent the work's [`HandOn::message`], whose
+    /// invocation reads it back and runs it in its own `waitUntil`
+    /// ([`deployable::hand_on`]); this invocation is kept until that one
+    /// has taken it on. Without the binding or a context, or when the call
+    /// fails, as past the platform's limit on invocations one request
+    /// chains, it is dropped: what it names waits in the store, and the
+    /// minute's cron takes it up.
+    ///
+    /// [`HandOn::message`]: jadpo_runtime::runner::HandOn::message
+    fn hand_on(&self, work: jadpo_runtime::runner::HandOn) {
+        let message = work.message();
+        drop(work);
+        let Some(ctx) = &self.ctx else {
+            return;
+        };
+        let Ok(binding) = Reflect::get(&self.env, &JsValue::from_str(HAND_ON_BINDING)) else {
+            return;
+        };
+        if !binding.is_object() {
+            return;
+        }
+        let binding = binding.unchecked_into::<js::HandOnBinding>();
+        let Ok(called) = binding.hand_on(&message) else {
+            return;
+        };
+        // Workers' RPC gives a thenable: kept as a promise settling either
+        // way, so a refusal is no unhandled rejection.
+        let called = js_sys::Promise::resolve(&called);
+        let kept = wasm_bindgen_futures::future_to_promise(async move {
+            let _ = wasm_bindgen_futures::JsFuture::from(called).await;
+            Ok(JsValue::UNDEFINED)
+        });
+        let _ = ctx.wait_until(&kept);
     }
 
     fn budget_ms(&self, invocation: Invocation) -> u64 {

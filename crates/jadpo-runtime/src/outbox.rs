@@ -130,6 +130,12 @@ pub const PARK_LOST: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'outco
 /// circuit breaker held it (chunk 7.2b).
 pub const DUE: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscriber\", \"o\".\"event\", \"o\".\"payload\"::text, COALESCE(\"d\".\"retried_at\", \"o\".\"emitted_at\") + COALESCE(\"d\".\"held_ms\", 0) * interval '1 millisecond', \"o\".\"traceparent\", \"o\".\"depth\", \"o\".\"encoding\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"status\" IN ('pending', 'running') AND \"d\".\"next_attempt_at\" <= $1 ORDER BY \"d\".\"next_attempt_at\", \"d\".\"id\" LIMIT $2";
 
+/// The deliveries among `$1` still to run, with what their outbox row
+/// keeps, read as [`DUE`] reads them: the deliveries an invocation handed
+/// on to a fresh one by their records (chunk 8.2h,
+/// [`crate::runner::carry_on`]). One run or given up since is left out.
+pub const HANDED_ON: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscriber\", \"o\".\"event\", \"o\".\"payload\"::text, COALESCE(\"d\".\"retried_at\", \"o\".\"emitted_at\") + COALESCE(\"d\".\"held_ms\", 0) * interval '1 millisecond', \"o\".\"traceparent\", \"o\".\"depth\", \"o\".\"encoding\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"id\" = ANY($1::uuid[]) AND \"d\".\"status\" IN ('pending', 'running')";
+
 /// Gives up delivery `$1` whose payload no longer reads, with its
 /// problem `$2`: parked, never dropped (area 12, "A payload is the
 /// contract's JSON").

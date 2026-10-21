@@ -206,6 +206,8 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
         "wasm_bindgen = jadpo_host_workers::wasm_bindgen",
         "pub fn fetch(request: JsValue, env: JsValue, ctx: JsValue) -> JsValue",
         "jadpo_host_workers::deployable::fetch(&DEPLOYABLE, request, env, ctx)",
+        "pub fn hand_on(work: String, env: JsValue, ctx: JsValue) -> JsValue",
+        "jadpo_host_workers::deployable::hand_on(&DEPLOYABLE, work, env, ctx)",
         "program: jadpo_program::program",
         "build: \"b_3c41d07a9e12\"",
         "deployable: \"kiosk\"",
@@ -239,16 +241,23 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     let shim = workers::shim("back_office");
     for held in [
         "import module from \"./back_office.wasm\";",
-        "import { initSync, fetch as handleFetch } from \"./back_office.js\";",
+        "import { initSync, fetch as handleFetch, hand_on as handleHandOn } from \"./back_office.js\";",
         "initSync({ module });",
         "export default {",
         "return handleFetch(request, env, ctx);",
+        // Work handed on reaches a named entrypoint, never the default
+        // export a request from outside reaches.
+        "import { WorkerEntrypoint } from \"cloudflare:workers\";",
+        "export class JadpoHandOn extends WorkerEntrypoint {",
+        "handOn(work) {",
+        "return handleHandOn(work, this.env, this.ctx);",
     ] {
         assert!(shim.contains(held), "{held} isn't in:\n{shim}");
     }
     let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
         "back_office",
         &["DATABASE_URL".to_string(), "MAIL_SENDER".to_string()],
+        true,
     ))
     .expect("JSON");
     assert_eq!(
@@ -264,11 +273,17 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
             ],
             "secrets": { "required": ["DATABASE_URL", "MAIL_SENDER"] },
+            // Bound to itself, to hand work on to a fresh invocation.
+            "services": [
+                { "binding": "JADPO_HAND_ON", "service": "back-office", "entrypoint": "JadpoHandOn" },
+            ],
         })
     );
-    // With no setting to give, there is no secret to require.
+    // With no setting to give, there is no secret to require; running no
+    // background work, it hands nothing on.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[])).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], false)).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
+    assert!(bare.get("services").is_none(), "{bare}");
 }
