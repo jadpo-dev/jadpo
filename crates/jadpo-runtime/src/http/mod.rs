@@ -297,6 +297,27 @@ fn new_request_id(host: &dyn Host, seed: Option<u64>, sequence: u64) -> String {
     format!("req_{n:016x}")
 }
 
+/// What a host answers itself, before the HTTP component runs, while it
+/// can't serve: 503 `unavailable` with a new request id, from `host`'s
+/// randomness. A Workers isolate whose start failed, or that couldn't
+/// check its stores' migrations yet, answers it (chunk 8.2d).
+pub fn unavailable(host: &dyn Host) -> Response {
+    unserved(host, UNAVAILABLE)
+}
+
+/// What a host answers itself for a request whose body it couldn't read:
+/// 400 `invalid_request` with a new request id (chunk 8.2d).
+pub fn unreadable(host: &dyn Host) -> Response {
+    unserved(host, INVALID_REQUEST)
+}
+
+fn unserved(host: &dyn Host, failure: (u16, &str, &str)) -> Response {
+    let id = new_request_id(host, None, 0);
+    let mut response = runtime_failure(failure, &id, None);
+    response.headers.push(("x-request-id".to_string(), id));
+    response
+}
+
 /// What the HTTP component keeps between the requests one worker answers
 /// (natively a worker thread, on Workers an isolate): how many it has
 /// answered, which numbers request ids on a host with no randomness, and
@@ -2103,6 +2124,23 @@ mod tests {
         let values = query_values("status=open&status=done&q=milk+and%20eggs").unwrap();
         assert_eq!(values["status"], ["open", "done"]);
         assert_eq!(values["q"], ["milk and eggs"]);
+    }
+
+    #[test]
+    fn a_host_that_cant_serve_answers_in_the_envelope_with_a_request_id() {
+        let host = crate::MemoryHost::new();
+        for (response, status, code) in [
+            (unavailable(&host), 503, "unavailable"),
+            (unreadable(&host), 400, "invalid_request"),
+        ] {
+            assert_eq!(response.status, status);
+            assert_eq!(response.code.as_deref(), Some(code));
+            let id = response.header("x-request-id").expect("a request id");
+            assert!(id.starts_with("req_"), "{id}");
+            let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+            assert_eq!(body["error"]["code"], code);
+            assert_eq!(body["error"]["request_id"], id);
+        }
     }
 
     #[test]

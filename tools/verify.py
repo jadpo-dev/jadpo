@@ -233,13 +233,18 @@ COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 # first time, against servers it starts. The `wasm32` group; `compiler
 # tests` leaves it out in both profiles.
 WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd')])
-# A Workers deployable (chunk 8.2b): teaching example 23 declared as a
-# kiosk built for `Target.wasm` by `jadpo build` in release for wasm32, its
-# build kept in target/jadpo-compiled/workers/, bound by wasm-bindgen's
-# library, written with Jadpo's module shim and a Wrangler file, and loaded
-# by the same workerd. The `wasm32` group, in cargo's lane beside the step
-# above, since both install workerd into tools/workers/ the first time.
-WORKERS_DEPLOYABLE = ('a Workers deployable built and loaded by workerd', [('jadpo-cli', 'workers')])
+# A Workers deployable (chunks 8.2b and 8.2d): teaching example 23 declared
+# as a kiosk built for `Target.wasm` by `jadpo build` in release for wasm32,
+# its build kept in target/jadpo-compiled/workers/, bound by wasm-bindgen's
+# library, written with Jadpo's module shim and a Wrangler file, and served
+# by the same workerd against PostgreSQL over `connect()`: the run's server
+# when it is named by a URL (CI's, on 127.0.0.1), else one the test starts
+# on 127.0.0.1, since a local run's listens on a Unix socket, which a
+# Worker can't open. The `wasm32` group, in cargo's lane beside the step
+# above, since both install workerd into tools/workers/ the first time; it
+# prints the module's size.
+WORKERS_DEPLOYABLE = ('a Workers deployable built and served by workerd', [('jadpo-cli', 'workers')])
+WORKERS_SHOWN = ('skipped:', 'measured:')
 
 
 # A test file with a live part calls the one helper that says whether it
@@ -268,7 +273,7 @@ def postgres_steps(table: list | None = None, root: Path = ROOT) -> list[tuple[s
     """The table's steps, then one for each live test file it and the
     differential run (COMPILED) leave out."""
     table = POSTGRES if table is None else table
-    listed = {test for _, tests, _ in [*table, COMPILED] for test in tests}
+    listed = {test for _, tests, _ in [*table, COMPILED] for test in tests} | set(WORKERS_DEPLOYABLE[1])
     return list(table) + [(f'live PostgreSQL: {module} (not listed in POSTGRES)', [(package, module)], [])
                           for package, module in live_test_files(root) if (package, module) not in listed]
 
@@ -412,7 +417,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                  ['node', 'tools/run_wasm.mjs',
                   str(target_dir() / WASM / 'debug/examples/geodesics.wasm')], lane='cargo'),
             Step(WORKERD[0], 'wasm32', tests=modules(WORKERD[1]), lane='cargo'),
-            Step(WORKERS_DEPLOYABLE[0], 'wasm32', tests=modules(WORKERS_DEPLOYABLE[1]), lane='cargo'),
+            Step(WORKERS_DEPLOYABLE[0], 'wasm32', tests=modules(WORKERS_DEPLOYABLE[1]), lane='cargo',
+                 args=['--show-output'], show=WORKERS_SHOWN, postgres=True),
         ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'

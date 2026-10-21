@@ -1,22 +1,41 @@
-//! A Workers deployable, built and loaded by workerd (roadmap chunk 8.2b;
-//! docs/compiler-runtime.md §2.6, "A Workers deployable"; area 14, "A
-//! Workers deployable"): teaching example 23, the repair café, declared as
-//! one kiosk built for `Target.wasm`. `jadpo build` writes it in
+//! A Workers deployable, built and served by workerd (roadmap chunks 8.2b
+//! and 8.2d; docs/compiler-runtime.md §2.6, "A Workers deployable"; area
+//! 14, "A Workers deployable"): teaching example 23, the repair café,
+//! declared as one kiosk built for `Target.wasm`. `jadpo build` writes it in
 //! `build/target/kiosk/` as a WebAssembly module bound by wasm-bindgen's
 //! library, the JavaScript that binds it, Jadpo's module shim and a
 //! Wrangler file naming them, the setting it needs and the compatibility
 //! date; its stamp's target is `wasm`, the screen shows the module's size
 //! raw and gzipped, and the module links the PostgreSQL driver the café's
-//! database needs and none of the testing machinery. workerd, Cloudflare's
-//! own Workers runtime, pinned in `tools/workers/`, then runs the files as
-//! the Wrangler file describes them: the shim instantiates the module and
-//! the program's plan is read inside it, and the Worker answers.
+//! database needs, the runtime's HTTP component, and none of the testing
+//! machinery.
+//!
+//! workerd, Cloudflare's own Workers runtime, pinned in `tools/workers/`,
+//! then runs the files as the Wrangler file describes them, against a
+//! PostgreSQL database on this machine reached through `connect()`.
+//! Without its database's address the Worker answers 503 and logs
+//! `runtime.startup_failed` naming the setting's variable, once for its
+//! isolate; against a database that hasn't applied its last migration it
+//! answers 503 and logs the migration, and checks again at the next
+//! request, so once the migration is applied the same isolate starts
+//! serving: it books a repair through `POST /repairs`, the subscribers
+//! that find it a bench and print its ticket delivered while the request
+//! waits, and answers with the ticket read back from the database; a thank
+//! you's note is pinned up after its answer, in `waitUntil`; its readiness
+//! check reaches the database; and each address `CF-Connecting-IP` gives
+//! has its own allowance of 120 requests a minute. Every event it logs is
+//! one JSON line carrying the build stamp.
 //!
 //! The build is kept beside the build's own folders
 //! (`target/jadpo-compiled/workers/`), so a second run compiles only what
-//! changed. Nothing leaves this machine: workerd is installed into
-//! `tools/workers/` by `npm ci --ignore-scripts` the first time
-//! (`JADPO_WORKERD` names another), and the Worker reaches nothing.
+//! changed. The database is the run's when `JADPO_TEST_DATABASE_URL` names
+//! one by a URL, as CI's does (`127.0.0.1`), and otherwise one this test
+//! starts on `127.0.0.1` from the machine's PostgreSQL tools, since the
+//! one a local run of the gate starts listens on a Unix socket, which a
+//! Worker can't open; `JADPO_SKIP_POSTGRES=1` skips the serving part.
+//! Nothing leaves this machine: workerd is installed into `tools/workers/`
+//! by `npm ci --ignore-scripts` the first time (`JADPO_WORKERD` names
+//! another), and the Worker reaches nothing but this machine.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -27,9 +46,10 @@ use std::time::{Duration, Instant};
 
 use jadpo_cli::run;
 use jadpo_term::Environment;
+use jadpo_test::postgres::Server;
 use serde_json::Value;
 
-use crate::deployable::copy_folder;
+use crate::deployable::{apply, copy_folder, migrations, rows};
 
 /// The café declares one kiosk, built for Workers, serving its API and
 /// running its subscribers and schedules.
@@ -77,7 +97,7 @@ fn names(module: &[u8], krate: &str, path: &str) -> bool {
 }
 
 #[test]
-fn a_teaching_example_is_built_for_workers_and_loaded_by_workerd() {
+fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     let root = repair_cafe();
     let output = jadpo(&root, &["build", "--json"]);
     let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
@@ -119,6 +139,10 @@ fn a_teaching_example_is_built_for_workers_and_loaded_by_workerd() {
         module.len()
     );
     assert!(module.starts_with(b"\0asm"), "a WebAssembly module");
+    println!(
+        "measured: the kiosk's module {} bytes, {gzipped} gzipped",
+        module.len()
+    );
 
     // The Wrangler file: the shim as the main module, uploaded with the
     // files beside it as they are, the compatibility date, and the setting
@@ -142,12 +166,21 @@ fn a_teaching_example_is_built_for_workers_and_loaded_by_workerd() {
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
     assert!(shim.contains("from \"./kiosk.js\""), "{shim}");
     let js = fs::read_to_string(out.join("kiosk.js")).expect("the module's JavaScript");
-    assert!(js.contains("export function fetch("), "{js}");
+    // The module's `fetch`, renamed where it would hide the global one the
+    // module itself calls.
+    assert!(
+        js.contains("export function fetch(")
+            || regex::Regex::new(r"export \{ \w+ as fetch \}")
+                .expect("a pattern")
+                .is_match(&js),
+        "{js}"
+    );
     assert!(js.contains("initSync"), "{js}");
 
     // It links the PostgreSQL driver, which the café's database needs, and
-    // no SMTP driver, since it sends no email; none of the fakes,
-    // recordings, crash points, records or a test's steps.
+    // no SMTP driver, since it sends no email; the runtime's HTTP component
+    // and the runner that serve a request; none of the fakes, recordings,
+    // crash points, records or a test's steps.
     let crate_manifest =
         fs::read_to_string(root.join("build/rust/kiosk/deployable/Cargo.toml")).expect("read");
     assert!(
@@ -168,14 +201,18 @@ fn a_teaching_example_is_built_for_workers_and_loaded_by_workerd() {
     }
     for (krate, path) in [
         ("jadpo_runtime", "store"),
+        ("jadpo_runtime", "http::trie::Routes"),
+        ("jadpo_runtime", "serve::Serving"),
+        ("jadpo_runtime", "runner"),
+        ("jadpo_drivers", "postgres"),
         ("jadpo_program_kiosk", "cafe"),
         ("jadpo_host_workers", "deployable::fetch"),
     ] {
         assert!(names(&module, krate, path), "it lacks {krate}::{path}");
     }
 
-    // The screen names the Worker's files and the module's size, and says
-    // the Worker answers nothing yet.
+    // The screen names the Worker's files and the module's size, and no
+    // longer says the Worker answers nothing.
     let screen = jadpo(&root, &["build", "kiosk"]).stdout;
     for shown in [
         "worker: build/target/kiosk/wrangler.json",
@@ -183,24 +220,206 @@ fn a_teaching_example_is_built_for_workers_and_loaded_by_workerd() {
         "MB gzipped",
         "build: b_",
         "settings: DATABASE_URL",
-        "alert: `kiosk` answers 503 to every request: serving on Workers is chunk 8.2d",
         "built: kiosk, wasm in ",
     ] {
         assert!(screen.contains(shown), "{shown} isn't in:\n{screen}");
     }
+    assert!(!screen.contains("503"), "{screen}");
 
-    // workerd runs the files as the Wrangler file names them: the shim
-    // instantiates the module, the program's plan is read inside it, and
-    // the Worker answers that it serves nothing yet.
-    let worker = Workerd::start(&out, &wrangler);
-    let (status, body) = worker.get("/repairs");
+    if !jadpo_test::live() {
+        return;
+    }
+    let database = Database::on_tcp();
+    let migrations = migrations(&root);
+    let (last, earlier) = migrations.split_last().expect("migrations");
+    apply(&database.native, earlier);
+
+    // Without its database's address it serves nothing: every request is
+    // 503, and its isolate logs why once, naming the setting's variable.
+    let worker = Workerd::start(&out, &wrangler, &[]);
+    for _ in 0..2 {
+        let (status, body) = worker.send("POST", "/repairs", &[], LAMP);
+        assert_eq!(status, 503, "{body}\n{}", worker.log());
+        let answer: Value = serde_json::from_str(&body).expect("JSON");
+        assert_eq!(answer["error"]["code"], "unavailable", "{answer}");
+        assert!(
+            answer["error"]["request_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("req_")),
+            "{answer}"
+        );
+    }
+    let failed = worker.events("runtime.startup_failed");
+    assert_eq!(failed.len(), 1, "{}", worker.log());
+    stamped(&failed[0], built, kiosk);
+    let problem = &failed[0]["problems"][0];
+    assert_eq!(problem["problem"], "setting_missing", "{problem}");
+    assert_eq!(problem["variable"], "DATABASE_URL", "{problem}");
+    drop(worker);
+
+    // Against a database that hasn't applied its last migration it serves
+    // nothing either, naming the migration.
+    let worker = Workerd::start(&out, &wrangler, &[("DATABASE_URL", &database.worker)]);
+    let (status, body) = worker.send("POST", "/repairs", &[], LAMP);
     assert_eq!(status, 503, "{body}\n{}", worker.log());
-    let answer: Value = serde_json::from_str(&body).expect("JSON");
-    assert_eq!(answer["error"]["code"], "unavailable", "{answer}");
-    assert_eq!(
-        answer["error"]["message"], "This Worker doesn't answer requests yet.",
-        "{answer}"
+    let failed = worker.events("runtime.startup_failed");
+    assert_eq!(failed.len(), 1, "{}", worker.log());
+    stamped(&failed[0], built, kiosk);
+    let problem = &failed[0]["problems"][0];
+    assert_eq!(problem["problem"], "migrations_pending", "{failed:?}");
+    assert_eq!(problem["store"], "main", "{failed:?}");
+    assert_eq!(problem["pending"], serde_json::json!([last.name]));
+    assert!(
+        !worker.log().contains(&database.worker),
+        "the log holds the database's address:\n{}",
+        worker.log()
     );
+
+    // Up to date, the same isolate checks again and serves: the booking's
+    // subscribers find it the staffed bench and print its ticket while the
+    // request waits, and the answer is the ticket read back.
+    apply(&database.native, &migrations);
+    rows(
+        &database.native,
+        "INSERT INTO bench (id, item, fixer) VALUES ('6f0c4d5e-2b1a-4c3d-9e8f-7a6b5c4d3e2f', 'lamp', 'Ada')",
+    );
+    let (status, body) = worker.send("POST", "/repairs", &[], LAMP);
+    assert_eq!(status, 201, "{body}\n{}", worker.log());
+    let ticket: Value = serde_json::from_str(&body).expect("a ticket");
+    assert_eq!(ticket["item"], "lamp", "{ticket}");
+    assert_eq!(
+        ticket["bench_id"], "6f0c4d5e-2b1a-4c3d-9e8f-7a6b5c4d3e2f",
+        "{ticket}"
+    );
+    assert!(ticket["ticket_printed_at"].is_string(), "{ticket}");
+    let repair = ticket["id"].as_str().expect("its id").to_string();
+    assert_eq!(
+        rows(
+            &database.native,
+            &format!("SELECT item, bench_id::text FROM repair WHERE id = '{repair}'"),
+        ),
+        vec![vec![
+            "lamp".to_string(),
+            "6f0c4d5e-2b1a-4c3d-9e8f-7a6b5c4d3e2f".to_string()
+        ]]
+    );
+    let started = worker.events("runtime.started");
+    assert_eq!(started.len(), 1, "{}", worker.log());
+    stamped(&started[0], built, kiosk);
+    assert_eq!(started[0]["unbuilt"], serde_json::json!([]), "{started:?}");
+
+    // A thank-you is answered at once, its note pinned up after the
+    // answer, in `waitUntil`.
+    let (status, body) = worker.send(
+        "POST",
+        &format!("/repairs/{repair}/thanks"),
+        &[],
+        r#"{"note":"Good as new, thank you!"}"#,
+    );
+    assert_eq!(status, 202, "{body}\n{}", worker.log());
+    let mut pinned = Vec::new();
+    for _ in 0..100 {
+        pinned = rows(
+            &database.native,
+            &format!("SELECT note FROM thank_you_note WHERE repair_id = '{repair}'"),
+        );
+        if !pinned.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(
+        pinned,
+        vec![vec!["Good as new, thank you!".to_string()]],
+        "{}",
+        worker.log()
+    );
+
+    // Its readiness check reaches the database.
+    let (status, body) = worker.send("GET", "/health/ready", &[], "");
+    assert_eq!(status, 200, "{body}\n{}", worker.log());
+
+    // Each address `CF-Connecting-IP` gives is counted on its own: 120
+    // requests a minute, then 429, while another address still has its
+    // allowance.
+    let one = [("CF-Connecting-IP", "203.0.113.9")];
+    for _ in 0..120 {
+        let (status, body) = worker.send("GET", "/nowhere", &one, "");
+        assert_eq!(status, 404, "{body}");
+    }
+    let (status, body) = worker.send("GET", "/nowhere", &one, "");
+    assert_eq!(status, 429, "{body}");
+    let (status, body) = worker.send(
+        "GET",
+        "/nowhere",
+        &[("CF-Connecting-IP", "203.0.113.10")],
+        "",
+    );
+    assert_eq!(status, 404, "{body}");
+
+    // Every line it logged is one JSON object carrying the stamp.
+    for event in worker.events("") {
+        stamped(&event, built, kiosk);
+    }
+}
+
+/// A booking for a lamp.
+const LAMP: &str = r#"{"item":"lamp","symptom":"flickers when the shade is touched"}"#;
+
+/// The stamp's part of an event, as the build said it of `deployable`.
+fn stamped(event: &Value, built: &Value, deployable: &Value) {
+    for key in ["commit", "modified", "compiler"] {
+        assert_eq!(event[key], built[key], "{key} in {event}");
+    }
+    for key in ["build", "deployable", "target"] {
+        assert_eq!(event[key], deployable[key], "{key} in {event}");
+    }
+}
+
+/// A database a Worker reaches over TCP on this machine, and the server
+/// it is on.
+struct Database {
+    /// Its address as the native client opens it.
+    native: String,
+    /// Its address as the Worker's `DATABASE_URL`: TCP to `127.0.0.1`.
+    worker: String,
+    _server: Server,
+}
+
+impl Database {
+    /// A new database on the run's server when `JADPO_TEST_DATABASE_URL`
+    /// names it by a URL, and otherwise on a server of the test's own
+    /// listening on `127.0.0.1`.
+    fn on_tcp() -> Database {
+        let named = std::env::var(jadpo_test::postgres::DATABASE_URL_VARIABLE)
+            .is_ok_and(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"));
+        let server = if named {
+            Server::start()
+        } else {
+            Server::start_on_tcp(None)
+        }
+        .unwrap_or_else(|error| panic!("{error}"));
+        let native = server.create_database("workers").expect("a database");
+        let worker = match server.tcp_port() {
+            // The pairs a disposable server gives, as a URL over TCP: its
+            // database is the last `dbname=`, as libpq reads it.
+            Some(port) => {
+                let database = native
+                    .split_whitespace()
+                    .rev()
+                    .find_map(|pair| pair.strip_prefix("dbname="))
+                    .map(|name| name.trim_matches('\''))
+                    .expect("a database's name");
+                format!("postgresql://jadpo@127.0.0.1:{port}/{database}")
+            }
+            None => native.clone(),
+        };
+        Database {
+            native,
+            worker,
+            _server: server,
+        }
+    }
 }
 
 /// workerd serving a built Worker on a port of this machine, stopped
@@ -213,9 +432,10 @@ struct Workerd {
 
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
-    /// the modules beside it by the file's rules, its compatibility date
-    /// and a value for each setting it requires.
-    fn start(out: &Path, wrangler: &Value) -> Workerd {
+    /// the modules beside it by the file's rules, and its compatibility
+    /// date, given the text bindings `bindings`, its outbound network
+    /// reaching this machine.
+    fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("workers-workerd");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("the folder");
@@ -244,20 +464,10 @@ impl Workerd {
                 fs::copy(&path, dir.join(path.file_name().expect("a name"))).expect("copied");
             }
         }
-        let bindings: Vec<String> = wrangler["secrets"]["required"]
-            .as_array()
-            .map(|required| {
-                required
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(|name| {
-                        format!(
-                            "(name = \"{name}\", text = \"postgresql://kiosk@127.0.0.1:1/kiosk\")"
-                        )
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let bindings: Vec<String> = bindings
+            .iter()
+            .map(|(name, value)| format!("(name = \"{name}\", text = \"{value}\")"))
+            .collect();
         let port = TcpListener::bind("127.0.0.1:0")
             .and_then(|listener| listener.local_addr())
             .expect("a port")
@@ -268,13 +478,17 @@ impl Workerd {
             format!(
                 "using Workerd = import \"/workerd/workerd.capnp\";\n\n\
                  const config :Workerd.Config = (\n\
-                 \x20 services = [(name = \"kiosk\", worker = .kiosk)],\n\
+                 \x20 services = [\n\
+                 \x20   (name = \"kiosk\", worker = .kiosk),\n\
+                 \x20   (name = \"machine\", network = (allow = [\"public\", \"private\", \"local\"])),\n\
+                 \x20 ],\n\
                  \x20 sockets = [(name = \"http\", address = \"127.0.0.1:{port}\", http = (), service = \"kiosk\")],\n\
                  );\n\n\
                  const kiosk :Workerd.Worker = (\n\
                  \x20 modules = [{}],\n\
                  \x20 compatibilityDate = \"{date}\",\n\
                  \x20 bindings = [{}],\n\
+                 \x20 globalOutbound = \"machine\",\n\
                  );\n",
                 modules.join(", "),
                 bindings.join(", "),
@@ -311,34 +525,79 @@ impl Workerd {
         fs::read_to_string(&self.log).unwrap_or_default()
     }
 
-    /// `GET path`: the status and the body.
-    fn get(&self, path: &str) -> (u16, String) {
+    /// The events the Worker has logged whose name starts with `event`,
+    /// each a line of JSON; every line that names an event is one.
+    fn events(&self, event: &str) -> Vec<Value> {
+        self.log()
+            .lines()
+            .filter(|line| line.starts_with("{\"") && line.contains("\"event\""))
+            .map(|line| {
+                serde_json::from_str::<Value>(line)
+                    .unwrap_or_else(|_| panic!("a log line is one JSON object: {line}"))
+            })
+            .filter(|logged| {
+                logged["event"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with(event))
+            })
+            .collect()
+    }
+
+    /// One HTTP/1.1 exchange: the status and the body, read as far as the
+    /// answer goes rather than until workerd closes the connection, which
+    /// it may do only once the invocation's work after the answer has
+    /// ended.
+    fn send(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> (u16, String) {
         let mut stream = TcpStream::connect(("127.0.0.1", self.port)).expect("workerd listens");
         stream
             .set_read_timeout(Some(Duration::from_secs(60)))
             .expect("a timeout");
-        write!(
-            stream,
-            "GET {path} HTTP/1.1\r\nHost: kiosk\r\nConnection: close\r\n\r\n"
-        )
-        .expect("sent");
-        let mut answer = String::new();
-        stream.read_to_string(&mut answer).expect("an answer");
-        let status = answer
-            .split(' ')
+        let mut head = format!(
+            "{method} {path} HTTP/1.1\r\nHost: kiosk\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n",
+            body.len()
+        );
+        for (name, value) in headers {
+            head.push_str(&format!("{name}: {value}\r\n"));
+        }
+        write!(stream, "{head}\r\n{body}").expect("sent");
+        let mut raw = Vec::new();
+        let mut byte = [0u8; 1];
+        while !raw.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
+            raw.push(byte[0]);
+        }
+        let head = String::from_utf8_lossy(&raw).to_ascii_lowercase();
+        let status = head
+            .split_whitespace()
             .nth(1)
-            .and_then(|code| code.parse().ok())
-            .unwrap_or_else(|| panic!("an HTTP answer: {answer}\n{}", self.log()));
-        let (head, body) = answer.split_once("\r\n\r\n").unwrap_or((&answer, ""));
-        let body = if head
-            .to_ascii_lowercase()
-            .contains("transfer-encoding: chunked")
-        {
-            dechunk(body)
-        } else {
-            body.to_string()
-        };
-        (status, body)
+            .and_then(|status| status.parse().ok())
+            .unwrap_or_else(|| panic!("an HTTP answer: {head}\n{}", self.log()));
+        let length = head.lines().find_map(|line| {
+            line.strip_prefix("content-length:")
+                .and_then(|length| length.trim().parse::<usize>().ok())
+        });
+        let mut body = Vec::new();
+        match length {
+            Some(length) => {
+                body.resize(length, 0);
+                stream.read_exact(&mut body).expect("the body");
+            }
+            None if head.contains("transfer-encoding: chunked") => {
+                while !body.ends_with(b"0\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
+                    body.push(byte[0]);
+                }
+                return (status, dechunk(&String::from_utf8_lossy(&body)));
+            }
+            None => {
+                let _ = stream.read_to_end(&mut body);
+            }
+        }
+        (status, String::from_utf8_lossy(&body).into_owned())
     }
 }
 

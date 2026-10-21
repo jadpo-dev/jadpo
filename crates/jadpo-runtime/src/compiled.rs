@@ -234,12 +234,19 @@ impl Program {
     }
 
     /// The same program reading `values` as its settings (area 10).
-    pub fn with_config(mut self, values: &crate::config::ConfigValues) -> Program {
-        self.started = Rc::new(Started::new(
-            &self.loaded.plan(),
-            Some(values),
-            crate::http::address::Target::Native,
-        ));
+    pub fn with_config(self, values: &crate::config::ConfigValues) -> Program {
+        self.with_config_on(values, crate::http::address::Target::Native)
+    }
+
+    /// The same program reading `values` as its settings on `target`,
+    /// which decides how a request's client address is chosen (area 10,
+    /// "Client addresses"): a Workers deployable's (chunk 8.2d).
+    pub fn with_config_on(
+        mut self,
+        values: &crate::config::ConfigValues,
+        target: crate::http::address::Target,
+    ) -> Program {
+        self.started = Rc::new(Started::new(&self.loaded.plan(), Some(values), target));
         self
     }
 

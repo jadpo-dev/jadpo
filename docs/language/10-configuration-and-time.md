@@ -708,8 +708,10 @@ On Workers there is no connection address to fall back to, and Cloudflare sets
 Workers uses without a `client_address:`. An address Cloudflare did not give
 is unknown there, and requests with no known address share one allowance. A
 source other than `cloudflare` is refused when the project is built for
-Workers; that check comes with chunk 8.2m, once deployables are declared
-(`ClientAddress::read` already refuses it for that target).
+Workers; `jadpo check`'s refusal comes with chunk 8.2m, and since chunk 8.2d
+a Workers deployable that reads one doesn't start, logging
+`client_address_refused` and answering every request 503
+(`ClientAddress::read` refuses it for that target).
 
 ## Checking values before the app starts
 
