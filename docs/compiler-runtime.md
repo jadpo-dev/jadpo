@@ -1250,7 +1250,8 @@ arm); and a function per kind of site (`binary`, `truth`, `field`,
 chunk 8.1g `construct`, `mapped`, `broke` and `rule_arm` for an
 `attempt`, `is_variant` and `items` for a `match` arm and a `for`,
 `standard` and `standard_each`, `emit`, `sent_emails` and
-`assert_fails`), each turning what the runtime or `jadpo-value` gives
+`assert_fails`; since chunk 8.1h `caller`, `session`, `batch`, `advance`
+and `schedule`), each turning what the runtime or `jadpo-value` gives
 into the stop the interpreter's walker raises at the same site, with the
 same words. The operators are one implementation both executors call,
 `jadpo_runtime::operators::operate`, and so is the standard library:
@@ -1260,6 +1261,25 @@ other through `jadpo_value::run` with the plan's locales, an inline
 function a closure it calls per item, its values kept from an assertion's
 report; the test that holds the interpreter to `effects::run` holds it to
 this entry point too (`jadpo_value::run` may not appear in its sources).
+So are area 8's operations and area 12's batches (chunk 8.1h):
+`jadpo_runtime::http::session` runs `sessions.*`, a token's or a key's
+operation, magic links' and a test's passkeys', `http::caller_from` makes
+a caller from its record (`Principal.user(user)`), and `batches::call`
+starts a run (`batches.each` and a file helper's read or write), reads it
+or cancels it, each giving a store's refusal as the failure it raised;
+the interpreter's copies are gone, and
+`the_interpreter_runs_identity_and_batches_only_through_the_runtime`
+keeps them gone. `clock.advance` is `test_steps::advance_clock`, a step
+after which what came due is delivered, and a test's `<schedule>.run()`
+its action invoked as the system between `schedules::test_run` and
+`test_run_ended`, as the interpreter has it. A file helper's write's row
+(chunk 6.4b2), the inline function the runner works out per item, apart
+from its action's body, is a function of its own in its action's module
+(`row<callable>_<site>`), every local of the action declared and those
+the run saved set by number (`batches::row_locals`, which the interpreter
+uses too), reached by its callable and site through the crate's `row`
+table (`Code::row`), which the compiled `Executor::row` runs in a frame of
+its action.
 An `attempt`'s arm is found by `jadpo_std::arm_for`, which the checker's
 `RuleArm` uses too. None of it is generic, so a generated crate
 monomorphises nothing of the runtime's.
@@ -1344,9 +1364,16 @@ operator, `not` and `-`, `create`, `update` and `delete` with their
 migrations, 65 compiled. Built in 8.1g: `for`, `assert … fails`, `emit`;
 value and outcome `match`, `attempt` over a construction, `reject`,
 `propagate`, `Type(value)`, every standard operation, inline functions
-and `email.sent`. 183 of the 205 compile; what is left is 8.1h's and
-8.1i's (`translations.<message>`, provider operations and a package's
-action, a test's `fakes:`, `batches.*` and `clock.advance`).
+and `email.sent`. 183 of the 205 compile. Built in 8.1h: a caller made
+from its record (`Principal.user`, `Principal.service`), `sessions.*`,
+tokens and keys, magic links' and a test's passkeys' operations,
+`batches.each`, `batches.status`, `batches.cancel`, a file helper's read
+and write with an export's rows, `clock.advance` and a test's
+`<schedule>.run()`. 190 of the 206 compile; what is left is 8.1i's
+(`translations.<message>`, provider operations and a package's action, a
+test's `fakes:`, and in projects that check only with their migrations a
+store's `put` and `read`, `prompts.render`, `ai.*` and an email
+template's `{{ value }}`).
 
 The differential harness is `jadpo_test::compiled`:
 `differential_all(projects, folder)` compiles each project into a
@@ -1363,20 +1390,31 @@ then on that compiled program (`jadpo_test::run_with` runs tests on any
 executor), in one process and on one PostgreSQL server, and compares the
 two runs (`jadpo_test::differential`), printing how many it compared and
 how many passed, or the first line that differs with both sides; a
-project with no tests compares none, its program still made. Its files
+project with no tests compares none, its program still made. Since chunk
+8.1h each batch run a test started is run to its end once the test has
+ended, at the test's clock with counted random bytes
+(`jadpo_test::Options::batches`, `jadpo_test::host::AtClock`), its pages,
+its `each:` and `finished:` calls and an export's rows kept in the test's
+record, so compiled code's runs are compared too; `jadpo test` leaves a
+run as it started until area 13's question 18 is built. Its files
 are written only when they change and the folder is kept
 (`target/jadpo-compiled/corpus/` in the gate), so the runtime crates and
 `jadpo-test` are compiled once, and a later run compiles the generated
 crates that changed and links the harness once (chunk 8.1g; 8.1f built a
 harness per project). The gate's compiled step
 (`crates/jadpo-cli/tests/compiled.rs`) runs every project of the corpus
-that checks, the pages' and the teaching examples', and requires every
-one that compiles to give the same records both ways and every project of
-areas 1 to 4 to compile: 208 projects, 332 tests, 41 left with a form not
-compiled yet, and a project of its own whose `return` inside an inline
-function leaves its function. On the ten-core Mac, lightly loaded, it takes 60 s the
+that checks, the pages' and the teaching examples' (since chunk 8.1h each
+example copied whole, with its migrations, prompts, templates, recordings
+and lock, so all 28 reach it), and requires every one that compiles to
+give the same records both ways, every project of areas 1 to 4 to
+compile, and every project of areas 5 to 9 and 13 but those using a form
+of 8.1i's: 232 projects, 451 tests, 26 left with a form not compiled yet
+(22 of the 28 teaching examples compared, all 276 of their tests passing
+both ways), a project of its own whose `return` inside an inline function
+leaves its function, and area 19's export with a test that starts it,
+run to its end. On the ten-core Mac, lightly loaded, it takes 60 s the
 first time, most of it building the runtime crates, as one project's
-harness did, and 22 s after. One crate per project for now; 8.1j
+harness did, and 33 s after. One crate per project for now; 8.1j
 compiles the corpus as one crate, in one rustc invocation, in a CI job of
 its own.
 

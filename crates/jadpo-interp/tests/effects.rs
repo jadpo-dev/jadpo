@@ -271,3 +271,76 @@ fn the_interpreter_runs_effects_only_through_the_runtime() {
         );
     }
 }
+
+/// What the runtime's entry points for area 8's operations and area 12's
+/// batches run (chunk 8.1h), each with the file that must still name it
+/// and what it does: compiled code calls the same entry points
+/// (`jadpo_runtime::http::session`, `http::caller_from`, `batches::call`
+/// and `batches::row_locals`), so no interpreter source may run one
+/// itself.
+const IDENTITY_AND_BATCHES_ONLY: &[(&str, &str, &str)] = &[
+    ("identity::start", "http/mod.rs", "starts a session"),
+    (
+        "identity::issue_token",
+        "http/mod.rs",
+        "issues an API token",
+    ),
+    ("identity::issue_key", "http/mod.rs", "issues a service key"),
+    (
+        "identity::revoke",
+        "http/mod.rs",
+        "revokes a token or a key",
+    ),
+    ("magic_links::redeem", "http/mod.rs", "redeems a magic link"),
+    (
+        "test_passkeys::register",
+        "http/mod.rs",
+        "registers a test's passkey",
+    ),
+    (
+        "caller_from_record",
+        "http/mod.rs",
+        "makes a caller from its record",
+    ),
+    ("status(ctx, batches", "batches.rs", "reads a batch run"),
+    ("cancel(ctx, batches", "batches.rs", "cancels a batch run"),
+    ("row.locals", "batches.rs", "sets a row's locals"),
+];
+
+#[test]
+fn the_interpreter_runs_identity_and_batches_only_through_the_runtime() {
+    let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut sources: Vec<_> = std::fs::read_dir(crates.join("jadpo-interp/src"))
+        .expect("the interpreter's sources")
+        .map(|entry| entry.expect("a source").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
+    sources.sort();
+    let mut found = Vec::new();
+    for path in &sources {
+        let code = code_of(&std::fs::read_to_string(path).expect("a source file"));
+        let file = path.file_name().unwrap_or_default().to_string_lossy();
+        for (name, _, what) in IDENTITY_AND_BATCHES_ONLY {
+            if code.contains(name) {
+                found.push(format!("{file}: `{name}` {what}"));
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "the interpreter runs an identity or batch operation of its own; call \
+         the runtime's entry point instead, which compiled code calls too:\n{}",
+        found.join("\n")
+    );
+    // Each name is still its entry point's, so the list can't go stale.
+    for (name, entry, _) in IDENTITY_AND_BATCHES_ONLY {
+        let code = code_of(
+            &std::fs::read_to_string(crates.join("jadpo-runtime/src").join(entry))
+                .expect("an entry point's source"),
+        );
+        assert!(
+            code.contains(name),
+            "`{name}` is no longer {entry}'s: update IDENTITY_AND_BATCHES_ONLY"
+        );
+    }
+}

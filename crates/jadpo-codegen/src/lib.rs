@@ -12,8 +12,9 @@
 //! - `plan.bin` and `plan-testing.bin`: the runtime plan's canonical bytes
 //!   without and with its dev and test section, which the crate holds as
 //!   a constant and decodes once as it starts;
-//! - `src/lib.rs`: the frame table, each callable by number, and
-//!   `program()`, the compiled program on this thread;
+//! - `src/lib.rs`: the frame table, each callable by number, each file
+//!   write's row by its callable and site, and `program()`, the compiled
+//!   program on this thread;
 //! - `src/<module>.rs`: a module per domain, and one per top folder and
 //!   `app` for the project's root, holding each callable's function: a
 //!   plain `fn` for a function, an `async fn` for an action, fixture, test
@@ -179,6 +180,45 @@ pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
         let n = number_literal(number);
         table.push(quote!(#cfg #n => Some(Callable::#variant(#module::#entry)),));
     }
+    // Each file write's row, a function of its own in its callable's
+    // module, by the callable and the site of its body (chunk 6.4b2).
+    let mut rows = Vec::new();
+    let mut written = std::collections::BTreeSet::new();
+    for batch in plan.batches() {
+        let jadpo_std::batch::BatchEach::Row(row) = &batch.each else {
+            continue;
+        };
+        let (Some(callable), Some(module)) = (
+            callables.get(row.callable as usize),
+            modules.get(row.callable as usize),
+        ) else {
+            continue;
+        };
+        if !written.insert((row.callable, row.body)) {
+            continue;
+        }
+        let name = quote::format_ident!("row{}_{}", row.callable, row.body);
+        let tokens = Emitter {
+            plan,
+            callable,
+            shape: Shape::Function,
+            paths: &paths,
+            refusals: &mut refusals,
+            label: None,
+            recording: false,
+            handling: Vec::new(),
+            inline: None,
+        }
+        .row(row, &name);
+        code.entry(module.to_string()).or_default().push(tokens);
+        let cfg = if testing_only(callable.kind) {
+            quote!(#[cfg(feature = "testing")])
+        } else {
+            TokenStream::new()
+        };
+        let (at, body) = (number(row.callable), number(row.body));
+        rows.push(quote!(#cfg (#at, #body) => Some(#module::#name),));
+    }
     if !refusals.is_empty() {
         return Err(Error::Refused(refusals));
     }
@@ -203,7 +243,7 @@ pub fn generate(plan: &Plan, options: &Options) -> Result<Generated, Error> {
         .collect();
     files.insert(
         "src/lib.rs".to_string(),
-        printed("src/lib.rs", root(plan, &module_names, &table))?,
+        printed("src/lib.rs", root(plan, &module_names, &table, &rows))?,
     );
     for (module, functions) in code {
         let path = format!("src/{module}.rs");
@@ -239,8 +279,13 @@ fn printed(file: &str, tokens: TokenStream) -> Result<Vec<u8>, Error> {
 }
 
 /// The crate's root: its modules, the plan's bytes, the frame table, each
-/// callable by number and the program.
-fn root(plan: &Plan, modules: &[proc_macro2::Ident], table: &[TokenStream]) -> TokenStream {
+/// callable by number, each file write's row and the program.
+fn root(
+    plan: &Plan,
+    modules: &[proc_macro2::Ident],
+    table: &[TokenStream],
+    rows: &[TokenStream],
+) -> TokenStream {
     let places = plan.callables().iter().map(|callable| {
         let label = Literal::string(&callable.label);
         let file = Literal::string(&callable.file);
@@ -274,7 +319,7 @@ fn root(plan: &Plan, modules: &[proc_macro2::Ident], table: &[TokenStream]) -> T
 
         #(pub mod #modules;)*
 
-        use jadpo_runtime::compiled::{Callable, Code, Place, Program, Shared};
+        use jadpo_runtime::compiled::{Callable, Code, Place, Program, Row, Shared};
 
         /// The runtime plan's canonical bytes, decoded once as the program
         /// starts; a build with the `testing` feature holds its dev and
@@ -293,6 +338,7 @@ fn root(plan: &Plan, modules: &[proc_macro2::Ident], table: &[TokenStream]) -> T
             plan: PLAN,
             places: PLACES,
             callable,
+            row,
             shared: &SHARED,
         };
 
@@ -300,6 +346,15 @@ fn root(plan: &Plan, modules: &[proc_macro2::Ident], table: &[TokenStream]) -> T
         fn callable(n: u32) -> Option<Callable> {
             match n {
                 #(#table)*
+                _ => None,
+            }
+        }
+
+        /// Each file write's row, by its callable's number and its body's
+        /// site.
+        fn row(callable: u32, body: u32) -> Option<Row> {
+            match (callable, body) {
+                #(#rows)*
                 _ => None,
             }
         }

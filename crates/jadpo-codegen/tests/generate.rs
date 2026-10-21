@@ -252,21 +252,79 @@ function lookup_or_default(key: LookupCode) -> LookupResult {
     }
 }
 
+/// The test forms of area 13 (chunk 8.1h) compile: a test's clock moved
+/// on, after which what came due is delivered, and a schedule run by
+/// hand. The corpus runs the rest: callers, sessions, tokens and keys,
+/// batches and an export's rows.
+#[test]
+fn the_test_forms_of_area_thirteen_compile() {
+    let planned = plan(&[
+        ("main.jadpo", PRICES),
+        (
+            "tidy.jadpo",
+            r#"/// Tidies up.
+action tidy() -> Unit {}
+
+/// Tidies up every quarter of an hour.
+schedule tidy_up {
+    every: 15m
+    run: tidy()
+}
+"#,
+        ),
+        (
+            "main.test.jadpo",
+            r#"test "an hour later" {
+    clock.advance(1h)
+    tidy_up.run()
+    assert line_total(Basket {
+        loaves: 1
+        each: 2
+    }).pence == 2
+}
+"#,
+        ),
+    ]);
+    let generated = generate(&planned, &options()).expect("it compiles");
+    let module = text(&generated, "src/app.rs");
+    for expected in [
+        "rt::advance(cx, by, 1)",
+        "rt::step(cx, p, true, 1, ran)",
+        "rt::schedule(cx, p, ",
+    ] {
+        assert!(module.contains(expected), "{expected}:\n{module}");
+    }
+}
+
 /// A body form the generator doesn't compile yet is refused by its name
 /// and place, every one of them, rather than written as code that faults
 /// when a test reaches it.
 #[test]
 fn a_body_form_not_compiled_yet_is_refused_by_name() {
     let planned = plan(&[
-        ("main.jadpo", PRICES),
         (
-            "main.test.jadpo",
-            r#"test "an hour later" {
-    clock.advance(1h)
-    assert line_total(Basket {
-        loaves: 1
-        each: 2
-    }).pence == 2
+            "app.jadpo",
+            "application {}\n\nlocales {\n    default: Locale.en_gb\n    supported: [Locale.en_gb]\n}\n",
+        ),
+        (
+            "domains/orders/types/discount_rate.jadpo",
+            "/// A discount off an order.\ntype DiscountRate = Percentage {}\n",
+        ),
+        (
+            "domains/orders/translations/order_discount.jadpo",
+            "use orders/types { DiscountRate }\n\n/// The discount on an order.\ntype OrderDiscount = Message {\n    reduction: DiscountRate\n}\n",
+        ),
+        (
+            "domains/orders/translations/en_gb.jadpo",
+            "translations {\n    order_discount: \"You saved {reduction, number, percent}.\"\n}\n",
+        ),
+        (
+            "domains/orders/actions/confirm_discount.jadpo",
+            r#"use orders/types { DiscountRate }
+
+/// The order's discount, in the customer's language.
+action confirm_discount(reduction: DiscountRate) -> PresentationText {
+    return translations.orders.order_discount(reduction: reduction, locale: Locale.en_gb)
 }
 "#,
         ),
@@ -277,6 +335,8 @@ fn a_body_form_not_compiled_yet_is_refused_by_name() {
     let shown: Vec<String> = refusals.iter().map(ToString::to_string).collect();
     assert_eq!(
         shown,
-        ["`clock.advance` isn't compiled yet: main.test.jadpo:2, in test \"an hour later\""]
+        [
+            "`translations.<message>` isn't compiled yet: domains/orders/actions/confirm_discount.jadpo:5, in action confirm_discount"
+        ]
     );
 }

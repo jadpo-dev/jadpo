@@ -101,6 +101,20 @@ impl Problem {
     pub fn refused(&self) -> bool {
         matches!(self, Problem::Generate(jadpo_codegen::Error::Refused(_)))
     }
+
+    /// The forms the generator refused, each once, in the order first
+    /// refused: none for any other problem.
+    pub fn forms(&self) -> Vec<String> {
+        let mut forms: Vec<String> = Vec::new();
+        if let Problem::Generate(jadpo_codegen::Error::Refused(refusals)) = self {
+            for refusal in refusals {
+                if !forms.contains(&refusal.form) {
+                    forms.push(refusal.form.clone());
+                }
+            }
+        }
+        forms
+    }
 }
 
 /// The finished run in `ran`.
@@ -111,8 +125,9 @@ fn done(ran: Ran) -> Result<Box<Run>, Problem> {
     }
 }
 
-/// Every test of the project at `folder`, with records and seed 1, run on
-/// the interpreter and then on the executors `make` gives: how many were
+/// Every test of the project at `folder`, with records and seed 1, each
+/// batch run it started run to its end (chunk 8.1h), run on the
+/// interpreter and then on the executors `make` gives: how many were
 /// compared and passed compiled, or the first difference.
 pub fn compare<E: Executor + 'static>(
     folder: &Path,
@@ -123,6 +138,7 @@ pub fn compare<E: Executor + 'static>(
         target: Some(".".into()),
         seed: Some(1),
         record: true,
+        batches: true,
         ..Options::default()
     };
     let interpreted = match run(options()) {

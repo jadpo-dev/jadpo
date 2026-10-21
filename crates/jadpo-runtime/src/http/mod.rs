@@ -1602,6 +1602,90 @@ pub(crate) fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &st
     response
 }
 
+// --- identity operations -------------------------------------------------------
+
+/// `sessions.start(user_id)`, `sessions.end()`, an API token's or a service
+/// key's operation, magic links' or a test's passkeys', called with `args`
+/// at site `at` (area 8): the one entry point both executors call (chunk
+/// 8.1h), which keeps, lists or deletes what it names in the running
+/// action's transaction. A store's refusal is the failure it raised, never
+/// a `conflict:` arm, which none of them has.
+pub async fn session(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    op: jadpo_std::http::SessionOp,
+    args: &[Value],
+    at: u32,
+) -> Stored {
+    use jadpo_std::http::SessionOp;
+    let plan = executor
+        .plan()
+        .routes
+        .and_then(|routes| routes.identity.as_ref());
+    let stored = match (op, args) {
+        // Magic links' operations, for the application's own routes (area
+        // 8, "Writing the routes yourself"; chunk 7.3b3), through the code
+        // the generated routes use.
+        (SessionOp::MagicLinkRequest, _) => {
+            magic_links::request(executor, ctx, plan, args, at).await
+        }
+        (SessionOp::MagicLinkRedeem, _) => magic_links::redeem(executor, ctx, plan, args, at).await,
+        (SessionOp::MagicLinkRedeemCode, _) => {
+            magic_links::redeem_code(executor, ctx, plan, args, at).await
+        }
+        // `test_passkeys`, which only a route test calls (chunk 5.5z2),
+        // through the generated passkey routes.
+        (SessionOp::TestPasskeyRegister, _) => {
+            test_passkeys::register(&executor.plan().app(), executor, ctx, args, at).await
+        }
+        (SessionOp::TestPasskeySignIn, _) => {
+            test_passkeys::sign_in(&executor.plan().app(), executor, ctx, args, at).await
+        }
+        (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
+        (SessionOp::End, []) => identity::end(ctx, plan, at).await,
+        (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,
+        (SessionOp::IssueKey, [service, expires_at]) => {
+            identity::issue_key(ctx, plan, service, expires_at, at).await
+        }
+        (SessionOp::Tokens | SessionOp::Keys, [holder]) => {
+            identity::issued(ctx, plan, op.on_service(), holder, at).await
+        }
+        (SessionOp::RevokeToken | SessionOp::RevokeKey, [id]) => {
+            identity::revoke(ctx, plan, op.on_service(), id, at).await
+        }
+        _ => {
+            return Stored::Fault(ctx.fault(
+                crate::FaultKind::Defect(format!(
+                    "`{}` called with the wrong arguments",
+                    op.name()
+                )),
+                at,
+            ));
+        }
+    };
+    match stored {
+        Stored::Conflict { cause, .. } => Stored::Failed(cause),
+        stored => stored,
+    }
+}
+
+/// A caller made from its record, `record`, in a test, fixture or seed
+/// (`Principal.user(user)`, area 8, question 10), as the program's sign-in
+/// plan makes one of `kind`: both executors make it here. `None` when the
+/// value isn't such a record, which the checker rules out.
+pub fn caller_from(
+    executor: &dyn Executor,
+    kind: jadpo_std::http::PrincipalKind,
+    record: &Value,
+) -> Option<Value> {
+    let plan = executor
+        .plan()
+        .routes
+        .and_then(|routes| routes.identity.as_ref())?
+        .principal(kind)?;
+    identity::caller_from_record(plan, kind, record)
+}
+
 // --- route tests ---------------------------------------------------------------
 
 /// A route test's request (area 13: "through the real generated boundary

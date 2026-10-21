@@ -237,12 +237,7 @@ fn store<'a, 'p: 'a>(
             ));
         };
         let failures = plan.failures();
-        match jadpo_runtime::store(ctx, op, failures, program.stored_json(), &args, at).await {
-            Stored::Value(value) => Ok(value),
-            Stored::Failed(failure) => Err(Stop::Failed(failure)),
-            Stored::Conflict { arm, cause } => Err(Stop::Refused { arm, cause }),
-            Stored::Fault(fault) => Err(Stop::Fault(fault)),
-        }
+        stopped(jadpo_runtime::store(ctx, op, failures, program.stored_json(), &args, at).await)
     })
 }
 
@@ -273,8 +268,9 @@ async fn request(
 }
 
 /// `sessions.start(user_id)`, `sessions.end()`, an API token's or a
-/// service key's operation, or magic links', at site `at` (area 8): the
-/// runtime keeps, lists or deletes it in the running action's transaction.
+/// service key's operation, or magic links', at site `at` (area 8),
+/// through the runtime's one entry point for them, which compiled code
+/// calls too.
 async fn session(
     program: &Program,
     ctx: &mut Ctx<'_>,
@@ -282,60 +278,13 @@ async fn session(
     args: &[Value],
     at: u32,
 ) -> Result<Value, Stop> {
-    use jadpo_runtime::http::{identity, magic_links};
-    use jadpo_std::http::SessionOp;
-    let plan = program.plan().routes().identity.as_ref();
-    let stored = match (op, args) {
-        // Magic links' operations, for the application's own routes (area
-        // 8, "Writing the routes yourself"; chunk 7.3b3), through the code
-        // the generated routes use.
-        (SessionOp::MagicLinkRequest, _) => {
-            magic_links::request(program, ctx, plan, args, at).await
-        }
-        (SessionOp::MagicLinkRedeem, _) => magic_links::redeem(program, ctx, plan, args, at).await,
-        (SessionOp::MagicLinkRedeemCode, _) => {
-            magic_links::redeem_code(program, ctx, plan, args, at).await
-        }
-        // `test_passkeys`, which only a route test calls (chunk 5.5z2),
-        // through the generated passkey routes.
-        (SessionOp::TestPasskeyRegister, _) => {
-            jadpo_runtime::http::test_passkeys::register(&program.app(), program, ctx, args, at)
-                .await
-        }
-        (SessionOp::TestPasskeySignIn, _) => {
-            jadpo_runtime::http::test_passkeys::sign_in(&program.app(), program, ctx, args, at)
-                .await
-        }
-        (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
-        (SessionOp::End, []) => identity::end(ctx, plan, at).await,
-        (SessionOp::IssueToken, [user]) => identity::issue_token(ctx, plan, user, at).await,
-        (SessionOp::IssueKey, [service, expires_at]) => {
-            identity::issue_key(ctx, plan, service, expires_at, at).await
-        }
-        (SessionOp::Tokens | SessionOp::Keys, [holder]) => {
-            identity::issued(ctx, plan, op.on_service(), holder, at).await
-        }
-        (SessionOp::RevokeToken | SessionOp::RevokeKey, [id]) => {
-            identity::revoke(ctx, plan, op.on_service(), id, at).await
-        }
-        _ => {
-            return Err(Stop::Fault(ctx.fault(
-                FaultKind::Defect(format!("`{}` called with the wrong arguments", op.name())),
-                at,
-            )));
-        }
-    };
-    match stored {
-        Stored::Value(value) => Ok(value),
-        Stored::Failed(failure) => Err(Stop::Failed(failure)),
-        Stored::Conflict { cause, .. } => Err(Stop::Failed(cause)),
-        Stored::Fault(fault) => Err(Stop::Fault(fault)),
-    }
+    stopped(jadpo_runtime::http::session(program, ctx, op, args, at).await)
 }
 
 /// `batches.each`, `batches.status` or `batches.cancel` at site `at` (area
-/// 12, chunk 6.4): the runtime keeps the run, reads it or asks it to stop,
-/// in the running action's transaction.
+/// 12, chunk 6.4), through the runtime's one entry point for them, which
+/// compiled code calls too: the run kept, read or asked to stop, in the
+/// running action's transaction.
 async fn batch(
     program: &Program,
     ctx: &mut Ctx<'_>,
@@ -344,41 +293,17 @@ async fn batch(
     args: &[Value],
     at: u32,
 ) -> Result<Value, Stop> {
-    use jadpo_runtime::batches;
-    use jadpo_std::batch::BatchOp;
-    let Some(program_batches) = program.runtime_plan().batches() else {
-        return Err(Stop::Fault(ctx.fault(
-            FaultKind::Defect("a batch in a program that runs none".into()),
-            at,
-        )));
-    };
-    let stored = match (op, number, args) {
-        (BatchOp::Each | BatchOp::Read(_) | BatchOp::Write(_), Some(number), _) => {
-            match program.plan().batch(number) {
-                Some(plan) => batches::start(ctx, program_batches, plan, args, at).await,
-                None => {
-                    return Err(Stop::Fault(
-                        ctx.fault(FaultKind::Defect("a batch with no plan".into()), at),
-                    ));
-                }
-            }
-        }
-        (BatchOp::Status, _, [run]) => batches::status(ctx, program_batches, run, at).await,
-        (BatchOp::Cancel, _, [run]) => batches::cancel(ctx, program_batches, run, at).await,
-        _ => {
-            return Err(Stop::Fault(ctx.fault(
-                FaultKind::Defect(format!(
-                    "`batches.{}` called with the wrong arguments",
-                    op.name()
-                )),
-                at,
-            )));
-        }
-    };
+    let plan = number.and_then(|number| program.plan().batch(number));
+    let batches = program.runtime_plan().batches();
+    stopped(jadpo_runtime::batches::call(ctx, batches, op, plan, args, at).await)
+}
+
+/// What the runtime's entry point gave, as what stops the walk.
+fn stopped(stored: Stored) -> Result<Value, Stop> {
     match stored {
         Stored::Value(value) => Ok(value),
         Stored::Failed(failure) => Err(Stop::Failed(failure)),
-        Stored::Conflict { cause, .. } => Err(Stop::Failed(cause)),
+        Stored::Conflict { arm, cause } => Err(Stop::Refused { arm, cause }),
         Stored::Fault(fault) => Err(Stop::Fault(fault)),
     }
 }
@@ -535,13 +460,7 @@ pub(crate) fn row(
     item: Value,
     saved: &[Value],
 ) -> Outcome {
-    let mut locals = vec![(row.item, item)];
-    for (local, at) in &row.locals {
-        locals.push((
-            *local,
-            saved.get(*at as usize).cloned().unwrap_or(Value::None),
-        ));
-    }
+    let locals = jadpo_runtime::batches::row_locals(row, item, saved);
     let mut machine = Machine::new(program);
     outcome(machine.row(ctx, row.callable, SiteId(row.body), locals))
 }

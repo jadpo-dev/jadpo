@@ -76,6 +76,12 @@ pub type Function = fn(&mut Ctx<'_>, &Program, Vec<Value>) -> Ran;
 /// An action, fixture, test or seed: it may wait wherever its body pauses.
 pub type Body = for<'a, 'p> fn(&'a mut Ctx<'p>, &'a Program, Vec<Value>) -> LocalFuture<'a, Ran>;
 
+/// A file helper's write's row (area 12, "Batches"; chunk 6.4b2), compiled
+/// as a function of its own: the inline function's body, in the action
+/// that started the run, worked out with each local it reads given its
+/// value, by the local's number.
+pub type Row = fn(&mut Ctx<'_>, &Program, Vec<(u32, Value)>) -> Ran;
+
 /// A compiled callable, as a generated program's table gives it.
 #[derive(Clone, Copy, Debug)]
 pub enum Callable {
@@ -98,13 +104,15 @@ pub struct Place {
 }
 
 /// What a generated crate holds: its plan's canonical bytes, its frame
-/// table, its callables by number and where the process keeps what it
-/// decodes from them once.
+/// table, its callables by number, its file writes' rows by the callable
+/// and site of their inline function's body, and where the process keeps
+/// what it decodes from them once.
 #[derive(Debug)]
 pub struct Code {
     pub plan: &'static [u8],
     pub places: &'static [Place],
     pub callable: fn(u32) -> Option<Callable>,
+    pub row: fn(u32, u32) -> Option<Row>,
     pub shared: &'static Shared,
 }
 
@@ -358,6 +366,38 @@ impl Executor for Program {
             Err(Stop::Fault(fault)) => Err(format!("a fault, `{}`", fault.kind.classification())),
             Err(_) => Err("a fault, `defect`".to_string()),
         }
+    }
+
+    /// A file helper's write's row for `item` (chunk 6.4b2): its compiled
+    /// function, in a frame of the action whose body holds it, given the
+    /// item and what the run saved for the locals it reads, as the
+    /// interpreter runs it.
+    fn row<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        row: &'a jadpo_std::batch::BatchRow,
+        item: Value,
+        saved: &'a [Value],
+    ) -> LocalFuture<'a, Outcome> {
+        Box::pin(async move {
+            let locals = crate::batches::row_locals(row, item, saved);
+            let ran = match (self.code.row)(row.callable, row.body) {
+                Some(run) => match ctx.enter(row.callable, row.body) {
+                    Ok(()) => {
+                        let ran = run(ctx, self, locals);
+                        ctx.leave();
+                        ran
+                    }
+                    Err(fault) => Err(Stop::Fault(fault)),
+                },
+                None => Err(defect(
+                    ctx,
+                    "a row in a callable that has no body",
+                    row.body,
+                )),
+            };
+            outcome(ran)
+        })
     }
 }
 
@@ -1001,6 +1041,79 @@ pub async fn write(cx: &mut Ctx<'_>, p: &Program, n: u32, args: &[Value], at: u3
         Some(write) => store(cx, p, StoreOp::Write(write), args, at).await,
         None => Err(defect(cx, "a write with no plan", at)),
     }
+}
+
+// --- identity, batches and the clock -------------------------------------------
+
+/// `Principal.user(record)` or `Principal.service(record)` in a test,
+/// fixture or seed, at site `at` (area 8): the caller made from its
+/// record, through the runtime as the interpreter makes it.
+pub fn caller(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    kind: jadpo_std::http::PrincipalKind,
+    record: &Value,
+    at: u32,
+) -> Ran {
+    match crate::http::caller_from(p, kind, record) {
+        Some(caller) => Ok(caller),
+        None => Err(defect(
+            cx,
+            "a caller made from something that isn't its record",
+            at,
+        )),
+    }
+}
+
+/// A session's, an API token's, a service key's, a magic link's or a
+/// test passkey's operation `op` with `args`, at site `at` (area 8),
+/// through the runtime's one entry point for them.
+pub async fn session(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    op: jadpo_std::http::SessionOp,
+    args: &[Value],
+    at: u32,
+) -> Ran {
+    stored(crate::http::session(p, cx, op, args, at).await)
+}
+
+/// Batch operation `op` with `args`, at site `at` (area 12), through the
+/// runtime's one entry point for them: a call that starts a run gives
+/// its run's plan by its place among the program's, `place`.
+pub async fn batch(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    op: jadpo_std::batch::BatchOp,
+    place: Option<u32>,
+    args: &[Value],
+    at: u32,
+) -> Ran {
+    let plan = place.and_then(|place| p.runtime().batches.get(place as usize));
+    let batches = p.loaded.plan().batches();
+    stored(crate::batches::call(cx, batches, op, plan, args, at).await)
+}
+
+/// `clock.advance(by)` in a test, at site `at` (area 13, "Controlling
+/// time"): the test's clock moved on, never back.
+#[cfg(feature = "testing")]
+pub fn advance(cx: &mut Ctx<'_>, by: Value, at: u32) -> Ran {
+    crate::test_steps::advance_clock(cx, &[by], at)
+        .map(|()| Value::Unit)
+        .map_err(Stop::Fault)
+}
+
+/// A test's run of a schedule whose action is `action`, `<schedule>.run()`
+/// at site `at` (area 13, "Kinds of test"): the action called with
+/// nothing as the system with no tenant, as the tick runs it, at the
+/// test's clock; `caught` when the test handles its failure. It gives
+/// nothing.
+#[cfg(feature = "testing")]
+pub async fn schedule(cx: &mut Ctx<'_>, p: &Program, action: u32, at: u32, caught: bool) -> Ran {
+    let saved = crate::schedules::test_run(cx);
+    let ran = invoke(cx, p, action, Vec::new(), at, caught).await;
+    crate::schedules::test_run_ended(cx, saved);
+    ran.map(|_| Value::Unit)
 }
 
 /// A route test's request through route `route` (area 13): `args` are
