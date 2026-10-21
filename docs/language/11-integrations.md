@@ -4045,6 +4045,19 @@ timer of its own, so its schedule tick is Cloudflare cron; R2 and Queues
 bindings exist only on Workers; the disk driver and an in-memory cache do
 not run there.
 
+> Built in chunk 8.1o2 (area 14, "Declared deployables"): a deployable
+> that declares a target is refused each connection it reaches whose
+> driver that target can't run, `deployable.target_unsupported`, naming
+> what to use instead: on Workers the disk, a service Jadpo runs without
+> `host:`, and SMTP on port 25; natively a Cloudflare queue, which a
+> deployable reaches when it runs `Trigger.subscribers`, as the queues
+> `receiving:` reads are. What a deployable reaches is followed from the
+> routes of the APIs it serves and the background work it runs, through
+> every callable they call. An app that declares no deployables, and a
+> deployable with no `target:`, has no target, so nothing is refused for
+> it (Richard, 2026-10-21; area 14, Decisions). An in-memory cache comes
+> with caches.
+
 ### Choosing a provider when deploying
 
 Designed 2026-10-16 (Richard), built when the first app other people run
@@ -8917,9 +8930,10 @@ connections: {
   Phase 8 checks them against Wrangler's schema when it writes the file.
 - **Natively.** A server off Workers can't receive the binding: it reads
   no message from the queue, only the parked ones an operator retried.
-  Refusing the driver in a native deployable waits for deployables to be
-  declared (Phase 8); a native server reads a Cloudflare queue through a
-  package over its HTTP pull API instead.
+  Refusing the driver in a native deployable that runs
+  `Trigger.subscribers`, where the app's queues are received, was built
+  in chunk 8.1o2 ("Targets"); a native server reads a Cloudflare queue
+  through a package over its HTTP pull API instead.
 
 ### Chosen in chunk 7.7c
 
@@ -9729,6 +9743,8 @@ packages and extension points, as each note says; 26 was decided then.
     everywhere; a service (`runs:`) runs only beside a native deployable,
     so on Workers the connection gives its `host:`; the disk driver is
     native only, and an in-memory cache is an error on Workers.
+    Built in chunk 8.1o2 for the connections a deployable that declares a
+    target reaches ("Targets" above).
 25. **How are the gaps the modelled packages found closed?** Raised
     2026-10-13. *Recommendation:* five small additions, each built with the
     first package that needs it:
@@ -9794,7 +9810,7 @@ packages and extension points, as each note says; 26 was decided then.
 
 | Topic | Decision | Date |
 |---|---|---|
-| `max_concurrent:` on Workers | Counted per isolate: Workers runs many isolates and a cap across them would need a Durable Object and a round trip per call, so the deploy report and `jadpo check` say "on Workers, per instance"; a provider that needs a hard global limit enforces it on its side, and its rate-limit answers already make calls back off (Richard; built in chunk 8.2) | 2026-10-21 |
+| `max_concurrent:` on Workers | Counted per isolate: Workers runs many isolates and a cap across them would need a Durable Object and a round trip per call, so the deploy report and `jadpo check` say "on Workers, per instance"; a provider that needs a hard global limit enforces it on its side, and its rate-limit answers already make calls back off (Richard; built in chunk 8.2; `jadpo check`'s "On Workers", listing each capped connection a deployable built for Workers reaches, built in chunk 8.1o2) | 2026-10-21 |
 | Keyword and folder | Carried from area 1: `integration` in `integrations/`, one declaration per provider version, contract beside it (Superseded 2026-10-13: reopened by questions 15 and 18.) | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure`, e.g. `timed_out: ChargeUnavailable`; time limits are integration settings | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |

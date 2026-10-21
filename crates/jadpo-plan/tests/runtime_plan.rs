@@ -183,3 +183,88 @@ fn a_plans_tests_are_its_dev_and_test_section_which_a_deployable_leaves_out() {
     assert!(named(&bytes, b"a test can change the sender"));
     assert!(!named(&deployable, b"a test can change the sender"));
 }
+
+/// A declared deployable's plan (chunk 8.1o2): the routes of the APIs it
+/// serves, none of another's, and the background work it runs.
+#[test]
+fn a_deployables_plan_holds_only_the_routes_it_serves() {
+    let route = |group: &str, api: &str, prefix: &str| {
+        format!(
+            "use desk/types {{ Words, Said }}\nuse desk/actions {{ echo }}\n\n/// {group}.\nroutes {group} {{\n    prefix: /{prefix}\n{api}\n    /// Says it back.\n    POST / {{\n        authentication: RouteAuthentication.none\n        input: Words\n        output: Said\n        run: echo(input)\n    }}\n}}\n"
+        )
+    };
+    let files = [
+        (
+            "app.jadpo".to_string(),
+            "application {\n    apis: {\n        main: {\n            prefix: /\n        }\n        staff: {\n            prefix: /staff\n        }\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/desk/types/line.jadpo".to_string(),
+            "type Line = Text {\n    max_length: 40\n}\n".to_string(),
+        ),
+        (
+            "domains/desk/types/words.jadpo".to_string(),
+            "use desk/types { Line }\n\ntype Words = Input {\n    line: Line\n}\n".to_string(),
+        ),
+        (
+            "domains/desk/types/said.jadpo".to_string(),
+            "use desk/types { Line }\n\ntype Said = Output {\n    line: Line\n}\n".to_string(),
+        ),
+        (
+            "domains/desk/actions/echo.jadpo".to_string(),
+            "use desk/types { Said, Words }\n\naction echo(input: Words) -> Said {\n    return Said {\n        line: input.line\n    }\n}\n".to_string(),
+        ),
+        (
+            "policy.jadpo".to_string(),
+            "use desk\n\npolicy {\n    actions: {\n        desk.echo: [Access.public]\n    }\n}\n".to_string(),
+        ),
+        (
+            "domains/desk/routes/front.jadpo".to_string(),
+            route("Front", "", "front"),
+        ),
+        (
+            "domains/desk/routes/staff.jadpo".to_string(),
+            route("Staff", "    api: staff\n", "staff"),
+        ),
+    ];
+    let db = Database::default();
+    let inputs: Vec<File> = files
+        .iter()
+        .map(|(path, text)| File::new(&db, path.clone(), text.clone()))
+        .collect();
+    let project = Project::new(
+        &db,
+        inputs,
+        Vec::new(),
+        Layout::Project,
+        Default::default(),
+        Vec::new(),
+    );
+    assert!(bytes_of(&db, project).is_some(), "it checks");
+    let paths = |plan: &Plan| {
+        plan.runtime()
+            .routes
+            .routes
+            .iter()
+            .filter(|route| route.path().ends_with("/front") || route.path().ends_with("/staff"))
+            .map(|route| route.path())
+            .collect::<Vec<_>>()
+    };
+    let whole = Plan::build(&db, project);
+    assert_eq!(paths(&whole), ["/front", "/staff"]);
+    assert_eq!(whole.runtime().runs, jadpo_std::Runs::EVERYTHING);
+    let runs = jadpo_std::Runs {
+        schedules: false,
+        subscribers: true,
+    };
+    let kiosk = Plan::build(&db, project).for_deployable(&["main".to_string()], runs);
+    assert_eq!(paths(&kiosk), ["/front"]);
+    assert_eq!(kiosk.runtime().runs, runs);
+    let read = RuntimePlan::decode(&kiosk.runtime().encode_deployable().expect("encodes"))
+        .expect("reads back");
+    assert_eq!(read.runs, runs);
+    assert_eq!(
+        read.routes.routes.len(),
+        kiosk.runtime().routes.routes.len()
+    );
+}

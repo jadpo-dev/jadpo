@@ -399,8 +399,13 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
     if budget.spent() {
         return ticked;
     }
+    // A declared deployable runs only the background work it says it
+    // runs (area 14, "Declared deployables"; chunk 8.1o2); the deletions
+    // below are every instance's.
+    let runs = executor.plan().runs;
     if let Some(store) = &plan.store
         && !plan.schedules.is_empty()
+        && runs.schedules
     {
         match due(plan, host, store, now).await {
             Ok(states) => {
@@ -442,17 +447,20 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
         if budget.spent() {
             return ticked;
         }
-        match runner::sweep_within(executor, host, &budget, store, now).await {
-            Ok(outcomes) => ticked.deliveries.extend(outcomes),
-            Err(error) => {
-                ticked.problems.push((store.clone(), error));
-                continue;
+        if runs.subscribers {
+            match runner::sweep_within(executor, host, &budget, store, now).await {
+                Ok(outcomes) => ticked.deliveries.extend(outcomes),
+                Err(error) => {
+                    ticked.problems.push((store.clone(), error));
+                    continue;
+                }
             }
-        }
-        // A circuit breaker that opened raises its alert once (chunk 7.2b).
-        match crate::breaker::raise(host, store, now).await {
-            Ok(raised) => ticked.raised.extend(raised),
-            Err(error) => ticked.problems.push((store.clone(), error)),
+            // A circuit breaker that opened raises its alert once (chunk
+            // 7.2b).
+            match crate::breaker::raise(host, store, now).await {
+                Ok(raised) => ticked.raised.extend(raised),
+                Err(error) => ticked.problems.push((store.clone(), error)),
+            }
         }
         match delete(host, store, EXPIRED_KEYS, now).await {
             Ok(count) => ticked.deleted.keys += count,
@@ -518,7 +526,7 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
     }
     // Each queue's messages, kept as events and delivered within what is
     // left of the budget (chunk 7.7c).
-    if !budget.spent() {
+    if !budget.spent() && runs.subscribers {
         let received = crate::receiving::receive(executor, &budget, now).await;
         ticked.problems.extend(received.problems);
         ticked
@@ -534,7 +542,7 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
     }
     // Each poll that is due, its changes kept as events and delivered
     // within what is left of the budget (chunk 7.6c).
-    if !budget.spent() {
+    if !budget.spent() && runs.schedules {
         let polled = crate::polls::poll(executor, &budget, now).await;
         ticked.problems.extend(polled.problems);
         ticked
@@ -576,8 +584,9 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
     }
+    // Batch runs are picked up again where schedules run.
     for hook in HOOKS {
-        if budget.spent() {
+        if budget.spent() || !runs.schedules {
             break;
         }
         let left = hook(executor, host, &budget, now).await;

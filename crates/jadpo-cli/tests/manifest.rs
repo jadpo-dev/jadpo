@@ -209,3 +209,45 @@ fn help_json_documents_the_manifest_schema() {
     );
     assert!(schema["nodeFields"]["digest"].is_string());
 }
+
+/// A project git doesn't track: the manifest says so, with no commit; and
+/// each deployable's target and build id (area 18; chunk 8.1o2).
+#[test]
+fn the_manifest_names_the_source_and_each_deployable_with_its_build_id() {
+    let root = project("stamp", FILES);
+    jadpo(&root, &["check"]);
+    let manifest: serde_json::Value =
+        serde_json::from_str(&read(&root, "build/manifest.json")).expect("JSON");
+    // The project is in a folder git ignores, so no commit explains it.
+    assert_eq!(
+        manifest["source"],
+        serde_json::json!({ "modified": true }),
+        "{manifest}"
+    );
+    let app = &manifest["deployables"]["app"];
+    assert_eq!(app["target"], "native", "{manifest}");
+    let id = app["build"].as_str().expect("a build id");
+    assert!(
+        id.len() == 14 && id.starts_with("b_") && id[2..].chars().all(|c| c.is_ascii_hexdigit()),
+        "{id}"
+    );
+
+    // Declared, each has an id of its own; the target is what `jadpo
+    // build` builds it for.
+    let declared = "application {\n    deployables: {\n        api: {\n            serves: [main]\n            target: Target.wasm\n        }\n        worker: {\n            serves: [main]\n        }\n    }\n}\n";
+    write(&root, "app.jadpo", declared);
+    let output = jadpo(&root, &["check"]);
+    assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
+    let manifest: serde_json::Value =
+        serde_json::from_str(&read(&root, "build/manifest.json")).expect("JSON");
+    let deployables = manifest["deployables"].as_object().expect("deployables");
+    assert_eq!(
+        deployables.keys().collect::<Vec<_>>(),
+        ["api", "worker"],
+        "{manifest}"
+    );
+    assert_eq!(deployables["api"]["target"], "wasm");
+    assert_eq!(deployables["worker"]["target"], "native");
+    assert_ne!(deployables["api"]["build"], deployables["worker"]["build"]);
+    assert_ne!(deployables["worker"]["build"], id);
+}

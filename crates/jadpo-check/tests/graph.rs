@@ -109,6 +109,7 @@ fn document(graph: &Graph, errors: usize) -> String {
         &Stamp {
             compiler: "test".into(),
             errors,
+            ..Stamp::default()
         },
     )
     .to_document()

@@ -15,7 +15,6 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-use jadpo_std::LocalePlan;
 pub use jadpo_std::RuntimePlan;
 use jadpo_std::ai::{AiPlan, GenerateSite};
 use jadpo_std::batch::BatchPlan;
@@ -30,6 +29,7 @@ use jadpo_std::subscriber::EventsPlan;
 use jadpo_std::translation::TranslationPlan;
 use jadpo_std::types::FailurePlan;
 use jadpo_std::write::PurgePlan;
+use jadpo_std::{LocalePlan, Runs};
 use jadpo_value::Validator;
 use jadpo_value::shape::Shape;
 
@@ -127,6 +127,7 @@ impl Loaded {
             locales: plan.locales.as_ref(),
             calls: &plan.sites.calls,
             callables: Some(&plan.callables),
+            runs: plan.runs,
             #[cfg(feature = "testing")]
             testing: Some(&plan.testing),
         }
@@ -186,6 +187,10 @@ pub struct Plan<'a> {
     /// Each callable's number by its identity key, but a test's (chunk
     /// 8.1e): how the runtime finds one the plan names by its key.
     pub callables: Option<&'a BTreeMap<String, u32>>,
+    /// The background work the program runs besides the routes it serves
+    /// (chunk 8.1o2): everything but in a declared deployable that runs
+    /// less.
+    pub runs: Runs,
     /// The dev and test section (chunk 8.1e): each test's key and what it
     /// gives itself, and the recordings.
     #[cfg(feature = "testing")]
@@ -223,6 +228,7 @@ impl Plan<'static> {
         locales: None,
         calls: &[],
         callables: None,
+        runs: Runs::EVERYTHING,
         #[cfg(feature = "testing")]
         testing: None,
     };

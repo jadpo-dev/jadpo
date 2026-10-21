@@ -3027,8 +3027,8 @@ each call through it is made, the old `ConnectionPlan`, without its
 name). Each driver's targets are recorded now
 (`ConnectionDriver::targets`: the disk and a service Jadpo runs, `runs:`,
 natively only; Cloudflare's queues on Workers only; every network driver
-and an HTTP package everywhere), for `jadpo check` to refuse a
-deployable's mismatch in 8.1o2. The parts of the plan that use a
+and an HTTP package everywhere); `jadpo check` refuses a declared
+deployable's mismatch since chunk 8.1o2 ("Declared deployables" below). The parts of the plan that use a
 connection keep only what is their own and name it: `ai:` how it fills
 `ai` (an `AiPlan`, whose built-in driver's `url:` its requests are
 built from, so it is kept there too), `receiving:` how a queue's messages
@@ -3117,6 +3117,48 @@ stores generated into the program's crate, which would put a
 deployment's concerns in every compiled program the differential run
 builds; and checking migrations once the port is open, which serves
 requests against a schema nobody confirmed.
+
+**Declared deployables** (chunk 8.1o2; area 14, "Declared deployables").
+`jadpo_check::deployables` reads `application { deployables: { } }`
+(each deployable's `serves:`, `runs:` and `target:`, or `app` alone,
+serving every API and running everything, with no target, when none is
+declared) and follows what each reaches (`reaches`): from the `runs`
+edges of the graph's routes in the APIs it serves, the webhooks' replies,
+and, as it runs them, the schedules' and subscribers' actions and the
+callables that start batch runs, through each typed body's calls, to the
+connections they use (a store of files, a provider's operation, a
+package's action, `ai:`'s model) and those its polls, webhooks, queues
+and email go through. A deployable that declares a target is refused
+each one `ConnectionDriver::targets` and the SMTP port rule it can't run
+(`deployable.target_unsupported`). The plan a deployable runs is the
+project's with `Plan::for_deployable`: the route table keeps only the
+routes of the APIs it serves, the webhooks go unless it serves
+`webhooks`, and `RuntimePlan::runs` (plan format 9) says whether it runs
+`Trigger.schedules` and `Trigger.subscribers`. The runtime holds to it
+where work joins a runner (`runner::split` drops a delivery or a batch
+run the program doesn't run, which waits, committed, for a deployable
+that runs it) and on the tick (the schedules, polls and batch runs, or
+the outbox's sweep, its breakers' alerts and the queues); every tick
+still deletes what has expired. `jadpo build` builds each deployable's
+workspace in `build/rust/<deployable>/`, its program the package
+`jadpo-program-<deployable>` (cargo names a path package's unit by its
+name and its path in its workspace, so several workspaces' `program`
+would share one), all into one cargo target with the paths remapped
+alike, so the runtime crates compile once; it places each binary as a
+new file, since macOS kills a binary copied over one it has run. The
+build id digests a declared deployable's declaration with the graph's
+digest (`jadpo_cli::stamp`), and `jadpo check` writes each deployable's
+target and build id in the manifest. Proved live
+(`crates/jadpo-cli/tests/deployable.rs`): teaching example 23 declared as
+a kiosk serving `main` and running the subscribers and an office serving
+a `staff` API and running a schedule each second, both built by `jadpo
+build`; the kiosk books a repair and answers 404 for the staff's route,
+and runs no schedule while it ticks; the office lists the repair's notes,
+answers 404 for a booking, and runs its schedule. *Rejected:* filtering
+the routes in the trie with the whole table kept, which leaves a route
+nobody serves in the binary; and a deployable's plan built only from the
+callables it reaches, which needs every number the runtime names a
+callable by to stay right (chunk 8.1o3).
 
 **Provider call sites by number** (chunk 8.1d2, split from 8.1d). A
 provider call's site plan (`jadpo_std::provider::CallSite`) names the
@@ -4054,6 +4096,11 @@ separate command, not the gate.
   SHA-256 over the graph's digest, the compiler, the target and
   `jadpo.lock`; `jadpo build` writes the toolchain file, builds
   `--locked` and offline, remaps the paths and fixes `SOURCE_DATE_EPOCH`.
+  Since chunk 8.1o2 a declared deployable's declaration joins the graph's
+  digest, so two deployables of one app never share an id, and `jadpo
+  check` writes each deployable's target and build id, with the commit
+  and whether the tree was modified, in the manifest. The source is the
+  whole graph, not yet the subgraph the deployable reaches (chunk 8.1o3).
   Bit-identical binaries are not checked yet.
 
 ### 2.9 Risks and the first chunks

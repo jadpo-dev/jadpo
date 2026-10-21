@@ -3,9 +3,11 @@
 //! --json` prints.
 //!
 //! `format` changes only when a field is removed or changes meaning;
-//! additions keep the number (area 18). Fields a later area fills are not
-//! written until it does: the build stamp (`source`, `deployables` and
-//! each deployable's build id, areas 14 and 18), routes, schedules,
+//! additions keep the number (area 18). The build stamp's part is written
+//! since chunk 8.1o2: `source`, the commit and whether the tree was
+//! modified, and `deployables`, each one's target and build id (areas 14
+//! and 18). Fields a later area fills are not written until it does:
+//! routes, schedules,
 //! subscribers and their runs (7, 12), connections and hosts (11), policy
 //! (9), personal data (15), thresholds (16) and the control flow path
 //! numbers decode against (16, 18).
@@ -22,13 +24,41 @@ use crate::{Detail, EdgeKind, Graph, Key, Kind, Node, NodeId, Rules, rule_pairs}
 pub const FORMAT: i64 = 2;
 
 /// What a manifest says about the check that wrote it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Stamp {
     /// The compiler's version.
     pub compiler: String,
     /// How many errors the check found: a graph from a project with
     /// errors leaves out what could not be resolved.
     pub errors: usize,
+    /// The commit the source is at, and whether the tree holds changes it
+    /// doesn't (area 18, "The manifest"; chunk 8.1o2); `None` writes no
+    /// `source`.
+    pub source: Option<Source>,
+    /// Each deployable, in name order, with the target it is built for and
+    /// its build id (area 18; chunk 8.1o2).
+    pub deployables: Vec<DeployableStamp>,
+}
+
+/// Where the source a manifest was written from is (area 18).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Source {
+    /// The commit `git` says the project is at; `None` when git doesn't
+    /// track it.
+    pub commit: Option<String>,
+    /// Whether the tree holds changes the commit doesn't, `build/` and
+    /// `.jadpo/` aside; always, without a commit.
+    pub modified: bool,
+}
+
+/// One deployable as the manifest lists it (area 18).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeployableStamp {
+    pub name: String,
+    /// `native` or `wasm`: what `jadpo build` builds it for.
+    pub target: String,
+    /// Its build id, `b_` and twelve hex digits.
+    pub build: String,
 }
 
 /// The manifest of `graph`.
@@ -37,6 +67,22 @@ pub fn manifest(graph: &Graph, stamp: &Stamp) -> Value {
     out.set("format", FORMAT);
     out.set("compiler", stamp.compiler.as_str());
     out.set("errors", stamp.errors);
+    if let Some(source) = &stamp.source {
+        let mut written = Value::object();
+        written.set_some("commit", source.commit.as_deref());
+        written.set("modified", source.modified);
+        out.set("source", written);
+    }
+    if !stamp.deployables.is_empty() {
+        let mut deployables = Value::object();
+        for deployable in &stamp.deployables {
+            let mut entry = Value::object();
+            entry.set("target", deployable.target.as_str());
+            entry.set("build", deployable.build.as_str());
+            deployables.set(&deployable.name, entry);
+        }
+        out.set("deployables", deployables);
+    }
     out.set(
         "nodes",
         Value::Array(graph.ids().map(|id| node_json(graph, id)).collect()),
@@ -426,6 +472,18 @@ pub fn schema() -> Value {
             (
                 "errors".to_string(),
                 Value::from("How many errors the check found"),
+            ),
+            (
+                "source".to_string(),
+                Value::from(
+                    "The commit git says the project is at (`commit`, left out when git doesn't track it) and whether the tree holds changes it doesn't (`modified`)",
+                ),
+            ),
+            (
+                "deployables".to_string(),
+                Value::from(
+                    "Each deployable by name: the target `jadpo build` builds it for (`native` or `wasm`) and its build id (`build`)",
+                ),
             ),
             (
                 "nodes".to_string(),
