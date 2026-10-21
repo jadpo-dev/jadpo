@@ -2037,12 +2037,25 @@ side by side, then 7.9d, then 7.9e).
   signature, the language server offers its fields, an enum's variants
   with fields, or a variant's fields, never a plain variant.
 
-- [ ] **7.9g Privacy gaps found in 7.9b** `opus · high` (backlog): a
+- [x] **7.9g Privacy gaps found in 7.9b** `opus · high` (backlog): a
   model's answer carries what its prompt was built from, so a field read
   off it (`.summary` of health notes) is checked like its sources when
   stored or sent again; and a webhook reply that counts or tests for
   records only the system may read is held to the output proof, since
-  whether a record exists reaches whoever sent the webhook.
+  whether a record exists reaches whoever sent the webhook. Built:
+  `ai.generate`'s answer and `ai.stream`'s text, and every field read off
+  them, carry everything the prompt was built from, for
+  `semantic.ai_field_unmarked`, what reaches a model and area 9's stores
+  (example 28's stored reply fields marked `identifying`); the flow walk
+  keeps whether a record is there (`Src::Present`) where a condition, a
+  loop or a count over records decided a value, which only a reply
+  action is held to, so a reply counting or testing for records anyone
+  at all may not read is `policy.output_field_unproved`; a reply
+  action's failure held to the same proof (what decides it fails, a
+  `get`, a change by `id` or a `conflict:` finding a record or not, and
+  its client fields); a failure's client fields declared in a domain
+  found by its table name, so they are proved at all. Choices in the
+  Decisions of areas 9, 11 and 21.
 
 ## Phase 8 — Compiled deployables
 

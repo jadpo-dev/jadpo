@@ -416,7 +416,7 @@ fn holders(flow: &Flow<'_>, prov: &Prov, mut param: impl FnMut(usize, Vec<String
                 held.hold(Holder::Type(ty), &holding, decided);
             }
             Src::Param(at, path) => param(at, path),
-            Src::Caller(_) | Src::Deep(_) | Src::Decided(_) => {}
+            Src::Caller(_) | Src::Deep(_) | Src::Decided(_) | Src::Present { .. } => {}
         }
     }
     held
