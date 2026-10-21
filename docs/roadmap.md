@@ -2732,13 +2732,22 @@ whose entry names them.
   authenticator registered and signed in with twice, keeping what the
   native host keeps of it, another site's answer and a counter gone back
   refused. §2.6's "The Workers host".
-- [ ] **8.2m What `jadpo check` and `jadpo build` say for Workers**
-  `opus · high`, after 8.2b: a `client_address:` source other than
-  `cloudflare` refused for a Workers deployable (area 10, "Client
-  addresses"; beside 8.1o2's `jadpo_check::deployables::target_problems`);
-  `max_concurrent:` counted per isolate said on `jadpo build`'s screen
-  (decided 2026-10-21; `jadpo check`'s "On Workers" says it since 8.1o2,
-  which also refuses SMTP on port 25 on Workers).
+- [x] **8.2m What `jadpo check` and `jadpo build` say for Workers**
+  `opus · high`, after 8.2b. Built (area 14, "Its target, checked" and
+  "A Workers deployable"; area 10, "Client addresses"): a
+  `client_address:` source other than `cloudflare` refused for each
+  Workers deployable at its `source:`, the deployable's `target:` beside
+  it (`deployable.target_unsupported`, in
+  `jadpo_check::deployables::target_problems`), which the Worker's start
+  still refuses too; `jadpo build`'s screen saying each Worker's caps on
+  calls on a `calls` line (`pdf 2 at once in each instance`) and
+  `--json`'s `per_instance` for every deployable (`jadpo check`'s "On
+  Workers" says it since 8.1o2, which also refuses SMTP on port 25).
+  Decided in the chunk (area 14, "What `jadpo check` and `jadpo build`
+  say for Workers", 2026-10-21). Proved by the café's kiosk refused each
+  of the three other sources on Workers and none natively, area 14's
+  third bakery, and the build screen's `calls` in rich, plain and
+  `--json`.
 - [x] **8.2m2 Rate limits' store on Workers** `opus · high`, after 8.2d.
   Built (area 16, "Rate limits"; "Chosen in chunk 8.2m2"):
   `application { rate_limits: { store: } }` naming a `Driver.redis` or
