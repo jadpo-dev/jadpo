@@ -790,17 +790,20 @@ pub struct RuleArm {
 impl RuleArm {
     /// The arm that maps the rule with key `rule`: its own, or `invalid:`.
     pub fn for_rule(arms: &[RuleArm], rule: RuleKey) -> Option<&RuleArm> {
-        arms.iter()
-            .find(|arm| arm.rule == Some(rule))
-            .or_else(|| arms.iter().find(|arm| arm.is_invalid()))
+        jadpo_std::arm_for(RuleArm::keys(arms), rule, None).and_then(|at| arms.get(at))
     }
 
     /// The arm that maps the rule across an object's fields called `name`:
     /// its own, or `invalid:`.
     pub fn for_named<'a>(arms: &'a [RuleArm], name: &str) -> Option<&'a RuleArm> {
-        arms.iter()
-            .find(|arm| arm.named.as_deref() == Some(name))
-            .or_else(|| arms.iter().find(|arm| arm.is_invalid()))
+        jadpo_std::arm_for(RuleArm::keys(arms), RuleKey::Named, Some(name))
+            .and_then(|at| arms.get(at))
+    }
+
+    /// Each arm's rule and name, as [`jadpo_std::arm_for`] finds an arm by
+    /// them, which compiled code does too.
+    pub fn keys(arms: &[RuleArm]) -> impl Iterator<Item = (Option<RuleKey>, Option<&str>)> + Clone {
+        arms.iter().map(|arm| (arm.rule, arm.named.as_deref()))
     }
 
     /// Whether it is `invalid:`, covering every rule without an arm.

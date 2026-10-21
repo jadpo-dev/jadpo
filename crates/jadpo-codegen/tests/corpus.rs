@@ -97,6 +97,8 @@ fn every_corpus_project_is_compiled_or_refused_by_name() {
     let mut compiled = 0;
     let mut checked = 0;
     let mut refused: BTreeMap<String, usize> = BTreeMap::new();
+    // Each project refused, with the forms it is refused for.
+    let mut refused_projects = Vec::new();
     let mut problems = Vec::new();
     for (_, name, went) in went {
         match went {
@@ -107,6 +109,10 @@ fn every_corpus_project_is_compiled_or_refused_by_name() {
             }
             Went::Refused(refusals) => {
                 checked += 1;
+                let mut forms: Vec<&str> = refusals.iter().map(|r| r.form.as_str()).collect();
+                forms.sort_unstable();
+                forms.dedup();
+                refused_projects.push(format!("{name}: {}", forms.join(", ")));
                 assert!(!refusals.is_empty(), "{name}: refused for nothing");
                 for refusal in refusals {
                     assert!(
@@ -133,6 +139,10 @@ fn every_corpus_project_is_compiled_or_refused_by_name() {
     println!("compiled: {compiled} of {checked} projects that check; refused forms:");
     for (count, form) in &left {
         println!("{count:>6}  {form}");
+    }
+    println!("refused projects:");
+    for project in &refused_projects {
+        println!("  {project}");
     }
     assert!(compiled > 0, "no project compiled");
 }

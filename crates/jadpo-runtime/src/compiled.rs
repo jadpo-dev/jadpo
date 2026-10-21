@@ -24,14 +24,14 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use jadpo_std::{RuleKey, RuntimePlan, Unreadable};
+use jadpo_std::{Op, RuleKey, RuntimePlan, Unreadable};
 use jadpo_value::shape::Shape;
 use jadpo_value::{Rounding, Validator, Value};
 
-use crate::effects::{self, Effect, Refused};
+use crate::effects::{self, Effect, Refused, Standard};
 use crate::operators::{Operator, operate};
 use crate::{
-    ActionBody, AssertionDetail, CallablePlace, Ctx, Executor, Failure, FaultKind, Frame,
+    ActionBody, AssertionDetail, CallablePlace, Ctx, Executor, Failure, FaultKind, Frame, Got,
     Isolation, Loaded, LocalFuture, Outcome, Places, SitePlace, Started, StoreOp, Stored,
 };
 
@@ -684,6 +684,25 @@ pub fn build(
     Ok(value)
 }
 
+/// Whether `value` is variant `name` of the enum or tagged union whose
+/// identity key is `ty`: a value `match`'s arm.
+pub fn is_variant(value: &Value, ty: &str, name: &str) -> bool {
+    matches!(value, Value::Variant(variant) if &*variant.ty == ty && &*variant.name == name)
+}
+
+/// The items a `for` at site `at` walks: a list's in order, a set's in
+/// the canonical order it is held in (area 2, "Set order").
+pub fn items(cx: &mut Ctx<'_>, value: &Value, at: u32) -> Result<Rc<[Value]>, Stop> {
+    match value {
+        Value::List(items) | Value::Set(items) => Ok(Rc::clone(items)),
+        _ => Err(defect(
+            cx,
+            "a loop over something that isn't a list or a set",
+            at,
+        )),
+    }
+}
+
 /// A list written where a list, a set or (with no items) a map goes.
 pub fn list(items: Vec<Value>, set: bool, map: bool) -> Value {
     if map && items.is_empty() {
@@ -724,11 +743,10 @@ pub fn setting(cx: &mut Ctx<'_>, p: &Program, n: u32, at: u32) -> Ran {
     ))
 }
 
-/// An operation with effects, run by the runtime's one entry point for
-/// them at site `at`.
-fn effect(cx: &mut Ctx<'_>, p: &Program, effect: Effect<'_>, values: &[Value], at: u32) -> Ran {
-    let effects = p.effects();
-    effects::run(cx, &effects, effect, values).map_err(|refused| match refused {
+/// What the runtime refused an operation at site `at` with, as what stops
+/// the body: a condition for its call's `attempt` to map, or a fault.
+fn refused(cx: &mut Ctx<'_>, refused: Refused, at: u32) -> Stop {
+    match refused {
         Refused::Broke {
             rule,
             written,
@@ -741,12 +759,116 @@ fn effect(cx: &mut Ctx<'_>, p: &Program, effect: Effect<'_>, values: &[Value], a
         },
         Refused::Fault(fault) => value_fault(cx, fault, at),
         Refused::Defect(what) => defect(cx, &what, at),
-    })
+    }
+}
+
+/// An operation with effects, run by the runtime's one entry point for
+/// them at site `at`.
+fn effect(cx: &mut Ctx<'_>, p: &Program, effect: Effect<'_>, values: &[Value], at: u32) -> Ran {
+    let effects = p.effects();
+    effects::run(cx, &effects, effect, values).map_err(|why| refused(cx, why, at))
 }
 
 /// `clock.now` at site `at`: the invocation's clock.
 pub fn now(cx: &mut Ctx<'_>, p: &Program, at: u32) -> Ran {
     effect(cx, p, Effect::Now, &[], at)
+}
+
+/// `emit` at site `at` of `event`, an event of the type whose identity key
+/// is `key`, kept in the running action's outbox (area 12).
+pub fn emit(cx: &mut Ctx<'_>, p: &Program, key: &str, event: Value, at: u32) -> Result<(), Stop> {
+    effect(cx, p, Effect::Emit { event: key }, &[event], at).map(|_| ())
+}
+
+/// `email.sent` in a test, at site `at` (area 16).
+pub fn sent_emails(cx: &mut Ctx<'_>, p: &Program, at: u32) -> Ran {
+    effect(cx, p, Effect::SentEmails, &[], at)
+}
+
+// --- the standard library -----------------------------------------------------
+
+/// Standard operation `op` with `values`, in its parameters' order, at
+/// site `at`, through the runtime's one entry point for them, which the
+/// interpreter calls too: `json` is the number of the type its site reads
+/// or writes in the plan's JSON table.
+pub fn standard(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    op: Op,
+    json: Option<u32>,
+    values: &[Value],
+    at: u32,
+) -> Ran {
+    let effects = p.effects();
+    let locales = p.runtime().locales.as_ref();
+    effects::standard(cx, &effects, locales, Standard { op, json }, values, None)
+        .map_err(|why| refused(cx, why, at))
+}
+
+/// A collection operation `op` with `values` at site `at`, its inline
+/// function `each` run per item; a stop in it ends the operation with
+/// that stop.
+pub fn standard_each(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    op: Op,
+    values: &[Value],
+    each: &mut dyn FnMut(&mut Ctx<'_>, &[Value]) -> Ran,
+    at: u32,
+) -> Ran {
+    let effects = p.effects();
+    let locales = p.runtime().locales.as_ref();
+    let mut stopped = None;
+    let mut given = |cx: &mut Ctx<'_>, items: &[Value]| match each(cx, items) {
+        Ok(value) => Some(value),
+        Err(stop) => {
+            stopped = Some(stop);
+            None
+        }
+    };
+    let result = effects::standard(
+        cx,
+        &effects,
+        locales,
+        Standard { op, json: None },
+        values,
+        Some(&mut given),
+    );
+    match (result, stopped) {
+        (Ok(value), _) => Ok(value),
+        (Err(_), Some(stop)) => Err(stop),
+        (Err(why), None) => Err(refused(cx, why, at)),
+    }
+}
+
+/// `Type(value)` at site `at`, or what `text.parse` read built as the type
+/// `as:` names: `value` kept as type `validator` keeps it (a list made a
+/// set when `set`), and checked against its rules only when `fallible`,
+/// a broken one for the `attempt` that maps it. One the checker proved is
+/// never checked again (area 2).
+pub fn construct(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    validator: u32,
+    fallible: bool,
+    set: bool,
+    value: Value,
+    at: u32,
+) -> Ran {
+    // A set built from a list drops its repeats, in the canonical order,
+    // before its lengths are counted.
+    let value = match value {
+        Value::List(items) if set => Value::set(items.to_vec()),
+        value => value,
+    };
+    let validator = p.validator(validator);
+    let Some(value) = validator.store(value) else {
+        return Err(fault(cx, FaultKind::DecimalOverflow, at));
+    };
+    if fallible && let Err(invalid) = validator.check(&value) {
+        return Err(broken(&invalid, None));
+    }
+    Ok(value)
 }
 
 /// The failure numbered `failure`, its fields `values` placed by `slots`,
@@ -766,6 +888,56 @@ pub fn failure(
         .get(failure as usize)
         .and_then(|plan| Failure::of(plan, slots, values))
         .ok_or_else(|| defect(cx, missing, at))
+}
+
+/// The failure an `attempt`'s arm maps a broken rule to, numbered
+/// `failure`, its fields `values` placed by `slots`, and, when the arm
+/// names its `problem: DecodeProblem` field at `problem_slot`, `json.read`'s
+/// first problem there (area 19); the defect when the plan has no such
+/// failure.
+#[allow(clippy::too_many_arguments)]
+pub fn mapped(
+    cx: &mut Ctx<'_>,
+    p: &Program,
+    failure: u32,
+    slots: &[Option<u32>],
+    mut values: Vec<Value>,
+    problem_slot: Option<u32>,
+    problem: Option<Value>,
+    at: u32,
+) -> Result<Failure, Stop> {
+    let mut slots = slots.to_vec();
+    if let (Some(slot), Some(problem)) = (problem_slot, problem) {
+        slots.push(Some(slot));
+        values.push(problem);
+    }
+    self::failure(
+        cx,
+        p,
+        failure,
+        &slots,
+        values,
+        "an arm naming something that isn't a failure",
+        at,
+    )
+}
+
+/// `failure`, mapped from the rule written as `written`, raised at the
+/// site of the construction that broke it, `inner`.
+pub fn broke(cx: &mut Ctx<'_>, mut failure: Failure, written: String, inner: u32) -> Stop {
+    failure.broken = Some(written);
+    Stop::Failed(cx.fail(failure, inner))
+}
+
+/// The arm of an `attempt` that maps rule `rule`, or the rule across an
+/// object's fields called `name`, among `arms`, each arm's rule and name
+/// in the order written: its own, or `invalid:`.
+pub fn rule_arm(
+    arms: &[(Option<RuleKey>, Option<&str>)],
+    rule: RuleKey,
+    name: Option<&str>,
+) -> Option<u32> {
+    jadpo_std::arm_for(arms.iter().copied(), rule, name).and_then(|at| u32::try_from(at).ok())
 }
 
 /// `failure` raised at site `at`, with `cause` as its cause.
@@ -899,6 +1071,32 @@ pub fn assert_compare(
         at,
         AssertionDetail::False {
             comparison: Some((op.symbol(), left, right)),
+        },
+    )))
+}
+
+/// `assert call(…) fails Failure` at site `at`, the call having given
+/// `ran`: it holds when the call failed with the failure whose identity
+/// key is `key`; any other failure, or a value, fails the assertion,
+/// naming `expected`, the failure's name now.
+pub fn assert_fails(
+    cx: &mut Ctx<'_>,
+    ran: Ran,
+    key: &str,
+    expected: &str,
+    at: u32,
+) -> Result<(), Stop> {
+    let got = match ran {
+        Err(Stop::Failed(failure)) if failure.key == key => return Ok(()),
+        Err(Stop::Failed(failure)) => Got::Failure(failure),
+        Ok(value) => Got::Value(value),
+        Err(stop) => return Err(stop),
+    };
+    Err(Stop::Assertion(cx.assertion_failed(
+        at,
+        AssertionDetail::Fails {
+            expected: expected.to_string(),
+            got,
         },
     )))
 }
