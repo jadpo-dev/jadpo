@@ -1219,8 +1219,10 @@ the runtime plan's bytes from `encode_deployable` and `encode`, held as
 and each site's line, start, end and anchor: plain data in a `const`
 array, "Frames" below), the callables by number (a `match` giving each
 one's function, tests, fixtures and seeds under `testing`) and
-`program()`; and a module per domain (`domains/<domain>/`), per other top
-folder (`shared/`, `tests/`) and `app` for the root's files. Each
+`program()`; a module per domain (`domains/<domain>/`), per other top
+folder (`shared/`, `tests/`) and `app` for the root's files; and, since
+chunk 8.1p, `entries`, each route's typed entry ("A typed per-route
+entry" below). Each
 callable is a function named by its number and label,
 `c3_action_make_thing`: a function, a library function and a constant's
 body a plain `fn(&mut Ctx, &Program, Value…) -> Ran`, and an action,
@@ -1666,20 +1668,26 @@ request's edge and the store.
 request through the entries. Beside it, the harness reads a seeded set of
 requests for every route of every project with the entries and with the
 codec walk (`Program::app` and `Program::walked_app`), and writes a set of
-values both ways (`jadpo_test::entries`):
-each value the input's type holds, written by the codec walk, then each
-place in the first two removed, given again, or set to other kinds and
-edge values; members the type doesn't declare; bodies that aren't JSON or an
-object; other content types; query strings with keys given twice; header
-fields left in the body; and each placeholder given its type's text and
-other text. The first difference fails the compiled step with the request
-and both results: MEASURE_REQUESTS requests and values across the
-corpus.
+values both ways (`jadpo_test::entries`): each value the input's type
+holds, written by the codec walk, then each place in the first two
+removed, given again, or set to other kinds and edge values; members the
+type doesn't declare; bodies that aren't JSON or an object; other content
+types; query strings with keys given twice; header fields left in the
+body; and each placeholder given its type's text and other text. The
+first difference fails the compiled step with the request and both
+results: 5,832 requests and values across the corpus on this machine
+(example 22 left out for its pgvector, which CI has).
 
 *The win*, measured on example 23's `POST /repairs` (a `RepairRequest` of
 an enum and a text with rules, answered with a `RepairTicket` of a UUID,
 the enum, an optional UUID and an optional instant), release build, per
-request: MEASURE_WIN.
+request: reading it took 26 allocations (2,148 bytes) and 1.35 µs by the
+codec walk, and 8 (716 bytes) and 0.57 µs by its entry; writing the answer
+took 1.05 µs by the codec walk and 0.89 µs by its entry, with the same 17
+allocations, each scalar's canonical text and the body's growth, which
+both share (medians of three runs of 200,000, on the ten-core Mac under
+other agents' load, one-minute load average 40 to 110). The corpus's
+crate grew by 8,528 lines of entries, 4.6% of its 186,686.
 
 *Rejected:* a Rust struct per type now (above); one walk over a document
 read in place for both executors, which would speed `jadpo dev` too but

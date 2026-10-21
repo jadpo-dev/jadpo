@@ -11,10 +11,10 @@
 //! A request's input is each value its type's codec can hold, written by
 //! the codec walk, and the first two of those with a member or an item
 //! left out, given again, `null`, of another kind, too long or out of
-//! range; with members its type doesn't declare; whole bodies that aren't an object or
-//! aren't JSON; the same as query strings, with keys given twice; with
-//! and without its header fields; and each placeholder given its own
-//! values' text and text of other kinds.
+//! range; with members its type doesn't declare; whole bodies that aren't
+//! an object or aren't JSON; the same as query strings, with keys given
+//! twice; with and without its header fields; and each placeholder given
+//! its own values' text and text of other kinds.
 
 use std::fmt::Write as _;
 
@@ -45,7 +45,7 @@ pub fn compare(program: &Program) -> Result<usize, String> {
             let other = format!("{:?}", read_request(&typed, number, &request));
             if one != other {
                 return Err(format!(
-                    "{} reads {} differently:\n  by the codec walk: {one}\n  by its entry:      {other}",
+                    "{} reads this request differently:\n    {}\n  by the codec walk: {one}\n  by its entry:      {other}",
                     route.label(),
                     shown(&request)
                 ));
@@ -230,12 +230,12 @@ fn others() -> Vec<String> {
         "9007199254740993",
         "\"\"",
         "\"x\"",
-        "\"Lamp\"",
+        "\"Abc\"",
         "\"2026-10-21\"",
         "\"2026-10-21T09:30:00Z\"",
         "\"0192F0C4-3B5E-7C1A-9D2E-4F6A8B0C1D2E\"",
         "\"a@example.com\"",
-        "\"\\u006c\\u0061mp\"",
+        "\"\\u0061bc\"",
         "[]",
         "[\"x\"]",
         "[1,1]",
@@ -666,7 +666,7 @@ fn scalars(builtin: Builtin) -> Vec<Value> {
         Builtin::CalendarDate => vec![Value::Date(20_000)],
         Builtin::Duration => vec![Value::Duration(1_500)],
         Builtin::Bytes => vec![Value::Bytes(std::rc::Rc::from(&b"hi"[..]))],
-        _ => vec![Value::text("lamp"), Value::text("a\"b\\c\n\u{1}é")],
+        _ => vec![Value::text("abc"), Value::text("a\"b\\c\n\u{1}é")],
     };
     out.push(Value::text("x"));
     out

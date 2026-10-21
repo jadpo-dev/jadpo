@@ -2373,10 +2373,13 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   and written by the walk at that place. No Rust struct per type: one
   would become a `Value` at once; typed bodies are listed with 9.2. The
   compiled step holds every route's entry to the walk over a seeded set of
-  requests and values (`jadpo_test::entries`, MEASURE_REQUESTS across the
-  corpus), and the differential run still gives the same records for all
-  258 projects and 525 tests. On example 23's `POST /repairs`, release
-  build: MEASURE_WIN.
+  requests and values (`jadpo_test::entries`, 5,832 across the corpus
+  here), and the differential run still gives the same records both
+  ways (257 projects and 518 tests on this machine, whose pgvector is too
+  old for example 22, which CI runs). On example 23's `POST /repairs`, release
+  build: reading the request 26 allocations and 1.35 µs by the walk, 8
+  and 0.57 µs by its entry; writing the answer 1.05 µs against 0.89 µs,
+  17 allocations either way.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
@@ -2436,7 +2439,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
   type, locals and parameters typed, a `Value` made only at the runtime's
   entry points), if profiling shows a body's own work matters beside the
-  request's edge and the store.
+  request's edge and the store; an answer's body sized before it is
+  written, and a UUID's or an instant's text written without a string of
+  its own (17 allocations write example 23's ticket either way).
 
 ## Phase 10 — Golden todo
 
