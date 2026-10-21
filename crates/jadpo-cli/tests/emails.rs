@@ -18,8 +18,7 @@ use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
 use jadpo_drivers::smtp::{Server, Smtp};
-use jadpo_host_native::Runtime;
-use jadpo_host_native::smtp::NativeRelay;
+use jadpo_host_native::{NativeTransport, Runtime};
 use jadpo_interp::Program;
 use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::files::MemoryFiles;
@@ -393,7 +392,7 @@ fn load(name: &str) -> Option<Loaded> {
 /// the store of cards in memory.
 fn faked<'b>(harness: &'b Harness, port: u16, cards: &Rc<MemoryFiles>) -> Faked<&'b Harness> {
     let server = Server::new("127.0.0.1", port).signing_in("acme", "s3cret");
-    let mail: Rc<dyn Capability> = Rc::new(Smtp::new(NativeRelay, server));
+    let mail: Rc<dyn Capability> = Rc::new(Smtp::new(Rc::new(NativeTransport), server));
     Faked::new(harness)
         .with("mail", mail)
         .with("cards", Rc::clone(cards) as Rc<dyn Capability>)

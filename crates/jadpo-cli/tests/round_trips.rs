@@ -46,6 +46,10 @@ impl Transport for Counting {
     fn spawn(&self, task: LocalFuture<'static, ()>) {
         NativeTransport.spawn(task);
     }
+
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        NativeTransport.sleep(millis)
+    }
 }
 
 /// A connection whose first write after an answer counts one round trip:

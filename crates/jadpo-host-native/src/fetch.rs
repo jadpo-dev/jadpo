@@ -1,6 +1,7 @@
 //! HTTP for the package driver natively (area 11, "Calling"; chunk 7.2c):
 //! [`NativeFetch`] sends a provider call's request over a socket of its
-//! own, HTTPS through OpenSSL with the certificate and the host checked,
+//! own, HTTPS through rustls with the certificate and the host checked
+//! against Mozilla's roots ([`crate::tls`], since chunk 8.1b),
 //! or plain HTTP to this machine, which is how a test reaches its server.
 //! Each exchange runs on tokio's blocking pool, so the worker's thread
 //! goes on serving while a provider answers, and is given up once the
@@ -150,12 +151,7 @@ fn streamed(
     }
     let bytes = request_bytes(request, &target);
     let reading = if target.secure {
-        let connector =
-            match openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client()) {
-                Ok(builder) => builder.build(),
-                Err(error) => return failed(FetchError::NotSent(error.to_string())),
-            };
-        match connector.connect(bare, stream) {
+        match crate::tls::blocking(stream, bare) {
             Ok(tls) => read_streamed(tls, &bytes, out),
             Err(error) => {
                 return failed(FetchError::NotSent(format!(
@@ -346,7 +342,7 @@ impl Chunking {
 /// What the runtime fetches on its own account natively (area 11,
 /// "Receiving from outside"; chunk 7.7b): AWS SNS's signing certificates
 /// and subscription confirmations. A `GET` over HTTPS only, the
-/// certificate and the host checked by OpenSSL, connected only to an
+/// certificate and the host checked by rustls, connected only to an
 /// address that is public (never loopback, private, link-local, shared,
 /// reserved or multicast, IPv4 inside IPv6 included) and only to the
 /// address checked, so a name that resolves again elsewhere can't move
@@ -437,12 +433,7 @@ impl Outward {
         let raw = if reached.is_some() {
             send(stream, head.as_bytes())
         } else {
-            let connector =
-                openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
-                    .map_err(|error| error.to_string())?
-                    .build();
-            let tls = connector
-                .connect(bare, stream)
+            let tls = crate::tls::blocking(stream, bare)
                 .map_err(|error| format!("no secure connection: {error}"))?;
             send(tls, head.as_bytes())
         }
@@ -568,11 +559,7 @@ fn exchange(request: &Request, timeout: Duration) -> Result<Response, FetchError
         .map_err(|error| FetchError::NotSent(error.to_string()))?;
     let bytes = request_bytes(request, &target);
     let raw = if target.secure {
-        let connector = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
-            .map_err(|error| FetchError::NotSent(error.to_string()))?
-            .build();
-        let tls = connector
-            .connect(bare, stream)
+        let tls = crate::tls::blocking(stream, bare)
             .map_err(|error| FetchError::NotSent(format!("no secure connection: {error}")))?;
         send(tls, &bytes)?
     } else {

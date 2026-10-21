@@ -1,9 +1,11 @@
 //! The SMTP driver (area 16, "Email"; chunk 7.3): the `email` capability's
 //! built-in driver, `driver: Driver.smtp`. The runtime hands it a message
 //! Jadpo rendered whole ([`jadpo_std::email::MESSAGE_FIELDS`]); the driver
-//! writes it as one MIME message ([`compose`]) and has the host's
-//! [`Relay`] hand it to the server (tokio and OpenSSL natively, Workers'
-//! `connect()` there), then classifies what happened into the seam's
+//! writes it as one MIME message ([`compose`]) and hands it to the
+//! server in an SMTP conversation ([`relay`]: `EHLO`, `STARTTLS`, `AUTH`,
+//! the message) over the host's [`Transport`], which gives only the
+//! socket and TLS over it (tokio and rustls natively, Workers' `connect()`
+//! there; chunk 8.1b), then classifies what happened into the seam's
 //! fixed set:
 //!
 //! - accepted: sent;
@@ -15,16 +17,23 @@
 //!   operator, never sent again blindly, since SMTP takes no key;
 //! - the recipient or the message refused for good: the failure
 //!   `recipient_rejected` or `message_rejected`;
-//! - the credential, the sender or the server's lack of TLS refused:
-//!   `misconfigured`.
+//! - the credential, the sender, the server's lack of TLS or its
+//!   certificate refused: `misconfigured`.
 //!
 //! A message is written with CRLF line ends, every part base64, the
 //! subject as RFC 2047 encoded words when it isn't plain ASCII, and a
 //! `Date:` from the host's clock when it has one; the server adds the
 //! `Message-ID:` (RFC 6409, section 8.3).
 
+use std::cell::Cell;
+use std::net::IpAddr;
+use std::rc::Rc;
+
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+use crate::{Endpoint, Stream, Transport, within};
 use jadpo_std::email::{MESSAGE_FIELDS, RECIPIENT_REJECTED};
 use jadpo_value::Value;
 
@@ -135,70 +144,347 @@ pub enum RelayError {
     /// The server refused for good, with its `5xx` reply's code, at
     /// `phase`.
     Refused { phase: Phase, code: u16 },
-    /// The host won't send it this way: a server that offers no TLS and
-    /// isn't on this machine, or no TLS where it was asked for.
+    /// It won't go this way: a server that offers no TLS and isn't on this
+    /// machine, or a certificate or name that fails the check.
     Insecure(String),
 }
 
-/// How a host hands a message to an SMTP server: what the SMTP driver
-/// needs of it, as [`crate::package::Fetch`] is what the package driver
-/// needs.
-pub trait Relay {
-    /// Hands `envelope` to `server`, giving up after `server.timeout_ms`.
-    fn relay<'a>(
-        &'a self,
-        server: &'a Server,
-        envelope: &'a Envelope,
-    ) -> LocalFuture<'a, Result<(), RelayError>>;
+/// The port a server speaks TLS on from the start.
+pub const IMPLICIT_TLS: u16 = 465;
 
-    /// The time now, in milliseconds since 1970-01-01T00:00:00Z, for the
-    /// message's `Date:`; `None` on a host with no clock.
-    fn now_ms(&self) -> Option<i64> {
-        None
-    }
-}
+/// The longest reply line a server is read for.
+const MOST_LINE: usize = 4096;
 
-/// The SMTP driver over `R`, for one connection's server.
-#[derive(Debug)]
-pub struct Smtp<R> {
-    relay: R,
+/// The SMTP driver for one connection's server, over the host's
+/// [`Transport`]: the host gives the socket, TLS over it, a timer and the
+/// clock; the conversation is the driver's.
+pub struct Smtp {
+    transport: Rc<dyn Transport>,
     server: Server,
 }
 
-impl<R: Relay> Smtp<R> {
-    pub fn new(relay: R, server: Server) -> Smtp<R> {
-        Smtp { relay, server }
+impl std::fmt::Debug for Smtp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Smtp")
+            .field("server", &self.server)
+            .finish_non_exhaustive()
     }
 }
 
-impl<R: Relay> Capability for Smtp<R> {
+impl Smtp {
+    pub fn new(transport: Rc<dyn Transport>, server: Server) -> Smtp {
+        Smtp { transport, server }
+    }
+}
+
+impl Capability for Smtp {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
         Box::pin(async move {
             if call.operation != jadpo_std::email::SEND {
                 return Answer::Misconfigured;
             }
-            let envelope = match compose(&call.input, self.relay.now_ms()) {
+            let envelope = match compose(&call.input, self.transport.now_ms()) {
                 Ok(envelope) => envelope,
                 // A message no server can take as written: an address
                 // only SMTPUTF8 carries.
                 Err(Unsendable::Address) => return Answer::Failed(RECIPIENT_REJECTED.to_string()),
                 Err(Unsendable::Shape) => return Answer::Misconfigured,
             };
-            match self.relay.relay(&self.server, &envelope).await {
-                Ok(()) => Answer::Value(Value::Unit),
-                Err(RelayError::NotSent(_)) => Answer::Unavailable,
-                Err(RelayError::NoAnswer(_)) => Answer::Unknown,
-                Err(RelayError::Refused {
-                    phase: Phase::Rcpt, ..
-                }) => Answer::Failed(RECIPIENT_REJECTED.to_string()),
-                Err(RelayError::Refused {
-                    phase: Phase::Message,
-                    ..
-                }) => Answer::Failed(MESSAGE_REJECTED.to_string()),
-                Err(RelayError::Refused { .. } | RelayError::Insecure(_)) => Answer::Misconfigured,
-            }
+            answer(relay(&*self.transport, &self.server, &envelope).await)
         })
     }
+}
+
+/// What happened to a message, as the seam's answer.
+fn answer(relayed: Result<(), RelayError>) -> Answer {
+    match relayed {
+        Ok(()) => Answer::Value(Value::Unit),
+        Err(RelayError::NotSent(_)) => Answer::Unavailable,
+        Err(RelayError::NoAnswer(_)) => Answer::Unknown,
+        Err(RelayError::Refused {
+            phase: Phase::Rcpt, ..
+        }) => Answer::Failed(RECIPIENT_REJECTED.to_string()),
+        Err(RelayError::Refused {
+            phase: Phase::Message,
+            ..
+        }) => Answer::Failed(MESSAGE_REJECTED.to_string()),
+        Err(RelayError::Refused { .. } | RelayError::Insecure(_)) => Answer::Misconfigured,
+    }
+}
+
+/// Hands `envelope` to `server` over `transport`: connect, greet, secure,
+/// sign in, and hand the message over. Each wait is bounded by the
+/// server's timeout, and the whole conversation by four of them.
+pub async fn relay(
+    transport: &dyn Transport,
+    server: &Server,
+    envelope: &Envelope,
+) -> Result<(), RelayError> {
+    let timeout = server.timeout_ms.max(1);
+    // Set once the message's end may have left: from then on, no answer
+    // means it may have been accepted.
+    let ended = Cell::new(false);
+    let talked = within(
+        transport,
+        timeout.saturating_mul(4),
+        conversation(transport, server, envelope, timeout, &ended),
+    )
+    .await;
+    match talked {
+        Some(done) => done,
+        None if ended.get() => Err(RelayError::NoAnswer("no answer in time".into())),
+        None => Err(RelayError::NotSent("no answer in time".into())),
+    }
+}
+
+/// A server's reply: its code and its lines' text.
+struct Reply {
+    code: u16,
+    lines: Vec<String>,
+}
+
+impl Reply {
+    fn is(&self, class: u16) -> bool {
+        self.code / 100 == class
+    }
+
+    /// What a refusal at `phase` is: for now, or for good.
+    fn refused(&self, phase: Phase) -> RelayError {
+        if self.is(5) {
+            RelayError::Refused {
+                phase,
+                code: self.code,
+            }
+        } else {
+            RelayError::NotSent(format!("the server answered {}", self.code))
+        }
+    }
+}
+
+/// One SMTP conversation, its reads and writes each bounded by `timeout`
+/// milliseconds.
+struct Talk<'t> {
+    transport: &'t dyn Transport,
+    timeout: u64,
+    link: Box<dyn Stream>,
+}
+
+impl Talk<'_> {
+    fn late(what: &str) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::TimedOut, format!("no {what} in time"))
+    }
+
+    /// Writes `bytes` whole.
+    async fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        let (transport, timeout) = (self.transport, self.timeout);
+        let link = &mut self.link;
+        within(transport, timeout, async move {
+            link.write_all(bytes).await?;
+            link.flush().await
+        })
+        .await
+        .unwrap_or_else(|| Err(Talk::late("write")))
+    }
+
+    async fn send(&mut self, line: &str) -> Result<(), RelayError> {
+        let mut bytes = Vec::with_capacity(line.len() + 2);
+        bytes.extend_from_slice(line.as_bytes());
+        bytes.extend_from_slice(b"\r\n");
+        self.write(&bytes)
+            .await
+            .map_err(|error| RelayError::NotSent(error.to_string()))
+    }
+
+    /// The next reply, its lines joined: `250-...` lines continue it.
+    async fn reply(&mut self) -> std::io::Result<Reply> {
+        let (transport, timeout) = (self.transport, self.timeout);
+        let link = &mut self.link;
+        within(transport, timeout, async move {
+            let mut lines = Vec::new();
+            loop {
+                let line = Talk::line(link).await?;
+                let code = line
+                    .get(..3)
+                    .and_then(|code| code.parse::<u16>().ok())
+                    .ok_or_else(|| std::io::Error::other("a reply that isn't SMTP"))?;
+                let more = line.as_bytes().get(3) == Some(&b'-');
+                lines.push(line.get(4..).unwrap_or_default().to_string());
+                if !more {
+                    return Ok(Reply { code, lines });
+                }
+            }
+        })
+        .await
+        .unwrap_or_else(|| Err(Talk::late("answer")))
+    }
+
+    /// One line, read a byte at a time so nothing past it is taken from a
+    /// connection that may be upgraded to TLS next: whatever a server (or
+    /// someone between) sends after its `STARTTLS` reply is read as TLS,
+    /// never as the conversation.
+    async fn line(link: &mut Box<dyn Stream>) -> std::io::Result<String> {
+        let mut bytes = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            if link.read(&mut byte).await? == 0 {
+                return Err(std::io::Error::other("the server closed the connection"));
+            }
+            bytes.extend_from_slice(&byte);
+            if bytes.ends_with(b"\r\n") {
+                bytes.truncate(bytes.len() - 2);
+                return Ok(String::from_utf8_lossy(&bytes).into_owned());
+            }
+            if bytes.len() > MOST_LINE {
+                return Err(std::io::Error::other("a reply line too long"));
+            }
+        }
+    }
+
+    /// A command's reply, which must be in `class`, or why not, at `phase`.
+    async fn command(&mut self, line: &str, class: u16, phase: Phase) -> Result<Reply, RelayError> {
+        self.send(line).await?;
+        let reply = self
+            .reply()
+            .await
+            .map_err(|error| RelayError::NotSent(error.to_string()))?;
+        if reply.is(class) {
+            Ok(reply)
+        } else {
+            Err(reply.refused(phase))
+        }
+    }
+}
+
+/// `stream` as TLS to `name`, through the host: a certificate or name the
+/// check refuses is [`RelayError::Insecure`]; a connection that broke off
+/// took nothing.
+async fn secured(
+    transport: &dyn Transport,
+    stream: Box<dyn Stream>,
+    name: &str,
+    timeout: u64,
+) -> Result<Box<dyn Stream>, RelayError> {
+    use std::io::ErrorKind;
+    match within(transport, timeout, transport.upgrade(stream, name)).await {
+        Some(Ok(secure)) => Ok(secure),
+        Some(Err(error))
+            if matches!(
+                error.kind(),
+                ErrorKind::InvalidData | ErrorKind::InvalidInput | ErrorKind::Unsupported
+            ) =>
+        {
+            Err(RelayError::Insecure(format!(
+                "no secure connection: {error}"
+            )))
+        }
+        Some(Err(error)) => Err(RelayError::NotSent(format!(
+            "no secure connection: {error}"
+        ))),
+        None => Err(RelayError::NotSent("no secure connection in time".into())),
+    }
+}
+
+/// The conversation itself (area 16, "The SMTP driver"): TLS always, by
+/// `STARTTLS` or from the start on port 465, but to this machine; a
+/// credential never in the clear elsewhere.
+async fn conversation(
+    transport: &dyn Transport,
+    server: &Server,
+    envelope: &Envelope,
+    timeout: u64,
+    ended: &Cell<bool>,
+) -> Result<(), RelayError> {
+    let name = server.host.trim_start_matches('[').trim_end_matches(']');
+    let endpoint = Endpoint::Tcp {
+        host: name.to_string(),
+        port: server.port,
+    };
+    let stream = within(transport, timeout, transport.connect(&endpoint))
+        .await
+        .ok_or_else(|| RelayError::NotSent("no connection in time".into()))?
+        .map_err(|error| RelayError::NotSent(format!("no connection: {error}")))?;
+    // EHLO names this end by its address (RFC 5321, section 4.1.3).
+    let me = match transport.local_address(&*stream) {
+        Some(IpAddr::V4(ip)) => format!("[{ip}]"),
+        Some(IpAddr::V6(ip)) => format!("[IPv6:{ip}]"),
+        None => "[127.0.0.1]".to_string(),
+    };
+    let mut secure = server.port == IMPLICIT_TLS;
+    let link = if secure {
+        secured(transport, stream, name, timeout).await?
+    } else {
+        stream
+    };
+    let mut talk = Talk {
+        transport,
+        timeout,
+        link,
+    };
+    let opening = talk
+        .reply()
+        .await
+        .map_err(|error| RelayError::NotSent(error.to_string()))?;
+    if !opening.is(2) {
+        return Err(RelayError::NotSent(format!(
+            "the server answered {}",
+            opening.code
+        )));
+    }
+    let ehlo = talk
+        .command(&format!("EHLO {me}"), 2, Phase::Sender)
+        .await?;
+    if !secure {
+        let offers_tls = ehlo
+            .lines
+            .iter()
+            .any(|line| line.eq_ignore_ascii_case("STARTTLS"));
+        if offers_tls {
+            talk.command("STARTTLS", 2, Phase::Sender).await?;
+            talk.link = secured(transport, talk.link, name, timeout).await?;
+            secure = true;
+            talk.command(&format!("EHLO {me}"), 2, Phase::Sender)
+                .await?;
+        } else if !server.is_local() {
+            let _ = talk.send("QUIT").await;
+            return Err(RelayError::Insecure(format!(
+                "`{}` offers no TLS, and a message goes in the clear only to this machine",
+                server.host
+            )));
+        }
+    }
+    if let (Some(username), Some(password)) = (&server.username, &server.password) {
+        if !secure && !server.is_local() {
+            return Err(RelayError::Insecure(
+                "a credential sent in the clear".into(),
+            ));
+        }
+        let plain = base64(format!("\0{username}\0{password}").as_bytes());
+        talk.command(&format!("AUTH PLAIN {plain}"), 2, Phase::SignIn)
+            .await?;
+    }
+    talk.command(&format!("MAIL FROM:<{}>", envelope.from), 2, Phase::Sender)
+        .await?;
+    for to in &envelope.to {
+        talk.command(&format!("RCPT TO:<{to}>"), 2, Phase::Rcpt)
+            .await?;
+    }
+    talk.command("DATA", 3, Phase::Message).await?;
+    let data = dot_stuffed(&envelope.data);
+    // Once the message's end may have left, a lost answer may be a
+    // message accepted.
+    ended.set(true);
+    talk.write(&data)
+        .await
+        .map_err(|error| RelayError::NoAnswer(error.to_string()))?;
+    let accepted = talk
+        .reply()
+        .await
+        .map_err(|error| RelayError::NoAnswer(error.to_string()))?;
+    if !accepted.is(2) {
+        return Err(accepted.refused(Phase::Message));
+    }
+    let _ = talk.send("QUIT").await;
+    Ok(())
 }
 
 /// Why a message can't be written.
@@ -489,7 +775,6 @@ pub fn dot_stuffed(data: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::rc::Rc;
 
     use super::*;
@@ -588,95 +873,84 @@ mod tests {
         );
     }
 
-    /// A relay answering from a script, keeping what it was handed.
-    struct Scripted {
-        answer: RefCell<Option<Result<(), RelayError>>>,
-        sent: RefCell<Vec<Envelope>>,
+    #[test]
+    fn what_a_server_did_is_classified() {
+        assert_eq!(answer(Ok(())), Answer::Value(Value::Unit));
+        assert_eq!(
+            answer(Err(RelayError::NotSent("refused".into()))),
+            Answer::Unavailable
+        );
+        assert_eq!(
+            answer(Err(RelayError::NoAnswer("dropped".into()))),
+            Answer::Unknown
+        );
+        assert_eq!(
+            answer(Err(RelayError::Refused {
+                phase: Phase::Rcpt,
+                code: 550
+            })),
+            Answer::Failed(RECIPIENT_REJECTED.into())
+        );
+        assert_eq!(
+            answer(Err(RelayError::Refused {
+                phase: Phase::Message,
+                code: 554
+            })),
+            Answer::Failed(MESSAGE_REJECTED.into())
+        );
+        assert_eq!(
+            answer(Err(RelayError::Refused {
+                phase: Phase::SignIn,
+                code: 535
+            })),
+            Answer::Misconfigured
+        );
+        assert_eq!(
+            answer(Err(RelayError::Insecure("no TLS".into()))),
+            Answer::Misconfigured
+        );
     }
 
-    impl Relay for Scripted {
-        fn relay<'a>(
-            &'a self,
-            _: &'a Server,
-            envelope: &'a Envelope,
-        ) -> LocalFuture<'a, Result<(), RelayError>> {
-            self.sent.borrow_mut().push(envelope.clone());
-            let answer = self.answer.borrow_mut().take().unwrap_or(Ok(()));
-            Box::pin(async move { answer })
+    /// A host where nothing listens and time never passes.
+    struct Nowhere;
+
+    impl Transport for Nowhere {
+        fn connect(&self, _: &Endpoint) -> LocalFuture<'_, std::io::Result<Box<dyn Stream>>> {
+            Box::pin(async { Err(std::io::Error::from(std::io::ErrorKind::ConnectionRefused)) })
+        }
+
+        fn spawn(&self, _: LocalFuture<'static, ()>) {}
+
+        fn sleep(&self, _: u64) -> LocalFuture<'_, ()> {
+            Box::pin(std::future::pending())
         }
     }
 
-    fn answered(answer: Result<(), RelayError>, input: Value) -> Answer {
-        let relay = Scripted {
-            answer: RefCell::new(Some(answer)),
-            sent: RefCell::new(Vec::new()),
-        };
-        let smtp = Smtp::new(relay, Server::new("127.0.0.1", 2525));
+    fn sent(input: Value) -> Answer {
+        let smtp = Smtp::new(Rc::new(Nowhere), Server::new("127.0.0.1", 2525));
         let call = Call::new(
             "mail",
             "send",
             input,
             jadpo_std::subscriber::Repeat::Unkeyed,
         );
-        let mut answered = None;
         let future = smtp.call(&call);
         let mut future = std::pin::pin!(future);
-        let waker = std::task::Waker::noop();
-        if let std::task::Poll::Ready(answer) = future
+        match future
             .as_mut()
-            .poll(&mut std::task::Context::from_waker(waker))
+            .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
         {
-            answered = Some(answer);
+            std::task::Poll::Ready(answer) => answer,
+            std::task::Poll::Pending => panic!("answered at once"),
         }
-        answered.expect("answered at once")
     }
 
     #[test]
-    fn what_a_server_did_is_classified() {
-        let input = || message(None, Some("Hi"), Vec::new());
-        assert_eq!(answered(Ok(()), input()), Answer::Value(Value::Unit));
+    fn a_server_that_cant_be_reached_took_nothing_and_a_wrong_shape_is_misconfigured() {
         assert_eq!(
-            answered(Err(RelayError::NotSent("refused".into())), input()),
+            sent(message(None, Some("Hi"), Vec::new())),
             Answer::Unavailable
         );
-        assert_eq!(
-            answered(Err(RelayError::NoAnswer("dropped".into())), input()),
-            Answer::Unknown
-        );
-        assert_eq!(
-            answered(
-                Err(RelayError::Refused {
-                    phase: Phase::Rcpt,
-                    code: 550
-                }),
-                input()
-            ),
-            Answer::Failed(RECIPIENT_REJECTED.into())
-        );
-        assert_eq!(
-            answered(
-                Err(RelayError::Refused {
-                    phase: Phase::Message,
-                    code: 554
-                }),
-                input()
-            ),
-            Answer::Failed(MESSAGE_REJECTED.into())
-        );
-        assert_eq!(
-            answered(
-                Err(RelayError::Refused {
-                    phase: Phase::SignIn,
-                    code: 535
-                }),
-                input()
-            ),
-            Answer::Misconfigured
-        );
-        assert_eq!(
-            answered(Err(RelayError::Insecure("no TLS".into())), input()),
-            Answer::Misconfigured
-        );
-        assert_eq!(answered(Ok(()), Value::Unit), Answer::Misconfigured);
+        assert_eq!(sent(Value::Unit), Answer::Misconfigured);
     }
 }
