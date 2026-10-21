@@ -171,13 +171,6 @@ struct Key<'a> {
     public: Public<'a>,
 }
 
-/// The DER of SHA-256's `DigestInfo` up to the digest itself, which
-/// RSASSA-PKCS1-v1_5 signs (RFC 8017 §9.2, note 1).
-const SHA256_DIGEST_INFO: [u8; 19] = [
-    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
-    0x00, 0x04, 0x20,
-];
-
 /// A `Jwk` value's key, or `None` for one nothing can check with (which
 /// its type's rules already ensure), one for encryption, one whose `alg`
 /// isn't its `kty`'s, or one whose first certificate holds another key.
@@ -207,11 +200,7 @@ fn key_of(value: &Value) -> Option<Key<'_>> {
             if !jwk::is_rsa_modulus(&n) || !jwk::is_rsa_exponent(&e) {
                 return None;
             }
-            let key = rsa::RsaPublicKey::new(
-                rsa::BigUint::from_bytes_be(&n),
-                rsa::BigUint::from_bytes_be(&e),
-            )
-            .ok()?;
+            let key = crate::public_key::rsa_key(&n, &e)?;
             (Public::Rsa(key), SubjectKey::Rsa { n, e })
         }
         EC if text("crv")? == P256 => {
@@ -254,15 +243,7 @@ fn key_of(value: &Value) -> Option<Key<'_>> {
 fn verifies(key: &Key<'_>, signed: &[u8], signature: &[u8]) -> bool {
     match &key.public {
         Public::Ed25519(x) => crate::crypto::verify_signature(signed, signature, x),
-        Public::Rsa(public) => {
-            let scheme = rsa::Pkcs1v15Sign {
-                hash_len: Some(32),
-                prefix: Box::from(&SHA256_DIGEST_INFO[..]),
-            };
-            public
-                .verify(scheme, &crate::hash::sha256(signed), signature)
-                .is_ok()
-        }
+        Public::Rsa(public) => crate::public_key::rs256_with(public, signed, signature),
         // R and S, each 32 octets (RFC 7518 §3.4), each from 1 to below
         // the group's order. A high S is accepted, as RFC 7518 and `p256`
         // accept it (chosen in chunk 5.5r4).

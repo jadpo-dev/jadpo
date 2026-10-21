@@ -8,4 +8,5 @@
 #[path = "../../jadpo-host-native/tests/authority.rs"]
 mod authority;
 mod bed;
+mod passkeys;
 mod workerd;

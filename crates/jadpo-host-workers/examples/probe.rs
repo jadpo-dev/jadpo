@@ -1,7 +1,9 @@
 //! The probe Worker the Workers host's tests run under workerd
 //! (tests/workerd.rs; chunk 8.2a): each path uses one part of the host and
 //! answers what it saw as one line of text, `error:` and why when a part
-//! refused. It never panics, which would abort the isolate.
+//! refused. It never panics, which would abort the isolate. The passkey
+//! paths (chunk 8.2l) run one step of a ceremony each, the state and the
+//! device's answer handed back and forth by the test as base64url.
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
@@ -14,9 +16,10 @@ use jadpo_host_workers::{WorkersFetch, WorkersHost, WorkersOutbound, WorkersTran
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::provider::{Reading, Request};
 use jadpo_runtime::stream::Chunk;
-use jadpo_runtime::{Allowed, Host};
+use jadpo_runtime::{Allowed, Host, PasskeyError, PasskeyParts};
 use jadpo_std::HttpMethod;
 use jadpo_std::http::RateLimit;
+use jadpo_value::encoding::{from_base64url, to_base64url};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use wasm_bindgen::prelude::*;
 
@@ -150,9 +153,108 @@ pub async fn fetch(
                 yes(supplies.disk.is_some())
             )
         }
+        "/passkey/register/options" => match host.passkeys() {
+            Some(ceremonies) => started(ceremonies.start_registration(
+                &param("origin"),
+                300_000,
+                [7; 16],
+                "ada@example.com",
+                &[],
+            )),
+            None => "error:no passkeys".to_string(),
+        },
+        "/passkey/register" => match (
+            host.passkeys(),
+            unpacked(&param("state")),
+            unpacked(&param("credential")),
+        ) {
+            (Some(ceremonies), Some(state), Some(credential)) => {
+                match ceremonies.finish_registration(&param("origin"), 300_000, &state, &credential)
+                {
+                    Ok(parts) => format!("kept:{}", kept(&parts)),
+                    Err(error) => format!("error:{error:?}"),
+                }
+            }
+            _ => "error:unreadable".to_string(),
+        },
+        "/passkey/sign-in/options" => match host.passkeys() {
+            Some(ceremonies) => started(ceremonies.start_sign_in(&param("origin"), 300_000)),
+            None => "error:no passkeys".to_string(),
+        },
+        "/passkey/sign-in" => match (
+            host.passkeys(),
+            unpacked(&param("state")),
+            unpacked(&param("credential")),
+            unpacked(&param("stored")).and_then(|stored| stored_parts(&stored)),
+        ) {
+            (Some(ceremonies), Some(state), Some(credential), Some(stored)) => {
+                match ceremonies.finish_sign_in(
+                    &param("origin"),
+                    300_000,
+                    &state,
+                    &credential,
+                    &stored,
+                    [7; 16],
+                ) {
+                    Ok(parts) => format!("kept:{}", kept(&parts)),
+                    Err(error) => format!("error:{error:?}"),
+                }
+            }
+            _ => "error:unreadable".to_string(),
+        },
         path => format!("no probe at {path}"),
     };
     web_sys::Response::new_with_opt_str(Some(&answer))
+}
+
+/// A ceremony's options and state, each as base64url, for the test to
+/// hand on: `options:… state:…`.
+fn started(result: Result<(String, String), PasskeyError>) -> String {
+    match result {
+        Ok((options, state)) => format!(
+            "options:{} state:{}",
+            to_base64url(options.as_bytes()),
+            to_base64url(state.as_bytes())
+        ),
+        Err(error) => format!("error:{error:?}"),
+    }
+}
+
+/// Text the test sent as base64url.
+fn unpacked(text: &str) -> Option<String> {
+    String::from_utf8(from_base64url(text)?).ok()
+}
+
+/// What is kept of a passkey, as JSON in base64url.
+fn kept(parts: &PasskeyParts) -> String {
+    let json = serde_json::json!({
+        "credential_id": to_base64url(&parts.credential_id),
+        "public_key": to_base64url(&parts.public_key),
+        "sign_count": parts.sign_count,
+        "transports": parts.transports,
+        "backup_eligible": parts.backup_eligible,
+        "backed_up": parts.backed_up,
+    });
+    to_base64url(json.to_string().as_bytes())
+}
+
+/// What [`kept`] wrote, read back.
+fn stored_parts(json: &str) -> Option<PasskeyParts> {
+    let json: serde_json::Value = serde_json::from_str(json).ok()?;
+    let bytes = |name: &str| json.get(name)?.as_str().and_then(from_base64url);
+    Some(PasskeyParts {
+        credential_id: bytes("credential_id")?,
+        public_key: bytes("public_key")?,
+        sign_count: u32::try_from(json.get("sign_count")?.as_u64()?).ok()?,
+        transports: json
+            .get("transports")?
+            .as_array()?
+            .iter()
+            .filter_map(|name| name.as_str().map(str::to_string))
+            .collect(),
+        backup_eligible: json.get("backup_eligible")?.as_bool()?,
+        backed_up: json.get("backed_up")?.as_bool()?,
+    })
 }
 
 fn yes(value: bool) -> &'static str {
