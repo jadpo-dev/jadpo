@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::files::DiskFiles;
-use jadpo_host_native::http::{AppHandler, Handler, MakeHandler, Server};
+use jadpo_host_native::http::{AppHandler, Handler, MakeHandler, Server, WorkerThread};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
 use jadpo_runtime::Executor;
@@ -890,7 +890,7 @@ pub fn serve_to(
     let make_log = Arc::clone(&call_log);
     let make_root = root.clone();
     let make_inbox_lock = Arc::new(Mutex::new(()));
-    let make: MakeHandler = Arc::new(move || {
+    let make: MakeHandler = Arc::new(move |worker: &WorkerThread| {
         let current = Current {
             shared: Arc::clone(&make_shared),
             program: RefCell::new(None),
@@ -909,7 +909,10 @@ pub fn serve_to(
         // `.jadpo/files/`: only the connections the program running now
         // keeps files in.
         let stores = Arc::clone(&make_shared);
-        let mut native = NativeHost::new()
+        // Counting rate limits in the one table every worker shares
+        // (chunk 8.1l).
+        let mut native = worker
+            .host()
             .with_drivers(drivers)
             .with_files(DiskFiles::under(&files), move |connection| {
                 let current = lock_current(&stores);
@@ -1668,7 +1671,7 @@ fn serve_inbox(root: &Path, port: u16) -> Option<Server> {
         .or_else(|| TcpListener::bind(("127.0.0.1", 0)).ok())?;
     let root = root.to_path_buf();
     let make: MakeHandler =
-        Arc::new(move || Box::new(InboxHandler(root.clone())) as Box<dyn Handler>);
+        Arc::new(move |_: &WorkerThread| Box::new(InboxHandler(root.clone())) as Box<dyn Handler>);
     jadpo_host_native::http::serve(listener, 1, make).ok()
 }
 

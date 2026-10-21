@@ -1201,6 +1201,68 @@ application against "Keeping rustc time down", and rebuilding it at start
 from the project, which needs the compiler a deployable doesn't carry;
 decoding a few kilobytes once per process costs less than either.
 
+**Native accept and one rate-limit count** (chunk 8.1l, from the Phase 4
+review). A native server is an acceptor and one worker thread per core,
+each worker a current-thread tokio runtime with its own handler, program,
+stores and connections (§2.6, "Single-threaded by design"). The acceptor
+is a thread of its own whose current-thread runtime awaits the listener,
+so a connection is taken as it arrives rather than at the next poll, and
+it hands each one, with its peer's address and its place under
+`http::MAX_CONNECTIONS`, to the next worker in turn over that worker's
+channel. A worker whose thread has ended is passed over, and with none
+left the connection is closed. A connection, and every request on it,
+stays on the worker it was handed to. Until now it went to the worker its
+peer's address hashed to, which put every connection from one proxy or
+balancer on one worker, and counted an address on one thread only because
+of that. *Rejected:* each worker accepting from the listener itself
+(`SO_REUSEPORT`), since Linux shares connections out by a hash of their
+addresses and macOS not at all, so neither spreads one balancer's
+connections; and a worker chosen by the fewest open connections, which
+reads every worker's count on each accept to correct an imbalance the
+deadline checks already bound (§2.6).
+
+The workers share the rate-limit table and nothing else: one
+`jadpo_runtime::RateLimits` per server, which `http::WorkerThread::host`
+gives each worker's `NativeHost`, so a caller or an address has one
+allowance a window whichever workers its requests reach. It is plain data
+(keys, window starts, counts), behind one lock per shard, held only to
+find and bump one counter and never across an await; values, futures,
+stores and connections still never cross threads, and it is the one lock
+on the request path. It is bounded as before, now for the server rather
+than each worker: `RATE_LIMIT_MEMORY` (16 MB, area 16) in all, split into
+16 shards with an equal share, a key's shard chosen by a hash with keys
+random per process, so no client can aim its keys at one shard to push
+another's counter out sooner than any other. When a shard is full, the
+counter whose window started longest ago goes first, which is one whose
+window has ended whenever there is one, so a client still being counted
+isn't given a fresh allowance while a stale counter is kept: a key whose
+window starts again joins the back of its shard's order, and the order is
+compacted once it holds twice the shard's counters, so it is bounded too.
+Workers read the clock apart, so a time up to a window before a counter's
+start counts in that window rather than starting another; one further back
+means the clock went back, and the window starts again. *Rejected:* a
+thread of its own that every worker sends each request's key to, which
+adds a round trip between threads to every request, and a fixed table of
+atomic counts indexed by a hash, which lets two clients share a count.
+
+Under overload, past `MAX_CONNECTIONS` (1,024) open across the workers a
+connection is closed as it is accepted, as before; an accept that fails
+for want of descriptors or memory waits 100 ms, the connection left in the
+system's queue, and one the client abandoned is skipped at once; each
+worker's channel holds no more than the cap. On `Server::stop` the
+acceptor takes what the system has already accepted for it, hands it out
+and closes the listener, so nothing the system accepted is dropped unread.
+Each worker then shuts its connections down as hyper's graceful shutdown
+does: one kept open with no request in it closes at once, and one
+mid-request finishes its answer and closes. One that has sent nothing yet
+is given a second for its first request (`http::FIRST_REQUEST`), which is
+answered before it closes, since hyper would close it at once and cut off
+a request on its way; one opened ahead of need closes after that second.
+It waits for them at
+most `DRAIN_GRACE` (10 seconds), then drains its handler's background
+work for at most `DRAIN_GRACE` again (chunk 6.7); what is still open after
+that closes as the thread ends.
+
 **Frames.** Both executors keep a shadow stack of `(callable, site)` in
 the context; each site maps to a `.jadpo` file and line through a table
 from the graph (a static array in compiled code). A fault renders its
@@ -1596,10 +1658,13 @@ fault is 500 `internal_fault` and travels on the response for the host's
 log. The component is the same for both executors and every host; route
 tests (§2.5) drive it with a request built from typed values.
 `jadpo-host-native` serves it (`http::serve`): one listener whose thread
-hands each connection to a worker chosen by the client's address, and one
-current-thread tokio runtime per worker, each with its own handler, stores
-and rate-limit counters, so an address is always counted on one thread;
-hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name,
+hands each connection to a worker, and one current-thread tokio runtime
+per worker, each with its own handler and stores; hyper reads and writes
+HTTP/1.1. Until chunk 8.1l the worker was chosen by the client's address
+and kept its own rate-limit counters, so an address was counted on one
+thread; since then the acceptor awaits the listener, hands connections
+out in turn, and the workers share one table (§2.5, "Native accept and
+one rate-limit count"). `NativeHost` gives each store by name,
 the operating system's randomness and tokio's timer. Since chunk 6.9
 what a host does with a request and a tick is the runtime's
 (`jadpo_runtime::serve::Serving`, over any executor, whose plan gives
@@ -1617,9 +1682,10 @@ its timer starts no more ticks, and each worker waits, at most
 `DRAIN_GRACE` (10 seconds), for its handler's background work
 (`Handler::drain`, `NativeHost::drain`, which counts what it runs with
 `NativeHost::track`) to stop and give back what it holds, its budget
-ended through `Host::stopping`. `stop_signals` turns SIGTERM and SIGINT
-into that stop, a second ending the process at once; `jadpo dev` stops
-on them.
+ended through `Host::stopping`; since chunk 8.1l it first waits as long
+for its connections to give the answers they owe (§2.5). `stop_signals`
+turns SIGTERM and SIGINT into that stop, a second ending the process at
+once; `jadpo dev` stops on them.
 
 Built in chunk 4.2: the request guarantees, in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops
@@ -1952,8 +2018,9 @@ the context under the host's wall clock (`Host::now_ms`), the request id
 and the answer, as `jadpo dev` now does (`http::Worker` is what the
 component keeps between one worker's requests). Rate limits are a host
 capability (`Host::rate_limit(key, limit, now)`, a future, as Redis or a
-Workers binding needs): natively `NativeHost` counts in its worker's
-bounded memory, `RateLimits`, and a test's host counts nothing. On Workers
+Workers binding needs): natively `NativeHost` counts in bounded memory,
+`RateLimits`, one table for all of a server's workers since chunk 8.1l,
+and a test's host counts nothing. On Workers
 there is no native default: area 16 keeps counts in memory only where
 memory lasts, and its question 6 requires a Redis connection or
 Cloudflare's rate-limiting binding there, with the isolate's memory
@@ -2001,10 +2068,11 @@ for the deployable to report as a start-up problem (chunk 8.2). With
 `hops: N` the client is the N-th address from the right of `X-Forwarded-For`
 (every line joined) or of `Forwarded`'s `for` parameters; a header that is
 short, invalid or missing gives the connection's address, never a guess, and
-addresses are kept in one spelling. Natively the listener still sends a
-connection to the worker its peer address hashes to, so a client behind
-one proxy is counted on one thread; clients behind several proxies can be
-counted on several, as clients on several addresses always were.
+addresses are kept in one spelling. Natively the workers share one
+rate-limit table since chunk 8.1l, so a client is counted once whichever
+workers its connections reach; until then a connection went to the
+worker its peer address hashed to, and a client behind several proxies
+was counted on several.
 
 **Configuration** (chunk 5.1). Starting is one function, `jadpo_runtime::
 config::load`, given the plan's settings, their compiled validators and a
@@ -2218,12 +2286,17 @@ don't belong to.
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
-connection pools and rate-limit counters, behind one listener that hands
-each connection to the worker its client's address hashes to, so an
-address is counted on one thread. Work that never waits gives its
-thread back as it checks the deadline, so one request can't hold the
-others a worker serves. One code path serves both targets,
-with `Rc` instead of `Arc` and no locks on the request path. *Rejected:*
+handler, program and connection pools, behind one acceptor that awaits
+the listener and hands connections to the workers in turn (since chunk
+8.1l; §2.5, "Native accept and one rate-limit count"). A connection and
+every request on it stay on one worker, so the runtime's values never
+cross threads. The one thing the workers share is the rate-limit table,
+plain counters behind a lock per shard held only to bump one count, so a
+caller or an address is counted once whichever workers it reaches. Work
+that never waits gives its thread back as it checks the deadline, so one
+request can't hold the others a worker serves. One code path serves both
+targets, with `Rc` instead of `Arc` and no other lock on the request
+path. *Rejected:*
 multi-threaded tokio with `Send` bounds switched off on wasm32, which
 doubles the async signatures and lets bugs hide on one target.
 
@@ -2236,7 +2309,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2) | Cloudflare cron |
-| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
+| Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise one bounded table in memory for all of a server's workers (chunk 8.1l); cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4); `ai.stream` read piece by piece and sent as server-sent events (chunk 5.5v6) | same, through Workers' `fetch` |

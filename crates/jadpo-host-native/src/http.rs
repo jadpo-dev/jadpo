@@ -1,49 +1,52 @@
-//! Serving HTTP natively (docs/compiler-runtime.md §2.6): one listener, and
-//! one current-thread tokio runtime per worker thread, each with its own
-//! handler, its own connections to the stores and its own rate-limit
-//! counters. The listener's thread hands each connection to a worker
-//! chosen by the client's address, so one address is always counted on
-//! one thread and the runtime's futures never cross threads. hyper reads
-//! and writes HTTP/1.1; the runtime's HTTP component
-//! (`jadpo_runtime::http`) answers each request. A client has 10 seconds
-//! to send a request's headers and 30 its body, and the server holds at
-//! most [`MAX_CONNECTIONS`] connections open. The work a response leaves
-//! for after it is sent ([`Handler::take_deferred`]) runs as tasks of
-//! their own on the worker's thread, which start only once the response
-//! has been handed to hyper and never hold it up (chunk 6.1a). The first
-//! worker also runs the server's timer, which starts the runtime's tick
-//! ([`Handler::tick`]) once a minute (chunk 6.2). Stopped, the server
-//! drains: it accepts nothing more, starts no more ticks, and each worker
-//! waits for its handler's background work to give back what it holds
-//! ([`Handler::drain`]; chunk 6.7). [`AppHandler`] is the handler that
-//! serves an application: the runtime's [`Serving`] on a [`NativeHost`],
-//! which a deployable and `jadpo dev` both use (chunk 6.9).
+//! Serving HTTP natively (docs/compiler-runtime.md §2.5, "Native accept and
+//! one rate-limit count", and §2.6): one acceptor, and one current-thread
+//! tokio runtime per worker thread, each with its own handler and its own
+//! connections to the stores. The acceptor's thread awaits the listener
+//! and hands each connection to the workers in turn (chunk 8.1l); a
+//! connection and its requests stay on the worker it was handed to, so the
+//! runtime's futures never cross threads. The workers share one table of
+//! rate-limit counters ([`WorkerThread::host`]), so a client is counted
+//! once whichever workers it reaches. hyper reads and writes HTTP/1.1; the
+//! runtime's HTTP component (`jadpo_runtime::http`) answers each request.
+//! A client has 10 seconds to send a request's headers and 30 its body,
+//! and the server holds at most [`MAX_CONNECTIONS`] connections open. The
+//! work a response leaves for after it is sent
+//! ([`Handler::take_deferred`]) runs as tasks of their own on the worker's
+//! thread, which start only once the response has been handed to hyper and
+//! never hold it up (chunk 6.1a). The first worker also runs the server's
+//! timer, which starts the runtime's tick ([`Handler::tick`]) once a
+//! minute (chunk 6.2). Stopped, the server drains: it hands out what the
+//! system had already accepted and accepts nothing more, starts no more
+//! ticks, and each worker closes its connections once they have given the
+//! answers they owe, then waits for its handler's background work to give
+//! back what it holds ([`Handler::drain`]; chunks 6.7 and 8.1l).
+//! [`AppHandler`] is the handler that serves an application: the
+//! runtime's [`Serving`] on a [`NativeHost`], which a deployable and
+//! `jadpo dev` both use (chunk 6.9).
 
 use std::cell::Cell;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::io;
 use std::net::{SocketAddr, TcpListener};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use bytes::Bytes;
-use std::future::Future;
 
 use http_body_util::{BodyExt, Either, Full};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::{TokioIo, TokioTimer};
-use jadpo_runtime::Executor;
-use jadpo_runtime::LocalFuture;
 use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
 use jadpo_runtime::serve::{Observer, Serving};
+use jadpo_runtime::{Executor, LocalFuture, RateLimits};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use crate::{NativeHost, Runtime};
+use crate::tracked::{Tracked, unless};
+use crate::{DRAIN_GRACE, NativeHost, Runtime};
 
 /// What answers requests on one worker thread. It lives on that thread,
 /// so it may hold the runtime's `Rc` values and its stores.
@@ -163,14 +166,38 @@ impl Handler for AppHandler {
     }
 }
 
+/// One of a server's worker threads, as its handler is made on it: which
+/// it is, and the rate-limit table it shares with the others (chunk 8.1l).
+#[derive(Debug)]
+pub struct WorkerThread {
+    index: usize,
+    limits: Arc<RateLimits>,
+}
+
+impl WorkerThread {
+    /// Which of the server's workers it is, from 0; the first runs the
+    /// server's timer.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// A native host counting rate limits in the table all the server's
+    /// workers share, so a client has one allowance whichever workers its
+    /// requests reach (area 16, "Rate limits"; chunk 8.1l): what a worker
+    /// serving an application starts from.
+    pub fn host(&self) -> NativeHost {
+        NativeHost::new().with_rate_limits(Arc::clone(&self.limits))
+    }
+}
+
 /// Makes each worker's handler, on the worker's own thread.
-pub type MakeHandler = Arc<dyn Fn() -> Box<dyn Handler> + Send + Sync>;
+pub type MakeHandler = Arc<dyn Fn(&WorkerThread) -> Box<dyn Handler> + Send + Sync>;
 
 /// A running server: where it listens, and how to stop it.
 #[derive(Debug)]
 pub struct Server {
     address: SocketAddr,
-    stop: Arc<AtomicBool>,
+    stop: tokio::sync::watch::Sender<bool>,
     threads: Vec<JoinHandle<()>>,
 }
 
@@ -181,10 +208,11 @@ impl Server {
         self.address
     }
 
-    /// Stops accepting, lets the workers drain their background work, and
-    /// waits for them (chunk 6.7).
+    /// Stops accepting, lets each worker's connections give the answers
+    /// they owe and its background work drain, and waits for them
+    /// (chunks 6.7 and 8.1l).
     pub fn stop(mut self) {
-        self.stop.store(true, Ordering::SeqCst);
+        self.stop.send_replace(true);
         for thread in self.threads.drain(..) {
             let _ = thread.join();
         }
@@ -193,59 +221,52 @@ impl Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
+        self.stop.send_replace(true);
     }
 }
 
-/// How often the listener looks for a stop between connections.
-const POLL: Duration = Duration::from_millis(20);
+/// How long a connection that has sent no request yet is given for its
+/// first once the server stops: a client sends one as it connects, so
+/// this is a round trip with room to spare, and a connection opened ahead
+/// of need closes after it.
+pub const FIRST_REQUEST: Duration = Duration::from_secs(1);
+
+/// How long the acceptor waits before accepting again when the system
+/// has no descriptors or memory to give a connection, which waits in the
+/// system's queue meanwhile.
+const ACCEPT_PAUSE: Duration = Duration::from_millis(100);
 
 /// Serves `listener` with `workers` threads, each answering with a handler
-/// `make` gives it.
+/// `make` gives it, and an acceptor handing them connections in turn.
 pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Result<Server> {
     let address = listener.local_addr()?;
     listener.set_nonblocking(true)?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let open = Arc::new(AtomicUsize::new(0));
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let limits = Arc::new(RateLimits::default());
     let workers = workers.max(1);
     let mut senders = Vec::with_capacity(workers);
     let mut threads = Vec::with_capacity(workers + 1);
     for index in 0..workers {
-        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<std::net::TcpStream>();
+        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
         senders.push(sender);
+        let thread = WorkerThread {
+            index,
+            limits: Arc::clone(&limits),
+        };
         let make = Arc::clone(&make);
-        let open = Arc::clone(&open);
         let thread = std::thread::Builder::new()
             .name(format!("jadpo-http-{index}"))
-            .spawn(move || worker(receiver, make, open, index == 0))?;
+            .spawn(move || worker(&thread, receiver, &make))?;
         threads.push(thread);
     }
-    let accepting = Arc::clone(&stop);
+    let handing = Handing {
+        workers: senders,
+        next: 0,
+        open: Arc::new(AtomicUsize::new(0)),
+    };
     let acceptor = std::thread::Builder::new()
         .name("jadpo-http-accept".into())
-        .spawn(move || {
-            while !accepting.load(Ordering::SeqCst) {
-                match listener.accept() {
-                    // Past the cap a connection is closed at once, so a
-                    // flood of idle ones can't exhaust the process.
-                    Ok(_) if open.load(Ordering::SeqCst) >= MAX_CONNECTIONS => {}
-                    Ok((stream, peer)) => {
-                        open.fetch_add(1, Ordering::SeqCst);
-                        let mut hasher = DefaultHasher::new();
-                        peer.ip().hash(&mut hasher);
-                        let at = (hasher.finish() % senders.len() as u64) as usize;
-                        if let Some(sender) = senders.get(at) {
-                            let _ = sender.send(stream);
-                        }
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(POLL);
-                    }
-                    Err(_) => std::thread::sleep(POLL),
-                }
-            }
-            // Dropping the senders ends each worker's loop.
-        })?;
+        .spawn(move || accept(listener, handing, stopped))?;
     threads.push(acceptor);
     Ok(Server {
         address,
@@ -254,9 +275,134 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
     })
 }
 
+/// The acceptor: awaits the listener on a current-thread runtime of its
+/// own, handing each connection on as it arrives, until the server stops;
+/// then it hands on what the system had already accepted and closes the
+/// listener.
+fn accept(
+    listener: TcpListener,
+    mut handing: Handing,
+    mut stopped: tokio::sync::watch::Receiver<bool>,
+) {
+    let Ok(runtime) = Runtime::new() else {
+        return;
+    };
+    runtime.block_on(async move {
+        let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {
+            return;
+        };
+        loop {
+            let stop = async {
+                let _ = stopped.wait_for(|stop| *stop).await;
+            };
+            let Some(accepted) = unless(listener.accept(), stop).await else {
+                break;
+            };
+            match accepted {
+                Ok((stream, peer)) => {
+                    if let Ok(stream) = stream.into_std() {
+                        handing.hand(stream, peer);
+                    }
+                }
+                // One its client gave up on before it was taken.
+                Err(error) if abandoned(&error) => {}
+                // No descriptor or memory for it: it waits in the system's
+                // queue a moment.
+                Err(_) => {
+                    let stop = async {
+                        let _ = stopped.wait_for(|stop| *stop).await;
+                    };
+                    if unless(tokio::time::sleep(ACCEPT_PAUSE), stop)
+                        .await
+                        .is_none()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        // Stopping: what the system has accepted already is handed on
+        // too, at most a cap's worth, so none is dropped unread.
+        if let Ok(listener) = listener.into_std() {
+            for _ in 0..MAX_CONNECTIONS {
+                match listener.accept() {
+                    Ok((stream, peer)) => handing.hand(stream, peer),
+                    Err(error) if abandoned(&error) => {}
+                    Err(_) => break,
+                }
+            }
+        }
+        // Dropping the listener closes it; dropping `handing` ends each
+        // worker's loop once it has taken what it was handed.
+    });
+}
+
+/// Whether an accept failed only because its client gave up first.
+fn abandoned(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::Interrupted
+    )
+}
+
+/// A connection on its way to a worker: its stream, its peer's address,
+/// and its place under [`MAX_CONNECTIONS`].
+struct Accepted {
+    stream: std::net::TcpStream,
+    peer: SocketAddr,
+    open: Open,
+}
+
+/// Hands connections to the workers in turn (chunk 8.1l).
+struct Handing {
+    workers: Vec<UnboundedSender<Accepted>>,
+    next: usize,
+    /// The connections open across the workers.
+    open: Arc<AtomicUsize>,
+}
+
+impl Handing {
+    /// Hands `stream` to the next worker in turn, passing over any whose
+    /// thread has ended. Past the cap, or with no worker left, it is
+    /// closed at once, so a flood of idle connections can't exhaust the
+    /// process.
+    fn hand(&mut self, stream: std::net::TcpStream, peer: SocketAddr) {
+        if self.open.load(Ordering::SeqCst) >= MAX_CONNECTIONS {
+            return;
+        }
+        let mut accepted = Accepted {
+            stream,
+            peer,
+            open: Open::counting(&self.open),
+        };
+        for _ in 0..self.workers.len() {
+            let Some(at) = self.next.checked_rem(self.workers.len()) else {
+                return;
+            };
+            self.next = self.next.wrapping_add(1);
+            let Some(worker) = self.workers.get(at) else {
+                return;
+            };
+            match worker.send(accepted) {
+                Ok(()) => return,
+                Err(tokio::sync::mpsc::error::SendError(back)) => accepted = back,
+            }
+        }
+    }
+}
+
 /// One open connection, counted against [`MAX_CONNECTIONS`] until it is
 /// dropped.
 struct Open(Arc<AtomicUsize>);
+
+impl Open {
+    fn counting(open: &Arc<AtomicUsize>) -> Open {
+        open.fetch_add(1, Ordering::SeqCst);
+        Open(Arc::clone(open))
+    }
+}
 
 impl Drop for Open {
     fn drop(&mut self) {
@@ -264,65 +410,95 @@ impl Drop for Open {
     }
 }
 
-fn worker(
-    mut receiver: tokio::sync::mpsc::UnboundedReceiver<std::net::TcpStream>,
-    make: MakeHandler,
-    open: Arc<AtomicUsize>,
-    first: bool,
-) {
+fn worker(thread: &WorkerThread, mut receiver: UnboundedReceiver<Accepted>, make: &MakeHandler) {
     let Ok(runtime) = Runtime::new() else {
         return;
     };
-    let handler: Rc<dyn Handler> = Rc::from(make());
+    let handler: Rc<dyn Handler> = Rc::from(make(thread));
+    let first = thread.index == 0;
     runtime.block_on(async move {
         let draining = Rc::new(Cell::new(false));
+        let connections = Rc::new(Tracked::default());
         if first {
             tokio::task::spawn_local(ticker(Rc::clone(&handler), Rc::clone(&draining)));
         }
-        while let Some(stream) = receiver.recv().await {
-            let counted = Open(Arc::clone(&open));
-            let peer = stream.peer_addr().ok();
-            if stream.set_nonblocking(true).is_err() {
-                continue;
-            }
-            let Ok(stream) = tokio::net::TcpStream::from_std(stream) else {
-                continue;
-            };
-            let _ = stream.set_nodelay(true);
-            let handler = Rc::clone(&handler);
-            tokio::task::spawn_local(async move {
-                let _counted = counted;
-                let service = service_fn(move |request: hyper::Request<Incoming>| {
-                    let handler = Rc::clone(&handler);
-                    async move {
-                        // A body that can't be read in time, or at all,
-                        // ends the connection without an answer.
-                        let Some(request) = read(request, peer).await else {
-                            return Err(Unread);
-                        };
-                        let response = handler.handle(request).await;
-                        // Started as tasks of their own, which run only once
-                        // this one, the connection's, has handed the response
-                        // on and waits: after the response, never before it.
-                        for work in handler.take_deferred() {
-                            tokio::task::spawn_local(work);
-                        }
-                        Ok::<_, Unread>(write(response))
-                    }
-                });
-                let _ = http1::Builder::new()
-                    .keep_alive(true)
-                    .timer(TokioTimer::new())
-                    .header_read_timeout(HEADER_TIMEOUT)
-                    .serve_connection(TokioIo::new(stream), service)
-                    .await;
-            });
+        while let Some(accepted) = receiver.recv().await {
+            let serving = connection(accepted, Rc::clone(&handler), connections.stopping());
+            tokio::task::spawn_local(connections.track(serving));
         }
-        // The server is stopping: no more ticks, and the background work
-        // gives back what it holds before the worker ends.
+        // The server is stopping: no more ticks, each connection closes
+        // once it has given the answer it owes, and then the background
+        // work gives back what it holds, before the worker ends.
         draining.set(true);
+        connections.stop(DRAIN_GRACE).await;
         handler.drain().await;
     });
+}
+
+/// Serves one connection until it closes, or, once `stopping` finishes,
+/// until it has given the answer it owes (hyper's graceful shutdown): one
+/// kept open with no request in it closes at once, one mid-request after
+/// its answer, and one that has sent no request yet is given
+/// [`FIRST_REQUEST`] for one, which is then answered, so a request on its
+/// way as the server stops isn't cut off unread.
+async fn connection(
+    accepted: Accepted,
+    handler: Rc<dyn Handler>,
+    stopping: LocalFuture<'static, ()>,
+) {
+    let Accepted {
+        stream,
+        peer,
+        open: _open,
+    } = accepted;
+    if stream.set_nonblocking(true).is_err() {
+        return;
+    }
+    let Ok(stream) = tokio::net::TcpStream::from_std(stream) else {
+        return;
+    };
+    let _ = stream.set_nodelay(true);
+    // Told of each request as hyper has read its head.
+    let begun = Rc::new(tokio::sync::Notify::new());
+    let begins = Rc::clone(&begun);
+    let service = service_fn(move |request: hyper::Request<Incoming>| {
+        begins.notify_one();
+        let handler = Rc::clone(&handler);
+        async move {
+            // A body that can't be read in time, or at all, ends the
+            // connection without an answer.
+            let Some(request) = read(request, Some(peer)).await else {
+                return Err(Unread);
+            };
+            let response = handler.handle(request).await;
+            // Started as tasks of their own, which run only once this one,
+            // the connection's, has handed the response on and waits:
+            // after the response, never before it.
+            for work in handler.take_deferred() {
+                tokio::task::spawn_local(work);
+            }
+            Ok::<_, Unread>(write(response))
+        }
+    });
+    let serving = http1::Builder::new()
+        .keep_alive(true)
+        .timer(TokioTimer::new())
+        .header_read_timeout(HEADER_TIMEOUT)
+        .serve_connection(TokioIo::new(stream), service);
+    let mut serving = std::pin::pin!(serving);
+    if unless(serving.as_mut(), stopping).await.is_some() {
+        return;
+    }
+    // hyper closes a connection that has read nothing yet at once, so
+    // one whose first request is still on its way is given a moment.
+    let first = async {
+        let _ = tokio::time::timeout(FIRST_REQUEST, begun.notified()).await;
+    };
+    if unless(serving.as_mut(), first).await.is_some() {
+        return;
+    }
+    serving.as_mut().graceful_shutdown();
+    let _ = serving.await;
 }
 
 /// The server's own timer (area 12, question 16: `ScheduleTrigger.native`,
@@ -467,21 +643,8 @@ async fn pump(
     sender: tokio::sync::mpsc::Sender<Bytes>,
 ) {
     loop {
-        let next = {
-            let mut reading = std::pin::pin!(stream.next_written());
-            let mut gone = std::pin::pin!(sender.closed());
-            std::future::poll_fn(|cx| {
-                if let std::task::Poll::Ready(event) = reading.as_mut().poll(cx) {
-                    return std::task::Poll::Ready(event);
-                }
-                if gone.as_mut().poll(cx).is_ready() {
-                    return std::task::Poll::Ready(None);
-                }
-                std::task::Poll::Pending
-            })
-            .await
-        };
-        let Some(event) = next else {
+        let next = unless(stream.next_written(), sender.closed()).await;
+        let Some(event) = next.flatten() else {
             return;
         };
         if sender.send(Bytes::from(event)).await.is_err() {
@@ -568,7 +731,7 @@ mod tests {
         let gate = Arc::new(Mutex::new(Some(gate)));
         let (said, heard) = mpsc::channel();
         let said = Arc::new(Mutex::new(said));
-        let make: MakeHandler = Arc::new(move || {
+        let make: MakeHandler = Arc::new(move |_: &WorkerThread| {
             Box::new(Deferring {
                 host: NativeHost::new(),
                 gate: Arc::clone(&gate),
@@ -629,7 +792,7 @@ mod tests {
     fn the_timer_ticks_on_the_first_worker_only() {
         let (said, heard) = mpsc::channel();
         let said = Arc::new(Mutex::new(said));
-        let make: MakeHandler = Arc::new(move || {
+        let make: MakeHandler = Arc::new(move |_: &WorkerThread| {
             Box::new(Ticking {
                 said: Arc::clone(&said),
             }) as Box<dyn Handler>
@@ -711,7 +874,7 @@ mod tests {
         let (said, heard) = mpsc::channel();
         let said = Arc::new(Mutex::new(said));
         let heard_by = Arc::clone(&said);
-        let make: MakeHandler = Arc::new(move || {
+        let make: MakeHandler = Arc::new(move |_: &WorkerThread| {
             let said = &heard_by;
             let program: Rc<dyn Executor> = Rc::new(Bare::new());
             Box::new(
@@ -772,5 +935,269 @@ mod tests {
         let program: Rc<dyn Executor> = Rc::new(Bare::new());
         AppHandler::new(NativeHost::new(), move || Rc::clone(&program))
             .observed_by(Rc::new(Heard(Arc::clone(said))))
+    }
+
+    /// The name of the thread it runs on.
+    fn thread_name() -> String {
+        std::thread::current()
+            .name()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    /// Answers each request with the name of the worker's thread.
+    struct Named;
+
+    impl Handler for Named {
+        fn handle(&self, _request: Request) -> LocalFuture<'_, Response> {
+            Box::pin(async {
+                Response {
+                    status: 200,
+                    body: thread_name().into_bytes(),
+                    ..Response::default()
+                }
+            })
+        }
+    }
+
+    /// One request on a connection of its own: the whole answer.
+    fn get(address: SocketAddr, path: &str) -> String {
+        let mut stream = std::net::TcpStream::connect(address).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let request = format!("GET {path} HTTP/1.1\r\nHost: jadpo\r\nConnection: close\r\n\r\n");
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        answer
+    }
+
+    /// An answer's body.
+    fn body(answer: &str) -> &str {
+        answer.split_once("\r\n\r\n").map_or("", |(_, body)| body)
+    }
+
+    /// One answer on a connection kept open: its head and as much body as
+    /// its `content-length` says.
+    fn read_answer(stream: &mut std::net::TcpStream) -> String {
+        let mut read = Vec::new();
+        let mut byte = [0u8; 1];
+        while !read.ends_with(b"\r\n\r\n") {
+            assert_eq!(stream.read(&mut byte).unwrap(), 1, "the head ended early");
+            read.push(byte[0]);
+        }
+        let head = String::from_utf8(read).unwrap();
+        let length = head
+            .lines()
+            .find_map(|line| line.strip_prefix("content-length: "))
+            .map_or(0, |length| length.trim().parse::<usize>().unwrap());
+        let mut body = vec![0u8; length];
+        stream.read_exact(&mut body).unwrap();
+        head + &String::from_utf8(body).unwrap()
+    }
+
+    /// Connections go to the workers in turn, whoever sends them: one
+    /// client's eight connections reach each of four workers twice
+    /// (chunk 8.1l).
+    #[test]
+    fn connections_are_handed_to_the_workers_in_turn() {
+        let make: MakeHandler = Arc::new(|_: &WorkerThread| Box::new(Named) as Box<dyn Handler>);
+        let server = serve(TcpListener::bind("127.0.0.1:0").unwrap(), 4, make).unwrap();
+        let answered: Vec<String> = (0..8)
+            .map(|_| body(&get(server.address(), "/")).to_string())
+            .collect();
+        let round: std::collections::BTreeSet<&String> = answered[..4].iter().collect();
+        assert_eq!(round.len(), 4, "each worker once in four: {answered:?}");
+        assert_eq!(answered[..4], answered[4..], "then again in the same turn");
+        server.stop();
+    }
+
+    /// Hears which worker's thread answered each request.
+    struct Threads(Arc<Mutex<Vec<String>>>);
+
+    impl Observer for Threads {
+        fn answered(&self, _answered: &jadpo_runtime::serve::Answered<'_>) {
+            self.0.lock().unwrap().push(thread_name());
+        }
+    }
+
+    /// An address has one allowance however many workers its connections
+    /// reach (area 16, "Rate limits"; chunk 8.1l): of 125 requests from
+    /// one address, each on a connection of its own spread over four
+    /// workers, 120 are answered and 5 refused.
+    #[test]
+    fn a_client_reaching_several_workers_gets_one_allowance() {
+        let threads = Arc::new(Mutex::new(Vec::new()));
+        let heard = Arc::clone(&threads);
+        let make: MakeHandler = Arc::new(move |worker: &WorkerThread| {
+            let program: Rc<dyn Executor> = Rc::new(Bare::new());
+            Box::new(
+                AppHandler::new(worker.host(), move || Rc::clone(&program))
+                    .observed_by(Rc::new(Threads(Arc::clone(&heard)))),
+            ) as Box<dyn Handler>
+        });
+        let server = serve(TcpListener::bind("127.0.0.1:0").unwrap(), 4, make).unwrap();
+        let mut statuses = std::collections::BTreeMap::new();
+        for _ in 0..125 {
+            let answer = get(server.address(), "/nothing/here");
+            let status = answer.get(9..12).unwrap_or_default().to_string();
+            *statuses.entry(status).or_insert(0) += 1;
+        }
+        server.stop();
+        let reached: std::collections::BTreeSet<String> =
+            threads.lock().unwrap().iter().cloned().collect();
+        assert_eq!(reached.len(), 4, "it reached every worker: {reached:?}");
+        assert_eq!(
+            statuses,
+            [("404".to_string(), 120), ("429".to_string(), 5)].into(),
+            "one allowance of 120 a minute, not one per worker"
+        );
+    }
+
+    /// A burst of connections arriving together is answered in full, and
+    /// shared out evenly: none is dropped, and each of four workers takes
+    /// a quarter (chunk 8.1l).
+    #[test]
+    fn a_burst_of_connections_is_answered_in_full() {
+        const BURST: usize = 100;
+        let make: MakeHandler = Arc::new(|_: &WorkerThread| Box::new(Named) as Box<dyn Handler>);
+        let server = serve(TcpListener::bind("127.0.0.1:0").unwrap(), 4, make).unwrap();
+        let address = server.address();
+        let start = Arc::new(std::sync::Barrier::new(BURST));
+        let clients: Vec<_> = (0..BURST)
+            .map(|_| {
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    start.wait();
+                    get(address, "/")
+                })
+            })
+            .collect();
+        let mut by_worker = std::collections::BTreeMap::<String, usize>::new();
+        for client in clients {
+            let answer = client.join().unwrap();
+            assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+            *by_worker.entry(body(&answer).to_string()).or_default() += 1;
+        }
+        server.stop();
+        assert_eq!(
+            by_worker.values().copied().collect::<Vec<_>>(),
+            [BURST / 4; 4],
+            "{by_worker:?}"
+        );
+    }
+
+    /// Answers the first request once the test lets it, saying when it
+    /// has begun, and every other at once.
+    struct Gated {
+        gate: Arc<Mutex<Option<tokio::sync::oneshot::Receiver<()>>>>,
+        said: Arc<Mutex<mpsc::Sender<&'static str>>>,
+    }
+
+    impl Handler for Gated {
+        fn handle(&self, request: Request) -> LocalFuture<'_, Response> {
+            let gate = self.gate.lock().unwrap().take();
+            let said = Arc::clone(&self.said);
+            Box::pin(async move {
+                if let Some(gate) = gate {
+                    let _ = said.lock().unwrap().send("begun");
+                    let _ = gate.await;
+                }
+                Response {
+                    status: 200,
+                    body: format!("answered {}", request.path).into_bytes(),
+                    ..Response::default()
+                }
+            })
+        }
+    }
+
+    /// Stopped, the server accepts nothing more and drains (chunk 8.1l):
+    /// a connection kept open with no request in it closes at once, one
+    /// accepted before the stop whose request comes after it is still
+    /// answered, and a request in flight is answered in full before
+    /// `stop` returns, each connection closed after its answer.
+    #[test]
+    fn stopping_answers_what_is_in_flight_and_accepts_nothing_more() {
+        let (release, gate) = tokio::sync::oneshot::channel::<()>();
+        let gate = Arc::new(Mutex::new(Some(gate)));
+        let (said, heard) = mpsc::channel();
+        let said = Arc::new(Mutex::new(said));
+        let make: MakeHandler = Arc::new(move |_: &WorkerThread| {
+            Box::new(Gated {
+                gate: Arc::clone(&gate),
+                said: Arc::clone(&said),
+            }) as Box<dyn Handler>
+        });
+        let server = serve(TcpListener::bind("127.0.0.1:0").unwrap(), 2, make).unwrap();
+        let address = server.address();
+        let open = || {
+            let stream = std::net::TcpStream::connect(address).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            stream
+        };
+        // Accepted, its request not yet sent. Accepted before the request
+        // in flight, which is begun only once everything ahead of it in
+        // the system's queue has been taken.
+        let mut fresh = open();
+        // In flight: its answer waits for the gate.
+        let mut in_flight = open();
+        in_flight
+            .write_all(b"GET /in-flight HTTP/1.1\r\nHost: jadpo\r\n\r\n")
+            .unwrap();
+        assert_eq!(heard.recv_timeout(Duration::from_secs(10)), Ok("begun"));
+        // Kept open after its answer, with nothing in it.
+        let mut idle = open();
+        idle.write_all(b"GET /idle HTTP/1.1\r\nHost: jadpo\r\n\r\n")
+            .unwrap();
+        assert!(read_answer(&mut idle).ends_with("answered /idle"));
+        let (stopped, stop_returned) = mpsc::channel();
+        let stopping = std::thread::spawn(move || {
+            server.stop();
+            let _ = stopped.send(());
+        });
+        // The idle connection closes at once.
+        let mut rest = Vec::new();
+        assert_eq!(
+            idle.read_to_end(&mut rest).unwrap(),
+            0,
+            "closed, unanswered"
+        );
+        // Nothing more is accepted: refused, or (should another test have
+        // been given the port since) never answered by this server.
+        if let Ok(mut late) = std::net::TcpStream::connect(address) {
+            late.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let _ = late.write_all(b"GET /late HTTP/1.1\r\nHost: jadpo\r\n\r\n");
+            let mut answer = String::new();
+            let _ = late.read_to_string(&mut answer);
+            assert!(!answer.contains("answered /late"), "{answer}");
+        }
+        // The connection accepted before the stop is answered once, then
+        // closed.
+        fresh
+            .write_all(b"GET /fresh HTTP/1.1\r\nHost: jadpo\r\n\r\n")
+            .unwrap();
+        let mut answer = String::new();
+        fresh.read_to_string(&mut answer).unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+        assert!(answer.ends_with("answered /fresh"), "{answer}");
+        // `stop` waits for the request in flight, which is answered whole.
+        assert!(
+            stop_returned
+                .recv_timeout(Duration::from_millis(300))
+                .is_err(),
+            "stop waits for the request in flight"
+        );
+        release.send(()).unwrap();
+        let mut answer = String::new();
+        in_flight.read_to_string(&mut answer).unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+        assert!(answer.contains("connection: close"), "{answer}");
+        assert!(answer.ends_with("answered /in-flight"), "{answer}");
+        assert_eq!(stop_returned.recv_timeout(Duration::from_secs(10)), Ok(()));
+        stopping.join().unwrap();
     }
 }
