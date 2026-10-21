@@ -1181,7 +1181,7 @@ struct Walk<'b> {
     reply: bool,
     /// What a reply action's problems named, each once: a field, or with
     /// none whether a record of the entity is there ([`Walk::reply_shows`]).
-    replied: BTreeSet<(String, Option<String>)>,
+    reply_named: BTreeSet<(String, Option<String>)>,
     /// The parts of its parameters that reach a model ([`Summary::prompted`]).
     prompted: BTreeSet<(usize, Vec<String>, String)>,
     /// What reaches a model that `ai:` doesn't allow ([`models`]).
@@ -1247,7 +1247,7 @@ impl<'b> Walk<'b> {
             tenant_ids: Vec::new(),
             personal: false,
             reply: false,
-            replied: BTreeSet::new(),
+            reply_named: BTreeSet::new(),
             prompted: BTreeSet::new(),
             exposures: Vec::new(),
             exposed: BTreeSet::new(),
@@ -2926,7 +2926,7 @@ impl Walk<'_> {
                     if present.is_none()
                         && !facts.contains(&Fact::Fresh)
                         && !flow.prover.readable(&entity, &facts)
-                        && !self.replied.contains(&(entity.clone(), None))
+                        && !self.reply_named.contains(&(entity.clone(), None))
                     {
                         present = Some(entity);
                     }
@@ -2941,7 +2941,7 @@ impl Walk<'_> {
             if let Some(from) = fields.into_iter().find(|field| {
                 !flow.prover.field_readable(&entity, field, &facts)
                     && !self
-                        .replied
+                        .reply_named
                         .contains(&(entity.clone(), Some(field.clone())))
             }) {
                 found = Some((entity, Some(from), decided));
@@ -2952,7 +2952,7 @@ impl Walk<'_> {
             (None, Some(entity)) => (entity, None, true),
             (None, None) => return,
         };
-        self.replied.insert((entity.clone(), from.clone()));
+        self.reply_named.insert((entity.clone(), from.clone()));
         let name = self.name.clone();
         let goes = "A webhook's reply action answers whoever sent the webhook, with its reply or a failure, so each is an output to `Access.public`";
         let problem = match &from {
