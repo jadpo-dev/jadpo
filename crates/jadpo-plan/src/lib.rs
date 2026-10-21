@@ -641,28 +641,20 @@ impl Plan {
                 .collect(),
             None => std::collections::HashSet::new(),
         };
-        // A deployable keeps the queries it reaches, and the `get` of each
-        // entity a callable it keeps reads one record of by `id`.
-        let gets: std::collections::HashSet<Key> = match pruning {
-            Some(_) => found
-                .iter()
-                .flat_map(|(_, _, _, body)| body.calls())
-                .filter_map(|(_, callee)| match callee {
-                    jadpo_graph::body::Callee::Entity { entity, operation }
-                        if operation == "get" =>
-                    {
-                        Some(entity.clone())
-                    }
-                    _ => None,
-                })
-                .collect(),
-            None => std::collections::HashSet::new(),
-        };
+        // A deployable keeps the queries it reaches, the `get` of each
+        // entity the callables it keeps read one record of by `id`, the
+        // prompts they ask for and the event types they emit and hear.
+        let used = pruning.map(|pruning| {
+            pruning.used(
+                db,
+                project,
+                found.iter().map(|(_, _, _, body)| body.as_ref()),
+            )
+        });
         let (queries, entities, identity) =
             queries::plans(db, project, &mut types, &json_types, &|key| {
-                pruning.is_none_or(|pruning| {
-                    pruning.keep.callables.contains(key) || gets.contains(key)
-                })
+                pruning.is_none_or(|pruning| pruning.keep.callables.contains(key))
+                    || used.as_ref().is_some_and(|used| used.gets.contains(key))
             });
         let query_ids: HashMap<Key, u32> = queries
             .iter()
@@ -741,9 +733,7 @@ impl Plan {
         // Each prompt's entry, and the type of each field its text writes,
         // read from its type's field nodes (area 21).
         let mut prompts = jadpo_check::prompts::plan(db, project);
-        // A deployable keeps the prompts its callables ask for, and the
-        // event types they emit and those of the subscribers it runs
-        // (chunk 8.1o3); a kept call asking for one it doesn't keep is
+        // A kept call asking for a prompt a deployable doesn't keep is
         // noted.
         let every_prompt: std::collections::HashSet<String> = match pruning {
             Some(_) => prompts
@@ -753,50 +743,10 @@ impl Plan {
                 .collect(),
             None => std::collections::HashSet::new(),
         };
-        let mut kept_events: Option<std::collections::HashSet<Key>> = None;
-        if let Some(pruning) = pruning {
-            let mut asked: std::collections::HashSet<&str> = std::collections::HashSet::new();
-            let mut emitted: std::collections::HashSet<Key> = std::collections::HashSet::new();
-            for (_, _, _, body) in &found {
-                for (_, callee) in body.calls() {
-                    if let jadpo_graph::body::Callee::Prompt(prompt)
-                    | jadpo_graph::body::Callee::Generate { prompt, .. }
-                    | jadpo_graph::body::Callee::Stream { prompt, .. } = callee
-                    {
-                        asked.insert(prompt);
-                    }
-                }
-                for site in &body.sites {
-                    if let jadpo_graph::body::Node::Stmt(jadpo_graph::body::Stmt::Emit {
-                        value: Some(value),
-                    }) = &site.node
-                        && let Some(TypeRef::Node(key)) =
-                            body.sites.get(value.0 as usize).map(|value| &value.ty)
-                    {
-                        emitted.insert(key.clone());
-                    }
-                }
-            }
+        if let Some(used) = &used {
             prompts
                 .entries
-                .retain(|entry| asked.contains(entry.key.as_str()));
-            if pruning.runs().subscribers {
-                emitted.extend(
-                    jadpo_check::events::subscribers(db, project)
-                        .iter()
-                        .map(|subscriber| subscriber.event.clone()),
-                );
-                let lookup = jadpo_check::lookups::Lookup::new(db, project);
-                emitted.extend(
-                    jadpo_check::emails::analysis(db, project)
-                        .emails
-                        .iter()
-                        .filter_map(|email| {
-                            jadpo_check::graph::declaration_key(&lookup, &email.canonical)
-                        }),
-                );
-            }
-            kept_events = Some(emitted);
+                .retain(|entry| used.prompts.contains(&entry.key));
         }
         let prompt_fields: HashMap<String, (u32, Vec<TypeRef>)> = prompts
             .entries
@@ -1075,7 +1025,7 @@ impl Plan {
         // batch's saved values were numbered with its site (chunk 6.4).
         let events = event_types(&graph)
             .into_iter()
-            .filter(|key| kept_events.as_ref().is_none_or(|kept| kept.contains(key)))
+            .filter(|key| used.as_ref().is_none_or(|used| used.events.contains(key)))
             .map(|key| {
                 let ty = TypeRef::Node(key.clone());
                 let number = match json_types.iter().position(|known| *known == ty) {

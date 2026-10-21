@@ -193,6 +193,10 @@ fn each_deployable_holds_only_the_callables_routes_and_work_it_reaches() {
     };
     assert!(matches!(pin_it.target, Target::Action { .. }), "{pin_it:?}");
     assert_eq!(
+        names(runtime.json.events.iter().map(|event| event.key.as_str())),
+        ["type cafe.NoteAdded"]
+    );
+    assert_eq!(
         names(
             runtime
                 .config
@@ -250,6 +254,8 @@ fn each_deployable_holds_only_the_callables_routes_and_work_it_reaches() {
         panic!("{:?}", runtime.events.subscribers)
     };
     assert_eq!(pin_it.target, Target::Elsewhere, "{pin_it:?}");
+    // It neither emits nor hears an event.
+    assert!(runtime.json.events.is_empty(), "{:?}", runtime.json.events);
     assert_eq!(
         names(
             runtime

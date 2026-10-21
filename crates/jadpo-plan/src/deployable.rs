@@ -26,13 +26,14 @@
 //! never a program that faults where it reaches the gap.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 
 use jadpo_check::data::ConnectionKind;
 use jadpo_check::deployables::Deployable;
 use jadpo_db::{Db, Project};
-use jadpo_graph::Key;
+use jadpo_graph::body::{Body, Callee, Node, Stmt};
+use jadpo_graph::{Key, TypeRef};
 use jadpo_std::Runs;
 
 use crate::Plan;
@@ -135,6 +136,71 @@ impl<'k> Pruning<'k> {
     pub(crate) fn unkept(&self, what: String) {
         self.unkept.borrow_mut().insert(what);
     }
+
+    /// What the callables it keeps, whose typed bodies are `bodies`, use
+    /// besides what they call: the entities whose `get` they call, the
+    /// prompts they ask for and the event types they emit; and, where it
+    /// runs the subscribers, the event types they hear and every email's.
+    pub(crate) fn used<'b>(
+        &self,
+        db: &dyn Db,
+        project: Project,
+        bodies: impl Iterator<Item = &'b Body>,
+    ) -> Used {
+        let mut used = Used::default();
+        for body in bodies {
+            for (_, callee) in body.calls() {
+                match callee {
+                    Callee::Entity { entity, operation } if operation == "get" => {
+                        used.gets.insert(entity.clone());
+                    }
+                    Callee::Prompt(prompt)
+                    | Callee::Generate { prompt, .. }
+                    | Callee::Stream { prompt, .. } => {
+                        used.prompts.insert(prompt.clone());
+                    }
+                    _ => {}
+                }
+            }
+            for site in &body.sites {
+                if let Node::Stmt(Stmt::Emit { value: Some(value) }) = &site.node
+                    && let Some(TypeRef::Node(key)) =
+                        body.sites.get(value.0 as usize).map(|value| &value.ty)
+                {
+                    used.events.insert(key.clone());
+                }
+            }
+        }
+        if self.runs().subscribers {
+            used.events.extend(
+                jadpo_check::events::subscribers(db, project)
+                    .iter()
+                    .map(|subscriber| subscriber.event.clone()),
+            );
+            let lookup = jadpo_check::lookups::Lookup::new(db, project);
+            used.events.extend(
+                jadpo_check::emails::analysis(db, project)
+                    .emails
+                    .iter()
+                    .filter_map(|email| {
+                        jadpo_check::graph::declaration_key(&lookup, &email.canonical)
+                    }),
+            );
+        }
+        used
+    }
+}
+
+/// What a deployable's callables use besides what they call
+/// ([`Pruning::used`]).
+#[derive(Debug, Default)]
+pub(crate) struct Used {
+    /// The entities whose `get` they call, by key.
+    pub(crate) gets: HashSet<Key>,
+    /// The prompts they ask for, by name.
+    pub(crate) prompts: HashSet<String>,
+    /// The event types they emit or hear, by key.
+    pub(crate) events: HashSet<Key>,
 }
 
 impl Plan {
