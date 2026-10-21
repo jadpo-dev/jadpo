@@ -384,7 +384,8 @@ impl Store {
     fn at(store: &str, url: &str, record: Option<&Rc<Record>>) -> Store {
         #[cfg(feature = "postgres")]
         {
-            match jadpo_drivers::postgres::Postgres::new(url, Rc::new(WorkersTransport)) {
+            match jadpo_drivers::postgres::Postgres::new(url, Rc::new(WorkersTransport::default()))
+            {
                 Ok(database) => match record {
                     Some(record) => Store::Recorded(Recorded::new(database, Rc::clone(record))),
                     None => Store::Plain(database),
