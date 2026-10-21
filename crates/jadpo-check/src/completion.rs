@@ -862,26 +862,91 @@ impl Place<'_> {
                 let Some(receiver) = field.expr() else {
                     return Vec::new();
                 };
+                // `item_id: FoundItem.` in a block of fields: a field type
+                // (chunk 7.9f).
+                if self.field_expr_holds_type(&parent)
+                    && let Some((first, rest)) = tree::dotted(&receiver)
+                {
+                    let names: Vec<String> = std::iter::once(&first)
+                        .chain(rest.iter())
+                        .filter_map(tree::name_ref_text)
+                        .collect();
+                    return self.field_types(&names);
+                }
                 let expected = self.expected_of(&parent);
                 self.members(&receiver, expected.as_ref())
             }
-            // `Owner.` written as a type: its fields, or an enum's variants.
+            // `Owner.` written as a type: its fields, or an enum's variants
+            // with fields.
             PATH => {
-                let Some(first) = parent.children().find_map(ast::NameRef::cast) else {
-                    return Vec::new();
-                };
-                let Some(host) = tree::name_ref_text(&first) else {
-                    return Vec::new();
-                };
-                let canonical = self.lookup.canonical_name(&host);
-                match self.lookup.fields(&canonical) {
-                    Some(fields) => fields
-                        .iter()
-                        .map(|f| Item::new(&f.name, What::Field).detail(f.declared.to_string()))
-                        .collect(),
-                    None => self.type_members(&host),
-                }
+                let names: Vec<String> = parent
+                    .children()
+                    .filter_map(ast::NameRef::cast)
+                    .filter(|name| u32::from(name.syntax().text_range().end()) <= start(dot))
+                    .filter_map(|name| tree::name_ref_text(&name))
+                    .collect();
+                self.field_types(&names)
             }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Whether a field expression is a member's value where a type goes,
+    /// as written (`FoundItem.id`), made nullable or given settings.
+    fn field_expr_holds_type(&self, field: &SyntaxNode) -> bool {
+        let mut node = field.clone();
+        while let Some(parent) = node.parent() {
+            match parent.kind() {
+                FIELD_EXPR | NULLABLE_EXPR | RECORD_EXPR => node = parent,
+                MEMBER => return self.member_holds_type(&parent),
+                _ => return false,
+            }
+        }
+        false
+    }
+
+    /// The field types written after `names.` (area 2, "Field types"):
+    /// an entity's or object's fields, an enum's variants that have
+    /// fields, or a variant's fields. An enum's plain variants are values,
+    /// never types.
+    fn field_types(&self, names: &[String]) -> Vec<Item> {
+        let Some(host) = names.first() else {
+            return Vec::new();
+        };
+        let canonical = self.lookup.canonical_name(host);
+        let fields = |fields: &[crate::types::FieldDef]| -> Vec<Item> {
+            fields
+                .iter()
+                .map(|f| Item::new(&f.name, What::Field).detail(f.declared.to_string()))
+                .collect()
+        };
+        match names {
+            [_] => {
+                if let Some(found) = self.lookup.fields(&canonical) {
+                    return fields(found);
+                }
+                self.lookup
+                    .variants(&canonical)
+                    .into_iter()
+                    .flatten()
+                    .filter(|variant| variant.fields.is_some())
+                    .map(|variant| {
+                        let mut item =
+                            Item::new(&variant.name, What::Variant).detail(host.to_string());
+                        item.variant_of = Some(host.to_string());
+                        item
+                    })
+                    .collect()
+            }
+            [_, variant] => self
+                .lookup
+                .variants(&canonical)
+                .into_iter()
+                .flatten()
+                .find(|v| &v.name == variant)
+                .and_then(|v| v.fields.as_deref())
+                .map(fields)
+                .unwrap_or_default(),
             _ => Vec::new(),
         }
     }
