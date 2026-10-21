@@ -12,7 +12,11 @@
 //!   One the server closed, or said it would close, is let go before
 //!   anything is written on it, and a request a kept connection hands back
 //!   unsent goes out on a fresh one, so keeping connections never turns a
-//!   call that never left into one that may have acted.
+//!   call that never left into one that may have acted. A server may still
+//!   close a kept connection as a request reaches it, which no client can
+//!   see coming: a request that may be sent again
+//!   ([`Request::repeatable`]) then goes out once more on a fresh
+//!   connection, and any other has no answer.
 //! - **A call ends with its timeout or its future.** Its timeout ends its
 //!   exchange, and so does its future dropped: the connection it was on
 //!   is closed at once and never kept, so nothing goes on reading for a
@@ -103,7 +107,12 @@ impl Fetch for NativeFetch {
             let target = target(&request.url).ok_or_else(unsendable)?;
             let (answer, lease) = self
                 .client
-                .send(&target, outgoing(request, &target)?, deadline)
+                .send(
+                    &target,
+                    outgoing(request, &target)?,
+                    request.repeatable,
+                    deadline,
+                )
                 .await?;
             let (head, body) = answer.into_parts();
             let body = tokio::time::timeout_at(deadline, whole(body, MOST_ANSWER))
@@ -127,7 +136,12 @@ impl Fetch for NativeFetch {
             let target = target(&request.url).ok_or_else(unsendable)?;
             let (answer, lease) = self
                 .client
-                .send(&target, outgoing(request, &target)?, Instant::now() + wait)
+                .send(
+                    &target,
+                    outgoing(request, &target)?,
+                    request.repeatable,
+                    Instant::now() + wait,
+                )
                 .await?;
             let (head, body) = answer.into_parts();
             Ok(Opened {
@@ -263,9 +277,10 @@ impl jadpo_runtime::Outbound for Outward {
                 .header(header::ACCEPT, "*/*")
                 .body(Full::default())
                 .map_err(|error| format!("a request it can't send: {error}"))?;
+            // A `GET` changes nothing: it may be sent again.
             let (answer, lease) = self
                 .client
-                .send(&target, request, deadline)
+                .send(&target, request, true, deadline)
                 .await
                 .map_err(said)?;
             let (head, body) = answer.into_parts();
@@ -374,11 +389,14 @@ impl Client {
     /// gives its answer's head, with the connection to give back once its
     /// body is read. Before the request may have left, a failure is
     /// [`FetchError::NotSent`]; after, [`FetchError::NoAnswer`] or, past
-    /// `deadline`, [`FetchError::TimedOut`].
+    /// `deadline`, [`FetchError::TimedOut`]. A kept connection dropped
+    /// under it before any answer sends it once more, on a fresh
+    /// connection, when it is `repeatable`.
     async fn send(
         &self,
         target: &Target,
         mut request: hyper::Request<Full<Bytes>>,
+        repeatable: bool,
         deadline: Instant,
     ) -> Result<(hyper::Response<Incoming>, Lease), FetchError> {
         let runtime = tokio::runtime::Handle::try_current()
@@ -389,8 +407,11 @@ impl Client {
             host: target.host.clone(),
             port: target.port,
         };
+        // Once a request has been written on a kept connection that was
+        // dropped, it goes out on a fresh one only.
+        let mut fresh = false;
         loop {
-            let kept = self.take(&key);
+            let kept = if fresh { None } else { self.take(&key) };
             let reused = kept.is_some();
             let mut connection = match kept {
                 Some(connection) => connection,
@@ -411,6 +432,7 @@ impl Client {
                 }
                 Err(_) => return Err(FetchError::NotSent("no connection in time".into())),
             }
+            let again = (reused && repeatable).then(|| copy(&request));
             let sent = connection.sender.try_send_request(request);
             match tokio::time::timeout_at(deadline, sent).await {
                 Ok(Ok(answer)) => {
@@ -431,7 +453,16 @@ impl Client {
                             error.error()
                         )));
                     }
-                    None => return Err(no_answer(error.error())),
+                    // Written on a kept connection the server closed or
+                    // reset before any answer: the server let it go as
+                    // the request reached it.
+                    None => match again {
+                        Some(copied) if dropped(error.error()) => {
+                            request = copied;
+                            fresh = true;
+                        }
+                        _ => return Err(no_answer(error.error())),
+                    },
                 },
                 Err(_) => return Err(FetchError::TimedOut),
             }
@@ -637,6 +668,27 @@ fn wait(timeout_ms: u64) -> Duration {
 
 fn unsendable() -> FetchError {
     FetchError::Refused("an address it can't send to".into())
+}
+
+/// A copy of `request` to send again: its method, address, version,
+/// headers and body.
+fn copy(request: &hyper::Request<Full<Bytes>>) -> hyper::Request<Full<Bytes>> {
+    let mut copied = hyper::Request::new(request.body().clone());
+    *copied.method_mut() = request.method().clone();
+    *copied.uri_mut() = request.uri().clone();
+    *copied.version_mut() = request.version();
+    *copied.headers_mut() = request.headers().clone();
+    copied
+}
+
+/// Whether an exchange ended with its connection closed or reset before
+/// any answer came, rather than with an answer that isn't HTTP.
+fn dropped(error: &hyper::Error) -> bool {
+    use std::error::Error as _;
+    error.is_incomplete_message()
+        || error
+            .source()
+            .is_some_and(|source| source.downcast_ref::<io::Error>().is_some())
 }
 
 /// Why a request that may have left got no answer.
@@ -868,6 +920,7 @@ mod tests {
             body: Some("{\"slot\":\"am\"}".into()),
             timeout_ms: 5000,
             reading: Reading::default(),
+            repeatable: false,
         }
     }
 

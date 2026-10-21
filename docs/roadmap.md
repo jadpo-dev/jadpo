@@ -2233,6 +2233,21 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   HTTP and loopback names and addresses, following no redirect and
   refusing an answer longer than asked for. §2.6's "A pooled HTTP
   client".
+- [x] **8.1m2 A flaky test after the pooled client** `opus · high`,
+  after 8.1m: two flakes, two causes. `provider_wire`'s connection gave
+  each call 300 ms, which a loaded gate passed; the timed-out `GET` was
+  sent again and the fake answered the retry with its unscripted `{}`,
+  so "nothing at `data`" (reproduced exactly with an answer held 400
+  ms). Its `couriers` now waits 5 s and `quick`, the only connection
+  whose timeout is tested, 1 s against answers held 1.5 s. And a server
+  closing a kept connection as the next request reaches it, a race no
+  client sees coming, gave `NoAnswer` on Linux CI: a request that may be
+  sent again once it has left (`provider::Request::repeatable`, set by
+  `Call::with_request` from the call's `Repeat`; `Outward`'s `GET`s) now
+  goes out once more on a fresh connection, a change with no key still
+  `NoAnswer`. Proved deterministically by a server that drops every
+  kept connection's second request: a `GET` and a keyed `POST` answered
+  on a fresh connection, an unkeyed `POST` not sent again.
 - [ ] **8.1n PostgreSQL over TLS** `opus · high`, after 8.1m:
   PostgreSQL's TLS through
   `Transport::upgrade`, live-tested against a server the harness starts
