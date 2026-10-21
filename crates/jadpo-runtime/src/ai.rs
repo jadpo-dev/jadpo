@@ -399,7 +399,7 @@ pub async fn generate(
         .iter()
         .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
         .sum();
-    let taken = match crate::ai_budget::take(
+    let mut taken = match crate::ai_budget::take(
         ctx,
         ai,
         crate::ai_budget::Asked::of(site),
@@ -451,12 +451,32 @@ pub async fn generate(
         let mut call = made.clone();
         call.attempt = attempt;
         call.step = step_at;
+        // A repair longer than its call counted takes the rest before it
+        // is sent, and isn't sent when a limit can't cover it (chunk 7.9c).
+        let counted = crate::ai_budget::sent_most(input, site.max_output, attempt);
+        if sent_tokens > counted
+            && !crate::ai_budget::top_up(ctx, &mut taken, sent_tokens - counted).await
+        {
+            let now = ctx.now();
+            ctx.capabilities_mut().refused(&call, now);
+            ended = Some((
+                Kept::Condition(RuleKey::OverBudget),
+                broke(RuleKey::OverBudget),
+            ));
+            break;
+        }
+        let resend = crate::ai_budget::Resend {
+            taken: &mut taken,
+            used: &mut used,
+            input: sent_tokens,
+        };
         let (answer, source) = match sent(
             ctx,
             call,
             request,
             (began, site.timeout_ms),
             values.as_deref(),
+            resend,
         )
         .await
         {
@@ -1473,15 +1493,22 @@ fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: 
 /// as the call's `timeout:` lasts: its last answer and where it came from,
 /// or what the call gives instead. On a host with no clock, as a test's,
 /// it is sent again at once, at most [`jadpo_std::ai::SENDS`] times.
+///
+/// Each send again first takes what it sends from the call's limits, and
+/// isn't made when they can't cover it, the last answer standing; the
+/// send it follows, which nothing answered, is charged what it sent
+/// (chunk 7.9c). The last send is its caller's to charge.
 pub(crate) async fn sent(
     ctx: &mut Ctx<'_>,
     made: Call,
     request: Request,
     (began, timeout_ms): (Option<u64>, u64),
     values: Option<&str>,
+    resend: crate::ai_budget::Resend<'_>,
 ) -> Result<(Answer, Source), Done> {
     let host = ctx.host();
     let mut sends = 1;
+    let mut unanswered: Option<(Answer, Source)> = None;
     loop {
         let spent = match (began, host.monotonic_ms()) {
             (Some(began), Some(now)) => now.saturating_sub(began),
@@ -1490,6 +1517,15 @@ pub(crate) async fn sent(
         let left = timeout_ms.saturating_sub(spent);
         if left == 0 {
             return Ok((Answer::TimedOut, Source::Live));
+        }
+        if let Some((answer, source)) = unanswered.take() {
+            if !crate::ai_budget::top_up(ctx, resend.taken, resend.input).await {
+                return Ok((answer, source));
+            }
+            resend.used.add(crate::ai_budget::Used {
+                input: resend.input,
+                ..Default::default()
+            });
         }
         let mut request = request.clone();
         request.timeout_ms = left;
@@ -1522,19 +1558,19 @@ pub(crate) async fn sent(
             return Ok((answer, source));
         }
         sends += 1;
-        let Some(began) = began else {
-            continue;
-        };
-        let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
-        let left = timeout_ms.saturating_sub(spent);
-        let mut random = [0u8; 8];
-        let random = host.random(&mut random).then_some(random);
-        let Some(wait) = crate::provider::retry_wait(sends - 1, asked, left, random) else {
-            return Ok((answer, source));
-        };
-        if wait > 0 {
-            host.sleep(wait).await;
+        if let Some(began) = began {
+            let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
+            let left = timeout_ms.saturating_sub(spent);
+            let mut random = [0u8; 8];
+            let random = host.random(&mut random).then_some(random);
+            let Some(wait) = crate::provider::retry_wait(sends - 1, asked, left, random) else {
+                return Ok((answer, source));
+            };
+            if wait > 0 {
+                host.sleep(wait).await;
+            }
         }
+        unanswered = Some((answer, source));
     }
 }
 
@@ -1991,6 +2027,161 @@ mod tests {
             1,
             "one request"
         );
+    }
+
+    /// A store that keeps each statement run on its own with its
+    /// parameters, and takes every reservation.
+    #[derive(Default)]
+    struct Metered(RefCell<Vec<(String, Vec<SqlValue>)>>);
+
+    impl Database for Metered {
+        fn begin_at(
+            &self,
+            _isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            Box::pin(async { Err(StoreError::Unavailable) })
+        }
+
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<crate::Row>, StoreError>> {
+            self.0.borrow_mut().push((sql.to_string(), params.to_vec()));
+            Box::pin(async { Ok(vec![vec![SqlValue::Int4(1)]]) })
+        }
+    }
+
+    impl Host for Metered {
+        fn database(&self, _store: &str) -> Option<&dyn Database> {
+            Some(self)
+        }
+
+        fn random(&self, bytes: &mut [u8]) -> bool {
+            bytes.fill(7);
+            true
+        }
+    }
+
+    fn tokens(params: &[SqlValue], at: usize) -> i64 {
+        match params.get(at) {
+            Some(SqlValue::Int8(n)) => *n,
+            other => panic!("not a count: {other:?}"),
+        }
+    }
+
+    /// A send the provider couldn't answer is sent again, and each send is
+    /// charged what it sent; the second is taken from the day's limit
+    /// before it goes, so concurrent calls can't pass it between them
+    /// (area 21, "Budgets"; Phase 7 review, chunk 7.9c).
+    #[test]
+    fn every_send_is_taken_from_the_limits_and_charged() {
+        let plan = AiPlan {
+            connection: "local_model".into(),
+            driver: AiDriver::OpenAiCompatible(AiUrl::Written("http://localhost:11434/v1".into())),
+            models: vec![("default".into(), 0)],
+            schema: SchemaMode::StrictSubset,
+            limits: Some(jadpo_std::ai::AiLimits {
+                store: "main".into(),
+                per_request: None,
+                per_day: 1_000_000,
+                cost: None,
+                per_caller_per_day: None,
+            }),
+            prices: Vec::new(),
+        };
+        let prompts = PromptPlan {
+            entries: vec![PromptEntry {
+                key: "answer_question".into(),
+                type_name: "AnswerQuestion".into(),
+                digest: "00000000".into(),
+                instructions: vec![Piece::Text("Answer the question about the bread.".into())],
+                request: vec![Piece::Text("Is it rye?".into())],
+                fields: Vec::new(),
+                conversation: None,
+            }],
+        };
+        let codecs = [Codec::Scalar {
+            builtin: jadpo_std::Builtin::Text,
+            validator: ValidatorId(0),
+            int_as_number: false,
+        }];
+        let types = [CodecId(0)];
+        let ai = Ai {
+            plan: &plan,
+            prompts: &prompts,
+            json: JsonCodecs {
+                codecs: jadpo_value::json::Codecs {
+                    codecs: &codecs,
+                    validators: &[],
+                    shapes: &[],
+                    coder: None,
+                },
+                types: &types,
+            },
+            providers: None,
+        };
+        let site = GenerateSite {
+            prompt: "answer_question".into(),
+            entry: 0,
+            fields: Vec::new(),
+            answer: 0,
+            schema: None,
+            object: false,
+            model: "default".into(),
+            max_output: 100,
+            timeout_ms: 1_000,
+            attempts: 1,
+        };
+        let fake = Rc::new(AiFake::new());
+        let frame = Frame {
+            callable: 0,
+            site: Frame::ENTRY,
+        };
+        fake.script("local_model", "answer_question", Answer::Unavailable, frame);
+        fake.script(
+            "local_model",
+            "answer_question",
+            scripted(Script::Content("Yes, rye.".into())),
+            frame,
+        );
+        let host = Faked::new(Metered::default())
+            .with("local_model", Rc::clone(&fake) as Rc<dyn Capability>);
+        let places = Places::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            },
+        );
+        let model = jadpo_value::standard::parse("local/llama3.2", "ModelId").expect("a model");
+        let prompt = Value::record("AnswerQuestion", Vec::new());
+        let done = crate::block_on(generate(&mut ctx, &ai, &site, prompt, &[(0, model)]))
+            .expect("nothing waits");
+        assert!(matches!(done, Done::Value(_)), "{done:?}");
+        assert_eq!(fake.requests("local_model", "answer_question").len(), 2);
+        let statements = host.host().0.borrow();
+        let taken: Vec<i64> = statements
+            .iter()
+            .filter(|(sql, _)| sql == crate::ai_budget::TAKE)
+            .map(|(_, params)| tokens(params, 3))
+            .collect();
+        let [first, again] = taken[..] else {
+            panic!("taken {taken:?}");
+        };
+        // The first send's prompt and its answer; then the prompt again.
+        assert_eq!(first, again + 100);
+        let (_, charged) = statements
+            .iter()
+            .find(|(sql, params)| {
+                sql == crate::ai_budget::DEBIT
+                    && params.get(1) == Some(&SqlValue::Text("app".into()))
+            })
+            .expect("charged");
+        assert_eq!(tokens(charged, 3), 2 * again, "both sends' input");
+        assert_eq!(tokens(charged, 6), first + again, "all it took given back");
     }
 
     fn object_schema() -> serde_json::Value {

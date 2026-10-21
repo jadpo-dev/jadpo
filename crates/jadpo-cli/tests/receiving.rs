@@ -587,3 +587,48 @@ fn a_queue_that_refuses_the_request_keeps_nothing() {
     assert_eq!(sqs.left("warehouse").len(), 1);
     assert!(sqs.seen().iter().all(|request| !request.signed));
 }
+
+/// A message whose event the store refuses whatever the moment, here a
+/// text holding `\u0000`, which PostgreSQL's `jsonb` can't hold, is parked
+/// `unreadable` and deleted from the queue, not left for the queue to send
+/// again until it expires; the next tick has nothing to receive (Phase 7
+/// review, chunk 7.9c).
+#[test]
+fn a_message_the_store_always_refuses_is_parked() {
+    let sqs = FakeSqs::start("warehouse", KEY_ID, SECRET);
+    let Some(loaded) = load("refused-by-store", &sqs, SECRET) else {
+        return;
+    };
+    sqs.send(
+        "warehouse",
+        r#"{"type":"order.shipped","message_id":"w-6","order":"A\u0000"}"#,
+    );
+    let host = host(&loaded.url);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let ticked = tick(&loaded.program, &host, T0).await;
+        assert!(ticked.problems.is_empty(), "{:?}", ticked.problems);
+        let received = ticked.received.expect("messages received");
+        assert_eq!(
+            (received.kept, received.parked, received.left),
+            (0, 1, 0)
+        );
+        assert!(sqs.left("warehouse").is_empty());
+        assert_eq!(count(&host, "jadpo_outbox").await, 0);
+        let parked = host
+            .host()
+            .rows("SELECT \"reason\", \"message_id\", \"event\" IS NOT NULL FROM \"jadpo_parked_messages\"")
+            .await;
+        assert_eq!(
+            parked,
+            vec![vec![
+                SqlValue::Text("unreadable".into()),
+                SqlValue::Text("w-6".into()),
+                SqlValue::Bool(true),
+            ]]
+        );
+        host.host().set_now(T0 + 10_000);
+        let again = tick(&loaded.program, &host, T0 + 10_000).await;
+        assert_eq!(again.received, None);
+    });
+}
