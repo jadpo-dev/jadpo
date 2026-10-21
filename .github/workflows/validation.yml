@@ -131,6 +131,55 @@ jobs:
           REQUIRE_EXAMPLES: ${{ inputs.require-examples && '--require-examples' || '' }}
         run: python3 tools/verify.py --group tests $REQUIRE_EXAMPLES
 
+  # The differential run (docs/compiler-runtime.md §2.5 and §2.7, chunk
+  # 8.1j): every page's project and teaching example compiled as modules
+  # of one generated crate, one rustc invocation in the dev profile, and
+  # every test run interpreted and compiled with the same records, against
+  # a PostgreSQL container of its own. A job of its own, so the `tests`
+  # job doesn't share its runner with a second build of the compiler.
+  # Its budget is the job's timeout: 15 minutes from start to end, cold
+  # cargo cache included.
+  compiled:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # PostgreSQL 16 with pgvector and PostGIS, as the `tests` job has it:
+      # the corpus's projects with vectors and geometries need both, and
+      # teaching example 22 pgvector 0.8 or later.
+      - name: Start PostgreSQL
+        run: |
+          (docker build --quiet --tag jadpo-postgres tools/postgres &&
+            docker run --detach --name postgres --publish 5432:5432 \
+              --env POSTGRES_USER=jadpo --env POSTGRES_PASSWORD=jadpo --env POSTGRES_DB=postgres \
+              jadpo-postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+              -c max_connections=300) > "$RUNNER_TEMP/postgres.log" 2>&1 &
+      # Everything rust-toolchain.toml lists, which rustup would add anyway.
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+      # The harness's workspace and its target folder are kept under
+      # target/jadpo-compiled/, so this cache keeps the registry crates the
+      # generated crate depends on, built there, as well as the
+      # workspace's; the repository's own crates are built afresh.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Wait for PostgreSQL
+        timeout-minutes: 6
+        run: |
+          for _ in $(seq 300); do
+            docker exec postgres pg_isready -h 127.0.0.1 -U jadpo -d postgres 2>/dev/null && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/postgres.log"
+          exit 1
+      - name: The corpus compiled, its tests interpreted and compiled
+        env:
+          JADPO_TEST_DATABASE_URL: postgresql://jadpo:jadpo@127.0.0.1:5432/postgres
+        run: python3 tools/verify.py --group compiled
+
   wasm32:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -148,7 +197,7 @@ jobs:
         run: python3 tools/verify.py --group wasm32
 
   supported-language:
-    needs: [lint, docs, tests, wasm32]
+    needs: [lint, docs, tests, compiled, wasm32]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -157,7 +206,7 @@ jobs:
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          echo "lint, docs, tests, wasm32: $RESULTS"
+          echo "lint, docs, tests, compiled, wasm32: $RESULTS"
           for result in $RESULTS; do
             [ "$result" = success ] || exit 1
           done

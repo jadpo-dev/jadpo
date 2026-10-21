@@ -87,7 +87,7 @@ const PRICES_TEST: &str = r#"test "four loaves come with a bag" {
 }
 "#;
 
-/// A project is one crate: its manifest, its plan's bytes with and without
+/// A project is a crate: its manifest, its plan's bytes with and without
 /// the dev and test section, the crate root with the frame table and the
 /// callables by number, and a module of functions; the same project gives
 /// the same bytes.
@@ -162,6 +162,48 @@ fn a_project_is_one_crate_the_same_each_time() {
     )
     .expect("it compiles");
     assert_eq!(generated, again);
+}
+
+/// Several projects as modules of one crate (chunk 8.1j), so the corpus is
+/// one rustc invocation: each project's files under `src/p<n>/`, its
+/// plan's bytes beside its root, its code the code it has as a crate of
+/// its own, and the crate's root declaring each module and listing each
+/// program by its place in the list.
+#[test]
+fn projects_are_modules_of_one_crate() {
+    let planned = plan(&[("main.jadpo", PRICES), ("main.test.jadpo", PRICES_TEST)]);
+    let alone = generate(&planned, &options()).expect("it compiles");
+    let module = jadpo_codegen::module(&planned, 7).expect("it compiles");
+    let paths: Vec<&str> = module.files.keys().map(String::as_str).collect();
+    assert_eq!(
+        paths,
+        [
+            "src/p7/app.rs",
+            "src/p7/mod.rs",
+            "src/p7/plan-testing.bin",
+            "src/p7/plan.bin"
+        ]
+    );
+    let root = text(&module, "src/p7/mod.rs");
+    assert!(root.contains("include_bytes!(\"plan.bin\")"), "{root}");
+    assert!(root.contains("pub fn program()"), "{root}");
+    // The callables name each other from the project's root, so a module
+    // per domain reads the same in either layout.
+    assert_eq!(text(&module, "src/p7/app.rs"), text(&alone, "src/app.rs"));
+    assert!(
+        text(&alone, "src/app.rs").contains("super::app::c0_function_line_total(cx, p,"),
+        "{}",
+        text(&alone, "src/app.rs")
+    );
+    assert_eq!(module.files["src/p7/plan.bin"], alone.files["plan.bin"]);
+
+    let holding = jadpo_codegen::holding(&[7, 2], &options()).expect("it is Rust");
+    let paths: Vec<&str> = holding.files.keys().map(String::as_str).collect();
+    assert_eq!(paths, ["Cargo.toml", "src/lib.rs"]);
+    assert_eq!(holding.files["Cargo.toml"], alone.files["Cargo.toml"]);
+    let lib = text(&holding, "src/lib.rs");
+    assert!(lib.contains("pub mod p7;\npub mod p2;"), "{lib}");
+    assert!(lib.contains("= &[p7::program, p2::program];"), "{lib}");
 }
 
 /// Areas 1 to 4 (chunk 8.1g): a loop, the standard library, an inline

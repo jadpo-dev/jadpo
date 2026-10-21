@@ -1,11 +1,13 @@
-//! Compiled code (roadmap chunks 8.1f to 8.1i; docs/compiler-runtime.md
+//! Compiled code (roadmap chunks 8.1f to 8.1j; docs/compiler-runtime.md
 //! §2.5, "Compiled code" and "Differential test"). Every project of the
 //! specification corpus, the language pages' and the teaching examples',
-//! written by `jadpo-codegen` as crates of one harness built with cargo
-//! and run beside the interpreter: every test gives the same record both
-//! ways, a failed assertion's values among them. Area 7's `todos` project,
-//! a route that creates a todo and one that reads it back, is the first
-//! route.
+//! written by `jadpo-codegen` as modules of one crate, one rustc
+//! invocation, beside one harness built with cargo, and run beside the
+//! interpreter: every test gives the same record both ways, a failed
+//! assertion's values among them. Area 7's `todos` project, a route that
+//! creates a todo and one that reads it back, is the first route. The
+//! gate runs it as a group of its own, `compiled`, which CI runs as a job
+//! of its own (chunk 8.1j).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -146,12 +148,12 @@ fn corpus_projects(prefixes: &[&str]) -> Vec<(String, PathBuf)> {
         .collect()
 }
 
-/// Every project in `projects` compiled into one harness kept at `work`
-/// and compared: each one's name with what it compared, and the names of
-/// those a developer's server can't migrate (an extension missing or too
-/// old: skipped, saying so, but never under CI). Any other problem fails
-/// the test, named by its project, a form the generator refused among
-/// them (chunk 8.1i).
+/// Every project in `projects` compiled into one crate of a harness kept
+/// at `work` and compared: each one's name with what it compared, and the
+/// names of those a developer's server can't migrate (an extension missing
+/// or too old: skipped, saying so, but never under CI). Any other problem
+/// fails the test, named by its project, a form the generator refused
+/// among them (chunk 8.1i).
 fn compared(projects: &[(String, PathBuf)], work: &str) -> (Vec<(String, Compared)>, Vec<String>) {
     let folders: Vec<PathBuf> = projects.iter().map(|(_, folder)| folder.clone()).collect();
     let results = differential_all(&folders, &harness_folder(work))
@@ -271,14 +273,13 @@ fn export_project() -> PathBuf {
 }
 
 /// Every project of the specification corpus, the pages' and the
-/// teaching examples', built as crates of one harness and compared (chunks
-/// 8.1f to 8.1i): every one compiles (since chunk 8.1i, translations,
-/// provider operations with their fakes and a package's actions, a store's
-/// files, prompts, `ai.*` with the `ai` fake and email templates among
-/// them), gives the same records both ways, and every teaching example's
-/// tests pass. Area 7's first routes pass as they did, and named projects
-/// of each area pass compiled. Chunk 8.1j gives the corpus as one crate a
-/// CI job of its own.
+/// teaching examples', built as modules of one crate (chunk 8.1j) and
+/// compared (chunks 8.1f to 8.1i): every one compiles (since chunk 8.1i,
+/// translations, provider operations with their fakes and a package's
+/// actions, a store's files, prompts, `ai.*` with the `ai` fake and email
+/// templates among them), gives the same records both ways, and every
+/// teaching example's tests pass. Area 7's first routes pass as they did,
+/// and named projects of each area pass compiled.
 #[test]
 fn the_corpus_passes_compiled_with_the_interpreters_records() {
     if !jadpo_test::live() {
