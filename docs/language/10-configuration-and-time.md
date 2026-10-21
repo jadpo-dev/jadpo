@@ -6126,7 +6126,7 @@ surface and the publishing bar.
 |---|---|---|
 | Fixture configuration values, the fixture clock and `advance clock by` (syntax review proposes `clock.advance(5m)` and plain fixture values); `configuration.fixture_*` and `type.test_clock_context` (a test's own `config:` is built, chunk 5.1; `configuration.field_unknown` is area 10's now) | 13 | Input to area 13 |
 | `jadpo config set`, `config check`, `dev` restarts, `configuration.value_invalid`, `configuration.value_missing`, `configuration.local_*` and `cli.config_*`, none of which `jadpo check` raises | 14 | Built (chunk 5.1) |
-| The startup report of a deployable (`runtime.startup_failed`), the generated app refusing to start | 14 | Input to area 14; `jadpo dev` refuses today, and the runtime's check is the one a deployable calls |
+| The startup report of a deployable (`runtime.startup_failed`), the generated app refusing to start | 14 | Built in chunk 8.1o: a native deployable logs `runtime.startup_failed` naming each setting and its variable, never the value, and ends (area 14, "A native deployable") |
 | Health and readiness, including the generated `health { }` proposal (syntax review #65) and `semantic.service_configuration_missing` | 11 | Input to area 11 |
 | Integration credentials and authentication signing keys as the only secret sinks; their setting names (`token:`, `signing_key:`) | 8, 11 | Input to areas 8 and 11 |
 | Mail templates using translations and `PresentationText` | 11 | Input to area 11 (Superseded 2026-10-16: templates read `translations.` and are checked strictly; see area 16 question 11.) |

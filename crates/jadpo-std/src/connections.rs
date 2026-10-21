@@ -12,7 +12,7 @@
 //! and the table is where its driver is. `jadpo-drivers`' factory builds
 //! each connection's driver from it, and `jadpo check` will refuse a
 //! deployable whose target a connection's driver doesn't run on (area 11,
-//! question 24; roadmap 8.1o).
+//! question 24; roadmap 8.1o2).
 
 use serde::{Deserialize, Serialize};
 

@@ -2343,17 +2343,51 @@ asked for is decided in §2.5 first, in the chunk that builds it.
   live against servers the harness starts on `127.0.0.1`, one with a
   certificate a test authority signed (`Server::start_on_tcp`). §2.6's
   "PostgreSQL over TLS".
-- [ ] **8.1o A native deployable** `opus · xhigh`, after 8.1j and 8.1n:
-  `deployables: { }` read from `app.jadpo` (area 14, question 14; with
-  none declared, one deployable runs everything) and `jadpo build`
-  writing a native deployable into `build/target/` (area 14) with each
-  API's `<api>.failures.<locale>.json`, its toolchain pinned and its build
-  stamp (§2.8, area 18); 6.9's deployable handler: the binary reading its
-  settings through `config::load`, building its drivers through 8.1d's
-  factory, refusing to start against migrations not applied (area 5),
-  serving and ticking through `Serving` on `NativeHost` and draining on
-  SIGTERM; `jadpo check` refusing a driver or package a deployable's
-  target can't run, naming the alternative (area 11, question 24).
+- [x] **8.1o A native deployable** `opus · xhigh`, after 8.1j and 8.1n;
+  split on 2026-10-21, declared deployables going to 8.1o2. Built:
+  `jadpo build` for the one deployable an app that declares no
+  `deployables:` has, `app`, natively (area 14, "A native deployable"):
+  the project checked as `jadpo check` checks it, stopping at its errors;
+  its Rust written into `build/rust/` (`jadpo_codegen::deployable`: the
+  program's crate, a binary named after the deployable, the pinned
+  toolchain file and the runtime crates' lock) and built in release,
+  `--locked`, offline, with its paths remapped and `SOURCE_DATE_EPOCH`
+  fixed, into `build/target/app/app` beside each API's OpenAPI document
+  and `<api>.failures.<locale>.json`, without the `testing` feature; its
+  build stamp (the build id, `b_` and twelve hex digits over the graph's
+  digest, the compiler, the target and `jadpo.lock`, the commit, whether
+  the tree was modified, the compiler, the deployable and the target) a
+  constant in the binary and on every event it logs, the runtime plan
+  recording the build id (`Plan::with_build`); 6.9's deployable handler,
+  `jadpo_host_native::deployable::run`: its settings read through
+  `config::load` from the environment, every problem logged as
+  `runtime.startup_failed`, its drivers built by 8.1d's factory and those
+  it couldn't build listed, each store compared with the build's
+  migrations and the start refused for one not applied, unknown or
+  changed (area 5), an unreachable database waited for (area 10), then a
+  worker per core on `PORT` serving and ticking through `Serving` on
+  `NativeHost`, a fault behind a 500 logged with its `.jadpo` frames,
+  and SIGTERM draining it; `toolchain.build_failed`. Teaching example 23
+  names its database's address from a setting. Proved live
+  (`crates/jadpo-cli/tests/deployable.rs`, in the gate's `compiled`
+  group): example 23 built, holding none of the `testing` symbols,
+  refusing to start without `DATABASE_URL` and with its last migration
+  not applied, then booking a repair, answering its readiness check and a
+  request whose body arrived after SIGTERM, and ending with code 0 (49 s
+  cold, seconds warm). §2.6's "A native deployable".
+- [ ] **8.1o2 Declared deployables** `opus · xhigh`, after 8.1o:
+  `deployables: { }` read from `app.jadpo` (area 14, question 14: what
+  each serves, `serves: [main, webhooks]`, and runs, `runs:
+  [Trigger.schedules, Trigger.subscribers]`, and its target,
+  `Target.native` or `Target.wasm`), each compiled from what it reaches
+  and serving and running only that, `jadpo build <deployable>`, the
+  manifest's `source` and `deployables` with their build ids (area 18);
+  `jadpo check` refusing a driver or package a deployable's target can't
+  run, naming the alternative (area 11, question 24), `Driver.disk` and
+  a service on Workers and `Driver.cloudflare_queues` in a native
+  deployable among them. Area 11 says that refusal waits for deployables
+  to be declared, so whether the one deployable of an app that declares
+  none is held to a target by `jadpo check` is decided there.
 - [ ] **8.1p A typed per-route entry** `opus · xhigh`, after 8.1j and
   8.1k: decided in §2.5 first, a struct or enum per type with codecs from
   its type plan, and each route's entry decoding a request straight into

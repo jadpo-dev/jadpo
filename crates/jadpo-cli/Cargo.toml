@@ -15,6 +15,9 @@ path = "src/main.rs"
 
 [dependencies]
 jadpo-check.workspace = true
+# `jadpo build` writes a deployable's Rust and drives cargo over it (chunk
+# 8.1o).
+jadpo-codegen.workspace = true
 jadpo-db.workspace = true
 jadpo-diag.workspace = true
 # The SMTP driver's writer, so the dev inbox hands SpamAssassin each mail

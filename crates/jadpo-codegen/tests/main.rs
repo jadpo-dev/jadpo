@@ -7,4 +7,5 @@
 mod syntax_examples;
 
 mod corpus;
+mod deployable;
 mod generate;

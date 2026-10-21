@@ -42,7 +42,7 @@ impl std::error::Error for Failed {}
 /// The cargo to run: the one running this process's build when there is
 /// one, else the one on `PATH`, which picks the toolchain the repository
 /// pins.
-fn cargo() -> PathBuf {
+pub(crate) fn cargo() -> PathBuf {
     std::env::var_os("CARGO").map_or_else(|| PathBuf::from("cargo"), PathBuf::from)
 }
 
