@@ -248,7 +248,9 @@ Its text helper uses the built-in `isWellFormed()` and a UTF-16 length fast
 path, counting surrogate pairs only when necessary. It enforces the decided
 Unicode scalar bounds, rejects unpaired surrogates, and keeps OpenAPI's
 `minLength`/`maxLength` contract. Node and Bun boundary tests cover ASCII,
-astral characters, combining sequences and large payloads. It adds no query
+astral characters, combining sequences and large payloads. CI uses Node 24;
+the local smoke used Node 24.18.1 and Bun 1.2.20, both supporting
+`String.prototype.isWellFormed()`. It adds no query
 or transaction to imitate Jadpo's validation implementation.
 
 

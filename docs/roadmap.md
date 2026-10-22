@@ -211,13 +211,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   workerd and on Workers, against an equivalent Bun and TypeScript app and
   Node; results published with the method. Full scope remains outstanding
   through 9.1a, 9.1d, 9.1b and 9.1c, in that order; the split changes sizing,
-  not acceptance (2026-10-22).
-- [ ] **9.1a Instrumentation and focused scaffold:** `opus · high` robust local
-  load/verifier instrumentation, generic focused microbenchmark fixtures on
-  native and workerd against Bun and Node, p95/cold-start/raw method metadata,
-  fault-sensitive correctness checks in the gate. This is not golden-todo
-  conformance or an application speed claim; short smoke runs verify the
-  instruments only. Method and limits in `tools/bench/README.md`.
+  not acceptance (2026-10-22). This is an umbrella: sessions take the first
+  unticked concrete subchunk below; tick 9.1 only once all four are complete.
+- [x] **9.1a Instrumentation and focused scaffold**: `tools/bench/README.md`; compiler/runtime §2.11.
 - [ ] **9.1d Golden todo and local comparison:** `opus · high` after 9.1a,
   implement the actual golden todo and strong TypeScript baseline from
   `examples/golden-todo` on both sides, establish all 44 acceptance cases,
@@ -225,9 +221,11 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   compare the complete application plus focused reads, writes, signed-in
   lists, large rows and cold start on native, Wasm under workerd, Bun and
   Node. Validate responses and persisted state, report p95 and throughput
-  with repeatable method and honest variability. Preserve Phase 10's broader
-  examples/polish obligations; do not substitute generic fixtures for this
-  benchmark. Needed before runtime performance changes.
+  with repeatable method and honest variability. Phase 10.1's golden todo
+  end to end on both targets, its contract cases passing, and independent
+  review of the whole first build remain required, as does Phase 10.2's
+  agent comparison. Do not substitute generic fixtures for this benchmark.
+  Needed before runtime performance changes.
 - [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
   From the Phase 6 review: deliveries swept concurrently within each
