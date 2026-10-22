@@ -344,6 +344,9 @@ pub fn document(
             jadpo_std::AuthenticationMethod::ApiToken => Some(
                 "An API token, `jadpo_token_` and 64 hexadecimal digits, which a route whose action calls `sessions.issue_token` gives once.",
             ),
+            jadpo_std::AuthenticationMethod::ExternalToken => Some(
+                "A signed JWT from the configured issuer, checked against its published keys and the configured audience. Its subject resolves an active application user on every request; provider profile claims grant no authority.",
+            ),
             jadpo_std::AuthenticationMethod::ServiceKey => Some(
                 "A service key, `jadpo_key_` and 64 hexadecimal digits, which a route whose action calls `issue_key` gives once.",
             ),
@@ -353,6 +356,9 @@ pub fn document(
             let mut scheme = Value::object();
             scheme.set("type", "http");
             scheme.set("scheme", "bearer");
+            if *method == jadpo_std::AuthenticationMethod::ExternalToken {
+                scheme.set("bearerFormat", "JWT");
+            }
             scheme.set("description", description);
             schemes.set(method.name(), scheme);
             let mut requirement = Value::object();

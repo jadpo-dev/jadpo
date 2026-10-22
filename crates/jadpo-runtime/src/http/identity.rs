@@ -1409,6 +1409,7 @@ mod tests {
             signs_in: true,
             cookie: Some("todo_session".into()),
             api_tokens: false,
+            external_token: None,
             user: None,
             service: None,
             gated: Default::default(),

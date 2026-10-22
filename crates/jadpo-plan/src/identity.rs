@@ -73,6 +73,14 @@ impl Planner<'_> {
             signs_in: identity.signs_in(),
             cookie: identity.cookie().map(str::to_string),
             api_tokens: identity.built(jadpo_std::AuthenticationMethod::ApiToken),
+            external_token: identity.external_token.as_ref().and_then(|external| {
+                let user = user?;
+                Some(jadpo_std::http::ExternalTokenPlan {
+                    issuer: external.issuer.clone(),
+                    audience: external.audience.clone(),
+                    lookup: self.user_lookup(user, Some(&user.subject))?,
+                })
+            }),
             user: user.and_then(|variant| self.principal(variant, sessions)),
             service: service.and_then(|variant| self.principal(variant, keys)),
             gated,

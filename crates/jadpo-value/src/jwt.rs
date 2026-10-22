@@ -56,6 +56,72 @@ use crate::certificate::SubjectKey;
 use crate::json::{Codecs, Path, Problem};
 use crate::{Fault, Value};
 
+/// Reads one provider document while refusing duplicate members at every
+/// depth, as JWT header and claim documents are read. The caller bounds
+/// its byte length before parsing; serde also bounds nesting depth.
+pub fn strict_document(bytes: &[u8]) -> Option<Json> {
+    serde_json::from_slice::<Strict>(bytes)
+        .ok()
+        .map(|Strict(value)| value)
+}
+
+/// A provider's public JWK, through the standard type's ordinary field
+/// and cross-field rules. Unknown public metadata is ignored; private
+/// material and unsupported key operations are always refused.
+pub fn read_jwk(json: &Json) -> Option<Value> {
+    let members = json.as_object()?;
+    if members
+        .keys()
+        .any(|name| jwk::REFUSED_MEMBERS.contains(&name.as_str()))
+    {
+        return None;
+    }
+    let parts = jadpo_std::standard::security::JWK_FIELDS
+        .iter()
+        .map(|(name, _)| {
+            let wire = if *name == "use_" { "use" } else { name };
+            match members.get(wire) {
+                None | Some(Json::Null) => Some(Value::None),
+                Some(Json::String(text)) if *name != "x5c" => Some(Value::text(text)),
+                Some(Json::Array(items)) if *name == "x5c" => {
+                    let items = items
+                        .iter()
+                        .map(|item| item.as_str().map(Value::text))
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(Value::list(items))
+                }
+                _ => None,
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    for ((_, part), value) in jadpo_std::standard::security::JWK_FIELDS.iter().zip(&parts) {
+        if !jwk_part(*part, value) {
+            return None;
+        }
+    }
+    let value =
+        crate::standard::from_parts(&jadpo_std::standard::security::JWK_ENTRY, &parts).ok()?;
+    if crate::across::broken_standard(&value).is_some() || key_of(&value).is_none() {
+        return None;
+    }
+    Some(value)
+}
+
+fn jwk_part(part: jadpo_std::standard::Part, value: &Value) -> bool {
+    use jadpo_std::standard::Part;
+    match (part, value) {
+        (Part::Optional(_), Value::None) => true,
+        (Part::Optional(inner), value) => jwk_part(*inner, value),
+        (Part::List(inner), Value::List(items)) => items.iter().all(|item| jwk_part(*inner, item)),
+        (Part::Matching(_), Value::Text(_)) => {
+            crate::validate::Validator::new(part.builtin(), vec![part.rules()])
+                .check(value)
+                .is_ok()
+        }
+        _ => false,
+    }
+}
+
 /// Why a token is refused, as the call's `attempt` maps it.
 fn refused(key: RuleKey) -> Fault {
     Fault::Broke(key)
@@ -591,6 +657,19 @@ mod tests {
             panic!("claims: {claims:?}");
         };
         record.get(name).expect("a claim")
+    }
+
+    #[test]
+    fn provider_documents_and_public_keys_use_the_checked_readers() {
+        assert!(strict_document(br#"{"keys":[],"keys":[]}"#).is_none());
+        assert!(strict_document(br#"{"keys":[{"kid":"a","kid":"b"}]}"#).is_none());
+        let mut json = serde_json::json!({"kty":"OKP", "crv":"Ed25519", "x": KEY, "kid":"current"});
+        assert!(read_jwk(&json).is_some());
+        json["d"] = Json::String("private".into());
+        assert!(read_jwk(&json).is_none());
+        json.as_object_mut().expect("object").remove("d");
+        json["alg"] = Json::String("HS256".into());
+        assert!(read_jwk(&json).is_none());
     }
 
     #[test]
