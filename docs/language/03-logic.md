@@ -974,7 +974,8 @@ function reply_count(comment: Comment) -> ReplyTotal {
 Decided (question 14): recursion is allowed in functions only, with a runtime
 depth limit that ends in a defined fault.
 
-> Decided 2026-10-22 in chunk 8.4a, for every executor and target: a
+> Decided 2026-10-22 in chunk 8.4a and accepted by Richard the same
+> day, for every executor and target: a
 > thousand frames, the test's or the route's action's own among them,
 > and four hundred inline functions running at once, one inside
 > another's body through the functions it calls. Past either, the call
@@ -4022,7 +4023,7 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Loops | `for` over a `List` only, `return` allowed inside; no `while`, `break` or `continue` | 2026-10-12 |
 | Passing functions | Inline `x -> expression` only as an argument to standard-library collection operations; no function types in your own signatures or variables | 2026-10-12 |
 | Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
-| Recursion limits (chosen in chunk 8.4a) | 1,000 frames and 400 inline functions running at once, past either the `recursion_limit` fault at the call or operation, the same in every executor and on every target; a native deployable's threads have 64 MiB of stack and a Workers module 8 MiB of its own, a callable entered with less than 256 KiB of that left faulting too; V8's own stack on Workers, about 1 MB and fixed, is why inline functions are counted (decided for Richard, measured under workerd) | 2026-10-22 |
+| Recursion limits (chosen in chunk 8.4a, accepted by Richard) | 1,000 frames and 400 inline functions running at once, past either the `recursion_limit` fault at the call or operation, the same in every executor and on every target; a native deployable's threads have 64 MiB of stack and a Workers module 8 MiB of its own, a callable entered with less than 256 KiB of that left faulting too; V8's own stack on Workers, about 1 MB and fixed, is why inline functions are counted (measured under workerd) | Richard, 2026-10-22 |
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |
