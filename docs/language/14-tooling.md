@@ -933,9 +933,11 @@ reaches in chunk 8.1o3.
   `message`), `runtime.waiting` while a database can't be reached,
   `runtime.started` with the address, workers, `trigger` (`native` or
   `external`) and each connection whose driver wasn't built (`unbuilt`),
-  `runtime.ticked` after a `tick` (`ran`, each schedule it ran or
-  skipped by name with its outcome, `deliveries`, `received`, `polled`,
-  `deleted`, `alerts`, `problems`, `unbuilt` and `ms`), `operation.failed` for a fault
+  `runtime.ticked` after each tick, the server's own timer's (since chunk
+  8.4c) as a `tick`'s (`ran`, each schedule it ran or skipped by name
+  with its outcome, `deliveries`, `received`, `polled`, `deleted`,
+  `alerts`, `problems`, each store it couldn't work in, `unbuilt` and
+  `ms`), `operation.failed` for a fault
   behind a 500 with its classification, route, `request_id` and `.jadpo`
   frames (areas 4 and 17), and `runtime.stopped`. The rest of a
   deployable's log comes with area 16's telemetry.
@@ -1028,7 +1030,11 @@ application {
   connections it reaches with every database, and the settings those
   read, so it reads no other setting as it starts. A subscriber it
   doesn't run is still listed, so what it emits waits for the deployable
-  that does. An app's wording, its sign-in and its stores are kept whole.
+  that does. An app's wording and its stores are kept whole, and so is
+  who signs in, but a method's `signing_key:` only where it serves an API
+  that takes that method, and `origin:` only where it serves one that
+  takes browser sessions (chunk 8.4c): a Worker that only runs the
+  subscribers starts without either.
 - **Its target, checked** (area 11, question 24). A deployable that
   declares a target is refused each connection it reaches whose driver
   that target can't run, naming the alternative
@@ -1256,6 +1262,8 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
   tick after another, so a queue is read as often as natively; the
   invocation ends with the minute and its ticks share the cron's 15
   minutes. Out of date, it logs why as a request does and ticks nothing.
+  Each tick is logged as `runtime.ticked`, as a native server logs its
+  own, with each store it couldn't work in (chunk 8.4c).
   An `every:` under a minute is refused for a Worker that runs the
   schedules ([`deployable.target_unsupported`](#deployable-target-unsupported)).
 - **A queue.** Each batch Cloudflare Queues hands the Worker's `queue`
@@ -1281,9 +1289,12 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,
-  `runtime.started` and `operation.failed` for a fault behind a 500 with
-  its `.jadpo` frames, and `queue.retried` for a batch with a message
-  retried.
+  `runtime.started`, `runtime.ticked` after each tick of its cron, and
+  `operation.failed` for a fault behind a 500 with its `.jadpo` frames,
+  and `queue.retried` for a batch with a message retried. A Worker and a
+  native binary start, compare their stores and log through the same
+  code (`jadpo_runtime::deployable`, chunk 8.4c), so they say the same
+  things alike.
 
 ```text
 $ jadpo build kiosk
@@ -2628,6 +2639,7 @@ what other areas carried here and where this page answers it.
 | A Worker's database | Chosen in chunk 8.2i, each reversible: the Wrangler file writes each database's address setting as a Hyperdrive binding in place of a required secret (area 5, "PostgreSQL through Hyperdrive"); its `id` is read from the build's environment, `JADPO_HYPERDRIVE_<variable>`, a tool's variable as `JADPO_WORKERD` is, since the id differs for each Cloudflare account and environment and isn't the app's to hold in source; without one the binding is written without an id, which `wrangler deploy` refuses, and the screen's `database` line says `no id` with an alert to create one with caching off, the one thing a Worker can't check itself | 2026-10-21 |
 | What `jadpo check` and `jadpo build` say for Workers | Chosen in chunk 8.2m, each reversible: a `client_address:` source other than `cloudflare` is `deployable.target_unsupported`, one more thing a target can't run, rather than a rule of its own, at its `source:` with the deployable's `target:` beside it, once for each Workers deployable, any deployable on Workers being held to it since the Worker's start refuses it whatever it serves; a `client_address:` with a problem of its own is reported as that alone; the build screen says a Worker's caps on calls as one field, `calls`, after what it serves and runs, rather than repeating `jadpo check`'s "On Workers" section, since `jadpo build` checks first and each Worker's block is where its facts are read | 2026-10-21 |
 | Six connections an invocation | Chosen in chunk 8.2j, each reversible: an invocation's connections are counted as Cloudflare has counted them since 2026-04-09, six waiting for their answer's head at once (a `fetch()` until its status and headers come, a `connect()` until its socket opens), not six held open, the rule the roadmap's entry was written from, which would hold a seventh behind a store's idle connections; the runtime counts them itself, since workerd counts none and a seventh left to the platform's queue runs out its timer unseen; the six are shared by everything one invocation opens (its drivers, its own fetches, the work it leaves in `waitUntil`); a seventh waits in the order asked, within its own timeout, and one whose timeout passes first is `NotSent`; the service binding work is handed on through, the rate-limiting binding and `startTls()` aren't counted, as Cloudflare's list leaves them out; `max_concurrent:`'s slots are the isolate's, a slot given back handed to the longest-waiting call, which looks for it every 10 ms on its own invocation's timer, so no invocation wakes another's work, and a holder that hasn't said it is there for five seconds, beating every second, is forgotten, as is a waiter that hasn't looked, since Workers ends an invocation whose client went away without dropping what it held. The real edge's six is measured in chunk 8.2n | 2026-10-22 |
+| What a deployable keeps of sign-in, and logs of its ticks | Chosen in chunk 8.4c, each reversible: a deployable keeps who signs in (the principal, the session and key stores, the passkey and magic-link plans an action's own route may call), but a method's signing key only where it serves an API that takes the method and the browser session's origin only where it serves one that takes browser sessions, so one serving no such API neither needs nor reads them; the magic-link email still reads the origin where subscribers run, since its link is built from it. Every tick is logged as `runtime.ticked`, a server's own timer's and a Worker's cron's as well as `<deployable> tick`'s, even one that did nothing, so a store a tick can't work in is seen wherever it ticks; a tick a stop cut short logs nothing, the `runtime.stopped` that follows saying why | 2026-10-22 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |

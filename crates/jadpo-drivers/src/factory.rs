@@ -149,6 +149,21 @@ impl fmt::Display for Unbuilt {
     }
 }
 
+/// As a deployable reports it, on either host (chunk 8.4c).
+impl jadpo_runtime::deployable::NotBuilt for Unbuilt {
+    fn connection(&self) -> &str {
+        &self.connection
+    }
+
+    fn driver(&self) -> &str {
+        self.driver
+    }
+
+    fn unaddressed(&self) -> bool {
+        matches!(self.why, Why::Unset(None))
+    }
+}
+
 /// Every connection's driver a host built ([`Drivers::build`]), by the
 /// connection's name, and those it couldn't, with why.
 #[derive(Default)]

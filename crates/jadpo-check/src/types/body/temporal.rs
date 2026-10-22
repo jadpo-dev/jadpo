@@ -127,6 +127,20 @@ impl Body<'_> {
         }
     }
 
+    /// `list.sort_by` with `locale:` orders by a supported locale's
+    /// alphabet, and a deployable carries only the declared locales'
+    /// collation (area 10, "Locales"; Richard, 2026-10-22), so the
+    /// application declares them.
+    pub(super) fn locales_for_sorting(&mut self, call: &ast::CallExpr, written: &str) {
+        if !crate::locales::locales(self.db, self.project).declared {
+            self.locales_required(
+                call,
+                written,
+                "`locale:` orders text by the alphabet of one of the locales the application supports, and a deployable carries only those locales' collation. None is declared, so there is no alphabet to sort by.",
+            );
+        }
+    }
+
     /// A call that needs the application's `locales { }` when it has none
     /// declared (files handed to the compiler on their own have no
     /// application to declare them, area 1).

@@ -66,8 +66,10 @@ pub struct Asked {
     pub crash: Option<(usize, Boundary)>,
     /// Each batch run the test started run to its end.
     pub batches: bool,
-    /// Whether to keep the run's record.
-    pub record: bool,
+    /// Whether to keep the run's record, with the key its digests are
+    /// keyed with: the asking process's own, so they are compared with its
+    /// records' (chunk 8.4a).
+    pub record: Option<[u8; 32]>,
 }
 
 impl Asked {
@@ -83,7 +85,7 @@ impl Asked {
                 "boundary": boundary.word(),
             })),
             "batches": self.batches,
-            "record": self.record,
+            "record": self.record.map(|key| key.iter().map(|byte| format!("{byte:02x}")).collect::<String>()),
         })
         .to_string()
     }
@@ -120,9 +122,28 @@ impl Asked {
             stores,
             crash,
             batches: at(&value, "batches").as_bool().unwrap_or(false),
-            record: at(&value, "record").as_bool().unwrap_or(false),
+            record: match at(&value, "record") {
+                Value::Null => None,
+                key => Some(digest_key(key)?),
+            },
         })
     }
+}
+
+/// A record's key from its 64 hex digits.
+fn digest_key(value: &Value) -> Result<[u8; 32], String> {
+    let text = value.as_str().ok_or("`record` isn't text")?;
+    let mut key = [0; 32];
+    if text.len() != 64 {
+        return Err("`record` isn't a key".into());
+    }
+    for (at, byte) in key.iter_mut().enumerate() {
+        *byte = text
+            .get(at * 2..at * 2 + 2)
+            .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+            .ok_or("`record` isn't a key")?;
+    }
+    Ok(key)
 }
 
 /// What one run of a test did, as a test Worker answers it.
@@ -324,7 +345,7 @@ async fn ran(programs: &[MakeProgram], asked: &Asked) -> Result<Answered, String
         .plan()
         .callable(&asked.key)
         .ok_or_else(|| format!("the program has no test {}", asked.key))?;
-    let record = asked.record.then(|| Rc::new(Record::new()));
+    let record = asked.record.map(|key| Rc::new(Record::new(key)));
     let once = Once {
         key: &asked.key,
         callable,
@@ -521,7 +542,7 @@ mod tests {
             stores: BTreeMap::from([("main".into(), "postgresql://jadpo@127.0.0.1:5432/t".into())]),
             crash: Some((2, Boundary::AfterSend)),
             batches: true,
-            record: true,
+            record: Some(core::array::from_fn(|at| at as u8 * 7)),
         };
         assert_eq!(Asked::read(&asked.to_json()), Ok(asked));
         let without = Asked {
@@ -531,7 +552,7 @@ mod tests {
             stores: BTreeMap::new(),
             crash: None,
             batches: false,
-            record: false,
+            record: None,
         };
         assert_eq!(Asked::read(&without.to_json()), Ok(without));
         let answered = Answered {

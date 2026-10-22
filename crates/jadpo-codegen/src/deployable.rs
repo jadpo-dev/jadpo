@@ -27,7 +27,8 @@
 //!   `JadpoHandOn` entrypoint's `hand_on`, through the host's
 //!   wasm-bindgen, handing each the same three
 //!   (`jadpo_host_workers::deployable::fetch`, `scheduled`, `queue` and
-//!   `hand_on`).
+//!   `hand_on`), and a build script linking it with
+//!   `jadpo_std::compiled::WASM_STACK_BYTES` of stack (chunk 8.4a).
 //!
 //! [`build`] runs cargo over it, for `wasm32-unknown-unknown` when it is
 //! a Worker, with the paths it was built from remapped and
@@ -230,6 +231,19 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
             );
             let lib = "deployable/src/lib.rs";
             files.insert(lib.to_string(), printed(lib, worker_rs(deployable))?);
+            // The module's own stack, given at its link alone, so nothing
+            // it depends on builds again (chunk 8.4a).
+            files.insert(
+                "deployable/build.rs".to_string(),
+                format!(
+                    "// The module's stack, written by `jadpo build` (docs/compiler-runtime.md §2.6); don't edit it.\n\
+                     fn main() {{\n    \
+                         println!(\"cargo::rustc-link-arg=-zstack-size={}\");\n\
+                     }}\n",
+                    jadpo_std::compiled::WASM_STACK_BYTES
+                )
+                .into_bytes(),
+            );
         }
     }
     Ok(Generated { files })

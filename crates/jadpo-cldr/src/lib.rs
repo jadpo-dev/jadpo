@@ -17,9 +17,9 @@
 //!   finds with the full set, and writes the same text; and the root's,
 //!   with none declared. Collation is kept the same way, since
 //!   `list.sort_by` in a locale the app doesn't support orders by one it
-//!   does (chunk 8.4i); with none declared every `Locale` is the app's,
-//!   so every locale's collation is kept. Case mapping takes any
-//!   `Locale` (area 19, "Text"), and its data is one table;
+//!   does (chunk 8.4i), and sorting by a locale at all needs `locales { }`
+//!   (Richard, 2026-10-22). Case mapping takes any `Locale` (area 19,
+//!   "Text"), and its data is one table;
 //! - every marker with one entry for all locales in full (Unicode's
 //!   properties, normalisation, likely subtags, the fallback's parents).
 //!
@@ -112,33 +112,11 @@ macro_rules! compiled {
 
 markers::each_marker!(compiled);
 
-/// The collation markers, kept for every locale when the app declares no
-/// `locales { }`, since then `list.sort_by` orders by any `Locale` it is
-/// given (area 19, "Text").
-fn is_collation(marker: DataMarkerInfo) -> bool {
-    use icu_collator::provider::{
-        CollationDiacriticsV1, CollationJamoV1, CollationMetadataV1, CollationReorderingV1,
-        CollationRootV1, CollationSpecialPrimariesV1, CollationTailoringV1,
-    };
-    [
-        CollationDiacriticsV1::INFO,
-        CollationJamoV1::INFO,
-        CollationMetadataV1::INFO,
-        CollationReorderingV1::INFO,
-        CollationRootV1::INFO,
-        CollationSpecialPrimariesV1::INFO,
-        CollationTailoringV1::INFO,
-    ]
-    .contains(&marker)
-}
-
 /// What a deployable for some locales carries of [`Compiled`]: every
 /// marker, of each keyed by locale only the entries those locales reach.
 #[derive(Debug)]
 struct Carried {
     locales: Vec<DataLocale>,
-    /// No locales declared: every locale's collation is kept.
-    every_collation: bool,
     fallbacker: LocaleFallbackerBorrowed<'static>,
 }
 
@@ -181,7 +159,7 @@ impl IterableDynamicDataProvider<ExportMarker> for Carried {
         marker: DataMarkerInfo,
     ) -> Result<BTreeSet<DataIdentifierCow<'_>>, DataError> {
         let ids = Compiled.iter_ids_for_marker(marker)?;
-        if marker.is_singleton || (self.every_collation && is_collation(marker)) {
+        if marker.is_singleton {
             return Ok(ids);
         }
         let reached = self.reached(marker);
@@ -223,7 +201,6 @@ fn carried(tags: &[&str]) -> Result<Carried, Failed> {
     }
     Ok(Carried {
         locales,
-        every_collation: tags.is_empty(),
         fallbacker: LocaleFallbacker::new(),
     })
 }
@@ -265,8 +242,8 @@ pub fn export(tags: &[&str], scratch: &Path) -> Result<BTreeMap<String, Vec<u8>>
 #[cfg(test)]
 mod tests {
     // What an export keeps of the compiled data: a supported locale's
-    // entries and those its lookups fall back to, collation among them
-    // (every locale's with none declared), every marker with one entry,
+    // entries and those its lookups fall back to, collation among them,
+    // every marker with one entry,
     // the root, and nothing else; the same bytes for the same locales.
 
     use super::*;
@@ -389,11 +366,15 @@ mod tests {
     }
 
     #[test]
-    fn with_no_locales_every_locales_collation_is_kept() {
-        // With no `locales { }`, every `Locale` is the app's, and
-        // `list.sort_by` orders by its own (area 19, "Text").
+    fn with_no_locales_only_the_roots_collation_is_kept() {
+        // Sorting by a locale needs `locales { }` (Richard, 2026-10-22), so
+        // an app with none keeps no locale's collation but the root's.
         let tailoring = CollationTailoringV1::INFO;
-        assert_eq!(kept(&[], tailoring), compiled(tailoring));
+        let kept_for_none = kept(&[], tailoring);
+        assert!(
+            kept_for_none.iter().all(|locale| locale == "und"),
+            "{kept_for_none:?}"
+        );
     }
 
     #[test]
