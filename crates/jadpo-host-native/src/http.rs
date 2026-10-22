@@ -272,8 +272,11 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
             limits: Arc::clone(&limits),
         };
         let make = Arc::clone(&make);
+        // Jadpo code runs here, so a recursion to the runtime's limit ends
+        // in its fault rather than past the stack's end (chunk 8.4a).
         let thread = std::thread::Builder::new()
             .name(format!("jadpo-http-{index}"))
+            .stack_size(jadpo_runtime::STACK_BYTES)
             .spawn(move || worker(&thread, receiver, &make))?;
         threads.push(thread);
     }
@@ -874,6 +877,7 @@ mod tests {
             _program: &dyn Executor,
             ticked: &jadpo_runtime::schedules::Ticked,
             _now: i64,
+            _ms: u64,
         ) {
             let _ = self
                 .0

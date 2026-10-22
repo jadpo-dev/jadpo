@@ -2847,6 +2847,10 @@ whose entry names them.
   a streamed answer ending the model's call.
   From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
   Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
+  From 8.4a: a recursion through 400 inline functions, and a thousand
+  frames of a large function, answered on the edge, whose V8 stack the
+  inline-function limit assumes is about workerd's megabyte, and the
+  module's 8 MiB stack within an isolate's memory.
   From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
   edge, under the file's name and under `wrangler deploy --env`, and the
   dead-letter queue's consumer accepted beside the queue's.
@@ -2871,7 +2875,7 @@ Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
 it (Richard, 2026-10-22). Claude builds these; Codex builds Phase 9
 once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
 
-- [ ] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
+- [x] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
   compiled `match` on a package action's call taking the caught boundary
   (a savepoint) as the interpreter's `Task::Catch` does, so a failed
   package action's writes and events are undone (`jadpo-codegen`
@@ -2884,7 +2888,14 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   verdict; and deep recursion (1,000 frames) tested on a deployable's
   own stack sizes (2 MiB native workers, wasm's 1 MiB), raising
   `recursion_limit` rather than aborting. Each proved by a corpus
-  project that fails before the fix.
+  project that fails before the fix. Built: all four (§2.5, "Differential
+  test"). A recursion through large frames or `list.map` overflowed both
+  deployables before 1,000 frames, a native worker aborting and a Worker
+  hanging (V8's own stack, about 1 MB, ran out after 650 levels through
+  `list.map`), so native workers get 64 MiB, a
+  Workers module 8 MiB with a guard, and inline functions running at once
+  are capped at 400 in both executors (area 3, "Recursion", decided
+  2026-10-22).
 - [x] **8.4b Phase 8 review fixes: Workers background work** `opus ·
   xhigh`: a Queues message the Worker can't take yet (not started, a
   store behind, unavailable) retried with long delays and enough
@@ -2912,7 +2923,7 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   logged once as `rate_limits.fallback`. Decisions on areas 11, 12 and
   16 (2026-10-22). 8.2n checks `ctx.exports` and the consumers on the
   real edge.
-- [ ] **8.4c Phase 8 review fixes: what a deployable runs**
+- [x] **8.4c Phase 8 review fixes: what a deployable runs**
   `opus · xhigh`: every deployable serving through the typed per-route
   entries (`Executor::app()`, compiled code's own, used by
   `Serving::handle`), so 8.1p's reading and writing reach production and
@@ -2923,7 +2934,15 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   settings read, the stores compared with their migrations, the
   connections not built listed, each tick's result logged as
   `runtime.ticked`), so a store a tick can't work in is logged on
-  Workers and on a native server as it is by `tick`.
+  Workers and on a native server as it is by `tick`. Built:
+  `Executor::app`, compiled code's giving its entries, answers every
+  request `Serving` handles, and the entries harness holds any executor's
+  to them; a deployable keeps a method's signing key only where an API it
+  serves takes the method, and the origin only where one takes browser
+  sessions (area 14, Decisions); `jadpo_runtime::deployable::start`,
+  `compare_stores` and the `Logged` observer serve both hosts, each tick
+  logged as `runtime.ticked` with its duration, proved live on example
+  23's office and the depot's cron with a swept table renamed.
 - [x] **8.4d Phase 8 review fixes: addresses and connections** `opus ·
   high`. Built: `counted_as` keying an IPv6 client's default limits and
   AI budget by its /64; plain HTTP's and email health's "this machine"

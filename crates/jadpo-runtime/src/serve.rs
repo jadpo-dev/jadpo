@@ -16,8 +16,11 @@
 //! (chunk 8.2f).
 //!
 //! What it serves is any [`Executor`]: the interpreter, or compiled code
-//! (Phase 8). The route table and codecs a request is answered with come
-//! from the executor's plan ([`crate::Plan::app`], chunk 8.1a).
+//! (Phase 8). A request is answered with what the executor answers its
+//! routes with ([`Executor::app`]): the route table and codecs of its plan
+//! ([`crate::Plan::app`], chunk 8.1a) and, from compiled code, each
+//! route's typed entry (chunk 8.1p), so a deployable runs what its route
+//! tests run (chunk 8.4c).
 
 use std::rc::Rc;
 
@@ -44,10 +47,12 @@ pub trait Observer {
         let _ = answered;
     }
 
-    /// A tick at `now` has ended on `program`: the schedules it ran and
-    /// the alerts it raised.
-    fn ticked(&self, program: &dyn Executor, ticked: &Ticked, now: i64) {
-        let _ = (program, ticked, now);
+    /// A tick at `now` has ended on `program`, `ms` milliseconds after it
+    /// started on the host's monotonic clock (0 on a host without one):
+    /// the schedules it ran, the alerts it raised and the stores it
+    /// couldn't work in.
+    fn ticked(&self, program: &dyn Executor, ticked: &Ticked, now: i64, ms: u64) {
+        let _ = (program, ticked, now, ms);
     }
 }
 
@@ -119,7 +124,7 @@ impl Serving {
         let began = self.host.monotonic_ms();
         let program = self.program();
         let mut response = {
-            let app = program.plan().app();
+            let app = program.app();
             serve_request(
                 &app,
                 program.as_ref(),
@@ -140,15 +145,11 @@ impl Serving {
             std::mem::take(&mut response.deferred),
         );
         if let Some(observer) = &self.observer {
-            let ms = match (began, self.host.monotonic_ms()) {
-                (Some(began), Some(end)) => end.saturating_sub(began),
-                _ => 0,
-            };
             observer.answered(&Answered {
                 request,
                 response: &response,
                 program: program.as_ref(),
-                ms,
+                ms: since(self.host.as_ref(), began),
             });
         }
         response
@@ -162,9 +163,11 @@ impl Serving {
         let observer = self.observer.clone();
         Box::pin(async move {
             let now = host.now_ms()?;
+            let began = host.monotonic_ms();
             let ticked = schedules::tick(program.as_ref(), host.as_ref(), now).await;
             if let Some(observer) = observer {
-                observer.ticked(program.as_ref(), &ticked, now);
+                let ms = since(host.as_ref(), began);
+                observer.ticked(program.as_ref(), &ticked, now, ms);
             }
             Some(ticked)
         })
@@ -173,5 +176,165 @@ impl Serving {
     /// How often the host's timer ticks for the version being served now.
     pub fn tick_every_ms(&self) -> u64 {
         schedules::tick_every_ms(self.program().plan().schedules())
+    }
+}
+
+/// The milliseconds since `began` on `host`'s monotonic clock; 0 on a
+/// host without one.
+fn since(host: &dyn Host, began: Option<u64>) -> u64 {
+    match (began, host.monotonic_ms()) {
+        (Some(began), Some(end)) => end.saturating_sub(began),
+        _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use jadpo_std::http::{
+        ApiPlan, Authentication, Codec, CodecId, RoutePlan, RouteTable, Run, Segment,
+    };
+    use jadpo_std::types::ValidatorId;
+    use jadpo_std::{Builtin, HttpMethod, Idempotency, SuccessStatus};
+    use jadpo_value::Value;
+    use jadpo_value::json::Codecs;
+
+    use super::*;
+    use crate::http::{App, Entry, Routes};
+    use crate::{Ctx, Database, JsonCodecs, NoStore, Outcome, Places, block_on};
+
+    /// `GET /widgets`, answering the text its action gives.
+    fn table() -> RouteTable {
+        RouteTable {
+            apis: vec![ApiPlan {
+                name: "main".into(),
+                prefix: Vec::new(),
+                idempotency: Idempotency::Optional,
+                methods: Vec::new(),
+            }],
+            routes: vec![RoutePlan {
+                key: "route GET /widgets".into(),
+                method: HttpMethod::Get,
+                segments: vec![Segment::Fixed("widgets".into())],
+                api: 0,
+                input: None,
+                output: Some(CodecId(0)),
+                status: SuccessStatus::Ok,
+                deadline_ms: 10_000,
+                run: Run::Action(0),
+                settle: None,
+                stream: false,
+                keys: None,
+                args: Vec::new(),
+                authentication: Authentication::Public,
+                caller: None,
+                file: "domains/widgets/routes/widgets.jadpo".into(),
+                line: 1,
+            }],
+            ..RouteTable::default()
+        }
+    }
+
+    const CODECS: [Codec; 1] = [Codec::Scalar {
+        builtin: Builtin::Text,
+        validator: ValidatorId(0),
+        int_as_number: false,
+    }];
+
+    /// The route's typed entry, whose writer writes what the codec walk
+    /// never would, so an answer shows which wrote it.
+    fn written(_: &Codecs<'_>, _: &Value, out: &mut String) {
+        out.push_str("\"by its entry\"");
+    }
+
+    static ENTRY: Entry = Entry {
+        params: &[],
+        input: None,
+        output: Some(written),
+    };
+
+    fn entries(number: u32) -> Option<&'static Entry> {
+        (number == 0).then_some(&ENTRY)
+    }
+
+    /// A program giving its routes typed entries, as compiled code does.
+    struct Typed {
+        places: Places,
+        table: RouteTable,
+        routes: Routes,
+    }
+
+    impl Executor for Typed {
+        fn places(&self) -> &Places {
+            &self.places
+        }
+
+        fn app(&self) -> App<'_> {
+            App {
+                table: &self.table,
+                routes: &self.routes,
+                codecs: Codecs {
+                    codecs: &CODECS,
+                    validators: &[],
+                    shapes: &[],
+                    coder: None,
+                },
+                failures: &[],
+                json: JsonCodecs::NONE,
+                entries: Some(entries),
+            }
+        }
+
+        fn run<'a, 'p: 'a>(
+            &'a self,
+            _ctx: &'a mut Ctx<'p>,
+            _callable: u32,
+            _args: Vec<Value>,
+        ) -> LocalFuture<'a, Outcome> {
+            Box::pin(async { Outcome::Value(Value::Text("by the codec walk".into())) })
+        }
+    }
+
+    /// A host with a clock and no store.
+    struct Clocked(NoStore);
+
+    impl Host for Clocked {
+        fn database(&self, _store: &str) -> Option<&dyn Database> {
+            Some(&self.0)
+        }
+
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
+        }
+
+        fn now_ms(&self) -> Option<i64> {
+            Some(1_792_486_800_000)
+        }
+    }
+
+    /// What a host serves is what the program answers its routes with,
+    /// compiled code's typed entries among it (chunk 8.4c), never the plan's
+    /// route table alone.
+    #[test]
+    fn a_request_is_answered_through_the_programs_own_entries() {
+        let table = table();
+        let routes = Routes::new(&table, &[]);
+        let program: Rc<dyn Executor> = Rc::new(Typed {
+            places: Places::new(),
+            table,
+            routes,
+        });
+        let serving = Serving::new(Rc::new(Clocked(NoStore)), move || Rc::clone(&program));
+        let request = Request {
+            method: "GET".into(),
+            path: "/widgets".into(),
+            ..Request::default()
+        };
+        let response = block_on(serving.handle(&request)).expect("nothing waits");
+        assert_eq!(response.status, 200, "{response:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&response.body),
+            "\"by its entry\"",
+            "{response:?}"
+        );
     }
 }

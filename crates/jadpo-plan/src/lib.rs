@@ -1094,6 +1094,23 @@ impl Plan {
         let mut routes =
             routes::table(db, project, &mut types, &callable_number, &queries, pruning);
         routes.identity = identity;
+        // A deployable keeps a method's signing key only where an API it
+        // serves takes that method, and the browser session's origin only
+        // where one takes browser sessions, whose cookie writes it checks
+        // and whose passkey and magic-link routes it serves (chunk 8.4c):
+        // one serving none starts without them. Who signs in stays, for
+        // the credentials an action issues.
+        if pruning.is_some()
+            && let Some(identity) = routes.identity.as_mut()
+        {
+            let taken = |method: jadpo_std::AuthenticationMethod| {
+                routes.apis.iter().any(|api| api.methods.contains(&method))
+            };
+            identity.signing_keys.retain(|(method, _)| taken(*method));
+            if !taken(jadpo_std::AuthenticationMethod::BrowserSession) {
+                identity.origin = None;
+            }
+        }
         // The action `on_first_sign_in:` names, by its callable's number
         // (area 8, "A person the app has not seen"), where a deployable
         // keeps it: one that serves no API redeems no link.

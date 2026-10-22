@@ -18,7 +18,9 @@
 //! holds no sweeping, the office's no booking. The kiosk books a repair
 //! but doesn't know the staff's route and, ticking, runs no schedule; the
 //! office lists the repair's notes but doesn't book, and runs its
-//! schedule. Once `schedules: { trigger: ScheduleTrigger.external }`
+//! schedule, logging each tick as `runtime.ticked` with the store it
+//! couldn't work in once a table it sweeps is gone (chunk 8.4c). Once
+//! `schedules: { trigger: ScheduleTrigger.external }`
 //! leaves its ticks to another scheduler (chunk 8.2g), the office's server
 //! never ticks, and `office tick` reads its settings, runs the schedule due
 //! once, logs `runtime.ticked` and ends.
@@ -31,7 +33,12 @@
 //! units, a language's name, a plural message, a locale it doesn't list
 //! written in one it does, a list sorted in Swedish, which it doesn't
 //! list, in its default's order (chunk 8.4i), and Turkish capitals, which
-//! take any locale.
+//! take any locale. Since chunk 8.4a it answers its limits as `jadpo
+//! dev` does too, on its workers' own stacks: a thousand frames of a
+//! plain recursion and of a heavy one, four hundred inline functions
+//! running at once, a level more of each the `recursion_limit` fault, the
+//! server serving on; and work that never waits, in an action's loops, a
+//! function's and inline functions, stopped at its one-second deadline.
 //!
 //! The builds are kept beside the build's own folders
 //! (`target/jadpo-compiled/deployable/`), so a second run compiles only
@@ -46,11 +53,13 @@ use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jadpo_cli::run;
 use jadpo_term::Environment;
 use serde_json::Value;
+
+use crate::support::probes;
 
 /// Makes the folder `to` hold what `from` holds, over what is there, but
 /// `build/` and `.jadpo/`, which a run keeps: what an earlier run added is
@@ -101,7 +110,9 @@ fn repair_cafe() -> PathBuf {
 
 /// A shop supporting `en_gb` and `fr_fr` whose one route shows its text
 /// in the locale asked for, over every kind of locale data the standard
-/// library reads.
+/// library reads; and, from chunk 8.4a, the routes that probe a
+/// deployable's limits ([`probes`]), whose actions its policy
+/// ([`shop`]) opens to anyone.
 const SHOP: &[(&str, &str)] = &[
     (
         "app.jadpo",
@@ -110,17 +121,6 @@ const SHOP: &[(&str, &str)] = &[
 locales {
     default: Locale.en_gb
     supported: [Locale.en_gb, Locale.fr_fr]
-}
-"#,
-    ),
-    (
-        "policy.jadpo",
-        r#"use shop
-
-policy {
-    actions: {
-        shop.show: [Access.public]
-    }
 }
 "#,
     ),
@@ -392,21 +392,81 @@ routes Shown {
     ),
 ];
 
-/// The shop, written where its build is kept between runs.
+/// The shop with its probes, written where its build is kept between
+/// runs, a file left as it was keeping its time, its API's record brought
+/// up to date.
 fn shop() -> PathBuf {
     let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let root = target
         .parent()
         .unwrap_or(target)
         .join("jadpo-compiled/deployable/locale-shop");
-    for (path, text) in SHOP {
+    let policy = format!(
+        "use probe\nuse shop\n\npolicy {{\n    actions: {{\n{}        shop.show: [Access.public]\n    }}\n}}\n",
+        probes::POLICY
+    );
+    let files = SHOP
+        .iter()
+        .chain(probes::FILES)
+        .copied()
+        .chain([("policy.jadpo", policy.as_str())]);
+    for (path, text) in files {
         let path = root.join(path);
         fs::create_dir_all(path.parent().expect("a parent")).expect("folders");
-        if fs::read_to_string(&path).ok().as_deref() != Some(*text) {
+        if fs::read_to_string(&path).ok().as_deref() != Some(text) {
             fs::write(&path, text).expect("written");
         }
     }
+    jadpo(&root, &["api", "update"]);
     root
+}
+
+/// What a probe answered: its status, its error's code when it gave one,
+/// and how long it took.
+type Probed = (u16, Option<String>, Duration);
+
+/// Each walk of [`probes::WALKS`] and each spin of [`probes::SPINS`] sent
+/// by `send` (a method, a path and a body, giving the status and the
+/// body), each answered as it should be: a walk within the limits with
+/// its depth, one past them `internal_fault`; a spin at its one-second
+/// deadline with `deadline_exceeded`, well before its work would end.
+/// What each answered, in order.
+fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
+    let code = |body: &str| {
+        serde_json::from_str::<Value>(body)
+            .ok()
+            .and_then(|body| body["error"]["code"].as_str().map(str::to_string))
+    };
+    let mut answered = Vec::new();
+    for (path, depth, expected) in probes::WALKS {
+        let started = std::time::Instant::now();
+        let (status, body) = send("POST", path, &probes::walk(*depth));
+        match expected {
+            Ok(()) => {
+                assert_eq!(status, 200, "{path} {depth}: {body}");
+                let walked: Value = serde_json::from_str(&body).expect("JSON");
+                assert_eq!(walked["depth"], depth.to_string(), "{path} {depth}");
+            }
+            Err(expected) => {
+                assert_eq!(status, 500, "{path} {depth}: {body}");
+                assert_eq!(code(&body).as_deref(), Some(*expected), "{path} {depth}");
+            }
+        }
+        answered.push((status, code(&body), started.elapsed()));
+    }
+    for path in probes::SPINS {
+        let started = std::time::Instant::now();
+        let (status, body) = send("POST", path, &probes::spin());
+        let took = started.elapsed();
+        assert_eq!(status, 504, "{path}: {body}");
+        assert_eq!(code(&body).as_deref(), Some("deadline_exceeded"), "{path}");
+        assert!(
+            took < Duration::from_secs(10),
+            "{path} stopped at its one-second deadline, not when its work ended: {took:?}"
+        );
+        answered.push((status, code(&body), took));
+    }
+    answered
 }
 
 /// A connection the test server gives, as the URL a `PostgresUrl` holds:
@@ -491,11 +551,32 @@ fn start_with(
     (child, read)
 }
 
-/// The next log event, within `seconds`.
+/// The next log event but a tick's, within `seconds`: a server logs each
+/// tick its timer runs (chunk 8.4c), whenever the timer comes round.
 fn next(lines: &Receiver<Value>, seconds: u64) -> Value {
-    lines
-        .recv_timeout(Duration::from_secs(seconds))
-        .expect("a log line in time")
+    let until = Instant::now() + Duration::from_secs(seconds);
+    loop {
+        let event = lines
+            .recv_timeout(until.saturating_duration_since(Instant::now()))
+            .expect("a log line in time");
+        if event["event"] != "runtime.ticked" {
+            return event;
+        }
+    }
+}
+
+/// The first tick logged that `wanted` holds of, within `seconds`,
+/// passing over any other line.
+fn ticked(lines: &Receiver<Value>, seconds: u64, wanted: impl Fn(&Value) -> bool) -> Value {
+    let until = Instant::now() + Duration::from_secs(seconds);
+    loop {
+        let event = lines
+            .recv_timeout(until.saturating_duration_since(Instant::now()))
+            .expect("a tick logged in time");
+        if event["event"] == "runtime.ticked" && wanted(&event) {
+            return event;
+        }
+    }
 }
 
 /// Waits for `child` to end, within `seconds`: its exit code.
@@ -929,6 +1010,43 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         std::thread::sleep(Duration::from_millis(250));
     }
     assert!(ran > 0, "the office ran no schedule");
+    // Each tick its timer runs is logged, as `office tick` logs its one,
+    // by the schedule's name (chunk 8.4c).
+    let line = ticked(&lines, 30, |line| {
+        line["ran"].as_array().is_some_and(|ran| !ran.is_empty())
+    });
+    stamped(&line, built, office);
+    assert_eq!(line["ran"][0]["schedule"], "sweep", "{line}");
+    assert_eq!(line["problems"], serde_json::json!([]), "{line}");
+    assert_eq!(line["unbuilt"], serde_json::json!([]), "{line}");
+    // A store the tick can't work in is logged too: here the table of
+    // idempotency keys every tick sweeps, gone for a moment.
+    rows(
+        &connection,
+        "ALTER TABLE jadpo_idempotency_keys RENAME TO jadpo_idempotency_keys_away",
+    );
+    let line = ticked(&lines, 30, |line| {
+        line["problems"]
+            .as_array()
+            .is_some_and(|problems| !problems.is_empty())
+    });
+    rows(
+        &connection,
+        "ALTER TABLE jadpo_idempotency_keys_away RENAME TO jadpo_idempotency_keys",
+    );
+    let problem = &line["problems"][0];
+    assert_eq!(problem["problem"], "store_failed", "{line}");
+    assert_eq!(problem["store"], "main", "{line}");
+    assert!(
+        problem["message"]
+            .as_str()
+            .is_some_and(|message| message.starts_with("`main` couldn't be ticked: ")),
+        "{line}"
+    );
+    assert!(
+        !line.to_string().contains(&url),
+        "the log holds its address: {line}"
+    );
     Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()
@@ -986,7 +1104,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
 
     // One tick runs the schedule due, says so, and ends.
     let (mut child, lines) = start_with(&binary, &["tick"], &[("DATABASE_URL", url.as_str())]);
-    let ticked = next(&lines, 60);
+    let ticked = ticked(&lines, 60, |_| true);
     assert_eq!(ticked["event"], "runtime.ticked", "{ticked}");
     stamped(&ticked, built, office);
     assert_eq!(ticked["ran"][0]["schedule"], "sweep", "{ticked}");
@@ -1057,6 +1175,12 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
             reply.json()
         })
         .collect();
+    // Its limits, probed (chunk 8.4a): the interpreter's, which the
+    // deployable's compiled code must match below.
+    let dev_probed = probed(|method, path, body| {
+        let reply = dev.send(method, path, &[], body);
+        (reply.status, reply.body().to_string())
+    });
     drop(dev);
     assert_eq!(expected[0]["weekday"], "Thursday", "{}", expected[0]);
     assert_eq!(expected[1]["weekday"], "jeudi", "{}", expected[1]);
@@ -1103,6 +1227,28 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
         let answer: Value = serde_json::from_str(&answer).expect("JSON");
         assert_eq!(&answer, expected, "{reader}");
     }
+    // Its limits answer as `jadpo dev`'s did, on its workers' own stacks
+    // (chunk 8.4a): a thousand frames of any of the walks, four hundred
+    // inline functions, and a level more of each the `recursion_limit`
+    // fault, logged as such, the server serving on; and work that never
+    // waits stopped at its deadline, in loops and in inline functions.
+    let deployable_probed = probed(|method, path, body| exchange(&address, method, path, body));
+    let answers = |probed: &[Probed]| {
+        probed
+            .iter()
+            .map(|(status, code, _)| (*status, code.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(answers(&deployable_probed), answers(&dev_probed));
+    let mut limits = 0;
+    while limits < 3 {
+        let event = next(&lines, 30);
+        if event["classification"] == "recursion_limit" {
+            limits += 1;
+        }
+    }
+    let (status, _) = exchange(&address, "POST", "/shown", &body("en-GB"));
+    assert_eq!(status, 200, "it serves on");
     let stopped = Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()

@@ -110,6 +110,10 @@ impl Executor for Boxed {
         self.0.plan()
     }
 
+    fn app(&self) -> jadpo_runtime::http::App<'_> {
+        self.0.app()
+    }
+
     fn started(&self) -> Option<Rc<jadpo_runtime::Started>> {
         self.0.started()
     }
@@ -257,9 +261,10 @@ fn verdict(failure: Option<&TestFailure>) -> String {
     }
 }
 
-/// The record `kept` asks for, when it asks for one.
+/// The record `kept` asks for, when it asks for one, its digests keyed
+/// with the process's key.
 fn recording(kept: Option<&Kept>) -> Option<Rc<Record>> {
-    kept.map(|_| Rc::new(Record::new()))
+    kept.map(|_| Rc::new(Record::new(crate::differential::digest_key())))
 }
 
 /// Runs one test: `None` when it passed. What it did goes into `kept`,
@@ -289,8 +294,15 @@ fn tested<E: Executor>(
                 .err()
                 .map(|unread| Box::new(outcome::prompt_recording(sources, test, &unread, rerun)));
         }
-        return match jadpo_runtime::recorded::run(executor, &mut ctx, &test.file) {
-            Some(Ok(())) => None,
+        let read = jadpo_runtime::recorded::run(executor, &mut ctx, &test.file);
+        // Its record keeps the value the package's decoders read it as,
+        // so compiled decoders are compared on more than whether they
+        // read it (chunk 8.4a).
+        if let (Some(Ok(value)), Some(kept)) = (&read, kept) {
+            kept.entries = vec![Entry::Outcome(format!("value {value}"))];
+        }
+        return match read {
+            Some(Ok(_)) => None,
             Some(Err(unread)) => {
                 let operation = test
                     .name
