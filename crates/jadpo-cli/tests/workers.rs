@@ -124,9 +124,61 @@ fn jadpo_in(root: &Path, args: &[&str], environment: Environment) -> jadpo_cli::
     output
 }
 
+/// The module cargo built for `deployable` of the project at `root`, in
+/// the release profile it ships in, before it is bound: its names still
+/// in it, which the module the Worker is deployed from leaves out (chunk
+/// 8.4f).
+fn linked(root: &Path, deployable: &str) -> Vec<u8> {
+    let module = root.join(format!(
+        "build/rust/target/wasm32-unknown-unknown/release/jadpo_worker_{deployable}.wasm"
+    ));
+    fs::read(&module).unwrap_or_else(|error| panic!("{}: {error}", module.display()))
+}
+
+/// The names of the custom sections of WebAssembly module `module`.
+fn custom_sections(module: &[u8]) -> Vec<String> {
+    fn leb(bytes: &[u8], at: &mut usize) -> usize {
+        let (mut value, mut shift) = (0usize, 0);
+        loop {
+            let byte = bytes[*at];
+            *at += 1;
+            value |= usize::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return value;
+            }
+            shift += 7;
+        }
+    }
+    let mut sections = Vec::new();
+    let mut at = 8;
+    while at < module.len() {
+        let id = module[at];
+        at += 1;
+        let size = leb(module, &mut at);
+        let end = at + size;
+        if id == 0 {
+            let length = leb(module, &mut at);
+            sections.push(String::from_utf8_lossy(&module[at..at + length]).into_owned());
+        }
+        at = end;
+    }
+    sections
+}
+
 /// Whether the module's names hold a path in crate `krate` starting with
-/// `path`, as wasm-bindgen writes them: `jadpo_runtime[9f2c…]::fakes`.
+/// `path`, as rustc writes them: `jadpo_runtime[9f2c…]::fakes` or
+/// `_ZN13jadpo_runtime5fakes…`.
 fn names(module: &[u8], krate: &str, path: &str) -> bool {
+    let mangled: String = std::iter::once(krate)
+        .chain(path.trim_end_matches(':').split("::"))
+        .map(|name| format!("{}{name}", name.len()))
+        .collect();
+    if module
+        .windows(mangled.len())
+        .any(|window| window == mangled.as_bytes())
+    {
+        return true;
+    }
     let text = String::from_utf8_lossy(module);
     let pattern = regex::Regex::new(&format!(
         r"{}\[[0-9a-f]+\]::{}",
@@ -180,6 +232,22 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         module.len()
     );
     assert!(module.starts_with(b"\0asm"), "a WebAssembly module");
+    // It ships without its names or the tools that made it (chunk 8.4f),
+    // which cargo's module still holds.
+    let sections = custom_sections(&module);
+    assert!(
+        !sections
+            .iter()
+            .any(|section| section == "name" || section == "producers"),
+        "{sections:?}"
+    );
+    let linked = linked(&root, "kiosk");
+    assert!(
+        custom_sections(&linked)
+            .iter()
+            .any(|section| section == "name"),
+        "cargo's module has its names"
+    );
     println!(
         "measured: the kiosk's module {} bytes, {gzipped} gzipped",
         module.len()
@@ -193,7 +261,14 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
     )
     .expect("JSON");
-    assert_eq!(wrangler["name"], "kiosk", "{wrangler}");
+    // Named after the app, its folder's, and the kiosk (chunk 8.4f).
+    assert_eq!(wrangler["name"], "23-repair-cafe-kiosk", "{wrangler}");
+    // Workers Logs keeps the lines it logs (chunk 8.4f).
+    assert_eq!(
+        wrangler["observability"],
+        serde_json::json!({ "enabled": true }),
+        "{wrangler}"
+    );
     assert_eq!(wrangler["main"], "worker.mjs", "{wrangler}");
     assert_eq!(wrangler["no_bundle"], true, "{wrangler}");
     assert_eq!(
@@ -261,7 +336,7 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         ("jadpo_runtime", "record::"),
         ("jadpo_runtime", "test_steps"),
     ] {
-        assert!(!names(&module, krate, path), "it holds {krate}::{path}");
+        assert!(!names(&linked, krate, path), "it holds {krate}::{path}");
     }
     for (krate, path) in [
         ("jadpo_runtime", "store"),
@@ -272,7 +347,7 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         ("jadpo_program_kiosk", "cafe"),
         ("jadpo_host_workers", "deployable::fetch"),
     ] {
-        assert!(names(&module, krate, path), "it lacks {krate}::{path}");
+        assert!(names(&linked, krate, path), "it lacks {krate}::{path}");
     }
 
     // The screen names the Worker's files, the module's size and its
@@ -628,9 +703,12 @@ fn a_workers_cron_ticks_runs_schedules_and_receives_a_queue_each_10_seconds() {
     );
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
     assert!(shim.contains("scheduled(controller, env, ctx)"), "{shim}");
-    let module = fs::read(out.join("depot.wasm")).expect("the module");
     assert!(
-        names(&module, "jadpo_host_workers", "deployable::scheduled"),
+        names(
+            &linked(&root, "depot"),
+            "jadpo_host_workers",
+            "deployable::scheduled"
+        ),
         "it lacks the scheduled handler"
     );
 
@@ -1547,9 +1625,12 @@ fn a_worker_streams_answers_and_hands_on_what_one_invocation_leaves() {
         shim.contains("export class JadpoHandOn extends WorkerEntrypoint {"),
         "{shim}"
     );
-    let module = fs::read(out.join("desk.wasm")).expect("the module");
     assert!(
-        names(&module, "jadpo_host_workers", "deployable::hand_on"),
+        names(
+            &linked(&root, "desk"),
+            "jadpo_host_workers",
+            "deployable::hand_on"
+        ),
         "it lacks the hand-on handler"
     );
 

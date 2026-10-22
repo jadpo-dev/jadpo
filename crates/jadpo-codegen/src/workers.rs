@@ -14,21 +14,23 @@
 //!   invocation takes work handed on through;
 //! - `<deployable>.js`, the JavaScript wasm-bindgen writes for the module
 //!   (its `web` form, which takes the module it is given);
-//! - `<deployable>.wasm`, the module;
-//! - `wrangler.json`: the shim as the main module, uploaded as it is with
-//!   the others beside it (no bundling, each kind by an explicit rule), the
-//!   compatibility date Jadpo's Workers host is run under, each setting
+//! - `<deployable>.wasm`, the module, without its names (chunk 8.4f);
+//! - `wrangler.json`, written by [`wrangler`] as one value: the Worker
+//!   named after its app and its deployable ([`worker_name`], chunk 8.4f),
+//!   the shim as the main module, uploaded as it is with the others beside
+//!   it (no bundling, each kind by an explicit rule), the compatibility
+//!   date Jadpo's Workers host is run under, Workers Logs on, each setting
 //!   the deployable needs set, by its variable, each database's address
 //!   as a Hyperdrive binding (chunk 8.2i), the minute's cron trigger when
 //!   its tick has something to do, the rate-limiting bindings its rate
-//!   limits are counted in ([`rate_limited`]), and a consumer for each
-//!   queue on Cloudflare Queues it receives and for each one's dead-letter
-//!   queue ([`queued`], chunks 8.2k and 8.4b). No binding names the Worker
-//!   itself: work is handed on to a fresh invocation through the loopback
-//!   `ctx.exports` gives its `JadpoHandOn` (chunk 8.4b), which follows
-//!   whatever name `wrangler deploy --name` or `--env` gives it. Wrangler's own
-//!   `deploy --dry-run`, pinned in `tools/workers/`, accepts the file
-//!   without a warning.
+//!   limits are counted in, and a consumer for each queue on Cloudflare
+//!   Queues it receives and for each one's dead-letter queue (chunks 8.2k
+//!   and 8.4b). No binding names the Worker itself: work is handed on to
+//!   a fresh invocation through the loopback `ctx.exports` gives its
+//!   `JadpoHandOn` (chunk 8.4b), which follows whatever name `wrangler
+//!   deploy --name` or `--env` gives it. Wrangler's own `deploy
+//!   --dry-run`, pinned in `tools/workers/`, accepts the file without a
+//!   warning.
 
 use std::path::Path;
 
@@ -52,16 +54,30 @@ pub struct Bound {
     pub wasm: Vec<u8>,
 }
 
-/// The module cargo built at `module` bound for the Worker `name`: the
-/// JavaScript wasm-bindgen writes for it and the module it leaves, or why
-/// it couldn't.
-pub fn bind(module: &Path, name: &str) -> Result<Bound, String> {
+/// Whether a bound module keeps the names of its functions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Names {
+    /// Its name section, demangled, kept, so a trap's stack names the
+    /// Rust it was in: a test Worker's.
+    Kept,
+    /// Its name section and the tools' `producers` section left out, as a
+    /// deployable's module ships, under a plan's limit on what it uploads
+    /// (chunk 8.4f).
+    Removed,
+}
+
+/// The module cargo built at `module` bound for the Worker `name`, with
+/// its function names as `names` says: the JavaScript wasm-bindgen writes
+/// for it and the module it leaves, or why it couldn't.
+pub fn bind(module: &Path, name: &str, names: Names) -> Result<Bound, String> {
     let mut bindgen = wasm_bindgen_cli_support::Bindgen::new();
     bindgen
         .input_path(module)
         .web(true)
         .map_err(|error| error.to_string())?
         .typescript(false)
+        .remove_name_section(names == Names::Removed)
+        .remove_producers_section(names == Names::Removed)
         .out_name(name);
     let mut output = bindgen
         .generate_output()
@@ -127,11 +143,39 @@ pub fn shim(name: &str) -> String {
 /// (area 12, "The tick").
 pub const EVERY_MINUTE: &str = "* * * * *";
 
-/// The Worker's name on Cloudflare for deployable `name`: letters, digits
-/// and dashes only, so each `_` becomes `-` (`back_office`,
-/// `back-office`).
-pub fn worker_name(name: &str) -> String {
-    name.replace('_', "-")
+/// The longest name Cloudflare gives a Worker.
+pub const WORKER_NAME_LIMIT: usize = 63;
+
+/// The Worker's name on Cloudflare for deployable `deployable` of the app
+/// named `app` (chunk 8.4f): both, so two apps' `kiosk`s are two Workers
+/// in one account, in the letters, digits and dashes Cloudflare takes,
+/// each run of anything else one dash (`Repair Café` and `back_office`,
+/// `repair-caf-back-office`). At most [`WORKER_NAME_LIMIT`] of them, the
+/// app's name shortened to keep the deployable's whole; an app with no
+/// name left, as a test's project, gives the deployable's alone.
+pub fn worker_name(app: &str, deployable: &str) -> String {
+    let deployable: String = dashed(deployable).chars().take(WORKER_NAME_LIMIT).collect();
+    let deployable = deployable.trim_end_matches('-');
+    let room = WORKER_NAME_LIMIT.saturating_sub(deployable.len() + 1);
+    let app: String = dashed(app).chars().take(room).collect();
+    match app.trim_end_matches('-') {
+        "" => deployable.to_string(),
+        app => format!("{app}-{deployable}"),
+    }
+}
+
+/// `text` lower-cased, each run of anything but an ASCII letter or digit
+/// one dash, none at either end.
+fn dashed(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars().flat_map(char::to_lowercase) {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            out.push(c);
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_string()
 }
 
 /// A database's address on Workers (area 5, "PostgreSQL through
@@ -144,128 +188,236 @@ pub struct Hyperdrive {
     pub id: Option<String>,
 }
 
-/// The Wrangler file of deployable `name`, whose settings without a
-/// default are read from `required`, their variables, and whose
-/// databases' addresses from `hyperdrive`: JSON. Each required setting is
-/// a required secret, Wrangler's one way to name a binding that must be
-/// set without giving its value; a setting with a default is left to it.
-/// Each database's address is a Hyperdrive binding, with its id when it
-/// has one; without one, Wrangler refuses to deploy until it is given
-/// (chunk 8.2i). When it `ticks`, its tick having a store to keep or
-/// sweep, the minute's cron trigger runs its `scheduled` handler (chunk
-/// 8.2f).
-pub fn wrangler(name: &str, required: &[String], hyperdrive: &[Hyperdrive], ticks: bool) -> String {
-    let quoted = |text: &str| serde_json::Value::from(text).to_string();
-    let mut out = format!(
-        "{{\n\
-         \x20 \"name\": {name},\n\
-         \x20 \"main\": {main},\n\
-         \x20 \"compatibility_date\": {date},\n\
-         \x20 \"no_bundle\": true,\n\
-         \x20 \"find_additional_modules\": true,\n\
-         \x20 \"rules\": [\n\
-         \x20   {{ \"type\": \"ESModule\", \"globs\": [\"**/*.mjs\", \"**/*.js\"] }},\n\
-         \x20   {{ \"type\": \"CompiledWasm\", \"globs\": [\"**/*.wasm\"], \"fallthrough\": false }}\n\
-         \x20 ]",
-        name = quoted(&worker_name(name)),
-        main = quoted(SHIM),
-        date = quoted(COMPATIBILITY_DATE),
-    );
-    if !required.is_empty() {
-        let secrets: Vec<String> = required.iter().map(|variable| quoted(variable)).collect();
-        out.push_str(&format!(
-            ",\n  \"secrets\": {{\n    \"required\": [{}]\n  }}",
-            secrets.join(", ")
+/// What a Worker's Wrangler file says.
+#[derive(Clone, Copy, Debug)]
+pub struct Wrangler<'a> {
+    /// The app's name, its folder's until `app.jadpo` gives one; empty
+    /// where nothing named it.
+    pub app: &'a str,
+    /// The deployable's name.
+    pub deployable: &'a str,
+    /// The variable of each setting without a default.
+    pub required: &'a [String],
+    /// Each database's address, bound to Hyperdrive.
+    pub hyperdrive: &'a [Hyperdrive],
+    /// Whether its tick has a store to keep or sweep.
+    pub ticks: bool,
+    /// The rate-limiting bindings its rate limits are counted in.
+    pub rate_limits: &'a [jadpo_std::http::RateLimitBinding],
+    /// The queues it receives, those on Cloudflare Queues consumed.
+    pub queues: &'a [jadpo_std::receiving::QueuePlan],
+}
+
+/// The Wrangler file `file` says, as JSON, built as one value and written
+/// out once, so no binding can be left out for another (chunk 8.4f):
+///
+/// - `name`, [`worker_name`]'s; `main`, the shim; the compatibility date;
+///   `no_bundle` with a rule for each kind of file;
+/// - `observability: { enabled: true }`, since Workers Logs keeps what the
+///   Worker logs only when it is enabled, and Wrangler sends nothing,
+///   leaving it off, when the file doesn't say (chunk 8.4f);
+/// - `secrets: { required }`, each setting without a default, Wrangler's
+///   one way to name a binding that must be set without giving its value;
+///   a setting with a default is left to it;
+/// - `hyperdrive`, each database's address, with its id when the build was
+///   given one; without one, Wrangler refuses to deploy until it is
+///   (chunk 8.2i);
+/// - `triggers: { crons }`, the minute's cron trigger, when it ticks
+///   (chunk 8.2f);
+/// - `ratelimits`, Cloudflare's rate-limiting bindings (area 16, "Rate
+///   limits"; chunk 8.2m2): each its name, its namespace id, as text as
+///   Wrangler takes it, and the limit it counts, `simple: { limit, period
+///   }`, the period in seconds;
+/// - `queues: { consumers }`, a consumer for each queue on Cloudflare
+///   Queues and for its dead-letter queue, as
+///   [`jadpo_std::receiving::wrangler_queues`] writes them (chunks 8.2k and
+///   8.4b; area 11, "Chosen in chunk 7.7c2").
+///
+/// Each part it has nothing for is left out.
+pub fn wrangler(file: &Wrangler<'_>) -> String {
+    let text = |text: &str| Json::Value(serde_json::Value::from(text));
+    let texts = |items: &[String]| Json::List(items.iter().map(|item| text(item)).collect());
+    let mut entries = vec![
+        ("name", text(&worker_name(file.app, file.deployable))),
+        ("main", text(SHIM)),
+        ("compatibility_date", text(COMPATIBILITY_DATE)),
+        ("no_bundle", Json::Value(true.into())),
+        ("find_additional_modules", Json::Value(true.into())),
+        (
+            "rules",
+            Json::List(vec![
+                object(vec![
+                    ("type", text("ESModule")),
+                    ("globs", texts(&["**/*.mjs".into(), "**/*.js".into()])),
+                ]),
+                object(vec![
+                    ("type", text("CompiledWasm")),
+                    ("globs", texts(&["**/*.wasm".into()])),
+                    ("fallthrough", Json::Value(false.into())),
+                ]),
+            ]),
+        ),
+        (
+            "observability",
+            object(vec![("enabled", Json::Value(true.into()))]),
+        ),
+    ];
+    if !file.required.is_empty() {
+        entries.push(("secrets", object(vec![("required", texts(file.required))])));
+    }
+    if !file.hyperdrive.is_empty() {
+        let bindings = file.hyperdrive.iter().map(|binding| {
+            let mut entry = vec![("binding", text(&binding.binding))];
+            if let Some(id) = &binding.id {
+                entry.push(("id", text(id)));
+            }
+            object(entry)
+        });
+        entries.push(("hyperdrive", Json::List(bindings.collect())));
+    }
+    if file.ticks {
+        entries.push((
+            "triggers",
+            object(vec![("crons", texts(&[EVERY_MINUTE.into()]))]),
         ));
     }
-    if !hyperdrive.is_empty() {
-        let bindings: Vec<String> = hyperdrive
-            .iter()
-            .map(|binding| match &binding.id {
-                Some(id) => format!(
-                    "    {{ \"binding\": {}, \"id\": {} }}",
-                    quoted(&binding.binding),
-                    quoted(id)
+    if !file.rate_limits.is_empty() {
+        let bindings = file.rate_limits.iter().map(|binding| {
+            object(vec![
+                ("name", text(&binding.name)),
+                ("namespace_id", text(&binding.namespace.to_string())),
+                (
+                    "simple",
+                    object(vec![
+                        ("limit", Json::Value(binding.limit.requests.into())),
+                        (
+                            "period",
+                            Json::Value((binding.limit.window_ms / 1000).into()),
+                        ),
+                    ]),
                 ),
-                None => format!("    {{ \"binding\": {} }}", quoted(&binding.binding)),
-            })
-            .collect();
-        out.push_str(&format!(
-            ",\n  \"hyperdrive\": [\n{}\n  ]",
-            bindings.join(",\n")
-        ));
+            ])
+        });
+        entries.push(("ratelimits", Json::List(bindings.collect())));
     }
-    if ticks {
-        out.push_str(&format!(
-            ",\n  \"triggers\": {{\n    \"crons\": [{}]\n  }}",
-            quoted(EVERY_MINUTE)
-        ));
+    if let Some(queues) = jadpo_std::receiving::wrangler_queues(file.queues) {
+        entries.push(("queues", Json::from(queues)));
     }
-    out.push_str("\n}\n");
+    let mut out = String::new();
+    object(entries).write(0, 0, &mut out);
+    out.push('\n');
     out
 }
 
-/// `wrangler`, a Wrangler file [`wrangler`] wrote, with Cloudflare's
-/// rate-limiting bindings `bindings` (area 16, "Rate limits"; chunk
-/// 8.2m2): each its name, its namespace id, as text as Wrangler takes it,
-/// and the limit it counts, `simple: { limit, period }`, the period in
-/// seconds. With none, `wrangler` as it is.
-pub fn rate_limited(wrangler: String, bindings: &[jadpo_std::http::RateLimitBinding]) -> String {
-    let Some(body) = wrangler.strip_suffix("\n}\n") else {
-        return wrangler;
-    };
-    if bindings.is_empty() {
-        return wrangler;
-    }
-    let entries: Vec<String> = bindings
-        .iter()
-        .map(|binding| {
-            format!(
-                "    {{ \"name\": {}, \"namespace_id\": {}, \"simple\": {{ \"limit\": {}, \"period\": {} }} }}",
-                serde_json::Value::from(binding.name.as_str()),
-                serde_json::Value::from(binding.namespace.to_string()),
-                binding.limit.requests,
-                binding.limit.window_ms / 1000
-            )
-        })
-        .collect();
-    format!(
-        "{body},\n  \"ratelimits\": [\n{}\n  ]\n}}\n",
-        entries.join(",\n")
+/// A JSON value whose objects keep the order they are written in, so the
+/// Wrangler file reads as Wrangler's own documentation lays one out.
+enum Json {
+    Value(serde_json::Value),
+    List(Vec<Json>),
+    Object(Vec<(String, Json)>),
+}
+
+/// An object of `entries`, in their order.
+fn object(entries: Vec<(&str, Json)>) -> Json {
+    Json::Object(
+        entries
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value))
+            .collect(),
     )
 }
 
-/// `wrangler`, a Wrangler file [`wrangler`] wrote, with a consumer for each
-/// of `queues` on Cloudflare Queues (chunk 8.2k; area 11, "Chosen in chunk
-/// 7.7c2"): `queues: { consumers: [ ] }`, as
-/// [`jadpo_std::receiving::wrangler_queues`] writes them, by Wrangler's own
-/// setting names. With none, `wrangler` as it is.
-pub fn queued(wrangler: String, queues: &[jadpo_std::receiving::QueuePlan]) -> String {
-    let Some(consumers) = jadpo_std::receiving::wrangler_queues(queues) else {
-        return wrangler;
-    };
-    let Some(body) = wrangler.strip_suffix("\n}\n") else {
-        return wrangler;
-    };
-    let Some(consumers) = consumers["consumers"].as_array() else {
-        return wrangler;
-    };
-    // Each consumer on a line, its queue first.
-    let consumers: Vec<String> = consumers
-        .iter()
-        .filter_map(serde_json::Value::as_object)
-        .map(|consumer| {
-            let mut settings: Vec<(&String, &serde_json::Value)> = consumer.iter().collect();
-            settings.sort_by_key(|(key, _)| *key != "queue");
-            let settings: Vec<String> = settings
-                .iter()
-                .map(|(key, value)| format!("{}: {value}", serde_json::Value::from(key.as_str())))
-                .collect();
-            format!("      {{ {} }}", settings.join(", "))
-        })
-        .collect();
-    format!(
-        "{body},\n  \"queues\": {{\n    \"consumers\": [\n{}\n    ]\n  }}\n}}\n",
-        consumers.join(",\n")
-    )
+/// The widest line [`Json::write`] keeps an object or a list on.
+const LINE: usize = 80;
+
+impl From<serde_json::Value> for Json {
+    /// `value`, each object's `queue` first and the rest in key order.
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Array(items) => {
+                Json::List(items.into_iter().map(Json::from).collect())
+            }
+            serde_json::Value::Object(map) => {
+                let mut entries: Vec<(String, serde_json::Value)> = map.into_iter().collect();
+                entries.sort_by_key(|(key, _)| key != "queue");
+                Json::Object(
+                    entries
+                        .into_iter()
+                        .map(|(key, value)| (key, Json::from(value)))
+                        .collect(),
+                )
+            }
+            value => Json::Value(value),
+        }
+    }
+}
+
+impl Json {
+    /// The value on one line: `{ "a": 1 }`, `["x", "y"]`.
+    fn inline(&self) -> String {
+        match self {
+            Json::Value(value) => value.to_string(),
+            Json::List(items) => {
+                let items: Vec<String> = items.iter().map(Json::inline).collect();
+                format!("[{}]", items.join(", "))
+            }
+            Json::Object(entries) if entries.is_empty() => "{}".to_string(),
+            Json::Object(entries) => {
+                let entries: Vec<String> = entries
+                    .iter()
+                    .map(|(key, value)| {
+                        format!(
+                            "{}: {}",
+                            serde_json::Value::from(key.as_str()),
+                            value.inline()
+                        )
+                    })
+                    .collect();
+                format!("{{ {} }}", entries.join(", "))
+            }
+        }
+    }
+
+    /// Writes the value into `out`, which is at column `column` of a line
+    /// indented by `indent`: on that line when it fits in [`LINE`] and
+    /// isn't the file itself (column 0), else each entry on a line of its
+    /// own.
+    fn write(&self, indent: usize, column: usize, out: &mut String) {
+        let inline = self.inline();
+        let (open, close, children): (char, char, Vec<(Option<&str>, &Json)>) = match self {
+            Json::Value(_) => (' ', ' ', Vec::new()),
+            Json::List(items) => ('[', ']', items.iter().map(|item| (None, item)).collect()),
+            Json::Object(entries) => (
+                '{',
+                '}',
+                entries
+                    .iter()
+                    .map(|(key, value)| (Some(key.as_str()), value))
+                    .collect(),
+            ),
+        };
+        if children.is_empty() || column > 0 && column + inline.len() <= LINE {
+            out.push_str(&inline);
+            return;
+        }
+        let inner = indent + 2;
+        out.push(open);
+        out.push('\n');
+        for (at, (key, value)) in children.iter().enumerate() {
+            out.push_str(&" ".repeat(inner));
+            let mut column = inner;
+            if let Some(key) = key {
+                let key = format!("{}: ", serde_json::Value::from(*key));
+                column += key.len();
+                out.push_str(&key);
+            }
+            value.write(inner, column, out);
+            if at + 1 < children.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str(&" ".repeat(indent));
+        out.push(close);
+    }
 }

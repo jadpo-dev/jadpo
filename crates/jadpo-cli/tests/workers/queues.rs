@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 use jadpo_term::Environment;
 use serde_json::{Value, json};
 
-use super::{Database, Workerd, apply, dechunk, jadpo, jadpo_in, migrations, names, rows};
+use super::{Database, Workerd, apply, dechunk, jadpo, jadpo_in, linked, migrations, names, rows};
 
 /// The warehouse, built for Workers: it receives the warehouse's queue on
 /// Cloudflare Queues and records each shipment it tells of.
@@ -129,9 +129,12 @@ fn a_worker_consumes_a_cloudflare_queue_answering_each_message() {
     );
     let shim = fs::read_to_string(out.join("worker.mjs")).expect("the shim");
     assert!(shim.contains("queue(batch, env, ctx)"), "{shim}");
-    let module = fs::read(out.join("warehouse.wasm")).expect("the module");
     assert!(
-        names(&module, "jadpo_host_workers", "deployable::queue"),
+        names(
+            &linked(&root, "warehouse"),
+            "jadpo_host_workers",
+            "deployable::queue"
+        ),
         "it lacks the queue handler"
     );
 

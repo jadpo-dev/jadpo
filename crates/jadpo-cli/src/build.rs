@@ -233,7 +233,7 @@ pub fn build(call: &Call) -> Reply {
             }
             Host::Workers(_) => {
                 say(&format!("Binding `{name}`"));
-                let bound = match workers::bind(&compiled, name) {
+                let bound = match workers::bind(&compiled, name, workers::Names::Removed) {
                     Ok(bound) => bound,
                     Err(error) => {
                         return Reply::failed(failed(
@@ -270,23 +270,21 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::queued(
-                            workers::rate_limited(
-                                workers::wrangler(
-                                    name,
-                                    &required,
-                                    &hyperdrive,
-                                    plan.schedules().ticks(),
-                                ),
-                                plan.routes()
-                                    .rate_limits
-                                    .as_ref()
-                                    .map_or(&[][..], |store| &store.bindings),
-                            ),
+                        workers::wrangler(&workers::Wrangler {
+                            app: project.name(db),
+                            deployable: name,
+                            required: &required,
+                            hyperdrive: &hyperdrive,
+                            ticks: plan.schedules().ticks(),
+                            rate_limits: plan
+                                .routes()
+                                .rate_limits
+                                .as_ref()
+                                .map_or(&[][..], |store| &store.bindings),
                             // Its queues on Cloudflare Queues, kept where
                             // it runs the subscribers (chunk 8.2k).
-                            &plan.providers().queues,
-                        )
+                            queues: &plan.providers().queues,
+                        })
                         .into_bytes(),
                     ),
                 ] {

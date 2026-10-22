@@ -3339,7 +3339,8 @@ own, which no Worker file would upload. `build/target/<deployable>/`,
 cleared first, gets the module, its JavaScript, Jadpo's shim
 (`worker.mjs`, which instantiates the module once per isolate with
 `initSync` and hands `fetch` its request, `env` and `ctx`) and
-`wrangler.json` (`workers::wrangler`: the Worker's name with dashes, the
+`wrangler.json` (`workers::wrangler`: the Worker's name with dashes (its
+app's name before it since chunk 8.4f), the
 shim as `main`, the compatibility date 2026-10-01, `no_bundle` with a rule
 per kind, and each setting without a default as a required secret).
 The screen gives the module's size raw and gzipped (miniz_oxide's deflate
@@ -3427,6 +3428,77 @@ would leave a deploy made before `jadpo migrate apply` refusing until
 its isolates were recycled; and one `Serving` an isolate over a host
 standing for whichever request is current, which an isolate serving
 requests at once would mix up.
+
+**Before the real deploy** (chunk 8.4f; area 14, "What `jadpo build`
+writes", "The Wrangler file" and Decisions, "A deployable's release
+profile and its Worker's name"). Each deployable's workspace
+`Cargo.toml` gives its release profile (`deployable::release_profile`):
+`lto = "fat"` and `codegen-units = 1` for both hosts, `opt-level = 3`
+natively and `opt-level = "s"` for Workers; cargo's own
+`CARGO_PROFILE_RELEASE_*` variables still override it. `workers::bind`
+takes `Names`: a deployable's module is bound with wasm-bindgen's
+`remove_name_section` and `remove_producers_section`
+(`Names::Removed`), a test Worker's keeps its names (`Names::Kept`, so
+a trap names the Rust it was in), and a native binary keeps its symbols.
+The Wrangler file is one ordered value, `workers::Wrangler` written by
+`workers::wrangler` (a small `Json` of its own, since `serde_json`'s map
+sorts its keys without its `preserve_order` feature, which the whole
+workspace would share): every part is a field, so no binding can be
+dropped as `rate_limited` and `queued` could drop theirs by splicing
+text that didn't end as they expected. Its `name` is `worker_name(app,
+deployable)`, the project's name (its folder's) and the deployable's,
+each lower-cased with each run of anything but a letter or digit one
+dash, at most 63 with the deployable's kept whole, as the pinned
+Wrangler checks a Worker's name; `observability: { enabled: true }` is
+written because Wrangler 4.149.0's upload sends `observability` only
+when the file has it (its config's default is `undefined`), and Workers
+Logs keeps nothing for a Worker without it. Checked: the pinned
+Wrangler's `deploy --dry-run`, network refused, accepts example 23's
+kiosk file given a Hyperdrive id without a warning, naming its bindings
+and reporting an upload of 7,908.95 KiB, 2,945.88 KiB gzipped.
+
+Measured on example 23 as tools/bench builds it (native `app`; Workers
+`kiosk`), on the ten-core Mac while other builds ran, before and after:
+
+| | before | after |
+|---|---:|---:|
+| native binary | 21,256,704 bytes, 7,759,639 gzipped | 14,832,368 bytes, 6,150,912 gzipped |
+| Workers module | 13,503,038 bytes, 4,141,531 gzipped | 8,062,968 bytes, 2,945,138 gzipped |
+| native rebuild, the program touched (load ~6) | 3.5 s | 62.9 s |
+| Workers rebuild, the program touched (load ~5 to 13) | 8.0 s | 33.4 s |
+| native build from nothing | 100 s (load 28) | 111 s (load 9) to 561 s (load 17 to 50) |
+| Workers build from nothing | 102 s (load 21) | 85 s (load 6) to 277 s (load 48) |
+| `POST /repairs` x16, native | 2,923 req/s, 0.744 CPU ms | 2,798 req/s, 0.727 CPU ms |
+| `POST /repairs` x16, workerd and `pool` | 431 req/s, 2.256 CPU ms | 487 req/s, 2.077 CPU ms |
+| `GET /health/ready` x16, native | 114,544 req/s, 0.027 CPU ms | 94,373 req/s, 0.028 CPU ms |
+| `GET /health/ready` x16, workerd | 16,078 req/s, 0.063 CPU ms | 15,878 req/s, 0.064 CPU ms |
+
+Gzipped at zlib's level 6, as the build screen gives it; the request
+rows are `tools/bench/run.py --targets native,workers --connections 16
+--rounds 3`, medians, load average 13 to 33, so a difference under
+about 10% in requests a second is noise and the CPU milliseconds a
+request are the steadier measure. The Workers module is 40% smaller, its
+whole upload 2,945.88 KiB gzipped as Wrangler counts it, at the 3 MB
+Cloudflare documents for a Free plan's Worker compressed (whether that
+is 3,000,000 bytes or 3 MiB is 8.2n's to find on the real plan), and a
+booking costs it 8% less CPU; natively the binary is 30% smaller and a
+booking about 2% cheaper, within the noise. Thin link-time optimisation
+in 16 units, tried through cargo's variables, gave a 22,404,544-byte
+binary (larger than before) and a 9,991,297-byte module, 3,315,202
+gzipped, so fat in one unit is what reaches the size. The cost is the
+rebuild: a minute natively and half a minute for Workers where it took
+seconds, which `jadpo dev` never pays, since it interprets. The gate
+builds its test deployables with cargo's codegen units and no
+link-time optimisation (`TEST_RELEASE_PROFILE` in tools/verify.py, set
+for the `compiled` and `wasm32` steps that run `jadpo build`), so its
+CI jobs keep their time; the profile itself is checked as written
+(jadpo-codegen's tests) and the module's names gone (the kiosk's test).
+Phase 9 starts from these numbers. *Rejected:* stripping a native
+binary's symbols, which have no upload limit to meet and which a
+backtrace and Phase 9's profiler read; `strip` in cargo's profile for
+Workers, which would take the names from cargo's module too, which the
+tests read for what a module links; and thin link-time optimisation,
+above.
 
 **Route tests on workerd** (chunk 8.2e, the vertical slice's proof).
 `jadpo_test::workerd::differential_all` runs a project's route tests on
@@ -3804,8 +3876,8 @@ missing or threw, so the handler's promise rejects once every message is
 answered and Cloudflare hands again each one not acknowledged, rather
 than acknowledging it as a handler that ends well does.
 `jadpo build` adds `queues: { consumers: [ ] }` to the Wrangler file from
-the deployable's plan (`jadpo_codegen::workers::queued`, through
-`jadpo_std::receiving::wrangler_queues`), which keeps the queues only
+the deployable's plan (`jadpo_codegen::workers::queued` until chunk 8.4f, now one part of
+`workers::wrangler`, through `jadpo_std::receiving::wrangler_queues`), which keeps the queues only
 where subscribers run. The file is checked against Wrangler itself:
 Wrangler 4.149.0 is pinned in `tools/workers/` beside workerd, whose
 release it is held to by an npm override, and installed with it by the
