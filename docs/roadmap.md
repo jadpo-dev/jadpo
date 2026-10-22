@@ -2720,13 +2720,39 @@ whose entry names them.
   account: the Worker-to-Hyperdrive leg without TLS on Cloudflare's
   network, and tokio-postgres's named statement describing a `vector` or
   `geography` column through Hyperdrive.
-- [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
-  and 8.2i: the six connections an invocation may hold, counted across
-  `Transport` and `Fetch` and shared with `waitUntil`, a seventh waiting
-  for one; `max_concurrent:`'s slots per isolate (decided 2026-10-21)
-  handing a free slot to a request waiting on another's without one
-  request's promise settled from another's, which Workers doesn't allow.
-  Proved under workerd.
+- [x] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
+  and 8.2i. Built (§2.6, "Six connections an invocation"; area 14,
+  "Serving"): an invocation's six places (`jadpo_host_workers::Opening`)
+  held by its `WorkersHost` and shared by everything it opens, its
+  drivers' `WorkersTransport` and `WorkersFetch`
+  (`WorkersHost::supplies`), its own `WorkersOutbound` and the work it
+  leaves in `waitUntil`; a seventh waiting in the order asked, within
+  its own timeout, `NotSent` if that passes first. Counted as Cloudflare
+  has since 2026-04-09, six waiting for their answer's head (a `fetch()`
+  until its head, a `connect()` until its socket opens), not six held
+  open as this entry was written, which would hold a seventh behind a
+  store's idle connections; workerd counts none (its server's limit
+  enforcer). The isolate's `max_concurrent:` slots a looking set
+  (`Slots::looking`): a slot given back handed to the longest waiter,
+  which looks every 10 ms on its own invocation's timer (`slots::wait`),
+  since wasm-bindgen's executor polls a task in the invocation that woke
+  it, and workerd ended the second of two invocations sharing a slot of
+  the process's woken set as hung; a holder saying every second it holds
+  its slot (`slots::keeping`) and one quiet for five seconds forgotten,
+  as Workers cancels an invocation whose client left or whose
+  `waitUntil` ran out without dropping what it held. Decided in the
+  chunk (area 14 and area 11, 2026-10-22). Proved under workerd
+  (`crates/jadpo-host-workers/tests/connections.rs`, the `wasm32` group,
+  about 2 s more for its step): eight requests sent uncounted all reaching the server at
+  once and counted never more than six, one whose timeout passed while
+  it waited `NotSent` and never seen; an echo's `connect()` waiting
+  behind six requests' heads; four requests from a response and four
+  from its `waitUntil` never more than six at once; a slot one
+  invocation gave back taken up by another, its request sent and
+  answered in its own; and a slot never given back taken back five
+  seconds after its holder went quiet (workerd lets a request whose
+  client left run on, so the probe leaves the slot as a cancelled one
+  would). The real edge's six is 8.2n's to measure.
 - [ ] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
   (from chunk 7.7c2): the queue handler calling `receiving::consume` and
   answering each message (`ack()`, `retry({ delaySeconds })`), the kept

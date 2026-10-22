@@ -349,6 +349,55 @@ pub fn closed(tag: &str) -> Option<Duration> {
     }
 }
 
+/// What the gate saw of a tag's requests: how many waited for their
+/// answer's head at once at most, and how many came.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Gate {
+    pub most: usize,
+    pub came: usize,
+    waiting: usize,
+}
+
+/// Each tag's requests at the gate.
+static GATES: Mutex<Vec<(String, Gate)>> = Mutex::new(Vec::new());
+
+/// A request of `tag` arriving at the gate (`1`) or answered or gone
+/// (`-1`).
+fn gate_arrived(tag: &str, change: isize) {
+    let Ok(mut gates) = GATES.lock() else {
+        return;
+    };
+    let at = match gates.iter().position(|(seen, _)| seen == tag) {
+        Some(at) => at,
+        None => {
+            gates.push((tag.to_string(), Gate::default()));
+            gates.len() - 1
+        }
+    };
+    let gate = &mut gates[at].1;
+    if change > 0 {
+        gate.waiting += 1;
+        gate.came += 1;
+        gate.most = gate.most.max(gate.waiting);
+    } else {
+        gate.waiting = gate.waiting.saturating_sub(1);
+    }
+}
+
+/// What the gate has seen of `tag`'s requests.
+pub fn gate(tag: &str) -> Gate {
+    GATES
+        .lock()
+        .ok()
+        .and_then(|gates| {
+            gates
+                .iter()
+                .find(|(seen, _)| seen == tag)
+                .map(|(_, gate)| *gate)
+        })
+        .unwrap_or_default()
+}
+
 /// Waits up to `most` for the client to close `link`, keeping how long
 /// that took under `tag`: whether it did.
 fn watch_close(link: &mut dyn Link, tag: &str, began: Instant, most: Duration) -> bool {
@@ -481,6 +530,9 @@ fn postgres(mut stream: TcpStream, tls: Arc<rustls::ServerConfig>) -> std::io::R
 ///   has gone;
 /// - `/echo`: the method, the content type and the body sent;
 /// - `/big`: 4,096 bytes;
+/// - `/gate/<ms>`: `200` `open` once `<ms>` milliseconds have passed,
+///   unless the client has gone, counting the requests of its `tag`
+///   waiting for their answer's head ([`gate`]; chunk 8.2j);
 /// - anything else `404`.
 fn answer(link: &mut dyn Link) {
     let mut reader = BufReader::new(&mut *link);
@@ -562,6 +614,16 @@ fn answer(link: &mut dyn Link) {
             .as_bytes(),
         ),
         "/big" => link.write_all(whole("200 OK", "", &"x".repeat(4096)).as_bytes()),
+        held if held.starts_with("/gate/") => {
+            let ms = held.trim_start_matches("/gate/").parse().unwrap_or(0);
+            gate_arrived(&tag, 1);
+            let gone = watch_close(link, &tag, began, Duration::from_millis(ms));
+            gate_arrived(&tag, -1);
+            if gone {
+                return;
+            }
+            link.write_all(whole("200 OK", "", "open").as_bytes())
+        }
         _ => link.write_all(whole("404 Not Found", "", "none").as_bytes()),
     };
     let _ = link.flush();

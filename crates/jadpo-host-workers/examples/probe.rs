@@ -7,12 +7,15 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::task::Poll;
 
 use jadpo_drivers::package::{Fetch, FetchError};
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust, within};
-use jadpo_host_workers::{WorkersFetch, WorkersHost, WorkersOutbound, WorkersTransport, supplies};
+use jadpo_host_workers::{WorkersFetch, WorkersHost, WorkersOutbound, WorkersTransport};
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::provider::{Reading, Request};
 use jadpo_runtime::stream::Chunk;
@@ -59,7 +62,7 @@ pub async fn fetch(
                 host: param("host"),
                 port: u16::try_from(number("port")).unwrap_or(0),
             };
-            if WorkersTransport.is_pooler(&endpoint) {
+            if WorkersTransport::default().is_pooler(&endpoint) {
                 "pooler".to_string()
             } else {
                 "not a pooler".to_string()
@@ -67,7 +70,7 @@ pub async fn fetch(
         }
         #[cfg(feature = "postgres")]
         "/postgres" => postgres(number("port")).await,
-        "/unix" => match WorkersTransport
+        "/unix" => match WorkersTransport::default()
             .connect(&Endpoint::Unix {
                 dir: "/tmp".to_string(),
                 port: 5432,
@@ -109,7 +112,7 @@ pub async fn fetch(
         },
         "/defer" => {
             let key = param("key");
-            let transport = WorkersTransport;
+            let transport = WorkersTransport::default();
             host.defer(Box::pin(async move {
                 transport.sleep(150).await;
                 DONE.with(|done| done.borrow_mut().insert(key));
@@ -172,10 +175,11 @@ pub async fn fetch(
         "/spawn" => {
             let ran = Rc::new(Cell::new(false));
             let seen = Rc::clone(&ran);
-            WorkersTransport.spawn(Box::pin(async move {
+            let transport = WorkersTransport::default();
+            transport.spawn(Box::pin(async move {
                 seen.set(true);
             }));
-            WorkersTransport.sleep(10).await;
+            transport.sleep(10).await;
             if ran.get() {
                 "ran".to_string()
             } else {
@@ -183,7 +187,7 @@ pub async fn fetch(
             }
         }
         "/supplies" => {
-            let supplies = supplies();
+            let supplies = host.supplies();
             format!(
                 "target:{} transport:{} fetch:{} disk:{}",
                 match supplies.target {
@@ -244,6 +248,17 @@ pub async fn fetch(
             }
             _ => "error:unreadable".to_string(),
         },
+        // Chunk 8.2j: the invocation's six places, and the isolate's slots.
+        "/six" => six(&host, &param("url"), &param("timeouts"), &param("counted")).await,
+        "/six-mixed" => six_mixed(&host, &param("url"), number("echo")).await,
+        "/six-deferred" => six_deferred(&host, &param("url"), &param("key")).await,
+        "/slot" => slot(&host, &param("url"), &param("connection")).await,
+        "/slot-left" => {
+            // An invocation the platform ends mid-call: its slot never
+            // given back, nor said to be held again.
+            std::mem::forget(jadpo_runtime::slots::wait(&host, &param("connection"), 1).await);
+            "left".to_string()
+        }
         path => format!("no probe at {path}"),
     };
     web_sys::Response::new_with_opt_str(Some(&answer))
@@ -354,7 +369,11 @@ fn failed(error: &io::Error) -> String {
 /// Sends `ping` over a stream the transport opened to `host:port`,
 /// upgraded to TLS for `tls` when it is given, and reads the line back.
 async fn echo(host: &str, port: u64, tls: &str) -> String {
-    let transport = WorkersTransport;
+    echo_through(&WorkersTransport::default(), host, port, tls).await
+}
+
+/// [`echo`] over `transport`.
+async fn echo_through(transport: &WorkersTransport, host: &str, port: u64, tls: &str) -> String {
     let endpoint = Endpoint::Tcp {
         host: host.to_string(),
         port: u16::try_from(port).unwrap_or(0),
@@ -373,7 +392,7 @@ async fn echo(host: &str, port: u64, tls: &str) -> String {
         }
         Ok::<_, io::Error>(String::from_utf8_lossy(&answer).into_owned())
     };
-    match within(&transport, 5_000, talk).await {
+    match within(transport, 5_000, talk).await {
         Some(Ok(answer)) => format!("answer:{answer}"),
         Some(Err(error)) => failed(&error),
         None => "error:timed out".to_string(),
@@ -399,7 +418,7 @@ impl Transport for Elsewhere {
             },
             other => other.clone(),
         };
-        Box::pin(async move { WorkersTransport.connect(&endpoint).await })
+        Box::pin(async move { WorkersTransport::default().connect(&endpoint).await })
     }
 
     fn upgrade<'a>(
@@ -408,15 +427,19 @@ impl Transport for Elsewhere {
         name: &'a str,
         trust: Trust<'a>,
     ) -> jadpo_runtime::LocalFuture<'a, io::Result<Box<dyn Stream>>> {
-        WorkersTransport.upgrade(stream, name, trust)
+        Box::pin(async move {
+            WorkersTransport::default()
+                .upgrade(stream, name, trust)
+                .await
+        })
     }
 
     fn spawn(&self, task: jadpo_runtime::LocalFuture<'static, ()>) {
-        WorkersTransport.spawn(task);
+        WorkersTransport::default().spawn(task);
     }
 
     fn sleep(&self, millis: u64) -> jadpo_runtime::LocalFuture<'_, ()> {
-        WorkersTransport.sleep(millis)
+        Box::pin(async move { WorkersTransport::default().sleep(millis).await })
     }
 }
 
@@ -431,7 +454,7 @@ async fn postgres(port: u64) -> String {
         Err(error) => return format!("error:{error:?}"),
     };
     let ran = within(
-        &WorkersTransport,
+        &WorkersTransport::default(),
         10_000,
         store.batch_outside_transaction("SELECT 1"),
     )
@@ -446,7 +469,7 @@ async fn postgres(port: u64) -> String {
 
 /// An upgrade trusting an authority of the connection's own.
 async fn authority(port: u64) -> String {
-    let transport = WorkersTransport;
+    let transport = WorkersTransport::default();
     let endpoint = Endpoint::Tcp {
         host: "localhost".to_string(),
         port: u16::try_from(port).unwrap_or(0),
@@ -493,8 +516,18 @@ fn no_answer(error: &FetchError) -> String {
 }
 
 async fn fetched(url: &str, timeout_ms: u64, body: Option<&str>) -> String {
+    fetched_through(&WorkersFetch::default(), url, timeout_ms, body).await
+}
+
+/// [`fetched`] through `fetch`.
+async fn fetched_through(
+    fetch: &WorkersFetch,
+    url: &str,
+    timeout_ms: u64,
+    body: Option<&str>,
+) -> String {
     let made = request(url, timeout_ms, body);
-    match WorkersFetch.fetch(&made).await {
+    match fetch.fetch(&made).await {
         Ok(response) => {
             let test = response
                 .headers
@@ -513,7 +546,7 @@ async fn fetched(url: &str, timeout_ms: u64, body: Option<&str>) -> String {
 
 async fn opened(url: &str, timeout_ms: u64) -> String {
     let made = request(url, timeout_ms, None);
-    let mut opened = match WorkersFetch.open(&made).await {
+    let mut opened = match WorkersFetch::default().open(&made).await {
         Ok(opened) => opened,
         Err(error) => return no_answer(&error),
     };
@@ -536,4 +569,144 @@ async fn opened(url: &str, timeout_ms: u64) -> String {
         }
     }
     format!("status:{} pieces:{}", opened.status, pieces.join("|"))
+}
+
+/// Runs `futures` together until each has finished: their outputs in order.
+async fn join_all<F: Future>(futures: impl IntoIterator<Item = F>) -> Vec<F::Output> {
+    let mut pending: Vec<Pin<Box<F>>> = futures.into_iter().map(Box::pin).collect();
+    let mut done: Vec<Option<F::Output>> = pending.iter().map(|_| None).collect();
+    std::future::poll_fn(|cx| {
+        let mut all = true;
+        for (future, out) in pending.iter_mut().zip(done.iter_mut()) {
+            if out.is_none() {
+                match future.as_mut().poll(cx) {
+                    Poll::Ready(value) => *out = Some(value),
+                    Poll::Pending => all = false,
+                }
+            }
+        }
+        if all { Poll::Ready(()) } else { Poll::Pending }
+    })
+    .await;
+    done.into_iter().flatten().collect()
+}
+
+/// What a fetch answered, in a word: `status:200`, or `error:` and why.
+fn short(answer: &str) -> &str {
+    answer.split_whitespace().next().unwrap_or_default()
+}
+
+/// A request to `url` for each of `timeouts`, all sent at once through
+/// the invocation's places, or, `counted=no`, each through a fetch with
+/// places of its own, as though nothing counted them: what each answered,
+/// in order (chunk 8.2j).
+async fn six(host: &WorkersHost, url: &str, timeouts: &str, counted: &str) -> String {
+    let shared = WorkersFetch::counted(Rc::clone(host.opening()));
+    let timeouts: Vec<u64> = timeouts
+        .split(',')
+        .filter_map(|timeout| timeout.parse().ok())
+        .collect();
+    let answers = join_all(timeouts.iter().map(|&timeout| {
+        let shared = &shared;
+        async move {
+            let answer = if counted == "no" {
+                fetched_through(&WorkersFetch::default(), url, timeout, None).await
+            } else {
+                fetched_through(shared, url, timeout, None).await
+            };
+            short(&answer).to_string()
+        }
+    }))
+    .await;
+    answers.join(" ")
+}
+
+/// Six requests to `url` through the invocation's places and, once they
+/// are out, a line to the echo on `port` over a connection the
+/// invocation's transport opens: what they answered, and how long after
+/// the start the echo's answer came.
+async fn six_mixed(host: &WorkersHost, url: &str, port: u64) -> String {
+    let began = host.monotonic_ms().unwrap_or(0);
+    let fetch = WorkersFetch::counted(Rc::clone(host.opening()));
+    let transport = WorkersTransport::counted(Rc::clone(host.opening()));
+    let fetches = join_all((0..6).map(|_| {
+        let fetch = &fetch;
+        async move { short(&fetched_through(fetch, url, 5_000, None).await).to_string() }
+    }));
+    let echoed = async {
+        host.sleep(50).await;
+        let answer = echo_through(&transport, "127.0.0.1", port, "").await;
+        let after = host.monotonic_ms().unwrap_or(0).saturating_sub(began);
+        (answer, after)
+    };
+    let mut fetches = std::pin::pin!(fetches);
+    let mut echoed = std::pin::pin!(echoed);
+    let (mut answers, mut echo) = (None, None);
+    std::future::poll_fn(|cx| {
+        if answers.is_none()
+            && let Poll::Ready(done) = fetches.as_mut().poll(cx)
+        {
+            answers = Some(done);
+        }
+        if echo.is_none()
+            && let Poll::Ready(done) = echoed.as_mut().poll(cx)
+        {
+            echo = Some(done);
+        }
+        if answers.is_some() && echo.is_some() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    })
+    .await;
+    let (answer, after) = echo.unwrap_or_default();
+    format!(
+        "fetches:{} echo:{answer} after:{after}",
+        answers.unwrap_or_default().join(",")
+    )
+}
+
+/// Four requests to `url` from the request and four from the work it
+/// leaves in `waitUntil`, all counted among the invocation's six: how many
+/// of the request's were answered, the deferred work keeping how many of
+/// its own were under `<key>:<count>`, which `/deferred` reads.
+async fn six_deferred(host: &WorkersHost, url: &str, key: &str) -> String {
+    let fetch = Rc::new(WorkersFetch::counted(Rc::clone(host.opening())));
+    let deferred = Rc::clone(&fetch);
+    let (later, key) = (url.to_string(), key.to_string());
+    host.defer(Box::pin(async move {
+        let answers =
+            join_all((0..4).map(|_| fetched_through(&deferred, &later, 5_000, None))).await;
+        let answered = answers
+            .iter()
+            .filter(|answer| answer.starts_with("status:200"))
+            .count();
+        DONE.with(|done| done.borrow_mut().insert(format!("{key}:{answered}")));
+    }));
+    let answers = join_all((0..4).map(|_| fetched_through(&fetch, url, 5_000, None))).await;
+    let answered = answers
+        .iter()
+        .filter(|answer| answer.starts_with("status:200"))
+        .count();
+    format!("answered:{answered}")
+}
+
+/// One call through `connection` under `max_concurrent: 1`, in the
+/// isolate's slots, as the runtime makes it: the slot waited for in this
+/// invocation, then a request to `url` while it is held. How long it
+/// waited, and what the request answered.
+async fn slot(host: &WorkersHost, url: &str, connection: &str) -> String {
+    let began = host.monotonic_ms().unwrap_or(0);
+    let held = jadpo_runtime::slots::wait(host, connection, 1).await;
+    let waited = host.monotonic_ms().unwrap_or(0).saturating_sub(began);
+    let fetch = WorkersFetch::counted(Rc::clone(host.opening()));
+    let answer = jadpo_runtime::slots::keeping(
+        host,
+        Some(&held),
+        fetched_through(&fetch, url, 60_000, None),
+    )
+    .await;
+    drop(held);
+    format!("waited:{waited} {}", short(&answer))
 }

@@ -28,6 +28,10 @@
 //!   for the isolate's life, without TLS, which Hyperdrive uses to the
 //!   database.
 //! - **No Unix sockets**: a Worker has no file system.
+//! - **A connection being opened takes one of the invocation's six
+//!   places** ([`Opening`]; chunk 8.2j) until its socket opens, or fails
+//!   to: a seventh waits for one, within whatever its driver gives the
+//!   connection to open.
 //! - **A stream holds its streams' locks only while it reads or writes**,
 //!   so it can be upgraded between them, and closes its socket when
 //!   dropped.
@@ -36,6 +40,7 @@ use std::any::Any;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::task::{Context, Poll};
 
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust};
@@ -47,10 +52,23 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
 use crate::js;
+use crate::opening::Opening;
 
-/// The drivers' transport over Workers' `connect()`.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct WorkersTransport;
+/// The drivers' transport over Workers' `connect()`, counting the
+/// connections it opens among its invocation's six. A default one has six
+/// places of its own; an invocation's host gives its drivers one sharing
+/// the invocation's ([`crate::WorkersHost::supplies`]).
+#[derive(Clone, Debug, Default)]
+pub struct WorkersTransport {
+    opening: Rc<Opening>,
+}
+
+impl WorkersTransport {
+    /// A transport whose connections take places among `opening`'s.
+    pub fn counted(opening: Rc<Opening>) -> WorkersTransport {
+        WorkersTransport { opening }
+    }
+}
 
 impl Transport for WorkersTransport {
     fn connect(&self, endpoint: &Endpoint) -> LocalFuture<'_, io::Result<Box<dyn Stream>>> {
@@ -62,8 +80,12 @@ impl Transport for WorkersTransport {
                     "a Worker has no Unix sockets",
                 ));
             };
+            // One of the invocation's six until the socket opens.
+            let place = self.opening.place().await;
             let socket = open(&host, port)?;
-            JsFuture::from(socket.opened()).await.map_err(|error| {
+            let opened = JsFuture::from(socket.opened()).await;
+            drop(place);
+            opened.map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::ConnectionRefused,
                     format!("{host}:{port}: {}", js::said(&error)),
