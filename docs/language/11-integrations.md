@@ -8921,17 +8921,44 @@ connections: {
   tick keeps a fetched one ("Chosen in chunk 7.7c"), and answered in the
   batch's order: acknowledged once its event and id commit, as a repeat,
   or once parked; retried when the store can't take it now, after 10
-  seconds doubled for each earlier attempt, at most 5 minutes. The host
+  seconds doubled for each earlier attempt, at most an hour since chunk
+  8.4b (5 minutes before). The host
   answers each message on its own, never the batch whole, then runs the
   kept events' deliveries after answering (`waitUntil`). A batch from a
   queue the program doesn't receive is retried whole.
 - **The tick.** Nothing is fetched from a queue Cloudflare pushes; the
   tick still reads again the parked messages an operator retried with
   `jadpo deliveries retry`, as for any queue.
+- **Long retries and the dead-letter queue** (chunk 8.4b, from the Phase
+  8 review; decided by the building session, reversible, 2026-10-22).
+  Every message the consumer retries is one the Worker can't take yet:
+  its isolate hasn't started, its stores are behind while a deploy
+  migrates them, or the store is unavailable; one it can read and can't
+  keep is parked, not retried. With 3 retries after 10, 20 and 40 seconds,
+  about 70 seconds of that went to the dead-letter queue, where nothing
+  parked it. Now the delay doubles up to an hour and the consumer has 30
+  retries, about 22 hours: long enough to outlast a deploy's migration,
+  and short enough that the message reaches the dead-letter queue inside
+  the 24 hours a queue keeps a message on Workers' Free plan (4 days by
+  default on a paid one, at most 14), every value within Cloudflare's
+  limits (100 retries, a delay of at most 24 hours). The Worker consumes
+  the dead-letter queue too: each message it hands back is parked whole
+  in `jadpo_parked_messages` as `dead_lettered`, with its id and its
+  event when they can be read and no event kept, and acknowledged, so
+  `jadpo deliveries` lists it and `retry` has the next tick read it again
+  with the build running then; one the store can't park now is retried
+  on the same schedule, 100 times, since a message whose retries are
+  spent there is gone. So one queue's dead-letter queue is no other
+  connection's queue or dead-letter queue (`connection.value_invalid`).
+  A message whose `retry()` throws isn't acknowledged by default: the
+  handler throws once every message is answered, so Cloudflare hands
+  again each one not acknowledged.
 - **The Wrangler file.** Each such queue is a consumer under `queues: {
   consumers: [] }`: its `queue`, `max_batch_size` 10 (as many as one
   receive asks a package's queue for), `max_batch_timeout` 5 seconds,
-  `max_retries` 3 and its `dead_letter_queue`
+  `max_retries` 30 (3 until chunk 8.4b) and its `dead_letter_queue`; and
+  the dead-letter queue is a consumer too, with the same batch, 100
+  retries, Cloudflare's most, and no dead-letter queue of its own
   (`jadpo_std::receiving::wrangler_queues`, as JSON). The setting names
   are Wrangler's own: since chunk 8.2k `jadpo build` writes them into the
   Wrangler file, and Wrangler's `deploy --dry-run`, pinned in
@@ -8972,7 +8999,8 @@ most conservative reading:
   again with the build running then, keeping it or parking it again;
   `dismiss` sets it aside, deleted by the tick 30 days later. A message the
   store can't take now is left on the queue, which sends it again, and the
-  queue's own dead-letter queue takes one that keeps failing; one whose
+  queue's own dead-letter queue takes one that keeps failing, which on
+  Cloudflare Queues the Worker parks (chunk 8.4b); one whose
   event the store refuses as a statement, as it would every time, is
   parked `unreadable` (since chunk 7.9c: area 12, "Queue messages the
   store refuses").
@@ -9902,6 +9930,7 @@ packages and extension points, as each note says; 26 was decided then.
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
+| Cloudflare Queues' retries and dead letters (chunk 8.4b) | A message the Worker can't take yet retried after 10 seconds doubled per attempt, at most an hour, 30 times (about 22 hours, inside a Free plan queue's 24-hour retention); the dead-letter queue a consumer of the Worker's too, 100 retries, each message parked as `dead_lettered` for `jadpo deliveries`; no connection's dead-letter queue another's queue or dead-letter queue; a `retry()` that throws ends the handler with an error rather than leaving the message to be acknowledged; details under "Chosen in chunk 7.7c2" (decided by the building session, reversible) | 2026-10-22 |
 | Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |
 | Cloudflare Queues' consumer (chunk 8.2k) | The Worker's `queue` starts the isolate as `fetch` does; an isolate that can't start, or whose stores aren't current, retries each message after the delay its attempts give, keeping nothing; a body of bytes is read as UTF-8 text (an invalid sequence replaced, so it parks as unreadable), any other value but text as its JSON; each batch with a message retried logs `queue.retried` with the queue's name, how many and a code (`not_started`, `not_received`, `store_unavailable`), never a body; the kept events' deliveries run after the answers as a response's work does, in `waitUntil` and handed on past its 30 seconds; Wrangler checks no queue name, so Jadpo's form stands until chunk 8.2n checks Cloudflare's (decided conservatively by the building session) | 2026-10-22 |
 | Default timeouts (Richard, 2026-10-20) | A connection's `timeout:` defaults to 3s, its attempts staying 3, so one call's 9 seconds fit a route's 10-second default deadline; `ai.generate`'s to 25s and `ai.embed`'s to 5s (area 21). At 10s a call could take 30 seconds, and the deadline sum refused almost every route that calls out (option A, Richard) | 2026-10-20 |

@@ -7,9 +7,11 @@
 //! fetched one is, and acknowledged; a repeat and a message that can't be
 //! kept, parked for an operator, are acknowledged too; one the store
 //! can't take now is retried after a delay; a batch from a queue the app
-//! doesn't receive is retried whole. The tick reads again a parked
-//! message an operator retried and fetches nothing. The consumer the
-//! Wrangler file gets is written from the plan.
+//! doesn't receive is retried whole. A message whose retries are spent,
+//! handed back from the queue's dead-letter queue, is parked for an
+//! operator (chunk 8.4b). The tick reads again a parked message an
+//! operator retried and fetches nothing. The consumers the Wrangler file
+//! gets are written from the plan.
 //!
 //! Nothing reaches Cloudflare or a network. The database is the one
 //! `JADPO_TEST_DATABASE_URL` names or one started from the machine's
@@ -215,7 +217,9 @@ fn shipped(id: &str, order: &str) -> String {
 }
 
 /// The consumer the Wrangler file gets: the queue, ten messages a batch,
-/// five seconds to fill one, three retries, then the dead-letter queue.
+/// five seconds to fill one, 30 retries, then the dead-letter queue, whose
+/// own consumer parks what reaches it (chunk 8.4b), retried as long as
+/// Cloudflare allows.
 #[test]
 fn the_wrangler_file_gets_a_consumer_for_each_cloudflare_queue() {
     let (_, prepared) = project("wrangler");
@@ -224,15 +228,122 @@ fn the_wrangler_file_gets_a_consumer_for_each_cloudflare_queue() {
     assert_eq!(
         jadpo_std::receiving::wrangler_queues(queues),
         Some(serde_json::json!({
-            "consumers": [{
-                "queue": "warehouse-events",
-                "max_batch_size": 10,
-                "max_batch_timeout": 5,
-                "max_retries": 3,
-                "dead_letter_queue": "warehouse-events-dead",
-            }]
+            "consumers": [
+                {
+                    "queue": "warehouse-events",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 5,
+                    "max_retries": 30,
+                    "dead_letter_queue": "warehouse-events-dead",
+                },
+                {
+                    "queue": "warehouse-events-dead",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 5,
+                    "max_retries": 100,
+                },
+            ]
         }))
     );
+}
+
+/// A message whose retries are spent comes back through the queue's
+/// dead-letter queue (chunk 8.4b; area 12, "Events from outside"): its
+/// consumer parks it whole for an operator, with what could be read of
+/// it, keeping no event, and acknowledges it; `jadpo deliveries` lists
+/// it, and once an operator retries it the tick keeps it. One the store
+/// can't park now is retried after a delay.
+#[test]
+fn a_dead_lettered_message_is_parked_for_an_operator() {
+    let Some(loaded) = load("dead") else {
+        return;
+    };
+    let host = host(&loaded.url);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let consumed = consume(
+            &loaded.program,
+            &host,
+            "warehouse-events-dead",
+            &[pushed(&shipped("w-7", "A-107"), 1), pushed("not json", 1)],
+            T0,
+        )
+        .await;
+        assert_eq!(consumed.answers, [Answer::Ack; 2]);
+        let received = &consumed.received;
+        assert!(received.problems.is_empty(), "{:?}", received.problems);
+        assert_eq!(
+            (received.kept, received.parked, received.left),
+            (0, 2, 0)
+        );
+        assert!(consumed.received.deferred.is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM \"jadpo_outbox\"").await, 0);
+        let parked = host
+            .rows("SELECT \"queue\", \"reason\", \"status\", coalesce(\"message_id\", '-'), \"event\" IS NOT NULL FROM \"jadpo_parked_messages\" ORDER BY \"message_id\" NULLS LAST")
+            .await;
+        assert_eq!(
+            parked,
+            vec![
+                vec![
+                    SqlValue::Text("warehouse_queue".into()),
+                    SqlValue::Text("dead_lettered".into()),
+                    SqlValue::Text("failed".into()),
+                    SqlValue::Text("w-7".into()),
+                    SqlValue::Bool(true),
+                ],
+                vec![
+                    SqlValue::Text("warehouse_queue".into()),
+                    SqlValue::Text("dead_lettered".into()),
+                    SqlValue::Text("failed".into()),
+                    SqlValue::Text("-".into()),
+                    SqlValue::Bool(false),
+                ],
+            ]
+        );
+    });
+    let id = runtime
+        .block_on(host.rows("SELECT replace(\"id\"::text, '-', '') FROM \"jadpo_parked_messages\" WHERE \"message_id\" = 'w-7'"))
+        .first()
+        .and_then(|row| match row.first() {
+            Some(SqlValue::Text(id)) => Some(id[24..].to_string()),
+            _ => None,
+        })
+        .expect("a parked message");
+    let listed = jadpo(&loaded.root, &["deliveries", "--url", &loaded.url]);
+    assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
+    assert!(
+        listed.stdout.contains("queue warehouse_queue · OrderShipped")
+            && listed.stdout.contains("dead_lettered"),
+        "{}",
+        listed.stdout
+    );
+    let retried = jadpo(
+        &loaded.root,
+        &["deliveries", "retry", &id, "--url", &loaded.url],
+    );
+    assert_eq!(retried.code, 0, "{}{}", retried.stdout, retried.stderr);
+    runtime.block_on(async {
+        host.set_now(T0 + 60_000);
+        let ticked = tick(&loaded.program, &host, T0 + 60_000).await;
+        assert!(ticked.problems.is_empty(), "{:?}", ticked.problems);
+        assert_eq!(ticked.received.map(|tally| tally.kept), Some(1));
+        // The store loses the table messages are parked in: a message
+        // from the dead-letter queue is retried, its delay growing.
+        host.rows("ALTER TABLE \"jadpo_parked_messages\" RENAME TO \"gone\"")
+            .await;
+        let left = consume(
+            &loaded.program,
+            &host,
+            "warehouse-events-dead",
+            &[pushed(&shipped("w-8", "A-108"), 2)],
+            T0 + 60_000,
+        )
+        .await;
+        assert_eq!(left.answers, [Answer::Retry { delay_seconds: 20 }]);
+        assert_eq!(left.received.left, 1);
+        host.rows("ALTER TABLE \"gone\" RENAME TO \"jadpo_parked_messages\"")
+            .await;
+    });
 }
 
 /// Each message of a batch becomes its event, kept once with its id; a

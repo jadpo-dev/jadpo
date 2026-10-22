@@ -35,8 +35,9 @@
 //! and answers for each: acknowledged once kept, as a repeat or parked,
 //! retried after a delay when the store can't take it now, so Cloudflare
 //! hands it again and moves it to the queue's dead-letter queue once its
-//! retries are spent. The tick still reads again the parked messages an
-//! operator retried.
+//! retries are spent. The Worker consumes that queue too, parking each
+//! message it hands back for an operator (chunk 8.4b). The tick still
+//! reads again the parked messages an operator retried.
 //!
 //! Every message is read by the build that receives it, and a parked
 //! message retried is read by the build running then.
@@ -66,10 +67,13 @@ pub const RETRIED_PER_TICK: i64 = 20;
 /// dismissed delivery is: 30 days.
 pub const DISMISSED_KEPT_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
-/// Why a message is parked, as `jadpo deliveries` shows it.
+/// Why a message is parked, as `jadpo deliveries` shows it: one handed
+/// back from a Cloudflare queue's dead-letter queue, its retries spent, is
+/// `dead_lettered` (chunk 8.4b).
 pub const UNLISTED_TYPE: &str = "unlisted_type";
 pub const UNREADABLE: &str = "unreadable";
 pub const TOO_LARGE: &str = "too_large";
+pub const DEAD_LETTERED: &str = "dead_lettered";
 
 /// Parks a message: once per queue and body, so one sent again isn't a
 /// second item. One an operator retried that parks again is `failed`
@@ -237,9 +241,12 @@ pub enum Answer {
 }
 
 /// The first retry's delay, doubled for each attempt after it, and the
-/// longest.
+/// longest: an hour (chunk 8.4b), so with the consumer's 30 retries
+/// (`jadpo_std::receiving::CONSUMER_RETRIES`) a message the Worker can't
+/// take yet, its stores behind while a deploy migrates them, is handed
+/// again for about 22 hours before it goes to the dead-letter queue.
 pub const RETRY_DELAY_SECONDS: u32 = 10;
-pub const RETRY_DELAY_MAX_SECONDS: u32 = 300;
+pub const RETRY_DELAY_MAX_SECONDS: u32 = 60 * 60;
 
 /// How long a message handed `attempts` times waits before Cloudflare
 /// hands it again.
@@ -264,8 +271,11 @@ pub struct Consumed {
 /// The seam the Workers host's queue consumer calls (chunk 7.7c2): keeps
 /// each message of `batch`, handed to the consumer of the Cloudflare queue
 /// named `queue` at `now`, as the tick keeps a fetched one ([`take`]), and
-/// answers for each. A batch from a queue the program doesn't receive is
-/// retried whole, so nothing is lost while a deploy catches up.
+/// answers for each. A batch from a queue's dead-letter queue, its
+/// messages' retries spent, is parked whole for an operator, each message
+/// with what could be read of it ([`dead_lettered`], chunk 8.4b). A batch
+/// from a queue the program doesn't receive is retried whole, so nothing
+/// is lost while a deploy catches up.
 pub async fn consume(
     executor: &dyn Executor,
     host: &dyn Host,
@@ -274,11 +284,20 @@ pub async fn consume(
     now: i64,
 ) -> Consumed {
     let mut out = Consumed::default();
-    let plan = executor.plan().receiving().and_then(|receiving| {
-        receiving.queues.iter().find(|plan| {
-            matches!(&plan.source, QueueSource::Cloudflare(cloudflare) if cloudflare.queue == queue)
+    let cloudflare = |named: fn(&jadpo_std::receiving::CloudflareQueue) -> &str| {
+        executor.plan().receiving().and_then(|receiving| {
+            receiving.queues.iter().find(|plan| {
+                matches!(&plan.source, QueueSource::Cloudflare(cloudflare) if named(cloudflare) == queue)
+            })
         })
-    });
+    };
+    let plan = cloudflare(|cloudflare| &cloudflare.queue);
+    let dead = cloudflare(|cloudflare| &cloudflare.dead_letter_queue);
+    let (plan, dead) = match (plan, dead) {
+        (Some(plan), _) => (Some(plan), false),
+        (None, Some(plan)) => (Some(plan), true),
+        (None, None) => (None, false),
+    };
     let Some(plan) = plan else {
         out.received.left = batch.len() as u64;
         out.received.problems.push((
@@ -295,7 +314,11 @@ pub async fn consume(
     };
     let mut ctx = system_ctx(executor, host, now);
     for message in batch {
-        let taken = take(executor, plan, &mut ctx, &message.body).await;
+        let taken = if dead {
+            dead_lettered(plan, &mut ctx, &message.body).await
+        } else {
+            take(executor, plan, &mut ctx, &message.body).await
+        };
         out.answers.push(if taken.acknowledged() {
             Answer::Ack
         } else {
@@ -652,6 +675,48 @@ pub async fn take(
     }
 }
 
+/// Parks a message of `queue` with `body` that Cloudflare handed back
+/// from the queue's dead-letter queue, its retries spent while the store
+/// couldn't take it (chunk 8.4b; area 12, "Events from outside"): kept
+/// whole for an operator as `dead_lettered`, with its id and its event
+/// when they can be read, and no event kept, so `jadpo deliveries` shows
+/// it and a retry has the tick read it again.
+pub async fn dead_lettered(queue: &QueuePlan, ctx: &mut Ctx<'_>, body: &str) -> Taken {
+    let parsed = jadpo_value::json::parse(body.as_bytes()).map(|(parsed, _)| parsed);
+    let read = |path: &str| {
+        parsed
+            .as_ref()
+            .and_then(|parsed| crate::provider::at_path(parsed, path))
+    };
+    let message_id = match read(&queue.id_at) {
+        Some(serde_json::Value::String(text)) if !text.is_empty() => Some(text.clone()),
+        Some(serde_json::Value::Number(number)) if number.is_u64() || number.is_i64() => {
+            Some(number.to_string())
+        }
+        _ => None,
+    };
+    let event = match &queue.type_at {
+        None if parsed.is_some() => queue.events.first(),
+        None => None,
+        Some(type_at) => match read(type_at) {
+            Some(serde_json::Value::String(kind)) => queue
+                .events
+                .iter()
+                .find(|event| event.wire_name.as_deref() == Some(kind.as_str())),
+            _ => None,
+        },
+    };
+    Parked {
+        queue,
+        body,
+        event: event.map(|event| event.key.clone()),
+        message_id,
+        problems: Vec::new(),
+    }
+    .park(ctx, DEAD_LETTERED)
+    .await
+}
+
 /// The value `body` holds as the event numbered `number`, every member
 /// its event doesn't declare left out, as a webhook's are: the queue's own
 /// type and id among them, and whatever a sender adds.
@@ -744,5 +809,31 @@ impl Parked<'_> {
             Ok(_) => Taken::Parked(reason),
             Err(error) => Taken::Left(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each retry waits twice as long as the one before, from 10 seconds
+    /// to at most an hour; the consumer's retries together outlast a
+    /// deploy's migration, about 22 hours, inside the 24 hours a queue on
+    /// Workers' Free plan keeps a message.
+    #[test]
+    fn retries_wait_longer_each_time_up_to_an_hour() {
+        let delays: Vec<u32> = (1..=11).map(retry_delay).collect();
+        assert_eq!(
+            delays,
+            [10, 20, 40, 80, 160, 320, 640, 1280, 2560, 3600, 3600]
+        );
+        assert_eq!(retry_delay(0), 10);
+        assert_eq!(retry_delay(u32::MAX), 3600);
+        let retries = jadpo_std::receiving::CONSUMER_RETRIES;
+        let waited: u32 = (1..=retries).map(retry_delay).sum();
+        assert!(
+            (20 * 3600..24 * 3600).contains(&waited),
+            "{waited} seconds"
+        );
     }
 }

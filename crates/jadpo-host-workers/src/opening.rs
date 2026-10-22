@@ -118,26 +118,34 @@ pub struct Placing<'a> {
 impl<'a> Future for Placing<'a> {
     type Output = Place<'a>;
 
+    /// Asking hands on any free place first (chunk 8.4b): a place given
+    /// back while a waiter handed one before hadn't yet taken it found
+    /// nobody to hand it to, and would otherwise sit free while this one
+    /// waits behind it.
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Place<'a>> {
         let this = self.get_mut();
         let mut state = this.opening.state.borrow_mut();
-        let Some(number) = this.number else {
-            if state.taken < MOST && state.queue.is_empty() {
-                state.taken += 1;
-                return Poll::Ready(Place {
-                    opening: this.opening,
+        let number = match this.number {
+            Some(number) => number,
+            None => {
+                if state.taken < MOST && state.queue.is_empty() {
+                    state.taken += 1;
+                    return Poll::Ready(Place {
+                        opening: this.opening,
+                    });
+                }
+                let number = state.next;
+                state.next += 1;
+                state.queue.push_back(Ticket {
+                    number,
+                    waker: Some(cx.waker().clone()),
+                    handed: false,
                 });
+                this.number = Some(number);
+                number
             }
-            let number = state.next;
-            state.next += 1;
-            state.queue.push_back(Ticket {
-                number,
-                waker: Some(cx.waker().clone()),
-                handed: false,
-            });
-            this.number = Some(number);
-            return Poll::Pending;
         };
+        state.hand();
         let Some(at) = state
             .queue
             .iter()
@@ -239,6 +247,43 @@ mod tests {
         assert!(poll(&mut ninth, &waker).is_pending());
         assert!(poll(&mut eighth, &waker).is_ready());
         assert_eq!(opening.taken(), 6);
+    }
+
+    /// A place free when a connection asks for one is handed to it, even
+    /// while a waiter handed a place before it hasn't taken it yet (chunk
+    /// 8.4b; 8.2j's reproduction): the eighth never sits behind a free
+    /// place.
+    #[test]
+    fn a_free_place_is_handed_on_when_a_place_is_asked_for() {
+        let opening = Opening::default();
+        let woken = Arc::new(Count(AtomicUsize::new(0)));
+        let waker = Waker::from(Arc::clone(&woken));
+        let mut six: Vec<Place<'_>> = (0..MOST)
+            .map(|_| match poll(&mut opening.place(), &waker) {
+                Poll::Ready(place) => place,
+                Poll::Pending => panic!("a free place"),
+            })
+            .collect();
+        let mut seventh = opening.place();
+        assert!(poll(&mut seventh, &waker).is_pending());
+        // The first place given back is handed to the seventh; the second
+        // is free, nobody waiting without one.
+        six.pop();
+        six.pop();
+        let mut eighth = opening.place();
+        let eighth_place = match poll(&mut eighth, &waker) {
+            Poll::Ready(place) => Some(place),
+            Poll::Pending => None,
+        };
+        let Poll::Ready(_seventh) = poll(&mut seventh, &waker) else {
+            panic!("the place handed to the seventh");
+        };
+        let eighth_place = eighth_place.or_else(|| match poll(&mut eighth, &waker) {
+            Poll::Ready(place) => Some(place),
+            Poll::Pending => None,
+        });
+        assert!(eighth_place.is_some(), "the eighth waits behind a free place");
+        assert_eq!((opening.taken(), opening.waiting()), (MOST, 0));
     }
 
     /// A connection that stops waiting hands the place it was given on.

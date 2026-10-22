@@ -734,6 +734,8 @@ rules! {
         "06-reads-and-writes.html#query-unknown-section", "Query has a section Jadpo does not know";
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-value-unsupported", "Query value is computed rather than a parameter, literal or enum value";
+    RATE_LIMITS_COUNTED_IN_MEMORY: "rate_limits.counted_in_memory", area 16, Declinable, Agent,
+        "16-built-in-services.html#rate-limits-counted-in-memory", "Deployable built for Workers would count its rate limits in each instance's memory";
     RATE_LIMITS_STORE_INVALID: "rate_limits.store_invalid", area 16, Error, Agent,
         "16-built-in-services.html#rate-limits-store-invalid", "Rate limits' store isn't a connection that can count them";
     RATE_LIMITS_STORE_REQUIRED: "rate_limits.store_required", area 16, Error, Agent,

@@ -10,11 +10,13 @@
 //!   made from it, timers on `setTimeout`, settings from the Worker's
 //!   bindings, the work a response leaves run through `ctx.waitUntil` and
 //!   the work an invocation hands on run in a fresh one, a request to the
-//!   Worker itself through a service binding ([`HAND_ON_BINDING`]), rate
+//!   Worker itself through the loopback binding `ctx.exports` gives its
+//!   own [`HAND_ON_ENTRYPOINT`], whatever name it was deployed under, rate
 //!   limits counted in Cloudflare's rate-limiting binding when
 //!   `rate_limits:` names one, and in the isolate's memory while it can't
 //!   be asked, and Workers' budgets for background work (30 seconds after a
-//!   response and for work handed on, 15 minutes for the cron, which the
+//!   response and for work handed on, counted from the start of the
+//!   invocation that takes it on, 15 minutes for the cron, which the
 //!   ticks one cron runs share); the six connections an invocation may have
 //!   waiting for their answer's head at once ([`Opening`]), shared by its
 //!   drivers and its own fetches, and the isolate's `max_concurrent:`
@@ -82,6 +84,7 @@ use std::sync::OnceLock;
 use jadpo_drivers::factory::{Drivers, Supplies, Unbuilt};
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::capability::Capability;
+use jadpo_runtime::deployable::Log;
 use jadpo_runtime::http::address::Target;
 use jadpo_runtime::slots::Slots;
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, Passkeys, RateLimits};
@@ -92,6 +95,7 @@ use wasm_bindgen::{JsCast, JsValue};
 pub use fetch::{WorkersFetch, WorkersOutbound};
 pub use js::ExecutionContext;
 pub use opening::Opening;
+pub use ratelimit::LIMIT_TIMEOUT_MS;
 pub use passkeys::WorkersPasskeys;
 pub use transport::{WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
@@ -107,15 +111,14 @@ pub const AFTER_RESPONSE_MS: u64 = 30_000;
 /// How long a cron-triggered invocation may run: 15 minutes of wall time.
 pub const CRON_MS: u64 = 15 * 60 * 1000;
 
-/// The binding a Worker starts a fresh invocation of itself through, for
-/// work handed on (chunk 8.2h; area 12, "Running background work"): a
-/// service binding to its own [`HAND_ON_ENTRYPOINT`], which `jadpo build`
-/// writes into the Wrangler file.
-pub const HAND_ON_BINDING: &str = "JADPO_HAND_ON";
-
 /// The named entrypoint Jadpo's module shim exports for work handed on:
 /// its `handOn(work)` takes the work on in an invocation of its own. Not
-/// the Worker's default export, so nothing from outside reaches it.
+/// the Worker's default export, so nothing from outside reaches it. A
+/// Worker reaches its own through `ctx.exports` (chunk 8.4b), the loopback
+/// binding Workers gives each entrypoint a Worker exports, so the work
+/// goes to the Worker that handed it on whatever name or environment
+/// `wrangler deploy` gave it, never to another deployed from the same
+/// file.
 pub const HAND_ON_ENTRYPOINT: &str = "JadpoHandOn";
 
 /// What each kind of background work may run for on Workers (area 12,
@@ -132,6 +135,15 @@ pub fn budget_for(invocation: Invocation) -> u64 {
 /// minute has only that (chunk 8.2f).
 pub fn cron_left(began: u64, now: u64) -> u64 {
     CRON_MS.saturating_sub(now.saturating_sub(began))
+}
+
+/// What is left at `now` of the 30 seconds of an invocation taking on work
+/// handed on, begun at `began`, both on the monotonic clock: Workers counts
+/// them from the invocation's start, which answers at once, so the time
+/// spent starting the isolate and reading the work back is spent from them
+/// (chunk 8.4b).
+pub fn hand_on_left(began: u64, now: u64) -> u64 {
+    AFTER_RESPONSE_MS.saturating_sub(now.saturating_sub(began))
 }
 
 /// The isolate's `max_concurrent:` slots, which every invocation it
@@ -174,9 +186,15 @@ pub struct WorkersHost {
     outbound: WorkersOutbound,
     /// Where rate limits are counted: the plan's store, when it names one.
     rate_limits: Option<Rc<RateLimitStore>>,
+    /// The deployable's log, which a rate-limiting binding that can't be
+    /// asked is logged to once an isolate (chunk 8.4b).
+    log: Option<Log>,
     /// When the cron invocation it serves began on the monotonic clock:
     /// each tick it runs has what is left of the cron's 15 minutes.
     cron: Option<u64>,
+    /// When the invocation taking on work handed on began on the
+    /// monotonic clock: its work has what is left of its 30 seconds.
+    handed_on: Option<u64>,
     /// The invocation's six places for connections being opened, which
     /// its drivers and its own fetches share.
     opening: Rc<Opening>,
@@ -187,6 +205,7 @@ impl std::fmt::Debug for WorkersHost {
         f.debug_struct("WorkersHost")
             .field("ctx", &self.ctx.is_some())
             .field("cron", &self.cron)
+            .field("handed_on", &self.handed_on)
             .finish_non_exhaustive()
     }
 }
@@ -205,7 +224,9 @@ impl WorkersHost {
             drivers: Drivers::default(),
             outbound: WorkersOutbound::default().counted(Rc::clone(&opening)),
             rate_limits: None,
+            log: None,
             cron: None,
+            handed_on: None,
             opening,
         }
     }
@@ -232,10 +253,26 @@ impl WorkersHost {
         self
     }
 
+    /// Logs to `log` what the host has to say outside a request's own
+    /// events: a rate-limiting binding that can't be asked, once an
+    /// isolate (chunk 8.4b).
+    pub fn with_log(mut self, log: Log) -> WorkersHost {
+        self.log = Some(log);
+        self
+    }
+
     /// The host for a run of the cron trigger, which began now: the
     /// ticks it runs share the cron's 15 minutes ([`cron_left`]).
     pub fn for_cron(mut self) -> WorkersHost {
         self.cron = self.monotonic_ms();
+        self
+    }
+
+    /// The host for an invocation taking on work handed on, which began
+    /// now: what it runs has what is left of its 30 seconds
+    /// ([`hand_on_left`]).
+    pub fn for_hand_on(mut self) -> WorkersHost {
+        self.handed_on = self.monotonic_ms();
         self
     }
 
@@ -334,14 +371,14 @@ impl Host for WorkersHost {
     }
 
     /// A fresh invocation of the Worker, with Workers' 30 seconds of its
-    /// own (chunk 8.2h): a request to itself through the service binding
-    /// [`HAND_ON_BINDING`], sent the work's [`HandOn::message`], whose
-    /// invocation reads it back and runs it in its own `waitUntil`
-    /// ([`deployable::hand_on`]); this invocation is kept until that one
-    /// has taken it on. Without the binding or a context, or when the call
-    /// fails, as past the platform's limit on invocations one request
-    /// chains, it is dropped: what it names waits in the store, and the
-    /// minute's cron takes it up.
+    /// own (chunk 8.2h): a request to itself through the loopback binding
+    /// `ctx.exports` gives its [`HAND_ON_ENTRYPOINT`] (chunk 8.4b), sent
+    /// the work's [`HandOn::message`], whose invocation reads it back and
+    /// runs it in its own `waitUntil` ([`deployable::hand_on`]); this
+    /// invocation is kept until that one has taken it on. Without the
+    /// entrypoint or a context, or when the call fails, as past the
+    /// platform's limit on invocations one request chains, it is dropped:
+    /// what it names waits in the store, and the minute's cron takes it up.
     ///
     /// [`HandOn::message`]: jadpo_runtime::runner::HandOn::message
     fn hand_on(&self, work: jadpo_runtime::runner::HandOn) {
@@ -350,12 +387,16 @@ impl Host for WorkersHost {
         let Some(ctx) = &self.ctx else {
             return;
         };
-        let Ok(binding) = Reflect::get(&self.env, &JsValue::from_str(HAND_ON_BINDING)) else {
+        let Some(binding) = Reflect::get(ctx, &JsValue::from_str("exports"))
+            .ok()
+            .filter(JsValue::is_object)
+            .and_then(|exports| {
+                Reflect::get(&exports, &JsValue::from_str(HAND_ON_ENTRYPOINT)).ok()
+            })
+            .filter(JsValue::is_object)
+        else {
             return;
         };
-        if !binding.is_object() {
-            return;
-        }
         let binding = binding.unchecked_into::<js::HandOnBinding>();
         let Ok(called) = binding.hand_on(&message) else {
             return;
@@ -371,10 +412,20 @@ impl Host for WorkersHost {
     }
 
     /// Workers' budgets; a cron's tick has what is left of its
-    /// invocation's 15 minutes.
+    /// invocation's 15 minutes, and the work an invocation taking on work
+    /// handed on runs what is left of its 30 seconds.
     fn budget_ms(&self, invocation: Invocation) -> u64 {
-        match (invocation, self.cron, self.monotonic_ms()) {
-            (Invocation::Tick, Some(began), Some(now)) => cron_left(began, now),
+        match (invocation, self.monotonic_ms()) {
+            (Invocation::Tick, Some(now)) => match self.cron {
+                Some(began) => cron_left(began, now),
+                None => budget_for(invocation),
+            },
+            (Invocation::AfterResponse | Invocation::HandedOn, Some(now)) => {
+                match self.handed_on {
+                    Some(began) => hand_on_left(began, now),
+                    None => budget_for(invocation),
+                }
+            }
             _ => budget_for(invocation),
         }
     }
@@ -415,9 +466,11 @@ impl Host for WorkersHost {
 
     /// Counted in the rate-limiting binding the store gives `limit`, and
     /// in the isolate's memory ([`isolate_limits`]) when there is none or
-    /// it can't be asked. A binding says only whether the request is
-    /// within the limit, so a refusal is told to try again after the
-    /// window's whole length, the longest it can have to wait.
+    /// it can't be asked: missing, failing, or not answering within half a
+    /// second, logged once an isolate (chunk 8.4b). A binding says only
+    /// whether the request is within the limit, so a refusal is told to
+    /// try again after the window's whole length, the longest it can have
+    /// to wait.
     fn rate_limit<'a>(
         &'a self,
         key: &'a str,
@@ -430,16 +483,16 @@ impl Host for WorkersHost {
             .and_then(|store| store.binding(limit))
             .map(|binding| binding.name.clone());
         Box::pin(async move {
-            if let Some(binding) = binding
-                && let Some(within) = ratelimit::within(&self.env, &binding, key).await
-            {
-                return if within {
-                    Allowed::Yes
-                } else {
-                    Allowed::No {
-                        retry_after: u64::from(limit.window_ms.div_ceil(1000).max(1)),
+            if let Some(binding) = binding {
+                match ratelimit::within(&self.env, &binding, key).await {
+                    Ok(true) => return Allowed::Yes,
+                    Ok(false) => {
+                        return Allowed::No {
+                            retry_after: u64::from(limit.window_ms.div_ceil(1000).max(1)),
+                        };
                     }
-                };
+                    Err(why) => ratelimit::fell_back(self.log.as_ref(), &binding, why),
+                }
             }
             isolate_limits().allow(key, limit, now)
         })
@@ -468,6 +521,18 @@ mod tests {
         assert_eq!(cron_left(1_000, 2_000 + CRON_MS), 0);
         // A clock that went back gives the whole budget, never more.
         assert_eq!(cron_left(5_000, 1_000), CRON_MS);
+    }
+
+    /// Work handed on has what is left of the 30 seconds of the
+    /// invocation taking it on, counted from that invocation's start, and
+    /// none once they are spent.
+    #[test]
+    fn work_handed_on_has_what_is_left_of_its_invocations_seconds() {
+        assert_eq!(hand_on_left(1_000, 1_000), AFTER_RESPONSE_MS);
+        assert_eq!(hand_on_left(1_000, 4_500), AFTER_RESPONSE_MS - 3_500);
+        assert_eq!(hand_on_left(1_000, 31_000), 0);
+        assert_eq!(hand_on_left(1_000, 90_000), 0);
+        assert_eq!(hand_on_left(5_000, 1_000), AFTER_RESPONSE_MS);
     }
 
     #[test]

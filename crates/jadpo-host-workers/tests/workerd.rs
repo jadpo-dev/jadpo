@@ -121,6 +121,32 @@ fn background_work_has_the_workers_budgets() {
     );
 }
 
+/// The invocation taking on work handed on has what is left of its 30
+/// seconds, counted from its start (chunk 8.4b): the time it spends before
+/// the work runs, starting the isolate and reading the work back, is
+/// spent from them.
+#[test]
+fn work_handed_on_has_what_is_left_of_its_invocations_seconds() {
+    let seen = bed().get("/budget-handed-on?waited=1500");
+    let left: Vec<u64> = seen
+        .split(' ')
+        .filter_map(|pair| pair.split_once('=')?.1.parse().ok())
+        .collect();
+    assert_eq!(left.len(), 2, "{seen}");
+    for left in left {
+        assert!((25_000..=28_500).contains(&left), "{seen}");
+    }
+}
+
+/// A queue consumer's message whose `retry()` throws isn't acknowledged
+/// (chunk 8.4b): the others are answered, and the handler then ends with
+/// an error, so Cloudflare hands again every message not acknowledged
+/// rather than acknowledging the unanswered one.
+#[test]
+fn a_message_whose_retry_throws_fails_the_batch() {
+    assert_eq!(bed().get("/queue-answers"), "ack:m1 retry:m3:20 threw");
+}
+
 /// The transport opens a TCP connection with `connect()` and reads and
 /// writes over it.
 #[test]
@@ -328,8 +354,9 @@ fn rate_limits_are_counted_in_the_isolates_memory() {
 /// decides (chunk 8.2m2): the stand-in allows one request a minute where
 /// the limit says two, and a refusal is told to wait the window's length,
 /// since the binding says nothing of when its window ends. A binding that
-/// throws, or one the Worker hasn't got, leaves the count to the
-/// isolate's memory, and no request fails for it.
+/// throws, one the Worker hasn't got, or one that doesn't answer within
+/// half a second, leaves the count to the isolate's memory, logged once,
+/// and no request fails for it.
 #[test]
 fn rate_limits_are_counted_in_cloudflares_binding() {
     let bed = bed();
@@ -353,6 +380,54 @@ fn rate_limits_are_counted_in_cloudflares_binding() {
         bed.get("/rate-binding?binding=MISSING_2_PER_60S&key=unbound"),
         "yes yes"
     );
+    // A binding that never answers isn't waited for past half a second
+    // (chunk 8.4b): the isolate counts instead.
+    let began = Instant::now();
+    assert_eq!(
+        bed.get("/rate-binding?binding=STUCK_2_PER_60S&key=stuck"),
+        "yes yes"
+    );
+    assert!(
+        began.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        began.elapsed()
+    );
+    // Each binding that couldn't be asked is logged once an isolate, by
+    // name and why, never by key.
+    assert_eq!(
+        bed.get("/rate-binding?binding=MISSING_2_PER_60S&key=unbound-again"),
+        "yes yes"
+    );
+    let log = bed.log();
+    let fallbacks: Vec<serde_json::Value> = log
+        .lines()
+        .filter(|line| line.contains("\"rate_limits.fallback\""))
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|_| panic!("JSON: {line}")))
+        .collect();
+    let seen: Vec<(String, String)> = fallbacks
+        .iter()
+        .map(|event| {
+            (
+                event["binding"].as_str().unwrap_or_default().to_string(),
+                event["reason"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("BROKEN_2_PER_60S".to_string(), "failed".to_string()),
+            ("MISSING_2_PER_60S".to_string(), "missing".to_string()),
+            ("STUCK_2_PER_60S".to_string(), "timed_out".to_string()),
+        ],
+        "{log}"
+    );
+    for key in ["unreached", "unbound", "stuck"] {
+        assert!(
+            !fallbacks.iter().any(|event| event.to_string().contains(key)),
+            "{log}"
+        );
+    }
 }
 
 /// A connection's task, which a driver hands the transport, runs beside

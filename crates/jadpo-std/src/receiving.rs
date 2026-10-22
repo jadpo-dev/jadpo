@@ -5,7 +5,8 @@
 //! fetched and acknowledged through its connection's package
 //! (`provides/receiving.jadpo`), or pushed in batches to a consumer on
 //! Workers by Cloudflare Queues (`Driver.cloudflare_queues`, chunk 7.7c2),
-//! whose consumer [`wrangler_queues`] writes for the Wrangler file.
+//! whose consumer, and its dead-letter queue's (chunk 8.4b),
+//! [`wrangler_queues`] writes for the Wrangler file.
 
 /// One queue the application receives.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -125,24 +126,44 @@ pub const CONSUMER_BATCH: u32 = 10;
 pub const CONSUMER_WAIT_SECONDS: u32 = 5;
 
 /// How many times Cloudflare hands a message again that the consumer
-/// retried, before it moves it to the dead-letter queue.
-pub const CONSUMER_RETRIES: u32 = 3;
+/// retried, before it moves it to the dead-letter queue (chunk 8.4b): with
+/// the delays the runtime gives (`jadpo_runtime::receiving::retry_delay`,
+/// 10 seconds doubled for each attempt, at most an hour), about 22 hours,
+/// long enough to outlast a deploy's migration and short enough that the
+/// message reaches the dead-letter queue inside the 24 hours a queue on
+/// Workers' Free plan keeps it.
+pub const CONSUMER_RETRIES: u32 = 30;
 
-/// The `queues` member of the Wrangler file for `queues`: a consumer for
-/// each one on Cloudflare Queues, none for a package's. `None` when there
-/// is none, so the file names no consumer.
+/// How many times Cloudflare hands a message of a dead-letter queue again
+/// that its consumer retried, the store unable to park it: Cloudflare's
+/// most, since a dead-letter queue has none of its own and a message whose
+/// retries are spent there is gone (chunk 8.4b).
+pub const DEAD_LETTER_RETRIES: u32 = 100;
+
+/// The `queues` member of the Wrangler file for `queues`: for each one on
+/// Cloudflare Queues a consumer, and one for its dead-letter queue, whose
+/// messages the consumer parks for an operator (chunk 8.4b); none for a
+/// package's. `None` when there is none, so the file names no consumer.
 pub fn wrangler_queues(queues: &[QueuePlan]) -> Option<serde_json::Value> {
     let consumers: Vec<serde_json::Value> = queues
         .iter()
-        .filter_map(|queue| match &queue.source {
-            QueueSource::Cloudflare(cloudflare) => Some(serde_json::json!({
-                "queue": cloudflare.queue,
-                "max_batch_size": CONSUMER_BATCH,
-                "max_batch_timeout": CONSUMER_WAIT_SECONDS,
-                "max_retries": CONSUMER_RETRIES,
-                "dead_letter_queue": cloudflare.dead_letter_queue,
-            })),
-            QueueSource::Package { .. } => None,
+        .flat_map(|queue| match &queue.source {
+            QueueSource::Cloudflare(cloudflare) => vec![
+                serde_json::json!({
+                    "queue": cloudflare.queue,
+                    "max_batch_size": CONSUMER_BATCH,
+                    "max_batch_timeout": CONSUMER_WAIT_SECONDS,
+                    "max_retries": CONSUMER_RETRIES,
+                    "dead_letter_queue": cloudflare.dead_letter_queue,
+                }),
+                serde_json::json!({
+                    "queue": cloudflare.dead_letter_queue,
+                    "max_batch_size": CONSUMER_BATCH,
+                    "max_batch_timeout": CONSUMER_WAIT_SECONDS,
+                    "max_retries": DEAD_LETTER_RETRIES,
+                }),
+            ],
+            QueueSource::Package { .. } => Vec::new(),
         })
         .collect();
     (!consumers.is_empty()).then(|| serde_json::json!({ "consumers": consumers }))
@@ -170,6 +191,9 @@ mod tests {
         })
     }
 
+    /// Each queue on Cloudflare Queues is a consumer, retried for about 22
+    /// hours before Cloudflare moves a message to its dead-letter queue,
+    /// and that queue a consumer too, retried as long as Cloudflare allows.
     #[test]
     fn each_cloudflare_queue_is_a_consumer_in_the_wrangler_file() {
         let package = QueueSource::Package {
@@ -200,15 +224,27 @@ mod tests {
                         "queue": "warehouse-events",
                         "max_batch_size": 10,
                         "max_batch_timeout": 5,
-                        "max_retries": 3,
+                        "max_retries": 30,
                         "dead_letter_queue": "warehouse-events-dead",
+                    },
+                    {
+                        "queue": "warehouse-events-dead",
+                        "max_batch_size": 10,
+                        "max_batch_timeout": 5,
+                        "max_retries": 100,
                     },
                     {
                         "queue": "billing",
                         "max_batch_size": 10,
                         "max_batch_timeout": 5,
-                        "max_retries": 3,
+                        "max_retries": 30,
                         "dead_letter_queue": "billing-dead",
+                    },
+                    {
+                        "queue": "billing-dead",
+                        "max_batch_size": 10,
+                        "max_batch_timeout": 5,
+                        "max_retries": 100,
                     },
                 ]
             }))

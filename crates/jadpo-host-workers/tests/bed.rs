@@ -158,9 +158,10 @@ impl Bed {
 /// workerd's configuration: the probe, served on `port`, reaching this
 /// machine through a network that trusts the test's authority, given two
 /// text bindings, a Hyperdrive binding whose service is the echo on
-/// `echo`, as a database's would be its server, and two stand-ins for
+/// `echo`, as a database's would be its server, and three stand-ins for
 /// Cloudflare's rate-limiting binding (tools/workers/ratelimit-binding.mjs):
-/// one allowing a request a minute, and one that throws.
+/// one allowing a request a minute, one that throws, and one that never
+/// answers (chunk 8.4b).
 fn config(port: u16, https: u16, echo: u16) -> String {
     format!(
         r#"using Workerd = import "/workerd/workerd.capnp";
@@ -205,6 +206,11 @@ const probe :Workerd.Worker = (
       (name = "limit", json = "1"),
       (name = "period", json = "60"),
       (name = "broken", json = "true"),
+    ])),
+    (name = "STUCK_2_PER_60S", wrapped = (moduleName = "jadpo-test:ratelimit", innerBindings = [
+      (name = "limit", json = "1"),
+      (name = "period", json = "60"),
+      (name = "hang", json = "true"),
     ])),
   ],
   globalOutbound = "internet",
