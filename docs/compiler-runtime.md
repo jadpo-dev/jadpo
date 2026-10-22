@@ -3802,8 +3802,9 @@ which bakes again, from the data compiled into this Jadpo
 lock, each implemented by its own crate's macro), each marker's entries
 for the locales a supported locale's lookups walk through (the locale,
 then each its fallback gives for that marker's configuration, down to
-`und`, which is always kept), every locale's collation (`list.sort_by`
-takes any `Locale`, area 19), and every marker with one entry, through
+`und`, which is always kept), collation among them (chunk 8.4i; every
+locale's with no `locales { }`, when `list.sort_by` takes any
+`Locale`), and every marker with one entry, through
 icu_provider_export's `ExportDriver` and baked writer. The files go into
 `build/rust/cldr/`, written only where they changed, one folder for
 every deployable of the app since its locales are the app's, so the
@@ -3812,10 +3813,11 @@ cargo with `ICU4X_DATA_DIR` naming it (`Release::cldr`), so each ICU4X
 data crate compiles them in place of its own: every `compiled_data` constructor is the same call,
 and each lookup in a supported locale finds the entry the full data
 gives (`jadpo-cldr`'s tests walk every marker's fallback for six locales
-to hold it). A `Locale` the app doesn't support reaching formatting or
-a message is written in the supported one a header naming it would get
-(`jadpo_value::locale::written_in`) on every target, so `jadpo test` and
-the deployable write the same text. Proved live (`deployable.rs`): a
+to hold it). A `Locale` the app doesn't support reaching formatting,
+a message or `list.sort_by` is written in, or sorts by, the supported
+one a header naming it would get (`jadpo_value::locale::written_in`) on
+every target, so `jadpo test` and the deployable write the same text
+and the same order. Proved live (`deployable.rs`): a
 shop supporting `en_gb` and `fr_fr`, built, holds no German or Spanish
 weekday and answers what `jadpo dev` answers. Exporting takes about two
 seconds in a debug `jadpo`; the sizes are in area 10's decisions.

@@ -29,8 +29,9 @@
 //! Spanish, and answers exactly what `jadpo dev`, holding every locale,
 //! answers: dates, zones, relative times, money, currencies, numbers,
 //! units, a language's name, a plural message, a locale it doesn't list
-//! written in one it does, and Swedish collation and Turkish capitals,
-//! which take any locale. Since chunk 8.4a it answers its limits as `jadpo
+//! written in one it does, a list sorted in Swedish, which it doesn't
+//! list, in its default's order (chunk 8.4i), and Turkish capitals, which
+//! take any locale. Since chunk 8.4a it answers its limits as `jadpo
 //! dev` does too, on its workers' own stacks: a thousand frames of a
 //! plain recursion and of a heavy one, four hundred inline functions
 //! running at once, a level more of each the `recursion_limit` fault, the
@@ -361,9 +362,9 @@ test "a locale the shop doesn't list is written in one it does" {
     assert shown.in_canadian_french == "24 septembre 2026"
 }
 
-test "sorting and capitals take any locale" {
+test "sorting in a locale the shop doesn't list uses one it does, and capitals take any" {
     var shown: ShopText = show(Locale.en_gb)
-    assert shown.swedish_order == ["Oat", "Zopf", "Ölandsbröd"]
+    assert shown.swedish_order == ["Oat", "Ölandsbröd", "Zopf"]
     assert shown.turkish_capitals == "İSTANBUL"
 }
 "#,
