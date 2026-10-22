@@ -2827,7 +2827,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4); `ai.stream` read piece by piece and sent as server-sent events (chunk 5.5v6) | same, through Workers' `fetch` |
-| Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer hands each batch to `receiving::consume`, which answers each message (chunk 7.7c2) |
+| Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer, the Worker's `queue`, hands each batch to `receiving::consume`, which answers each message (chunks 7.7c2 and 8.2k) |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
@@ -3696,6 +3696,53 @@ and workerd, which queues nothing, never shows it; a promise of the
 waiting call's settled from the giving invocation, which the decision
 rules out; and a slot taken back after its call's own timeout, which
 would cut short a call legitimately slow before its request went out.
+
+**Cloudflare Queues' consumer** (chunk 8.2k; area 11, "Chosen in chunk
+7.7c2"; area 14, "A Workers deployable"). The generated crate exports
+`queue` beside `fetch` and `scheduled`, and the shim hands it the batch,
+`env` and `ctx`. `jadpo_host_workers::deployable::queue` (its own module,
+`deployable/queue.rs`) starts the isolate as `fetch` does and, once its
+stores are current, hands `receiving::consume` the batch's `queue` and
+each message's body as text (a string as sent, an `ArrayBuffer` or view
+as UTF-8, any other value through `JSON.stringify`, `undefined` as
+nothing, which parks as unreadable) with its `attempts`; it answers each
+message on its own, `ack()` or `retry({ delaySeconds })` as `consume`
+says, and only then gives the kept events' deliveries to
+`runner::after_response`, so they run in `waitUntil` and what its 30
+seconds don't reach is handed on (chunk 8.2h). An isolate that can't
+start or whose stores aren't current retries every message after the
+delay its attempts give (`receiving::retry_delay`) and keeps nothing; a
+batch with a message retried logs `queue.retried` (the queue, how many,
+`not_started`, `not_received` or `store_unavailable`), never a body.
+`jadpo build` adds `queues: { consumers: [ ] }` to the Wrangler file from
+the deployable's plan (`jadpo_codegen::workers::queued`, through
+`jadpo_std::receiving::wrangler_queues`), which keeps the queues only
+where subscribers run. The file is checked against Wrangler itself:
+Wrangler 4.149.0 is pinned in `tools/workers/` beside workerd, whose
+release it is held to by an npm override, and installed with it by the
+shared installer (`jadpo_test::workerd_install::wrangler`); the test runs
+its `deploy --dry-run` with no account, its banner's update check,
+telemetry and error reports off, a home of its own, and
+`tools/workers/offline.mjs` preloaded through `--import`, which refuses
+and reports every DNS lookup and outbound connection, so a run that
+reached for the network fails (Wrangler's update check reaches npm's
+registry when it warns of an unexpected field, which the preload caught
+while this was built). Wrangler validates a consumer's setting names and
+types but no queue name, and it warned of the `.wasm` rule hiding its own
+default, which the file now gives `fallthrough: false`. Proved under
+workerd (`crates/jadpo-cli/tests/workers/queues.rs`, the `wasm32` group)
+through a service binding's `queue()` on the test's helper Worker: a
+warehouse whose Wrangler file Wrangler accepts without a warning; out of
+date, a message retried after 20 seconds on its second attempt; current,
+a batch of a text body, a JSON body, a repeat, an unlisted type and one
+that isn't JSON each acknowledged, two events kept and delivered after
+the answers, two messages parked; and a batch from a queue it doesn't
+receive retried whole. *Rejected:* answering the batch whole
+(`ackAll`/`retryAll`), which would retry kept messages with a failed one;
+throwing from the handler while the stores aren't current, which
+Cloudflare counts as a failed attempt with no delay of Jadpo's; and
+checking the Wrangler file against Wrangler's JSON schema alone, which
+says nothing of what `wrangler deploy` warns of.
 
 **The locale data a deployable carries** (chunk 8.2c; area 10,
 "Locales"). `jadpo test`, `jadpo dev` and the compiled step run with

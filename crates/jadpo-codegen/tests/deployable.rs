@@ -210,6 +210,8 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
         "jadpo_host_workers::deployable::scheduled(&DEPLOYABLE, controller, env, ctx)",
         "pub fn hand_on(work: String, env: JsValue, ctx: JsValue) -> JsValue",
         "jadpo_host_workers::deployable::hand_on(&DEPLOYABLE, work, env, ctx)",
+        "pub fn queue(batch: JsValue, env: JsValue, ctx: JsValue) -> JsValue",
+        "jadpo_host_workers::deployable::queue(&DEPLOYABLE, batch, env, ctx)",
         "program: jadpo_program::program",
         "build: \"b_3c41d07a9e12\"",
         "deployable: \"kiosk\"",
@@ -243,12 +245,15 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     let shim = workers::shim("back_office");
     for held in [
         "import module from \"./back_office.wasm\";",
-        "import { initSync, fetch as handleFetch, scheduled as handleScheduled, hand_on as handleHandOn } from \"./back_office.js\";",
+        "import { initSync, fetch as handleFetch, scheduled as handleScheduled, queue as handleQueue, hand_on as handleHandOn } from \"./back_office.js\";",
         "initSync({ module });",
         "export default {",
         "return handleFetch(request, env, ctx);",
         "scheduled(controller, env, ctx) {",
         "return handleScheduled(controller, env, ctx);",
+        // Each batch Cloudflare Queues pushes to its consumer (chunk 8.2k).
+        "queue(batch, env, ctx) {",
+        "return handleQueue(batch, env, ctx);",
         // Work handed on reaches a named entrypoint, never the default
         // export a request from outside reaches.
         "import { WorkerEntrypoint } from \"cloudflare:workers\";",
@@ -285,7 +290,9 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
             "find_additional_modules": true,
             "rules": [
                 { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
-                { "type": "CompiledWasm", "globs": ["**/*.wasm"] },
+                // Wrangler warns of a rule that hides its own default
+                // without saying so (chunk 8.2k).
+                { "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": false },
             ],
             "secrets": { "required": ["MAIL_SENDER"] },
             // Each database's address is a Hyperdrive binding (chunk
@@ -358,4 +365,43 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
     );
     let plain = workers::wrangler("web", &[], &[], false, false);
     assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
+}
+
+/// Each queue on Cloudflare Queues the Worker receives is a consumer in its
+/// Wrangler file, by Wrangler's own setting names (chunk 8.2k); a
+/// package's queue, fetched on the tick, is none.
+#[test]
+fn a_worker_consumes_each_cloudflare_queue_it_receives() {
+    use jadpo_std::receiving::{CloudflareQueue, QueuePlan, QueueSource};
+    let queue = |connection: &str, name: &str| QueuePlan {
+        connection: connection.to_string(),
+        type_at: None,
+        id_at: "id".to_string(),
+        events: Vec::new(),
+        store: "main".to_string(),
+        source: QueueSource::Cloudflare(CloudflareQueue {
+            queue: name.to_string(),
+            dead_letter_queue: format!("{name}-dead"),
+        }),
+    };
+    let wrangler: serde_json::Value = serde_json::from_str(&workers::queued(
+        workers::wrangler("depot", &[], &[], true, true),
+        &[queue("warehouse_queue", "warehouse-events")],
+    ))
+    .expect("JSON");
+    assert_eq!(
+        wrangler["queues"],
+        serde_json::json!({
+            "consumers": [{
+                "queue": "warehouse-events",
+                "max_batch_size": 10,
+                "max_batch_timeout": 5,
+                "max_retries": 3,
+                "dead_letter_queue": "warehouse-events-dead",
+            }]
+        })
+    );
+    assert_eq!(wrangler["services"][0]["binding"], "JADPO_HAND_ON");
+    let plain = workers::wrangler("depot", &[], &[], false, false);
+    assert_eq!(workers::queued(plain.clone(), &[]), plain);
 }

@@ -2753,13 +2753,29 @@ whose entry names them.
   seconds after its holder went quiet (workerd lets a request whose
   client left run on, so the probe leaves the slot as a cancelled one
   would). The real edge's six is 8.2n's to measure.
-- [ ] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
-  (from chunk 7.7c2): the queue handler calling `receiving::consume` and
-  answering each message (`ack()`, `retry({ delaySeconds })`), the kept
-  events' deliveries in `waitUntil`; `wrangler_queues` written into the
-  Wrangler file, its setting names and Jadpo's queue-name form checked
-  against Wrangler's own (Wrangler pinned in `tools/workers/`, its
-  `deploy --dry-run`, no account). Proved through workerd's queue entry.
+- [x] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
+  (from chunk 7.7c2). Built (area 11, "Chosen in chunk 7.7c2"; area 14,
+  "A Workers deployable"; §2.6, "Cloudflare Queues' consumer"): the
+  Worker's `queue`, exported and handed on by the shim, starting the
+  isolate as `fetch` does and handing each batch to `receiving::consume`,
+  each message answered on its own (`ack()`, `retry({ delaySeconds })`),
+  then the kept events' deliveries in `waitUntil`, handed on past its 30
+  seconds; out of date, every message retried after its attempt's delay
+  and `queue.retried` logged. `queues: { consumers }` written into the
+  Wrangler file (`workers::queued`), and the `.wasm` rule given
+  `fallthrough: false`, which Wrangler warned of. Wrangler 4.149.0 pinned
+  in `tools/workers/` beside workerd (held to its release by an npm
+  override; 70 MB more installed) and installed by the shared installer;
+  its `deploy --dry-run` accepts the file without a warning, run with
+  every connection refused and reported (`tools/workers/offline.mjs`).
+  Wrangler checks the setting names, which were right, and no queue name,
+  so Jadpo's form stands for 8.2n. Decided in the chunk (area 11,
+  2026-10-22). Proved under workerd through a service binding's
+  `queue()` (`crates/jadpo-cli/tests/workers/queues.rs`, the `wasm32`
+  group): a warehouse retrying while out of date, then acknowledging a
+  text body, a JSON body, a repeat and two messages it parks, delivering
+  the two kept after answering, and retrying a batch from a queue it
+  doesn't receive.
 - [x] **8.2l Passkeys on Workers** `opus · high`, after 8.2a. Built:
   `WorkersPasskeys`, the Workers host's `Host::passkeys`: `webauthn-rs`
   0.5's passkey ceremonies in pure Rust, its options member for member
@@ -2828,6 +2844,8 @@ whose entry names them.
   a Worker's binding to its own `JadpoHandOn` accepted, each invocation
   handed on given its own 30 seconds once the one that called it has
   ended, and a client leaving a streamed answer ending the model's call.
+  From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
+  Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
 
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and

@@ -2319,7 +2319,8 @@ application {
   is parked whole in `jadpo_parked_messages`, which `jadpo deliveries`
   lists, retries and dismisses; queues are received on the tick, at least
   every 10 seconds. The Cloudflare Queues driver is built in chunk 7.7c2
-  (area 11, "Chosen in chunk 7.7c2"), deploying it with Phase 8: a
+  (area 11, "Chosen in chunk 7.7c2"), and the Worker's consumer in chunk
+  8.2k (area 14, "A Workers deployable"): a
   connection with `driver: Driver.cloudflare_queues`, `queue:` and
   `dead_letter_queue:`, its consumer handed each batch and answering for
   each message, acknowledged once kept, as a repeat or parked, retried

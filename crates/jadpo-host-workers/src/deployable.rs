@@ -38,8 +38,8 @@
 //! A streamed answer is sent as a `ReadableStream`, each event as it is
 //! read ([`crate::streamed`]); and [`hand_on`] is the fresh invocation
 //! work handed on starts, a request to the Worker itself through a service
-//! binding to its `JadpoHandOn` entrypoint (chunk 8.2h). The queue's
-//! handler is chunk 8.2k's.
+//! binding to its `JadpoHandOn` entrypoint (chunk 8.2h). [`queue`] is the
+//! consumer of each queue on Cloudflare Queues it receives (chunk 8.2k).
 
 use std::cell::{Cell, OnceCell};
 use std::fmt;
@@ -64,6 +64,9 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Headers, ReadableStreamDefaultReader, ResponseInit};
 
 use crate::{WorkersHost, js};
+
+mod queue;
+pub use queue::queue;
 
 pub use jadpo_runtime::deployable::{Deployable, Migration, Stamp, Store};
 
