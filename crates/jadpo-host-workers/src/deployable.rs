@@ -32,10 +32,11 @@
 //! isolate as `fetch` does, and once its stores are current runs the
 //! runtime's tick through `Serving` on a host of its own, whose ticks
 //! share the cron's 15 minutes, each logged as `runtime.ticked` with the
-//! stores it couldn't work in, as a native server logs its ticks. While the program ticks more often than
-//! once a minute, as one receiving a queue does every 10 seconds, it ticks
-//! again at each such mark of the cron's minute, one tick after another,
-//! and ends with the minute, the next minute's cron going on from there.
+//! stores it couldn't work in, as a native server logs its ticks. While
+//! the program ticks more often than once a minute, as one receiving a
+//! queue does every 10 seconds, it ticks again at each such mark of the
+//! cron's minute, one tick after another, and ends with the minute, the
+//! next minute's cron going on from there.
 //!
 //! A streamed answer is sent as a `ReadableStream`, each event as it is
 //! read ([`crate::streamed`]); and [`hand_on`] is the fresh invocation
