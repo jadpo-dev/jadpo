@@ -1,35 +1,47 @@
 //! What a deployable's generated code hands its host, and what both hosts
-//! start it with (roadmap chunks 8.1o, 8.2b and 8.2d;
+//! start it with (roadmap chunks 8.1o, 8.2b, 8.2d and 8.4c;
 //! docs/compiler-runtime.md §2.6, "A native deployable" and "A Workers
 //! deployable"): the compiled program, the build stamp and each store's
 //! migrations, as constants ([`Deployable`]). The native host's `main` and
-//! the Workers host's handlers take the same [`Deployable`], so both start
-//! a program the same way and stamp every event alike:
+//! the Workers host's handlers take the same [`Deployable`] and start it
+//! through this module, so both start a program the same way and log
+//! alike:
 //!
-//! - [`Log`]: each event one JSON object a line, its keys sorted, carrying
-//!   the stamp, through the host's sink (standard output natively, the
-//!   console on Workers, which Workers Logs reads);
-//! - the problems that stop a start, each with its `problem` code and a
-//!   `message` naming a setting by its variable and never its value
-//!   ([`setting_problem`], [`unaddressed`], [`client_address_refused`]);
-//! - each store compared with the migrations the build holds
-//!   ([`compare`]), one behind, ahead or changed a problem
-//!   ([`pending`], [`diverged`]) and one it can't reach told apart, which
-//!   the native host waits for and a Worker checks again at its next
-//!   request;
-//! - [`Faults`]: each fault behind a 500 logged with its `.jadpo` frames
-//!   (areas 4 and 17).
+//! - [`start`]: the program made, its settings read from what the host
+//!   gives (the environment natively, the bindings on Workers) and its
+//!   `client_address:` source accepted on the target, or every problem
+//!   that stops the start, each with its `problem` code and a `message`
+//!   naming a setting by its variable and never its value
+//!   ([`setting_problem`], [`client_address_refused`]);
+//! - [`compare_stores`]: each store compared with the migrations the
+//!   build holds ([`compare_store`]), one behind, ahead or changed, or
+//!   with no driver, a problem ([`pending`], [`diverged`], [`unaddressed`])
+//!   and one it can't reach told apart, which the native host waits for
+//!   ([`waiting`]), a Worker checks again at its next request and a tick
+//!   doesn't wait for;
+//! - [`unbuilt`]: each connection whose driver wasn't built
+//!   ([`NotBuilt`]), as `runtime.started` and `runtime.ticked` list it;
+//! - [`Log`]: each event one JSON object a line, its keys sorted,
+//!   carrying the stamp, through the host's sink (standard output
+//!   natively, the console on Workers, which Workers Logs reads);
+//! - [`Logged`]: what `Serving` does, logged: each fault behind a 500 with
+//!   its `.jadpo` frames (areas 4 and 17), and each tick's result as
+//!   `runtime.ticked` ([`ticked_fields`]), so a store a tick can't work in
+//!   is logged wherever it ticks: a native server's timer, its `tick`
+//!   command and a Worker's cron.
 
 use std::fmt;
 
 use jadpo_std::Unreadable;
+use jadpo_std::schedule::SchedulesPlan;
 use serde_json::{Map, Value, json};
 
 use crate::compiled::Program;
-use crate::config::{ProblemKind, StartProblem};
-use crate::http::address::NotAccepted;
+use crate::config::{self, ConfigValues, Mode, ProblemKind, StartProblem, Variables};
+use crate::http::address::{ClientAddress, NotAccepted, Target};
+use crate::schedules::{Ran, Ticked};
 use crate::serve::{Answered, Observer};
-use crate::{Database, MigrateError, StoreError};
+use crate::{Database, Executor, MigrateError, StoreError};
 
 /// What a generated deployable hands its host.
 #[derive(Clone, Copy, Debug)]
@@ -130,17 +142,33 @@ impl Log {
     }
 }
 
-/// Logs each fault behind a 500 with its `.jadpo` frames (areas 4 and 17)
-/// as `operation.failed`.
+/// What a deployable logs of what `Serving` does, on either host (chunk
+/// 8.4c): each fault behind a 500 with its `.jadpo` frames (areas 4 and
+/// 17) as `operation.failed`, and each tick's result as `runtime.ticked`
+/// ([`ticked_fields`]), naming the connections whose drivers the host
+/// serving it didn't build.
 #[derive(Debug)]
-pub struct Faults(pub Log);
+pub struct Logged {
+    log: Log,
+    unbuilt: Value,
+}
 
-impl Observer for Faults {
+impl Logged {
+    /// Logs to `log`, on a host whose factory didn't build `unbuilt`.
+    pub fn new<U: NotBuilt>(log: Log, unbuilt: &[U]) -> Logged {
+        Logged {
+            log,
+            unbuilt: self::unbuilt(unbuilt),
+        }
+    }
+}
+
+impl Observer for Logged {
     fn answered(&self, answered: &Answered<'_>) {
         let Some(fault) = &answered.response.fault else {
             return;
         };
-        self.0.event(
+        self.log.event(
             "operation.failed",
             [
                 ("classification", fault.kind.classification().into()),
@@ -172,6 +200,198 @@ impl Observer for Faults {
             ],
         );
     }
+
+    fn ticked(&self, program: &dyn Executor, ticked: &Ticked, _now: i64, ms: u64) {
+        self.log.event(
+            "runtime.ticked",
+            ticked_fields(program.plan().schedules(), ticked, ms, self.unbuilt.clone()),
+        );
+    }
+}
+
+/// What `runtime.ticked` says of a tick that took `ms`: each schedule it
+/// ran or skipped by name, how many deliveries it ran, what it received
+/// and polled, how many rows it deleted, the alerts it raised as their
+/// own events say them, each store it couldn't work in, and each
+/// connection whose driver wasn't built (`unbuilt`, as [`unbuilt`] lists
+/// them). Never a value from the app's data.
+pub fn ticked_fields(
+    plan: Option<&SchedulesPlan>,
+    ticked: &Ticked,
+    ms: u64,
+    unbuilt: Value,
+) -> [(&'static str, Value); 9] {
+    let name = |key: &str| {
+        plan.and_then(|plan| plan.schedule(key))
+            .map_or_else(|| key.to_string(), |schedule| schedule.name.clone())
+    };
+    let ran = ticked
+        .due
+        .iter()
+        .map(|due| {
+            let mut run = Map::new();
+            run.insert("schedule".into(), name(&due.schedule).into());
+            run.insert("by_hand".into(), due.by_hand.into());
+            run.insert("ms".into(), due.duration_ms().into());
+            match &due.ran {
+                Ran::Succeeded { events } => {
+                    run.insert("outcome".into(), "succeeded".into());
+                    run.insert("events".into(), (*events).into());
+                }
+                Ran::Failed { code, kind } => {
+                    run.insert("outcome".into(), "failed".into());
+                    run.insert("code".into(), code.as_str().into());
+                    run.insert(
+                        "kind".into(),
+                        kind.as_deref().map_or(Value::Null, Value::from),
+                    );
+                }
+                Ran::Skipped(why) => {
+                    run.insert("outcome".into(), "skipped".into());
+                    run.insert("reason".into(), why.word().into());
+                }
+            }
+            if let Some(items) = due.items {
+                run.insert("items".into(), items.into());
+            }
+            Value::Object(run)
+        })
+        .collect();
+    let deleted = ticked.deleted;
+    let rows = [
+        deleted.keys,
+        deleted.events,
+        deleted.runs,
+        deleted.handled,
+        deleted.sessions,
+        deleted.service_keys,
+        deleted.deliveries,
+        deleted.actions,
+        deleted.received,
+        deleted.answers,
+        deleted.step_records,
+        deleted.parked,
+        deleted.ai_usage,
+    ]
+    .iter()
+    .fold(0u64, |sum, rows| sum.saturating_add(*rows));
+    let problems = ticked
+        .problems
+        .iter()
+        .map(|(store, error)| {
+            json!({
+                "problem": "store_failed",
+                "store": store,
+                "message": format!(
+                    "`{store}` couldn't be ticked: {}. The next tick tries again.",
+                    store_error(error)
+                ),
+            })
+        })
+        .collect();
+    [
+        ("ms", ms.into()),
+        ("ran", Value::Array(ran)),
+        ("deliveries", ticked.deliveries.len().into()),
+        (
+            "received",
+            ticked.received.map_or(Value::Null, |tally| {
+                json!({
+                    "kept": tally.kept,
+                    "repeats": tally.repeats,
+                    "parked": tally.parked,
+                    "left": tally.left,
+                })
+            }),
+        ),
+        (
+            "polled",
+            ticked.polled.map_or(
+                Value::Null,
+                |(called, changed)| json!({ "called": called, "changed": changed }),
+            ),
+        ),
+        ("deleted", rows.into()),
+        (
+            "alerts",
+            Value::Array(ticked.raised.iter().map(|alert| alert.event()).collect()),
+        ),
+        ("problems", Value::Array(problems)),
+        ("unbuilt", unbuilt),
+    ]
+}
+
+/// The program `deployable` holds, started as both hosts start it (chunk
+/// 8.4c): its plan read, its settings read from `variables` (the
+/// environment natively, the bindings on Workers) and checked (area 10),
+/// and its `client_address:` source one `target` accepts; with the values
+/// read, which a native server's workers each start their program with.
+/// `Err` with every problem that stops the start.
+pub fn start(
+    deployable: &Deployable,
+    variables: &dyn Variables,
+    target: Target,
+) -> Result<(Program, ConfigValues), Vec<Value>> {
+    let program = (deployable.program)().map_err(|error| {
+        vec![problem(
+            "plan_unreadable",
+            format!("The program's plan can't be read: {error}."),
+        )]
+    })?;
+    let values = config::load(
+        &program.runtime().config,
+        program.validators(),
+        variables,
+        Mode::Environment,
+        &|_: &mut [u8]| false,
+    )
+    .map_err(|problems| problems.iter().map(setting_problem).collect::<Vec<_>>())?;
+    let refused = ClientAddress::read(
+        program
+            .plan()
+            .routes
+            .and_then(|routes| routes.client_address.as_ref()),
+        &values,
+        target,
+    )
+    .err();
+    if let Some(refused) = refused {
+        return Err(vec![client_address_refused(&refused)]);
+    }
+    let program = program.with_config_on(&values, target);
+    Ok((program, values))
+}
+
+/// A connection whose driver a host's factory didn't build
+/// (`jadpo_drivers::factory::Unbuilt`), as a deployable reports it: the
+/// runtime answers it `misconfigured` when it is used.
+pub trait NotBuilt: fmt::Display {
+    /// The connection's name.
+    fn connection(&self) -> &str;
+
+    /// Its driver's name.
+    fn driver(&self) -> &str;
+
+    /// Whether its connection names no address at all, rather than one
+    /// the factory couldn't build a driver from.
+    fn unaddressed(&self) -> bool;
+}
+
+/// Each connection whose driver wasn't built, as `runtime.started` and
+/// `runtime.ticked` list them: its name, its driver and why, in words.
+pub fn unbuilt<U: NotBuilt>(unbuilt: &[U]) -> Value {
+    Value::Array(
+        unbuilt
+            .iter()
+            .map(|unbuilt| {
+                json!({
+                    "connection": unbuilt.connection(),
+                    "driver": unbuilt.driver(),
+                    "message": unbuilt.to_string(),
+                })
+            })
+            .collect(),
+    )
 }
 
 /// A problem with its code and what to say about it.
@@ -347,14 +567,109 @@ pub async fn compare(database: &dyn Database, store: &Store, then: Then) -> Comp
     }
 }
 
+/// Store `store` compared with the migrations the build holds through
+/// `database`, its driver: `None` when the host's factory didn't build it,
+/// `unbuilt` saying why, which stops the start as a problem.
+pub async fn compare_store<U: NotBuilt>(
+    database: Option<&dyn Database>,
+    unbuilt: &[U],
+    store: &Store,
+    then: Then,
+) -> Compared {
+    let Some(database) = database else {
+        let why = unbuilt
+            .iter()
+            .find(|unbuilt| unbuilt.connection() == store.name)
+            .filter(|unbuilt| !unbuilt.unaddressed());
+        return Compared::Refused(unaddressed(
+            store.name,
+            why.map(|why| why as &dyn fmt::Display),
+        ));
+    };
+    compare(database, store, then).await
+}
+
+/// What comparing each of a deployable's stores found.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Stores {
+    /// What stops the start, as `runtime.startup_failed` lists them.
+    pub problems: Vec<Value>,
+    /// The stores it can't reach yet, which a server waits for and a
+    /// Worker checks again at its next request.
+    pub unreachable: Vec<&'static str>,
+}
+
+impl Stores {
+    /// Whether every store is the build's.
+    pub fn current(&self) -> bool {
+        self.problems.is_empty() && self.unreachable.is_empty()
+    }
+}
+
+/// Each of `deployable`'s stores compared ([`compare_store`]), `database`
+/// giving each store's driver. A tick ([`Then::NextTick`]) waits for no
+/// database: one it can't reach is a problem, `store_unreachable`, since
+/// the scheduler's next run is the next try.
+pub async fn compare_stores<'d, U: NotBuilt>(
+    deployable: &Deployable,
+    database: impl Fn(&str) -> Option<&'d dyn Database>,
+    unbuilt: &[U],
+    then: Then,
+) -> Stores {
+    let mut stores = Stores::default();
+    for store in deployable.stores {
+        match compare_store(database(store.name), unbuilt, store, then).await {
+            Compared::Current => {}
+            Compared::Refused(problem) => stores.problems.push(problem),
+            Compared::Unreachable if then == Then::NextTick => {
+                stores.problems.push(json!({
+                    "problem": "store_unreachable",
+                    "store": store.name,
+                    "message": format!(
+                        "`{}` can't be reached: nothing was ticked, and the next tick tries again.",
+                        store.name
+                    ),
+                }));
+            }
+            Compared::Unreachable => stores.unreachable.push(store.name),
+        }
+    }
+    stores
+}
+
+/// Logs `runtime.waiting` for store `store`, which can't be reached yet:
+/// the deployable serves once it can check the database's migrations,
+/// `then` saying when it tries again.
+pub fn waiting(log: &Log, store: &str, then: Then) {
+    let message = match then {
+        Then::NextRequest => format!(
+            "`{store}` can't be reached yet: the Worker serves once it can check the database's migrations, trying again at each request."
+        ),
+        Then::Restart | Then::NextTick => format!(
+            "`{store}` can't be reached yet: the app starts once it can check the database's migrations."
+        ),
+    };
+    log.event(
+        "runtime.waiting",
+        [
+            ("store", Value::from(store)),
+            ("message", Value::from(message)),
+        ],
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::rc::Rc;
 
     use jadpo_std::ClientAddressSource;
-    use jadpo_std::connections::Target;
+    use jadpo_std::schedule::{SchedulePlan, ScheduleRun};
+    use jadpo_value::Value as Held;
 
     use super::*;
+    use crate::serve::Serving;
+    use crate::{Ctx, Host, Isolation, LocalFuture, Outcome, Places, Plan, Transaction, block_on};
 
     const STAMP: Stamp = Stamp {
         build: "b_3c41d07a9e12",
@@ -481,7 +796,7 @@ mod tests {
     fn a_source_workers_refuses_names_the_one_it_takes() {
         let refused = client_address_refused(&NotAccepted {
             source: ClientAddressSource::ForwardedFor,
-            target: Target::Workers,
+            target: jadpo_std::connections::Target::Workers,
         });
         assert_eq!(refused["problem"], "client_address_refused");
         assert_eq!(refused["source"], "forwarded_for");
@@ -491,5 +806,340 @@ mod tests {
                 && message.contains("ClientAddressSource.cloudflare"),
             "{message}"
         );
+    }
+
+    /// A connection a host's factory didn't build.
+    struct Unbuilt {
+        connection: &'static str,
+        unaddressed: bool,
+    }
+
+    impl fmt::Display for Unbuilt {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "`{}`'s postgres reads a setting that has no value",
+                self.connection
+            )
+        }
+    }
+
+    impl NotBuilt for Unbuilt {
+        fn connection(&self) -> &str {
+            self.connection
+        }
+
+        fn driver(&self) -> &str {
+            "postgres"
+        }
+
+        fn unaddressed(&self) -> bool {
+            self.unaddressed
+        }
+    }
+
+    /// A database that can't be reached.
+    struct Down;
+
+    impl Database for Down {
+        fn begin_at(
+            &self,
+            _isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            Box::pin(async { Err(StoreError::Unavailable) })
+        }
+    }
+
+    /// A host with a clock whose one database, `main`, can't be reached.
+    struct Unreachable;
+
+    impl Host for Unreachable {
+        fn database(&self, _store: &str) -> Option<&dyn Database> {
+            Some(&Down)
+        }
+
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
+        }
+
+        fn now_ms(&self) -> Option<i64> {
+            Some(1_792_486_800_000)
+        }
+    }
+
+    /// A program whose tick sweeps `main` and runs no schedule.
+    struct Sweeping {
+        places: Places,
+        schedules: SchedulesPlan,
+    }
+
+    impl Executor for Sweeping {
+        fn places(&self) -> &Places {
+            &self.places
+        }
+
+        fn plan(&self) -> Plan<'_> {
+            Plan {
+                schedules: Some(&self.schedules),
+                runs: jadpo_std::Runs {
+                    schedules: false,
+                    subscribers: false,
+                },
+                ..Plan::NONE
+            }
+        }
+
+        fn run<'a, 'p: 'a>(
+            &'a self,
+            _ctx: &'a mut Ctx<'p>,
+            _callable: u32,
+            _args: Vec<Held>,
+        ) -> LocalFuture<'a, Outcome> {
+            Box::pin(async { Outcome::Value(Held::Unit) })
+        }
+    }
+
+    /// What `sink` has been given, read as JSON, and cleared.
+    fn logged() -> Vec<Value> {
+        LINES.with(|lines| {
+            lines
+                .borrow_mut()
+                .drain(..)
+                .map(|line| serde_json::from_str(&line).expect("JSON"))
+                .collect()
+        })
+    }
+
+    /// Each tick is logged as `runtime.ticked` by what serves on either
+    /// host (chunk 8.4c), so a store a tick can't work in is logged
+    /// wherever it ticks, with the connections that host didn't build.
+    #[test]
+    fn a_tick_that_cant_work_in_a_store_is_logged_where_it_ticks() {
+        logged();
+        let program: Rc<dyn Executor> = Rc::new(Sweeping {
+            places: Places::new(),
+            schedules: SchedulesPlan {
+                stores: vec!["main".into()],
+                ..SchedulesPlan::default()
+            },
+        });
+        let unbuilt = [Unbuilt {
+            connection: "archive",
+            unaddressed: false,
+        }];
+        let serving = Serving::new(Rc::new(Unreachable), move || Rc::clone(&program))
+            .observed_by(Rc::new(Logged::new(Log::new(STAMP, kept), &unbuilt)));
+        let ticked = block_on(serving.tick())
+            .expect("nothing waits")
+            .expect("a clock");
+        assert!(!ticked.problems.is_empty(), "{ticked:?}");
+        let lines = logged();
+        let [line] = lines.as_slice() else {
+            panic!("{lines:?}")
+        };
+        assert_eq!(line["event"], "runtime.ticked", "{line}");
+        assert_eq!(line["build"], STAMP.build, "{line}");
+        let problems = line["problems"].as_array().expect("its problems");
+        assert_eq!(problems.len(), ticked.problems.len(), "{line}");
+        assert_eq!(
+            problems[0],
+            json!({
+                "problem": "store_failed",
+                "store": "main",
+                "message": "`main` couldn't be ticked: it can't be reached. The next tick tries again.",
+            })
+        );
+        assert_eq!(
+            line["unbuilt"],
+            json!([{
+                "connection": "archive",
+                "driver": "postgres",
+                "message": "`archive`'s postgres reads a setting that has no value",
+            }])
+        );
+        assert_eq!(line["ran"], json!([]), "{line}");
+    }
+
+    #[test]
+    fn a_tick_is_logged_by_its_schedules_names_never_a_value() {
+        use crate::schedules::watch::{Alert, AlertKind};
+        use crate::schedules::{Deleted, Due, Skipped, Tally};
+        let plan = SchedulesPlan {
+            schedules: vec![SchedulePlan {
+                key: "schedule cafe.sweep".into(),
+                name: "sweep".into(),
+                every_ms: 60_000,
+                run: ScheduleRun::Action(0),
+                file: "domains/cafe/schedules/sweep.jadpo".into(),
+                line: 4,
+            }],
+            store: Some("main".into()),
+            ..SchedulesPlan::default()
+        };
+        let due = |ran: Ran| Due {
+            schedule: "schedule cafe.sweep".into(),
+            due_slot: 60_000,
+            ran,
+            started: 61_000,
+            ended: 61_250,
+            trace: None,
+            items: None,
+            batches: Vec::new(),
+            by_hand: false,
+        };
+        let ticked = Ticked {
+            due: vec![
+                due(Ran::Succeeded { events: 2 }),
+                due(Ran::Failed {
+                    code: "out_of_brooms".into(),
+                    kind: Some("unavailable".into()),
+                }),
+                due(Ran::Skipped(Skipped::Paused)),
+            ],
+            deleted: Deleted {
+                keys: 3,
+                events: 4,
+                ..Deleted::default()
+            },
+            problems: vec![("archive".into(), StoreError::Unavailable)],
+            raised: vec![Alert {
+                schedule: Some("sweep".into()),
+                kind: AlertKind::FailedInARow { count: 3 },
+            }],
+            received: Some(Tally {
+                kept: 1,
+                ..Tally::default()
+            }),
+            ..Ticked::default()
+        };
+        let fields: Map<String, Value> =
+            ticked_fields(Some(&plan), &ticked, 412, unbuilt::<Unbuilt>(&[]))
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect();
+        let fields = Value::Object(fields);
+        assert_eq!(fields["ms"], 412);
+        assert_eq!(
+            fields["ran"],
+            json!([
+                { "schedule": "sweep", "outcome": "succeeded", "events": 2, "by_hand": false, "ms": 250 },
+                { "schedule": "sweep", "outcome": "failed", "code": "out_of_brooms", "kind": "unavailable", "by_hand": false, "ms": 250 },
+                { "schedule": "sweep", "outcome": "skipped", "reason": "paused", "by_hand": false, "ms": 250 },
+            ])
+        );
+        assert_eq!(fields["deliveries"], 0);
+        assert_eq!(fields["deleted"], 7);
+        assert_eq!(
+            fields["received"],
+            json!({ "kept": 1, "repeats": 0, "parked": 0, "left": 0 })
+        );
+        assert_eq!(fields["polled"], Value::Null);
+        assert_eq!(fields["alerts"][0]["alert"], "failed_in_a_row");
+        assert_eq!(
+            fields["problems"],
+            json!([{
+                "problem": "store_failed",
+                "store": "archive",
+                "message": "`archive` couldn't be ticked: it can't be reached. The next tick tries again.",
+            }])
+        );
+        assert_eq!(fields["unbuilt"], json!([]));
+    }
+
+    /// Both hosts compare their stores the same way: one with no driver a
+    /// problem naming why, one out of reach waited for, except by a tick,
+    /// which waits for nothing.
+    #[test]
+    fn each_store_is_compared_alike_on_either_host() {
+        const MAIN: Store = Store {
+            name: "main",
+            migrations: &[],
+        };
+        let deployable = Deployable {
+            program: || Err(Unreadable::NotThisFormat),
+            stamp: STAMP,
+            stores: &[MAIN],
+        };
+        fn none(_: &str) -> Option<&'static dyn Database> {
+            None
+        }
+        fn down(_: &str) -> Option<&'static dyn Database> {
+            Some(&Down)
+        }
+        let unset = [Unbuilt {
+            connection: "main",
+            unaddressed: true,
+        }];
+        let unbuildable = [Unbuilt {
+            connection: "main",
+            unaddressed: false,
+        }];
+        let stores = block_on(compare_stores(&deployable, none, &unset, Then::Restart))
+            .expect("nothing waits");
+        assert!(!stores.current());
+        assert_eq!(stores.problems[0]["problem"], "store_unbuilt");
+        assert!(
+            stores.problems[0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("give its connection in `app.jadpo` a `url:`"),
+            "{stores:?}"
+        );
+        let stores = block_on(compare_stores(
+            &deployable,
+            none,
+            &unbuildable,
+            Then::Restart,
+        ))
+        .expect("nothing waits");
+        assert_eq!(
+            stores.problems[0]["message"],
+            "`main`'s postgres reads a setting that has no value."
+        );
+        let stores = block_on(compare_stores(
+            &deployable,
+            down,
+            &[] as &[Unbuilt],
+            Then::NextRequest,
+        ))
+        .expect("nothing waits");
+        assert_eq!(
+            stores,
+            Stores {
+                problems: Vec::new(),
+                unreachable: vec!["main"],
+            }
+        );
+        let stores = block_on(compare_stores(
+            &deployable,
+            down,
+            &[] as &[Unbuilt],
+            Then::NextTick,
+        ))
+        .expect("nothing waits");
+        assert!(stores.unreachable.is_empty());
+        assert_eq!(
+            stores.problems,
+            vec![json!({
+                "problem": "store_unreachable",
+                "store": "main",
+                "message": "`main` can't be reached: nothing was ticked, and the next tick tries again.",
+            })]
+        );
+    }
+
+    /// A plan that can't be read stops the start on either host.
+    #[test]
+    fn a_plan_that_cant_be_read_stops_the_start() {
+        let deployable = Deployable {
+            program: || Err(Unreadable::NotThisFormat),
+            stamp: STAMP,
+            stores: &[],
+        };
+        let variables = std::collections::BTreeMap::new();
+        let Err(problems) = start(&deployable, &variables, Target::Workers) else {
+            panic!("it started")
+        };
+        assert_eq!(problems[0]["problem"], "plan_unreadable");
     }
 }

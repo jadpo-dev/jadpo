@@ -110,6 +110,10 @@ impl Executor for Boxed {
         self.0.plan()
     }
 
+    fn app(&self) -> jadpo_runtime::http::App<'_> {
+        self.0.app()
+    }
+
     fn started(&self) -> Option<Rc<jadpo_runtime::Started>> {
         self.0.started()
     }

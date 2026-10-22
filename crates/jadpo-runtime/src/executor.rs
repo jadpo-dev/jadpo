@@ -39,6 +39,16 @@ pub trait Executor {
         Plan::NONE
     }
 
+    /// What the HTTP component answers the program's routes with (area 7):
+    /// its plan's route table and codecs ([`Plan::app`]), read and written
+    /// by the codec walk, as the interpreter does. Compiled code gives its
+    /// routes' typed entries besides (chunk 8.1p), so what serves a
+    /// deployable ([`crate::serve::Serving`]) and a route test run what it
+    /// runs (chunk 8.4c).
+    fn app(&self) -> crate::http::App<'_> {
+        self.plan().app()
+    }
+
     /// What the program started with (chunk 7.9e): its settings' values
     /// and what is held apart from them, which every context the runtime
     /// makes for it is given ([`Ctx::of`]). `None` for an executor that
