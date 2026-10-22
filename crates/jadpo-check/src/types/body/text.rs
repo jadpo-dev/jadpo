@@ -223,6 +223,7 @@ impl Body<'_> {
 
     /// `locale:` on `list.sort_by` orders text by a locale's rules, so it
     /// means nothing for a key that isn't text (area 19, question 26).
+    /// Whether that was reported.
     pub(super) fn sort_locale(
         &mut self,
         table: &jadpo_std::Operation,
@@ -230,23 +231,15 @@ impl Body<'_> {
         slots: &[Option<usize>],
         key: &Ty,
         written: &str,
-    ) {
+    ) -> bool {
         if key.has_error() || matches!(key, Ty::Var(_)) {
-            return;
+            return false;
         }
         if self.table.representation(key) == Some(Prim::Text) {
-            return;
+            return false;
         }
-        let Some(slot) = table.params.iter().position(|p| p.name == "locale") else {
-            return;
-        };
-        let Some(arg) = args
-            .iter()
-            .zip(slots)
-            .find(|(_, at)| **at == Some(slot))
-            .map(|(arg, _)| arg)
-        else {
-            return;
+        let Some(arg) = locale_arg(table, args, slots) else {
+            return false;
         };
         let span = arg
             .name()
@@ -264,5 +257,19 @@ impl Body<'_> {
             .next("Remove `locale: ...`")
             .edit(removal, ""),
         );
+        true
     }
+}
+
+/// The argument given for `table`'s `locale:`, if any.
+pub(super) fn locale_arg<'a>(
+    table: &jadpo_std::Operation,
+    args: &'a [ast::Arg],
+    slots: &[Option<usize>],
+) -> Option<&'a ast::Arg> {
+    let slot = table.params.iter().position(|p| p.name == "locale")?;
+    args.iter()
+        .zip(slots)
+        .find(|(_, at)| **at == Some(slot))
+        .map(|(arg, _)| arg)
 }

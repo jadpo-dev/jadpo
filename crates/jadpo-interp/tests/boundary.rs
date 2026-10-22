@@ -7,7 +7,7 @@
 use crate::support;
 
 use jadpo_interp::{Executor, Outcome, Program, Value, on_large_stack};
-use jadpo_runtime::{Ctx, Env, FaultKind, MAX_DEPTH, MemoryHost, block_on};
+use jadpo_runtime::{Ctx, Env, FaultKind, MAX_INLINE_DEPTH, MemoryHost, block_on};
 use support::{int, program, where_fault};
 
 const SOURCE: &str = "type Count = Int {\n    min: 0\n    max: 1000\n}\n\naction add(n: Count) -> Count {\n    if (n < 1000) {\n        return Count(n + 1)\n    }\n    return n\n}\n\naction twice(n: Count) -> Count {\n    var once: Count = add(n)\n    return add(once)\n}\n\nfixture two_added() -> Count {\n    var one: Count = add(0)\n    return add(one)\n}\n\nfunction plain(n: Count) -> Count {\n    return n\n}\n";
@@ -74,8 +74,10 @@ fn only_calls_into_actions_pause() {
 /// Each level calls itself from an inline function, inside an operation.
 const THROUGH_INLINE: &str = "type Count = Int {\n    min: 0\n}\n\nfunction down(n: Count, items: List<Count>) -> Count {\n    if (n == 0) {\n        return n\n    }\n    var next: Count = Count(n - 1)\n    var below: List<Count> = list.map(items, item -> down(next, items))\n    if (list.count(below) > 5) {\n        return 0\n    }\n    return next\n}\n";
 
+/// Since chunk 8.4a it stops at the inline functions running at once
+/// (area 3, "Recursion"), its 401st frame's operation the fault's site.
 #[test]
-fn recursion_through_inline_functions_reaches_the_depth_limit_without_overflowing() {
+fn recursion_through_inline_functions_reaches_the_inline_limit_without_overflowing() {
     let (shallow, deep) = on_large_stack(|| {
         let program = program(&[("main.jadpo", THROUGH_INLINE)]);
         let items = || Value::list(vec![int(0)]);
@@ -94,7 +96,7 @@ fn recursion_through_inline_functions_reaches_the_depth_limit_without_overflowin
     })
     .expect("a thread");
     assert_eq!(shallow, "19");
-    assert_eq!(deep, (FaultKind::RecursionLimit, MAX_DEPTH));
+    assert_eq!(deep, (FaultKind::RecursionLimit, MAX_INLINE_DEPTH + 1));
 }
 
 #[test]

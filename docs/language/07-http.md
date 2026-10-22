@@ -216,7 +216,11 @@ and never more than 60 (question 5). When it passes, the runtime starts no
 new work, commits nothing and answers 504 `deadline_exceeded`. That holds
 for work that never waits too, such as a long calculation: the runtime
 checks the deadline as the work runs, and a body that finishes past it
-commits nothing. The deadline
+commits nothing. Compiled code checks it as the interpreter does, every
+4,096 calls, loop turns and inline-function calls, in a function's loops
+and inside an operation's inline function as in an action's, an action's
+loop giving the thread back to the requests beside it as it checks
+(chunk 8.4a). The deadline
 covers integration calls, which have their own shorter timeouts (area 11):
 each call's `timeout:` times its attempts, summed along the longest way
 through the route's action, must fit within it (area 11's

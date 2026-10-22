@@ -446,3 +446,43 @@ fn a_query_computes_nothing_so_it_cannot_choose_a_locale() {
         "{rules:?}"
     );
 }
+
+// --- sorting by a locale (chunk 8.4j) ------------------------------------------------
+
+/// An application whose action sorts names with `body`'s call.
+fn sorting(locales: &str, body: &str) -> Vec<String> {
+    let files = [
+        ("app.jadpo", format!("application {{\n}}\n{locales}")),
+        (
+            "domains/shop/types/loaf_name.jadpo",
+            "/// A loaf's name.\ntype LoafName = Text {\n    min_length: 1\n    max_length: 60\n}\n".into(),
+        ),
+        (
+            "domains/shop/actions/in_order.jadpo",
+            format!(
+                "use shop/types {{ LoafName }}\n\n/// The loaves in order.\naction in_order(loaves: List<LoafName>, shopper: Locale) -> List<LoafName> {{\n    return {body}\n}}\n"
+            ),
+        ),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    support::rules(Layout::Project, &files)
+}
+
+#[test]
+fn sorting_by_a_locale_needs_the_application_s_locales() {
+    // Richard, 2026-10-22: a deployable keeps collation for the declared
+    // locales only, so an application with none sorts by none.
+    let by_locale = "list.sort_by(loaves, loaf -> loaf, locale: shopper)";
+    assert_eq!(sorting(DECLARED, by_locale), CLEAN);
+    assert_eq!(sorting("", by_locale), ["type.temporal_locales_required"]);
+    let written_out = "list.sort_by(loaves, loaf -> loaf, locale: Locale.sv_se)";
+    assert_eq!(sorting("", written_out), ["type.temporal_locales_required"]);
+    // By code point, there is no locale to need.
+    assert_eq!(sorting("", "list.sort_by(loaves, loaf -> loaf)"), CLEAN);
+}
+
+#[test]
+fn files_on_their_own_sort_by_any_locale() {
+    let source = "type LoafName = Text {}\n\nfunction in_order(loaves: List<LoafName>, shopper: Locale) -> List<LoafName> {\n    return list.sort_by(loaves, loaf -> loaf, locale: shopper)\n}\n";
+    assert_eq!(rules(source), CLEAN);
+}

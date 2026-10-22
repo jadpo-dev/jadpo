@@ -937,6 +937,7 @@ impl<'p> Machine<'p> {
             },
             Refused::Fault(fault) => self.value_fault(ctx, fault, at),
             Refused::Defect(what) => self.defect(ctx, &what, at),
+            Refused::TooDeep => self.fault(ctx, FaultKind::RecursionLimit, at),
         }
     }
 

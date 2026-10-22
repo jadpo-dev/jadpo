@@ -974,6 +974,27 @@ function reply_count(comment: Comment) -> ReplyTotal {
 Decided (question 14): recursion is allowed in functions only, with a runtime
 depth limit that ends in a defined fault.
 
+> Decided 2026-10-22 in chunk 8.4a and accepted by Richard the same
+> day, for every executor and target: a
+> thousand frames, the test's or the route's action's own among them,
+> and four hundred inline functions running at once, one inside
+> another's body through the functions it calls. Past either, the call
+> or the operation that would go deeper is the `recursion_limit` fault
+> at its site, in `jadpo test` and `jadpo dev` as in a deployable, never
+> a crash. Compiled code runs an inline function inside its operation,
+> several of the runtime's frames deep, and on Workers those take V8's
+> own stack, about a megabyte that nothing in the module can grow:
+> measured under workerd, a recursion through one inline function a level
+> ran out of it after about 650 levels, where a plain one held 6,800. So
+> `reply_count` above walks a thread a thousand replies deep, and the
+> same walk written as `list.map(comment.replies, reply -> ...)` four
+> hundred. A native deployable's threads have the stack `jadpo test`'s
+> have, 64 MiB, and a Workers module is linked with 8 MiB of its own,
+> which a thousand frames of a large function fit; in a module, a
+> callable entered with less than 256 KiB of it left is the
+> `recursion_limit` fault too, so a frame larger still stops there
+> rather than writing past the stack's end.
+
 ## Generic code
 
 Only the standard library is generic (`List<T>`, `list.count`). Your own
@@ -4002,6 +4023,7 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Loops | `for` over a `List` only, `return` allowed inside; no `while`, `break` or `continue` | 2026-10-12 |
 | Passing functions | Inline `x -> expression` only as an argument to standard-library collection operations; no function types in your own signatures or variables | 2026-10-12 |
 | Recursion | Functions only, with a runtime depth limit that ends in a defined fault; actions and queries in a call cycle are errors | 2026-10-12 |
+| Recursion limits (chosen in chunk 8.4a, accepted by Richard) | 1,000 frames and 400 inline functions running at once, past either the `recursion_limit` fault at the call or operation, the same in every executor and on every target; a native deployable's threads have 64 MiB of stack and a Workers module 8 MiB of its own, a callable entered with less than 256 KiB of that left faulting too; V8's own stack on Workers, about 1 MB and fixed, is why inline functions are counted (measured under workerd) | Richard, 2026-10-22 |
 | Callable settings | None: every action is all-or-nothing, writes always check for concurrent change, reads are current unless they read a declared cache; policy is area 9 | 2026-10-12 |
 | Generics and unions | None for your own code; a parameter accepting several types takes an `Enum` whose variants carry them | 2026-10-12 |
 | Colon rule (language-wide) | Every member inside braces is `name: value`, and a value is one thing or a `{ ... }` block (`paid: { ... }`, `persistence: { ... }`); a variant with no data is just its name; a field's own settings still follow its type (`name: ProductName { optional: true }`); top-level declarations, statements and `match` arms are not members; route entries inside a `routes` group, keyed by method and path, are the one exception (area 7) (Richard; Terraform's block-versus-attribute split is a known source of confusion) | 2026-10-12 |

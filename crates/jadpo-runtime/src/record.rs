@@ -8,9 +8,17 @@
 //! types and how many rows it gave or changed, or how the store refused
 //! it), each transaction's end, each event written to the outbox with its
 //! payload, each outside call's connection, operation and answer, and the
-//! outcome ([`outcome`]). Never a statement's parameters' values nor a
-//! call's input, which can hold secrets and personal data; a secret value
-//! shows as its kind, as everywhere else.
+//! outcome ([`outcome`]): a failure with the site it was raised at, a
+//! fault with its site and stack. Never a statement's parameters' values
+//! nor a call's input, which can hold secrets and personal data: each
+//! read's bound parameters and each call's input are kept as a digest
+//! keyed with the record's own key ([`Record::new`]), so two runs given
+//! the same key are compared on them and nobody without the key learns
+//! anything from one, a guessable password included (roadmap chunk 8.4a).
+//! Each identity in a digested value is numbered in the order the record
+//! first meets one, as a test's record numbers those it shows, so a digest
+//! doesn't depend on how an identity was drawn. A secret value shows as
+//! its kind, as everywhere else.
 //!
 //! Only a test's host keeps one: [`Recorded`] wraps a store so its
 //! transactions write to the record, and a host gives the record to the
@@ -31,9 +39,23 @@ use crate::{
 };
 
 /// What one invocation did, in order.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Record {
     entries: RefCell<Vec<Entry>>,
+    /// What a digest is keyed with: the run's own, drawn at random and
+    /// never kept or shown, so two records digest a value alike only when
+    /// they were given the same key.
+    key: [u8; 32],
+    /// The identities its digested values have met, each with its number.
+    ids: RefCell<Ids>,
+}
+
+impl std::fmt::Debug for Record {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Record")
+            .field("entries", &self.entries)
+            .finish_non_exhaustive()
+    }
 }
 
 /// One thing an invocation did.
@@ -44,6 +66,9 @@ pub enum Entry {
         sql: String,
         /// Its parameters' types, in order: `uuid`, `text[]`.
         types: Vec<String>,
+        /// For a read with parameters, the keyed digest of the values
+        /// bound to them ([`Record::digest`]).
+        digest: Option<String>,
         ran: Ran,
     },
     /// A transaction ended: committed or rolled back, and how.
@@ -51,10 +76,12 @@ pub enum Entry {
     /// An event written to the outbox: its type's identity key and its
     /// payload, the contract JSON the outbox keeps.
     Event { event: String, payload: String },
-    /// An outside call: its connection, its operation and its answer.
+    /// An outside call: its connection, its operation, the keyed digest
+    /// of its input ([`Record::digest`]) and its answer.
     Call {
         connection: String,
         operation: String,
+        input: String,
         answer: String,
     },
     /// How the invocation ended ([`outcome`]).
@@ -76,8 +103,25 @@ pub enum Ran {
 }
 
 impl Record {
-    pub fn new() -> Record {
-        Record::default()
+    /// An empty record whose digests are keyed with `key`.
+    pub fn new(key: [u8; 32]) -> Record {
+        Record {
+            key,
+            ..Record::default()
+        }
+    }
+
+    /// The keyed digest of `text`, a value written out in full, each
+    /// identity in it numbered first: `#` and the first 16 hex digits of
+    /// its HMAC-SHA-256 under the record's key.
+    pub fn digest(&self, text: &str) -> String {
+        let text = self.ids.borrow_mut().normalise(text);
+        let mac = jadpo_value::crypto::mac(&self.key, &[text.as_bytes()]);
+        let mut out = String::from("#");
+        for byte in mac.iter().take(8) {
+            out.push_str(&format!("{byte:02x}"));
+        }
+        out
     }
 
     /// Everything kept so far, in order.
@@ -90,11 +134,25 @@ impl Record {
         self.entries.borrow_mut().push(entry);
     }
 
-    /// Keeps a statement and how it went.
+    /// Keeps a statement and how it went; a read's parameters by their
+    /// digest. A read is a `SELECT`: a write that gives rows back
+    /// (`RETURNING`) binds what it writes, which the rows a test leaves
+    /// show, and the runtime's own bookkeeping, a step's time taken say,
+    /// which no run repeats.
     fn statement(&self, sql: &str, params: &[SqlValue], ran: Ran) {
+        let read = matches!(ran, Ran::Read(_)) && sql.trim_start().starts_with("SELECT");
+        let digest = (read && !params.is_empty()).then(|| {
+            let mut text = String::new();
+            for param in params {
+                param_text(param, &mut text);
+                text.push('\n');
+            }
+            self.digest(&text)
+        });
         self.push(Entry::Statement {
             sql: sql.to_string(),
             types: params.iter().map(|param| type_name(&param.ty())).collect(),
+            digest,
             ran,
         });
         if sql == crate::outbox::INSERT_OUTBOX {
@@ -119,22 +177,104 @@ impl Record {
         }
     }
 
-    /// Keeps an outside call and its answer.
+    /// Keeps an outside call, its input by its digest, and its answer.
     pub(crate) fn call(&self, call: &Call, answer: &str) {
+        let input = self.digest(&format!("{:?}", call.input));
         self.push(Entry::Call {
             connection: call.connection.clone(),
             operation: call.operation.clone(),
+            input,
             answer: answer.to_string(),
         });
     }
+}
+
+/// A bound parameter written out in full for its digest: an identity as
+/// its text, so it is numbered as the record meets it.
+fn param_text(param: &SqlValue, out: &mut String) {
+    match param {
+        SqlValue::Uuid(bytes) => out.push_str(&crate::read::uuid_text(bytes)),
+        SqlValue::Array(_, items) => {
+            out.push('[');
+            for item in items {
+                param_text(item, out);
+                out.push(',');
+            }
+            out.push(']');
+        }
+        other => out.push_str(&format!("{other:?}")),
+    }
+}
+
+/// The identities a record has met, each with its number.
+#[derive(Debug, Default)]
+struct Ids {
+    seen: std::collections::BTreeMap<String, usize>,
+}
+
+impl Ids {
+    /// `text` with each identity (a UUID's text, any case) written
+    /// `id#<n>`, numbered in the order this record first met it.
+    fn normalise(&mut self, text: &str) -> String {
+        let bytes = text.as_bytes();
+        let mut out = String::with_capacity(text.len());
+        let (mut at, mut copied) = (0, 0);
+        while let Some(candidate) = bytes.get(at..at + 36) {
+            let bounded = at == 0
+                || bytes
+                    .get(at - 1)
+                    .is_some_and(|before| !before.is_ascii_hexdigit());
+            let after = bytes.get(at + 36).is_none_or(|b| !b.is_ascii_hexdigit());
+            if bounded && after && is_uuid(candidate) {
+                // A UUID's text is ASCII, so both ends are a character's.
+                out.push_str(text.get(copied..at).unwrap_or_default());
+                let id = text.get(at..at + 36).unwrap_or_default();
+                let next = self.seen.len() + 1;
+                let number = *self.seen.entry(id.to_ascii_lowercase()).or_insert(next);
+                out.push_str(&format!("id#{number}"));
+                at += 36;
+                copied = at;
+            } else {
+                at += 1;
+            }
+        }
+        out.push_str(text.get(copied..).unwrap_or_default());
+        out
+    }
+}
+
+/// Whether `text` is a UUID's 36 characters: hex digits with dashes after
+/// the 8th, 12th, 16th and 20th.
+fn is_uuid(text: &[u8]) -> bool {
+    text.len() == 36
+        && text.iter().enumerate().all(|(i, b)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                *b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
 }
 
 impl Entry {
     /// The entry as one line of the record's canonical form.
     pub fn line(&self) -> String {
         match self {
-            Entry::Statement { sql, types, ran } => {
-                format!("sql {} | ({}) | {}", one_line(sql), types.join(", "), ran)
+            Entry::Statement {
+                sql,
+                types,
+                digest,
+                ran,
+            } => {
+                let digest = digest
+                    .as_deref()
+                    .map_or_else(String::new, |digest| format!(" {digest}"));
+                format!(
+                    "sql {} | ({}){digest} | {}",
+                    one_line(sql),
+                    types.join(", "),
+                    ran
+                )
             }
             Entry::Ended { committed, ran } => {
                 let ended = if *committed { "commit" } else { "rollback" };
@@ -144,8 +284,12 @@ impl Entry {
             Entry::Call {
                 connection,
                 operation,
+                input,
                 answer,
-            } => format!("call {connection}.{operation} -> {}", one_line(answer)),
+            } => format!(
+                "call {connection}.{operation} {input} -> {}",
+                one_line(answer)
+            ),
             Entry::Outcome(outcome) => format!("outcome {outcome}"),
         }
     }
@@ -221,16 +365,18 @@ pub(crate) fn answer(answer: &Answer) -> String {
 }
 
 /// How `outcome` is kept, its sites named by `places`: a value; a
-/// failure's code, its fields and the failures it was mapped from; a
-/// fault's kind and site; a failed assertion's site and values.
+/// failure's code, the site it was raised at, its fields and the failures
+/// it was mapped from, each with its own site; a fault's kind, site and
+/// stack; a failed assertion's site and values.
 pub fn outcome(outcome: &Outcome, places: &Places) -> String {
     match outcome {
         Outcome::Value(value) => format!("value {value}"),
-        Outcome::Failed(failure) => format!("failed {}", failure_text(failure)),
+        Outcome::Failed(failure) => format!("failed {}", failure_text(failure, places)),
         Outcome::Fault(fault) => format!(
-            "fault {} at {}",
+            "fault {} at {}; stack [{}]",
             fault_kind(&fault.kind),
-            site(fault.site(), places)
+            site(fault.site(), places),
+            stack(&fault.frames, places)
         ),
         Outcome::Assertion(assertion) => {
             let detail = match &assertion.detail {
@@ -241,7 +387,7 @@ pub fn outcome(outcome: &Outcome, places: &Places) -> String {
                 AssertionDetail::Fails { expected, got } => match got {
                     Got::Value(value) => format!("expected {expected}, got value {value}"),
                     Got::Failure(failure) => {
-                        format!("expected {expected}, got {}", failure_text(failure))
+                        format!("expected {expected}, got {}", failure_text(failure, places))
                     }
                 },
             };
@@ -259,9 +405,9 @@ pub fn outcome(outcome: &Outcome, places: &Places) -> String {
     }
 }
 
-/// A failure's code, its client and internal fields, and what it was
-/// mapped from.
-fn failure_text(failure: &Failure) -> String {
+/// A failure's code, the site it was raised at, its client and internal
+/// fields, and what it was mapped from.
+fn failure_text(failure: &Failure, places: &Places) -> String {
     let fields = |fields: &[(String, jadpo_value::Value)]| {
         fields
             .iter()
@@ -270,8 +416,9 @@ fn failure_text(failure: &Failure) -> String {
             .join(", ")
     };
     let mut text = format!(
-        "{} {{{}}} internal {{{}}}",
+        "{} at {} {{{}}} internal {{{}}}",
         failure.code,
+        site(failure.frames.first().copied(), places),
         fields(&failure.client),
         fields(&failure.internal)
     );
@@ -279,9 +426,30 @@ fn failure_text(failure: &Failure) -> String {
         text.push_str(&format!(" broke {broken}"));
     }
     if let Some(cause) = &failure.cause {
-        text.push_str(&format!(" from {}", failure_text(cause)));
+        text.push_str(&format!(" from {}", failure_text(cause, places)));
     }
     text
+}
+
+/// A fault's stack, innermost first, each frame's site named by `places`
+/// and a run of the same site written once with how many: a recursion's
+/// thousand frames as `main.jadpo:5  function down ×999`.
+fn stack(frames: &[Frame], places: &Places) -> String {
+    let mut runs: Vec<(String, usize)> = Vec::new();
+    for frame in frames {
+        let place = site(Some(*frame), places);
+        match runs.last_mut() {
+            Some((last, count)) if *last == place => *count += 1,
+            _ => runs.push((place, 1)),
+        }
+    }
+    runs.into_iter()
+        .map(|(place, count)| match count {
+            1 => place,
+            _ => format!("{place} ×{count}"),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// A fault's kind: its classification, and what a defect names, but never
@@ -552,14 +720,18 @@ mod tests {
         record.entries().iter().map(Entry::line).collect()
     }
 
+    /// A run's key, as a test's runner draws one.
+    const KEY: [u8; 32] = [7; 32];
+
     /// Each statement is kept in the order it ran, with its SQL text, its
-    /// parameters' types and how many rows it gave or changed, a refusal
-    /// by its classification and constraint, and each transaction's end;
-    /// never a parameter's value. The store underneath runs each as it
-    /// would without the record.
+    /// parameters' types, a read's bound values by their keyed digest, and
+    /// how many rows it gave or changed, a refusal by its classification
+    /// and constraint, and each transaction's end; never a parameter's
+    /// value. The store underneath runs each as it would without the
+    /// record.
     #[test]
     fn a_recorded_store_keeps_each_statement_without_its_values() {
-        let record = Rc::new(Record::new());
+        let record = Rc::new(Record::new(KEY));
         let store = Recorded::new(Store::default(), Rc::clone(&record));
         block_on(async {
             let mut transaction = store.begin_at(Isolation::ReadCommitted).await.unwrap();
@@ -593,10 +765,13 @@ mod tests {
             transaction.commit().await.unwrap();
         })
         .unwrap();
+        let digest = Record::new(KEY).digest("Text(\"a secret title\")\n");
         assert_eq!(
             lines(&record),
             [
-                "sql SELECT \"id\" FROM \"notes\" WHERE \"title\" = $1 | (text) | read 2",
+                &format!(
+                    "sql SELECT \"id\" FROM \"notes\" WHERE \"title\" = $1 | (text) {digest} | read 2"
+                ),
                 "sql INSERT INTO \"notes\" VALUES ($1, $2) | (uuid, text[]) | changed 1",
                 "sql SAVEPOINT \"jadpo_call\" | () | done",
                 "sql INSERT INTO taken VALUES ($1) | (int8) | refused conflict notes_title_key",
@@ -611,11 +786,43 @@ mod tests {
         assert_eq!(store.inner().seen.borrow().len(), 5);
     }
 
+    /// A digest is the same for the same values under the same key, each
+    /// identity numbered in the order the record met it, so two runs that
+    /// drew their identities apart still agree; another value, another
+    /// order of identities, or another key gives another, and a digest is
+    /// sixteen hex digits that say nothing of the value.
+    #[test]
+    fn a_digest_is_keyed_and_numbers_identities_as_the_record_meets_them() {
+        let (a, b) = (
+            "0b1c2d3e-0000-4000-8000-00000000000a",
+            "0B1C2D3E-0000-4000-8000-00000000000B",
+        );
+        let first = Record::new(KEY);
+        let second = Record::new(KEY);
+        let one = first.digest(&format!("[{a}, \"hunter2\"]"));
+        assert_eq!(one, second.digest(&format!("[{b}, \"hunter2\"]")));
+        assert_eq!(
+            first.digest(&format!("[{b}]")),
+            second.digest("[f0000000-0000-4000-8000-000000000000]")
+        );
+        assert_ne!(one, Record::new(KEY).digest(&format!("[{a}, \"hunter3\"]")));
+        assert_ne!(
+            one,
+            Record::new([8; 32]).digest(&format!("[{a}, \"hunter2\"]"))
+        );
+        assert!(
+            one.len() == 17
+                && one.starts_with('#')
+                && one[1..].chars().all(|c| c.is_ascii_hexdigit()),
+            "{one}"
+        );
+    }
+
     /// An outbox row written keeps each of its events with its payload,
     /// after the statement that wrote them.
     #[test]
     fn each_event_written_to_the_outbox_is_kept_with_its_payload() {
-        let record = Rc::new(Record::new());
+        let record = Rc::new(Record::new(KEY));
         let store = Recorded::new(Store::default(), Rc::clone(&record));
         block_on(async {
             let mut transaction = store.begin().await.unwrap();
@@ -659,11 +866,11 @@ mod tests {
     }
 
     /// An outside call through the capability seam is kept with its
-    /// connection, operation and answer, never its input; a host that
-    /// keeps no record keeps nothing.
+    /// connection, operation, its input's keyed digest and its answer,
+    /// never its input; a host that keeps no record keeps nothing.
     #[test]
     fn each_outside_call_is_kept_with_its_answer_never_its_input() {
-        let record = Rc::new(Record::new());
+        let record = Rc::new(Record::new(KEY));
         let fake = Rc::new(Fake::answering(Answer::Value(Value::text("receipt-1"))));
         let host = Faked::new(MemoryHost::new())
             .with("mail", Rc::clone(&fake) as Rc<dyn Capability>)
@@ -683,16 +890,22 @@ mod tests {
         block_on(crate::effects::call(&mut ctx, call))
             .unwrap()
             .unwrap();
-        assert_eq!(lines(&record), ["call mail.send -> value \"receipt-1\""]);
+        let input = Record::new(KEY).digest(&format!("{:?}", Value::text("ada@example.com")));
+        assert_eq!(
+            lines(&record),
+            [format!("call mail.send {input} -> value \"receipt-1\"")]
+        );
+        assert!(!lines(&record).concat().contains("ada@"));
 
         let unrecorded = Faked::new(MemoryHost::new()).with("mail", fake as Rc<dyn Capability>);
         assert!(unrecorded.record().is_none());
         assert!(MemoryHost::new().record().is_none());
     }
 
-    /// The outcome as the record keeps it: a value; a failure's code, its
-    /// fields and its cause; a fault's kind and site; a failed
-    /// assertion's site, comparison and parts.
+    /// The outcome as the record keeps it: a value; a failure's code, the
+    /// site it was raised at, its fields and its cause with its own site; a
+    /// fault's kind, site and stack, a run of one site written once with
+    /// how many; a failed assertion's site, comparison and parts.
     #[test]
     fn an_outcome_is_kept_with_its_code_fields_site_and_values() {
         let mut places = Places::new();
@@ -702,17 +915,39 @@ mod tests {
             label: "test \"sums\"".into(),
             sites: vec![crate::places::SitePlace::line(5)],
         });
+        let down = places.push(crate::places::CallablePlace {
+            file: "main.jadpo".into(),
+            line: 1,
+            label: "function down".into(),
+            sites: vec![
+                crate::places::SitePlace::line(2),
+                crate::places::SitePlace::line(4),
+            ],
+        });
         let at = Frame { callable, site: 0 };
+        let (raised, called) = (
+            Frame {
+                callable: down,
+                site: 0,
+            },
+            Frame {
+                callable: down,
+                site: 1,
+            },
+        );
         assert_eq!(outcome(&Outcome::Value(Value::Int(3)), &places), "value 3");
 
         let mut cause = Failure::new("type Gone", "Gone", "gone");
         cause.internal.push(("why".into(), Value::text("moved")));
+        cause.frames = vec![raised, at];
         let mut failure = Failure::new("type Missing", "Missing", "missing");
         failure.client.push(("id".into(), Value::Int(4)));
         failure.cause = Some(Box::new(cause));
+        failure.frames = vec![at];
         assert_eq!(
             outcome(&Outcome::Failed(Box::new(failure)), &places),
-            "failed missing {id: 4} internal {} from gone {} internal {why: \"moved\"}"
+            "failed missing at main.test.jadpo:5  test \"sums\" {id: 4} internal {} \
+             from gone at main.jadpo:2  function down {} internal {why: \"moved\"}"
         );
 
         let fault = Fault {
@@ -721,7 +956,16 @@ mod tests {
         };
         assert_eq!(
             outcome(&Outcome::Fault(Box::new(fault)), &places),
-            "fault int_overflow at main.test.jadpo:5  test \"sums\""
+            "fault int_overflow at main.test.jadpo:5  test \"sums\"; stack [main.test.jadpo:5  test \"sums\"]"
+        );
+        let deep = Fault {
+            kind: FaultKind::RecursionLimit,
+            frames: [vec![raised], vec![called; 998], vec![at]].concat(),
+        };
+        assert_eq!(
+            outcome(&Outcome::Fault(Box::new(deep)), &places),
+            "fault recursion_limit at main.jadpo:2  function down; stack [main.jadpo:2  function down, \
+             main.jadpo:4  function down ×998, main.test.jadpo:5  test \"sums\"]"
         );
         let store = Fault {
             kind: FaultKind::Store("database jadpo_copy_91 is gone".into()),
@@ -729,7 +973,7 @@ mod tests {
         };
         assert_eq!(
             outcome(&Outcome::Fault(Box::new(store)), &places),
-            "fault store at entry"
+            "fault store at entry; stack []"
         );
 
         let assertion = Assertion {

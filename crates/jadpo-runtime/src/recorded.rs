@@ -169,13 +169,14 @@ pub fn filled(
 /// from the plan's dev and test section, as its operation's output,
 /// through the package's own decoders run by `executor` at `ctx` (area
 /// 11, "Provenance and confirmation"; chunk 7.2d2): what `jadpo test` runs
-/// for each, the runtime's since chunk 8.1e. `None` when the plan holds no
-/// such recording.
+/// for each, the runtime's since chunk 8.1e, giving the value it decoded
+/// to, which a test's record keeps (chunk 8.4a). `None` when the plan
+/// holds no such recording.
 pub fn run(
     executor: &dyn crate::Executor,
     ctx: &mut Ctx<'_>,
     file: &str,
-) -> Option<Result<(), Unread>> {
+) -> Option<Result<Value, Unread>> {
     let plan = executor.plan();
     let recorded = plan
         .testing()
@@ -198,16 +199,17 @@ pub fn run(
 /// output (chunk 7.2d2): its placeholders filled, read with its output
 /// type's codec through the package's own decoders, run by `functions`
 /// at `ctx`, with each field's `decode:` and `encode:` checked to give back
-/// the value recorded. The first thing that doesn't hold.
+/// the value recorded: the value it decodes to, or the first thing that
+/// doesn't hold.
 pub fn check(
     ctx: &mut Ctx<'_>,
     json: &JsonCodecs<'_>,
     op: &OperationPlan,
     text: &str,
     functions: &dyn Functions,
-) -> Result<(), Unread> {
+) -> Result<Value, Unread> {
     let Some(output) = op.output else {
-        return Ok(());
+        return Ok(Value::Unit);
     };
     let now = ctx.now();
     let answer = {
@@ -286,14 +288,15 @@ pub fn check(
             });
         }
     };
-    if let Some((_, function)) = &op.decode
-        && coder.site.run(function, value).is_none()
-    {
-        return Err(Unread::DecoderFailed(
-            coder.site.ended.into_inner().unwrap_or_default(),
-        ));
+    match &op.decode {
+        Some((_, function)) => match coder.site.run(function, value) {
+            Some(decoded) => Ok(decoded),
+            None => Err(Unread::DecoderFailed(
+                coder.site.ended.into_inner().unwrap_or_default(),
+            )),
+        },
+        None => Ok(value),
     }
-    Ok(())
 }
 
 /// A package function's name as its package writes it, from its identity

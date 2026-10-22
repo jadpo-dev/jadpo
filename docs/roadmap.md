@@ -2847,6 +2847,10 @@ whose entry names them.
   a streamed answer ending the model's call.
   From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
   Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
+  From 8.4a: a recursion through 400 inline functions, and a thousand
+  frames of a large function, answered on the edge, whose V8 stack the
+  inline-function limit assumes is about workerd's megabyte, and the
+  module's 8 MiB stack within an isolate's memory.
   From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
   edge, under the file's name and under `wrangler deploy --env`, and the
   dead-letter queue's consumer accepted beside the queue's.
@@ -2867,11 +2871,11 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
-8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i beside any of them. The gap to Bun is not accepted: Phase 9 closes
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i and 8.4j beside any of them. The gap to Bun is not accepted: Phase 9 closes
 it (Richard, 2026-10-22). Claude builds these; Codex builds Phase 9
 once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
 
-- [ ] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
+- [x] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
   compiled `match` on a package action's call taking the caught boundary
   (a savepoint) as the interpreter's `Task::Catch` does, so a failed
   package action's writes and events are undone (`jadpo-codegen`
@@ -2884,7 +2888,14 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   verdict; and deep recursion (1,000 frames) tested on a deployable's
   own stack sizes (2 MiB native workers, wasm's 1 MiB), raising
   `recursion_limit` rather than aborting. Each proved by a corpus
-  project that fails before the fix.
+  project that fails before the fix. Built: all four (§2.5, "Differential
+  test"). A recursion through large frames or `list.map` overflowed both
+  deployables before 1,000 frames, a native worker aborting and a Worker
+  hanging (V8's own stack, about 1 MB, ran out after 650 levels through
+  `list.map`), so native workers get 64 MiB, a
+  Workers module 8 MiB with a guard, and inline functions running at once
+  are capped at 400 in both executors (area 3, "Recursion", decided
+  2026-10-22).
 - [x] **8.4b Phase 8 review fixes: Workers background work** `opus ·
   xhigh`: a Queues message the Worker can't take yet (not started, a
   store behind, unavailable) retried with long delays and enough
@@ -2996,6 +3007,18 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   is, declaring no locales, 13,475,196 bytes before and 13,478,712 after
   (4,112,324 and 4,108,944 gzipped); declaring `en_gb`, 13,614,174 to
   12,727,979 (4,154,206 to 3,842,244 gzipped), 0.89 MB less.
+- [x] **8.4j `sort_by` by locale requires `locales { }`** `opus · high`:
+  `list.sort_by(..., locale:)` a check error without `locales { }`, as
+  formatting is (Richard, 2026-10-22), so `jadpo build` keeps collation
+  for the declared locales only; chunk 8.4i's "every locale's collation
+  with no `locales { }`" replaced. Built (area 10, "Locales" and
+  `type.temporal_locales_required`; area 19, "Text"): the call is
+  `type.temporal_locales_required` in a project, not for files on their
+  own or where `locale:` is already unused for its key; `jadpo-cldr`
+  keeps only the root's collation for an app with none. Example 23 sorts
+  by no locale; a one-action Workers project declaring no locales
+  (release, wasm-bindgen's module, gzip -9) went from 13,017,859 bytes
+  to 12,111,677 (3,959,704 to 3,647,526 gzipped), 0.91 MB less.
 
 ## Phase 9 — Performance
 

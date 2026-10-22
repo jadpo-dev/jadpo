@@ -16,6 +16,14 @@ use crate::read::ReadPlan;
 use crate::steps::RecordPlan;
 use crate::write::WritePlan;
 
+/// How much stack a Workers deployable's WebAssembly module is linked with
+/// (`-z stack-size`, which `jadpo build` passes): its own stack, in its
+/// memory, below everything else (`--stack-first`), where compiled code
+/// keeps what it borrows; a thousand frames of a large function take a
+/// few megabytes of it (chunk 8.4a). It is part of the memory every
+/// instance starts with.
+pub const WASM_STACK_BYTES: usize = 8 * 1024 * 1024;
+
 /// The plans a body's sites name by number.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SitesPlan {

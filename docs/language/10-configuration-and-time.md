@@ -1556,9 +1556,11 @@ language, the one CLDR's likely subtags give for the language first, else
 orders in such a locale is ordered by that same supported locale's
 alphabet (Richard, 2026-10-22; built in chunk 8.4i), so `jadpo test` and
 a deployable, which carries only its supported locales' collation, give
-the same order. Case mapping is not text for people in a language, and
-takes any `Locale` (area 19, "Text"); with no `locales { }` declared,
-sorting takes any `Locale` too.
+the same order. Sorting by a locale needs `locales { }`, as formatting
+does (`type.temporal_locales_required`; Richard, 2026-10-22), so a
+deployable never carries collation for a locale the app doesn't support.
+Case mapping is not text for people in a language, and takes any
+`Locale` (area 19, "Text").
 
 ```jadpo check project=locales-unsupported file=app.jadpo
 application {}
@@ -1609,7 +1611,7 @@ So a deployable carries the locale data of its supported locales only
 (chunk 8.2c): `jadpo build` takes, from the CLDR data compiled into
 Jadpo, the entries the supported locales reach as ICU4X looks data up
 (the locale, then each locale its lookups fall back to, down to the root),
-collation among them (every locale's with no `locales { }`), and the
+collation among them, and the
 data that is the same in every locale,
 and compiles the deployable with that; `jadpo test` and `jadpo dev` keep
 every locale, and write the same text. A WebAssembly module that runs
@@ -4464,6 +4466,44 @@ error: `locale.from_accept_language` needs the application's locales
 check failed: 1 error, 3 files
 ```
 
+And sorting by a locale's alphabet, since a deployable carries collation
+for the declared locales only (Richard, 2026-10-22):
+
+```jadpo check project=e-locales-required-sort file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-locales-required-sort file=domains/shop/types/loaf_name.jadpo hidden
+/// A loaf's name on the shelf.
+type LoafName = Text {
+    min_length: 1
+    max_length: 60
+}
+```
+
+```jadpo check project=e-locales-required-sort file=domains/shop/actions/in_name_order.jadpo expect=type.temporal_locales_required
+use shop/types { LoafName }
+
+/// The loaves in the order the shopper's alphabet puts them.
+action in_name_order(loaves: List<LoafName>, shopper: Locale) -> List<LoafName> {
+    return list.sort_by(loaves, loaf -> loaf, locale: shopper)
+}
+```
+
+```text output
+error: `list.sort_by` needs the application's locales
+ --> domains/shop/actions/in_name_order.jadpo:5:12
+  |
+5 |     return list.sort_by(loaves, loaf -> loaf, locale: shopper)
+  |            ^^^^^^^^^^^^ no locales declared
+  reason: `locale:` orders text by the alphabet of one of the locales the application supports, and a deployable carries only those locales' collation. None is declared, so there is no alphabet to sort by.
+  next: Declare them in `app.jadpo`, for instance `locales { default: Locale.en_gb supported: [Locale.en_gb] }` (agent)
+  rule: type.temporal_locales_required
+  help: docs/language/10-configuration-and-time.html#type-temporal-locales-required
+
+check failed: 1 error, 3 files
+```
+
 ### `syntax.locales_default_required`
 
 ```jadpo check project=e-locales-default expect=syntax.locales_default_required
@@ -6406,9 +6446,9 @@ the app doesn't support is written in (see Locales).
 | `locales { }` (chosen in chunk 5.3) | An unnamed singleton declaration in `app.jadpo` (as area 1 reserves the word), not a member of `application { }`: the page's `locales: { ... }` was written with a colon and is amended to `locales { default: Locale.en_gb supported: [Locale.en_gb, ...] }`, each once and no others, entries written `Locale.<tag>` (`type.locale_invalid` for text, a non-list, a variant `Locale` has not; the fix for `"fr-FR"` is one edit), none twice (`type.locale_duplicate`), the default among them (`type.locale_default_unsupported`). A missing option is `syntax.locales_default_required` or `syntax.locales_supported_required`, a given-twice option `syntax.locales_duplicate_option`, any other name `syntax.locales_unknown_option` (`unsupported:` among them: there is no such setting), a second `locales { }` `semantic.multiple_locale_declarations`. `syntax.locales_unsupported_required` and `syntax.locales_unsupported_invalid` are gone with `unsupported:` | 2026-10-16 |
 | What a locale is checked against (chosen in chunk 5.3) | A project formats text for people only with `locales { }` declared (`type.temporal_locales_required`, at the call); files handed to the compiler on their own have no application to declare them, so the rule does not apply. A `Locale.x` written as `locale:`, or as the `default:` or `test:` of a `Locale` setting, that is not supported is `type.locale_unsupported`. A `Locale` passed in is read through the wire or a setting, which accept only the supported tags (`invalid_value`, rule `variant`; OpenAPI lists only those); with no `locales { }` every `Locale` is accepted as before. A problem in the declaration is reported once, and the call is not also reported | 2026-10-16 |
 | Locale data (chosen in chunk 5.3) | ICU4X 2.3 with Unicode CLDR 48 compiled into the binary (`icu_datetime`, `icu_calendar`, `icu_time`, `icu_locale` 2.3 and `icu_experimental` 0.6 for the relative-time words, pinned exactly; pure Rust, builds for wasm32): the interpreter, native deployables and Workers write the same text. A WebAssembly module that formats is about 3.5 MB larger than one that does not (3.9 MB against 0.35 MB; 1.2 MB against 0.1 MB compressed with gzip, 0.8 MB with Brotli), because the data holds every locale `Locale` lists. The next lever, if a deployable needs it, is data exported for the supported locales only | 2026-10-16 |
-| Locale data a deployable carries (chosen in chunk 8.2c) | `jadpo build` bakes again, from the ICU4X data compiled into Jadpo, each marker's entries for the locales a supported locale's lookups walk through (its fallback for that marker, down to `und`; only `und` with no `locales { }`), every locale's collation (`list.sort_by` takes any `Locale`, area 19; until chunk 8.4i, now only with no `locales { }`), and every marker with one entry, into the deployable's `build/rust/cldr/`, which its build compiles through ICU4X's `ICU4X_DATA_DIR`; `jadpo test` and `jadpo dev` keep every locale. A `Locale` the app doesn't support reaching `text.format`, `temporal.format_relative` or a message at run time is written in the supported locale `locale.from_accept_language` would give its tag, else `default:`, on every target, so both write the same text. Measured on `jadpo-value`'s `formats` example for wasm32 in release, which links every operation: 18,486,066 bytes with every locale, 8,276,025 with the root only, 8,415,647 with `en_gb`, 8,486,985 with `en_gb` and `fr_fr` (gzip 6,131,551, 2,650,565, 2,693,731 and 2,718,160); keeping every locale's collation costs 889,760 of them | 2026-10-21 |
+| Locale data a deployable carries (chosen in chunk 8.2c) | `jadpo build` bakes again, from the ICU4X data compiled into Jadpo, each marker's entries for the locales a supported locale's lookups walk through (its fallback for that marker, down to `und`; only `und` with no `locales { }`), every locale's collation (`list.sort_by` took any `Locale`, area 19; until chunk 8.4i, which kept the supported locales', and chunk 8.4j, which made sorting by a locale need `locales { }`), and every marker with one entry, into the deployable's `build/rust/cldr/`, which its build compiles through ICU4X's `ICU4X_DATA_DIR`; `jadpo test` and `jadpo dev` keep every locale. A `Locale` the app doesn't support reaching `text.format`, `temporal.format_relative` or a message at run time is written in the supported locale `locale.from_accept_language` would give its tag, else `default:`, on every target, so both write the same text. Measured on `jadpo-value`'s `formats` example for wasm32 in release, which links every operation: 18,486,066 bytes with every locale, 8,276,025 with the root only, 8,415,647 with `en_gb`, 8,486,985 with `en_gb` and `fr_fr` (gzip 6,131,551, 2,650,565, 2,693,731 and 2,718,160); keeping every locale's collation costs 889,760 of them | 2026-10-21 |
 | Sorting in a locale the app doesn't support | `list.sort_by`, `min_by` and `max_by` given a `Locale` the app doesn't support order by the supported locale `locale.from_accept_language` would give its tag, else `default:`, as formatting does since chunk 8.2c, so a deployable carries collation for its supported locales only (about 0.9 MB of 8.2c's wasm module); built in chunk 8.4i | Richard, 2026-10-22 |
-| Sorting with no `locales { }` (chosen in chunk 8.4i) | An app that declares no `locales { }` supports no list to fall back to, and every `Locale` is its own (as a `Locale` read from the wire or a setting is), so `list.sort_by`'s `locale:` orders by the locale it is given and its deployables keep every locale's collation, as before. Only `sort_by` takes `locale:`; `min_by` and `max_by` order by code point | 2026-10-22 |
+| Sorting with no `locales { }` | `list.sort_by` with `locale:` in a project that declares no `locales { }` is `type.temporal_locales_required`, as formatting is, at the call (not when `locale:` is already `type.temporal_option_unused` for a key that isn't text), so `jadpo build` keeps collation for the declared locales only; files handed to the compiler on their own have no application to declare them, and sort by the `Locale` they are given. Replaces chunk 8.4i's choice that an app with no `locales { }` sorts by any `Locale` and keeps every locale's collation. Only `sort_by` takes `locale:`; `min_by` and `max_by` order by code point. Built in chunk 8.4j | Richard, 2026-10-22 |
 | Writing a time (chosen in chunk 5.3) | Always the Gregorian calendar (as `Intl.DateTimeFormat` with `calendar: "gregory"`), the locale's own digits, CLDR's narrow no-break space written as a plain space. A built-in format is the locale's pattern at CLDR's four lengths (`date_full` with the weekday), so `date_time_long` is "27 September 2026 at 14:30:05 BST" in `en_gb`, with seconds as `timeStyle: "long"` has. A declared format takes the locale's pattern for its parts (a month as a name from the long or medium date pattern, a number from the short one; a date and a time joined as the locale joins them for that month) and sets each part's width: `numeric` leaves a number as the locale writes it, `two_digit` makes it at least two. Parts with no pattern together are written one after another with a space, and `zone_name` alone is the name alone | 2026-10-16 |
 | `format_relative` (chosen in chunk 5.3) | Against `now:`, in the zone the value is seen in: under a minute either way "just now" (English; the locale's "now" elsewhere); under an hour whole minutes, a past value rounded down and a future one up; the same local date "Today at" and the short time; the date before or after "Yesterday at" or "Tomorrow at"; two to six days away the weekday and the short time; anything else the long date. The words are the locale's, the first letter a capital; a locale with no word for yesterday or tomorrow shows the long date | 2026-10-16 |
 | Not built here (chosen in chunk 5.3) | Translations (`translations/`, ICU MessageFormat, typed calls, their errors) and choosing a locale from an `Accept-Language` header, which the page called a library call without naming it, were chunks 5.3b and 5.3c; both are built now | 2026-10-16 |
