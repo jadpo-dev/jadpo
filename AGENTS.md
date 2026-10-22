@@ -28,6 +28,17 @@ Keep going chunk after chunk, merging each through its own pull request,
 and stop only at the points the roadmap lists. Report at the end what was
 merged and anything that needs Richard.
 
+## Codex builds, Claude reviews (Richard, 2026-10-22)
+
+Codex builds chunks; Claude reviews each one and cleans it up before it
+merges. When Codex builds a chunk it works on its own `chunk-<id>` branch
+in a worktree beside the repository, follows the working rules below and
+passes the full gate, ticks the chunk with its "Built:" note, pushes, and
+opens the pull request **without** `--auto`, its description saying what
+was built, what the gate showed and any decision it recorded. It never
+merges. Claude reviews the pull request against the area pages, fixes
+what it finds on the same branch, and merges it.
+
 ## Working rules
 
 - `python3 tools/verify.py` is the gate. It must pass before a chunk merges.

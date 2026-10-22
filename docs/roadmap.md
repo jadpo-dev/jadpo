@@ -2847,12 +2847,15 @@ whose entry names them.
   From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
   Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
 
-- [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
+- [x] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
   as Wasm with Bun. Moved from an earlier chunk 4.5, which needed Phase 8's compiled code
   (Richard, 2026-10-14). **Needs Richard** if Wasm is more than 25% behind
-  Bun.
+  Bun. Measured (§2.11): example 23's `POST /repairs`, Wasm on
+  workerd 513 requests a second, Bun 2,052, native 3,554; Wasm leaking
+  about 17 KB a booking (8.4e). Richard (2026-10-22): the gap is closed,
+  not accepted, in 8.4e and Phase 9.
 
 ### Phase 8 review (2026-10-22)
 
@@ -2860,9 +2863,8 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
-8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. One waits for
-Richard: whether a measured gap to Bun is accepted (8.3, after 8.4e
-re-measures).
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i beside any of them. The gap to Bun is not accepted: Phase 9 closes
+it (Richard, 2026-10-22).
 
 - [ ] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
   compiled `match` on a package action's call taking the caught boundary
@@ -2946,6 +2948,11 @@ re-measures).
   section, the copies that disagree (8.1g's plan format, 8.2e's group,
   8.1j's CI time) gone with them; the plan's header taken from the
   compiler's version rather than a number each chunk bumps.
+- [ ] **8.4i Collation for the supported locales** `opus · high`:
+  sorting in an unsupported `Locale` ordering by the supported one it
+  falls back to (area 10, Richard 2026-10-22), and `jadpo build` keeping
+  collation only for the supported locales; the module's size before and
+  after recorded.
 
 ## Phase 9 — Performance
 
