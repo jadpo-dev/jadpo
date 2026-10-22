@@ -1640,6 +1640,7 @@ mod tests {
                 "library.similar_exists",
                 "package.standard_candidate",
                 "query.nearest_exact",
+                "rate_limits.counted_in_memory",
                 "step.late_failure",
                 "translation.field_unused",
                 "type.batch_order_updatable",

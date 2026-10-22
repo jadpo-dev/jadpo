@@ -387,11 +387,14 @@ impl Host for WorkersHost {
         let Some(ctx) = &self.ctx else {
             return;
         };
+        // The loopback is a function, which a call can give props to, with
+        // the entrypoint's methods on it.
+        let reachable = |value: &JsValue| value.is_object() || value.is_function();
         let Some(binding) = Reflect::get(ctx, &JsValue::from_str("exports"))
             .ok()
-            .filter(JsValue::is_object)
+            .filter(reachable)
             .and_then(|exports| Reflect::get(&exports, &JsValue::from_str(HAND_ON_ENTRYPOINT)).ok())
-            .filter(JsValue::is_object)
+            .filter(reachable)
         else {
             return;
         };
