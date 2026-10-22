@@ -1163,13 +1163,58 @@ interpreter turned a missing record and a refusal into failures itself.
 never fails to format, about twenty times faster than rustfmt, and
 readable when the executors differ. One module per domain; each route's
 codecs generated from the type plan ("A typed per-route entry" below);
-functions as `fn`, actions and queries as `async fn(&mut Ctx, …)`;
+functions as `fn`; actions, fixtures, tests and seeds as
+`async fn(&mut Ctx, &Program, …)`;
 checked arithmetic that returns a fault, never panics. *Rejected:* string templates, whose malformed output
 only rustc catches.
 
 **Keeping rustc time down.** The runtime crates are compiled once per
-Jadpo version and target and cached, so a build compiles only the thin
-application crate. Generated code has no generics, because monomorphised
+Jadpo version, target and locale set and cached, so a build compiles
+only the thin application crate. Since chunk 8.4g (decided 2026-10-22,
+reversible) `jadpo build` compiles every project's deployables into
+cargo targets shared by them all, in `jadpo/builds/<version>-<runtime>/`
+of the user's cache folder (`$XDG_CACHE_HOME`, else `~/.cache`, where
+the package cache is; the project's `build/rust/cache/` with neither),
+`<runtime>` a digest of the runtime source's folder, so two copies of
+Jadpo of one version never share one. Its `locales/<digest>/` holds the
+CLDR data a locale set carries, named by a digest of the exported
+files, written under another name and renamed into place, so no build
+reads it half written and identical sets share it. Its
+`targets/<host>-<locales>[-<overrides>]/` is a cargo target for each
+host (`native`, `wasm`), locale data and set of cargo's
+`CARGO_PROFILE_RELEASE_*` overrides (the gate builds its test
+deployables without link-time optimisation): ICU4X's data crates read
+the data through `ICU4X_DATA_DIR`, whose change cargo rebuilds them and
+everything above them for, so two sets in one target would undo each
+other's build, as two profiles would. A workspace's own paths reach
+rustc relative to it, and the cache, the runtime's source and cargo's
+home are remapped alike for every project, so the shared units are the
+same for each and a binary holds no machine's path. A build holds the
+target's lock (`jadpo-build.lock`) from `cargo update` until it has
+copied what it built into its workspace: cargo's own lock keeps two
+builds from writing at once, not a second from replacing the first's
+binary before it is copied out. Cargo names a path package's unit by
+its name and its path within its workspace, so two projects'
+deployables of one name build the same units; the target records the
+workspace that last built each deployable name
+(`jadpo-built-by/<name>`), and a build from another marks its own
+files changed first, since cargo, going by the files' times, would
+otherwise take the other project's program as up to date. Nothing
+prunes the cache yet; deleting it costs a rebuild. The tests build into
+one cache, `target/jadpo-compiled/cache/`, so the four Workers
+scenarios compile the runtime once, and wasm-bindgen's library and the
+gzip that sizes a module are optimised in test builds (the root
+`Cargo.toml`). Measured from nothing on the ten-core Mac (chunk 8.4g):
+the `wasm32` job's Workers step took 505 s (1,407 CPU-seconds, four
+920 MB targets) before and 107 s (294, one 981 MB target) after;
+binding and gzipping a kiosk 2.8 s and 1.7 s before, 0.8 s and 0.3 s
+after. The `compiled` job's two native builds carry different locales,
+so it gains nothing and builds two small greeters more. *Rejected:* one target for every locale set or profile,
+for the rebuilds above; a version for each project's packages, which
+would keep their units apart without marking files, but would make what
+a build gives depend on the folder it is built in, against reproducible
+builds (§2.8); and a target in each project, which made every app's
+first build a cold release build. Generated code has no generics, because monomorphised
 copies drive the LLVM IR rustc must optimise
 ([compile-time guide](https://nnethercote.github.io/perf-book/compile-times.html)).
 Tests run interpreted; compiled builds happen only in the differential
@@ -1196,11 +1241,16 @@ shapes made per thread, since values never cross threads (§2.6). The
 interpreter's `Program` is such a thread, and reads its own validators
 and shapes from the same `Loaded`. Compiled code holds the plan as a
 constant in its canonical bytes (`RuntimePlan::encode`: a header naming
-the format, then the plan in `jadpo_std::canonical`, §2.1), decodes it
-once as it starts (`RuntimePlan::decode`) and loads it on each worker the
-same way; the site plans its generated code names (each read's, write's
+the Jadpo that wrote it, then the plan in `jadpo_std::canonical`, §2.1),
+decodes it once as it starts (`RuntimePlan::decode`) and loads it on each
+worker the same way; the site plans its generated code names (each read's, write's
 and call's) joined the same plan with the code generator (chunk 8.1f,
-"Compiled code" below).
+"Compiled code" below). The header is `jadpo runtime plan <version>`,
+the version of the Jadpo whose compiler wrote it (decided in chunk 8.4h,
+2026-10-22): a plan is only ever read by the program it was compiled
+into, built from that same Jadpo's runtime crates, so nothing else
+guards compatibility, and a chunk that changes the plan's shape bumps
+no number by hand.
 The same project always gives the same bytes, and the bytes always read
 back to an equal plan that writes them again: a test plans every page's
 project and every teaching example, and plans each example twice from a
@@ -1323,13 +1373,13 @@ plan, and each outside call's site, a provider operation's,
 `ai.generate`'s, `ai.stream`'s or `ai.embed`'s, numbered in callable and
 site order, `Plan::call_number`), `RuntimePlan::actions` (what the
 boundary needs of each action and fixture), the build id and the steps
-key: plan format 5. The interpreter reads the same plans from the
+key. The interpreter reads the same plans from the
 compiler's `Plan`, built in the same pass. The application's locales
 joined the runtime plan when compiled code first called the standard
-library (`RuntimePlan::locales`, chunk 8.1g, plan format 7), and the
+library (`RuntimePlan::locales`, chunk 8.1g), and the
 compiler's `Plan::locales` reads them there; the translations joined it
-with their first compiled call (`RuntimePlan::translations`, chunk 8.1i,
-plan format 8), and the runtime's view of the plan carries them, the
+with their first compiled call (`RuntimePlan::translations`, chunk 8.1i),
+and the runtime's view of the plan carries them, the
 locales and the outside calls' sites (`Plan::translations`, `locales` and
 `calls`, whose first `ai.generate` of a prompt `Plan::generate_site` finds
 for a test's scripted answer to it).
@@ -1440,7 +1490,7 @@ how many passed, or the first line that differs with both sides; a
 project with no tests compares none, its program still made. Since chunk
 8.1h each batch run a test started is run to its end once the test has
 ended, at the test's clock with counted random bytes
-(`jadpo_test::Options::batches`, `jadpo_test::host::AtClock`), its pages,
+(`jadpo_test::Options::batches`, `test_run::AtClock`), its pages,
 its `each:` and `finished:` calls and an export's rows kept in the test's
 record, so compiled code's runs are compared too; `jadpo test` leaves a
 run as it started until area 13's question 18 is built. Its files
@@ -1787,10 +1837,11 @@ runs one
 [language test project](https://raw.githubusercontent.com/gleam-lang/gleam/main/test/language/Makefile)
 on every target. Per test it compares outcome, failure code and internal
 fields, assertion values, the effect sequence (SQL and row counts, events,
-provider calls), path numbers and the final database diff; any difference
-fails the gate and prints both sides. From Phase 8, random well-typed
-function bodies add fuzzed comparisons, as Cranelift does against its
-interpreter.
+provider calls) and the final database diff; any difference fails the
+gate and prints both sides. The record holds no path numbers, and no
+random well-typed bodies are compared as Cranelift compares its own
+against its interpreter; neither is on the roadmap yet (checked in chunk
+8.4h, 2026-10-22).
 
 Built in chunk 8.1c: the record each run is compared by,
 `jadpo_runtime::record::Record`, written by the runtime whichever
@@ -1815,8 +1866,7 @@ first line that differs, with the line before it and both sides. Only the
 test's seed and clock decide a record, so the corpus run twice gives the
 same records (`crates/jadpo-test/tests/records.rs`); the test
 authenticator's passkeys are drawn from its device number for it
-(`TestAuthenticator::seeded`). Path numbers are left for the compiled
-executor's chunks. Since chunk 8.1f
+(`TestAuthenticator::seeded`). Since chunk 8.1f
 `jadpo_test::compiled` runs a project's tests both ways and compares
 their records this way (above, "Compiled code").
 
@@ -3208,7 +3258,7 @@ and email go through. A deployable that declares a target is refused
 each one `ConnectionDriver::targets` and the SMTP port rule it can't run
 (`deployable.target_unsupported`). The plan a deployable runs held
 only the routes of the APIs it serves, the webhooks only where it
-serves `webhooks`, and `RuntimePlan::runs` (plan format 9) says whether
+serves `webhooks`, and `RuntimePlan::runs` says whether
 it runs `Trigger.schedules` and `Trigger.subscribers`; since chunk 8.1o3
 it holds only what it reaches (below). The runtime holds to it
 where work joins a runner (`runner::split` drops a delivery or a batch
@@ -3219,8 +3269,9 @@ still deletes what has expired. `jadpo build` builds each deployable's
 workspace in `build/rust/<deployable>/`, its program the package
 `jadpo-program-<deployable>` (cargo names a path package's unit by its
 name and its path in its workspace, so several workspaces' `program`
-would share one), all into one cargo target with the paths remapped
-alike, so the runtime crates compile once; it places each binary as a
+would share one), all into the target §2.5's "Keeping rustc time down"
+shares with every project for the host and locale set (chunk 8.4g), so
+the runtime crates compile once; it places each binary as a
 new file, since macOS kills a binary copied over one it has run. The
 build id digested a declared deployable's declaration with the graph's
 digest (`jadpo_cli::stamp`) until chunk 8.1o3, and `jadpo check` writes
@@ -3249,7 +3300,7 @@ numbered among themselves, the runtime's own routes only in the API that
 holds them; the schedules, purges and polls only where it runs
 schedules; the queues and the emails' templates, sender and mail package
 only where it runs subscribers, every subscriber still listed, without
-its action (`Target::Elsewhere`, plan format 10), since an action that
+its action (`Target::Elsewhere`), since an action that
 emits writes a delivery for each subscriber that hears it; the webhooks
 where it serves `webhooks`; the connections it reaches and every
 database and Redis connection, which every tick sweeps; `ai:` where it
@@ -3315,7 +3366,7 @@ against 5 to 18 ms for the tokens).
 
 **A Workers deployable** (chunk 8.2b; area 14, "A Workers deployable").
 `jadpo build` builds a deployable with `target: Target.wasm` the way it
-builds a native one, into the same cargo target, with the same lock,
+builds a native one, into the shared target for wasm, with the same lock,
 toolchain, remapped paths and `SOURCE_DATE_EPOCH`: its workspace
 (`jadpo_codegen::deployable::workspace` with `Host::Workers`) holds the
 program's crate and a `cdylib`, `jadpo-worker-<deployable>`, which
@@ -3348,7 +3399,7 @@ at level 6 and gzip's 18 bytes). Until chunk 8.2d,
 `jadpo_host_workers::deployable::fetch` made the program once per
 isolate and answered every request 503 (since then, "Serving on
 Workers", below). Proved
-(`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group):
+(`crates/jadpo-cli/tests/workers/kiosk.rs`, the gate's `wasm32` group):
 teaching example 23 declared as a kiosk on Workers, built (42 s cold on
 the ten-core Mac, seconds warm), its files and Wrangler file as above,
 its stamp's target `wasm` in the manifest, its module linking
@@ -3403,7 +3454,7 @@ by `Serving` on that host, sharing the isolate's `http::Worker`, its
 deferred work run through `waitUntil`; the `Response` is built with each
 header appended, no body for a status that has none, and a streamed
 answer sent as a `ReadableStream` since chunk 8.2h (below). Proved under workerd
-(`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group, now
+(`crates/jadpo-cli/tests/workers/kiosk.rs`, the gate's `wasm32` group, now
 given the run's PostgreSQL, which CI's `wasm32` job starts as the others
 do; a local run's listens on a Unix socket, which `connect()` can't
 open, so the test starts one of its own on `127.0.0.1`): teaching
@@ -3547,8 +3598,9 @@ per server), since a local run's listens on a Unix socket, which
 `connect()` can't open. A test's software authenticator
 (`test_passkeys`) is the native host's, over OpenSSL, so a test Worker
 has none: a route test that makes passkeys differs there until one is
-written in pure Rust. Proved (`crates/jadpo-cli/tests/compiled.rs`, the
-`compiled` group): area 7's `todos` (3 route tests) and teaching example
+written in pure Rust. Proved (`crates/jadpo-cli/tests/compiled.rs`, a
+step of the `wasm32` group, whose job builds for wasm32 already; the
+`compiled` job's time ran out with it): area 7's `todos` (3 route tests) and teaching example
 23's repair café (4, through `settle:`'s subscribers, a request's work
 after its answer delivered before the next line, and its fixtures), every
 test passing with the interpreter's records, statements, events and rows
@@ -3585,7 +3637,7 @@ again at each such mark of the cron's minute, from its
 `scheduledTime`, one tick after the last ends (`next_tick`), so an
 invocation holds no more connections than one tick does and a mark a
 long tick passed isn't made up; it ends with the minute. Proved under
-workerd (`crates/jadpo-cli/tests/workers.rs`, the `wasm32` group): a
+workerd (`crates/jadpo-cli/tests/workers/depot.rs`, the `wasm32` group): a
 depot built for Workers that serves nothing, reads a local SQS through
 the SQS package and takes stock every minute, its Wrangler file naming
 the cron and `jadpo check` refusing the schedule at `every: 30s`; its
@@ -3608,7 +3660,7 @@ tick"; area 14, "A native deployable"). `jadpo_check::schedules::
 schedules_settings` reads `schedules: { trigger: }`, a `ScheduleTrigger`
 (`jadpo_std::ScheduleTrigger`: `native`, the default, or `external`),
 anything else `schedule.settings_invalid` with the nearest, and the plan
-carries it (`SchedulesPlan::trigger`, plan format 11). It changes only a
+carries it (`SchedulesPlan::trigger`). It changes only a
 native deployable: `jadpo_host_native::deployable::run` reads its one
 argument (`Command::read`: none or `serve`, `tick`, anything else
 `command_unknown` and code 2), and serving with `external` makes each
@@ -3623,7 +3675,8 @@ background work, logged as `runtime.ticked` (`ticked_fields`: each run
 by its schedule's name, the deliveries, what was received and polled,
 the rows deleted, the alerts as their own events, each store it couldn't
 work in and the unbuilt connections), code 1 when a store couldn't be
-worked in. `jadpo dev` keeps its timer and a Worker its cron whichever
+worked in, or when the tick didn't finish, having panicked or outlasted
+the drain (chunk 8.4b). `jadpo dev` keeps its timer and a Worker its cron whichever
 is written. `jadpo build` gives a native deployable whose ticks another
 scheduler starts a `tick` line, the command and how often to run it
 (`tick_every_ms`), and `--json` its `tick`. Proved live
@@ -3713,7 +3766,7 @@ a Hyperdrive binding read as its address, its host the pooler and
 store reaching a scripted PostgreSQL elsewhere over TLS through
 `startTls()`, and one signed by an authority workerd doesn't trust
 refused as the fault (without `Checked`, unavailable); and
-(`crates/jadpo-cli/tests/workers.rs`) example 23's kiosk built with its
+(`crates/jadpo-cli/tests/workers/kiosk.rs`) example 23's kiosk built with its
 Wrangler file's Hyperdrive binding, with and without an id, then served
 through workerd's Hyperdrive binding to the run's PostgreSQL: the
 migrations compared, a repair booked, its thank-you pinned up after the
@@ -3766,7 +3819,7 @@ it: workerd finds the client gone when it next sends it a piece, rather
 than calling the source's `cancel`, which, when a platform does call it,
 stops the read in hand and drops the stream, aborting that `fetch()`
 itself; when Cloudflare's edge finds a client gone is for chunk 8.2n.
-Proved under workerd (`crates/jadpo-cli/tests/workers.rs`) by a news desk
+Proved under workerd (`crates/jadpo-cli/tests/workers/newsroom.rs`) by a news desk
 of its own whose model is a server the test starts: a draft's first piece
 reaching the client before the model writes the rest, a client that goes
 away closing the model's connection once the model writes again,
@@ -3799,7 +3852,11 @@ opens takes one: the drivers' `WorkersTransport` and the package driver's
 runs on the same host. A `fetch()` gives its place back once its head has
 come or it failed, a `connect()` once its socket opened or failed; a
 seventh waits, in the order asked, woken by the place given back, which is
-safe since an invocation's work all runs in its own context. A request
+safe since an invocation's work all runs in its own context. Asking for
+a place first hands any free place to the longest waiter
+(`Placing::poll` calling `hand()`, chunk 8.4b): otherwise a place given
+back while a waiter handed one hadn't yet taken it would sit free while
+the newcomer waited behind it. A request
 waits within its own timeout, and one whose timeout passes before it went
 out is `NotSent`, safe to send again, rather than an abort that Workers'
 `fetch()` can't tell from a request that left. Not counted, since
@@ -3882,7 +3939,8 @@ the deployable's plan (`jadpo_codegen::workers::queued` until chunk 8.4f, now on
 where subscribers run. The file is checked against Wrangler itself:
 Wrangler 4.149.0 is pinned in `tools/workers/` beside workerd, whose
 release it is held to by an npm override, and installed with it by the
-shared installer (`jadpo_test::workerd_install::wrangler`); the test runs
+shared installer (`jadpo_test::workerd_install::wrangler`), about 70 MB
+more in `tools/workers/`; the test runs
 its `deploy --dry-run` with no account, its banner's update check,
 telemetry and error reports off, a home of its own, and
 `tools/workers/offline.mjs` preloaded through `--import`, which refuses
@@ -3920,8 +3978,9 @@ then each its fallback gives for that marker's configuration, down to
 with no `locales { }` can't sort by a locale, chunk 8.4j), and every
 marker with one entry, through
 icu_provider_export's `ExportDriver` and baked writer. The files go into
-`build/rust/cldr/`, written only where they changed, one folder for
-every deployable of the app since its locales are the app's, so the
+a folder of the build cache named by their digest (§2.5, "Keeping rustc
+time down"; chunk 8.4g), written whole and renamed into place, one
+folder for every project whose locales give the same files, so their
 shared target compiles the runtime crates once; `deployable::build` runs
 cargo with `ICU4X_DATA_DIR` naming it (`Release::cldr`), so each ICU4X
 data crate compiles them in place of its own: every `compiled_data` constructor is the same call,
@@ -3933,7 +3992,9 @@ one a header naming it would get (`jadpo_value::locale::written_in`) on
 every target, so `jadpo test` and the deployable write the same text
 and the same order. Proved live (`deployable.rs`): a
 shop supporting `en_gb` and `fr_fr`, built, holds no German or Spanish
-weekday and answers what `jadpo dev` answers. Exporting takes about two
+weekday and answers what `jadpo dev` answers; its native binary went
+from 31.3 MB to 21.0 MB (27.4 to 17.1 MB stripped; release, aarch64
+macOS). Exporting takes about two
 seconds in a debug `jadpo`; the sizes are in area 10's decisions.
 *Rejected:* ICU4X's blob provider read at run time, which would put a
 second constructor beside every compiled-data one and deserialise as the
@@ -3963,10 +4024,7 @@ the record tools, which name a call from outside the plan
 package find theirs by number too: a package's `generate:`, `stream:` and
 `embed:` mappings carry their operation's number (`PackageAi::called`,
 `PackageStream::called`, `PackageEmbed::called`), its name kept for
-what is logged, recorded and faked. The plan's format was `jadpo runtime
-plan 4`; it is 5 since chunk 8.1f added compiled code's site plans
-(§2.5, "Compiled code"), and 6 since chunk 8.1n added a database
-connection's `tls`, and 7 since chunk 8.1g added the locales.
+what is logged, recorded and faked.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
@@ -4147,7 +4205,10 @@ a connection is opened, so the platform's own configuration
 none. `Outward` is the same client with a guard: HTTPS only, connected
 only to the public addresses the name gave (`fetch::public`), its pool
 apart from `NativeFetch`'s, no redirect followed (hyper's client follows
-none), at most the bytes asked for. *Rejected:* hyper-util's pooled
+none), at most the bytes asked for. A test reaches a server on this
+machine through `NativeFetch::trusting`, given a configuration that
+trusts the test's authority, and through `Outward::reaching`.
+*Rejected:* hyper-util's pooled
 `legacy::Client`, whose pool sits behind a lock shared across threads,
 the one kind §2.6 keeps off the request path, and whose connector must
 be `Send`; reqwest, which wraps that client and brings its own
@@ -4514,8 +4575,10 @@ never called, so the workspace builds, lints and tests as one.
   self-attestation (area 8, chosen in chunk 8.2l). Its state is JSON of
   its own, the challenge and the passkeys excluded.
 
-Proved under workerd, Cloudflare's own Workers runtime
-(`crates/jadpo-host-workers/tests/workerd.rs`): a probe Worker
+Every Workers test runs on this machine under the pinned workerd, with
+no Cloudflare account and no network past the machine; only the real
+deploy (chunk 8.2n) needs an account. Proved under workerd, Cloudflare's
+own Workers runtime (`crates/jadpo-host-workers/tests/workerd.rs`): a probe Worker
 (`examples/probe.rs`) built for wasm32 by the test, bound by wasm-bindgen's
 library (`wasm-bindgen-cli-support` at the lock's release, so nothing is
 downloaded and no command-line tool has to match the crate), with a module
@@ -4564,7 +4627,8 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
   each within the budget the host gives it (30 seconds after a response,
   15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2a),
   and what one leaves goes on in a fresh invocation (`Host::hand_on`), a
-  request to the Worker itself through a service binding (chunk 8.2h).
+  request to the Worker itself (chunk 8.2h), through `ctx.exports` to
+  its own `JadpoHandOn` since chunk 8.4b.
 - PostgreSQL goes through Hyperdrive over `connect()` sockets with
   tokio-postgres, as in workers-rs's
   [example](https://raw.githubusercontent.com/cloudflare/workers-rs/main/examples/tokio-postgres/src/lib.rs),
@@ -4739,7 +4803,11 @@ test (Postgres.app's pgvector 0.7.0 for a nearest query) is
 developer's machine. Under CI (`CI` set) both panic, and any step whose
 output has a `skipped:` line fails, since CI's image has every extension
 and version the tests need. `tools/verify.py` checks these promises
-itself before it runs (`self_test`).
+itself before it runs (`self_test`). A test whose subject isn't a
+timeout gives each call seconds, not milliseconds: under a loaded gate a
+call given 300 ms timed out, was sent again and met a fake's unscripted
+answer (chunk 8.1m2), so `provider_wire`'s connections wait 5 s, and
+`quick`, whose timeout is the subject, 1 s against answers held 1.5 s.
 
 **Teaching examples and pages with migrations.** A teaching example
 commits its migrations like any project. A language page's `check`
@@ -4852,11 +4920,13 @@ harness's own target folder, and inside the `tests` job it shared a
 four-core runner with sixty other steps: the step took 628 s there and
 the job 13 min 20 s (chunk 8.1i's pull request). So CI runs it as a job
 of its own, `compiled`, whose budget is its timeout: 12 minutes from
-start to end, about twice what it took with no cargo cache at all, 5 min
-31 s and 5 min 41 s in two runs (110 to 119 s building `jadpo-cli`'s
+start to end when chunk 8.1j set it, about twice what it took with no
+cargo cache at all, 5 min 31 s and 5 min 41 s in two runs (110 to 119 s building `jadpo-cli`'s
 tests, 170 to 174 s for the step, all 258 projects and 525 tests
 compared, the 28 teaching examples' 334 tests passing both ways), and 4
-min 11 s with its cache (76 s and 127 s). The `tests` job's gate beside
+min 11 s with its cache (76 s and 127 s); 20 minutes since 2026-10-22,
+when the corpus step took about 9 minutes and saving the cache about one
+more. The `tests` job's gate beside
 it took 420, 432 and 764 s in those three runs, against 739 to 873 s in
 the five runs before them, which ran the step too. The projects the
 step writes into `target/tmp/` are removed before the cache is saved,
@@ -4867,16 +4937,15 @@ costs less to find before its pull request than after; there the step
 took 136 and 149 s of gates of 161 and 197 s (load average up to 52), the
 longest step; `--profile quick` leaves it out, as it leaves out every
 live step, and `--group compiled` runs it alone, as CI does (90 s with
-the harness built from nothing, 69 s of it the step). Since chunk 8.2e
-the step also runs area 7's `todos` and teaching example 23's route
-tests inside workerd (§2.6, "Route tests on workerd"), a test beside the
-corpus's in the same process, so its build of the runtime crates for
-wasm32 runs while the corpus compares; the job installs workerd into
-`tools/workers/` with the runner's `npm`, as the `wasm32` job does. What
-it adds to the job is that build, about 250 crates for wasm32 in the dev
-profile from nothing and the workspace's own crates with the cache,
-which keeps the registry crates' builds, on the runner's four cores
-beside the corpus's; the seven tests take seconds.
+the harness built from nothing, 69 s of it the step). Area 7's `todos`
+and teaching example 23's route tests inside workerd (chunk 8.2e, §2.6,
+"Route tests on workerd") share the step's test file but are a step of
+the `wasm32` group, skipped by this one: they joined it first and ran
+the `compiled` job out of its 12 minutes, and the `wasm32` job builds
+the runtime crates for wasm32 already. What they add there is that
+build, about 250 crates for wasm32 in the dev profile from nothing and
+the workspace's own crates with the cache; the seven tests take
+seconds.
 
 **CI.** GitHub Actions on Linux runs the gate's five groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`
@@ -4884,9 +4953,10 @@ jobs, each with the pinned toolchain and its own cargo cache: `lint`
 and the teaching examples), `tests` (every test, with the live PostgreSQL
 steps running at once on one PostgreSQL container named by
 `JADPO_TEST_DATABASE_URL`), `compiled` (the differential run above) and
-`wasm32` (the runtime crates for wasm32, their checks under Node, and the
-Workers host under workerd, which its test installs into `tools/workers/`
-with `npm ci` the runner's Node provides); `docs`, `tests` and `compiled` each build and
+`wasm32` (the runtime crates for wasm32, their checks under Node, the
+Workers host, a Workers deployable and the route tests under workerd,
+which its tests install into `tools/workers/` with `npm ci` the runner's
+Node provides); `docs`, `tests`, `compiled` and `wasm32` each build and
 start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
 "Without pgvector"), while the toolchain installs. A local run's
@@ -4898,15 +4968,21 @@ in its target folder as well as the workspace's: the cache action keeps
 every registry crate's build in each target folder it finds there. The
 `supported-language` job needs all five and passes only when each did; it
 is the check branch protection requires. Benchmarks (Phase 9) are a
-separate command, not the gate.
+separate command, not the gate. The jobs' times, one run each, so a sign
+rather than a measure: before chunk 8.4g's shared target (8.4f's merge
+on `main`) `compiled` 10 min 13 s, `wasm32` 9 min 4 s, `tests` 9 min
+37 s, `docs` 3 min 37 s, `lint` 1 min 17 s; on 8.4g's pull request
+`compiled` 11 min 8 s, `wasm32` 6 min 21 s, `tests` 12 min 45 s, `docs`
+4 min 23 s, `lint` 1 min 10 s.
 
 ### 2.8 Determinism and the build stamp
 
 - **Same source, same bytes** in `build/`: no hash-map order in output,
   project-relative paths, no timestamps, per-build numbering in source
   order. A gate test checks each corpus project twice and compares.
-- **The build id digests inputs, not the binary:** the canonical subgraph
-  the deployable reaches, the compiler version, the target and the lock
+- **The build id digests inputs, not the binary:** the deployable's
+  program as compiled from what it reaches (since chunk 8.1o3), the
+  compiler version, the target and the lock
   (area 18). `jadpo incident` therefore needs only `check` of the stamped
   commit with the stamped compiler, not rustc.
 - **Toolchain pinning.** Each Jadpo release pins one Rust toolchain and
@@ -5088,11 +5164,63 @@ network to Hyperdrive or the database, a stand-in pooler, one isolate on
 one thread); the direct variant opens a PostgreSQL backend per request,
 as `wrangler dev` does; the module is unoptimised (no `wasm-opt`).
 
-**Needs Richard** (the roadmap's line): Wasm is 75% behind Bun, so 8.3 is
-not ticked and nothing is decided here. Recommendation: before 9.1, find
-and fix the memory growth, then hold one reader and one writer for a
-socket's life and make the drivers only when a request reaches a store,
-and measure again with this harness; together the bridge and the
-collector are about 60% of the CPU, so that would leave Wasm near 0.8 ms
-a booking against Bun's 0.5, still past 25%, which is the gap 9.2 would
-then have to close or Richard accept.
+**Decided** (Richard, 2026-10-22): Wasm is 75% behind Bun, and the gap
+is not accepted. Chunk 8.4e finds and fixes the memory growth, holds one
+reader and one writer for a socket's life and builds the drivers only
+when a request first uses a store, then measures again with this
+harness; Phase 9 closes what is left. Together the bridge and the
+collector are about 60% of the CPU, so 8.4e alone would leave Wasm near
+0.8 ms a booking against Bun's 0.5, still past the 25% the roadmap set.
+
+**After chunk 8.4e** (measured 2026-10-22). *Why memory grew*: every
+booking's PostgreSQL connection was left waiting for its goodbye. Once
+the request's drivers were dropped, tokio-postgres wrote `Terminate` and
+closed the socket's writable side, but by then the invocation had
+answered and ended, and workerd never settles a promise of an ended
+invocation, so the connection's task (its buffers, some 19 KB) waited
+for the isolate's life: counted under workerd, after 900 connections
+871 tasks were still alive, 858 of them waiting on that close. Smaller, a timer dropped before
+it fired cleared its timeout and left its promise unsettled, keeping
+wasm-bindgen's callbacks, and a socket's last read was never settled.
+*The fix* (§2.6, "The Workers host"): a `WorkersHost`, once dropped,
+keeps the invocation through `waitUntil` until its connections' tasks
+have ended; shutting a stream down closes the socket and waits for its
+last read; a dropped timer settles its promise. Also built: one reader
+and one writer for a socket's life, and the drivers built when a request
+first reaches a connection. `workers.rs` holds the kiosk's linear memory
+to within 512 KiB over 400 bookings after 100 (it failed before, 7.5 MB
+to 14.9 MB); the harness reads it after each measurement and, with
+`--soak`, over a long run.
+
+Same harness, medians of 3 rounds, the module as 8.4f builds it (link
+time optimisation, `opt-level = "s"`), load average 4 to 10 for most
+rows and up to 28 for some of the third round's (other chunks' builds).
+"Before" is the same tree with `jadpo-host-workers` as on `main`,
+measured straight after, at load 5 to 8:
+
+| Booking | Wasm before | Wasm after 8.4e | Bun | Native |
+|---|---:|---:|---:|---:|
+| req/s, 1 / 16 / 64 connections | 232 / 470 / 399 | 242 / 609 / 565 | 978 / 2,061 / 1,260 | 575 / 2,494 / 2,900 |
+| p50 / p99 ms, 16 connections | 29.5 / 127 | 24.8 / 46.2 | 7.5 / 11.1 | 3.5 / 52.5 |
+| server CPU ms a booking, 16 connections | 2.15 | 1.64 | 0.50 | 0.74 |
+| linear memory MB, after 1 / 16 / 64 connections | 60 / 161 / 249 | 10.8 / 11.7 / 14.1 | | |
+| peak resident MB, 64 connections | 458 | 240 | 98 | 26 |
+
+The readiness check at 16 connections: Wasm 15,084 req/s at 66 µs a
+request before, 17,543 at 57 µs after. Bun at 64 connections and native
+at one varied most with the load (1,104 to 2,250 and 129 to 657 req/s).
+Over a long run, 348,337 bookings in 10 minutes at 16 connections (545
+to 596 req/s, 1.68 to 1.81 CPU ms a booking), the linear memory stayed at
+11.7 MB from the first minute to the last; workerd's resident memory
+went from 250 to 306 MB, which this run doesn't explain (the JavaScript
+heap wasn't read): still to be checked, in Phase 9 or on the real edge.
+
+So 8.4e takes a booking's CPU on Workers down 23% (2.15 to 1.64 ms) and
+its throughput up 30% at 16 connections and 42% at 64, and the module
+no longer grows. Against Bun, Wasm is still 70% behind at 16
+connections and uses 3.3× the CPU a booking; Phase 9 closes that gap.
+Where the time goes now (V8's profile, booking at 16 connections, under
+the inspector): the socket bridge's `write` and `read` themselves, about
+a third of the samples, `queueMicrotask` 7%, garbage collection 4%,
+Jadpo's compiled code a few percent; no reader's or writer's
+constructor nor `releaseLock`.

@@ -12,8 +12,11 @@
 //! shown raw and gzipped, each database's address a Hyperdrive binding
 //! whose id is read from `JADPO_HYPERDRIVE_<variable>` (chunk 8.2i). Each
 //! carries the CLDR data of the app's
-//! supported locales only (chunk 8.2c), from `build/rust/cldr/`, where
-//! `jadpo test` and `jadpo dev` keep every locale.
+//! supported locales only (chunk 8.2c), where `jadpo test` and `jadpo
+//! dev` keep every locale. Each is compiled into a cargo target shared by
+//! every project this Jadpo builds for the same host and locale data, in
+//! the user's cache folder (chunk 8.4g; [`builds`]), so only an app's own
+//! crates compile after the first build.
 //!
 //! `jadpo build` builds every deployable, `jadpo build <deployable>` one.
 //! With no `deployables:` declared there is one, `app`, which serves every
@@ -91,22 +94,32 @@ pub fn build(call: &Call) -> Reply {
             ));
         }
     };
-    // Every deployable's workspace is under one folder and builds into one
-    // target, its paths remapped alike, so the runtime crates compile once
-    // for them all.
+    // Every deployable's workspace is under one folder, each compiled into
+    // a target shared with every project this Jadpo builds for its host
+    // and locale set (docs/compiler-runtime.md §2.5, "Keeping rustc time
+    // down"), so the runtime crates compile once for them all.
     let rust = root.join("build/rust");
-    let cldr = match carried_locales(db, project, &rust) {
+    let builds = builds(call, &root, &sources);
+    let cldr = match carried_locales(db, project, &builds) {
         Ok(cldr) => cldr,
         Err(problem) => return Reply::failed(*problem),
     };
+    // What a build before chunk 8.4g kept in the project, which nothing
+    // reads now.
+    for leftover in ["target", "cldr", ".cldr-export"] {
+        let _ = std::fs::remove_dir_all(rust.join(leftover));
+    }
     let epoch = call
         .environment
         .var("SOURCE_DATE_EPOCH")
         .and_then(|epoch| epoch.parse().ok())
         .or_else(|| source.commit.as_ref().and_then(|_| commit_time(&root)))
         .unwrap_or(0);
+    // The workspace's own paths are relative to it; every other path a
+    // build reads is remapped, the same for every project, so the shared
+    // target's units are the same for each.
     let mut remap = vec![
-        (rust.clone(), "/jadpo/build".to_string()),
+        (builds.clone(), "/jadpo/builds".to_string()),
         (sources.clone(), "/jadpo/runtime".to_string()),
     ];
     if let Some(home) = call
@@ -192,10 +205,14 @@ pub fn build(call: &Call) -> Reply {
             folder: &folder,
             name,
             host,
-            target: &rust.join("target"),
+            target: &builds.join("targets").join(format!(
+                "{target}-{}{}",
+                cldr.digest,
+                profile_overrides()
+            )),
             remap: &remap,
             epoch,
-            cldr: &cldr,
+            cldr: &cldr.folder,
         });
         let compiled = match compiled {
             Ok(binary) => binary,
@@ -337,16 +354,87 @@ pub fn build(call: &Call) -> Reply {
     })
 }
 
+/// The folder this Jadpo keeps every project's deployable builds in
+/// (docs/compiler-runtime.md §2.5, "Keeping rustc time down"):
+/// `jadpo/builds/<version>-<runtime>/` in the user's cache folder, as the
+/// package cache is (`$XDG_CACHE_HOME`, else `~/.cache`), `<runtime>` a
+/// digest of the folder of the runtime's source, so two copies of Jadpo
+/// of one version never share a target; with neither variable, the
+/// project's own `build/rust/cache/`.
+fn builds(call: &Call, root: &Path, sources: &Path) -> PathBuf {
+    let Some(cache) = crate::package_cache::home(&call.environment) else {
+        return root.join("build/rust/cache");
+    };
+    let cache = std::path::absolute(&cache).unwrap_or(cache);
+    cache.join("jadpo").join("builds").join(format!(
+        "{VERSION}-{}",
+        digest([sources.as_os_str().as_encoded_bytes()], 12)
+    ))
+}
+
+/// The first `length` hex digits of the SHA-256 of `parts`, each
+/// length-prefixed.
+fn digest<'a>(parts: impl IntoIterator<Item = &'a [u8]>, length: usize) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_le_bytes());
+        hasher.update(part);
+    }
+    let hex: String = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    hex[..length].to_string()
+}
+
+/// Cargo's own `CARGO_PROFILE_RELEASE_*` variables override the profile a
+/// deployable's workspace gives (chunk 8.4f), as the gate's do for the
+/// deployables its tests build, so a build with them keeps a target of
+/// its own rather than rebuilding the shared one's units each time it
+/// alternates with one without: `-` and their digest, else nothing.
+fn profile_overrides() -> String {
+    let mut overrides: Vec<(String, String)> = std::env::vars_os()
+        .filter_map(|(name, value)| {
+            let name = name.into_string().ok()?;
+            name.starts_with("CARGO_PROFILE_RELEASE_")
+                .then(|| (name, value.to_string_lossy().into_owned()))
+        })
+        .collect();
+    if overrides.is_empty() {
+        return String::new();
+    }
+    overrides.sort();
+    let parts: Vec<&[u8]> = overrides
+        .iter()
+        .flat_map(|(name, value)| [name.as_bytes(), value.as_bytes()])
+        .collect();
+    format!("-{}", digest(parts, 8))
+}
+
+/// The CLDR data a deployable carries, in its own folder.
+struct Locales {
+    /// `locales/<digest>/` in [`builds`]' folder.
+    folder: PathBuf,
+    /// The digest of the files, which names the folder and the targets
+    /// built with it.
+    digest: String,
+}
+
 /// Writes the CLDR data every deployable carries, its app's supported
-/// locales' only (area 10, "Locales"; chunk 8.2c), into `rust`'s `cldr/`,
-/// each file only where it changed: the folder. The locales are the app's,
-/// so every deployable reads the one folder and the runtime crates compile
-/// once for them all.
+/// locales' only (area 10, "Locales"; chunk 8.2c), into a folder of
+/// `builds` named by the digest of the files, shared by every project
+/// whose locales give the same files (chunk 8.4g), so their builds share
+/// a target. The folder is written whole under another name and renamed
+/// into place, so a build reading it never sees it half written; a build
+/// beside this one writing the same folder first leaves this one's copy
+/// unused.
 fn carried_locales(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
-    rust: &Path,
-) -> Result<PathBuf, Box<Diagnostic>> {
+    builds: &Path,
+) -> Result<Locales, Box<Diagnostic>> {
     let tags: Vec<&str> = jadpo_check::locales::locales(db, project)
         .plan
         .as_ref()
@@ -359,19 +447,52 @@ fn carried_locales(
                 .collect()
         })
         .unwrap_or_default();
-    let files = jadpo_cldr::export(&tags, &rust.join(".cldr-export")).map_err(|error| {
+    let locales = builds.join("locales");
+    let written = locales_written(&tags, &locales).map_err(|error| {
         Box::new(failed(
             "The deployables' locale data couldn't be written".to_string(),
             format!(
-                "Jadpo exports the CLDR data of the app's supported locales for its deployables, and that failed, which is Jadpo's own mistake: {error}."
+                "Jadpo exports the CLDR data of the app's supported locales for its deployables into `{}`, and that failed: {error}.",
+                locales.display()
             ),
         ))
     })?;
-    let folder = rust.join("cldr");
-    jadpo_codegen::Generated { files }
-        .write(&folder)
-        .map_err(|error| Box::new(write_failed("build/rust/cldr/", &error)))?;
-    Ok(folder)
+    Ok(written)
+}
+
+/// [`carried_locales`]' files for `tags`, in `locales/<digest>/`.
+fn locales_written(tags: &[&str], locales: &Path) -> Result<Locales, String> {
+    std::fs::create_dir_all(locales).map_err(|error| error.to_string())?;
+    // A name no other build uses at the same time: its process and when.
+    let unique = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos())
+    );
+    let files = jadpo_cldr::export(tags, &locales.join(format!(".export-{unique}")))
+        .map_err(|error| error.to_string())?;
+    let digest = digest(
+        files
+            .iter()
+            .flat_map(|(name, bytes)| [name.as_bytes(), bytes.as_slice()]),
+        16,
+    );
+    let folder = locales.join(&digest);
+    if !folder.is_dir() {
+        let writing = locales.join(format!(".writing-{unique}"));
+        jadpo_codegen::Generated { files }
+            .write(&writing)
+            .map_err(|error| error.to_string())?;
+        if let Err(error) = std::fs::rename(&writing, &folder) {
+            let _ = std::fs::remove_dir_all(&writing);
+            if !folder.is_dir() {
+                return Err(error.to_string());
+            }
+        }
+    }
+    Ok(Locales { folder, digest })
 }
 
 /// The project's deployables, for Tab completion: each declared one, or
@@ -914,6 +1035,50 @@ fn write_failed(path: &str, error: &std::io::Error) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Builds writing one locale set's data at once (chunk 8.4g) each
+    /// read the one folder, whole, named by its digest, and leave nothing
+    /// half written behind; another set has a folder of its own.
+    #[test]
+    fn locale_data_is_written_whole_once_for_builds_at_once() {
+        let locales =
+            std::env::temp_dir().join(format!("jadpo-locales-{}-{}", std::process::id(), line!()));
+        let _ = std::fs::remove_dir_all(&locales);
+        let written: Vec<Locales> = std::thread::scope(|scope| {
+            let builds: Vec<_> = (0..4)
+                .map(|_| scope.spawn(|| locales_written(&["en-GB", "fr-FR"], &locales)))
+                .collect();
+            builds
+                .into_iter()
+                .map(|build| build.join().expect("a build").expect("written"))
+                .collect()
+        });
+        for locales in &written {
+            assert_eq!(locales.digest, written[0].digest);
+            assert_eq!(locales.folder, written[0].folder);
+        }
+        let months = std::fs::read_to_string(
+            written[0]
+                .folder
+                .join("datetime_names_month_gregorian_v1.rs.data"),
+        )
+        .expect("the month names");
+        assert!(months.contains("septembre"), "{months}");
+        let left: Vec<String> = std::fs::read_dir(&locales)
+            .expect("the folder")
+            .map(|entry| {
+                entry
+                    .expect("an entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(left, [written[0].digest.clone()]);
+        let other = locales_written(&["de-DE"], &locales).expect("written");
+        assert_ne!(other.digest, written[0].digest);
+        std::fs::remove_dir_all(&locales).expect("removed");
+    }
 
     #[test]
     fn a_size_is_given_in_decimal_units() {
