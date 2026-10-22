@@ -4836,7 +4836,9 @@ request 40 ms of it), Bun 129 ms. Idle: native 13 MB, Bun 47 MB, workerd
 - **Wasm against Bun**: 75% behind on the booking route's throughput at 16
   connections (4.0×), 72% at one; p50 3.6× and p99 11× Bun's; 4× the
   CPU a booking. Both are one thread here, saturated from 16 connections.
-  Past the roadmap's 25% line.
+  Past the roadmap's 25% line. Measured again once after 8.2j's and
+  8.2k's changes to the Workers host reached `main`: 502 against 2,091
+  req/s at 16 connections, 2.02 against 0.49 CPU ms, the same.
 - **Wasm against native**: a seventh of native's throughput, which uses a
   thread per core; per request, 2.4× native's CPU at 16 connections and
   7.5× at one (2.88 against 0.39 ms).
