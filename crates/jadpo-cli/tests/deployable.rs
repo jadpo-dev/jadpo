@@ -1047,6 +1047,36 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
     assert_eq!(ended(&mut child, 30), Some(0));
     assert_eq!(count(&connection, "jadpo_schedule_runs"), before + 1);
 
+    // A database that takes the connection and never answers holds
+    // neither a start nor a tick past SIGTERM (chunk 8.4d).
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("a port on this machine");
+    let silent = format!(
+        "postgres://app@127.0.0.1:{}/app",
+        silent.local_addr().expect("its address").port()
+    );
+    for arguments in [&[][..], &["tick"][..]] {
+        let (mut child, lines) = start_with(
+            &binary,
+            arguments,
+            &[
+                ("DATABASE_URL", silent.as_str()),
+                ("HOST", "127.0.0.1"),
+                ("PORT", "0"),
+            ],
+        );
+        std::thread::sleep(Duration::from_millis(1_000));
+        Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status()
+            .expect("kill runs");
+        let stopped = next(&lines, 5);
+        assert_eq!(
+            stopped["event"], "runtime.stopped",
+            "{arguments:?}: {stopped}"
+        );
+        assert_eq!(ended(&mut child, 5), Some(0), "{arguments:?}");
+    }
+
     // Anything else is no command.
     let (mut child, lines) = start_with(&binary, &["ticks"], &[]);
     let failed = next(&lines, 30);

@@ -735,15 +735,47 @@ pub fn sendable(address: &str) -> Option<String> {
         return None;
     }
     let host = host.to_ascii_lowercase();
+    // The host read as an address, never by its first label, so a name
+    // like `127.api.example.com` is somewhere else.
     let loopback = host == "localhost"
-        || host == "[::1]"
-        || host.starts_with("127.") && host.split('.').count() == 4;
+        || host
+            .strip_prefix('[')
+            .and_then(|inner| inner.strip_suffix(']'))
+            .and_then(|inner| inner.parse::<std::net::Ipv6Addr>().ok())
+            .is_some_and(|ip| ip.is_loopback())
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback());
     (secure || loopback).then(|| address.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plain HTTP goes only to this machine, the host read as an address
+    /// (chunk 8.4d): a name whose first label is `127` is elsewhere.
+    #[test]
+    fn plain_http_is_sendable_only_to_this_machine() {
+        for here in [
+            "http://localhost:8080/v1",
+            "http://127.0.0.1:9000",
+            "http://127.4.5.6/x",
+            "http://[::1]:8080/",
+        ] {
+            assert!(sendable(here).is_some(), "{here}");
+        }
+        for elsewhere in [
+            "http://127.api.example.com/v1",
+            "http://127.0.0.1.example.com/",
+            "http://127.1.2.3.4/",
+            "http://[::2]/",
+            "http://api.example.com/",
+        ] {
+            assert_eq!(sendable(elsewhere), None, "{elsewhere}");
+        }
+        assert!(sendable("https://127.api.example.com/v1").is_some());
+    }
 
     /// The names the importer and `package.standard_candidate` read a
     /// field's meaning from, and the parts `wire_parts:` takes.

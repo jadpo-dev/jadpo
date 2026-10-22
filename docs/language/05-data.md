@@ -130,7 +130,12 @@ libpq's `ssl…` settings, is refused as the app starts, by `jadpo config
 check` and by `jadpo migrate` (area 10's `configuration.value_invalid`),
 and a `Certificate` that isn't one certificate's PEM the same way. A server elsewhere that
 offers no TLS, or whose certificate the check refuses, is a fault naming
-the server, never retried as a database that is down for now. `jadpo
+the server, never retried as a database that is down for now. Each
+attempt at a server, from the socket to its being ready, waits at most
+the address's `connect_timeout`, or 10 seconds when it sets none (or 0,
+which libpq reads as forever), then the next host is tried; a deployable
+waiting for its database, or ticking, still stops at SIGTERM (chunk
+8.4d). `jadpo
 migrate`, `jadpo schedules`, `jadpo runs`, `jadpo deliveries` and `jadpo
 ai usage` reach a database as its connection says, with `--url` too.
 
@@ -3255,3 +3260,4 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows, progress and working one out in Jadpo are under "Computed backfills", and the Phase 5 review's fixes (constructions rounded as the runtime rounds, the digest's types, what it may read, every backfill filled before any column is required, a last step that proves a check before `SET NOT NULL`) are there too | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
 | A field's rules on read (after chunk 5.8c) | A stored value is checked against every rule its field's type has when it is read, not only a standard type's rules across its parts: a row written around Jadpo that breaks one is a defect naming the rule and never the value, as 5.8c and 5.9b do; `CHECK` constraints may follow (Richard, as recommended). Built in chunk 5.9d, as "Storage types" says | 2026-10-19 |
+| Connecting, and a statement that may have run (chunk 8.4d) | An attempt at a server waits the address's `connect_timeout`, or 10 seconds when it sets none or 0, stricter than libpq's forever; an autocommitted statement whose connection dropped after any of it was written is `unavailable` to its caller, never sent again by the driver, since the server may have committed it (decided 2026-10-22) | 2026-10-22 |
