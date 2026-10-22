@@ -1094,13 +1094,15 @@ its `scheduled` ticking at the minute's cron in chunk 8.2f, its work
 handed on and its streamed answers in chunk 8.2h, each the most
 conservative reading where the pages leave a choice open (Decisions, "A
 Workers deployable" and "A Worker's start"; area 12, "The tick on
-Workers" and Decisions, "Work handed on, on Workers"). The queue's
-handler comes with 8.2k.
+Workers" and Decisions, "Work handed on, on Workers"), and its `queue`
+consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
+7.7c2").
 
 - **What `jadpo build` writes.** For a deployable with `target:
   Target.wasm`, its Rust in `build/rust/<deployable>/`: the program's
   crate and a `cdylib`, `jadpo-worker-<deployable>`, exporting the
-  Worker's `fetch`, and `hand_on` for work handed on (chunk 8.2h),
+  Worker's `fetch`, `scheduled` and `queue`, and `hand_on` for work
+  handed on (chunk 8.2h),
   through the Workers host, with the program, its build stamp and each
   store's migrations as a native binary is given them. It
   links the package driver, which every Worker has, PostgreSQL's when the
@@ -1123,8 +1125,10 @@ handler comes with 8.2k.
   shim; `compatibility_date`, the date the Workers host is tested at under
   the workerd pinned in `tools/workers/` (2026-10-01); `no_bundle` and
   `find_additional_modules`, with a rule for each kind of file (`.mjs` and
-  `.js` as ES modules, `.wasm` as compiled WebAssembly), so the files are
-  uploaded as they are written; `secrets: { required: [ ] }`, the
+  `.js` as ES modules, `.wasm` as compiled WebAssembly, the latter with
+  `fallthrough: false`, since Wrangler warns of a rule that hides its own
+  default without saying so), so the files are uploaded as they are
+  written; `secrets: { required: [ ] }`, the
   variable of each setting without a `default:`; and, since chunk 8.2i,
   `hyperdrive: [ ]`, each database's address setting as a Hyperdrive
   binding by its variable, with its configuration's `id` when the build's
@@ -1143,9 +1147,14 @@ handler comes with 8.2k.
   `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
   service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
   hands what one invocation's 30 seconds didn't reach on to a fresh one
-  (chunk 8.2h; area 12, "Running background work"). The
-  queues' consumers (8.2k) join the file with their chunk, which checks it
-  against Wrangler itself.
+  (chunk 8.2h; area 12, "Running background work"). Each queue on
+  Cloudflare Queues the Worker receives is a consumer under `queues: {
+  consumers: [ ] }`: its `queue`, `max_batch_size` 10,
+  `max_batch_timeout` 5, `max_retries` 3 and its `dead_letter_queue`
+  (chunk 8.2k; area 11, "Chosen in chunk 7.7c2"). Wrangler's own `deploy
+  --dry-run`, pinned in `tools/workers/`, accepts the file with no
+  account and no warning, run in the tests with every network
+  connection refused.
 - **The build stamp.** Its target is `wasm`; the module holds the stamp as
   a constant, as a binary does, and the manifest gives the deployable's
   target as `wasm`.
@@ -1200,7 +1209,15 @@ handler comes with 8.2k.
   isolate's memory only while it can't be asked (area 16, "Rate limits";
   chunk 8.2m2). A streamed answer (`ai.stream`) is a `ReadableStream`,
   each event sent as it is read, and a client that goes away ends the
-  request and with it the model's call (chunk 8.2h).
+  request and with it the model's call (chunk 8.2h). An invocation has
+  at most six connections waiting for their answer's head at once, as
+  Cloudflare allows, counted by the runtime across its database, its
+  providers, SMTP and its own fetches, the work it leaves in `waitUntil`
+  included: a seventh waits for one within its own timeout, and one whose
+  timeout passes first never went out, so it is sent again where a call
+  may be. `max_concurrent:` caps a connection's calls per isolate, a slot
+  one invocation gives back handed to the call of another that has waited
+  longest (chunk 8.2j).
 - **The tick.** Each run of the minute's cron trigger calls the Worker's
   `scheduled`, which starts the isolate as a request does and, once its
   databases are current, runs the runtime's tick (area 12, "The tick"):
@@ -1212,11 +1229,22 @@ handler comes with 8.2k.
   minutes. Out of date, it logs why as a request does and ticks nothing.
   An `every:` under a minute is refused for a Worker that runs the
   schedules ([`deployable.target_unsupported`](#deployable-target-unsupported)).
+- **A queue.** Each batch Cloudflare Queues hands the Worker's `queue`
+  starts the isolate as a request does and, once its databases are
+  current, is kept through the runtime's consumer: each message kept once
+  as its event, a repeat and one parked for an operator acknowledged with
+  it (`ack()`), and one the store can't take now retried after 10 seconds
+  doubled per attempt, at most 5 minutes (`retry({ delaySeconds })`), each
+  on its own; then the kept events' deliveries run in `waitUntil`, handed
+  on past its 30 seconds as a response's work is. Out of date, or a batch
+  from a queue it doesn't receive, every message is retried the same way,
+  and `queue.retried` logged with the queue, how many and why.
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,
   `runtime.started` and `operation.failed` for a fault behind a 500 with
-  its `.jadpo` frames.
+  its `.jadpo` frames, and `queue.retried` for a batch with a message
+  retried.
 
 ```text
 $ jadpo build kiosk
@@ -2560,6 +2588,7 @@ what other areas carried here and where this page answers it.
 | A Worker's start | Chosen in chunk 8.2d, each reversible: an isolate starts at its first request, reading its settings from the bindings and checking `client_address:` once, a failure logged once and every request of the isolate answered 503 `unavailable`, since a Worker's bindings change only with a new version; its stores' migrations compared at each request until they are current and not again for the isolate, a store behind, ahead or out of reach answered 503 and logged each time, so a migration applied after a deploy is picked up without one; `runtime.started` logged once an isolate is current; the log on the console, one JSON line an event; the HTTP component's per-worker state (request numbers, the readiness check reused for a second) kept per isolate; a streamed answer sent whole until chunk 8.2h; a `client_address:` source other than `cloudflare` stopping the start as `client_address_refused`, which `jadpo check` refuses since chunk 8.2m | 2026-10-21 |
 | A Worker's database | Chosen in chunk 8.2i, each reversible: the Wrangler file writes each database's address setting as a Hyperdrive binding in place of a required secret (area 5, "PostgreSQL through Hyperdrive"); its `id` is read from the build's environment, `JADPO_HYPERDRIVE_<variable>`, a tool's variable as `JADPO_WORKERD` is, since the id differs for each Cloudflare account and environment and isn't the app's to hold in source; without one the binding is written without an id, which `wrangler deploy` refuses, and the screen's `database` line says `no id` with an alert to create one with caching off, the one thing a Worker can't check itself | 2026-10-21 |
 | What `jadpo check` and `jadpo build` say for Workers | Chosen in chunk 8.2m, each reversible: a `client_address:` source other than `cloudflare` is `deployable.target_unsupported`, one more thing a target can't run, rather than a rule of its own, at its `source:` with the deployable's `target:` beside it, once for each Workers deployable, any deployable on Workers being held to it since the Worker's start refuses it whatever it serves; a `client_address:` with a problem of its own is reported as that alone; the build screen says a Worker's caps on calls as one field, `calls`, after what it serves and runs, rather than repeating `jadpo check`'s "On Workers" section, since `jadpo build` checks first and each Worker's block is where its facts are read | 2026-10-21 |
+| Six connections an invocation | Chosen in chunk 8.2j, each reversible: an invocation's connections are counted as Cloudflare has counted them since 2026-04-09, six waiting for their answer's head at once (a `fetch()` until its status and headers come, a `connect()` until its socket opens), not six held open, the rule the roadmap's entry was written from, which would hold a seventh behind a store's idle connections; the runtime counts them itself, since workerd counts none and a seventh left to the platform's queue runs out its timer unseen; the six are shared by everything one invocation opens (its drivers, its own fetches, the work it leaves in `waitUntil`); a seventh waits in the order asked, within its own timeout, and one whose timeout passes first is `NotSent`; the service binding work is handed on through, the rate-limiting binding and `startTls()` aren't counted, as Cloudflare's list leaves them out; `max_concurrent:`'s slots are the isolate's, a slot given back handed to the longest-waiting call, which looks for it every 10 ms on its own invocation's timer, so no invocation wakes another's work, and a holder that hasn't said it is there for five seconds, beating every second, is forgotten, as is a waiter that hasn't looked, since Workers ends an invocation whose client went away without dropping what it held. The real edge's six is measured in chunk 8.2n | 2026-10-22 |
 | A deployable's target when none is declared | An app with no `deployables:` has no target until one is asked for: `jadpo check` refuses no driver by target, and `jadpo build` builds native; a target is checked once a deployable declares one, or a build asks for Workers (Richard; built in chunk 8.1o2) | 2026-10-21 |
 | Formatting | Carried from area 1: the formatter owns blank lines and section order within a file | 2026-10-12 |
 | Promotion | Carried from area 1: required with a one-step fix, applied through the editor or `jadpo fmt --layout`, never on save; demotion never forced | 2026-10-12 |

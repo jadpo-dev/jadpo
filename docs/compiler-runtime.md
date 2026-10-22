@@ -2827,7 +2827,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
 | AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4); `ai.stream` read piece by piece and sent as server-sent events (chunk 5.5v6) | same, through Workers' `fetch` |
-| Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer hands each batch to `receiving::consume`, which answers each message (chunk 7.7c2) |
+| Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer, the Worker's `queue`, hands each batch to `receiving::consume`, which answers each message (chunks 7.7c2 and 8.2k) |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
@@ -3629,6 +3629,121 @@ a request to the Worker's own URL, which reaches its public `fetch`; and a
 `TransformStream` written by a task of its own, which would read the
 model's answer ahead of the client rather than as it is taken.
 
+**Six connections an invocation** (chunk 8.2j; area 14, "A Workers
+deployable"; area 11, `max_concurrent:`). Cloudflare lets a Worker's
+invocation have six connections waiting for their answer's head at once,
+a `fetch()` until its status and headers come and a `connect()` until its
+socket opens, and queues a seventh until one of them gets there; since
+2026-04-09 a connection whose head has come no longer counts, and the
+platform no longer cancels a connection it finds idle (Cloudflare's
+limits page and its changelog, "Relaxed simultaneous connection
+limiting"). workerd enforces no such limit: its server's limit enforcer
+enforces none (`src/workerd/server/server.c++` at the pinned release), so
+the runtime counts them itself. Each invocation's `WorkersHost` holds its
+six places (`jadpo_host_workers::Opening`), and everything the invocation
+opens takes one: the drivers' `WorkersTransport` and the package driver's
+`WorkersFetch`, built over `WorkersHost::supplies`, and the runtime's own
+`WorkersOutbound`, the work it leaves in `waitUntil` included, since that
+runs on the same host. A `fetch()` gives its place back once its head has
+come or it failed, a `connect()` once its socket opened or failed; a
+seventh waits, in the order asked, woken by the place given back, which is
+safe since an invocation's work all runs in its own context. A request
+waits within its own timeout, and one whose timeout passes before it went
+out is `NotSent`, safe to send again, rather than an abort that Workers'
+`fetch()` can't tell from a request that left. Not counted, since
+Cloudflare's list leaves them out: the service binding work is handed on
+through (whose callee shares the top-level request's six, a call that
+overlaps its caller only as the caller ends) and the rate-limiting
+binding; nor `startTls()`, an upgrade of a socket already open.
+`max_concurrent:`'s slots are the isolate's (area 11, decided
+2026-10-21), shared by its invocations, and a slot one gives back is
+handed to a call of another without the first waking it: wasm-bindgen's
+executor polls every woken task from one queue in a microtask of the
+waker's (`js-sys` 0.3.106, `futures/queue.rs`), so a task woken from
+another invocation runs in that one's context, and its I/O with it; and
+a call waiting on nothing of its own is ended by workerd as hung, as the
+process's woken set did to the second of two invocations sharing one
+slot when tried under workerd in the chunk. So the Workers host's set is
+a looking one
+(`Slots::looking`, `jadpo_runtime::slots`): a slot given back is handed
+to the call that has waited longest, which finds it when it next looks,
+every 10 ms on its own invocation's timer (`slots::wait`, which
+`outside::exchange` calls); and since Cloudflare cancels a request whose
+client went away before its response, and work in `waitUntil` past its
+30 seconds, without dropping what it held (its context and errors
+pages), a call holding a slot says so every second (`slots::keeping`),
+and a holder or a waiter not heard from for five seconds is forgotten,
+its slot handed on. Natively
+the set is the process's, its waiters woken, as before. Proved under
+workerd (`crates/jadpo-host-workers/tests/connections.rs`, the `wasm32`
+group): eight requests sent at once without counting all reaching the
+server together, and counted never more than six waiting for their heads,
+one whose timeout passed while it waited `NotSent` and never seen by the
+server; an echo's `connect()` waiting behind six requests until a head
+came; four requests from a response and four from the work it left in
+`waitUntil`, never more than six waiting at once; a call of one
+invocation taking up the slot another gave back, its own request sent
+and answered; and a slot taken and never given back, as an invocation
+cancelled mid-call leaves it, taken back once its holder had been quiet
+for five seconds (workerd itself lets a request whose client left run on
+until it answers, so the probe leaves its slot as a cancelled one
+would). They add about 2 s to the step (6.7 s against 4.5 s warm on the
+ten-core Mac), the five-second wait running beside its other tests. *Rejected:* counting the connections an invocation holds
+open, Cloudflare's rule before 2026-04-09, which would hold a seventh
+behind a store's idle connections and need them closed to make room;
+leaving the seventh to the platform's queue, where its timer runs unseen
+and workerd, which queues nothing, never shows it; a promise of the
+waiting call's settled from the giving invocation, which the decision
+rules out; and a slot taken back after its call's own timeout, which
+would cut short a call legitimately slow before its request went out.
+
+**Cloudflare Queues' consumer** (chunk 8.2k; area 11, "Chosen in chunk
+7.7c2"; area 14, "A Workers deployable"). The generated crate exports
+`queue` beside `fetch` and `scheduled`, and the shim hands it the batch,
+`env` and `ctx`. `jadpo_host_workers::deployable::queue` (its own module,
+`deployable/queue.rs`) starts the isolate as `fetch` does and, once its
+stores are current, hands `receiving::consume` the batch's `queue` and
+each message's body as text (a string as sent, an `ArrayBuffer` or view
+as UTF-8, any other value through `JSON.stringify`, `undefined` as
+nothing, which parks as unreadable) with its `attempts`; it answers each
+message on its own, `ack()` or `retry({ delaySeconds })` as `consume`
+says, and only then gives the kept events' deliveries to
+`runner::after_response`, so they run in `waitUntil` and what its 30
+seconds don't reach is handed on (chunk 8.2h). An isolate that can't
+start or whose stores aren't current retries every message after the
+delay its attempts give (`receiving::retry_delay`) and keeps nothing; a
+batch with a message retried logs `queue.retried` (the queue, how many,
+`not_started`, `not_received` or `store_unavailable`), never a body.
+`jadpo build` adds `queues: { consumers: [ ] }` to the Wrangler file from
+the deployable's plan (`jadpo_codegen::workers::queued`, through
+`jadpo_std::receiving::wrangler_queues`), which keeps the queues only
+where subscribers run. The file is checked against Wrangler itself:
+Wrangler 4.149.0 is pinned in `tools/workers/` beside workerd, whose
+release it is held to by an npm override, and installed with it by the
+shared installer (`jadpo_test::workerd_install::wrangler`); the test runs
+its `deploy --dry-run` with no account, its banner's update check,
+telemetry and error reports off, a home of its own, and
+`tools/workers/offline.mjs` preloaded through `--import`, which refuses
+and reports every DNS lookup and outbound connection, so a run that
+reached for the network fails (Wrangler's update check reaches npm's
+registry when it warns of an unexpected field, which the preload caught
+while this was built). Wrangler validates a consumer's setting names and
+types but no queue name, and it warned of the `.wasm` rule hiding its own
+default, which the file now gives `fallthrough: false`. Proved under
+workerd (`crates/jadpo-cli/tests/workers/queues.rs`, the `wasm32` group)
+through a service binding's `queue()` on the test's helper Worker: a
+warehouse whose Wrangler file Wrangler accepts without a warning; out of
+date, a message retried after 20 seconds on its second attempt; current,
+a batch of a text body, a JSON body, a repeat, an unlisted type and one
+that isn't JSON each acknowledged, two events kept and delivered after
+the answers, two messages parked; and a batch from a queue it doesn't
+receive retried whole. *Rejected:* answering the batch whole
+(`ackAll`/`retryAll`), which would retry kept messages with a failed one;
+throwing from the handler while the stores aren't current, which
+Cloudflare counts as a failed attempt with no delay of Jadpo's; and
+checking the Wrangler file against Wrangler's JSON schema alone, which
+says nothing of what `wrangler deploy` warns of.
+
 **The locale data a deployable carries** (chunk 8.2c; area 10,
 "Locales"). `jadpo test`, `jadpo dev` and the compiled step run with
 ICU4X's compiled data for every locale `Locale` lists; a deployable
@@ -4270,9 +4385,12 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
   experiments to about 79% of Bun
   ([optimisation results](experiments/wasm-optimization-results.md)): an
   inference until the performance spike (chunk 8.3) measures it.
-- Six connections at once per request
+- Six connections waiting for their answer's head at once per
+  invocation
   ([limits](https://developers.cloudflare.com/workers/platform/limits/)),
-  counted by the runtime across database, providers and SMTP.
+  counted by the runtime across database, providers, SMTP and its own
+  fetches, the work left in `waitUntil` included (chunk 8.2j, "Six
+  connections an invocation", above).
 - A panic aborts the instance, so runtime crates deny `unwrap`, `expect`
   and `panic!` by lint, and faults are values; the crate-graph test holds
   every shared and runtime crate to the lint (chunk 1.9), and since chunk

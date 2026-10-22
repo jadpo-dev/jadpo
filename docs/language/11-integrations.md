@@ -8904,16 +8904,19 @@ connections: {
   is dropped: both required, both written out, since the consumer is
   written into the Wrangler file when the app is built, each lowercase
   letters, digits and dashes, starting and ending with a letter or digit,
-  at most 63 characters (Jadpo's own form, to be checked against
-  Cloudflare's rule when Phase 8 deploys it). The two differ, and no two
+  at most 63 characters (Jadpo's own form; Wrangler checks none, taking
+  any text, as chunk 8.2k found, so Cloudflare's own rule is checked on
+  the real account in chunk 8.2n). The two differ, and no two
   connections name one queue. It takes no `domains:`, since nothing but
   `receiving:` reads it, and reaches no host, so the network report lists
   none. Problems are `connection.key_missing`, `connection.key_invalid`
   and `connection.value_invalid`; `receiving:` takes it as it takes a
   package's connection.
-- **A batch.** The Workers host's queue consumer hands each batch to the
+- **A batch.** The Workers host's queue consumer, the Worker's `queue`
+  (built in chunk 8.2k), hands each batch to the
   runtime's seam (`receiving::consume`): the queue's name and each
-  message's body, as text (a text body as sent, any other as its JSON),
+  message's body, as text (a text body as sent, bytes as UTF-8, any other
+  as its JSON),
   with the times it was handed over. Each message is read and kept as the
   tick keeps a fetched one ("Chosen in chunk 7.7c"), and answered in the
   batch's order: acknowledged once its event and id commit, as a repeat,
@@ -8930,8 +8933,9 @@ connections: {
   receive asks a package's queue for), `max_batch_timeout` 5 seconds,
   `max_retries` 3 and its `dead_letter_queue`
   (`jadpo_std::receiving::wrangler_queues`, as JSON). The setting names
-  follow Wrangler's documented consumer settings as recalled when built;
-  Phase 8 checks them against Wrangler's schema when it writes the file.
+  are Wrangler's own: since chunk 8.2k `jadpo build` writes them into the
+  Wrangler file, and Wrangler's `deploy --dry-run`, pinned in
+  `tools/workers/`, accepts it without a warning.
 - **Natively.** A server off Workers can't receive the binding: it reads
   no message from the queue, only the parked ones an operator retried.
   Refusing the driver in a native deployable that runs
@@ -9815,6 +9819,7 @@ packages and extension points, as each note says; 26 was decided then.
 | Topic | Decision | Date |
 |---|---|---|
 | `max_concurrent:` on Workers | Counted per isolate: Workers runs many isolates and a cap across them would need a Durable Object and a round trip per call, so the deploy report and `jadpo check` say "on Workers, per instance"; a provider that needs a hard global limit enforces it on its side, and its rate-limit answers already make calls back off (Richard; `jadpo check`'s "On Workers", listing each capped connection a deployable built for Workers reaches, built in chunk 8.1o2, and `jadpo build`'s `calls` line for each Worker in chunk 8.2m) | 2026-10-21 |
+| `max_concurrent:` between an isolate's invocations | Chosen in chunk 8.2j, reversible: on Workers a slot one invocation gives back is handed to the call of another that has waited longest, which finds it on its own timer every 10 ms rather than being woken by the first, since Workers runs each invocation's work in its own context; a call holding a slot says so every second and one not heard from for five seconds is forgotten, as is a waiter that stopped looking, so an invocation Workers ended mid-call never keeps a slot; natively the process's waiters are woken as before (compiler-runtime §2.6, "Six connections an invocation") | 2026-10-22 |
 | Keyword and folder | Carried from area 1: `integration` in `integrations/`, one declaration per provider version, contract beside it (Superseded 2026-10-13: reopened by questions 15 and 18.) | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure`, e.g. `timed_out: ChargeUnavailable`; time limits are integration settings | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |
@@ -9898,6 +9903,7 @@ packages and extension points, as each note says; 26 was decided then.
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
 | Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |
+| Cloudflare Queues' consumer (chunk 8.2k) | The Worker's `queue` starts the isolate as `fetch` does; an isolate that can't start, or whose stores aren't current, retries each message after the delay its attempts give, keeping nothing; a body of bytes is read as UTF-8 text (an invalid sequence replaced, so it parks as unreadable), any other value but text as its JSON; each batch with a message retried logs `queue.retried` with the queue's name, how many and a code (`not_started`, `not_received`, `store_unavailable`), never a body; the kept events' deliveries run after the answers as a response's work does, in `waitUntil` and handed on past its 30 seconds; Wrangler checks no queue name, so Jadpo's form stands until chunk 8.2n checks Cloudflare's (decided conservatively by the building session) | 2026-10-22 |
 | Default timeouts (Richard, 2026-10-20) | A connection's `timeout:` defaults to 3s, its attempts staying 3, so one call's 9 seconds fit a route's 10-second default deadline; `ai.generate`'s to 25s and `ai.embed`'s to 5s (area 21). At 10s a call could take 30 seconds, and the deadline sum refused almost every route that calls out (option A, Richard) | 2026-10-20 |
 | Polls claimed once (Phase 7 review, chunk 7.9c) | A poll's row keeps the interval it was last claimed under, `jadpo_polls.every_ms`. One statement claims it when it is due or has never run, or when it was claimed under another interval than the connection's now and is due later than a whole new interval away, the interval shortened since; the claim records the interval it was made under. So a second tick at the same moment, or an instance whose clock is behind, never calls the provider again within the interval. The column may be `NULL`, since a migration adds it to a table that may hold rows, and a row without it counts once as claimed under another interval (decided for Richard, the conservative reading) | 2026-10-21 |
 | What a webhook's reply shows (chunk 7.9g) | Whether records are there reaches whoever sent the webhook: a reply counting or testing for records only the system may read, or a failure decided by it, is `policy.output_field_unproved`, and the action's failure, answered to the sender as its reply is, is held to the same proof, what decides it and its client fields (area 9; decided for Richard, the stricter reading) | 2026-10-21 |

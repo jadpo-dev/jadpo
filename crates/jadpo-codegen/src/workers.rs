@@ -9,9 +9,9 @@
 //! The four files sit side by side in `build/target/<deployable>/`:
 //!
 //! - `worker.mjs`, the shim: the module instantiated once per isolate and
-//!   the Worker's handlers, `fetch` and `scheduled`, handed to the ones the
-//!   module exports, with the `JadpoHandOn` entrypoint a fresh invocation
-//!   takes work handed on through;
+//!   the Worker's handlers, `fetch`, `scheduled` and `queue`, handed to the
+//!   ones the module exports, with the `JadpoHandOn` entrypoint a fresh
+//!   invocation takes work handed on through;
 //! - `<deployable>.js`, the JavaScript wasm-bindgen writes for the module
 //!   (its `web` form, which takes the module it is given);
 //! - `<deployable>.wasm`, the module;
@@ -22,8 +22,11 @@
 //!   as a Hyperdrive binding (chunk 8.2i), the minute's cron trigger when
 //!   its tick has something to do, the service binding to its own
 //!   `JadpoHandOn` through which it hands work on when it runs background
-//!   work (chunk 8.2h), and the rate-limiting bindings its rate limits are
-//!   counted in ([`rate_limited`]).
+//!   work (chunk 8.2h), the rate-limiting bindings its rate limits are
+//!   counted in ([`rate_limited`]), and a consumer for each queue on
+//!   Cloudflare Queues it receives ([`queued`], chunk 8.2k). Wrangler's own
+//!   `deploy --dry-run`, pinned in `tools/workers/`, accepts the file
+//!   without a warning.
 
 use std::path::Path;
 
@@ -83,7 +86,9 @@ pub const HAND_ON_BINDING: &str = "JADPO_HAND_ON";
 pub const HAND_ON_ENTRYPOINT: &str = "JadpoHandOn";
 
 /// The module Workers runs first: `name`'s module instantiated once per
-/// isolate, the Worker's `fetch` and `scheduled` the module's, and its
+/// isolate, the Worker's `fetch`, `scheduled` and `queue` the module's
+/// (each batch Cloudflare Queues pushes to its consumer, chunk 8.2k), and
+/// its
 /// [`HAND_ON_ENTRYPOINT`], whose `handOn` takes on work another invocation
 /// handed on.
 pub fn shim(name: &str) -> String {
@@ -93,7 +98,7 @@ pub fn shim(name: &str) -> String {
          // the module's its event, the Worker's `env` and the invocation's `ctx`.\n\
          import {{ WorkerEntrypoint }} from \"cloudflare:workers\";\n\
          import module from \"./{name}.wasm\";\n\
-         import {{ initSync, fetch as handleFetch, scheduled as handleScheduled, hand_on as handleHandOn }} from \"./{name}.js\";\n\
+         import {{ initSync, fetch as handleFetch, scheduled as handleScheduled, queue as handleQueue, hand_on as handleHandOn }} from \"./{name}.js\";\n\
          \n\
          initSync({{ module }});\n\
          \n\
@@ -103,6 +108,9 @@ pub fn shim(name: &str) -> String {
          \x20 }},\n\
          \x20 scheduled(controller, env, ctx) {{\n\
          \x20   return handleScheduled(controller, env, ctx);\n\
+         \x20 }},\n\
+         \x20 queue(batch, env, ctx) {{\n\
+         \x20   return handleQueue(batch, env, ctx);\n\
          \x20 }},\n\
          }};\n\
          \n\
@@ -166,7 +174,7 @@ pub fn wrangler(
          \x20 \"find_additional_modules\": true,\n\
          \x20 \"rules\": [\n\
          \x20   {{ \"type\": \"ESModule\", \"globs\": [\"**/*.mjs\", \"**/*.js\"] }},\n\
-         \x20   {{ \"type\": \"CompiledWasm\", \"globs\": [\"**/*.wasm\"] }}\n\
+         \x20   {{ \"type\": \"CompiledWasm\", \"globs\": [\"**/*.wasm\"], \"fallthrough\": false }}\n\
          \x20 ]",
         name = quoted(&worker_name(name)),
         main = quoted(SHIM),
@@ -241,5 +249,40 @@ pub fn rate_limited(wrangler: String, bindings: &[jadpo_std::http::RateLimitBind
     format!(
         "{body},\n  \"ratelimits\": [\n{}\n  ]\n}}\n",
         entries.join(",\n")
+    )
+}
+
+/// `wrangler`, a Wrangler file [`wrangler`] wrote, with a consumer for each
+/// of `queues` on Cloudflare Queues (chunk 8.2k; area 11, "Chosen in chunk
+/// 7.7c2"): `queues: { consumers: [ ] }`, as
+/// [`jadpo_std::receiving::wrangler_queues`] writes them, by Wrangler's own
+/// setting names. With none, `wrangler` as it is.
+pub fn queued(wrangler: String, queues: &[jadpo_std::receiving::QueuePlan]) -> String {
+    let Some(consumers) = jadpo_std::receiving::wrangler_queues(queues) else {
+        return wrangler;
+    };
+    let Some(body) = wrangler.strip_suffix("\n}\n") else {
+        return wrangler;
+    };
+    let Some(consumers) = consumers["consumers"].as_array() else {
+        return wrangler;
+    };
+    // Each consumer on a line, its queue first.
+    let consumers: Vec<String> = consumers
+        .iter()
+        .filter_map(serde_json::Value::as_object)
+        .map(|consumer| {
+            let mut settings: Vec<(&String, &serde_json::Value)> = consumer.iter().collect();
+            settings.sort_by_key(|(key, _)| *key != "queue");
+            let settings: Vec<String> = settings
+                .iter()
+                .map(|(key, value)| format!("{}: {value}", serde_json::Value::from(key.as_str())))
+                .collect();
+            format!("      {{ {} }}", settings.join(", "))
+        })
+        .collect();
+    format!(
+        "{body},\n  \"queues\": {{\n    \"consumers\": [\n{}\n    ]\n  }}\n}}\n",
+        consumers.join(",\n")
     )
 }

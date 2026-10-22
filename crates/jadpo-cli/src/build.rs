@@ -273,18 +273,23 @@ pub fn build(call: &Call) -> Reply {
                     ),
                     (
                         wrangler.clone(),
-                        workers::rate_limited(
-                            workers::wrangler(
-                                name,
-                                &required,
-                                &hyperdrive,
-                                plan.schedules().ticks(),
-                                hands_on,
+                        workers::queued(
+                            workers::rate_limited(
+                                workers::wrangler(
+                                    name,
+                                    &required,
+                                    &hyperdrive,
+                                    plan.schedules().ticks(),
+                                    hands_on,
+                                ),
+                                plan.routes()
+                                    .rate_limits
+                                    .as_ref()
+                                    .map_or(&[][..], |store| &store.bindings),
                             ),
-                            plan.routes()
-                                .rate_limits
-                                .as_ref()
-                                .map_or(&[][..], |store| &store.bindings),
+                            // Its queues on Cloudflare Queues, kept where
+                            // it runs the subscribers (chunk 8.2k).
+                            &plan.providers().queues,
                         )
                         .into_bytes(),
                     ),

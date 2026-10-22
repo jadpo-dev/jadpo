@@ -14,6 +14,11 @@
 //! other waits and then finds it. An install that leaves no binary is
 //! tried again, since npm skips a platform package it couldn't fetch, an
 //! optional dependency, without a word; then it says what npm said.
+//!
+//! Wrangler is pinned beside it (chunk 8.2k), installed by the same `npm
+//! ci`, so a test checks a Wrangler file `jadpo build` writes with
+//! Wrangler's own `deploy --dry-run` ([`wrangler`]), kept off the network
+//! by `tools/workers/offline.mjs`.
 
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -34,8 +39,15 @@ pub fn workerd() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("JADPO_WORKERD") {
         return Ok(PathBuf::from(path));
     }
+    install()
+}
+
+/// The pinned workerd's binary, with Wrangler beside it, installed into
+/// `tools/workers/` first when either isn't, by one process at a time.
+fn install() -> Result<PathBuf, String> {
     let tools = tools();
-    let pinned = pinned(&tools)?;
+    let wrangler = pinned(&tools, "wrangler")?;
+    let pinned = pinned(&tools, "workerd")?;
     let lock = OpenOptions::new()
         .create(true)
         .write(true)
@@ -45,7 +57,7 @@ pub fn workerd() -> Result<PathBuf, String> {
     // Held until this returns: released when `lock` is dropped.
     lock.lock()
         .map_err(|error| format!("tools/workers/.install.lock can't be locked: {error}"))?;
-    if let Some(found) = installed(&tools, &pinned) {
+    if let Some(found) = installed(&tools, &pinned, &wrangler) {
         return Ok(found);
     }
     let mut said = String::new();
@@ -59,7 +71,7 @@ pub fn workerd() -> Result<PathBuf, String> {
                     "npm didn't run: workerd is installed with Node's npm into tools/workers/: {error}"
                 )
             })?;
-        if let Some(found) = installed(&tools, &pinned) {
+        if let Some(found) = installed(&tools, &pinned, &wrangler) {
             return Ok(found);
         }
         said = format!(
@@ -74,36 +86,63 @@ pub fn workerd() -> Result<PathBuf, String> {
     ))
 }
 
-/// The release `tools/workers/package.json` pins.
-fn pinned(tools: &Path) -> Result<String, String> {
+/// Wrangler's command line, `node_modules/wrangler/bin/wrangler.js` in
+/// `tools/workers/`, at the release `tools/workers/package.json` pins,
+/// installed with workerd when it isn't yet; and the module that keeps it
+/// off the network, `tools/workers/offline.mjs`, for Node's `--import`.
+// The Workers host's tests, which include this file by its path, check no
+// Wrangler file.
+#[allow(dead_code)]
+pub fn wrangler() -> Result<(PathBuf, PathBuf), String> {
+    install()?;
+    let tools = tools();
+    Ok((
+        tools.join("node_modules/wrangler/bin/wrangler.js"),
+        tools.join("offline.mjs"),
+    ))
+}
+
+/// The release of `package` `tools/workers/package.json` pins.
+fn pinned(tools: &Path, package: &str) -> Result<String, String> {
     let manifest = fs::read_to_string(tools.join("package.json"))
         .map_err(|error| format!("tools/workers/package.json can't be read: {error}"))?;
     let manifest: serde_json::Value = serde_json::from_str(&manifest)
         .map_err(|error| format!("tools/workers/package.json isn't JSON: {error}"))?;
     manifest
         .get("dependencies")
-        .and_then(|dependencies| dependencies.get("workerd"))
+        .and_then(|dependencies| dependencies.get(package))
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| "tools/workers/package.json names no workerd release".to_string())
+        .ok_or_else(|| format!("tools/workers/package.json names no {package} release"))
+}
+
+/// The version of the package installed in `folder`, from its
+/// `package.json`.
+fn version(folder: &Path) -> Option<String> {
+    fs::read_to_string(folder.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|package| {
+            package
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 /// The binary of the platform's own workerd package at release `pinned`,
 /// rather than npm's wrapper, which would run it as a child of its own
-/// that stopping the wrapper doesn't stop.
-fn installed(tools: &Path, pinned: &str) -> Option<PathBuf> {
+/// that stopping the wrapper doesn't stop, once Wrangler is installed at
+/// release `wrangler` beside it.
+fn installed(tools: &Path, pinned: &str, wrangler: &str) -> Option<PathBuf> {
+    if version(&tools.join("node_modules/wrangler")).as_deref() != Some(wrangler) {
+        return None;
+    }
     fs::read_dir(tools.join("node_modules/@cloudflare"))
         .ok()?
         .filter_map(Result::ok)
         .filter(|entry| entry.file_name().to_string_lossy().starts_with("workerd-"))
-        .filter(|entry| {
-            fs::read_to_string(entry.path().join("package.json"))
-                .ok()
-                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-                .is_some_and(|package| {
-                    package.get("version").and_then(serde_json::Value::as_str) == Some(pinned)
-                })
-        })
+        .filter(|entry| version(&entry.path()).as_deref() == Some(pinned))
         .map(|entry| entry.path().join("bin/workerd"))
         .find(|binary| binary.is_file())
 }

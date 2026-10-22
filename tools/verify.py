@@ -239,9 +239,12 @@ COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 # the probe Worker built for wasm32 by the test itself (so the step takes
 # cargo's lane), bound by wasm-bindgen's library, and run by the workerd
 # pinned in tools/workers/, which the test installs there with `npm ci` the
-# first time, against servers it starts. The `wasm32` group; `compiler
-# tests` leaves it out in both profiles.
-WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd')])
+# first time, against servers it starts; since chunk 8.2j its six
+# connections an invocation and `max_concurrent:`'s slots across an
+# isolate's invocations too (tests/connections.rs). The `wasm32` group;
+# `compiler tests` leaves it out in both profiles.
+WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd'),
+                                              ('jadpo-host-workers', 'connections')])
 # A Workers deployable (chunks 8.2b and 8.2d): teaching example 23 declared
 # as a kiosk built for `Target.wasm` by `jadpo build` in release for wasm32,
 # its build kept in target/jadpo-compiled/workers/, bound by wasm-bindgen's
@@ -252,9 +255,11 @@ WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd')]
 # Worker can't open. Since chunk 8.2h a news desk of its own beside it,
 # whose model is a server the test starts: a streamed answer, and a
 # subscriber's deliveries and a batch run each longer than an invocation's
-# 30 seconds, handed on to a fresh one. The `wasm32` group, in cargo's
-# lane beside the step above, since both install workerd into
-# tools/workers/ the first time; it prints the module's size.
+# 30 seconds, handed on to a fresh one; since chunk 8.2k a warehouse
+# consuming Cloudflare Queues (workers/queues.rs), its Wrangler file checked
+# by the pinned Wrangler's `deploy --dry-run` with the network refused. The
+# `wasm32` group, in cargo's lane beside the step above, since both install
+# workerd into tools/workers/ the first time; it prints the module's size.
 WORKERS_DEPLOYABLE = ('a Workers deployable built and served by workerd', [('jadpo-cli', 'workers')])
 WORKERS_SHOWN = ('skipped:', 'measured:')
 

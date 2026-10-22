@@ -444,24 +444,31 @@ pub(crate) async fn exchange(
         ctx.capabilities_mut().refused(call, now);
         return Err(Unanswered::Failure(Box::new(crate::misconfigured())));
     };
+    // On Workers the slot is looked for in this invocation and said to be
+    // held while the call is out (chunk 8.2j, `slots::wait`).
     let slot = match max_concurrent {
-        Some(limit) => Some(host.slots().take(&call.connection, limit).await),
+        Some(limit) => Some(crate::slots::wait(host, &call.connection, limit).await),
         None => None,
     };
-    if let Some(at) = call.step
-        && let Err(unsent) = crate::steps::sending(ctx, at).await
-    {
-        ctx.capabilities_mut().refused(call, now);
-        return Err(unsent);
-    }
-    let began = host.monotonic_ms();
-    let place = ctx
-        .capabilities_mut()
-        .sent(call, driver.source_of(call), now);
-    let answer = match form {
-        Form::Whole => Streamed::Whole(driver.call(call).await),
-        Form::Streamed => driver.stream(call).await,
-    };
+    let sent = crate::slots::keeping(host, slot.as_ref(), async {
+        if let Some(at) = call.step
+            && let Err(unsent) = crate::steps::sending(ctx, at).await
+        {
+            ctx.capabilities_mut().refused(call, now);
+            return Err(unsent);
+        }
+        let began = host.monotonic_ms();
+        let place = ctx
+            .capabilities_mut()
+            .sent(call, driver.source_of(call), now);
+        let answer = match form {
+            Form::Whole => Streamed::Whole(driver.call(call).await),
+            Form::Streamed => driver.stream(call).await,
+        };
+        Ok((began, place, answer))
+    })
+    .await;
+    let (began, place, answer) = sent?;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     #[cfg(feature = "testing")]
     if let Some(record) = host.record() {

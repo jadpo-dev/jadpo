@@ -19,6 +19,11 @@
 //!   twice. An address `fetch()` can't send to is refused before it is
 //!   tried.
 //! - **At most 10 MB of an answer is read** ([`MOST_ANSWER`]), as natively.
+//! - **A request waiting for its answer's head takes one of the
+//!   invocation's six places** ([`Opening`]; chunk 8.2j), given back once
+//!   the head comes or the request fails. A seventh waits for one within
+//!   its own timeout, and one whose timeout passes while it waits never
+//!   left: [`FetchError::NotSent`], safe to send again.
 //! - **The outbound guard** sends a `GET` over HTTPS only, never to an
 //!   address written as one that isn't public (loopback, private,
 //!   link-local and the rest, [`jadpo_runtime::public_address`]) nor to
@@ -27,8 +32,10 @@
 //!   resolver, and Cloudflare's network routes a Worker's requests to the
 //!   public internet only.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use jadpo_drivers::package::{Fetch, FetchError, Opened};
-use jadpo_drivers::within;
 use jadpo_runtime::provider::{MOST_ANSWER, Reading, Request, Response};
 use jadpo_runtime::stream::{Chunk, Coming};
 use jadpo_runtime::{LocalFuture, Outbound};
@@ -41,18 +48,49 @@ use web_sys::{
 };
 
 use crate::js;
-use crate::transport::WorkersTransport;
+use crate::opening::{Opening, Place};
+use crate::timer::within;
 
-/// The package driver's HTTP on Workers.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct WorkersFetch;
+/// The package driver's HTTP on Workers, counting its requests among its
+/// invocation's six. A default one has six places of its own; an
+/// invocation's host gives its drivers one sharing the invocation's
+/// ([`crate::WorkersHost::supplies`]).
+#[derive(Clone, Debug, Default)]
+pub struct WorkersFetch {
+    opening: Rc<Opening>,
+}
+
+impl WorkersFetch {
+    /// A fetch whose requests take places among `opening`'s.
+    pub fn counted(opening: Rc<Opening>) -> WorkersFetch {
+        WorkersFetch { opening }
+    }
+}
+
+/// Why a request whose timeout passed while it waited for a place never
+/// went out.
+const NO_PLACE: &str = "no connection of the invocation's six came free in time";
+
+/// What a request whose time ran out was: never sent while it waited for
+/// a place, else aborted, which may have acted.
+fn ran_out(went: &Cell<bool>, abort: &AbortController) -> FetchError {
+    if !went.get() {
+        return FetchError::NotSent(NO_PLACE.into());
+    }
+    abort.abort();
+    FetchError::TimedOut
+}
 
 impl Fetch for WorkersFetch {
     fn fetch<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Response, FetchError>> {
         Box::pin(async move {
+            sendable(&request.url)?;
             let abort = AbortController::new().map_err(|error| refused(&error))?;
+            let went = Cell::new(false);
             let exchange = async {
-                let answer = send(request, &abort).await?;
+                let place = self.opening.place().await;
+                went.set(true);
+                let answer = send(request, &abort, place).await?;
                 let body = whole(&answer, MOST_ANSWER).await?;
                 Ok(Response {
                     status: answer.status(),
@@ -60,12 +98,9 @@ impl Fetch for WorkersFetch {
                     body,
                 })
             };
-            match within(&WorkersTransport, request.timeout_ms, exchange).await {
+            match within(request.timeout_ms, exchange).await {
                 Some(done) => done,
-                None => {
-                    abort.abort();
-                    Err(FetchError::TimedOut)
-                }
+                None => Err(ran_out(&went, &abort)),
             }
         })
     }
@@ -74,15 +109,18 @@ impl Fetch for WorkersFetch {
     /// body as it comes, each piece waited for that long.
     fn open<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Opened, FetchError>> {
         Box::pin(async move {
+            sendable(&request.url)?;
             let abort = AbortController::new().map_err(|error| refused(&error))?;
-            let answer =
-                match within(&WorkersTransport, request.timeout_ms, send(request, &abort)).await {
-                    Some(answer) => answer?,
-                    None => {
-                        abort.abort();
-                        return Err(FetchError::TimedOut);
-                    }
-                };
+            let went = Cell::new(false);
+            let head = async {
+                let place = self.opening.place().await;
+                went.set(true);
+                send(request, &abort, place).await
+            };
+            let answer = match within(request.timeout_ms, head).await {
+                Some(answer) => answer?,
+                None => return Err(ran_out(&went, &abort)),
+            };
             let reader = match answer.body() {
                 Some(body) => {
                     Some(ReadableStreamDefaultReader::new(&body).map_err(|error| broken(&error))?)
@@ -105,9 +143,13 @@ impl Fetch for WorkersFetch {
 }
 
 /// Sends `request` through `fetch()`, abortable through `abort`, and gives
-/// its answer's head.
-async fn send(request: &Request, abort: &AbortController) -> Result<web_sys::Response, FetchError> {
-    sendable(&request.url)?;
+/// its answer's head, giving its `place` back once the head has come or it
+/// failed.
+async fn send(
+    request: &Request,
+    abort: &AbortController,
+    place: Place<'_>,
+) -> Result<web_sys::Response, FetchError> {
     let headers = Headers::new().map_err(|error| refused(&error))?;
     for (name, value) in &request.headers {
         headers
@@ -123,9 +165,9 @@ async fn send(request: &Request, abort: &AbortController) -> Result<web_sys::Res
     init.set_redirect(RequestRedirect::Manual);
     init.set_signal(Some(&abort.signal()));
     let promise = js::fetch(&request.url, &init).map_err(|error| refused(&error))?;
-    let answer = JsFuture::from(promise)
-        .await
-        .map_err(|error| rejected(js::name(&error).as_deref(), js::said(&error)))?;
+    let answer = JsFuture::from(promise).await;
+    drop(place);
+    let answer = answer.map_err(|error| rejected(js::name(&error).as_deref(), js::said(&error)))?;
     answer
         .dyn_into::<web_sys::Response>()
         .map_err(|_| FetchError::NoAnswer("fetch() gave something other than a Response".into()))
@@ -272,7 +314,7 @@ impl Coming for Body {
                 self.ended = true;
                 return Chunk::End;
             };
-            match within(&WorkersTransport, self.wait, piece(&reader)).await {
+            match within(self.wait, piece(&reader)).await {
                 None => {
                     self.stop();
                     Chunk::TimedOut
@@ -307,6 +349,8 @@ pub struct WorkersOutbound {
     /// A test's server let through in a public host's place: its origin,
     /// as `URL.origin` writes it.
     reach: Option<String>,
+    /// The invocation's places, which its requests take one of each.
+    opening: Rc<Opening>,
 }
 
 impl WorkersOutbound {
@@ -317,7 +361,14 @@ impl WorkersOutbound {
     pub fn reaching(origin: &str) -> WorkersOutbound {
         WorkersOutbound {
             reach: Some(origin.trim_end_matches('/').to_ascii_lowercase()),
+            opening: Rc::default(),
         }
+    }
+
+    /// The same guard, its requests taking places among `opening`'s: the
+    /// invocation's, when its host is given it.
+    pub(crate) fn counted(self, opening: Rc<Opening>) -> WorkersOutbound {
+        WorkersOutbound { opening, ..self }
     }
 }
 
@@ -347,18 +398,18 @@ impl Outbound for WorkersOutbound {
                 repeatable: true,
             };
             let abort = AbortController::new().map_err(|error| js::said(&error))?;
+            let went = Cell::new(false);
             let exchange = async {
-                let answer = send(&request, &abort).await?;
+                let place = self.opening.place().await;
+                went.set(true);
+                let answer = send(&request, &abort, place).await?;
                 let body = whole(&answer, limit.min(MOST_ANSWER)).await?;
                 Ok::<_, FetchError>((answer.status(), body))
             };
-            match within(&WorkersTransport, timeout_ms, exchange).await {
+            match within(timeout_ms, exchange).await {
                 Some(Ok(done)) => Ok(done),
                 Some(Err(error)) => Err(said(error)),
-                None => {
-                    abort.abort();
-                    Err(said(FetchError::TimedOut))
-                }
+                None => Err(said(ran_out(&went, &abort))),
             }
         })
     }

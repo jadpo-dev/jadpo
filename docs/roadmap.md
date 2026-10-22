@@ -2720,20 +2720,62 @@ whose entry names them.
   account: the Worker-to-Hyperdrive leg without TLS on Cloudflare's
   network, and tokio-postgres's named statement describing a `vector` or
   `geography` column through Hyperdrive.
-- [ ] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
-  and 8.2i: the six connections an invocation may hold, counted across
-  `Transport` and `Fetch` and shared with `waitUntil`, a seventh waiting
-  for one; `max_concurrent:`'s slots per isolate (decided 2026-10-21)
-  handing a free slot to a request waiting on another's without one
-  request's promise settled from another's, which Workers doesn't allow.
-  Proved under workerd.
-- [ ] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
-  (from chunk 7.7c2): the queue handler calling `receiving::consume` and
-  answering each message (`ack()`, `retry({ delaySeconds })`), the kept
-  events' deliveries in `waitUntil`; `wrangler_queues` written into the
-  Wrangler file, its setting names and Jadpo's queue-name form checked
-  against Wrangler's own (Wrangler pinned in `tools/workers/`, its
-  `deploy --dry-run`, no account). Proved through workerd's queue entry.
+- [x] **8.2j Six connections an invocation** `opus · xhigh`, after 8.2h
+  and 8.2i. Built (§2.6, "Six connections an invocation"; area 14,
+  "Serving"): an invocation's six places (`jadpo_host_workers::Opening`)
+  held by its `WorkersHost` and shared by everything it opens, its
+  drivers' `WorkersTransport` and `WorkersFetch`
+  (`WorkersHost::supplies`), its own `WorkersOutbound` and the work it
+  leaves in `waitUntil`; a seventh waiting in the order asked, within
+  its own timeout, `NotSent` if that passes first. Counted as Cloudflare
+  has since 2026-04-09, six waiting for their answer's head (a `fetch()`
+  until its head, a `connect()` until its socket opens), not six held
+  open as this entry was written, which would hold a seventh behind a
+  store's idle connections; workerd counts none (its server's limit
+  enforcer). The isolate's `max_concurrent:` slots a looking set
+  (`Slots::looking`): a slot given back handed to the longest waiter,
+  which looks every 10 ms on its own invocation's timer (`slots::wait`),
+  since wasm-bindgen's executor polls a task in the invocation that woke
+  it, and workerd ended the second of two invocations sharing a slot of
+  the process's woken set as hung; a holder saying every second it holds
+  its slot (`slots::keeping`) and one quiet for five seconds forgotten,
+  as Workers cancels an invocation whose client left or whose
+  `waitUntil` ran out without dropping what it held. Decided in the
+  chunk (area 14 and area 11, 2026-10-22). Proved under workerd
+  (`crates/jadpo-host-workers/tests/connections.rs`, the `wasm32` group,
+  about 2 s more for its step): eight requests sent uncounted all reaching the server at
+  once and counted never more than six, one whose timeout passed while
+  it waited `NotSent` and never seen; an echo's `connect()` waiting
+  behind six requests' heads; four requests from a response and four
+  from its `waitUntil` never more than six at once; a slot one
+  invocation gave back taken up by another, its request sent and
+  answered in its own; and a slot never given back taken back five
+  seconds after its holder went quiet (workerd lets a request whose
+  client left run on, so the probe leaves the slot as a cancelled one
+  would). The real edge's six is 8.2n's to measure.
+- [x] **8.2k Cloudflare Queues' consumer** `opus · high`, after 8.2h
+  (from chunk 7.7c2). Built (area 11, "Chosen in chunk 7.7c2"; area 14,
+  "A Workers deployable"; §2.6, "Cloudflare Queues' consumer"): the
+  Worker's `queue`, exported and handed on by the shim, starting the
+  isolate as `fetch` does and handing each batch to `receiving::consume`,
+  each message answered on its own (`ack()`, `retry({ delaySeconds })`),
+  then the kept events' deliveries in `waitUntil`, handed on past its 30
+  seconds; out of date, every message retried after its attempt's delay
+  and `queue.retried` logged. `queues: { consumers }` written into the
+  Wrangler file (`workers::queued`), and the `.wasm` rule given
+  `fallthrough: false`, which Wrangler warned of. Wrangler 4.149.0 pinned
+  in `tools/workers/` beside workerd (held to its release by an npm
+  override; 70 MB more installed) and installed by the shared installer;
+  its `deploy --dry-run` accepts the file without a warning, run with
+  every connection refused and reported (`tools/workers/offline.mjs`).
+  Wrangler checks the setting names, which were right, and no queue name,
+  so Jadpo's form stands for 8.2n. Decided in the chunk (area 11,
+  2026-10-22). Proved under workerd through a service binding's
+  `queue()` (`crates/jadpo-cli/tests/workers/queues.rs`, the `wasm32`
+  group): a warehouse retrying while out of date, then acknowledging a
+  text body, a JSON body, a repeat and two messages it parks, delivering
+  the two kept after answering, and retrying a batch from a queue it
+  doesn't receive.
 - [x] **8.2l Passkeys on Workers** `opus · high`, after 8.2a. Built:
   `WorkersPasskeys`, the Workers host's `Host::passkeys`: `webauthn-rs`
   0.5's passkey ceremonies in pure Rust, its options member for member
@@ -2802,6 +2844,8 @@ whose entry names them.
   a Worker's binding to its own `JadpoHandOn` accepted, each invocation
   handed on given its own 30 seconds once the one that called it has
   ended, and a client leaving a streamed answer ending the model's call.
+  From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
+  Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
 
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and

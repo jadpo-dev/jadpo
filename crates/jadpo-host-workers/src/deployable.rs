@@ -38,8 +38,8 @@
 //! A streamed answer is sent as a `ReadableStream`, each event as it is
 //! read ([`crate::streamed`]); and [`hand_on`] is the fresh invocation
 //! work handed on starts, a request to the Worker itself through a service
-//! binding to its `JadpoHandOn` entrypoint (chunk 8.2h). The queue's
-//! handler is chunk 8.2k's.
+//! binding to its `JadpoHandOn` entrypoint (chunk 8.2h). [`queue`] is the
+//! consumer of each queue on Cloudflare Queues it receives (chunk 8.2k).
 
 use std::cell::{Cell, OnceCell};
 use std::fmt;
@@ -63,7 +63,10 @@ use serde_json::{Value, json};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Headers, ReadableStreamDefaultReader, ResponseInit};
 
-use crate::{WorkersHost, js, supplies};
+use crate::{WorkersHost, js};
+
+mod queue;
+pub use queue::queue;
 
 pub use jadpo_runtime::deployable::{Deployable, Migration, Stamp, Store};
 
@@ -128,7 +131,8 @@ pub fn hand_on(deployable: &Deployable, work: String, env: JsValue, ctx: JsValue
         return JsValue::UNDEFINED;
     };
     let deployable = *deployable;
-    let host = Rc::new(host.with_drivers(drivers(&isolate.program)));
+    let drivers = drivers(&isolate.program, &host);
+    let host = Rc::new(host.with_drivers(drivers));
     let fresh = Rc::clone(&host);
     host.defer(Box::pin(async move {
         if !ready(&deployable, &fresh, &isolate).await {
@@ -153,8 +157,9 @@ async fn respond(
     let Some(isolate) = isolate(deployable, &host) else {
         return http::unavailable(&host);
     };
+    let drivers = drivers(&isolate.program, &host);
     let host = host
-        .with_drivers(drivers(&isolate.program))
+        .with_drivers(drivers)
         .with_rate_limits(isolate.rate_limits.clone());
     if !ready(deployable, &host, &isolate).await {
         return http::unavailable(&host);
@@ -175,7 +180,8 @@ async fn cron(deployable: &Deployable, controller: &JsValue, env: JsValue, ctx: 
     let Some(isolate) = isolate(deployable, &host) else {
         return;
     };
-    let host = host.with_drivers(drivers(&isolate.program));
+    let drivers = drivers(&isolate.program, &host);
+    let host = host.with_drivers(drivers);
     if !ready(deployable, &host, &isolate).await {
         return;
     }
@@ -318,11 +324,12 @@ fn started(deployable: &Deployable, host: &WorkersHost) -> Result<Program, Vec<V
     Ok(program.with_config_on(&values, Target::Workers))
 }
 
-/// The request's drivers, built by the factory from the program's
-/// connections over `connect()` and `fetch()`.
-fn drivers(program: &Program) -> Drivers {
+/// The invocation's drivers, built by the factory from the program's
+/// connections over `connect()` and `fetch()`, sharing `host`'s six places
+/// for connections being opened (chunk 8.2j).
+fn drivers(program: &Program, host: &WorkersHost) -> Drivers {
     match program.started() {
-        Some(started) => Drivers::build(&program.runtime().connections, &started, &supplies()),
+        Some(started) => Drivers::build(&program.runtime().connections, &started, &host.supplies()),
         None => Drivers::default(),
     }
 }
