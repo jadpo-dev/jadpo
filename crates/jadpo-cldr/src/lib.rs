@@ -15,10 +15,11 @@
 //!   walks through for that marker, down to the root (`en-GB`, `en-001`,
 //!   `en`, `und`), so each lookup in a supported locale finds the entry it
 //!   finds with the full set, and writes the same text; and the root's,
-//!   with none declared;
-//! - collation for every locale, since `list.sort_by`'s `locale:` takes
-//!   any `Locale` (area 19, "Text"), as case mapping does, whose data is
-//!   one table;
+//!   with none declared. Collation is kept the same way, since
+//!   `list.sort_by` in a locale the app doesn't support orders by one it
+//!   does (chunk 8.4i); with none declared every `Locale` is the app's,
+//!   so every locale's collation is kept. Case mapping takes any
+//!   `Locale` (area 19, "Text"), and its data is one table;
 //! - every marker with one entry for all locales in full (Unicode's
 //!   properties, normalisation, likely subtags, the fallback's parents).
 //!
@@ -111,9 +112,10 @@ macro_rules! compiled {
 
 markers::each_marker!(compiled);
 
-/// The markers kept for every locale: collation, which takes any `Locale`
-/// (area 19, "Text").
-fn for_every_locale(marker: DataMarkerInfo) -> bool {
+/// The collation markers, kept for every locale when the app declares no
+/// `locales { }`, since then `list.sort_by` orders by any `Locale` it is
+/// given (area 19, "Text").
+fn is_collation(marker: DataMarkerInfo) -> bool {
     use icu_collator::provider::{
         CollationDiacriticsV1, CollationJamoV1, CollationMetadataV1, CollationReorderingV1,
         CollationRootV1, CollationSpecialPrimariesV1, CollationTailoringV1,
@@ -135,6 +137,8 @@ fn for_every_locale(marker: DataMarkerInfo) -> bool {
 #[derive(Debug)]
 struct Carried {
     locales: Vec<DataLocale>,
+    /// No locales declared: every locale's collation is kept.
+    every_collation: bool,
     fallbacker: LocaleFallbackerBorrowed<'static>,
 }
 
@@ -177,7 +181,7 @@ impl IterableDynamicDataProvider<ExportMarker> for Carried {
         marker: DataMarkerInfo,
     ) -> Result<BTreeSet<DataIdentifierCow<'_>>, DataError> {
         let ids = Compiled.iter_ids_for_marker(marker)?;
-        if marker.is_singleton || for_every_locale(marker) {
+        if marker.is_singleton || (self.every_collation && is_collation(marker)) {
             return Ok(ids);
         }
         let reached = self.reached(marker);
@@ -219,6 +223,7 @@ fn carried(tags: &[&str]) -> Result<Carried, Failed> {
     }
     Ok(Carried {
         locales,
+        every_collation: tags.is_empty(),
         fallbacker: LocaleFallbacker::new(),
     })
 }
@@ -260,9 +265,9 @@ pub fn export(tags: &[&str], scratch: &Path) -> Result<BTreeMap<String, Vec<u8>>
 #[cfg(test)]
 mod tests {
     // What an export keeps of the compiled data: a supported locale's
-    // entries and those its lookups fall back to, collation for every
-    // locale, every marker with one entry, the root, and nothing else; the
-    // same bytes for the same locales.
+    // entries and those its lookups fall back to, collation among them
+    // (every locale's with none declared), every marker with one entry,
+    // the root, and nothing else; the same bytes for the same locales.
 
     use super::*;
 
@@ -371,11 +376,24 @@ mod tests {
     }
 
     #[test]
-    fn collation_is_kept_for_every_locale() {
-        // `list.sort_by`'s `locale:` takes any `Locale` (area 19).
+    fn collation_is_kept_for_the_supported_locales() {
+        // `list.sort_by` in a locale the app doesn't support orders by one
+        // it does (area 10, "Locales"; chunk 8.4i), so only theirs is kept.
         let tailoring = CollationTailoringV1::INFO;
-        assert_eq!(kept(&["en-GB"], tailoring), compiled(tailoring));
         assert!(compiled(tailoring).contains("sv"));
+        let kept_for_two = kept(&["en-GB", "sv-SE"], tailoring);
+        assert!(kept_for_two.contains("sv"), "{kept_for_two:?}");
+        assert!(!kept_for_two.contains("de"), "{kept_for_two:?}");
+        assert!(!kept(&["en-GB"], tailoring).contains("sv"));
+        assert!(kept_for_two.len() < compiled(tailoring).len() / 4);
+    }
+
+    #[test]
+    fn with_no_locales_every_locales_collation_is_kept() {
+        // With no `locales { }`, every `Locale` is the app's, and
+        // `list.sort_by` orders by its own (area 19, "Text").
+        let tailoring = CollationTailoringV1::INFO;
+        assert_eq!(kept(&[], tailoring), compiled(tailoring));
     }
 
     #[test]
