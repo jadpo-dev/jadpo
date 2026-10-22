@@ -79,7 +79,7 @@ the rounds and its range. `work/results.json` keeps every run.
 
 ## Where the time goes
 
-`--profile` runs each workerd target's booking route at 16 connections
+`--profile` runs each workerd target's routes at 16 connections
 with workerd's V8 inspector on and samples its CPU profile through
 [bun/profile.ts](bun/profile.ts), printing the share of samples by kind and
 the functions with the most self time; the profile itself is written to

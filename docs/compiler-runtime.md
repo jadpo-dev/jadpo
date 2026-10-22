@@ -4679,3 +4679,85 @@ each example converted to a `check` block; `jadpo check` printing them.
    monitoring file per domain" without saying where. *Recommendation:* add
    `flags.jadpo` to area 1's fixed root, and allow one `monitoring.jadpo`
    directly in a domain folder. *Decided 2026-10-13 (Richard):* as recommended.
+
+### 2.11 The performance spike (chunk 8.3, measured 2026-10-22)
+
+Teaching example 23's booking route, `POST /repairs` with a staffed bench
+(validation, the booking, both subscribers run under `settle:`, the
+ticket read back: 18 statements and 4 `BEGIN`/`COMMIT` pairs), built by
+`jadpo build` natively and for Workers, against the same route
+hand-written in Bun 1.2.20 with postgres.js 3.4.7 (the same validation,
+SQL, transactions, rate limit and answer), plus the readiness check every
+app answers. The harness, its method and its limits are in
+[tools/bench/README.md](../tools/bench/README.md); it is not in the gate.
+One local PostgreSQL 16 with `synchronous_commit` off; workerd 2026-10-07,
+pinned, its Hyperdrive binding given to a stand-in transaction pooler
+(`workers`) or straight to PostgreSQL (`workers-direct`); an M1 Pro, load
+generator on the same machine. Medians of 3 rounds, 10 s measured after 2
+s of warm-up; each throughput's rounds within 5% of each other but Bun's
+at 16 connections (1,845 to 2,054).
+
+| Booking | Bun | Wasm on workerd | Wasm, direct | Native |
+|---|---:|---:|---:|---:|
+| req/s, 1 connection | 977 | 270 | 147 | 837 |
+| req/s, 16 connections | 2,052 | 513 | 450 | 3,554 |
+| req/s, 64 connections | 2,248 | 436 | 408 | 3,756 |
+| p50 / p99 ms, 16 connections | 7.6 / 10.5 | 27.3 / 116 | 32.1 / 106 | 3.6 / 17.4 |
+| server CPU ms a booking, 16 connections | 0.50 | 1.98 | 2.25 | 0.81 |
+| peak resident MB, 64 connections | 133 | 793 | 600 | 36 |
+
+| Readiness check | Bun | Wasm on workerd | Native |
+|---|---:|---:|---:|
+| req/s, 16 connections | 81,247 | 17,445 | 131,013 |
+| server CPU µs a request | 12 | 58 | 26 |
+
+Cold start, spawn to first answer: native 38 ms, Wasm 73 ms (its first
+request 40 ms of it), Bun 129 ms. Idle: native 13 MB, Bun 47 MB, workerd
+134 MB.
+
+- **Wasm against Bun**: 75% behind on the booking route's throughput at 16
+  connections (4.0×), 72% at one; p50 3.6× and p99 11× Bun's; 4× the
+  CPU a booking. Both are one thread here, saturated from 16 connections.
+  Past the roadmap's 25% line.
+- **Wasm against native**: a seventh of native's throughput, which uses a
+  thread per core; per request, 2.4× native's CPU at 16 connections and
+  7.5× at one (2.88 against 0.39 ms).
+- **Bun against native**: native 1.7× Bun's throughput with every core;
+  per request at one connection native uses 0.73× Bun's CPU but answers
+  0.2 ms slower at p50 (1.16 against 0.96 ms), and above one connection
+  its CPU a request rises past Bun's (0.81 against 0.50 ms at 16).
+
+Where workerd's time goes (V8's CPU profile through its inspector,
+booking at 16 connections): about half of the samples are the socket
+bridge in `jadpo-host-workers`' `WorkersStream`, which takes a new
+`ReadableStreamDefaultReader` or `WritableStreamDefaultWriter` for every
+read and write and releases its lock after it (`write` 13%, `read` 9%,
+`releaseLock` 10%, `queueMicrotask` 8%, the readers' and writers'
+constructors, `connect` 3%), garbage collection 11%, and the runtime's,
+tokio-postgres's and the allocator's own WebAssembly a few percent each.
+The readiness check, which reaches no database, has no single hotspot:
+garbage collection 14%, `Response` and `Headers` made across the
+boundary, and the drivers built for every request, the connection's URL
+parsed again each time, though nothing uses them.
+
+**Memory grows with every booking.** The module's linear memory, read
+from its exported `memory`, went from 5 MB to 253 MB over about 14,000
+bookings (some 17 KB each, never given back), and workerd's resident
+memory past 1 GB within a round; the JavaScript heap stayed under 30 MB
+used. The readiness check alone doesn't grow it. On Cloudflare an
+isolate is held to 128 MB, so this would end the isolate after a few
+thousand bookings: not measured there, but a defect whatever the speed.
+
+What these are not: workerd on one machine isn't Cloudflare's edge (no
+network to Hyperdrive or the database, a stand-in pooler, one isolate on
+one thread); the direct variant opens a PostgreSQL backend per request,
+as `wrangler dev` does; the module is unoptimised (no `wasm-opt`).
+
+**Needs Richard** (the roadmap's line): Wasm is 75% behind Bun, so 8.3 is
+not ticked and nothing is decided here. Recommendation: before 9.1, find
+and fix the memory growth, then hold one reader and one writer for a
+socket's life and make the drivers only when a request reaches a store,
+and measure again with this harness; together the bridge and the
+collector are about 60% of the CPU, so that would leave Wasm near 0.8 ms
+a booking against Bun's 0.5, still past 25%, which is the gap 9.2 would
+then have to close or Richard accept.

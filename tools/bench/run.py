@@ -375,20 +375,20 @@ def measure(server: Server, route: str, connections: int, warmup: float, duratio
     return result
 
 
-def profile(server: Server, inspector: int, connections: int, warmup: float, duration: float):
-    """workerd's V8 CPU profile while the booking route is driven, and
+def profile(server: Server, inspector: int, route: str, connections: int, warmup: float, duration: float):
+    """workerd's V8 CPU profile while `route` is driven, and
     where its samples fell (tools/bench/bun/profile.ts)."""
-    out = WORK / f'{server.target}.cpuprofile'
-    method, path, body, expect = ROUTES['book']
+    out = WORK / f'{server.target}-{route}.cpuprofile'
+    method, path, body, expect = ROUTES[route]
     load = subprocess.Popen([str(LOAD), '--addr', f'127.0.0.1:{server.port}', '--method', method,
-                             '--path', path, '--header', server.header, '--body', body,
+                             '--path', path, '--header', server.header, *(['--body', body] if body else []),
                              '--connections', str(connections), '--warmup', str(warmup),
                              '--duration', str(duration), '--expect', expect], stdout=subprocess.PIPE, text=True)
     time.sleep(warmup)
     sampled = run([tool('bun'), 'profile.ts', str(inspector), str(duration - 1), str(out)],
                   cwd=BENCH / 'bun', capture_output=True, text=True)
     measured, _ = load.communicate()
-    print(f'{server.target}, booking x{connections} under the inspector: {measured.strip()}')
+    print(f'{server.target}, {route} x{connections} under the inspector: {measured.strip()}')
     print(sampled.stdout)
 
 
@@ -437,7 +437,7 @@ def main():
                         help='wait before each round until the 1-minute load average is below this')
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--profile', action='store_true',
-                        help="instead of measuring, profile each workerd target's booking route through V8's inspector")
+                        help="instead of measuring, profile each workerd target's routes through V8's inspector")
     args = parser.parse_args()
     WORK.mkdir(exist_ok=True)
     logs = WORK / 'logs'
@@ -455,7 +455,8 @@ def main():
                 inspector = free_port()
                 server = Server(target, pg, logs, inspector)
                 try:
-                    profile(server, inspector, 16, args.warmup, args.duration)
+                    for route in args.routes.split(','):
+                        profile(server, inspector, route, 16, args.warmup, args.duration)
                 finally:
                     server.stop()
             return
