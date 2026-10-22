@@ -151,6 +151,161 @@ fn a_perturbed_run_is_named_at_its_first_difference() {
     assert!(shown.contains("  second: outcome assertion"), "{shown}");
 }
 
+/// A loose project of `files` in a folder of its own.
+fn written(name: &str, files: &[(&str, &str)]) -> Folder {
+    let folder = Folder::new(name);
+    for (path, text) in files {
+        let target = folder.0.join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, text).unwrap();
+    }
+    folder
+}
+
+/// The project named `name` among the language pages', written into a
+/// folder of its own.
+fn page(name: &str) -> Folder {
+    let files = examples::projects()
+        .into_iter()
+        .find(|(project, _)| project == name)
+        .map(|(_, files)| files)
+        .unwrap_or_else(|| panic!("{name} is a page's project"));
+    let folder = Folder::new("page");
+    for (path, source) in &files {
+        let target = folder.0.join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, source).unwrap();
+    }
+    folder
+}
+
+/// The first difference between `folder`'s records before and after
+/// `change` changes it, which must be one.
+fn changed(folder: &Folder, change: impl FnOnce(&Path)) -> Box<jadpo_test::Difference> {
+    let before = recorded(&folder.0).expect("it runs");
+    change(&folder.0);
+    let after = recorded(&folder.0).expect("it runs");
+    differential(&before, &after).expect_err("the records differ")
+}
+
+/// Where a failure was raised is in its record, so the same failure
+/// raised elsewhere differs there, though its code and fields don't
+/// (chunk 8.4a).
+#[test]
+fn a_failure_raised_elsewhere_is_named_at_its_site() {
+    let folder = written(
+        "failure-site",
+        &[
+            (
+                "main.jadpo",
+                "type Count = Int {}\n\ntype TooMany = Failure {\n    kind: FailureKind.rejected\n}\n\nfunction checked(count: Count) fails TooMany -> Count {\n    if (count > 9) {\n        reject TooMany\n    }\n    if (count > 4) {\n        reject TooMany\n    }\n    return count\n}\n",
+            ),
+            (
+                "main.test.jadpo",
+                "test \"a large count fails\" {\n    var count: Count = attempt checked(12)\n    assert count == 12\n}\n",
+            ),
+        ],
+    );
+    let difference = changed(&folder, |root| {
+        perturb(&root.join("main.test.jadpo"), "checked(12)", "checked(7)");
+    });
+    let (first, second) = (
+        difference.first.clone().unwrap_or_default(),
+        difference.second.clone().unwrap_or_default(),
+    );
+    assert!(
+        first.starts_with("outcome failed too_many at main.jadpo:9  function checked")
+            && second.starts_with("outcome failed too_many at main.jadpo:12  function checked"),
+        "{difference}"
+    );
+}
+
+/// A fault's stack is in its record, so a recursion reached another way
+/// differs there, though its innermost site doesn't (chunk 8.4a).
+#[test]
+fn a_fault_reached_another_way_is_named_by_its_stack() {
+    let folder = written(
+        "fault-stack",
+        &[
+            (
+                "main.jadpo",
+                "type Depth = Int {}\n\n/// One frame a level.\nfunction down(depth: Depth) -> Depth {\n    if (depth == 0) {\n        return 0\n    }\n    return Depth(down(Depth(depth - 1)) + 1)\n}\n\n/// The same walk, a frame further in.\nfunction around(depth: Depth) -> Depth {\n    return down(depth)\n}\n",
+            ),
+            (
+                "main.test.jadpo",
+                "test \"a walk too deep\" {\n    assert down(2000) == around(2000)\n}\n",
+            ),
+        ],
+    );
+    let difference = changed(&folder, |root| {
+        perturb(
+            &root.join("main.test.jadpo"),
+            "down(2000) == around(2000)",
+            "around(2000) == down(2000)",
+        );
+    });
+    let (first, second) = (
+        difference.first.clone().unwrap_or_default(),
+        difference.second.clone().unwrap_or_default(),
+    );
+    let site = "outcome fault recursion_limit at main.jadpo:8  function down; stack [";
+    assert!(
+        first.starts_with(site) && second.starts_with(site),
+        "{difference}"
+    );
+    assert!(
+        first.contains("function down ×999, main.test.jadpo:2")
+            && second
+                .contains("function down ×998, main.jadpo:13  function around, main.test.jadpo:2"),
+        "{difference}"
+    );
+}
+
+/// An outside call's input is in its record as a keyed digest, so a call
+/// sent with another input differs there though its answer doesn't, and
+/// the input itself is in no line (chunk 8.4a).
+#[test]
+fn a_call_sent_with_another_input_differs_at_its_digest() {
+    let folder = page("docs/language/13-testing.md fakes-in-tests");
+    let difference = changed(&folder, |root| {
+        perturb(
+            &root.join("domains/shipping/actions/book.test.jadpo"),
+            "book(\"N1 9GU\")",
+            "book(\"N1 9GV\")",
+        );
+    });
+    assert!(
+        difference
+            .test
+            .ends_with("\"the courier's reference is kept\""),
+        "{difference}"
+    );
+    let (first, second) = (
+        difference.first.clone().unwrap_or_default(),
+        difference.second.clone().unwrap_or_default(),
+    );
+    assert_eq!(
+        without_digest(&first),
+        without_digest(&second),
+        "{difference}"
+    );
+    assert!(
+        first.starts_with("call couriers.bookings.create #")
+            && first != second
+            && !first.contains("N1 9GU")
+            && !second.contains("N1 9GV"),
+        "{difference}"
+    );
+}
+
+/// A call's line without its input's digest.
+fn without_digest(line: &str) -> String {
+    line.split(' ')
+        .filter(|word| !word.starts_with('#'))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// What a test with a database did: each statement, each event written
 /// with its payload, each outside call with its answer, and the rows left;
 /// a perturbed write is named where it first shows.
@@ -217,6 +372,83 @@ fn a_test_with_a_database_keeps_its_statements_events_calls_and_rows() {
         ),
         "{difference}"
     );
+}
+
+/// A read's bound values are in its record as a keyed digest, so a query
+/// asked for another value differs there though it reads as many rows,
+/// and the value itself is in no line (chunk 8.4a).
+#[test]
+fn a_read_asked_for_another_value_differs_at_its_digest() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let folder = example("10-library-loans");
+    let difference = changed(&folder, |root| {
+        perturb(
+            &root.join("domains/lending/queries/member_by_email.test.jadpo"),
+            "member_by_email(\"bob@example.test\")",
+            "member_by_email(\"cy@example.test\")",
+        );
+    });
+    assert!(
+        difference
+            .test
+            .ends_with("\"a member is found by address\""),
+        "{difference}"
+    );
+    let (first, second) = (
+        difference.first.clone().unwrap_or_default(),
+        difference.second.clone().unwrap_or_default(),
+    );
+    let digest = |line: &str| {
+        line.split(" | ")
+            .nth(1)
+            .and_then(|types| types.split_once(") #"))
+            .map(|(_, digest)| digest.to_string())
+    };
+    assert!(
+        first.starts_with("sql SELECT")
+            && first.ends_with("| read 0")
+            && digest(&first).is_some()
+            && digest(&first) != digest(&second)
+            && first.replace(&digest(&first).unwrap_or_default(), "")
+                == second.replace(&digest(&second).unwrap_or_default(), "")
+            && !second.contains("cy@"),
+        "{difference}"
+    );
+}
+
+/// A recording's test keeps the value the package's decoders read it as,
+/// so a recording that decodes to another value differs there, though it
+/// still decodes (chunk 8.4a).
+#[test]
+fn a_recording_read_as_another_value_differs_at_its_outcome() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let folder = example("26-delivery-desk");
+    let difference = changed(&folder, |root| {
+        perturb(
+            &root.join("shared/providers/parcel_rates/v1/recordings/parcel_quotes.create.json"),
+            "\"amount\": 650",
+            "\"amount\": 651",
+        );
+    });
+    assert!(
+        difference.test.contains("recording decodes"),
+        "{difference}"
+    );
+    let (first, second) = (
+        difference.first.clone().unwrap_or_default(),
+        difference.second.clone().unwrap_or_default(),
+    );
+    assert!(
+        first.starts_with("outcome value ")
+            && second.starts_with("outcome value ")
+            && first != second,
+        "{difference}"
+    );
+    assert_eq!(difference.at, 1, "{difference}");
 }
 
 /// The corpus (every language page's project and every teaching example,

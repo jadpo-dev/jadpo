@@ -1832,6 +1832,31 @@ so a run made elsewhere is judged as one made here: `jadpo_test::workerd`
 runs a project's route tests that way inside workerd (§2.6, "Route tests
 on workerd").
 
+Since chunk 8.4a the record holds what the review of Phase 8 found it
+left out. A failure's outcome names the site it was raised at, and each
+cause its own; a fault's names its site and its stack, innermost first, a
+run of one site written once with how many (`main.jadpo:8  function down
+×999`). Each read's bound values and each outside call's input are kept
+as a keyed digest, `#` and sixteen hex digits of an HMAC-SHA-256 under the
+record's key, each identity in the value numbered in the order the record
+first met one, so a value is compared without being kept: the key is the
+process's own (`jadpo_test::differential::digest_key`), drawn at random
+and never shown, and handed to a test Worker with each run it asks for,
+so a guessable password in a difference's printout says nothing. A
+recording's test keeps the value the package's decoders read it as, so
+compiled decoders are compared on what they decode. Compiled code catches
+a package action's failure as the interpreter's `Task::Catch` does, in a
+savepoint (`jadpo-codegen`'s outcome subject), and counts each loop turn
+and inline-function call toward the deadline's next look as the
+interpreter counts tasks (`compiled::pace`), an action's loop giving the
+thread back. Both executors count the inline functions running at once
+in `effects::standard`, past 400 the `recursion_limit` fault (area 3,
+"Recursion"). Proved by corpus projects in the differential run (a
+package's action caught after a read; a recursion to each limit and one
+past), records perturbed one change at a time (`tests/records.rs`), and
+the probes of `crates/jadpo-cli/tests/support/probes.rs` on both targets'
+own stacks.
+
 ### 2.6 The runtime
 
 Built so far (chunk 2.1): what pure execution needs from the context,
@@ -3136,7 +3161,8 @@ validators, `compiled::Program::validators`), every problem logged as
 built once on the main thread to compare each store with its migrations
 (`migrate::standing`), a pending, unknown, changed or out-of-order
 migration stopping the start and an unreachable database waited for;
-then `http::serve` with a worker per core, each making the program on
+then `http::serve` with a worker per core (each with 64 MiB of stack,
+`jadpo_runtime::STACK_BYTES`, since chunk 8.4a), each making the program on
 its thread with the settings read (`Program::with_config`) and its own
 drivers, served through `AppHandler`, so the tick runs on the first
 worker's timer as `jadpo dev`'s does; `stop_signals` turns SIGTERM into
@@ -3287,7 +3313,9 @@ The Workers host's features are the drivers the deployable reaches
 deployable's tick reaches each store, and `smtp`, a feature added
 beside it, when 8.1o2's `reaches` finds an SMTP connection; the package
 driver always. It is built
-`--target wasm32-unknown-unknown --lib` in release, and
+`--target wasm32-unknown-unknown --lib` in release, linked with 8 MiB of
+its own stack by a build script (`jadpo_std::compiled::WASM_STACK_BYTES`,
+since chunk 8.4a), and
 `jadpo_codegen::workers::bind` runs wasm-bindgen's library
 (`wasm-bindgen-cli-support` at the lock's release, as the host's tests
 do) in its `web` form, refusing a module that carries JavaScript of its

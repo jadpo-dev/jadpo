@@ -169,9 +169,9 @@ impl Process {
     }
 }
 
-/// How many calls a thread's compiled code makes between looks at the
-/// request's deadline: the interpreter's interval, in tasks (area 7,
-/// "Time limits").
+/// How many calls, loop turns and inline-function calls a thread's
+/// compiled code makes between looks at the request's deadline: the
+/// interpreter's interval, in tasks (area 7, "Time limits").
 const DEADLINE_EVERY: u32 = 4096;
 
 /// A compiled program on one thread: the runtime's [`Executor`].
@@ -313,8 +313,9 @@ impl Program {
         }
     }
 
-    /// Counts a call: once every [`DEADLINE_EVERY`], whether the request's
-    /// deadline has passed, or whether to give the thread back.
+    /// Counts a call, a loop's turn or an inline function's call: once
+    /// every [`DEADLINE_EVERY`], whether the request's deadline has passed,
+    /// or whether to give the thread back.
     fn pace(&self, cx: &mut Ctx<'_>) -> Pace {
         let steps = self.steps.get() + 1;
         if steps < DEADLINE_EVERY {
@@ -334,11 +335,23 @@ impl Program {
     }
 }
 
-/// What a look at the deadline found.
-enum Pace {
+/// What a look at the deadline found: carry on, give the thread back
+/// first (a body that waits does; one that doesn't carries on), or stop
+/// with the deadline's fault.
+#[derive(Debug)]
+pub enum Pace {
     Running,
     Yield,
     Passed(Stop),
+}
+
+/// A `for` loop's next turn (area 7, "Time limits"; chunk 8.4a): counted
+/// with the calls, so work that loops without calling anything is stopped
+/// at the deadline as the interpreter's walker stops it, every
+/// [`DEADLINE_EVERY`] tasks. A body that waits gives the thread back on
+/// [`Pace::Yield`]; a function's loop carries on.
+pub fn pace(cx: &mut Ctx<'_>, p: &Program) -> Pace {
+    p.pace(cx)
 }
 
 impl Executor for Program {
@@ -834,6 +847,7 @@ fn refused(cx: &mut Ctx<'_>, refused: Refused, at: u32) -> Stop {
         },
         Refused::Fault(fault) => value_fault(cx, fault, at),
         Refused::Defect(what) => defect(cx, &what, at),
+        Refused::TooDeep => Stop::Fault(cx.fault(FaultKind::RecursionLimit, at)),
     }
 }
 
@@ -881,8 +895,8 @@ pub fn standard(
 }
 
 /// A collection operation `op` with `values` at site `at`, its inline
-/// function `each` run per item; a stop in it ends the operation with
-/// that stop.
+/// function `each` run per item, each call counted toward the deadline's
+/// next look; a stop in it ends the operation with that stop.
 pub fn standard_each(
     cx: &mut Ctx<'_>,
     p: &Program,
@@ -894,11 +908,20 @@ pub fn standard_each(
     let effects = p.effects();
     let locales = p.runtime().locales.as_ref();
     let mut stopped = None;
-    let mut given = |cx: &mut Ctx<'_>, items: &[Value]| match each(cx, items) {
-        Ok(value) => Some(value),
-        Err(stop) => {
-            stopped = Some(stop);
-            None
+    // Each call counted, so an inline function run over a long list stops
+    // at the deadline, as the interpreter's walker stops one; it runs
+    // inside an operation, so it never gives the thread back.
+    let mut given = |cx: &mut Ctx<'_>, items: &[Value]| {
+        let ran = match p.pace(cx) {
+            Pace::Passed(stop) => Err(stop),
+            Pace::Running | Pace::Yield => each(cx, items),
+        };
+        match ran {
+            Ok(value) => Some(value),
+            Err(stop) => {
+                stopped = Some(stop);
+                None
+            }
         }
     };
     let result = effects::standard(

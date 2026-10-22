@@ -51,6 +51,8 @@ use jadpo_cli::run;
 use jadpo_term::Environment;
 use serde_json::Value;
 
+use crate::support::probes;
+
 /// Makes the folder `to` hold what `from` holds, over what is there, but
 /// `build/` and `.jadpo/`, which a run keeps: what an earlier run added is
 /// removed, and a file left as it was keeps its time, so cargo builds only
@@ -100,7 +102,9 @@ fn repair_cafe() -> PathBuf {
 
 /// A shop supporting `en_gb` and `fr_fr` whose one route shows its text
 /// in the locale asked for, over every kind of locale data the standard
-/// library reads.
+/// library reads; and, from chunk 8.4a, the routes that probe a
+/// deployable's limits ([`probes`]), whose actions its policy
+/// ([`shop`]) opens to anyone.
 const SHOP: &[(&str, &str)] = &[
     (
         "app.jadpo",
@@ -109,17 +113,6 @@ const SHOP: &[(&str, &str)] = &[
 locales {
     default: Locale.en_gb
     supported: [Locale.en_gb, Locale.fr_fr]
-}
-"#,
-    ),
-    (
-        "policy.jadpo",
-        r#"use shop
-
-policy {
-    actions: {
-        shop.show: [Access.public]
-    }
 }
 "#,
     ),
@@ -391,21 +384,81 @@ routes Shown {
     ),
 ];
 
-/// The shop, written where its build is kept between runs.
+/// The shop with its probes, written where its build is kept between
+/// runs, a file left as it was keeping its time, its API's record brought
+/// up to date.
 fn shop() -> PathBuf {
     let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let root = target
         .parent()
         .unwrap_or(target)
         .join("jadpo-compiled/deployable/locale-shop");
-    for (path, text) in SHOP {
+    let policy = format!(
+        "use probe\nuse shop\n\npolicy {{\n    actions: {{\n{}        shop.show: [Access.public]\n    }}\n}}\n",
+        probes::POLICY
+    );
+    let files = SHOP
+        .iter()
+        .chain(probes::FILES)
+        .copied()
+        .chain([("policy.jadpo", policy.as_str())]);
+    for (path, text) in files {
         let path = root.join(path);
         fs::create_dir_all(path.parent().expect("a parent")).expect("folders");
-        if fs::read_to_string(&path).ok().as_deref() != Some(*text) {
+        if fs::read_to_string(&path).ok().as_deref() != Some(text) {
             fs::write(&path, text).expect("written");
         }
     }
+    jadpo(&root, &["api", "update"]);
     root
+}
+
+/// What a probe answered: its status, its error's code when it gave one,
+/// and how long it took.
+type Probed = (u16, Option<String>, Duration);
+
+/// Each walk of [`probes::WALKS`] and each spin of [`probes::SPINS`] sent
+/// by `send` (a method, a path and a body, giving the status and the
+/// body), each answered as it should be: a walk within the limits with
+/// its depth, one past them `internal_fault`; a spin at its one-second
+/// deadline with `deadline_exceeded`, well before its work would end.
+/// What each answered, in order.
+fn probed(send: impl Fn(&str, &str, &str) -> (u16, String)) -> Vec<Probed> {
+    let code = |body: &str| {
+        serde_json::from_str::<Value>(body)
+            .ok()
+            .and_then(|body| body["error"]["code"].as_str().map(str::to_string))
+    };
+    let mut answered = Vec::new();
+    for (path, depth, expected) in probes::WALKS {
+        let started = std::time::Instant::now();
+        let (status, body) = send("POST", path, &probes::walk(*depth));
+        match expected {
+            Ok(()) => {
+                assert_eq!(status, 200, "{path} {depth}: {body}");
+                let walked: Value = serde_json::from_str(&body).expect("JSON");
+                assert_eq!(walked["depth"], depth.to_string(), "{path} {depth}");
+            }
+            Err(expected) => {
+                assert_eq!(status, 500, "{path} {depth}: {body}");
+                assert_eq!(code(&body).as_deref(), Some(*expected), "{path} {depth}");
+            }
+        }
+        answered.push((status, code(&body), started.elapsed()));
+    }
+    for path in probes::SPINS {
+        let started = std::time::Instant::now();
+        let (status, body) = send("POST", path, &probes::spin());
+        let took = started.elapsed();
+        assert_eq!(status, 504, "{path}: {body}");
+        assert_eq!(code(&body).as_deref(), Some("deadline_exceeded"), "{path}");
+        assert!(
+            took < Duration::from_secs(10),
+            "{path} stopped at its one-second deadline, not when its work ended: {took:?}"
+        );
+        answered.push((status, code(&body), took));
+    }
+    answered
 }
 
 /// A connection the test server gives, as the URL a `PostgresUrl` holds:
@@ -1007,6 +1060,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
 #[cfg(unix)]
 #[test]
 fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
+    // Chunk 8.4a: and its limits, probed, as `jadpo dev`'s.
     if !jadpo_test::live() {
         return;
     }
@@ -1026,6 +1080,12 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
             reply.json()
         })
         .collect();
+    // Its limits, probed (chunk 8.4a): the interpreter's, which the
+    // deployable's compiled code must match below.
+    let dev_probed = probed(|method, path, body| {
+        let reply = dev.send(method, path, &[], body);
+        (reply.status, reply.body().to_string())
+    });
     drop(dev);
     assert_eq!(expected[0]["weekday"], "Thursday", "{}", expected[0]);
     assert_eq!(expected[1]["weekday"], "jeudi", "{}", expected[1]);
@@ -1072,6 +1132,28 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
         let answer: Value = serde_json::from_str(&answer).expect("JSON");
         assert_eq!(&answer, expected, "{reader}");
     }
+    // Its limits answer as `jadpo dev`'s did, on its workers' own stacks
+    // (chunk 8.4a): a thousand frames of any of the walks, four hundred
+    // inline functions, and a level more of each the `recursion_limit`
+    // fault, logged as such, the server serving on; and work that never
+    // waits stopped at its deadline, in loops and in inline functions.
+    let deployable_probed = probed(|method, path, body| exchange(&address, method, path, body));
+    let answers = |probed: &[Probed]| {
+        probed
+            .iter()
+            .map(|(status, code, _)| (*status, code.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(answers(&deployable_probed), answers(&dev_probed));
+    let mut limits = 0;
+    while limits < 3 {
+        let event = next(&lines, 30);
+        if event["classification"] == "recursion_limit" {
+            limits += 1;
+        }
+    }
+    let (status, _) = exchange(&address, "POST", "/shown", &body("en-GB"));
+    assert_eq!(status, 200, "it serves on");
     let stopped = Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()

@@ -77,6 +77,7 @@ use serde_json::Value;
 
 use crate::deployable::{apply, copy_folder, count, migrations, rows};
 use crate::support::fake_sqs::FakeSqs;
+use crate::support::probes;
 
 /// Cloudflare Queues' consumer (chunk 8.2k), on the harness below.
 mod queues;
@@ -826,17 +827,6 @@ const NEWSROOM: &[(&str, &str)] = &[
 "#,
     ),
     (
-        "policy.jadpo",
-        r#"use newsroom
-
-policy {
-    actions: {
-        newsroom.draft: [Access.public]
-    }
-}
-"#,
-    ),
-    (
         "domains/newsroom/actions/draft.jadpo",
         r#"use newsroom/failures { ModelUnavailable }
 use newsroom/prompts { DraftStory }
@@ -1234,13 +1224,25 @@ fn newsroom() -> PathBuf {
         .parent()
         .unwrap_or(target)
         .join("jadpo-compiled/workers/newsroom");
-    for (path, text) in NEWSROOM {
+    // Beside the desk's own, the routes that probe a deployable's limits
+    // (chunk 8.4a), its policy opening both to anyone.
+    let policy = format!(
+        "use newsroom\nuse probe\n\npolicy {{\n    actions: {{\n        newsroom.draft: [Access.public]\n{}    }}\n}}\n",
+        probes::POLICY
+    );
+    let files = NEWSROOM
+        .iter()
+        .chain(probes::FILES)
+        .copied()
+        .chain([("policy.jadpo", policy.as_str())]);
+    for (path, text) in files {
         let path = root.join(path);
         fs::create_dir_all(path.parent().expect("a folder")).expect("folders");
-        if fs::read_to_string(&path).ok().as_deref() != Some(*text) {
+        if fs::read_to_string(&path).ok().as_deref() != Some(text) {
             fs::write(&path, text).expect("written");
         }
     }
+    jadpo(&root, &["api", "update"]);
     if !root.join("database/migrations").exists() {
         jadpo(&root, &["migrate", "new", "initial"]);
     }
@@ -1720,6 +1722,36 @@ fn a_worker_streams_answers_and_hands_on_what_one_invocation_leaves() {
             "SELECT status FROM jadpo_deliveries WHERE status <> 'succeeded'"
         ),
         Vec::<Vec<String>>::new(),
+        "{}",
+        worker.log()
+    );
+    // Its limits, probed on the module's own stack and V8's (chunk 8.4a):
+    // a thousand frames of any of the walks, four hundred inline
+    // functions, and a level more of each the `recursion_limit` fault,
+    // logged as such, the isolate serving on, where a trap would leave it
+    // hung.
+    for (path, depth, expected) in probes::WALKS {
+        let (status, body) = worker.send("POST", path, &[], &probes::walk(*depth));
+        match expected {
+            Ok(()) => assert_eq!(
+                (status, body.as_str()),
+                (200, format!(r#"{{"depth":"{depth}"}}"#).as_str()),
+                "{path} {depth}\n{}",
+                worker.log()
+            ),
+            Err(code) => {
+                assert_eq!(status, 500, "{path} {depth}: {body}\n{}", worker.log());
+                assert!(body.contains(code), "{path} {depth}: {body}");
+            }
+        }
+    }
+    assert_eq!(
+        worker
+            .events("operation.failed")
+            .iter()
+            .filter(|event| event["classification"] == "recursion_limit")
+            .count(),
+        3,
         "{}",
         worker.log()
     );

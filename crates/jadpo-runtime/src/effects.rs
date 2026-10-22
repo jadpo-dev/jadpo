@@ -116,6 +116,9 @@ pub enum Refused {
     /// What the checker or the plan rules out, named, for the executor to
     /// raise as a defect at its site.
     Defect(String),
+    /// An inline function more than [`crate::MAX_INLINE_DEPTH`] deep, for
+    /// the executor to raise as the `recursion_limit` fault at its site.
+    TooDeep,
 }
 
 /// Whether standard operation `op` is an effect, run by [`run`] rather
@@ -153,10 +156,17 @@ pub fn standard(
         return run(ctx, effects, Effect::Std { op, json }, values);
     }
     let result = match each {
+        // An inline function runs inside the operation, a few frames
+        // deeper on the thread's stack than its caller, so how many run at
+        // once is counted, the same in both executors (chunk 8.4a).
         Some(each) => {
+            if !ctx.inline_begin() {
+                return Err(Refused::TooDeep);
+            }
             ctx.pause_recording();
             let result = jadpo_value::run(op, values, locales, &mut |given| each(ctx, given));
             ctx.resume_recording();
+            ctx.inline_end();
             result
         }
         None => jadpo_value::run(op, values, locales, &mut |_| None),

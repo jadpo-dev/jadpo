@@ -203,6 +203,233 @@ test "a failed assertion shows its values" {
 }
 "#;
 
+/// A package's action whose failure the calling action handles with an
+/// outcome `match` after reading a plan, so its snapshot is open: the call
+/// runs in a savepoint its failure returns to, compiled as interpreted
+/// (chunk 8.4a), the failing and the succeeding call alike.
+const PACKAGE_CAUGHT: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        r#"application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        pay: {
+            package: AcmePay.v1
+            domains: [billing]
+            credential: config.pay_api_key
+            environment: config.pay_environment
+        }
+    }
+}
+"#,
+    ),
+    (
+        "config.jadpo",
+        r#"config {
+    pay_api_key: Text {
+        secret: true
+    }
+    pay_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+"#,
+    ),
+    (
+        "shared/providers/acme_pay/v1/package.jadpo",
+        r#"/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+"#,
+    ),
+    (
+        "shared/providers/acme_pay/v1/provider.jadpo",
+        r#"/// Acme Pay's payments API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    error_code: "error.code"
+}
+"#,
+    ),
+    (
+        "shared/providers/acme_pay/v1/types/pay_request.jadpo",
+        "/// What each call takes.\npublic type PayRequest = Object {\n    reference: Reference\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/types/pay_reply.jadpo",
+        "/// What each call gives.\npublic type PayReply = Object {\n    id: Reference\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/types/reference.jadpo",
+        "/// Acme Pay's reference for a record.\npublic type Reference = Text {\n    max_length: 40\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/failures/declined_card.jadpo",
+        "/// The card was declined.\npublic type DeclinedCard = Failure {\n    kind: FailureKind.rejected\n    message: \"The card was declined.\"\n}\n",
+    ),
+    (
+        "shared/providers/acme_pay/v1/resources/cards.jadpo",
+        r#"resource cards {
+    attach: {
+        method: HttpMethod.post
+        path: "/v1/cards"
+        input: PayRequest
+        output: PayReply
+        failures: [DeclinedCard]
+        source: PackageSource.written
+    }
+}
+"#,
+    ),
+    (
+        "shared/providers/acme_pay/v1/actions/check_card.jadpo",
+        r#"/// Checks the card on file for a reference.
+public action check_card(input: PayRequest) fails DeclinedCard -> PayReply {
+    return attempt cards.attach(input)
+}
+"#,
+    ),
+    (
+        "domains/billing/types/card_state.jadpo",
+        "/// What the card on a plan did.\ntype CardState = Enum {\n    unchecked\n    accepted\n    declined\n}\n",
+    ),
+    (
+        "domains/billing/entities/plan.jadpo",
+        r#"use billing/types { CardState }
+use shared/providers/acme_pay
+
+entity Plan {
+    id: Uuid
+    tier: AcmePay.Reference
+    card: CardState
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+"#,
+    ),
+    (
+        "domains/billing/actions/add_plan.jadpo",
+        r#"use billing/entities { Plan }
+use billing/types { CardState }
+use shared/providers/acme_pay
+
+/// Adds a plan whose card isn't checked yet.
+action add_plan(tier: AcmePay.Reference) -> Plan {
+    return Plan.create {
+        set: {
+            tier: tier
+            card: CardState.unchecked
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/billing/actions/check_plan.jadpo",
+        r#"use app { pay }
+use billing/entities { Plan, PlanNotFound }
+use billing/types { CardState }
+use shared/providers/acme_pay
+
+/// Checks a plan's card, keeping whether it went through: a declined card
+/// is handled here, not passed on.
+action check_plan(plan_id: Plan.id) fails PlanNotFound -> Plan {
+    var plan: Plan = attempt Plan.get(plan_id)
+    var state: CardState = match pay.check_card(
+        AcmePay.PayRequest {
+            reference: plan.tier
+        }
+    ) {
+        success -> CardState.accepted
+        AcmePay.DeclinedCard -> CardState.declined
+    }
+    return Plan.update(plan) {
+        set: {
+            card: state
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/billing/actions/check_plan.test.jadpo",
+        r#"use app { pay }
+use billing/entities { Plan }
+use billing/types { CardState }
+use billing/actions { add_plan }
+
+test "a declined card is kept on the plan" {
+    fakes: {
+        pay.cards.attach: [declined_card]
+    }
+    var plan: Plan = add_plan("gold")
+    var checked: Plan = attempt check_plan(plan.id)
+    assert checked.card == CardState.declined
+}
+
+test "an accepted card is kept on the plan" {
+    var plan: Plan = add_plan("gold")
+    var checked: Plan = attempt check_plan(plan.id)
+    assert checked.card == CardState.accepted
+}
+"#,
+    ),
+];
+
+/// A recursion to the limits (area 3, "Recursion"; chunk 8.4a): a
+/// thousand frames, and four hundred inline functions running at once,
+/// each a level through `list.map`; one level more is the
+/// `recursion_limit` fault, its site and stack compared both ways.
+const RECURSION: &str = r#"type Depth = Int {}
+
+/// One frame a level.
+function down(depth: Depth) -> Depth {
+    if (depth == 0) {
+        return 0
+    }
+    return Depth(down(Depth(depth - 1)) + 1)
+}
+
+/// One frame a level, each through an inline function.
+function down_mapped(depth: Depth) -> Depth {
+    if (depth == 0) {
+        return 0
+    }
+    return Depth(list.sum(list.map([depth], level -> down_mapped(Depth(level - 1)))) + 1)
+}
+"#;
+
+/// Its tests, the test's own frame the first of the thousand.
+const RECURSION_TEST: &str = r#"test "a thousand frames are the most a recursion takes" {
+    assert down(998) == 998
+}
+
+test "a frame more is the recursion limit" {
+    assert down(999) == 999
+}
+
+test "four hundred inline functions are the most running at once" {
+    assert down_mapped(400) == 400
+}
+
+test "one more is the recursion limit" {
+    assert down_mapped(401) == 401
+}
+"#;
+
 /// Area 19's export (`docs/language/19-standard-library.md csv-export`)
 /// with what a test of it needs: a loaf added, a price list started, and
 /// a test that starts the export. The differential run runs each batch a
@@ -259,6 +486,41 @@ test "a price list's export starts" {
     ),
 ];
 
+/// The projects chunk 8.4a compares: a package's action caught, and a
+/// recursion to the limits.
+fn parity_projects() -> Vec<(String, PathBuf)> {
+    let caught: Vec<(String, String)> = PACKAGE_CAUGHT
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect();
+    let recursion = [
+        ("main.jadpo".to_string(), RECURSION.to_string()),
+        ("main.test.jadpo".to_string(), RECURSION_TEST.to_string()),
+    ];
+    vec![
+        (
+            "a package's action caught".into(),
+            corpus_project(&caught, "compiled-package-caught").expect("it checks"),
+        ),
+        (
+            "a recursion to the limits".into(),
+            corpus_project(&recursion, "compiled-recursion").expect("it checks"),
+        ),
+    ]
+}
+
+/// Chunk 8.4a's projects alone, in a harness of their own: for working on
+/// them, not run by the gate.
+#[test]
+#[ignore = "the corpus test compares these projects; run this one by name while working on them"]
+fn parity_projects_alone() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let (done, _) = compared(&parity_projects(), "parity");
+    println!("{done:?}");
+}
+
 /// The export project, written into a folder of its own.
 fn export_project() -> PathBuf {
     let mut files = examples::projects()
@@ -298,6 +560,7 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     ));
     let export = export_project();
     projects.push(("an export run to its end".into(), export.clone()));
+    projects.extend(parity_projects());
     let (done, skipped) = compared(&projects, "corpus");
     // Sessions, tokens and keys, a test's passkeys, callers made from
     // their records, a test's clock, a batch started, read and run to its
@@ -363,6 +626,8 @@ fn the_corpus_passes_compiled_with_the_interpreters_records() {
     assert_eq!(counted("docs/language/07-http.md todos"), Some((3, 3)));
     assert_eq!(counted("a return inside an inline function"), Some((2, 1)));
     assert_eq!(counted("an export run to its end"), Some((1, 1)));
+    assert_eq!(counted("a package's action caught"), Some((2, 2)));
+    assert_eq!(counted("a recursion to the limits"), Some((4, 2)));
     // Every route's typed entry read requests and wrote values as the
     // codec walk does (chunk 8.1p): the first route's among them.
     let todos = done
