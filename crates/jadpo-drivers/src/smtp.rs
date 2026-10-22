@@ -391,8 +391,8 @@ async fn secured(
 }
 
 /// The conversation itself (area 16, "The SMTP driver"): TLS always, by
-/// `STARTTLS` or from the start on port 465, but to this machine; a
-/// credential never in the clear elsewhere.
+/// `STARTTLS` or from the start on port 465, but to this machine, where
+/// `STARTTLS` isn't asked for; a credential never in the clear elsewhere.
 async fn conversation(
     transport: &dyn Transport,
     server: &Server,
@@ -439,7 +439,10 @@ async fn conversation(
     let ehlo = talk
         .command(&format!("EHLO {me}"), 2, Phase::Sender)
         .await?;
-    if !secure {
+    // A server on this machine is spoken to as it is, as PostgreSQL's is:
+    // a stock Postfix offers `STARTTLS` with a self-signed certificate,
+    // which no check would pass (Richard, 2026-10-22).
+    if !secure && !server.is_local() {
         let offers_tls = ehlo
             .lines
             .iter()
@@ -450,7 +453,7 @@ async fn conversation(
             secure = true;
             talk.command(&format!("EHLO {me}"), 2, Phase::Sender)
                 .await?;
-        } else if !server.is_local() {
+        } else {
             let _ = talk.send("QUIT").await;
             return Err(RelayError::Insecure(format!(
                 "`{}` offers no TLS, and a message goes in the clear only to this machine",

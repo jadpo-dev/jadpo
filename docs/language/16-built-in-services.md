@@ -214,7 +214,9 @@ POST / {
   client's, chosen by `application { client_address: }` (area 10, "Client
   addresses"): the connection's own unless the application names a header
   of a proxy of its own to believe, so behind a load balancer the limits
-  count each client and not the balancer.
+  count each client and not the balancer. An IPv6 client is counted by
+  its /64, the least a network hands one subscriber, so moving through
+  its own block buys nothing; an IPv4 client by its address (chunk 8.4d).
 - Counters live in the Redis store named by `rate_limits: { store: cache }`
   in `application { }`. If it cannot be reached, each instance counts in its
   own memory, so limits stay roughly right and no request fails, the same
@@ -1160,9 +1162,13 @@ config {
 
 - **TLS always**, but to this machine: the driver upgrades with
   `STARTTLS`, or speaks TLS from the start on port 465, checking the
-  server's certificate and name. A server that offers no TLS is reached
-  only on this machine (`localhost`, `127.0.0.1`, `::1`); anywhere else
-  the send is `misconfigured`, and a credential never goes in the clear.
+  server's certificate and name. A server on this machine (`localhost`,
+  `127.0.0.1`, `::1`) is spoken to without `STARTTLS`, whether it offers
+  it or not, as a database there is (area 5): a stock Postfix offers it
+  with a self-signed certificate no check passes (Richard, 2026-10-22).
+  Anywhere else a server that offers no TLS, or whose certificate the
+  check refuses, makes the send `misconfigured`, and a credential never
+  goes in the clear.
 - **One message**: CRLF line ends, every part in base64, the text and the
   HTML as `multipart/alternative` and attachments beside them in
   `multipart/mixed`, the subject as RFC 2047 encoded words when it isn't
@@ -3540,3 +3546,4 @@ leave to the build of reading gzip, each the most conservative reading:
 | SpamAssassin's rules (chunk 7.3c3) | `spamassassin -L -t -x` with `bayes_auto_learn 0` on the `PATH`, never `spamc`, run on each mail as the SMTP driver writes it (a `Message-ID:` added) as `jadpo dev` catches it, its report kept with the mail; spam at its threshold one more problem, its rules listed after Jadpo's checks; not installed, not run or no report said as such, never as clean (decided for Richard) | 2026-10-20 |
 | Health score (chunk 7.3c2) | Seven checks with fixes and "N of 7 checks pass", the inbox-placement caveat on every score; `email.health_problem` on templates where their own text answers a check, declinable on the type; `check-domain` reads SPF, DKIM with `--selector` and DMARC with generic rules, provider-specific needs waiting for packages to declare them; the unsubscribe check waits for bulk mail and SpamAssassin's rules for chunk 7.3c3 (decided for Richard) | 2026-10-20 |
 | `jadpo email open` with no `BROWSER` (Phase 7 review, chunk 7.9c) | The system's opener is handed the link as one argument that no shell reads: `open` on macOS, `xdg-open` elsewhere, and on Windows `rundll32 url.dll,FileProtocolHandler <link>` in place of `cmd /C start`, under which a `&` in a link ran a command (decided for Richard) | 2026-10-21 |
+| An IPv6 client's count (chunk 8.4d) | The default limits count an IPv6 address by its /64 (`2001:db8:1:2::/64`) and an IPv4 address by itself, on every route they guard, the magic-link and passkey routes among them, and an AI budget counted by address does the same; the request line and the timeline still show the whole address. Stricter and reversible: a /56 or /48 a network hands one subscriber is still more than one count (decided 2026-10-22) | 2026-10-22 |

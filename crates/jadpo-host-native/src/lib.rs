@@ -123,11 +123,33 @@ impl Runtime {
 
 /// The drivers' transport over tokio's sockets: TCP with Nagle's algorithm
 /// off, and Unix sockets on Unix, upgraded to TLS through rustls against
-/// Mozilla's roots ([`tls`]). It connects, spawns and sleeps only inside
-/// [`Runtime::block_on`] (or another tokio `LocalSet`), where its I/O
-/// driver, its timer and its tasks run.
+/// Mozilla's roots ([`tls`]). A connection not open within
+/// [`CONNECT_TIMEOUT`] is [`io::ErrorKind::TimedOut`], so a host that
+/// drops what is sent to it never holds a driver for the operating
+/// system's minutes (chunk 8.4d). It connects, spawns and sleeps only
+/// inside [`Runtime::block_on`] (or another tokio `LocalSet`), where its
+/// I/O driver, its timer and its tasks run.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NativeTransport;
+
+/// The longest [`NativeTransport`] waits for a connection to open.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// `connecting`'s stream, or [`io::ErrorKind::TimedOut`] once `limit` has
+/// passed.
+async fn opened<T>(
+    limit: Duration,
+    connecting: impl Future<Output = io::Result<T>>,
+) -> io::Result<T> {
+    tokio::time::timeout(limit, connecting)
+        .await
+        .unwrap_or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the connection didn't open in time",
+            ))
+        })
+}
 
 impl Transport for NativeTransport {
     fn connect(&self, endpoint: &Endpoint) -> LocalFuture<'_, io::Result<Box<dyn Stream>>> {
@@ -135,11 +157,15 @@ impl Transport for NativeTransport {
         Box::pin(async move {
             match &endpoint {
                 Endpoint::Tcp { host, port } => {
-                    let stream = tokio::net::TcpStream::connect((host.as_str(), *port)).await?;
+                    let stream = opened(
+                        CONNECT_TIMEOUT,
+                        tokio::net::TcpStream::connect((host.as_str(), *port)),
+                    )
+                    .await?;
                     stream.set_nodelay(true)?;
                     Ok(Box::new(stream) as Box<dyn Stream>)
                 }
-                Endpoint::Unix { .. } => unix(&endpoint).await,
+                Endpoint::Unix { .. } => opened(CONNECT_TIMEOUT, unix(&endpoint)).await,
             }
         })
     }
@@ -504,6 +530,24 @@ mod tests {
         let begun = runtime.block_on(store.begin());
         assert_eq!(begun.err(), Some(StoreError::Unavailable));
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// A connection that never opens, as to a host that drops what is
+    /// sent to it, times out rather than holding its driver (chunk 8.4d).
+    #[test]
+    fn a_connection_that_never_opens_times_out() {
+        let runtime = Runtime::new().unwrap();
+        let began = std::time::Instant::now();
+        let never = runtime.block_on(opened(
+            Duration::from_millis(50),
+            std::future::pending::<io::Result<()>>(),
+        ));
+        assert_eq!(
+            never.map_err(|error| error.kind()),
+            Err(io::ErrorKind::TimedOut)
+        );
+        assert!(began.elapsed() < Duration::from_secs(5));
+        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(10));
     }
 
     #[test]

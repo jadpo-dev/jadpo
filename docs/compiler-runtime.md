@@ -2541,7 +2541,12 @@ run as one statement on their own (`Database::query_once`, autocommit),
 and the PostgreSQL driver sends a transaction's `BEGIN` with its first
 statement, both written before either answer is read; an idle connection
 found closed at that first round trip ran nothing, so it is sent again on
-another, as `begin` did. A `get` or a query for one record that policy
+another, as `begin` did, but an autocommitted statement only when none of
+its bytes were written, since once it left the server may have committed
+it (chunk 8.4d). Each attempt at a server, from the socket to its being
+ready, is bounded by the address's `connect_timeout`, or 10 seconds, and
+the native transport gives up on a socket that hasn't opened in 10
+seconds. A `get` or a query for one record that policy
 limits selects its grant as a column (`Select::permitted`) and filters
 only on what it asks and the record's visibility, so one statement tells
 a hidden record (`concealed_by: policy`) from one that isn't there; rows
