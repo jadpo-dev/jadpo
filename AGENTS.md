@@ -28,11 +28,12 @@ Keep going chunk after chunk, merging each through its own pull request,
 and stop only at the points the roadmap lists. Report at the end what was
 merged and anything that needs Richard.
 
-## Codex builds, Claude reviews (Richard, 2026-10-22)
+## Who builds what (Richard, 2026-10-22)
 
-Codex builds chunks; Claude reviews each one and cleans it up before it
-merges. When Codex builds a chunk it works on its own `chunk-<id>` branch
-in a worktree beside the repository, follows the working rules below and
+Claude builds the Phase 8 review chunks (8.4a–8.4d, 8.4f–8.4i) as
+usual. Codex builds performance: 8.4e, then Phase 9's 9.1 and 9.2. When
+Codex builds a chunk it works on its own `chunk-<id>` branch in a
+worktree beside the repository, follows the working rules below and
 passes the full gate, ticks the chunk with its "Built:" note, pushes, and
 opens the pull request **without** `--auto`, its description saying what
 was built, what the gate showed and any decision it recorded. It never

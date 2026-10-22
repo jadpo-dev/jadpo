@@ -2864,7 +2864,8 @@ ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
 8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i beside any of them. The gap to Bun is not accepted: Phase 9 closes
-it (Richard, 2026-10-22).
+it (Richard, 2026-10-22). Codex builds 8.4e and Phase 9's 9.1 and 9.2;
+Claude the rest (AGENTS.md, "Who builds what").
 
 - [ ] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
   compiled `match` on a package action's call taking the caught boundary
