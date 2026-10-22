@@ -3773,9 +3773,9 @@ which bakes again, from the data compiled into this Jadpo
 lock, each implemented by its own crate's macro), each marker's entries
 for the locales a supported locale's lookups walk through (the locale,
 then each its fallback gives for that marker's configuration, down to
-`und`, which is always kept), collation among them (chunk 8.4i; every
-locale's with no `locales { }`, when `list.sort_by` takes any
-`Locale`), and every marker with one entry, through
+`und`, which is always kept), collation among them (chunk 8.4i; an app
+with no `locales { }` can't sort by a locale, chunk 8.4j), and every
+marker with one entry, through
 icu_provider_export's `ExportDriver` and baked writer. The files go into
 `build/rust/cldr/`, written only where they changed, one folder for
 every deployable of the app since its locales are the app's, so the

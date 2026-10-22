@@ -1387,6 +1387,7 @@ impl Body<'_> {
                 None => self.check(&value, &expected),
             }
         }
+        let mut locale_unused = false;
         for (lambda, from, to, slot) in inline {
             let name = &params[slot].0;
             if !self.inline(&lambda, &from, &to, &mut bound, (written, name)) {
@@ -1399,7 +1400,7 @@ impl Body<'_> {
                 let key = substitute(&to, &bound);
                 self.ordered_key(&lambda, &key, written);
                 if let Some(table) = table {
-                    self.sort_locale(table, &args, &slots, &key, written);
+                    locale_unused |= self.sort_locale(table, &args, &slots, &key, written);
                 }
             }
         }
@@ -1554,6 +1555,16 @@ impl Body<'_> {
             && table.op == jadpo_std::Op::LocaleFromAcceptLanguage
         {
             self.locales_for_choosing(call, written);
+        }
+        // Sorting by a locale's alphabet needs the application's locales
+        // (Richard, 2026-10-22), unless `locale:` is already reported as
+        // meaning nothing for the key.
+        if let Some(table) = table
+            && table.op == jadpo_std::Op::ListSortBy
+            && !locale_unused
+            && super::text::locale_arg(table, &args, &slots).is_some()
+        {
+            self.locales_for_sorting(call, written);
         }
         // `min` and `max` give one of their values, of one type (area 19).
         if let Some(table) = table {

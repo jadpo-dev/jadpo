@@ -4957,14 +4957,17 @@ take it.
   becomes `SS`, `İ` becomes `i` and a combining dot) and text sorts by
   code point, as queries sort it (question 26). Case mapping takes any
   `Locale`, not only the ones `locales { }` declares, since its data is
-  Unicode's, one table for every locale. Sorting takes any too, but an
-  application that declares `locales { }` sorts in those: a `Locale` it
-  doesn't support orders by the supported one a header asking for it
-  would get, else `default:`, as text for people is written (area 10,
-  "Locales"; Richard, 2026-10-22, built in chunk 8.4i), so a deployable,
-  which carries its supported locales' collation only, sorts as `jadpo
-  test` does. With no `locales { }`, every `Locale` sorts by its own
-  alphabet, and a deployable carries every locale's collation.
+  Unicode's, one table for every locale. Sorting sorts in the locales
+  `locales { }` declares: a `Locale` the application doesn't support
+  orders by the supported one a header asking for it would get, else
+  `default:`, as text for people is written (area 10, "Locales"; Richard,
+  2026-10-22, built in chunk 8.4i), so a deployable, which carries its
+  supported locales' collation only, sorts as `jadpo test` does. A
+  project that sorts by a locale and declares none is
+  `type.temporal_locales_required`, as one that formats is (Richard,
+  2026-10-22, built in chunk 8.4j); files handed to the compiler on their
+  own have no application to declare them, and sort by the `Locale` they
+  are given.
   Collation is the locale's default at CLDR's default strength, so keys
   equal by its rules keep their order. On `list.sort_by` it orders text
   keys only; with any other key it is `type.temporal_option_unused`, whose
@@ -4975,9 +4978,15 @@ take it.
   full-width `Ａ`) aren't folded, and become `-` like any other character
   outside ASCII.
 
-A bakery's product names, through every text operation (chunk 5.5f):
+A bakery's product names, through every text operation (chunk 5.5f). It
+sorts in German and Swedish, so it declares them:
 
 ```jadpo check project=text-operations
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de, Locale.sv_se]
+}
+
 type ProductName = Text {
     min_length: 1
     max_length: 60
