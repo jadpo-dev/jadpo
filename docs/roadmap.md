@@ -2860,9 +2860,9 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
-8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. Two findings
-wait for Richard: SMTP's STARTTLS to a server on this machine (8.4d) and
-whether a measured gap to Bun is accepted (8.3, after 8.4e re-measures).
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. One waits for
+Richard: whether a measured gap to Bun is accepted (8.3, after 8.4e
+re-measures).
 
 - [ ] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
   compiled `match` on a package action's call taking the caught boundary
@@ -2913,9 +2913,10 @@ whether a measured gap to Bun is accepted (8.3, after 8.4e re-measures).
   carrying a private one; a native connect timeout, PostgreSQL's
   `connect_timeout` honoured, so start-up and `tick` against an
   unreachable host answer SIGTERM; and an autocommitted statement not
-  sent again after a reused connection drops mid-flight. **Needs
-  Richard:** whether SMTP skips STARTTLS to a server on this machine, as
-  PostgreSQL does (a stock Postfix offers it with a self-signed
+  sent again after a reused connection drops mid-flight; and SMTP
+  skipping STARTTLS to a server on this machine (loopback), as
+  PostgreSQL does, a remote server's still required and checked
+  (Richard, 2026-10-22; a stock Postfix offers it with a self-signed
   certificate, so every send to it is `misconfigured` today).
 - [ ] **8.4e Workers speed and memory** `opus · xhigh`, after 8.4c:
   the Wasm module's memory growing about 17 KB a booking and never
