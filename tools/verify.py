@@ -233,6 +233,14 @@ COMPILED = ('compiled code: the corpus interpreted and compiled with the same re
 ROUTES_ON_WORKERD = ('route tests on workerd with the interpreter\'s records',
                      [('jadpo-cli', 'compiled::route_tests_on_workerd_give_the_interpreters_records')])
 COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
+# The release profile the deployables a test builds with `jadpo build` are
+# compiled in (chunk 8.4f): cargo's own codegen units and link-time
+# optimisation, through cargo's variables, which override the profile
+# `jadpo build` writes. That profile's fat link-time optimisation in one
+# codegen unit takes minutes for each deployable, and several are built;
+# what the tests prove doesn't depend on it, and the profile itself is
+# checked as `jadpo build` writes it (jadpo-codegen's tests).
+TEST_RELEASE_PROFILE = {'CARGO_PROFILE_RELEASE_LTO': 'false', 'CARGO_PROFILE_RELEASE_CODEGEN_UNITS': '16'}
 
 # The Workers host under workerd, Cloudflare's own Workers runtime, on this
 # machine (docs/compiler-runtime.md §2.6, "The Workers host"; chunk 8.2a):
@@ -387,7 +395,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                    for name, tests, args in postgres]
         name, tests, args = COMPILED
         checks.append(Step(name, 'compiled', tests=modules(tests), args=[*args, '--show-output'],
-                           show=COMPILED_SHOWN, postgres=True))
+                           show=COMPILED_SHOWN, postgres=True, env=dict(TEST_RELEASE_PROFILE)))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
         # have, so tokio-postgres is proven to build for wasm32 too.
@@ -435,7 +443,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                   str(target_dir() / WASM / 'debug/examples/geodesics.wasm')], lane='cargo'),
             Step(WORKERD[0], 'wasm32', tests=modules(WORKERD[1]), lane='cargo'),
             Step(WORKERS_DEPLOYABLE[0], 'wasm32', tests=modules(WORKERS_DEPLOYABLE[1]), lane='cargo',
-                 args=['--show-output'], show=WORKERS_SHOWN, postgres=True),
+                 args=['--show-output'], show=WORKERS_SHOWN, postgres=True,
+                 env=dict(TEST_RELEASE_PROFILE)),
             Step(ROUTES_ON_WORKERD[0], 'wasm32', tests=ROUTES_ON_WORKERD[1], lane='cargo',
                  args=['--exact', '--show-output'], show=COMPILED_SHOWN, postgres=True),
         ]

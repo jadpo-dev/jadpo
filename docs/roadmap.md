@@ -2974,14 +2974,24 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   profile); the drivers built when a request first uses a store; then
   8.3's harness run again and its numbers recorded beside the first
   (§2.11).
-- [ ] **8.4f Before the real deploy** `opus · high`: the release profile
+- [x] **8.4f Before the real deploy** `opus · high`: the release profile
   `jadpo build` writes (link-time optimisation, one codegen unit,
   `opt-level = "s"` for wasm, names stripped), so 8.2n measures the
   module that ships, sizes recorded before and after; a Worker named
   `<app>-<deployable>` so two apps' `kiosk`s don't meet in one account;
   the Wrangler file built as one JSON value in one function, a binding
   never silently dropped; `observability` written if Workers Logs needs
-  it (checked against Wrangler's pinned schema).
+  it (checked against Wrangler's pinned schema). Built (area 14,
+  Decisions, 2026-10-22; §2.6, "Before the real deploy", with the
+  table): fat LTO in one unit for both hosts, `opt-level = 3` natively;
+  a Worker's module bound without its name and `producers` sections, a
+  native binary keeping its symbols; `observability: { enabled: true }`,
+  since the pinned Wrangler sends none without it. Example 23's Workers
+  module 13,503,038 bytes (4,141,531 gzipped) before, 8,062,968
+  (2,945,138) after, a booking 8% less CPU; the native binary 21.3 MB
+  to 14.8 MB; a rebuild 3.5 s to 63 s natively, 8 s to 33 s for
+  Workers. The gate builds its test deployables without LTO
+  (`TEST_RELEASE_PROFILE`).
 - [ ] **8.4g Builds and CI kept quick** `opus · high`: the runtime
   compiled once per Jadpo version, target and locale set (one shared
   cargo target, locale data in a folder named by its digest), which

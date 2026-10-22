@@ -156,12 +156,16 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
         .collect();
     files.insert(
         "Cargo.toml".to_string(),
-        "# A Jadpo deployable's workspace, written by `jadpo build` (docs/compiler-runtime.md §2.5); don't edit it.\n\
-         [workspace]\n\
-         members = [\"program\", \"deployable\"]\n\
-         resolver = \"3\"\n"
-            .as_bytes()
-            .to_vec(),
+        format!(
+            "# A Jadpo deployable's workspace, written by `jadpo build` (docs/compiler-runtime.md §2.5); don't edit it.\n\
+             [workspace]\n\
+             members = [\"program\", \"deployable\"]\n\
+             resolver = \"3\"\n\
+             \n\
+             {}",
+            release_profile(deployable.host)
+        )
+        .into_bytes(),
     );
     files.insert(
         "rust-toolchain.toml".to_string(),
@@ -243,6 +247,27 @@ pub fn workspace(plan: &Plan, deployable: &Deployable<'_>) -> Result<Generated, 
         }
     }
     Ok(Generated { files })
+}
+
+/// The release profile a deployable is built in (chunk 8.4f; area 14,
+/// "A deployable's release profile"): the whole program optimised as one
+/// unit at link time, fat LTO in one codegen unit; natively for speed,
+/// keeping its symbols for a backtrace and a profiler; for Workers for
+/// size, since a plan limits what a Worker uploads, its names left out
+/// when it is bound ([`crate::workers::bind`]). Cargo's own
+/// `CARGO_PROFILE_RELEASE_*` variables still override it, as they
+/// override any manifest.
+fn release_profile(host: Host) -> String {
+    let optimised = match host {
+        Host::Native => "3",
+        Host::Workers(_) => "\"s\"",
+    };
+    format!(
+        "[profile.release]\n\
+         opt-level = {optimised}\n\
+         lto = \"fat\"\n\
+         codegen-units = 1\n"
+    )
 }
 
 /// The binary's `main`: the native host given the program, the stamp and
