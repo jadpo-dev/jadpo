@@ -17,6 +17,7 @@ use jadpo_drivers::package::{Fetch, FetchError};
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust, within};
 use jadpo_host_workers::{WorkersFetch, WorkersHost, WorkersOutbound, WorkersTransport};
 use jadpo_runtime::budget::Invocation;
+use jadpo_runtime::deployable::{Log, Stamp};
 use jadpo_runtime::provider::{Reading, Request};
 use jadpo_runtime::stream::Chunk;
 use jadpo_runtime::{Allowed, Host, PasskeyError, PasskeyParts};
@@ -56,6 +57,18 @@ pub async fn fetch(
             host.budget_ms(Invocation::Tick),
             host.budget_ms(Invocation::HandedOn)
         ),
+        "/budget-handed-on" => {
+            // An invocation taking on work handed on that spends `waited`
+            // before it runs the work (chunk 8.4b).
+            let fresh = WorkersHost::new(env.clone(), JsValue::UNDEFINED).for_hand_on();
+            fresh.sleep(number("waited")).await;
+            format!(
+                "after_response={} handed_on={}",
+                fresh.budget_ms(Invocation::AfterResponse),
+                fresh.budget_ms(Invocation::HandedOn)
+            )
+        }
+        "/queue-answers" => queue_answers(),
         "/echo" => echo(&param("host"), number("port"), &param("tls")).await,
         "/pooler" => {
             let endpoint = Endpoint::Tcp {
@@ -160,7 +173,8 @@ pub async fn fetch(
                 }],
             };
             let host = WorkersHost::new(env.clone(), JsValue::UNDEFINED)
-                .with_rate_limits(Some(Rc::new(store)));
+                .with_rate_limits(Some(Rc::new(store)))
+                .with_log(Log::new(STAMP, console_log));
             let key = param("key");
             let mut seen = Vec::new();
             for _ in 0..2 {
@@ -312,6 +326,72 @@ fn stored_parts(json: &str) -> Option<PasskeyParts> {
         backup_eligible: json.get("backup_eligible")?.as_bool()?,
         backed_up: json.get("backed_up")?.as_bool()?,
     })
+}
+
+/// The stamp the probe's log lines carry.
+const STAMP: Stamp = Stamp {
+    build: "probe",
+    commit: None,
+    modified: false,
+    compiler: "probe",
+    deployable: "probe",
+    target: "wasm",
+};
+
+#[wasm_bindgen]
+extern "C" {
+    /// The console, which workerd writes to its output.
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn console_log(line: &str);
+}
+
+/// A batch of three messages answered as the queue consumer answers them
+/// (chunk 8.4b): the first acknowledged, the second's `retry()` throwing,
+/// the third retried after 20 seconds. What each message saw, then whether
+/// answering ended well or with the error the handler throws.
+fn queue_answers() -> String {
+    use jadpo_runtime::receiving::Answer;
+    use js_sys::{Object, Reflect};
+    let seen: Rc<RefCell<Vec<String>>> = Rc::default();
+    let mut kept = Vec::new();
+    let mut message = |id: &'static str, throws: bool| -> JsValue {
+        let message = Object::new();
+        let acked = Rc::clone(&seen);
+        let ack = Closure::<dyn FnMut()>::new(move || acked.borrow_mut().push(format!("ack:{id}")));
+        let retried = Rc::clone(&seen);
+        let retry =
+            Closure::<dyn FnMut(JsValue) -> Result<(), JsValue>>::new(move |options: JsValue| {
+                if throws {
+                    return Err(js_sys::Error::new("retry refused").into());
+                }
+                let delay = Reflect::get(&options, &JsValue::from_str("delaySeconds"))
+                    .ok()
+                    .and_then(|delay| delay.as_f64())
+                    .unwrap_or(-1.0);
+                retried.borrow_mut().push(format!("retry:{id}:{delay}"));
+                Ok(())
+            });
+        let _ = Reflect::set(&message, &JsValue::from_str("ack"), ack.as_ref());
+        let _ = Reflect::set(&message, &JsValue::from_str("retry"), retry.as_ref());
+        kept.push((ack, retry));
+        message.into()
+    };
+    let messages = [
+        message("m1", false),
+        message("m2", true),
+        message("m3", false),
+    ];
+    let answers = [
+        Answer::Ack,
+        Answer::Retry { delay_seconds: 10 },
+        Answer::Retry { delay_seconds: 20 },
+    ];
+    let ended = match jadpo_host_workers::deployable::answer_messages(&messages, &answers) {
+        Ok(()) => "ended well",
+        Err(_) => "threw",
+    };
+    drop(kept);
+    format!("{} {ended}", seen.borrow().join(" "))
 }
 
 fn yes(value: bool) -> &'static str {

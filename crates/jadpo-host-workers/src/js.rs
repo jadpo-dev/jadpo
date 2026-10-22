@@ -54,8 +54,9 @@ extern "C" {
     #[wasm_bindgen(method, catch, js_name = waitUntil)]
     pub(crate) fn wait_until(this: &ExecutionContext, promise: &Promise) -> Result<(), JsValue>;
 
-    /// A service binding to the Worker's own `JadpoHandOn` entrypoint,
-    /// through which it starts a fresh invocation of itself (chunk 8.2h).
+    /// The Worker's own `JadpoHandOn` entrypoint as `ctx.exports` gives
+    /// it, a loopback binding through which it starts a fresh invocation
+    /// of itself (chunks 8.2h and 8.4b).
     #[derive(Debug, Clone)]
     pub(crate) type HandOnBinding;
 
