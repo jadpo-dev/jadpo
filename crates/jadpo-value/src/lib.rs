@@ -199,6 +199,14 @@ pub fn run(
             | Op::DecimalRound,
             _,
         ) => Err(Fault::Shape),
+        // A list sorted in a locale the application doesn't support is
+        // ordered by one it does (area 10, "Locales"; chunk 8.4i), whose
+        // collation is the only one a deployable carries.
+        (Op::ListSortBy, [items, locale @ Value::Variant(_)]) => run_list(
+            op,
+            &[items.clone(), written_in(locale, locales)],
+            &mut |item| each(std::slice::from_ref(item)),
+        ),
         (
             Op::ListAll
             | Op::ListAny
@@ -536,10 +544,10 @@ pub fn run(
     }
 }
 
-/// The locale text for people is written in, for the `Locale` value
-/// `locale` (area 10, "Locales"): itself where the application supports
-/// it, else the supported one a header asking for it would get
-/// ([`locale::written_in`]); with no locales declared, itself.
+/// The locale text for people is written in, and a list sorted in, for
+/// the `Locale` value `locale` (area 10, "Locales"): itself where the
+/// application supports it, else the supported one a header asking for it
+/// would get ([`locale::written_in`]); with no locales declared, itself.
 fn written_in(locale: &Value, locales: Option<&LocalePlan>) -> Value {
     match (locale, locales) {
         (Value::Variant(variant), Some(plan))
@@ -1380,5 +1388,60 @@ mod tests {
         );
         assert_eq!(asks(Value::None, None), Err(Fault::Shape));
         assert_eq!(asks(Value::Int(1), Some(&plan)), Err(Fault::Shape));
+    }
+
+    #[test]
+    fn sorting_in_a_locale_the_application_doesnt_support_uses_one_it_does() {
+        // Area 10, "Locales" (Richard, 2026-10-22; chunk 8.4i): the order
+        // is the supported locale a header asking for it would get, else
+        // `default:`, so a deployable carrying the supported locales'
+        // collation only sorts as `jadpo test` does.
+        let locale = |tag: &str| {
+            Value::variant(
+                jadpo_std::LOCALE,
+                jadpo_std::locale_ordinal(tag).unwrap_or(0),
+                tag,
+                Vec::new(),
+            )
+        };
+        let plan = |supported: &[&str]| LocalePlan {
+            default: jadpo_std::locale_ordinal(supported[0]).unwrap_or(0),
+            supported: supported
+                .iter()
+                .map(|tag| jadpo_std::locale_ordinal(tag).unwrap_or(0))
+                .collect(),
+            in_progress: Vec::new(),
+        };
+        let names = Value::list(vec![
+            Value::text("Zopf"),
+            Value::text("Ölandsbröd"),
+            Value::text("Oat"),
+        ]);
+        let sorted = |tag: &str, locales: Option<&LocalePlan>| {
+            run(
+                Op::ListSortBy,
+                &[names.clone(), locale(tag)],
+                locales,
+                &mut |item: &[Value]| item.first().cloned(),
+            )
+        };
+        let swedish = Ok(Value::list(vec![
+            Value::text("Oat"),
+            Value::text("Zopf"),
+            Value::text("Ölandsbröd"),
+        ]));
+        let english = Ok(Value::list(vec![
+            Value::text("Oat"),
+            Value::text("Ölandsbröd"),
+            Value::text("Zopf"),
+        ]));
+        // Supported: its own alphabet.
+        assert_eq!(sorted("sv_se", Some(&plan(&["en_gb", "sv_se"]))), swedish);
+        // Finnish Swedish takes the supported Swedish, as a header would.
+        assert_eq!(sorted("sv_fi", Some(&plan(&["en_gb", "sv_se"]))), swedish);
+        // No Swedish supported: the default's order.
+        assert_eq!(sorted("sv_se", Some(&plan(&["en_gb", "fr_fr"]))), english);
+        // With no locales declared, every locale is the application's.
+        assert_eq!(sorted("sv_se", None), swedish);
     }
 }

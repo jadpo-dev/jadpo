@@ -2982,11 +2982,20 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   section, the copies that disagree (8.1g's plan format, 8.2e's group,
   8.1j's CI time) gone with them; the plan's header taken from the
   compiler's version rather than a number each chunk bumps.
-- [ ] **8.4i Collation for the supported locales** `opus · high`:
+- [x] **8.4i Collation for the supported locales** `opus · high`:
   sorting in an unsupported `Locale` ordering by the supported one it
   falls back to (area 10, Richard 2026-10-22), and `jadpo build` keeping
   collation only for the supported locales; the module's size before and
-  after recorded.
+  after recorded. Built (area 10, "Locales"; area 19, "Text"):
+  `list.sort_by`'s `locale:` goes through `written_in` as formatting
+  does, on every target; `jadpo-cldr` keeps collation as it keeps every
+  other marker, the entries the supported locales' lookups walk through.
+  Chosen in the chunk (area 10): with no `locales { }` every `Locale`
+  sorts by its own and every locale's collation is kept, as before.
+  Example 23 on Workers (release, wasm-bindgen's module, gzip -9): as it
+  is, declaring no locales, 13,475,196 bytes before and 13,478,712 after
+  (4,112,324 and 4,108,944 gzipped); declaring `en_gb`, 13,614,174 to
+  12,727,979 (4,154,206 to 3,842,244 gzipped), 0.89 MB less.
 
 ## Phase 9 — Performance
 
