@@ -831,9 +831,6 @@ mod tests {
         assert_eq!(retry_delay(u32::MAX), 3600);
         let retries = jadpo_std::receiving::CONSUMER_RETRIES;
         let waited: u32 = (1..=retries).map(retry_delay).sum();
-        assert!(
-            (20 * 3600..24 * 3600).contains(&waited),
-            "{waited} seconds"
-        );
+        assert!((20 * 3600..24 * 3600).contains(&waited), "{waited} seconds");
     }
 }

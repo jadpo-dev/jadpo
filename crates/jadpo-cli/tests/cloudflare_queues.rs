@@ -312,7 +312,9 @@ fn a_dead_lettered_message_is_parked_for_an_operator() {
     let listed = jadpo(&loaded.root, &["deliveries", "--url", &loaded.url]);
     assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
     assert!(
-        listed.stdout.contains("queue warehouse_queue · OrderShipped")
+        listed
+            .stdout
+            .contains("queue warehouse_queue · OrderShipped")
             && listed.stdout.contains("dead_lettered"),
         "{}",
         listed.stdout

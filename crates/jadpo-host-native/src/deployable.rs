@@ -642,10 +642,7 @@ mod tests {
         let finished = Ticked::default();
         assert_eq!(tick_code(Some(&finished)), 0);
         let failed = Ticked {
-            problems: vec![(
-                "main".to_string(),
-                jadpo_runtime::StoreError::Unavailable,
-            )],
+            problems: vec![("main".to_string(), jadpo_runtime::StoreError::Unavailable)],
             ..Ticked::default()
         };
         assert_eq!(tick_code(Some(&failed)), 1);

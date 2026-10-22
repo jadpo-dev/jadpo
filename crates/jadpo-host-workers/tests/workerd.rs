@@ -424,7 +424,9 @@ fn rate_limits_are_counted_in_cloudflares_binding() {
     );
     for key in ["unreached", "unbound", "stuck"] {
         assert!(
-            !fallbacks.iter().any(|event| event.to_string().contains(key)),
+            !fallbacks
+                .iter()
+                .any(|event| event.to_string().contains(key)),
             "{log}"
         );
     }

@@ -46,7 +46,8 @@ const STORE_UNAVAILABLE: &str = "store_unavailable";
 
 /// The Worker's `queue` for `deployable`: a promise that settles once
 /// every message of `batch` has been answered, the kept events'
-/// deliveries going on after it in `waitUntil`.
+/// deliveries going on after it in `waitUntil`, and rejects when a
+/// message's answer couldn't be given ([`answer_messages`]).
 pub fn queue(deployable: &Deployable, batch: JsValue, env: JsValue, ctx: JsValue) -> JsValue {
     let deployable = *deployable;
     wasm_bindgen_futures::future_to_promise(async move {

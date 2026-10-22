@@ -308,7 +308,9 @@ pub fn cloudflare_queues(db: &dyn Db, project: Project) -> CloudflareQueues {
                         )
                         .at(span.clone(), "named already")
                         .reason(ONE_CONSUMER)
-                        .next(format!("Name `{first}` in `receiving:` and remove `{connection}`")),
+                        .next(format!(
+                            "Name `{first}` in `receiving:` and remove `{connection}`"
+                        )),
                     );
                 }
                 // The dead-letter queue has a consumer too, which parks each

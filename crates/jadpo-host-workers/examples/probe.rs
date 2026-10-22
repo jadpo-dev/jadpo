@@ -359,8 +359,8 @@ fn queue_answers() -> String {
         let acked = Rc::clone(&seen);
         let ack = Closure::<dyn FnMut()>::new(move || acked.borrow_mut().push(format!("ack:{id}")));
         let retried = Rc::clone(&seen);
-        let retry = Closure::<dyn FnMut(JsValue) -> Result<(), JsValue>>::new(
-            move |options: JsValue| {
+        let retry =
+            Closure::<dyn FnMut(JsValue) -> Result<(), JsValue>>::new(move |options: JsValue| {
                 if throws {
                     return Err(js_sys::Error::new("retry refused").into());
                 }
@@ -370,14 +370,17 @@ fn queue_answers() -> String {
                     .unwrap_or(-1.0);
                 retried.borrow_mut().push(format!("retry:{id}:{delay}"));
                 Ok(())
-            },
-        );
+            });
         let _ = Reflect::set(&message, &JsValue::from_str("ack"), ack.as_ref());
         let _ = Reflect::set(&message, &JsValue::from_str("retry"), retry.as_ref());
         kept.push((ack, retry));
         message.into()
     };
-    let messages = [message("m1", false), message("m2", true), message("m3", false)];
+    let messages = [
+        message("m1", false),
+        message("m2", true),
+        message("m3", false),
+    ];
     let answers = [
         Answer::Ack,
         Answer::Retry { delay_seconds: 10 },

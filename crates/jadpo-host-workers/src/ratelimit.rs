@@ -53,13 +53,9 @@ impl Unasked {
         let why = match self {
             Unasked::Missing => format!("`{binding}` isn't one of the Worker's bindings"),
             Unasked::Failed => format!("`{binding}` failed when asked"),
-            Unasked::TimedOut => format!(
-                "`{binding}` didn't answer within {LIMIT_TIMEOUT_MS} ms"
-            ),
+            Unasked::TimedOut => format!("`{binding}` didn't answer within {LIMIT_TIMEOUT_MS} ms"),
         };
-        format!(
-            "{why}: each instance counts its limit in its own memory while it can't be asked."
-        )
+        format!("{why}: each instance counts its limit in its own memory while it can't be asked.")
     }
 }
 

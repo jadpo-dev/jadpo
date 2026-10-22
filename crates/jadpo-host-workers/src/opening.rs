@@ -282,7 +282,10 @@ mod tests {
             Poll::Ready(place) => Some(place),
             Poll::Pending => None,
         });
-        assert!(eighth_place.is_some(), "the eighth waits behind a free place");
+        assert!(
+            eighth_place.is_some(),
+            "the eighth waits behind a free place"
+        );
         assert_eq!((opening.taken(), opening.waiting()), (MOST, 0));
     }
 

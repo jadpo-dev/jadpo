@@ -95,8 +95,8 @@ use wasm_bindgen::{JsCast, JsValue};
 pub use fetch::{WorkersFetch, WorkersOutbound};
 pub use js::ExecutionContext;
 pub use opening::Opening;
-pub use ratelimit::LIMIT_TIMEOUT_MS;
 pub use passkeys::WorkersPasskeys;
+pub use ratelimit::LIMIT_TIMEOUT_MS;
 pub use transport::{WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
 /// deployable's crate exports (`#[wasm_bindgen(wasm_bindgen = …)]`), so
@@ -390,9 +390,7 @@ impl Host for WorkersHost {
         let Some(binding) = Reflect::get(ctx, &JsValue::from_str("exports"))
             .ok()
             .filter(JsValue::is_object)
-            .and_then(|exports| {
-                Reflect::get(&exports, &JsValue::from_str(HAND_ON_ENTRYPOINT)).ok()
-            })
+            .and_then(|exports| Reflect::get(&exports, &JsValue::from_str(HAND_ON_ENTRYPOINT)).ok())
             .filter(JsValue::is_object)
         else {
             return;
@@ -420,12 +418,10 @@ impl Host for WorkersHost {
                 Some(began) => cron_left(began, now),
                 None => budget_for(invocation),
             },
-            (Invocation::AfterResponse | Invocation::HandedOn, Some(now)) => {
-                match self.handed_on {
-                    Some(began) => hand_on_left(began, now),
-                    None => budget_for(invocation),
-                }
-            }
+            (Invocation::AfterResponse | Invocation::HandedOn, Some(now)) => match self.handed_on {
+                Some(began) => hand_on_left(began, now),
+                None => budget_for(invocation),
+            },
             _ => budget_for(invocation),
         }
     }

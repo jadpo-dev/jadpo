@@ -406,7 +406,10 @@ fn a_worker_consumes_each_cloudflare_queue_it_receives() {
             ]
         })
     );
-    assert_eq!(wrangler["triggers"]["crons"], serde_json::json!(["* * * * *"]));
+    assert_eq!(
+        wrangler["triggers"]["crons"],
+        serde_json::json!(["* * * * *"])
+    );
     let plain = workers::wrangler("depot", &[], &[], false);
     assert_eq!(workers::queued(plain.clone(), &[]), plain);
 }
