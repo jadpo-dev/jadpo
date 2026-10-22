@@ -142,7 +142,7 @@ impl Default for Runs {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unreadable {
     /// They don't start with [`RuntimePlan::HEADER`]: not a plan, or one
-    /// written by a Jadpo that writes another format.
+    /// written by another version of Jadpo.
     NotThisFormat,
     /// They start as one but don't hold one.
     Malformed(canonical::Error),
@@ -166,9 +166,14 @@ impl std::fmt::Display for Unreadable {
 impl std::error::Error for Unreadable {}
 
 impl RuntimePlan {
-    /// What the bytes of a plan start with: what they are, and the format,
-    /// which changes whenever the plan's shape does.
-    pub const HEADER: &'static [u8] = b"jadpo runtime plan 11\n";
+    /// What the bytes of a plan start with: what they are, and the
+    /// version of the Jadpo that wrote them. A plan is only ever read by
+    /// the program it was compiled into, built from the same Jadpo's
+    /// runtime crates as the compiler that wrote it, so the version is all
+    /// the header has to name and nothing bumps it by hand
+    /// (docs/compiler-runtime.md §2.5, "The plan compiled code holds").
+    pub const HEADER: &'static [u8] =
+        concat!("jadpo runtime plan ", env!("CARGO_PKG_VERSION"), "\n").as_bytes();
 
     /// Its canonical bytes: [`RuntimePlan::HEADER`], then the plan in the
     /// canonical byte encoding, then, with the `testing` feature, its dev
