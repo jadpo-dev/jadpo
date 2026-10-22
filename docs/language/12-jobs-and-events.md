@@ -4948,7 +4948,7 @@ reach handed on to a fresh invocation of the Worker, a request to itself
 naming each piece by its record ("Running background work"; decisions
 table, "Work handed on, on Workers"); proved under workerd with a
 subscriber's deliveries and a batch run each longer than one
-invocation's budget (`crates/jadpo-cli/tests/workers.rs`).
+invocation's budget (`crates/jadpo-cli/tests/workers/newsroom.rs`).
 
 Not yet:
 

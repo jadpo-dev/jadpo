@@ -24,11 +24,16 @@ use jadpo_term::Environment;
 
 /// The folder the cache lives in, if the environment names a home for it.
 fn folder(env: &Environment) -> Option<PathBuf> {
-    let base = match env.var("XDG_CACHE_HOME").filter(|v| !v.is_empty()) {
+    Some(home(env)?.join("jadpo").join("packages"))
+}
+
+/// The user's cache folder, `$XDG_CACHE_HOME`, else `~/.cache`, if the
+/// environment names either; Jadpo keeps its caches in its `jadpo/`.
+pub(crate) fn home(env: &Environment) -> Option<PathBuf> {
+    Some(match env.var("XDG_CACHE_HOME").filter(|v| !v.is_empty()) {
         Some(cache) => PathBuf::from(cache),
         None => PathBuf::from(env.var("HOME").filter(|v| !v.is_empty())?).join(".cache"),
-    };
-    Some(base.join("jadpo").join("packages"))
+    })
 }
 
 /// This compiler, as the cache tells compilers apart.
