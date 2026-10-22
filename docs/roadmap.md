@@ -2915,8 +2915,16 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   `compare_stores` and the `Logged` observer serve both hosts, each tick
   logged as `runtime.ticked` with its duration, proved live on example
   23's office and the depot's cron with a swept table renamed.
-- [ ] **8.4d Phase 8 review fixes: addresses and connections** `opus ·
-  high`: rate limits keying an IPv6 client by its /64 (decided
+- [x] **8.4d Phase 8 review fixes: addresses and connections** `opus ·
+  high`. Built: `counted_as` keying an IPv6 client's default limits and
+  AI budget by its /64; plain HTTP's and email health's "this machine"
+  read as an address; `public_address` judging IPv4 inside NAT64, 6to4
+  and Teredo and refusing `fec0::/10`; a 10-second native connect
+  timeout, each PostgreSQL attempt bounded by `connect_timeout` (10
+  seconds unset), start-up's and `tick`'s store checks racing SIGTERM;
+  `query_once` resending only when none of the statement was written;
+  SMTP to this machine without `STARTTLS` (areas 5, 10, 11 and 16).
+  Asked for: rate limits keying an IPv6 client by its /64 (decided
   2026-10-22: stricter, reversible), including the magic-link and
   passkey routes; `127.api.example.com` no longer loopback (the host
   parsed as an address); `public_address` judging the IPv4 address

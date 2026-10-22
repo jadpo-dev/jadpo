@@ -499,9 +499,14 @@ async fn respond(
 }
 
 /// 429 when `request`'s address has used its allowance, as the host
-/// counts it.
+/// counts it: an IPv6 client by its /64 ([`address::counted_as`]), on
+/// every route this guards, the magic-link and passkey routes among them.
 async fn by_address(ctx: &Ctx<'_>, request_id: &str) -> Option<Response> {
-    let key = format!("address {}", ctx.client().unwrap_or("unknown"));
+    let key = format!(
+        "address {}",
+        ctx.client()
+            .map_or_else(|| "unknown".to_string(), address::counted_as)
+    );
     match ctx.host().rate_limit(&key, ADDRESS_LIMIT, ctx.now()).await {
         Allowed::Yes => None,
         Allowed::No { retry_after } => Some(rate_limited(request_id, retry_after)),
