@@ -32,16 +32,32 @@
 //!   places** ([`Opening`]; chunk 8.2j) until its socket opens, or fails
 //!   to: a seventh waits for one, within whatever its driver gives the
 //!   connection to open.
-//! - **A stream holds its streams' locks only while it reads or writes**,
-//!   so it can be upgraded between them, and closes its socket when
-//!   dropped.
+//! - **A stream reads and writes through one reader and one writer for
+//!   its socket's life** (chunk 8.4e), each taken at its first read or
+//!   write and released only to upgrade it, between them: taking a reader
+//!   or a writer and releasing its lock for every read and write was about
+//!   half of what workerd spent on a booking (§2.11). It closes its socket
+//!   when dropped.
+//! - **A connection ends within the invocation that opened it** (chunk
+//!   8.4e). workerd never settles a promise of an invocation that has
+//!   ended, and what waits on one is never given back: before, each
+//!   booking's connection was left waiting for its goodbye to go, some
+//!   20 KB of the module's memory kept for the isolate's life (§2.11). So
+//!   the transport counts the connections' tasks it has started
+//!   ([`Tasks`]), which the invocation's host, once dropped, keeps the
+//!   invocation for ([`crate::WorkersHost`]); and shutting a stream down
+//!   closes its writable side after the driver's goodbye (PostgreSQL's
+//!   `Terminate`), then, with a read still waiting, the socket, and waits
+//!   for that read to settle, so nothing is left waiting once the task has
+//!   ended.
 
 use std::any::Any;
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust};
 use jadpo_runtime::LocalFuture;
@@ -49,24 +65,88 @@ use js_sys::{Object, Reflect, Uint8Array};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{ReadableStreamDefaultReader, WritableStreamDefaultWriter};
+use web_sys::{ReadableStreamDefaultReader, ReadableStreamReadResult, WritableStreamDefaultWriter};
 
 use crate::js;
 use crate::opening::Opening;
 
 /// The drivers' transport over Workers' `connect()`, counting the
-/// connections it opens among its invocation's six. A default one has six
-/// places of its own; an invocation's host gives its drivers one sharing
-/// the invocation's ([`crate::WorkersHost::supplies`]).
+/// connections it opens among its invocation's six and the tasks it
+/// starts for them. A default one has six places and its count of its
+/// own; an invocation's host gives its drivers one sharing the
+/// invocation's ([`crate::WorkersHost::supplies`]).
 #[derive(Clone, Debug, Default)]
 pub struct WorkersTransport {
     opening: Rc<Opening>,
+    tasks: Rc<Tasks>,
 }
 
 impl WorkersTransport {
     /// A transport whose connections take places among `opening`'s.
     pub fn counted(opening: Rc<Opening>) -> WorkersTransport {
-        WorkersTransport { opening }
+        WorkersTransport {
+            opening,
+            tasks: Rc::default(),
+        }
+    }
+
+    /// Counts the tasks it starts in `tasks` (chunk 8.4e).
+    pub fn tracking(mut self, tasks: Rc<Tasks>) -> WorkersTransport {
+        self.tasks = tasks;
+        self
+    }
+}
+
+/// The connections' tasks a transport has started that haven't ended
+/// (chunk 8.4e): what an invocation's host, once dropped, keeps the
+/// invocation for, since dropping its drivers is what starts each
+/// connection's goodbye.
+#[derive(Debug, Default)]
+pub struct Tasks {
+    running: Cell<usize>,
+    /// Who waits for the last to end.
+    waiting: RefCell<Option<Waker>>,
+}
+
+impl Tasks {
+    /// How many are running now.
+    pub fn running(&self) -> usize {
+        self.running.get()
+    }
+
+    /// Settles once none is running.
+    pub async fn ended(self: Rc<Self>) {
+        std::future::poll_fn(|cx| {
+            if self.running.get() == 0 {
+                return Poll::Ready(());
+            }
+            *self.waiting.borrow_mut() = Some(cx.waker().clone());
+            Poll::Pending
+        })
+        .await;
+    }
+}
+
+/// One running task's place in its [`Tasks`], given up when it ends or is
+/// dropped.
+struct Running(Rc<Tasks>);
+
+impl Running {
+    fn start(tasks: Rc<Tasks>) -> Running {
+        tasks.running.set(tasks.running.get() + 1);
+        Running(tasks)
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let tasks = &self.0;
+        tasks.running.set(tasks.running.get().saturating_sub(1));
+        if tasks.running.get() == 0
+            && let Some(waiting) = tasks.waiting.borrow_mut().take()
+        {
+            waiting.wake();
+        }
     }
 }
 
@@ -119,8 +199,14 @@ impl Transport for WorkersTransport {
         })
     }
 
+    /// Beside the work that started it, counted among its [`Tasks`] until
+    /// it ends.
     fn spawn(&self, task: LocalFuture<'static, ()>) {
-        wasm_bindgen_futures::spawn_local(task);
+        let running = Running::start(Rc::clone(&self.tasks));
+        wasm_bindgen_futures::spawn_local(async move {
+            let _running = running;
+            task.await;
+        });
     }
 
     fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
@@ -166,9 +252,17 @@ pub struct WorkersStream {
     socket: Option<js::Socket>,
     /// The name it connected to.
     host: String,
+    /// The socket's reader and writer, each taken at its first read or
+    /// write and kept, holding its stream's lock, until the stream is
+    /// upgraded or dropped.
+    reader: Option<ReadableStreamDefaultReader>,
+    writer: Option<WritableStreamDefaultWriter>,
     reading: Reading,
     writing: Option<Writing>,
+    /// Closing the writable side, until it has closed.
     closing: Option<JsFuture>,
+    /// Whether the writable side has closed.
+    shut: bool,
     /// The name TLS was started for, until a read or a write over it has
     /// gone through, which proves its handshake.
     checking: Option<String>,
@@ -187,26 +281,28 @@ impl std::fmt::Debug for WorkersStream {
 enum Reading {
     #[default]
     Idle,
-    /// Waiting on the readable stream, whose reader holds its lock.
-    Waiting(JsFuture, ReadableStreamDefaultReader),
+    /// Waiting on the reader's read.
+    Waiting(JsFuture),
     /// Bytes read that the caller had no room for yet.
     Held(Vec<u8>),
     /// The stream ended.
     Ended,
 }
 
-/// A write under way, whose writer holds the writable stream's lock, and
-/// how many bytes it carries.
-struct Writing(JsFuture, WritableStreamDefaultWriter, usize);
+/// A write under way, and how many bytes it carries.
+struct Writing(JsFuture, usize);
 
 impl WorkersStream {
     fn new(socket: js::Socket, host: String) -> WorkersStream {
         WorkersStream {
             socket: Some(socket),
             host,
+            reader: None,
+            writer: None,
             reading: Reading::Idle,
             writing: None,
             closing: None,
+            shut: false,
             checking: None,
         }
     }
@@ -229,6 +325,26 @@ impl WorkersStream {
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "the stream was upgraded"))
     }
 
+    /// The socket's reader, taken at the first read.
+    fn reader(&mut self) -> io::Result<&ReadableStreamDefaultReader> {
+        let reader = match self.reader.take() {
+            Some(reader) => reader,
+            None => ReadableStreamDefaultReader::new(&self.socket()?.readable())
+                .map_err(|error| failed(io::ErrorKind::Other, &error))?,
+        };
+        Ok(self.reader.insert(reader))
+    }
+
+    /// The socket's writer, taken at the first write.
+    fn writer(&mut self) -> io::Result<&WritableStreamDefaultWriter> {
+        let writer = match self.writer.take() {
+            Some(writer) => writer,
+            None => WritableStreamDefaultWriter::new(&self.socket()?.writable())
+                .map_err(|error| failed(io::ErrorKind::Other, &error))?,
+        };
+        Ok(self.writer.insert(writer))
+    }
+
     /// This stream upgraded to TLS, checked for `name`.
     async fn start_tls(mut self: Box<Self>, name: &str) -> io::Result<Box<dyn Stream>> {
         if !matches!(self.reading, Reading::Idle) || self.writing.is_some() {
@@ -236,6 +352,14 @@ impl WorkersStream {
                 io::ErrorKind::InvalidInput,
                 "a stream is upgraded only between reads and writes",
             ));
+        }
+        // `startTls()` takes over the socket's streams, which no reader or
+        // writer may hold then.
+        if let Some(reader) = self.reader.take() {
+            reader.release_lock();
+        }
+        if let Some(writer) = self.writer.take() {
+            writer.release_lock();
         }
         let socket = self.socket.take().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotConnected, "the stream was upgraded")
@@ -290,6 +414,19 @@ fn copy_into(buf: &mut ReadBuf<'_>, mut bytes: Vec<u8>) -> Reading {
     }
 }
 
+/// Copies `bytes` read from the socket into `buf`: straight from
+/// JavaScript's memory when they fit, as they mostly do, else through a
+/// copy of them whose rest is kept.
+fn read_into(buf: &mut ReadBuf<'_>, bytes: &Uint8Array) -> Reading {
+    let length = bytes.length() as usize;
+    if length > buf.remaining() {
+        return copy_into(buf, bytes.to_vec());
+    }
+    bytes.copy_to(buf.initialize_unfilled_to(length));
+    buf.advance(length);
+    Reading::Idle
+}
+
 impl AsyncRead for WorkersStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -307,29 +444,22 @@ impl AsyncRead for WorkersStream {
                     return Poll::Ready(Ok(()));
                 }
                 Reading::Idle => {
-                    let readable = self.socket()?.readable();
-                    let reader = ReadableStreamDefaultReader::new(&readable)
-                        .map_err(|error| failed(io::ErrorKind::Other, &error))?;
-                    let read = JsFuture::from(reader.read());
-                    self.reading = Reading::Waiting(read, reader);
+                    let read = JsFuture::from(self.reader()?.read());
+                    self.reading = Reading::Waiting(read);
                 }
-                Reading::Waiting(mut read, reader) => {
+                Reading::Waiting(mut read) => {
                     let Poll::Ready(result) = Pin::new(&mut read).poll(cx) else {
-                        self.reading = Reading::Waiting(read, reader);
+                        self.reading = Reading::Waiting(read);
                         return Poll::Pending;
                     };
-                    reader.release_lock();
                     let result = result
-                        .map_err(|error| self.failed(io::ErrorKind::ConnectionReset, &error))?;
-                    let done = Reflect::get(&result, &JsValue::from_str("done"))
-                        .map(|done| done.is_truthy())
-                        .unwrap_or(true);
-                    if done {
+                        .map_err(|error| self.failed(io::ErrorKind::ConnectionReset, &error))?
+                        .unchecked_into::<ReadableStreamReadResult>();
+                    if result.get_done().unwrap_or(true) {
                         self.reading = Reading::Ended;
                         return Poll::Ready(Ok(()));
                     }
-                    let value = Reflect::get(&result, &JsValue::from_str("value"))
-                        .map_err(|error| failed(io::ErrorKind::InvalidData, &error))?;
+                    let value = result.get_value();
                     let Some(bytes) = value.dyn_ref::<Uint8Array>() else {
                         return Poll::Ready(Err(io::Error::new(
                             io::ErrorKind::InvalidData,
@@ -339,7 +469,7 @@ impl AsyncRead for WorkersStream {
                     // An empty read carries nothing: read again.
                     if bytes.length() > 0 {
                         self.checking = None;
-                        self.reading = copy_into(buf, bytes.to_vec());
+                        self.reading = read_into(buf, bytes);
                         return Poll::Ready(Ok(()));
                     }
                 }
@@ -351,24 +481,21 @@ impl AsyncRead for WorkersStream {
 impl WorkersStream {
     /// Waits for the write under way, if any: how many bytes it carried.
     fn poll_written(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<Option<usize>>> {
-        let Some(Writing(mut write, writer, length)) = self.writing.take() else {
+        let Some(Writing(mut write, length)) = self.writing.take() else {
             return Poll::Ready(Ok(None));
         };
         match Pin::new(&mut write).poll(cx) {
             Poll::Pending => {
-                self.writing = Some(Writing(write, writer, length));
+                self.writing = Some(Writing(write, length));
                 Poll::Pending
             }
-            Poll::Ready(result) => {
-                writer.release_lock();
-                Poll::Ready(match result {
-                    Ok(_) => {
-                        self.checking = None;
-                        Ok(Some(length))
-                    }
-                    Err(error) => Err(self.failed(io::ErrorKind::BrokenPipe, &error)),
-                })
-            }
+            Poll::Ready(result) => Poll::Ready(match result {
+                Ok(_) => {
+                    self.checking = None;
+                    Ok(Some(length))
+                }
+                Err(error) => Err(self.failed(io::ErrorKind::BrokenPipe, &error)),
+            }),
         }
     }
 }
@@ -383,12 +510,9 @@ impl AsyncWrite for WorkersStream {
         if let Some(written) = std::task::ready!(self.poll_written(cx))? {
             return Poll::Ready(Ok(written));
         }
-        let writable = self.socket()?.writable();
-        let writer = WritableStreamDefaultWriter::new(&writable)
-            .map_err(|error| failed(io::ErrorKind::Other, &error))?;
         let chunk = Uint8Array::from(bytes);
-        let write = JsFuture::from(writer.write_with_chunk(&chunk));
-        self.writing = Some(Writing(write, writer, bytes.len()));
+        let write = JsFuture::from(self.writer()?.write_with_chunk(&chunk));
+        self.writing = Some(Writing(write, bytes.len()));
         match self.poll_written(cx) {
             Poll::Ready(Ok(Some(written))) => Poll::Ready(Ok(written)),
             Poll::Ready(Ok(None)) => Poll::Ready(Ok(0)),
@@ -401,22 +525,33 @@ impl AsyncWrite for WorkersStream {
         self.poll_written(cx).map_ok(|_| ())
     }
 
+    /// Closes the writable side once the writes under way have gone; then,
+    /// with a read still waiting, closes the socket and waits for that
+    /// read to settle, which it does only while the invocation lasts
+    /// (chunk 8.4e).
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         std::task::ready!(self.poll_written(cx))?;
-        let mut closing = match self.closing.take() {
-            Some(closing) => closing,
-            None => JsFuture::from(self.socket()?.writable().close()),
-        };
-        match Pin::new(&mut closing).poll(cx) {
-            Poll::Pending => {
+        if !self.shut {
+            // Through the writer, which holds the writable stream's lock.
+            let mut closing = match self.closing.take() {
+                Some(closing) => closing,
+                None => JsFuture::from(self.writer()?.close()),
+            };
+            let Poll::Ready(closed) = Pin::new(&mut closing).poll(cx) else {
                 self.closing = Some(closing);
-                Poll::Pending
+                return Poll::Pending;
+            };
+            closed.map_err(|error| failed(io::ErrorKind::BrokenPipe, &error))?;
+            self.shut = true;
+            if let (Reading::Waiting(_), Some(socket)) = (&self.reading, &self.socket) {
+                let _ = socket.close();
             }
-            Poll::Ready(result) => Poll::Ready(
-                result
-                    .map(|_| ())
-                    .map_err(|error| failed(io::ErrorKind::BrokenPipe, &error)),
-            ),
         }
+        if let Reading::Waiting(read) = &mut self.reading {
+            // Whatever it gives, nothing more is read.
+            let _ = std::task::ready!(Pin::new(read).poll(cx));
+            self.reading = Reading::Ended;
+        }
+        Poll::Ready(Ok(()))
     }
 }

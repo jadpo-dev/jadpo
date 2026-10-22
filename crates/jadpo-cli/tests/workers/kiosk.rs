@@ -26,8 +26,10 @@
 //! waits, and answers with the ticket read back from the database; a thank
 //! you's note is pinned up after its answer, in `waitUntil`; its readiness
 //! check reaches the database; and each address `CF-Connecting-IP` gives
-//! has its own allowance of 120 requests a minute. Every event it logs is
-//! one JSON line carrying the build stamp.
+//! has its own allowance of 120 requests a minute; and over 500 bookings
+//! more its isolate's linear memory holds steady (chunk 8.4e), read
+//! through an entrypoint the test's own main module adds beside the
+//! shim's. Every event it logs is one JSON line carrying the build stamp.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -411,8 +413,41 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     );
     assert_eq!(status, 404, "{body}");
 
+    // Its isolate's memory holds steady over many bookings (chunk 8.4e):
+    // the connection each booking opens says goodbye to the database
+    // within the invocation that opened it, so nothing of it is kept once
+    // that ends. Before, each was left waiting for its socket to close,
+    // which workerd never settles once its invocation has ended: some 20 KB
+    // a booking, never given back. Each booking comes from an address of
+    // its own, within its allowance.
+    let book = |at: usize| {
+        let address = format!("198.51.100.{}", at % 250 + 1);
+        let (status, body) =
+            worker.send("POST", "/repairs", &[("CF-Connecting-IP", &address)], LAMP);
+        assert_eq!(status, 201, "{body}\n{}", worker.log());
+    };
+    (0..WARM_BOOKINGS).for_each(book);
+    let warm = worker.linear_memory();
+    (WARM_BOOKINGS..WARM_BOOKINGS + BOOKINGS).for_each(book);
+    let after = worker.linear_memory();
+    println!(
+        "measured: the kiosk's linear memory {warm} bytes after {WARM_BOOKINGS} bookings, {after} after {BOOKINGS} more"
+    );
+    assert!(
+        after.saturating_sub(warm) <= STEADY_BYTES,
+        "the kiosk's linear memory grew from {warm} to {after} bytes over {BOOKINGS} bookings"
+    );
+
     // Every line it logged is one JSON object carrying the stamp.
     for event in worker.events("") {
         stamped(&event, built, kiosk);
     }
 }
+
+/// The bookings that bring the kiosk's memory to its working size, and
+/// those its memory then holds steady over: by at most [`STEADY_BYTES`],
+/// a few of WebAssembly's 64 KiB pages, where a booking's leaked
+/// connection was some 20 KB, 8 MB over these (chunk 8.4e).
+const WARM_BOOKINGS: usize = 100;
+const BOOKINGS: usize = 400;
+const STEADY_BYTES: u64 = 512 * 1024;

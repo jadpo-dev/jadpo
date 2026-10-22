@@ -5,7 +5,10 @@
 //!
 //! - [`WorkersHost`]: the runtime's `Host` for one invocation: each
 //!   connection's driver as the factory built it from the plan
-//!   ([`WorkersHost::supplies`]), randomness from Web Crypto's
+//!   ([`WorkersHost::supplies`]), built when the invocation first reaches
+//!   a connection, so one that reaches none builds nothing, the invocation
+//!   kept, once its host is dropped, until its connections have said
+//!   goodbye (chunk 8.4e), randomness from Web Crypto's
 //!   `getRandomValues`, the wall clock (`Date.now()`) and a monotonic clock
 //!   made from it, timers on `setTimeout`, settings from the Worker's
 //!   bindings, the work a response leaves run through `ctx.waitUntil` and
@@ -77,7 +80,7 @@ pub mod testing;
 mod timer;
 mod transport;
 
-use std::cell::Cell;
+use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -97,7 +100,7 @@ pub use js::ExecutionContext;
 pub use opening::Opening;
 pub use passkeys::WorkersPasskeys;
 pub use ratelimit::LIMIT_TIMEOUT_MS;
-pub use transport::{WorkersStream, WorkersTransport};
+pub use transport::{Tasks, WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
 /// deployable's crate exports (`#[wasm_bindgen(wasm_bindgen = …)]`), so
 /// that crate depends on this one alone.
@@ -174,15 +177,23 @@ pub(crate) fn wall_clock() -> Option<i64> {
     (now.is_finite() && now >= 0.0).then_some(now as i64)
 }
 
+/// What builds an invocation's drivers over what its host supplies
+/// ([`WorkersHost::supplies`]).
+type BuildDrivers = Box<dyn FnOnce(&Supplies) -> Drivers>;
+
 /// The runtime's host for one invocation of a Worker: its `env` and `ctx`,
 /// and the drivers built for it. A socket belongs to the invocation that
-/// opened it, so the drivers that hold connections are built for each.
+/// opened it, so the drivers that hold connections are built for each,
+/// when it first reaches a connection (chunk 8.4e).
 pub struct WorkersHost {
     /// The Worker's bindings: its settings among them.
     env: JsValue,
     /// The invocation's context, when it has one.
     ctx: Option<ExecutionContext>,
-    drivers: Drivers,
+    /// The invocation's drivers, once built.
+    drivers: OnceCell<Drivers>,
+    /// What builds them, until they are built: none builds none.
+    build: RefCell<Option<BuildDrivers>>,
     outbound: WorkersOutbound,
     /// Where rate limits are counted: the plan's store, when it names one.
     rate_limits: Option<Rc<RateLimitStore>>,
@@ -198,6 +209,33 @@ pub struct WorkersHost {
     /// The invocation's six places for connections being opened, which
     /// its drivers and its own fetches share.
     opening: Rc<Opening>,
+    /// The tasks its drivers' connections run, which it keeps the
+    /// invocation for once dropped (chunk 8.4e).
+    tasks: Rc<Tasks>,
+}
+
+impl Drop for WorkersHost {
+    /// Keeps the invocation, through its `waitUntil`, until the tasks its
+    /// drivers' connections run have ended (chunk 8.4e): its drivers are
+    /// dropped next, which starts each connection's goodbye, and workerd
+    /// settles nothing of an invocation that has ended, so a connection
+    /// whose goodbye outlived it would be kept for the isolate's life.
+    /// Dropped while the invocation lasts: after its response, or with the
+    /// work that response left, or with the answer it streams.
+    fn drop(&mut self) {
+        let Some(ctx) = &self.ctx else {
+            return;
+        };
+        if self.tasks.running() == 0 {
+            return;
+        }
+        let tasks = Rc::clone(&self.tasks);
+        let ended = wasm_bindgen_futures::future_to_promise(async move {
+            tasks.ended().await;
+            Ok(JsValue::UNDEFINED)
+        });
+        let _ = ctx.wait_until(&ended);
+    }
 }
 
 impl std::fmt::Debug for WorkersHost {
@@ -221,23 +259,27 @@ impl WorkersHost {
         WorkersHost {
             env,
             ctx,
-            drivers: Drivers::default(),
+            drivers: OnceCell::new(),
+            build: RefCell::new(None),
             outbound: WorkersOutbound::default().counted(Rc::clone(&opening)),
             rate_limits: None,
             log: None,
             cron: None,
             handed_on: None,
             opening,
+            tasks: Rc::default(),
         }
     }
 
     /// What the driver factory builds this invocation's drivers over: the
     /// target, `connect()` and `fetch()`, their connections counted among
-    /// the invocation's six with its own fetches, and no disk, which a
-    /// Worker hasn't got.
+    /// the invocation's six with its own fetches and their tasks among its
+    /// own (chunk 8.4e), and no disk, which a Worker hasn't got.
     pub fn supplies(&self) -> Supplies {
+        let transport =
+            WorkersTransport::counted(Rc::clone(&self.opening)).tracking(Rc::clone(&self.tasks));
         Supplies::on(Target::Workers)
-            .with_transport(Rc::new(WorkersTransport::counted(Rc::clone(&self.opening))))
+            .with_transport(Rc::new(transport))
             .with_fetch(Rc::new(WorkersFetch::counted(Rc::clone(&self.opening))))
     }
 
@@ -278,9 +320,32 @@ impl WorkersHost {
 
     /// Gives each connection the driver `drivers` built for it from the
     /// plan's connections table, over [`WorkersHost::supplies`].
-    pub fn with_drivers(mut self, drivers: Drivers) -> WorkersHost {
-        self.drivers = drivers;
+    pub fn with_drivers(self, drivers: Drivers) -> WorkersHost {
+        let _ = self.drivers.set(drivers);
         self
+    }
+
+    /// Builds the invocation's drivers with `build`, over
+    /// [`WorkersHost::supplies`], when it first reaches a connection: a
+    /// request that reaches none, as the readiness check mostly doesn't,
+    /// builds none (chunk 8.4e).
+    pub fn with_drivers_built_by(
+        self,
+        build: impl FnOnce(&Supplies) -> Drivers + 'static,
+    ) -> WorkersHost {
+        *self.build.borrow_mut() = Some(Box::new(build));
+        self
+    }
+
+    /// The invocation's drivers, built now if they weren't yet.
+    fn drivers(&self) -> &Drivers {
+        self.drivers.get_or_init(|| {
+            let build = self.build.borrow_mut().take();
+            match build {
+                Some(build) => build(&self.supplies()),
+                None => Drivers::default(),
+            }
+        })
     }
 
     /// Guards the runtime's own fetches with `outbound`, which take places
@@ -290,9 +355,10 @@ impl WorkersHost {
         self
     }
 
-    /// Each connection whose driver the factory couldn't build, and why.
+    /// Each connection whose driver the factory couldn't build, and why:
+    /// building the drivers if they weren't yet.
     pub fn unbuilt(&self) -> &[Unbuilt] {
-        self.drivers.unbuilt()
+        self.drivers().unbuilt()
     }
 }
 
@@ -334,7 +400,7 @@ thread_local! {
 
 impl Host for WorkersHost {
     fn capability(&self, connection: &str) -> Option<&dyn Capability> {
-        self.drivers.capability(connection)
+        self.drivers().capability(connection)
     }
 
     /// The PostgreSQL store the factory built, with the `postgres`
@@ -342,7 +408,7 @@ impl Host for WorkersHost {
     fn database(&self, store: &str) -> Option<&dyn Database> {
         #[cfg(feature = "postgres")]
         return self
-            .drivers
+            .drivers()
             .database(store)
             .map(|store| store as &dyn Database);
         #[cfg(not(feature = "postgres"))]

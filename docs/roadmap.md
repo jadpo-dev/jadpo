@@ -189,15 +189,8 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   Decisions.
 - [x] **8.4d Phase 8 review fixes: addresses and connections**: areas 5,
   10, 11 and 16, Decisions; §2.6.
-- [ ] **8.4e Workers speed and memory** `opus · xhigh`, after 8.4c:
-  the Wasm module's memory growing about 17 KB a booking and never
-  given back (5 MB to 253 MB over 14,000 bookings; Cloudflare's isolate
-  limit is 128 MB) found and fixed, proved by a long run under workerd
-  holding steady; one reader and one writer per socket for its life in
-  place of one per read and write (about half of workerd's CPU in 8.3's
-  profile); the drivers built when a request first uses a store; then
-  8.3's harness run again and its numbers recorded beside the first
-  (§2.11).
+- [x] **8.4e Workers speed and memory**: §2.6, "The Workers host"; §2.11,
+  "After chunk 8.4e".
 - [x] **8.4f Before the real deploy**: §2.6, "Before the real deploy";
   area 14, Decisions.
 - [x] **8.4g Builds and CI kept quick**: §2.5, "Keeping rustc time down";

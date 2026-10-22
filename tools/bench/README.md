@@ -11,6 +11,7 @@ the gate.
 python3 tools/bench/run.py                 # build everything, then 3 rounds
 python3 tools/bench/run.py --skip-build --rounds 5 --duration 15
 python3 tools/bench/run.py --skip-build --profile   # where workerd's time goes
+python3 tools/bench/run.py --skip-build --soak 600 --targets workers   # memory over a long run
 ```
 
 It needs Rust (the repository's pinned toolchain), PostgreSQL 16's
@@ -59,9 +60,23 @@ readiness answer (its cold start), then drives each route with
 keeps one keep-alive connection and sends its next request when the last
 is answered, for 2 seconds unmeasured and 10 measured, every request
 from an address of its own. While it runs, the harness samples the
-server's CPU time (`ps`) and memory (resident set, every 250 ms). Rounds
-rotate the servers' order; the summary gives each measure's median over
-the rounds and its range. `work/results.json` keeps every run.
+server's CPU time (`ps`) and memory (resident set, every 250 ms), and
+after it a Worker's linear memory, the WebAssembly module's own (chunk
+8.4e): workerd serves the kiosk with a main module of the harness's own
+that re-exports the shim `jadpo build` wrote, so requests reach its
+handlers unchanged, and adds one entrypoint, `JadpoMemory`, which a
+second Worker on a port of its own calls to read the size of the
+module's memory. Rounds rotate the servers' order; the summary gives each
+measure's median over the rounds and its range. `work/results.json` keeps
+every run.
+
+`--soak SECONDS` books on each target for that long instead, at 16
+connections, a window of `--soak-step` seconds (30) at a time, printing
+after each window the bookings so far, its throughput and CPU a booking,
+the peak resident memory in it and the linear memory at its end;
+`work/soak.json` keeps them. A module that keeps something of every
+booking shows it here as linear memory that grows with the bookings
+rather than settling at its working size.
 
 ## What the numbers are not
 

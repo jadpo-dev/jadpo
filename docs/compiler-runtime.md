@@ -3439,8 +3439,9 @@ request's `WorkersHost`), `ClientAddress::read` with `Target::Workers`,
 whose refusal is a problem, and `Program::with_config_on(values,
 Target::Workers)`; a failure is logged once and the isolate answers each
 request `http::unavailable` (503 with a request id, as the runtime
-answers). Each request then builds its drivers through the factory over
-`supplies()` on a `WorkersHost` of its own, and, until the isolate has
+answers). Each request then has its drivers built through the factory
+over `supplies()` on a `WorkersHost` of its own, when it first reaches a
+connection (chunk 8.4e), and, until the isolate has
 found every store current, compares them first through that host's
 databases, answering 503 with `runtime.startup_failed` or
 `runtime.waiting` while one isn't, so a migration applied after a
@@ -4480,12 +4481,17 @@ never called, so the workspace builds, lints and tests as one.
 - **`WorkersHost`** is one invocation's `Host`, made from its `env` and
   `ctx`: the drivers the factory built over `supplies()`
   (`Target::Workers`, `WorkersTransport`, `WorkersFetch`, no disk), for
-  each invocation, since a socket belongs to the request that opened it;
-  randomness from `crypto.getRandomValues`, 65,536 bytes a call; the
-  wall clock, `Date.now()`, and a monotonic clock made from it that never
-  goes back past an earlier reading (Workers moves both on only while an
-  invocation waits, never while it computes); timers on `setTimeout`,
-  cleared when a wait is dropped; settings from the bindings, a text
+  each invocation, since a socket belongs to the request that opened it,
+  built when it first reaches a connection, so one that reaches none (a
+  readiness check answered from its last second's) builds none, and the
+  connections that can't be built found once an isolate, at its start
+  (chunk 8.4e); randomness from `crypto.getRandomValues`, 65,536 bytes a
+  call; the wall clock, `Date.now()`, and a monotonic clock made from it
+  that never goes back past an earlier reading (Workers moves both on
+  only while an invocation waits, never while it computes); timers on
+  `setTimeout`, cleared when a wait is dropped, its promise then settled
+  by hand, so nothing is left waiting on it (chunk 8.4e); settings from
+  the bindings, a text
   binding being a variable or a secret; `defer` through `ctx.waitUntil`;
   rate limits in Cloudflare's rate-limiting binding when the plan's store
   (`RouteTable::rate_limits`, `rate_limits: { store: }`) is one, each
@@ -4514,10 +4520,29 @@ never called, so the workspace builds, lints and tests as one.
   a check that fails is natively; a driver that judges a failed check
   only by the upgrade's own answer (PostgreSQL's, chunk 8.1n) learns it
   at its first write instead, which PostgreSQL's driver keeps since chunk
-  8.2i ("PostgreSQL through Hyperdrive", below). A stream holds
-  its streams' locks only while it reads or writes, so it can be
-  upgraded between them, and closes its socket when dropped; a Unix
-  socket is `Unsupported`.
+  8.2i ("PostgreSQL through Hyperdrive", below). A stream reads and
+  writes through one reader and one writer for its socket's life, each
+  taken at its first read or write and released only to upgrade it,
+  between them (chunk 8.4e; before, one of each for every read and write
+  was about half of workerd's time on a booking, §2.11), and closes its
+  socket when dropped; a Unix socket is `Unsupported`. **A connection
+  ends within the invocation that opened it** (chunk 8.4e): workerd never
+  settles a promise of an invocation that has ended, and whatever waits
+  on one is kept for the isolate's life. So the transport counts the
+  tasks it starts for its connections (`Tasks`), and an invocation's
+  `WorkersHost`, once dropped (after its response, with the work that
+  left, or with the answer it streams), keeps the invocation through
+  `waitUntil` until they have ended: dropping its drivers is what starts
+  each connection's goodbye. Shutting a stream down closes its writable
+  side after the driver's goodbye (PostgreSQL's `Terminate`), then, with
+  a read still waiting, the socket, waiting for that read to settle. An
+  invocation therefore lasts a round trip past its host (chosen in chunk
+  8.4e, 2026-10-22: closing without the goodbye would end it sooner but
+  leave the server or Hyperdrive a connection broken off; holding the
+  invocation from a connection's start instead kept it alive while a
+  streamed answer's host lived, so a client going away no longer ended
+  the model's call). Before, each booking's connection was left waiting,
+  some 20 KB of the module's memory never given back (§2.11).
 - **`WorkersFetch`** sends through `fetch()` with `redirect: "manual"`,
   so a `3xx` is an answer, races the whole exchange (or a streamed
   answer's head, then each piece) against a timer, and when the timer
@@ -4573,7 +4598,10 @@ more (without the abort it is held until the invocation ends, which the
 test was checked against), a streamed answer read piece by piece and
 stopped at a piece's timeout the same way, the outbound guard, work run
 after the response through `waitUntil`, rate limits kept across an
-isolate's requests, a connection's task run, and the factory's supplies;
+isolate's requests, a connection's task run (since chunk 8.4e one still
+running when its host is dropped ending after the answer, which it never
+did once the invocation had ended), the drivers built only once a
+connection is reached, and the factory's supplies;
 since chunk 8.2l a seventeenth registers a passkey made by the test
 authenticator and signs in with it twice, keeping what the native host
 keeps of the same device's passkey, an answer from another site and a
@@ -5143,3 +5171,56 @@ when a request first uses a store, then measures again with this
 harness; Phase 9 closes what is left. Together the bridge and the
 collector are about 60% of the CPU, so 8.4e alone would leave Wasm near
 0.8 ms a booking against Bun's 0.5, still past the 25% the roadmap set.
+
+**After chunk 8.4e** (measured 2026-10-22). *Why memory grew*: every
+booking's PostgreSQL connection was left waiting for its goodbye. Once
+the request's drivers were dropped, tokio-postgres wrote `Terminate` and
+closed the socket's writable side, but by then the invocation had
+answered and ended, and workerd never settles a promise of an ended
+invocation, so the connection's task (its buffers, some 19 KB) waited
+for the isolate's life: counted under workerd, after 900 connections
+871 tasks were still alive, 858 of them waiting on that close. Smaller, a timer dropped before
+it fired cleared its timeout and left its promise unsettled, keeping
+wasm-bindgen's callbacks, and a socket's last read was never settled.
+*The fix* (§2.6, "The Workers host"): a `WorkersHost`, once dropped,
+keeps the invocation through `waitUntil` until its connections' tasks
+have ended; shutting a stream down closes the socket and waits for its
+last read; a dropped timer settles its promise. Also built: one reader
+and one writer for a socket's life, and the drivers built when a request
+first reaches a connection. `workers.rs` holds the kiosk's linear memory
+to within 512 KiB over 400 bookings after 100 (it failed before, 7.5 MB
+to 14.9 MB); the harness reads it after each measurement and, with
+`--soak`, over a long run.
+
+Same harness, medians of 3 rounds, the module as 8.4f builds it (link
+time optimisation, `opt-level = "s"`), load average 4 to 10 for most
+rows and up to 28 for some of the third round's (other chunks' builds).
+"Before" is the same tree with `jadpo-host-workers` as on `main`,
+measured straight after, at load 5 to 8:
+
+| Booking | Wasm before | Wasm after 8.4e | Bun | Native |
+|---|---:|---:|---:|---:|
+| req/s, 1 / 16 / 64 connections | 232 / 470 / 399 | 242 / 609 / 565 | 978 / 2,061 / 1,260 | 575 / 2,494 / 2,900 |
+| p50 / p99 ms, 16 connections | 29.5 / 127 | 24.8 / 46.2 | 7.5 / 11.1 | 3.5 / 52.5 |
+| server CPU ms a booking, 16 connections | 2.15 | 1.64 | 0.50 | 0.74 |
+| linear memory MB, after 1 / 16 / 64 connections | 60 / 161 / 249 | 10.8 / 11.7 / 14.1 | | |
+| peak resident MB, 64 connections | 458 | 240 | 98 | 26 |
+
+The readiness check at 16 connections: Wasm 15,084 req/s at 66 µs a
+request before, 17,543 at 57 µs after. Bun at 64 connections and native
+at one varied most with the load (1,104 to 2,250 and 129 to 657 req/s).
+Over a long run, 348,337 bookings in 10 minutes at 16 connections (545
+to 596 req/s, 1.68 to 1.81 CPU ms a booking), the linear memory stayed at
+11.7 MB from the first minute to the last; workerd's resident memory
+went from 250 to 306 MB, which this run doesn't explain (the JavaScript
+heap wasn't read): still to be checked, in Phase 9 or on the real edge.
+
+So 8.4e takes a booking's CPU on Workers down 23% (2.15 to 1.64 ms) and
+its throughput up 30% at 16 connections and 42% at 64, and the module
+no longer grows. Against Bun, Wasm is still 70% behind at 16
+connections and uses 3.3× the CPU a booking; Phase 9 closes that gap.
+Where the time goes now (V8's profile, booking at 16 connections, under
+the inspector): the socket bridge's `write` and `read` themselves, about
+a third of the samples, `queueMicrotask` 7%, garbage collection 4%,
+Jadpo's compiled code a few percent; no reader's or writer's
+constructor nor `releaseLock`.

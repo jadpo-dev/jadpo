@@ -14,9 +14,12 @@
 //! settings from the bindings through `config::load`, and refuses a
 //! `client_address:` source other than `cloudflare`; a problem there logs
 //! `runtime.startup_failed` once and the isolate answers every request 503.
-//! Then each request builds its drivers through the factory over
+//! Then each request has its drivers built through the factory over
 //! `connect()` and `fetch()`, on a host of its own, since a socket belongs
-//! to the request that opened it; until each store has been compared with
+//! to the request that opened it, when it first reaches a connection, so
+//! one that reaches none builds none (chunk 8.4e); the connections whose
+//! drivers can't be built are the same for every request, so the isolate
+//! finds them once, at its start; until each store has been compared with
 //! the build's migrations and found current, which then holds for the
 //! isolate, the request compares them first and, finding one behind,
 //! ahead or out of reach, logs it and answers 503, so a migration applied
@@ -49,7 +52,7 @@
 use std::cell::{Cell, OnceCell};
 use std::rc::Rc;
 
-use jadpo_drivers::factory::Drivers;
+use jadpo_drivers::factory::{Drivers, Supplies, Unbuilt};
 use jadpo_runtime::compiled::Program;
 use jadpo_runtime::config::HostVariables;
 use jadpo_runtime::deployable::{Log, Logged, Then, compare_stores, waiting};
@@ -79,6 +82,9 @@ struct Isolate {
     worker: Rc<Worker>,
     /// Where its rate limits are counted (chunk 8.2m2).
     rate_limits: Option<Rc<RateLimitStore>>,
+    /// Each connection whose driver can't be built, the same for every
+    /// invocation, found at the isolate's start (chunk 8.4e).
+    unbuilt: Vec<Unbuilt>,
     log: Log,
     /// Whether each store has been compared with the build's migrations
     /// and found current: until then each request compares them again.
@@ -133,8 +139,7 @@ pub fn hand_on(deployable: &Deployable, work: String, env: JsValue, ctx: JsValue
         return JsValue::UNDEFINED;
     };
     let deployable = *deployable;
-    let drivers = drivers(&isolate.program, &host);
-    let host = Rc::new(host.with_drivers(drivers));
+    let host = Rc::new(host.with_drivers_built_by(drivers(&isolate.program)));
     let fresh = Rc::clone(&host);
     host.defer(Box::pin(async move {
         if !ready(&deployable, &fresh, &isolate).await {
@@ -159,9 +164,8 @@ async fn respond(
     let Some(isolate) = isolate(deployable, &host) else {
         return http::unavailable(&host);
     };
-    let drivers = drivers(&isolate.program, &host);
     let host = host
-        .with_drivers(drivers)
+        .with_drivers_built_by(drivers(&isolate.program))
         .with_rate_limits(isolate.rate_limits.clone())
         .with_log(isolate.log);
     if !ready(deployable, &host, &isolate).await {
@@ -184,8 +188,7 @@ async fn cron(deployable: &Deployable, controller: &JsValue, env: JsValue, ctx: 
     let Some(isolate) = isolate(deployable, &host) else {
         return;
     };
-    let drivers = drivers(&isolate.program, &host);
-    let host = host.with_drivers(drivers);
+    let host = host.with_drivers_built_by(drivers(&isolate.program));
     if !ready(deployable, &host, &isolate).await {
         return;
     }
@@ -246,9 +249,13 @@ async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -
         return false;
     }
     if !isolate.current.replace(true) {
-        isolate
-            .log
-            .event("runtime.started", [("unbuilt", unbuilt(host))]);
+        isolate.log.event(
+            "runtime.started",
+            [(
+                "unbuilt",
+                jadpo_runtime::deployable::unbuilt(&isolate.unbuilt),
+            )],
+        );
     }
     true
 }
@@ -257,7 +264,7 @@ async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -
 /// `Worker`, each fault behind a 500 and each tick logged.
 fn serving(isolate: &Isolate, host: Rc<WorkersHost>) -> Serving {
     let program = Rc::clone(&isolate.program);
-    let logged = Rc::new(Logged::new(isolate.log, host.unbuilt()));
+    let logged = Rc::new(Logged::new(isolate.log, &isolate.unbuilt));
     Serving::new(host, move || -> Rc<dyn Executor> {
         Rc::clone(&program) as Rc<dyn Executor>
     })
@@ -275,17 +282,24 @@ fn isolate(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
 fn start(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
     let log = Log::new(deployable.stamp, js::log);
     match started(deployable, host) {
-        Ok(program) => Some(Rc::new(Isolate {
-            rate_limits: program
-                .plan()
-                .routes
-                .and_then(|routes| routes.rate_limits.clone())
-                .map(Rc::new),
-            program: Rc::new(program),
-            worker: Rc::default(),
-            log,
-            current: Cell::new(false),
-        })),
+        Ok(program) => {
+            let program = Rc::new(program);
+            // Built once to see which can't be, and dropped: nothing
+            // connects until a transaction begins.
+            let unbuilt = drivers(&program)(&host.supplies()).unbuilt().to_vec();
+            Some(Rc::new(Isolate {
+                rate_limits: program
+                    .plan()
+                    .routes
+                    .and_then(|routes| routes.rate_limits.clone())
+                    .map(Rc::new),
+                program,
+                worker: Rc::default(),
+                unbuilt,
+                log,
+                current: Cell::new(false),
+            }))
+        }
         Err(problems) => {
             log.event(
                 "runtime.startup_failed",
@@ -303,12 +317,15 @@ fn started(deployable: &Deployable, host: &WorkersHost) -> Result<Program, Vec<V
         .map(|(program, _)| program)
 }
 
-/// The invocation's drivers, built by the factory from the program's
-/// connections over `connect()` and `fetch()`, sharing `host`'s six places
-/// for connections being opened (chunk 8.2j).
-fn drivers(program: &Program, host: &WorkersHost) -> Drivers {
-    match program.started() {
-        Some(started) => Drivers::build(&program.runtime().connections, &started, &host.supplies()),
+/// What builds an invocation's drivers: the factory, from the program's
+/// connections, over what its host supplies (`connect()` and `fetch()`,
+/// sharing the invocation's six places for connections being opened,
+/// chunk 8.2j), when the invocation first reaches a connection (chunk
+/// 8.4e).
+fn drivers(program: &Rc<Program>) -> impl FnOnce(&Supplies) -> Drivers + 'static {
+    let program = Rc::clone(program);
+    move |supplies| match program.started() {
+        Some(started) => Drivers::build(&program.runtime().connections, &started, supplies),
         None => Drivers::default(),
     }
 }
@@ -335,12 +352,6 @@ async fn stores_current(deployable: &Deployable, host: &WorkersHost, log: &Log) 
         return false;
     }
     stores.unreachable.is_empty()
-}
-
-/// Each connection whose driver wasn't built, for `runtime.started`: the
-/// runtime answers it `misconfigured` when it is used.
-fn unbuilt(host: &WorkersHost) -> Value {
-    jadpo_runtime::deployable::unbuilt(host.unbuilt())
 }
 
 /// The runtime's request from Workers' `Request`: its body read whole or,

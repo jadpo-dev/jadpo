@@ -43,7 +43,7 @@ pub async fn fetch(
     let query = url.search_params();
     let param = |name: &str| query.get(name).unwrap_or_default();
     let number = |name: &str| param(name).parse::<u64>().unwrap_or(0);
-    let host = outbound_reaching(WorkersHost::new(env.clone(), ctx), &env);
+    let host = outbound_reaching(WorkersHost::new(env.clone(), ctx.clone()), &env);
     let answer = match url.pathname().as_str() {
         "/random" => random(&host),
         "/clock" => clock(&host).await,
@@ -199,6 +199,46 @@ pub async fn fetch(
             } else {
                 "didn't run".to_string()
             }
+        }
+        "/spawn-within" => {
+            // A connection's task its invocation's host started, still
+            // waiting when the host is dropped and the answer goes: the
+            // host keeps the invocation for it (chunk 8.4e).
+            let key = param("key");
+            let fresh = WorkersHost::new(env.clone(), ctx.clone());
+            match fresh.supplies().transport {
+                Some(transport) => {
+                    let waits = Rc::clone(&transport);
+                    transport.spawn(Box::pin(async move {
+                        waits.sleep(150).await;
+                        DONE.with(|done| done.borrow_mut().insert(key));
+                    }));
+                    drop(fresh);
+                    "spawned".to_string()
+                }
+                None => "error:no transport".to_string(),
+            }
+        }
+        "/drivers" => {
+            // The drivers built when the invocation first reaches a
+            // connection, once (chunk 8.4e).
+            let built = Rc::new(Cell::new(0));
+            let counted = Rc::clone(&built);
+            let fresh = WorkersHost::new(env.clone(), JsValue::UNDEFINED).with_drivers_built_by(
+                move |_| {
+                    counted.set(counted.get() + 1);
+                    jadpo_drivers::factory::Drivers::default()
+                },
+            );
+            let made = built.get();
+            let _ = (fresh.variable("ANY"), fresh.now_ms(), fresh.supplies());
+            let used = built.get();
+            let _ = (
+                fresh.capability("main"),
+                fresh.database("main"),
+                fresh.unbuilt(),
+            );
+            format!("made:{made} used:{used} reached:{}", built.get())
         }
         "/supplies" => {
             let supplies = host.supplies();

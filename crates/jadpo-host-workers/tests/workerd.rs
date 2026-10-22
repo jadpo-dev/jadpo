@@ -439,6 +439,35 @@ fn the_transport_runs_a_connections_task() {
     assert_eq!(bed().get("/spawn"), "ran");
 }
 
+/// A connection's task an invocation's host started, still running when
+/// the host is dropped, keeps the invocation, through its `waitUntil`,
+/// until it ends (chunk 8.4e): the probe answers at once, and the task,
+/// waiting on a timer, ends after the answer has gone, which it never does
+/// once its invocation has ended.
+#[test]
+fn a_connections_task_runs_within_its_invocation() {
+    let bed = bed();
+    assert_eq!(bed.get("/spawn-within?key=within"), "spawned");
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        let seen = bed.get("/deferred?key=within");
+        if seen == "done" {
+            break;
+        }
+        assert_eq!(seen, "not yet");
+        assert!(Instant::now() < until, "the task never ended");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// An invocation's drivers are built when it first reaches a connection,
+/// and once: one that reaches none, as a readiness check mostly doesn't,
+/// builds none (chunk 8.4e).
+#[test]
+fn the_drivers_are_built_when_a_connection_is_first_reached() {
+    assert_eq!(bed().get("/drivers"), "made:0 used:0 reached:1");
+}
+
 /// The driver factory is given Workers' transport and HTTP, and no disk.
 #[test]
 fn the_factory_is_supplied_for_workers() {
