@@ -30,8 +30,10 @@ merged and anything that needs Richard.
 
 ## Who builds what (Richard, 2026-10-22)
 
-Claude builds the Phase 8 review chunks (8.4a–8.4d, 8.4f–8.4i) as
-usual. Codex builds performance: 8.4e, then Phase 9's 9.1 and 9.2. When
+Claude finishes Phase 8 (the review chunks 8.4a–8.4i) as usual. Codex
+builds Phase 9, performance, starting once 8.4c, 8.4e and 8.4f have
+merged, since they change what a deployable runs and how it is built.
+When
 Codex builds a chunk it works on its own `chunk-<id>` branch in a
 worktree beside the repository, follows the working rules below and
 passes the full gate, ticks the chunk with its "Built:" note, pushes, and
