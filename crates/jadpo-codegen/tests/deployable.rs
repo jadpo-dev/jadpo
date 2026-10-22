@@ -88,6 +88,14 @@ fn a_deployable_is_its_program_and_a_binary_named_after_it() {
         manifest.contains("members = [\"program\", \"deployable\"]"),
         "{manifest}"
     );
+    // Built as it ships (chunk 8.4f): the whole program optimised as one
+    // unit at link time, for speed natively, its symbols kept for a
+    // backtrace and a profiler.
+    assert!(
+        manifest.contains("[profile.release]\nopt-level = 3\nlto = \"fat\"\ncodegen-units = 1\n"),
+        "{manifest}"
+    );
+    assert!(!manifest.contains("strip"), "{manifest}");
     assert_eq!(
         text(files, "rust-toolchain.toml"),
         "[toolchain]\nchannel = \"1.99.0\"\n"
@@ -185,6 +193,15 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
         "{:?}",
         files.keys()
     );
+    // A Worker's module is optimised for size, under a plan's limit on
+    // what it uploads, as one unit at link time (chunk 8.4f); its names go
+    // when it is bound (`workers::bind`).
+    let manifest = text(files, "Cargo.toml");
+    assert!(
+        manifest
+            .contains("[profile.release]\nopt-level = \"s\"\nlto = \"fat\"\ncodegen-units = 1\n"),
+        "{manifest}"
+    );
     assert!(text(files, "program/Cargo.toml").contains("name = \"jadpo-program-kiosk\""));
     // A `cdylib` named after the deployable, on the Workers host with the
     // one driver it reaches beyond HTTP, without the `testing` feature.
@@ -263,10 +280,11 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
     ] {
         assert!(shim.contains(held), "{held} isn't in:\n{shim}");
     }
-    let wrangler: serde_json::Value = serde_json::from_str(&workers::wrangler(
-        "back_office",
-        &["MAIL_SENDER".to_string()],
-        &[
+    let file = workers::Wrangler {
+        app: "Acme Ops",
+        deployable: "back_office",
+        required: &["MAIL_SENDER".to_string()],
+        hyperdrive: &[
             workers::Hyperdrive {
                 binding: "DATABASE_URL".to_string(),
                 id: Some("c020574a5623407bbe0ccd192bab9545".to_string()),
@@ -276,13 +294,18 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 id: None,
             },
         ],
-        true,
-    ))
-    .expect("JSON");
+        ticks: true,
+        rate_limits: &[],
+        queues: &[],
+    };
+    let written = workers::wrangler(&file);
+    let wrangler: serde_json::Value = serde_json::from_str(&written).expect("JSON");
     assert_eq!(
         wrangler,
         serde_json::json!({
-            "name": "back-office",
+            // The app's name and the deployable's (chunk 8.4f), so two
+            // apps' `back_office`s are two Workers in one account.
+            "name": "acme-ops-back-office",
             "main": "worker.mjs",
             "compatibility_date": workers::COMPATIBILITY_DATE,
             "no_bundle": true,
@@ -293,6 +316,10 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 // without saying so (chunk 8.2k).
                 { "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": false },
             ],
+            // Workers Logs keeps what the Worker logs only when it is
+            // enabled, which Wrangler leaves off unless the file says so
+            // (chunk 8.4f).
+            "observability": { "enabled": true },
             "secrets": { "required": ["MAIL_SENDER"] },
             // Each database's address is a Hyperdrive binding (chunk
             // 8.2i), with the id the build was given; without one, Wrangler
@@ -309,16 +336,80 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
             // where a service binding would still name `back-office`.
         })
     );
+    // Written for a person to read: its name first, a short entry on one
+    // line, the same file every time.
+    assert!(
+        written
+            .starts_with("{\n  \"name\": \"acme-ops-back-office\",\n  \"main\": \"worker.mjs\",\n"),
+        "{written}"
+    );
+    assert!(
+        written.contains(
+            "\n    { \"type\": \"ESModule\", \"globs\": [\"**/*.mjs\", \"**/*.js\"] },\n"
+        ),
+        "{written}"
+    );
+    assert!(written.ends_with("\n}\n"), "{written}");
+    assert_eq!(workers::wrangler(&file), written);
     // With no setting to give, there is no secret to require and no
     // binding to name; with no store for its tick to keep or sweep, no
     // cron to run it.
-    let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[], &[], false)).expect("JSON");
-    assert_eq!(bare["name"], "web");
-    assert!(bare.get("secrets").is_none(), "{bare}");
-    assert!(bare.get("hyperdrive").is_none(), "{bare}");
-    assert!(bare.get("triggers").is_none(), "{bare}");
-    assert!(bare.get("services").is_none(), "{bare}");
+    let bare: serde_json::Value = serde_json::from_str(&workers::wrangler(&workers::Wrangler {
+        app: "web",
+        deployable: "web",
+        required: &[],
+        hyperdrive: &[],
+        ticks: false,
+        rate_limits: &[],
+        queues: &[],
+    }))
+    .expect("JSON");
+    assert_eq!(bare["name"], "web-web");
+    assert_eq!(
+        bare["observability"],
+        serde_json::json!({ "enabled": true })
+    );
+    for absent in [
+        "secrets",
+        "hyperdrive",
+        "triggers",
+        "services",
+        "ratelimits",
+        "queues",
+    ] {
+        assert!(bare.get(absent).is_none(), "{absent} in {bare}");
+    }
+}
+
+/// A Worker's name on Cloudflare is its app's and its deployable's, in the
+/// letters, digits and dashes Cloudflare takes, at most 63 of them, the
+/// deployable's kept whole (chunk 8.4f).
+#[test]
+fn a_worker_is_named_after_its_app_and_its_deployable() {
+    for (app, deployable, name) in [
+        ("23-repair-cafe", "kiosk", "23-repair-cafe-kiosk"),
+        ("Repair Café", "back_office", "repair-caf-back-office"),
+        ("--acme__ops..", "web", "acme-ops-web"),
+        // A project with no name of its own, as a test's.
+        ("", "kiosk", "kiosk"),
+        ("Ω", "kiosk", "kiosk"),
+        (
+            "the-very-long-name-of-a-community-repair-cafe-in-a-market-town",
+            "back_office",
+            "the-very-long-name-of-a-community-repair-cafe-in-a-back-office",
+        ),
+    ] {
+        let named = workers::worker_name(app, deployable);
+        assert_eq!(named, name, "{app:?} and {deployable:?}");
+        assert!(named.len() <= 63, "{named}");
+        assert!(!named.starts_with('-') && !named.ends_with('-'), "{named}");
+        assert!(
+            named
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "{named}"
+        );
+    }
 }
 
 /// Each limit counted in Cloudflare's rate-limiting binding is a binding
@@ -329,11 +420,17 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
     let bindings =
         jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
             .expect("numbered");
-    let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
-        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true),
-        &bindings,
-    ))
-    .expect("JSON");
+    let wrangler: serde_json::Value =
+        serde_json::from_str(&workers::wrangler(&workers::Wrangler {
+            app: "shop",
+            deployable: "web",
+            required: &["DATABASE_URL".to_string()],
+            hyperdrive: &[],
+            ticks: true,
+            rate_limits: &bindings,
+            queues: &[],
+        }))
+        .expect("JSON");
     assert_eq!(
         wrangler["ratelimits"],
         serde_json::json!([
@@ -357,8 +454,6 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         wrangler["triggers"]["crons"],
         serde_json::json!(["* * * * *"])
     );
-    let plain = workers::wrangler("web", &[], &[], false);
-    assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }
 
 /// Each queue on Cloudflare Queues the Worker receives is a consumer in its
@@ -379,11 +474,20 @@ fn a_worker_consumes_each_cloudflare_queue_it_receives() {
             dead_letter_queue: format!("{name}-dead"),
         }),
     };
-    let wrangler: serde_json::Value = serde_json::from_str(&workers::queued(
-        workers::wrangler("depot", &[], &[], true),
-        &[queue("warehouse_queue", "warehouse-events")],
-    ))
-    .expect("JSON");
+    let bindings =
+        jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
+            .expect("numbered");
+    let file = workers::Wrangler {
+        app: "depot",
+        deployable: "depot",
+        required: &[],
+        hyperdrive: &[],
+        ticks: true,
+        rate_limits: &bindings,
+        queues: &[queue("warehouse_queue", "warehouse-events")],
+    };
+    let written = workers::wrangler(&file);
+    let wrangler: serde_json::Value = serde_json::from_str(&written).expect("JSON");
     assert_eq!(
         wrangler["queues"],
         serde_json::json!({
@@ -406,10 +510,24 @@ fn a_worker_consumes_each_cloudflare_queue_it_receives() {
             ]
         })
     );
+    // Every binding beside it, none dropped for another (chunk 8.4f).
     assert_eq!(
         wrangler["triggers"]["crons"],
         serde_json::json!(["* * * * *"])
     );
-    let plain = workers::wrangler("depot", &[], &[], false);
-    assert_eq!(workers::queued(plain.clone(), &[]), plain);
+    assert_eq!(wrangler["ratelimits"].as_array().map(Vec::len), Some(2));
+    // Each consumer its queue first.
+    assert!(
+        written.contains("{\n        \"queue\": \"warehouse-events\",\n"),
+        "{written}"
+    );
+    // With no queue on Cloudflare Queues, no consumers (a package's queue,
+    // fetched on the tick, is none: `jadpo_std::receiving`'s own test).
+    let none: serde_json::Value = serde_json::from_str(&workers::wrangler(&workers::Wrangler {
+        queues: &[],
+        ..file
+    }))
+    .expect("JSON");
+    assert!(none.get("queues").is_none(), "{none}");
+    assert_eq!(none["ratelimits"].as_array().map(Vec::len), Some(2));
 }

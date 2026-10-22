@@ -172,7 +172,7 @@ fn worker(work: &Path, sources: &Path) -> Result<PathBuf, Problem> {
         target: &work.join("target"),
     })
     .map_err(Problem::Build)?;
-    let bound = jadpo_codegen::workers::bind(&module, MODULE)
+    let bound = jadpo_codegen::workers::bind(&module, MODULE, jadpo_codegen::workers::Names::Kept)
         .map_err(|why| Problem::Harness(format!("the test Worker wasn't bound: {why}")))?;
     let out = work.join("out");
     write(&out.join(format!("{MODULE}.js")), bound.js.as_bytes())?;

@@ -867,7 +867,9 @@ reaches in chunk 8.1o3.
   (the program's crate, `jadpo-program-app`, and a binary named after
   the deployable, the toolchain this Jadpo pins in `rust-toolchain.toml`,
   the runtime crates' `Cargo.lock`) and compiles it in release, offline,
-  `--locked`, with the paths it was built from remapped and
+  `--locked`, in the release profile its workspace's `Cargo.toml` gives
+  since chunk 8.4f (fat link-time optimisation in one codegen unit at
+  `opt-level = 3`, its symbols kept; cargo's own until then), with the paths it was built from remapped and
   `SOURCE_DATE_EPOCH` fixed (`SOURCE_DATE_EPOCH` when it is set, else the
   commit's time), into `build/target/app/app`, with each API's OpenAPI
   document and `<api>.failures.<locale>.json` copied into
@@ -1071,7 +1073,7 @@ application {
 $ jadpo build
   worker    build/target/web/wrangler.json
   module    build/target/web/web.wasm
-  size      12.8 MB, 4.0 MB gzipped
+  size      8.1 MB, 2.9 MB gzipped
   build     b_1c5e09d2a7f3
   serves    main
   runs      subscribers
@@ -1115,9 +1117,13 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
   SMTP's when the deployable reaches an SMTP connection, and no other.
   It is built for `wasm32-unknown-unknown` in release, offline and
   `--locked`, without the runtime's `testing` feature, into the cargo
-  target the native deployables share, then bound by wasm-bindgen's own
+  target the native deployables share, in the release profile its
+  workspace gives since chunk 8.4f (fat link-time optimisation in one
+  codegen unit at `opt-level = "s"`, for size, since a plan limits what a
+  Worker uploads), then bound by wasm-bindgen's own
   library at the release the lock holds, so nothing is downloaded and no
-  command-line tool has to match. Into `build/target/<deployable>/`, after
+  command-line tool has to match, leaving out the module's name section
+  and its `producers` section (chunk 8.4f). Into `build/target/<deployable>/`, after
   what an earlier build left there: `<deployable>.wasm`, the module;
   `<deployable>.js`, wasm-bindgen's JavaScript for it; `worker.mjs`,
   Jadpo's module shim, which instantiates the module once per isolate and
@@ -1125,15 +1131,25 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
   and exports `JadpoHandOn`, a named entrypoint whose `handOn` takes on
   work another invocation handed on (chunk 8.2h); `wrangler.json`; and
   the documents of the APIs it serves.
-- **The Wrangler file.** `name`, the deployable's name with each `_` a
-  `-`, since Cloudflare takes letters, digits and dashes; `main`, the
+- **The Wrangler file.** Built as one value and written out once, so no
+  binding is left out for another (chunk 8.4f). `name`, the app's name
+  and the deployable's, `<app>-<deployable>`, so two apps' `kiosk`s are
+  two Workers in one account: the app's name is its folder's until
+  `app.jadpo` gives one (area 7, "OpenAPI"), each lower-cased, each run
+  of anything but an ASCII letter or digit one `-`, since Cloudflare
+  takes letters, digits and dashes, at most 63 of them with the
+  deployable's kept whole (`23-repair-cafe-kiosk`; until chunk 8.4f the
+  deployable's alone); `main`, the
   shim; `compatibility_date`, the date the Workers host is tested at under
   the workerd pinned in `tools/workers/` (2026-10-01); `no_bundle` and
   `find_additional_modules`, with a rule for each kind of file (`.mjs` and
   `.js` as ES modules, `.wasm` as compiled WebAssembly, the latter with
   `fallthrough: false`, since Wrangler warns of a rule that hides its own
   default without saying so), so the files are uploaded as they are
-  written; `secrets: { required: [ ] }`, the
+  written; `observability: { enabled: true }`, since Workers Logs keeps
+  the lines the Worker logs only when it is enabled and the pinned
+  Wrangler sends nothing, leaving it off, when the file doesn't say so
+  (chunk 8.4f); `secrets: { required: [ ] }`, the
   variable of each setting without a `default:`; and, since chunk 8.2i,
   `hyperdrive: [ ]`, each database's address setting as a Hyperdrive
   binding by its variable, with its configuration's `id` when the build's
@@ -1273,7 +1289,7 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
 $ jadpo build kiosk
   worker    build/target/kiosk/wrangler.json
   module    build/target/kiosk/kiosk.wasm
-  size      12.8 MB, 4.0 MB gzipped
+  size      8.1 MB, 2.9 MB gzipped
   database  DATABASE_URL through Hyperdrive c020574a5623407bbe0ccd192bab9545
   build     b_1c5e09d2a7f3
   serves    main
@@ -1297,21 +1313,20 @@ says so, and an alert says what to do:
 
 ```json
 {
-  "name": "kiosk",
+  "name": "repair-cafe-kiosk",
   "main": "worker.mjs",
   "compatibility_date": "2026-10-01",
   "no_bundle": true,
   "find_additional_modules": true,
   "rules": [
     { "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] },
-    { "type": "CompiledWasm", "globs": ["**/*.wasm"] }
+    { "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": false }
   ],
-  "secrets": {
-    "required": ["DATABASE_URL"]
-  },
-  "triggers": {
-    "crons": ["* * * * *"]
-  }
+  "observability": { "enabled": true },
+  "hyperdrive": [
+    { "binding": "DATABASE_URL", "id": "c020574a5623407bbe0ccd192bab9545" }
+  ],
+  "triggers": { "crons": ["* * * * *"] }
 }
 ```
 
@@ -2607,7 +2622,8 @@ what other areas carried here and where this page answers it.
 
 | Topic | Decision | Date |
 |---|---|---|
-| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-`; its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols, until chunk 9.2 tunes WebAssembly; sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answered every request 503 until chunk 8.2d built its `fetch` (decided for Richard, the conservative reading) | 2026-10-21 |
+| A Workers deployable | Chosen in chunk 8.2b, each reversible: the files sit side by side in `build/target/<deployable>/` (`<deployable>.wasm`, `<deployable>.js`, Jadpo's `worker.mjs` and `wrangler.json`), uploaded unbundled by explicit rules; the Worker's `name` is the deployable's with `_` as `-` (its app's name before it since chunk 8.4f); its compatibility date is the one the Workers host is tested at, 2026-10-01, moved with the pinned workerd; each setting without a default is a required secret, since Wrangler names a binding without its value no other way, and one with a default is left out; the module keeps wasm-bindgen's demangled name section (1.1 MB of 9.5 MB on example 23) and cargo's release profile, as a native binary keeps its symbols (until chunk 8.4f, which tunes the profile and leaves the names out; chunk 9.2 tunes WebAssembly further); sizes are decimal and gzipped at zlib's default level, as Wrangler reports an upload; the module answered every request 503 until chunk 8.2d built its `fetch` (decided for Richard, the conservative reading) | 2026-10-21 |
+| A deployable's release profile and its Worker's name | Chosen in chunk 8.4f, each reversible, measured on example 23 (docs/compiler-runtime.md §2.6, "Before the real deploy"): each deployable's workspace gives its release profile, fat link-time optimisation in one codegen unit, `opt-level = 3` natively and `opt-level = "s"` for Workers, so the module 8.2n measures is the one that ships (13.5 MB, 4.1 MB gzipped, before; 8.1 MB, 2.9 MB after, a booking 8% cheaper), at the cost of a rebuild taking half a minute to a minute where it took seconds; a Worker's module is bound without its name section or `producers` section, and a native binary keeps its symbols, which have no upload limit to meet and which a backtrace and a profiler read; the Worker is named `<app>-<deployable>`, the app's name its folder's until `app.jadpo` gives one, both lower-cased with each run of anything but a letter or digit one dash and at most 63 with the deployable's kept whole, so two apps' `kiosk`s are two Workers in one account; the Wrangler file is built as one value, every binding a field; and it enables Workers Logs, `observability: { enabled: true }`, which the pinned Wrangler leaves off unless the file says so, since this page promises Workers Logs reads the log. This replaces 8.2b's "cargo's release profile until chunk 9.2": 9.2 tunes WebAssembly from here | 2026-10-22 |
 | A Worker's start | Chosen in chunk 8.2d, each reversible: an isolate starts at its first request, reading its settings from the bindings and checking `client_address:` once, a failure logged once and every request of the isolate answered 503 `unavailable`, since a Worker's bindings change only with a new version; its stores' migrations compared at each request until they are current and not again for the isolate, a store behind, ahead or out of reach answered 503 and logged each time, so a migration applied after a deploy is picked up without one; `runtime.started` logged once an isolate is current; the log on the console, one JSON line an event; the HTTP component's per-worker state (request numbers, the readiness check reused for a second) kept per isolate; a streamed answer sent whole until chunk 8.2h; a `client_address:` source other than `cloudflare` stopping the start as `client_address_refused`, which `jadpo check` refuses since chunk 8.2m | 2026-10-21 |
 | A Worker's database | Chosen in chunk 8.2i, each reversible: the Wrangler file writes each database's address setting as a Hyperdrive binding in place of a required secret (area 5, "PostgreSQL through Hyperdrive"); its `id` is read from the build's environment, `JADPO_HYPERDRIVE_<variable>`, a tool's variable as `JADPO_WORKERD` is, since the id differs for each Cloudflare account and environment and isn't the app's to hold in source; without one the binding is written without an id, which `wrangler deploy` refuses, and the screen's `database` line says `no id` with an alert to create one with caching off, the one thing a Worker can't check itself | 2026-10-21 |
 | What `jadpo check` and `jadpo build` say for Workers | Chosen in chunk 8.2m, each reversible: a `client_address:` source other than `cloudflare` is `deployable.target_unsupported`, one more thing a target can't run, rather than a rule of its own, at its `source:` with the deployable's `target:` beside it, once for each Workers deployable, any deployable on Workers being held to it since the Worker's start refuses it whatever it serves; a `client_address:` with a problem of its own is reported as that alone; the build screen says a Worker's caps on calls as one field, `calls`, after what it serves and runs, rather than repeating `jadpo check`'s "On Workers" section, since `jadpo build` checks first and each Worker's block is where its facts are read | 2026-10-21 |
