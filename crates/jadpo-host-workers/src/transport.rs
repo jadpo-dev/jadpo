@@ -43,18 +43,21 @@
 //!   ended, and what waits on one is never given back: before, each
 //!   booking's connection was left waiting for its goodbye to go, some
 //!   20 KB of the module's memory kept for the isolate's life (§2.11). So
-//!   a connection's task runs under the invocation's `waitUntil`, which
-//!   lasts until the task ends; and shutting a stream down closes its
-//!   writable side after the driver's goodbye (PostgreSQL's `Terminate`),
-//!   then, with a read still waiting, the socket, and waits for that read
-//!   to settle, so nothing is left waiting once the task has ended.
+//!   the transport counts the connections' tasks it has started
+//!   ([`Tasks`]), which the invocation's host, once dropped, keeps the
+//!   invocation for ([`crate::WorkersHost`]); and shutting a stream down
+//!   closes its writable side after the driver's goodbye (PostgreSQL's
+//!   `Terminate`), then, with a read still waiting, the socket, and waits
+//!   for that read to settle, so nothing is left waiting once the task has
+//!   ended.
 
 use std::any::Any;
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust};
 use jadpo_runtime::LocalFuture;
@@ -68,16 +71,14 @@ use crate::js;
 use crate::opening::Opening;
 
 /// The drivers' transport over Workers' `connect()`, counting the
-/// connections it opens among its invocation's six. A default one has six
-/// places of its own and runs its connections' tasks beside the work that
-/// started them; an invocation's host gives its drivers one sharing the
-/// invocation's places and running them under its `waitUntil`
-/// ([`crate::WorkersHost::supplies`]).
+/// connections it opens among its invocation's six and the tasks it
+/// starts for them. A default one has six places and its count of its
+/// own; an invocation's host gives its drivers one sharing the
+/// invocation's ([`crate::WorkersHost::supplies`]).
 #[derive(Clone, Debug, Default)]
 pub struct WorkersTransport {
     opening: Rc<Opening>,
-    /// The invocation whose `waitUntil` each connection's task runs under.
-    invocation: Option<js::ExecutionContext>,
+    tasks: Rc<Tasks>,
 }
 
 impl WorkersTransport {
@@ -85,16 +86,67 @@ impl WorkersTransport {
     pub fn counted(opening: Rc<Opening>) -> WorkersTransport {
         WorkersTransport {
             opening,
-            invocation: None,
+            tasks: Rc::default(),
         }
     }
 
-    /// Runs its connections' tasks under `invocation`'s `waitUntil`, when
-    /// there is one, so what they wait on settles before it ends (chunk
-    /// 8.4e).
-    pub fn within(mut self, invocation: Option<js::ExecutionContext>) -> WorkersTransport {
-        self.invocation = invocation;
+    /// Counts the tasks it starts in `tasks` (chunk 8.4e).
+    pub fn tracking(mut self, tasks: Rc<Tasks>) -> WorkersTransport {
+        self.tasks = tasks;
         self
+    }
+}
+
+/// The connections' tasks a transport has started that haven't ended
+/// (chunk 8.4e): what an invocation's host, once dropped, keeps the
+/// invocation for, since dropping its drivers is what starts each
+/// connection's goodbye.
+#[derive(Debug, Default)]
+pub struct Tasks {
+    running: Cell<usize>,
+    /// Who waits for the last to end.
+    waiting: RefCell<Option<Waker>>,
+}
+
+impl Tasks {
+    /// How many are running now.
+    pub fn running(&self) -> usize {
+        self.running.get()
+    }
+
+    /// Settles once none is running.
+    pub async fn ended(self: Rc<Self>) {
+        std::future::poll_fn(|cx| {
+            if self.running.get() == 0 {
+                return Poll::Ready(());
+            }
+            *self.waiting.borrow_mut() = Some(cx.waker().clone());
+            Poll::Pending
+        })
+        .await;
+    }
+}
+
+/// One running task's place in its [`Tasks`], given up when it ends or is
+/// dropped.
+struct Running(Rc<Tasks>);
+
+impl Running {
+    fn start(tasks: Rc<Tasks>) -> Running {
+        tasks.running.set(tasks.running.get() + 1);
+        Running(tasks)
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let tasks = &self.0;
+        tasks.running.set(tasks.running.get().saturating_sub(1));
+        if tasks.running.get() == 0
+            && let Some(waiting) = tasks.waiting.borrow_mut().take()
+        {
+            waiting.wake();
+        }
     }
 }
 
@@ -147,19 +199,14 @@ impl Transport for WorkersTransport {
         })
     }
 
-    /// Under the invocation's `waitUntil` when the transport has one, so
-    /// the invocation lasts until the task ends; else beside the work that
-    /// started it. Either way it starts at once.
+    /// Beside the work that started it, counted among its [`Tasks`] until
+    /// it ends.
     fn spawn(&self, task: LocalFuture<'static, ()>) {
-        let Some(invocation) = &self.invocation else {
-            wasm_bindgen_futures::spawn_local(task);
-            return;
-        };
-        let ended = wasm_bindgen_futures::future_to_promise(async move {
+        let running = Running::start(Rc::clone(&self.tasks));
+        wasm_bindgen_futures::spawn_local(async move {
+            let _running = running;
             task.await;
-            Ok(JsValue::UNDEFINED)
         });
-        let _ = invocation.wait_until(&ended);
     }
 
     fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {

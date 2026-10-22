@@ -15,9 +15,7 @@ use std::task::Poll;
 
 use jadpo_drivers::package::{Fetch, FetchError};
 use jadpo_drivers::{Endpoint, Stream, Transport, Trust, within};
-use jadpo_host_workers::{
-    ExecutionContext, WorkersFetch, WorkersHost, WorkersOutbound, WorkersTransport,
-};
+use jadpo_host_workers::{WorkersFetch, WorkersHost, WorkersOutbound, WorkersTransport};
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::deployable::{Log, Stamp};
 use jadpo_runtime::provider::{Reading, Request};
@@ -203,19 +201,23 @@ pub async fn fetch(
             }
         }
         "/spawn-within" => {
-            // A connection's task run under the invocation's `waitUntil`
-            // (chunk 8.4e), still waiting after the answer has gone.
+            // A connection's task its invocation's host started, still
+            // waiting when the host is dropped and the answer goes: the
+            // host keeps the invocation for it (chunk 8.4e).
             let key = param("key");
-            let invocation = ctx
-                .is_object()
-                .then(|| ctx.clone().unchecked_into::<ExecutionContext>());
-            let transport = WorkersTransport::default().within(invocation);
-            let waits = transport.clone();
-            transport.spawn(Box::pin(async move {
-                waits.sleep(150).await;
-                DONE.with(|done| done.borrow_mut().insert(key));
-            }));
-            "spawned".to_string()
+            let fresh = WorkersHost::new(env.clone(), ctx.clone());
+            match fresh.supplies().transport {
+                Some(transport) => {
+                    let waits = Rc::clone(&transport);
+                    transport.spawn(Box::pin(async move {
+                        waits.sleep(150).await;
+                        DONE.with(|done| done.borrow_mut().insert(key));
+                    }));
+                    drop(fresh);
+                    "spawned".to_string()
+                }
+                None => "error:no transport".to_string(),
+            }
         }
         "/drivers" => {
             // The drivers built when the invocation first reaches a

@@ -6,9 +6,9 @@
 //! - [`WorkersHost`]: the runtime's `Host` for one invocation: each
 //!   connection's driver as the factory built it from the plan
 //!   ([`WorkersHost::supplies`]), built when the invocation first reaches
-//!   a connection, so one that reaches none builds nothing (chunk 8.4e),
-//!   its connections' tasks run under the invocation's `waitUntil`,
-//!   randomness from Web Crypto's
+//!   a connection, so one that reaches none builds nothing, the invocation
+//!   kept, once its host is dropped, until its connections have said
+//!   goodbye (chunk 8.4e), randomness from Web Crypto's
 //!   `getRandomValues`, the wall clock (`Date.now()`) and a monotonic clock
 //!   made from it, timers on `setTimeout`, settings from the Worker's
 //!   bindings, the work a response leaves run through `ctx.waitUntil` and
@@ -100,7 +100,7 @@ pub use js::ExecutionContext;
 pub use opening::Opening;
 pub use passkeys::WorkersPasskeys;
 pub use ratelimit::LIMIT_TIMEOUT_MS;
-pub use transport::{WorkersStream, WorkersTransport};
+pub use transport::{Tasks, WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
 /// deployable's crate exports (`#[wasm_bindgen(wasm_bindgen = …)]`), so
 /// that crate depends on this one alone.
@@ -209,6 +209,33 @@ pub struct WorkersHost {
     /// The invocation's six places for connections being opened, which
     /// its drivers and its own fetches share.
     opening: Rc<Opening>,
+    /// The tasks its drivers' connections run, which it keeps the
+    /// invocation for once dropped (chunk 8.4e).
+    tasks: Rc<Tasks>,
+}
+
+impl Drop for WorkersHost {
+    /// Keeps the invocation, through its `waitUntil`, until the tasks its
+    /// drivers' connections run have ended (chunk 8.4e): its drivers are
+    /// dropped next, which starts each connection's goodbye, and workerd
+    /// settles nothing of an invocation that has ended, so a connection
+    /// whose goodbye outlived it would be kept for the isolate's life.
+    /// Dropped while the invocation lasts: after its response, or with the
+    /// work that response left, or with the answer it streams.
+    fn drop(&mut self) {
+        let Some(ctx) = &self.ctx else {
+            return;
+        };
+        if self.tasks.running() == 0 {
+            return;
+        }
+        let tasks = Rc::clone(&self.tasks);
+        let ended = wasm_bindgen_futures::future_to_promise(async move {
+            tasks.ended().await;
+            Ok(JsValue::UNDEFINED)
+        });
+        let _ = ctx.wait_until(&ended);
+    }
 }
 
 impl std::fmt::Debug for WorkersHost {
@@ -240,16 +267,17 @@ impl WorkersHost {
             cron: None,
             handed_on: None,
             opening,
+            tasks: Rc::default(),
         }
     }
 
     /// What the driver factory builds this invocation's drivers over: the
     /// target, `connect()` and `fetch()`, their connections counted among
-    /// the invocation's six with its own fetches and their tasks run under
-    /// its `waitUntil` (chunk 8.4e), and no disk, which a Worker hasn't got.
+    /// the invocation's six with its own fetches and their tasks among its
+    /// own (chunk 8.4e), and no disk, which a Worker hasn't got.
     pub fn supplies(&self) -> Supplies {
         let transport =
-            WorkersTransport::counted(Rc::clone(&self.opening)).within(self.ctx.clone());
+            WorkersTransport::counted(Rc::clone(&self.opening)).tracking(Rc::clone(&self.tasks));
         Supplies::on(Target::Workers)
             .with_transport(Rc::new(transport))
             .with_fetch(Rc::new(WorkersFetch::counted(Rc::clone(&self.opening))))

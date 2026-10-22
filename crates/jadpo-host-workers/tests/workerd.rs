@@ -439,9 +439,11 @@ fn the_transport_runs_a_connections_task() {
     assert_eq!(bed().get("/spawn"), "ran");
 }
 
-/// A connection's task given the invocation runs under its `waitUntil`
-/// (chunk 8.4e): the probe answers at once, and the task, still waiting on
-/// a timer, ends after the answer has gone.
+/// A connection's task an invocation's host started, still running when
+/// the host is dropped, keeps the invocation, through its `waitUntil`,
+/// until it ends (chunk 8.4e): the probe answers at once, and the task,
+/// waiting on a timer, ends after the answer has gone, which it never does
+/// once its invocation has ended.
 #[test]
 fn a_connections_task_runs_within_its_invocation() {
     let bed = bed();
