@@ -3629,6 +3629,74 @@ a request to the Worker's own URL, which reaches its public `fetch`; and a
 `TransformStream` written by a task of its own, which would read the
 model's answer ahead of the client rather than as it is taken.
 
+**Six connections an invocation** (chunk 8.2j; area 14, "A Workers
+deployable"; area 11, `max_concurrent:`). Cloudflare lets a Worker's
+invocation have six connections waiting for their answer's head at once,
+a `fetch()` until its status and headers come and a `connect()` until its
+socket opens, and queues a seventh until one of them gets there; since
+2026-04-09 a connection whose head has come no longer counts, and the
+platform no longer cancels a connection it finds idle (Cloudflare's
+limits page and its changelog, "Relaxed simultaneous connection
+limiting"). workerd enforces no such limit: its server's limit enforcer
+enforces none (`src/workerd/server/server.c++` at the pinned release), so
+the runtime counts them itself. Each invocation's `WorkersHost` holds its
+six places (`jadpo_host_workers::Opening`), and everything the invocation
+opens takes one: the drivers' `WorkersTransport` and the package driver's
+`WorkersFetch`, built over `WorkersHost::supplies`, and the runtime's own
+`WorkersOutbound`, the work it leaves in `waitUntil` included, since that
+runs on the same host. A `fetch()` gives its place back once its head has
+come or it failed, a `connect()` once its socket opened or failed; a
+seventh waits, in the order asked, woken by the place given back, which is
+safe since an invocation's work all runs in its own context. A request
+waits within its own timeout, and one whose timeout passes before it went
+out is `NotSent`, safe to send again, rather than an abort that Workers'
+`fetch()` can't tell from a request that left. Not counted, since
+Cloudflare's list leaves them out: the service binding work is handed on
+through (whose callee shares the top-level request's six, a call that
+overlaps its caller only as the caller ends) and the rate-limiting
+binding; nor `startTls()`, an upgrade of a socket already open.
+`max_concurrent:`'s slots are the isolate's (area 11, decided
+2026-10-21), shared by its invocations, and a slot one gives back is
+handed to a call of another without the first waking it: wasm-bindgen's
+executor polls every woken task from one queue in a microtask of the
+waker's (`js-sys` 0.3.106, `futures/queue.rs`), so a task woken from
+another invocation runs in that one's context, and its I/O with it; and
+a call waiting on nothing of its own is ended by workerd as hung, as the
+process's woken set did to the second of two invocations sharing one
+slot when tried under workerd in the chunk. So the Workers host's set is
+a looking one
+(`Slots::looking`, `jadpo_runtime::slots`): a slot given back is handed
+to the call that has waited longest, which finds it when it next looks,
+every 10 ms on its own invocation's timer (`slots::wait`, which
+`outside::exchange` calls); and since Cloudflare cancels a request whose
+client went away before its response, and work in `waitUntil` past its
+30 seconds, without dropping what it held (its context and errors
+pages), a call holding a slot says so every second (`slots::keeping`),
+and a holder or a waiter not heard from for five seconds is forgotten,
+its slot handed on. Natively
+the set is the process's, its waiters woken, as before. Proved under
+workerd (`crates/jadpo-host-workers/tests/connections.rs`, the `wasm32`
+group): eight requests sent at once without counting all reaching the
+server together, and counted never more than six waiting for their heads,
+one whose timeout passed while it waited `NotSent` and never seen by the
+server; an echo's `connect()` waiting behind six requests until a head
+came; four requests from a response and four from the work it left in
+`waitUntil`, never more than six waiting at once; a call of one
+invocation taking up the slot another gave back, its own request sent
+and answered; and a slot taken and never given back, as an invocation
+cancelled mid-call leaves it, taken back once its holder had been quiet
+for five seconds (workerd itself lets a request whose client left run on
+until it answers, so the probe leaves its slot as a cancelled one
+would). They add about 2 s to the step (6.7 s against 4.5 s warm on the
+ten-core Mac), the five-second wait running beside its other tests. *Rejected:* counting the connections an invocation holds
+open, Cloudflare's rule before 2026-04-09, which would hold a seventh
+behind a store's idle connections and need them closed to make room;
+leaving the seventh to the platform's queue, where its timer runs unseen
+and workerd, which queues nothing, never shows it; a promise of the
+waiting call's settled from the giving invocation, which the decision
+rules out; and a slot taken back after its call's own timeout, which
+would cut short a call legitimately slow before its request went out.
+
 **Cloudflare Queues' consumer** (chunk 8.2k; area 11, "Chosen in chunk
 7.7c2"; area 14, "A Workers deployable"). The generated crate exports
 `queue` beside `fetch` and `scheduled`, and the shim hands it the batch,
@@ -4317,9 +4385,12 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
   experiments to about 79% of Bun
   ([optimisation results](experiments/wasm-optimization-results.md)): an
   inference until the performance spike (chunk 8.3) measures it.
-- Six connections at once per request
+- Six connections waiting for their answer's head at once per
+  invocation
   ([limits](https://developers.cloudflare.com/workers/platform/limits/)),
-  counted by the runtime across database, providers and SMTP.
+  counted by the runtime across database, providers, SMTP and its own
+  fetches, the work left in `waitUntil` included (chunk 8.2j, "Six
+  connections an invocation", above).
 - A panic aborts the instance, so runtime crates deny `unwrap`, `expect`
   and `panic!` by lint, and faults are values; the crate-graph test holds
   every shared and runtime crate to the lint (chunk 1.9), and since chunk

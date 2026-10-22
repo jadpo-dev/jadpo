@@ -5,17 +5,21 @@
 //!
 //! - [`WorkersHost`]: the runtime's `Host` for one invocation: each
 //!   connection's driver as the factory built it from the plan
-//!   ([`supplies`]), randomness from Web Crypto's `getRandomValues`, the
-//!   wall clock (`Date.now()`) and a monotonic clock made from it, timers
-//!   on `setTimeout`, settings from the Worker's bindings, the work a
-//!   response leaves run through `ctx.waitUntil` and the work an
-//!   invocation hands on run in a fresh one, a request to the Worker
-//!   itself through a service binding ([`HAND_ON_BINDING`]), rate limits
-//!   counted in Cloudflare's rate-limiting binding when `rate_limits:`
-//!   names one, and in the isolate's memory while it can't be asked, and
-//!   Workers' budgets for background work (30 seconds after a response and
-//!   for work handed on, 15 minutes for the cron, which the ticks one cron
-//!   runs share).
+//!   ([`WorkersHost::supplies`]), randomness from Web Crypto's
+//!   `getRandomValues`, the wall clock (`Date.now()`) and a monotonic clock
+//!   made from it, timers on `setTimeout`, settings from the Worker's
+//!   bindings, the work a response leaves run through `ctx.waitUntil` and
+//!   the work an invocation hands on run in a fresh one, a request to the
+//!   Worker itself through a service binding ([`HAND_ON_BINDING`]), rate
+//!   limits counted in Cloudflare's rate-limiting binding when
+//!   `rate_limits:` names one, and in the isolate's memory while it can't
+//!   be asked, and Workers' budgets for background work (30 seconds after a
+//!   response and for work handed on, 15 minutes for the cron, which the
+//!   ticks one cron runs share); the six connections an invocation may have
+//!   waiting for their answer's head at once ([`Opening`]), shared by its
+//!   drivers and its own fetches, and the isolate's `max_concurrent:`
+//!   slots, handed from one invocation to another without either waking the
+//!   other (chunk 8.2j).
 //! - [`WorkersTransport`]: the drivers' `Transport` over `connect()` from
 //!   `cloudflare:sockets`, upgraded with `startTls()`; a Hyperdrive
 //!   binding's host is the platform's pooler, which PostgreSQL's driver
@@ -62,6 +66,7 @@ pub mod deployable;
 mod fetch;
 mod hyperdrive;
 mod js;
+pub mod opening;
 mod passkeys;
 mod ratelimit;
 mod streamed;
@@ -78,6 +83,7 @@ use jadpo_drivers::factory::{Drivers, Supplies, Unbuilt};
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::capability::Capability;
 use jadpo_runtime::http::address::Target;
+use jadpo_runtime::slots::Slots;
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, Outbound, Passkeys, RateLimits};
 use jadpo_std::http::{RateLimit, RateLimitStore};
 use js_sys::{Reflect, Uint8Array};
@@ -85,6 +91,7 @@ use wasm_bindgen::{JsCast, JsValue};
 
 pub use fetch::{WorkersFetch, WorkersOutbound};
 pub use js::ExecutionContext;
+pub use opening::Opening;
 pub use passkeys::WorkersPasskeys;
 pub use transport::{WorkersStream, WorkersTransport};
 /// The release of wasm-bindgen this crate binds with, for the handlers a
@@ -127,12 +134,24 @@ pub fn cron_left(began: u64, now: u64) -> u64 {
     CRON_MS.saturating_sub(now.saturating_sub(began))
 }
 
-/// What the driver factory builds a Worker's drivers over: the target,
-/// `connect()` and `fetch()`, and no disk, which a Worker hasn't got.
-pub fn supplies() -> Supplies {
-    Supplies::on(Target::Workers)
-        .with_transport(Rc::new(WorkersTransport))
-        .with_fetch(Rc::new(WorkersFetch))
+/// The isolate's `max_concurrent:` slots, which every invocation it
+/// serves shares (area 11, decided 2026-10-21): a looking set, so a slot
+/// one invocation gives back is handed to a call of another without the
+/// first waking it, the second finding it on its own timer (chunk 8.2j).
+fn isolate_slots() -> &'static Slots {
+    static SLOTS: OnceLock<Slots> = OnceLock::new();
+    SLOTS.get_or_init(|| Slots::looking(monotonic_ms))
+}
+
+/// `Date.now()`, never going back past an earlier reading: the isolate's
+/// monotonic clock.
+fn monotonic_ms() -> Option<u64> {
+    let now = u64::try_from(wall_clock()?).ok()?;
+    Some(MONOTONIC.with(|last| {
+        let now = now.max(last.get());
+        last.set(now);
+        now
+    }))
 }
 
 /// The wall clock, `Date.now()`, in whole milliseconds. Workers moves it
@@ -158,6 +177,9 @@ pub struct WorkersHost {
     /// When the cron invocation it serves began on the monotonic clock:
     /// each tick it runs has what is left of the cron's 15 minutes.
     cron: Option<u64>,
+    /// The invocation's six places for connections being opened, which
+    /// its drivers and its own fetches share.
+    opening: Rc<Opening>,
 }
 
 impl std::fmt::Debug for WorkersHost {
@@ -176,14 +198,31 @@ impl WorkersHost {
         let ctx = ctx
             .is_object()
             .then(|| ctx.unchecked_into::<ExecutionContext>());
+        let opening = Rc::new(Opening::default());
         WorkersHost {
             env,
             ctx,
             drivers: Drivers::default(),
-            outbound: WorkersOutbound::default(),
+            outbound: WorkersOutbound::default().counted(Rc::clone(&opening)),
             rate_limits: None,
             cron: None,
+            opening,
         }
+    }
+
+    /// What the driver factory builds this invocation's drivers over: the
+    /// target, `connect()` and `fetch()`, their connections counted among
+    /// the invocation's six with its own fetches, and no disk, which a
+    /// Worker hasn't got.
+    pub fn supplies(&self) -> Supplies {
+        Supplies::on(Target::Workers)
+            .with_transport(Rc::new(WorkersTransport::counted(Rc::clone(&self.opening))))
+            .with_fetch(Rc::new(WorkersFetch::counted(Rc::clone(&self.opening))))
+    }
+
+    /// The invocation's places for connections being opened.
+    pub fn opening(&self) -> &Rc<Opening> {
+        &self.opening
     }
 
     /// Counts rate limits in `store`, the one `rate_limits:` names: in
@@ -201,15 +240,16 @@ impl WorkersHost {
     }
 
     /// Gives each connection the driver `drivers` built for it from the
-    /// plan's connections table, over [`supplies`].
+    /// plan's connections table, over [`WorkersHost::supplies`].
     pub fn with_drivers(mut self, drivers: Drivers) -> WorkersHost {
         self.drivers = drivers;
         self
     }
 
-    /// Guards the runtime's own fetches with `outbound`.
+    /// Guards the runtime's own fetches with `outbound`, which take places
+    /// among the invocation's six.
     pub fn with_outbound(mut self, outbound: WorkersOutbound) -> WorkersHost {
-        self.outbound = outbound;
+        self.outbound = outbound.counted(Rc::clone(&self.opening));
         self
     }
 
@@ -366,12 +406,7 @@ impl Host for WorkersHost {
 
     /// `Date.now()`, never going back past an earlier reading.
     fn monotonic_ms(&self) -> Option<u64> {
-        let now = u64::try_from(wall_clock()?).ok()?;
-        Some(MONOTONIC.with(|last| {
-            let now = now.max(last.get());
-            last.set(now);
-            now
-        }))
+        monotonic_ms()
     }
 
     fn now_ms(&self) -> Option<i64> {
@@ -408,6 +443,12 @@ impl Host for WorkersHost {
             }
             isolate_limits().allow(key, limit, now)
         })
+    }
+
+    /// The isolate's looking set ([`isolate_slots`]), which every
+    /// invocation shares.
+    fn slots(&self) -> &Slots {
+        isolate_slots()
     }
 }
 

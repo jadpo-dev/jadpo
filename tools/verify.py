@@ -239,9 +239,12 @@ COMPILED_SHOWN = ('compared ', 'teaching examples:', 'skipped:')
 # the probe Worker built for wasm32 by the test itself (so the step takes
 # cargo's lane), bound by wasm-bindgen's library, and run by the workerd
 # pinned in tools/workers/, which the test installs there with `npm ci` the
-# first time, against servers it starts. The `wasm32` group; `compiler
-# tests` leaves it out in both profiles.
-WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd')])
+# first time, against servers it starts; since chunk 8.2j its six
+# connections an invocation and `max_concurrent:`'s slots across an
+# isolate's invocations too (tests/connections.rs). The `wasm32` group;
+# `compiler tests` leaves it out in both profiles.
+WORKERD = ('the Workers host under workerd', [('jadpo-host-workers', 'workerd'),
+                                              ('jadpo-host-workers', 'connections')])
 # A Workers deployable (chunks 8.2b and 8.2d): teaching example 23 declared
 # as a kiosk built for `Target.wasm` by `jadpo build` in release for wasm32,
 # its build kept in target/jadpo-compiled/workers/, bound by wasm-bindgen's

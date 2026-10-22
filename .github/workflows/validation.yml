@@ -143,7 +143,9 @@ jobs:
   # `wasm32` job, which this one's 12 minutes couldn't hold.
   compiled:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    # The corpus step takes about 9 minutes and saving the cache about one
+    # more, which 12 minutes no longer held (2026-10-22).
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
