@@ -509,18 +509,6 @@ fn parity_projects() -> Vec<(String, PathBuf)> {
     ]
 }
 
-/// Chunk 8.4a's projects alone, in a harness of their own: for working on
-/// them, not run by the gate.
-#[test]
-#[ignore = "the corpus test compares these projects; run this one by name while working on them"]
-fn parity_projects_alone() {
-    if !jadpo_test::live() {
-        return;
-    }
-    let (done, _) = compared(&parity_projects(), "parity");
-    println!("{done:?}");
-}
-
 /// The export project, written into a folder of its own.
 fn export_project() -> PathBuf {
     let mut files = examples::projects()

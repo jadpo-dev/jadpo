@@ -48,7 +48,11 @@
 //! run, both taking longer than an invocation's 30 seconds, so each hands
 //! what it didn't reach on to a fresh invocation of the Worker, a request
 //! to itself through its binding to its own `JadpoHandOn` entrypoint,
-//! which carries it on to its end.
+//! which carries it on to its end. Since chunk 8.4a the desk answers its
+//! limits on the module's own stack and V8's: a thousand frames of a
+//! plain recursion and of a heavy one, four hundred inline functions
+//! running at once, and a level more of each the `recursion_limit` fault,
+//! the isolate serving on.
 //!
 //! The build is kept beside the build's own folders
 //! (`target/jadpo-compiled/workers/`), so a second run compiles only what

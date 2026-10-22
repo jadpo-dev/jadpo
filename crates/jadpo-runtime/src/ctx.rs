@@ -1387,7 +1387,7 @@ impl<'p> Ctx<'p> {
 #[cfg(target_arch = "wasm32")]
 fn stack_low() -> bool {
     let here = 0u8;
-    let at = std::hint::black_box(&here) as *const u8 as usize;
+    let at = std::ptr::addr_of!(here) as usize;
     at < crate::WASM_STACK_RESERVE
 }
 

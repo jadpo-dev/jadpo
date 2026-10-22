@@ -30,7 +30,12 @@
 //! answers: dates, zones, relative times, money, currencies, numbers,
 //! units, a language's name, a plural message, a locale it doesn't list
 //! written in one it does, and Swedish collation and Turkish capitals,
-//! which take any locale.
+//! which take any locale. Since chunk 8.4a it answers its limits as `jadpo
+//! dev` does too, on its workers' own stacks: a thousand frames of a
+//! plain recursion and of a heavy one, four hundred inline functions
+//! running at once, a level more of each the `recursion_limit` fault, the
+//! server serving on; and work that never waits, in an action's loops, a
+//! function's and inline functions, stopped at its one-second deadline.
 //!
 //! The builds are kept beside the build's own folders
 //! (`target/jadpo-compiled/deployable/`), so a second run compiles only
@@ -1090,7 +1095,6 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
 #[cfg(unix)]
 #[test]
 fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
-    // Chunk 8.4a: and its limits, probed, as `jadpo dev`'s.
     if !jadpo_test::live() {
         return;
     }
