@@ -2841,11 +2841,15 @@ whose entry names them.
   without TLS as its binding's address says, Hyperdrive's default TLS
   checking the database's certificate, and a `vector` column read through
   it (tokio-postgres describes one through a named statement). From 8.2h:
-  a Worker's binding to its own `JadpoHandOn` accepted, each invocation
-  handed on given its own 30 seconds once the one that called it has
-  ended, and a client leaving a streamed answer ending the model's call.
+  a Worker reaching its own `JadpoHandOn` (since 8.4b through
+  `ctx.exports`, not a binding), each invocation handed on given its own
+  30 seconds once the one that called it has ended, and a client leaving
+  a streamed answer ending the model's call.
   From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
   Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
+  From 8.4b: the hand-on reaching the Worker through `ctx.exports` on the
+  edge, under the file's name and under `wrangler deploy --env`, and the
+  dead-letter queue's consumer accepted beside the queue's.
 
 - [x] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
@@ -2881,7 +2885,7 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   own stack sizes (2 MiB native workers, wasm's 1 MiB), raising
   `recursion_limit` rather than aborting. Each proved by a corpus
   project that fails before the fix.
-- [ ] **8.4b Phase 8 review fixes: Workers background work** `opus ·
+- [x] **8.4b Phase 8 review fixes: Workers background work** `opus ·
   xhigh`: a Queues message the Worker can't take yet (not started, a
   store behind, unavailable) retried with long delays and enough
   attempts to outlast a deploy's migration, and a generated dead-letter
@@ -2894,7 +2898,20 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   a `retry()` that throws not acknowledged; on Workers a Redis
   `rate_limits.store` said by `jadpo check` to count in memory until
   Redis's driver comes, a missing binding logged once, and `limit()`
-  given a timeout.
+  given a timeout. Built: retries doubling to an hour over 30 attempts
+  (about 22 hours, inside a Free plan queue's retention), each queue's
+  dead-letter queue a consumer too (100 retries) whose messages are
+  parked as `dead_lettered`, no connection's dead-letter queue another's
+  queue; `Placing::poll` handing free places on; `tick` ending 1 when it
+  gave nothing; the hand-on through `ctx.exports.JadpoHandOn` rather than
+  a service binding (Wrangler keeps a binding's `service` under `--name`
+  and `--env`, checked with its dry run), its 30 seconds from the
+  invocation's start; a `retry()` that throws ending the handler with an
+  error; `rate_limits.counted_in_memory`, declinable, for Redis on
+  Workers; the binding not waited for past 500 ms and each fallback
+  logged once as `rate_limits.fallback`. Decisions on areas 11, 12 and
+  16 (2026-10-22). 8.2n checks `ctx.exports` and the consumers on the
+  real edge.
 - [x] **8.4c Phase 8 review fixes: what a deployable runs**
   `opus · xhigh`: every deployable serving through the typed per-route
   entries (`Executor::app()`, compiled code's own, used by

@@ -913,7 +913,8 @@ reaches in chunk 8.1o3.
   its settings, builds its drivers and compares its stores' migrations
   as serving does, but waits for no database (one it can't reach ends
   it with code 1, `store_unreachable`), runs one tick of the runtime's
-  and ends: code 0, or 1 when the tick couldn't work in a store. It is
+  and ends: code 0, or 1 when the tick couldn't work in a store, or
+  didn't finish, having panicked or outlasted the drain (chunk 8.4b). It is
   what another scheduler runs when `schedules: { trigger:
   ScheduleTrigger.external }` says the server's own timer never ticks
   (area 12, "The tick"); the first SIGTERM or ctrl-c drains it, giving
@@ -976,6 +977,7 @@ application {
         store: cache
     }
     deployables: {
+        decline rate_limits.counted_in_memory: "One instance of `web` is enough until Redis's driver comes"
         web: {
             serves: [main]
             runs: [Trigger.subscribers]
@@ -1041,7 +1043,10 @@ application {
   over Cloudflare's HTTP pull API), and Cloudflare's rate-limiting
   binding as the store of its rate limits (Redis). One built for Workers
   that serves an API needs that store, `rate_limits: { store: }` (area
-  16, "Rate limits"; `rate_limits.store_required`), and is refused a
+  16, "Rate limits"; `rate_limits.store_required`); until Redis's driver
+  comes, a Redis store there would leave each instance counting in its
+  own memory, a judgement call a `decline` line answers, as `web` above
+  does (`rate_limits.counted_in_memory`, chunk 8.4b); and it is refused a
   `client_address:` source other than `cloudflare`, at its `source:`
   (area 10, "Client addresses"; chunk 8.2m). A deployable built for
   Workers that reaches a connection with `max_concurrent:` is listed
@@ -1148,16 +1153,21 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
   trigger, runs its tick when the tick has a store to keep or sweep
   (chunk 8.2f). With rate limits counted in Cloudflare's binding,
   `ratelimits`: a binding for each limit, its name, its `namespace_id` and
-  `simple: { limit, period }` (area 16, "Rate limits"; chunk 8.2m2). A
-  Worker that runs subscribers or schedules is bound to its own
-  `JadpoHandOn` entrypoint, `services: [{ binding: "JADPO_HAND_ON",
-  service: <its name>, entrypoint: "JadpoHandOn" }]`, through which it
-  hands what one invocation's 30 seconds didn't reach on to a fresh one
-  (chunk 8.2h; area 12, "Running background work"). Each queue on
-  Cloudflare Queues the Worker receives is a consumer under `queues: {
-  consumers: [ ] }`: its `queue`, `max_batch_size` 10,
-  `max_batch_timeout` 5, `max_retries` 3 and its `dead_letter_queue`
-  (chunk 8.2k; area 11, "Chosen in chunk 7.7c2"). Wrangler's own `deploy
+  `simple: { limit, period }` (area 16, "Rate limits"; chunk 8.2m2). No
+  binding names the Worker itself: what one invocation's 30 seconds
+  didn't reach is handed on to a fresh one through the loopback binding
+  `ctx.exports` gives its `JadpoHandOn` entrypoint (chunks 8.2h and 8.4b;
+  area 12, "Running background work"), which reaches the Worker that
+  handed it on whatever name `wrangler deploy --name` or `--env` gave it;
+  until chunk 8.4b a `services` binding named the Worker by the file's
+  `name`, so a Worker deployed under another name handed its work to the
+  one the file named. Each queue on Cloudflare Queues the Worker receives
+  is a consumer under `queues: { consumers: [ ] }`: its `queue`,
+  `max_batch_size` 10, `max_batch_timeout` 5, `max_retries` 30 (3 until
+  chunk 8.4b) and its `dead_letter_queue`; and that dead-letter queue is
+  a consumer too, `max_retries` 100 and none of its own, whose messages
+  the Worker parks for an operator (chunks 8.2k and 8.4b; area 11,
+  "Chosen in chunk 7.7c2"). Wrangler's own `deploy
   --dry-run`, pinned in `tools/workers/`, accepts the file with no
   account and no warning, run in the tests with every network
   connection refused.
@@ -1209,11 +1219,14 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
   `CF-Connecting-IP`, which Cloudflare sets on every request (area 10);
   the work a response leaves runs after it in `waitUntil`, within its 30
   seconds, and what that doesn't reach is handed on to a fresh invocation
-  of the Worker through its binding to itself, which carries it on with
-  30 seconds of its own (chunk 8.2h); rate limits are counted in the store
-  `rate_limits:` names, Cloudflare's rate-limiting binding, and in the
-  isolate's memory only while it can't be asked (area 16, "Rate limits";
-  chunk 8.2m2). A streamed answer (`ai.stream`) is a `ReadableStream`,
+  of the Worker through the loopback `ctx.exports` gives its
+  `JadpoHandOn`, which carries it on within what is left of its own 30
+  seconds, counted from its start (chunks 8.2h and 8.4b); rate limits are
+  counted in the store `rate_limits:` names, Cloudflare's rate-limiting
+  binding, and in the isolate's memory only while it can't be asked:
+  missing, failing, or not answering within 500 ms, each binding's
+  fallback logged once an isolate as `rate_limits.fallback` (area 16,
+  "Rate limits"; chunks 8.2m2 and 8.4b). A streamed answer (`ai.stream`) is a `ReadableStream`,
   each event sent as it is read, and a client that goes away ends the
   request and with it the model's call (chunk 8.2h). An invocation has
   at most six connections waiting for their answer's head at once, as
@@ -1242,11 +1255,21 @@ consuming Cloudflare Queues in chunk 8.2k (area 11, "Chosen in chunk
   current, is kept through the runtime's consumer: each message kept once
   as its event, a repeat and one parked for an operator acknowledged with
   it (`ack()`), and one the store can't take now retried after 10 seconds
-  doubled per attempt, at most 5 minutes (`retry({ delaySeconds })`), each
-  on its own; then the kept events' deliveries run in `waitUntil`, handed
-  on past its 30 seconds as a response's work is. Out of date, or a batch
-  from a queue it doesn't receive, every message is retried the same way,
-  and `queue.retried` logged with the queue, how many and why.
+  doubled per attempt, at most an hour (`retry({ delaySeconds })`; 5
+  minutes until chunk 8.4b), each on its own; then the kept events'
+  deliveries run in `waitUntil`, handed on past its 30 seconds as a
+  response's work is. Out of date, or a batch from a queue it doesn't
+  receive, every message is retried the same way, and `queue.retried`
+  logged with the queue, how many and why; with 30 retries a message
+  waits out about 22 hours of a deploy's migration before Cloudflare
+  moves it to the dead-letter queue. A batch from that queue, its
+  messages' retries spent, has each message parked whole for an operator
+  as `dead_lettered`, with its id and event when they can be read, and
+  acknowledged, so `jadpo deliveries` lists it and a retry has the tick
+  read it again (chunk 8.4b). A message whose `retry()` throws would be
+  acknowledged when the handler ends well, so the handler throws once
+  every message is answered, and Cloudflare hands again each one not
+  acknowledged.
 - **What it logs.** One JSON object a line on the console, which Workers
   Logs and `wrangler tail` read, with the same events and stamp fields as
   a native binary's: `runtime.startup_failed`, `runtime.waiting`,

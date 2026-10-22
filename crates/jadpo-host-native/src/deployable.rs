@@ -229,11 +229,11 @@ fn watched() -> Result<Arc<AtomicBool>, Vec<Value>> {
 /// the next try and the ticks missed meanwhile become one run; then the
 /// runtime's tick through `Serving` on a `NativeHost`, which logs it as
 /// `runtime.ticked` as it logs a server's (chunk 8.4c). Code 0, or 1 when
-/// the tick couldn't work in a store; a schedule's failed run is
-/// recorded, alerted and retried at its next due time, as a server's is.
-/// The first SIGTERM or ctrl-c drains it as a server drains its
-/// background work, giving back what it holds, and it ends with
-/// `runtime.stopped`.
+/// the tick couldn't work in a store, panicked or outlasted the drain
+/// ([`tick_code`]); a schedule's failed run is recorded, alerted and
+/// retried at its next due time, as a server's is. The first SIGTERM or
+/// ctrl-c drains it as a server drains its background work, giving back
+/// what it holds, and it ends with `runtime.stopped`.
 fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
     let stop = watched()?;
     let (program, _) = configured(deployable)?;
@@ -296,16 +296,22 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
         }
         (slot.borrow_mut().take(), stopped)
     });
-    let ticked = ticked.unwrap_or_default();
-    let failed = !ticked.problems.is_empty();
+    let code = tick_code(ticked.as_ref());
     if stopped {
         log.event("runtime.stopped", []);
     }
-    Ok(if failed {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    })
+    Ok(ExitCode::from(code))
+}
+
+/// The code `<deployable> tick` ends with for what its tick gave: 0 once
+/// it ran to its end and could work in every store, 1 when it couldn't,
+/// and 1 when it gave nothing, having panicked or outlasted the drain
+/// (chunk 8.4b), so the scheduler sees it didn't finish.
+fn tick_code(ticked: Option<&Ticked>) -> u8 {
+    match ticked {
+        Some(ticked) if ticked.problems.is_empty() => 0,
+        _ => 1,
+    }
 }
 
 /// Each worker's handler: the program on the worker's thread with the
@@ -478,6 +484,21 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+
+    /// A tick ends 0 only once it ran to its end and worked in every
+    /// store: one that panicked or outlasted the drain gave nothing, and
+    /// ends 1 as one that couldn't work in a store does (chunk 8.4b).
+    #[test]
+    fn a_tick_that_didnt_finish_ends_with_code_1() {
+        let finished = Ticked::default();
+        assert_eq!(tick_code(Some(&finished)), 0);
+        let failed = Ticked {
+            problems: vec![("main".to_string(), jadpo_runtime::StoreError::Unavailable)],
+            ..Ticked::default()
+        };
+        assert_eq!(tick_code(Some(&failed)), 1);
+        assert_eq!(tick_code(None), 1);
+    }
 
     /// Work that never ends, as a database that never answers, gives way
     /// to a stop (chunk 8.4d); work that ends is its own answer.

@@ -15,6 +15,7 @@ rules:
   - email.template_missing
   - email.template_not_allowed
   - email.template_value_invalid
+  - rate_limits.counted_in_memory
   - rate_limits.store_invalid
   - rate_limits.store_required
   - type.file_read_too_large
@@ -270,12 +271,14 @@ window, so each limit the app counts there is a binding of its own,
 order of window then requests, and `jadpo build` writes each into the
 Wrangler file's `ratelimits`. A refusal is told to try again after the
 window's whole length, since the binding says only whether a request is
-within the limit; a binding the Worker hasn't got, or one that throws,
-leaves the count to the instance's memory, and no request fails for it.
+within the limit; a binding the Worker hasn't got, one that throws, or
+one that doesn't answer within 500 ms leaves the count to the instance's
+memory, logged once an instance, and no request fails for it.
 `rate_limits: { store: }` names a connection with `driver: Driver.redis`
 or `driver: Driver.cloudflare_rate_limits` (`rate_limits.store_invalid`);
 Redis's driver comes with caches, and until then a deployable counts in
-its own memory.
+its own memory, which on Workers is the judgement call
+`rate_limits.counted_in_memory` (chunk 8.4b).
 
 ## Caches: drivers and what they hold
 
@@ -2468,6 +2471,53 @@ error: `email.sent` is read outside a test
 check failed: 1 error, 2 files
 ```
 
+### `rate_limits.counted_in_memory`
+
+Until Redis's driver comes with caches, a deployable whose rate limits are
+counted in Redis counts them in its own memory, and a Worker runs as many
+instances as its traffic needs, none sharing it, so each counts on its
+own. A judgement call (chunk 8.4b): Cloudflare's rate-limiting binding
+counts them across instances, or a `decline` line above the deployable
+keeps Redis, counting in memory until its driver comes. An edge on
+Workers counting in Redis:
+
+```jadpo check project=e-rate-limits-counted-in-memory expect=rate_limits.counted_in_memory file=app.jadpo
+application {
+    connections: {
+        cache: {
+            driver: Driver.redis
+        }
+    }
+    rate_limits: {
+        store: cache
+    }
+    deployables: {
+        edge: {
+            serves: [main]
+            target: Target.wasm
+        }
+    }
+}
+```
+
+```text output
+error: `edge` would count its rate limits in each instance's memory on Workers
+ --> app.jadpo:11:9
+   |
+ 8 |         store: cache
+   |                ----- Redis, whose driver isn't built yet
+11 |         edge: {
+   |         ^^^^ counts in memory
+13 |             target: Target.wasm
+   |                     ----------- built for Workers
+  reason: `cache` is a Redis connection, and Redis's driver comes with caches; until then each of a Worker's instances counts the rate limits in its own memory, which its other instances don't share, so a client whose requests reach several of them gets more than each limit.
+  next: Count them in Cloudflare's rate-limiting binding: declare a connection with `driver: Driver.cloudflare_rate_limits` and a `namespace:`, and name it in `rate_limits: { store: }`, or write `decline rate_limits.counted_in_memory: "<why>"` above it if this is deliberate (agent)
+  rule: rate_limits.counted_in_memory
+  help: docs/language/16-built-in-services.html#rate-limits-counted-in-memory
+
+check failed: 1 error, 1 file
+```
+
 ### `rate_limits.store_invalid`
 
 `rate_limits: { store: }` names the connection rate limits are counted
@@ -2620,6 +2670,27 @@ Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`,
 binding (`tools/workers/ratelimit-binding.mjs`, a wrapped binding), since
 workerd has none: the binding decides where it is given, a refusal waits
 the window, and a broken or missing binding falls back to memory.
+
+Added in chunk 8.4b, from the Phase 8 review (decided by the building
+session, reversible, 2026-10-22):
+
+- **Redis on Workers says so.** Until Redis's driver comes, a deployable
+  whose store is Redis counts in its own memory, and a Worker's instances
+  share none, so one built for Workers that serves an API with a Redis
+  store is `rate_limits.counted_in_memory`: a judgement call, since
+  Jadpo has no warnings, answered by Cloudflare's binding or by a
+  `decline` line above the deployable that keeps Redis and counts in
+  memory until its driver comes. A native deployable with a Redis store
+  is unchanged.
+- **Not waited for.** A binding that hasn't answered within 500 ms isn't
+  waited for: the request is counted in the isolate's memory, as for one
+  that throws. The binding answers from a count kept where the Worker
+  runs, so one slower than that is in trouble, and a request isn't held
+  up by it.
+- **Logged once.** Each binding that can't be asked is logged once an
+  isolate, as `rate_limits.fallback`, with the binding's name and why
+  (`missing`, `failed` or `timed_out`), never a key, so an operator sees
+  that a Wrangler file lost its bindings without a line a request.
 
 ### Chosen in chunk 7.3c2
 
@@ -3452,6 +3523,7 @@ leave to the build of reading gzip, each the most conservative reading:
 | Built-in emails | Five levels for every email Jadpo sends: nothing (Jadpo's email and wording, `en_gb` and `en_us` at first, other supported locales an error until the app words them); the words, in the root `translations/` under `jadpo: { }`, only for features switched on; branding, through the app's shared layout; the app's own `EmailMessage` (`email:`), picking from the built-in type's fields; the app's own sending (`send:`), an action taking the built-in request, run after commit; `email:` and `send:` together an error; all through the app's one `email:` connection (Richard) | 2026-10-16 |
 | Capabilities | Only jobs Jadpo itself does, each covered whole by every connection that fills it (design C); here `files`, `email`, `documents`, `search`, `bot_check`, `scanning`, `publishing` and `receiving`; `sms` is not one; everything provider-specific is the package's own operations and events (Richard) | 2026-10-16 |
 | Flags stay in the database | Not a capability; values held in each server's memory, refreshed every few seconds, never cached; `Driver.ofrep` waits for an app that must use a vendor (Richard) | 2026-10-16 |
+| Rate limits on Workers: Redis, timeouts and logging (chunk 8.4b) | A Workers deployable serving an API with a Redis store is `rate_limits.counted_in_memory`, declinable, until Redis's driver comes; the binding not waited for past 500 ms; each binding's fallback to memory logged once an isolate as `rate_limits.fallback` (decided by the building session, reversible) | 2026-10-22 |
 | Rate limits on Workers | Cloudflare's rate-limiting binding as a store for the windows it can count, any other window a compile error naming Redis; `429` with `Retry-After` and `RateLimit` headers, worded from translations; provider rate limits shared through the same store (Richard) | 2026-10-16 |
 | Caches | Redis-compatible services through the Redis driver, Workers included; `Driver.memory` in production with a warning, an error on Workers; Cloudflare KV not a cache driver; the cache holds only cached records and queries and rate limits, never idempotency keys, webhook de-duplication, sessions, poll state, schedule leases or the outbox (Richard) | 2026-10-16 |
 | Files: stores | No presets: S3-compatible services are `Driver.s3` with their settings; `Driver.disk` for production on native only, the manifest recording one server; immutable files under generated sharded keys, streamed uploads synced and renamed, downloads with ranges, ETags, `attachment` and a sandbox policy, `storage_full` and a free-space floor, `jadpo files copy` (Richard) | 2026-10-16 |

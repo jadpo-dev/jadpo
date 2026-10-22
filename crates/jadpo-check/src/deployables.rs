@@ -970,7 +970,13 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let packages = &crate::connections::package_connections(db, project).connections;
     let smtp = &crate::emails::smtp_connections(db, project).list;
     let declared = connection_spans(db, project);
-    let stored = crate::rate_limits::rate_limits(db, project).written;
+    let rate_limits = crate::rate_limits::rate_limits(db, project);
+    let stored = rate_limits.written;
+    // A Redis store, whose driver comes with caches (chunk 8.4b).
+    let redis = rate_limits
+        .store
+        .as_ref()
+        .filter(|(store, _)| kinds.kind(store) == Some(ConnectionKind::Redis));
     let mut out = Vec::new();
     for (deployable, reached) in deployables.list.iter().zip(reaches) {
         let Some((target, at)) = &deployable.target else {
@@ -988,6 +994,34 @@ pub fn target_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .at(at.clone(), "built for Workers")
                 .reason("Every route is rate-limited, and a Worker's instances share no memory, so on Workers the counts are kept in a store: Cloudflare's rate-limiting binding, or Redis. `app.jadpo` names none in `rate_limits: { store: }`.")
                 .next("Declare a connection with `driver: Driver.cloudflare_rate_limits` and a `namespace:` in `connections:`, and add `rate_limits: { store: <its name> }` to `application { }`"),
+            );
+        }
+        if *target == DeployTarget::Wasm
+            && !deployable.serves.is_empty()
+            && let Some((store, store_at)) = redis
+        {
+            out.push(
+                Diagnostic::new(
+                    &rule::RATE_LIMITS_COUNTED_IN_MEMORY,
+                    format!(
+                        "`{}` would count its rate limits in each instance's memory on Workers",
+                        deployable.name
+                    ),
+                )
+                // At its name, so a `decline` line above the deployable
+                // answers it.
+                .at(
+                    deployable.at.clone().unwrap_or_else(|| at.clone()),
+                    "counts in memory",
+                )
+                .also(store_at.clone(), "Redis, whose driver isn't built yet")
+                .also(at.clone(), "built for Workers")
+                .reason(format!(
+                    "`{store}` is a Redis connection, and Redis's driver comes with caches; until then each of a Worker's instances counts the rate limits in its own memory, which its other instances don't share, so a client whose requests reach several of them gets more than each limit."
+                ))
+                .next(
+                    "Count them in Cloudflare's rate-limiting binding: declare a connection with `driver: Driver.cloudflare_rate_limits` and a `namespace:`, and name it in `rate_limits: { store: }`",
+                ),
             );
         }
         for (name, via) in &reached.connections {

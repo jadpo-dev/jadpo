@@ -20,11 +20,13 @@
 //!   compatibility date Jadpo's Workers host is run under, each setting
 //!   the deployable needs set, by its variable, each database's address
 //!   as a Hyperdrive binding (chunk 8.2i), the minute's cron trigger when
-//!   its tick has something to do, the service binding to its own
-//!   `JadpoHandOn` through which it hands work on when it runs background
-//!   work (chunk 8.2h), the rate-limiting bindings its rate limits are
-//!   counted in ([`rate_limited`]), and a consumer for each queue on
-//!   Cloudflare Queues it receives ([`queued`], chunk 8.2k). Wrangler's own
+//!   its tick has something to do, the rate-limiting bindings its rate
+//!   limits are counted in ([`rate_limited`]), and a consumer for each
+//!   queue on Cloudflare Queues it receives and for each one's dead-letter
+//!   queue ([`queued`], chunks 8.2k and 8.4b). No binding names the Worker
+//!   itself: work is handed on to a fresh invocation through the loopback
+//!   `ctx.exports` gives its `JadpoHandOn` (chunk 8.4b), which follows
+//!   whatever name `wrangler deploy --name` or `--env` gives it. Wrangler's own
 //!   `deploy --dry-run`, pinned in `tools/workers/`, accepts the file
 //!   without a warning.
 
@@ -75,14 +77,10 @@ pub fn bind(module: &Path, name: &str) -> Result<Bound, String> {
     Ok(Bound { js, wasm })
 }
 
-/// The binding through which a Worker hands work on to a fresh invocation
-/// of itself: a service binding to its own [`HAND_ON_ENTRYPOINT`] (chunk
-/// 8.2h), as `jadpo_host_workers::HAND_ON_BINDING` reads it.
-pub const HAND_ON_BINDING: &str = "JADPO_HAND_ON";
-
 /// The shim's named entrypoint for work handed on, as
 /// `jadpo_host_workers::HAND_ON_ENTRYPOINT` names it: not the default
-/// export, so no request from outside reaches it.
+/// export, so no request from outside reaches it, and reached by the
+/// Worker itself through `ctx.exports` (chunk 8.4b).
 pub const HAND_ON_ENTRYPOINT: &str = "JadpoHandOn";
 
 /// The module Workers runs first: `name`'s module instantiated once per
@@ -155,15 +153,8 @@ pub struct Hyperdrive {
 /// has one; without one, Wrangler refuses to deploy until it is given
 /// (chunk 8.2i). When it `ticks`, its tick having a store to keep or
 /// sweep, the minute's cron trigger runs its `scheduled` handler (chunk
-/// 8.2f). When it `hands_on`, running background work, the Worker is bound
-/// to its own [`HAND_ON_ENTRYPOINT`] as [`HAND_ON_BINDING`] (chunk 8.2h).
-pub fn wrangler(
-    name: &str,
-    required: &[String],
-    hyperdrive: &[Hyperdrive],
-    ticks: bool,
-    hands_on: bool,
-) -> String {
+/// 8.2f).
+pub fn wrangler(name: &str, required: &[String], hyperdrive: &[Hyperdrive], ticks: bool) -> String {
     let quoted = |text: &str| serde_json::Value::from(text).to_string();
     let mut out = format!(
         "{{\n\
@@ -208,14 +199,6 @@ pub fn wrangler(
         out.push_str(&format!(
             ",\n  \"triggers\": {{\n    \"crons\": [{}]\n  }}",
             quoted(EVERY_MINUTE)
-        ));
-    }
-    if hands_on {
-        out.push_str(&format!(
-            ",\n  \"services\": [\n    {{ \"binding\": {}, \"service\": {}, \"entrypoint\": {} }}\n  ]",
-            quoted(HAND_ON_BINDING),
-            quoted(&worker_name(name)),
-            quoted(HAND_ON_ENTRYPOINT),
         ));
     }
     out.push_str("\n}\n");
