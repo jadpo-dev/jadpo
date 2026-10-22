@@ -428,8 +428,9 @@ struct Locales {
 /// whose locales give the same files (chunk 8.4g), so their builds share
 /// a target. The folder is written whole under another name and renamed
 /// into place, so a build reading it never sees it half written; a build
-/// beside this one writing the same folder first leaves this one's copy
-/// unused.
+/// beside this one reuses the complete folder. Verification/publication
+/// holds a per-digest filesystem lock; missing or corrupt cached files are
+/// rebuilt before the folder is handed to cargo.
 fn carried_locales(
     db: &dyn jadpo_db::Db,
     project: jadpo_db::Project,
@@ -463,13 +464,16 @@ fn carried_locales(
 /// [`carried_locales`]' files for `tags`, in `locales/<digest>/`.
 fn locales_written(tags: &[&str], locales: &Path) -> Result<Locales, String> {
     std::fs::create_dir_all(locales).map_err(|error| error.to_string())?;
-    // A name no other build uses at the same time: its process and when.
+    // Clock resolution alone cannot distinguish threads exporting at once.
+    // The process-local sequence also keeps their scratch names apart.
+    static NEXT_EXPORT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let unique = format!(
-        "{}-{}",
+        "{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_nanos())
+            .map_or(0, |since| since.as_nanos()),
+        NEXT_EXPORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     );
     let files = jadpo_cldr::export(tags, &locales.join(format!(".export-{unique}")))
         .map_err(|error| error.to_string())?;
@@ -480,16 +484,33 @@ fn locales_written(tags: &[&str], locales: &Path) -> Result<Locales, String> {
         16,
     );
     let folder = locales.join(&digest);
-    if !folder.is_dir() {
+    // A restored/pruned cargo cache can leave the digest's directory but
+    // not its files. Serialize verification and repair for this digest, so
+    // one repairer cannot remove another's newly completed publication.
+    // Export is above the lock; cargo runs after it is dropped on return.
+    let lock = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(locales.join(format!(".{digest}.lock")))
+        .map_err(|error| error.to_string())?;
+    lock.lock().map_err(|error| error.to_string())?;
+    let complete = files
+        .iter()
+        .all(|(name, bytes)| std::fs::read(folder.join(name)).is_ok_and(|there| there == *bytes));
+    if !complete {
         let writing = locales.join(format!(".writing-{unique}"));
-        jadpo_codegen::Generated { files }
-            .write(&writing)
-            .map_err(|error| error.to_string())?;
-        if let Err(error) = std::fs::rename(&writing, &folder) {
-            let _ = std::fs::remove_dir_all(&writing);
-            if !folder.is_dir() {
-                return Err(error.to_string());
+        let published = (|| {
+            jadpo_codegen::Generated { files }.write(&writing)?;
+            if folder.exists() {
+                std::fs::remove_dir_all(&folder)?;
             }
+            std::fs::rename(&writing, &folder)
+        })();
+        if let Err(error) = published {
+            let _ = std::fs::remove_dir_all(&writing);
+            return Err(error.to_string());
         }
     }
     Ok(Locales { folder, digest })
@@ -1064,7 +1085,7 @@ mod tests {
         )
         .expect("the month names");
         assert!(months.contains("septembre"), "{months}");
-        let left: Vec<String> = std::fs::read_dir(&locales)
+        let mut left: Vec<String> = std::fs::read_dir(&locales)
             .expect("the folder")
             .map(|entry| {
                 entry
@@ -1074,9 +1095,86 @@ mod tests {
                     .into_owned()
             })
             .collect();
-        assert_eq!(left, [written[0].digest.clone()]);
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                format!(".{}.lock", written[0].digest),
+                written[0].digest.clone()
+            ]
+        );
         let other = locales_written(&["de-DE"], &locales).expect("written");
         assert_ne!(other.digest, written[0].digest);
+        std::fs::remove_dir_all(&locales).expect("removed");
+    }
+
+    /// A restored cargo cache can retain a locale digest directory while
+    /// pruning its generated files. Its name alone does not prove it is
+    /// complete: ICU4X includes both mod.rs and the marker files at compile
+    /// time. Every concurrent build must receive the whole exported set.
+    #[test]
+    fn an_incomplete_locale_cache_is_rebuilt_before_it_is_used() {
+        let locales = std::env::temp_dir().join(format!(
+            "jadpo-locales-repair-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&locales);
+        let original = locales_written(&["en-GB"], &locales).expect("written");
+        let expected: Vec<_> = std::fs::read_dir(&original.folder)
+            .expect("locale files")
+            .map(|entry| {
+                let path = entry.expect("a file").path();
+                (
+                    path.file_name().unwrap().to_owned(),
+                    std::fs::read(path).unwrap(),
+                )
+            })
+            .collect();
+        assert!(expected.iter().any(|(name, _)| name == "mod.rs"));
+        let marker = expected
+            .iter()
+            .find(|(name, _)| name != "mod.rs")
+            .unwrap()
+            .0
+            .clone();
+        for damage in 0..3 {
+            match damage {
+                0 => {
+                    // rust-cache's recursive cleanup leaves empty directories.
+                    for (name, _) in &expected {
+                        std::fs::remove_file(original.folder.join(name)).unwrap();
+                    }
+                }
+                1 => std::fs::write(original.folder.join("mod.rs"), b"truncated").unwrap(),
+                _ => std::fs::remove_file(original.folder.join(&marker)).unwrap(),
+            }
+            assert!(original.folder.is_dir());
+            let recovered: Vec<_> = std::thread::scope(|scope| {
+                let builds: Vec<_> = (0..4)
+                    .map(|_| scope.spawn(|| locales_written(&["en-GB"], &locales)))
+                    .collect();
+                builds
+                    .into_iter()
+                    .map(|build| build.join().unwrap().unwrap())
+                    .collect()
+            });
+            for recovered in recovered {
+                assert_eq!(recovered.folder, original.folder);
+                assert_eq!(recovered.digest, original.digest);
+                assert!(
+                    recovered.folder.join("mod.rs").is_file(),
+                    "mod.rs missing after damage {damage}"
+                );
+                for (name, bytes) in &expected {
+                    assert!(
+                        std::fs::read(recovered.folder.join(name))
+                            .is_ok_and(|there| there == *bytes),
+                        "{name:?} differs after damage {damage}"
+                    );
+                }
+            }
+        }
         std::fs::remove_dir_all(&locales).expect("removed");
     }
 

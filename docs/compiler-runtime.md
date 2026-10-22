@@ -1179,7 +1179,15 @@ the package cache is; the project's `build/rust/cache/` with neither),
 Jadpo of one version never share one. Its `locales/<digest>/` holds the
 CLDR data a locale set carries, named by a digest of the exported
 files, written under another name and renamed into place, so no build
-reads it half written and identical sets share it. Its
+reads it half written and identical sets share it. Each build verifies the
+expected exported files, not only the directory's name: a restored/pruned
+cache may retain an empty digest directory. Verification and repair hold a
+per-digest filesystem lock (`locales/.<digest>.lock`); incomplete or corrupt
+entries are written under a unique staging name and published whole, while
+complete entries are untouched. Export and cargo run outside that lock.
+This recovers the empty directories left by the pinned CI cache action's
+[recursive target cleanup](https://github.com/Swatinem/rust-cache/blob/6323deb102c322ba6fcbdcafc7e3dddab59af2b6/src/cleanup.ts#L9-L33),
+without clearing valid build artifacts or changing cache keys. Its
 `targets/<host>-<locales>[-<overrides>]/` is a cargo target for each
 host (`native`, `wasm`), locale data and set of cargo's
 `CARGO_PROFILE_RELEASE_*` overrides (the gate builds its test
