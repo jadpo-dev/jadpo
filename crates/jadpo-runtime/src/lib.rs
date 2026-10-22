@@ -178,7 +178,10 @@ pub use host::{
 };
 pub use jadpo_std::Isolation;
 pub use jadpo_std::geography;
-pub use limits::{JSON_KEPT_DEPTH, JSON_KEPT_LIMIT, MAX_DEPTH};
+pub use limits::{
+    JSON_KEPT_DEPTH, JSON_KEPT_LIMIT, MAX_DEPTH, MAX_INLINE_DEPTH, STACK_BYTES, WASM_STACK_BYTES,
+    WASM_STACK_RESERVE,
+};
 pub use migrate::{
     Backfills, MIGRATIONS_TABLE, MigrateError, Migration, NoBackfills, Progress, STEPS_TABLE,
     Standing, Unworked, has_extensions, migrate, migrate_reporting, migrate_with, standing,

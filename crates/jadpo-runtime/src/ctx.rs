@@ -210,6 +210,9 @@ pub struct Ctx<'p> {
     /// When the request being answered runs out of time, on the host's
     /// monotonic clock (area 7, "Time limits").
     deadline: Option<u64>,
+    /// How many inline functions are running, one inside another's body
+    /// ([`Ctx::inline_begin`]).
+    inline: usize,
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
@@ -321,6 +324,7 @@ impl<'p> Ctx<'p> {
             sign_in_refused: None,
             unpoliced: false,
             deadline: None,
+            inline: 0,
             settings: Vec::new(),
             started: None,
             background: Background::default(),
@@ -942,9 +946,12 @@ impl<'p> Ctx<'p> {
     }
 
     /// Enters `callable`, called from `site` of the current frame. Past
-    /// [`MAX_DEPTH`] frames it is the `recursion_limit` fault, at that site.
+    /// [`MAX_DEPTH`] frames it is the `recursion_limit` fault, at that site,
+    /// and in a WebAssembly module so it is with less than
+    /// [`crate::WASM_STACK_RESERVE`] of its own stack left, so frames too
+    /// large for it stop there rather than write past its end.
     pub fn enter(&mut self, callable: u32, site: u32) -> Result<(), Box<Fault>> {
-        if self.frames.len() >= MAX_DEPTH {
+        if self.frames.len() >= MAX_DEPTH || stack_low() {
             return Err(self.fault(FaultKind::RecursionLimit, site));
         }
         self.at(site);
@@ -958,6 +965,24 @@ impl<'p> Ctx<'p> {
     /// Leaves the current callable.
     pub fn leave(&mut self) {
         self.frames.pop();
+    }
+
+    /// An operation is about to run an inline function: `false`, and
+    /// nothing counted, when [`crate::MAX_INLINE_DEPTH`] are running
+    /// already, which the operation's site raises as the `recursion_limit`
+    /// fault; otherwise it counts until [`Ctx::inline_end`].
+    pub fn inline_begin(&mut self) -> bool {
+        if self.inline >= crate::MAX_INLINE_DEPTH {
+            return false;
+        }
+        self.inline += 1;
+        true
+    }
+
+    /// The operation [`Ctx::inline_begin`] let run its inline function has
+    /// ended.
+    pub fn inline_end(&mut self) {
+        self.inline = self.inline.saturating_sub(1);
     }
 
     /// Moves the current frame to `site`.
@@ -1351,6 +1376,24 @@ impl<'p> Ctx<'p> {
             boundary.mark_changed();
         }
     }
+}
+
+/// Whether a WebAssembly module's own stack has less than
+/// [`crate::WASM_STACK_RESERVE`] left. Rust links it first in the module's
+/// memory (`--stack-first`), growing down towards address 0, so the
+/// address of a value on it is what is left. Natively a thread's stack is
+/// [`crate::STACK_BYTES`], which a thousand frames of any reasonable size
+/// don't reach.
+#[cfg(target_arch = "wasm32")]
+fn stack_low() -> bool {
+    let here = 0u8;
+    let at = std::ptr::addr_of!(here) as usize;
+    at < crate::WASM_STACK_RESERVE
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn stack_low() -> bool {
+    false
 }
 
 #[cfg(test)]

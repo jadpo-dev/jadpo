@@ -362,7 +362,7 @@ impl Remote<'_> {
             stores,
             crash,
             batches: copy.is_some(),
-            record,
+            record: record.then(crate::differential::digest_key),
         };
         let answered = self.workerd.post("/run", &asked.to_json());
         if let (Some(databases), Some(copy)) = (self.databases, copy) {

@@ -5,9 +5,12 @@
 //!
 //! A test's record ([`TestRecord`]) is the runtime's record of what it did
 //! ([`jadpo_runtime::record`]: each statement with its parameters' types
-//! and row count, each event written with its payload, each outside call
-//! with its answer, the outcome), how the test ended, and the rows its
-//! database held when it ended. Only what the test's seed and clock decide
+//! and row count, a read's bound values by a digest, each event written
+//! with its payload, each outside call with its input's digest and its
+//! answer, the outcome with a failure's or a fault's site and a fault's
+//! stack; for a recording's test, the value it decoded to), how the test
+//! ended, and the rows its database held when it ended. Every digest is
+//! keyed with [`digest_key`], the process's own. Only what the test's seed and clock decide
 //! is in it: there are no wall-clock times, row order is canonical, and
 //! each identity is written `id#1`, `id#2`… in the order it first appears,
 //! so a record says which rows and events share an identity without
@@ -15,10 +18,27 @@
 //! names the first line that differs, with both sides.
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
+use jadpo_runtime::Host;
 use jadpo_runtime::record::Entry;
 
 use crate::{Run, Test};
+
+/// The key this process's records digest values with
+/// ([`jadpo_runtime::record::Record::new`]; chunk 8.4a): drawn once, at
+/// random, and never kept or shown, so the records this process keeps,
+/// the interpreter's and compiled code's, and a test Worker's it hands the
+/// key to, digest a value alike, and nobody without it learns anything of
+/// the value from a digest a difference prints.
+pub fn digest_key() -> [u8; 32] {
+    static KEY: OnceLock<[u8; 32]> = OnceLock::new();
+    *KEY.get_or_init(|| {
+        let mut key = [0; 32];
+        jadpo_host_native::NativeHost::new().random(&mut key);
+        key
+    })
+}
 
 /// One test's record, in its canonical form: one line per thing it did,
 /// then how it ended, then its database's rows.
@@ -251,6 +271,7 @@ mod tests {
         Entry::Statement {
             sql: sql.into(),
             types: vec!["uuid".into()],
+            digest: None,
             ran: Ran::Read(rows),
         }
     }

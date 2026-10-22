@@ -419,15 +419,37 @@ impl Emitter<'_> {
                 quote!(#defect;)
             }
         };
+        let paced = self.paced();
         let body = self.block(body);
         quote!({
             let list = #list;
             let items = #items;
             for item in items.iter() {
+                #paced
                 #set
                 #body
             }
         })
+    }
+
+    /// A loop's turn counted toward the deadline's next look (area 7,
+    /// "Time limits"), as the interpreter's walker counts its tasks: past
+    /// the deadline its fault stops the body; a body that waits gives the
+    /// thread back when it is time to, and a function's, or an inline
+    /// function's, where nothing waits, carries on.
+    fn paced(&self) -> TokenStream {
+        let passed = self.fail(quote!(stop));
+        if self.shape.waits() && self.inline.is_none() {
+            quote!(match rt::pace(cx, p) {
+                rt::Pace::Running => {}
+                rt::Pace::Yield => cx.host().yield_now().await,
+                rt::Pace::Passed(stop) => #passed,
+            })
+        } else {
+            quote!(if let rt::Pace::Passed(stop) = rt::pace(cx, p) {
+                #passed;
+            })
+        }
     }
 
     /// The `if` chain from its first condition: each condition worked out
@@ -1427,10 +1449,13 @@ impl Emitter<'_> {
             .map(|site| site.node.clone());
         let call = match node {
             Some(Node::Expr(Expr::Call { callee, args, .. })) => match callee {
+                // A package's action among them, which then runs in a
+                // savepoint as the interpreter's `Task::Catch` has it.
                 Callee::Function(_)
                 | Callee::Action(_)
                 | Callee::Fixture(_)
-                | Callee::LibraryFunction(_) => Some((callee, args)),
+                | Callee::LibraryFunction(_)
+                | Callee::PackageAction { .. } => Some((callee, args)),
                 Callee::Query(_) | Callee::Entity { .. }
                     if matches!(
                         self.decoded(subject),

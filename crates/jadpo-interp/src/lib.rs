@@ -34,11 +34,12 @@ pub use jadpo_value::Value;
 pub use program::{CallError, Prepared, Program};
 pub use values::Codec;
 
-/// How much stack [`on_large_stack`] gives. The walker keeps its own
-/// stacks, so a recursion to the runtime's depth limit doesn't grow the
-/// thread's; only an inline function's body, run inside a collection
-/// operation, does, a few frames per level.
-pub const STACK_BYTES: usize = 64 * 1024 * 1024;
+/// How much stack [`on_large_stack`] gives: the runtime's, which a
+/// native deployable's workers have too. The walker keeps its own stacks,
+/// so a recursion to the runtime's depth limit doesn't grow the thread's;
+/// only an inline function's body, run inside a collection operation,
+/// does, a few frames per level.
+pub use jadpo_runtime::STACK_BYTES;
 
 /// Runs `work` on a thread with [`STACK_BYTES`] of stack, so recursion to
 /// the runtime's depth limit through inline functions ends in its fault

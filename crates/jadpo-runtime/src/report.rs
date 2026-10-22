@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 
 use crate::outcome::{Assertion, AssertionDetail, Got, Outcome};
-use crate::{Failure, Fault, FaultKind, Frame, MAX_DEPTH, Places};
+use crate::{Failure, Fault, FaultKind, Frame, MAX_DEPTH, MAX_INLINE_DEPTH, Places};
 
 /// The text of each source file, by project-relative path.
 pub trait Sources {
@@ -252,6 +252,9 @@ impl Report {
             FaultKind::DecimalOverflow => "past 38 digits".to_string(),
             FaultKind::TimeRange => "past the years a time holds".to_string(),
             FaultKind::ClockBackward => "moves the clock back".to_string(),
+            FaultKind::RecursionLimit if fault.frames.len() < MAX_DEPTH => {
+                format!("{MAX_INLINE_DEPTH} inline functions deep")
+            }
             FaultKind::RecursionLimit => format!("{MAX_DEPTH} calls deep"),
             FaultKind::DeadlineExceeded => "out of time".to_string(),
             FaultKind::NotBuiltYet(_) => "not built yet".to_string(),
@@ -295,6 +298,15 @@ impl Report {
                 ),
                 "Advance by a duration that isn't negative, or start the test earlier with `clock:`"
                     .to_string(),
+                "agent",
+            ),
+            // Fewer frames than the limit: it was the inline functions
+            // running at once (chunk 8.4a).
+            FaultKind::RecursionLimit if fault.frames.len() < MAX_DEPTH => (
+                format!(
+                    "{MAX_INLINE_DEPTH} inline functions were running one inside another, the most Jadpo allows, so the recursion stopped here instead of exhausting the stack."
+                ),
+                "Make the recursion end sooner, or recurse with `for` rather than through an inline function".to_string(),
                 "agent",
             ),
             FaultKind::RecursionLimit => (

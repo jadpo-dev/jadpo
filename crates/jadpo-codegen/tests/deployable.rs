@@ -200,6 +200,14 @@ fn a_worker_is_its_program_and_a_cdylib_exporting_fetch() {
     assert!(!manifest.contains("testing"), "{manifest}");
     assert!(!manifest.contains("jadpo-host-native"), "{manifest}");
     assert!(!files.contains_key("deployable/src/main.rs"));
+    // The module's own stack, given at its link alone (chunk 8.4a).
+    let build = text(files, "deployable/build.rs");
+    syn::parse_file(&build).expect("Rust");
+    let stack = format!(
+        "cargo::rustc-link-arg=-zstack-size={}",
+        jadpo_std::compiled::WASM_STACK_BYTES
+    );
+    assert!(build.contains(&stack), "{build}");
     let lib = text(files, "deployable/src/lib.rs");
     syn::parse_file(&lib).expect("Rust");
     for held in [
