@@ -40,9 +40,18 @@
 //! server serving on; and work that never waits, in an action's loops, a
 //! function's and inline functions, stopped at its one-second deadline.
 //!
-//! The builds are kept beside the build's own folders
-//! (`target/jadpo-compiled/deployable/`), so a second run compiles only
-//! what changed. The database is the one `JADPO_TEST_DATABASE_URL` names
+//! Two projects share one build of the runtime (chunk 8.4g;
+//! docs/compiler-runtime.md §2.5, "Keeping rustc time down"): two small
+//! greeters built into one cache, the second compiling none of the
+//! runtime the first compiled, each binary holding its own greeting and
+//! never the other's however their builds alternate, and neither the
+//! path of its project nor of the cache.
+//!
+//! The projects are kept beside the build's own folders
+//! (`target/jadpo-compiled/deployable/`), and their builds in the cache
+//! there (`target/jadpo-compiled/cache/`, the shop in one of its own, as
+//! no other project here carries its locales), so a second run compiles
+//! only what changed. The database is the one `JADPO_TEST_DATABASE_URL` names
 //! or one started from the machine's PostgreSQL tools;
 //! `JADPO_SKIP_POSTGRES=1` skips it, and the release builds with it.
 //! Nothing leaves this machine.
@@ -684,10 +693,27 @@ pub(crate) fn count(connection: &str, table: &str) -> i64 {
         .expect("a count")
 }
 
+/// The cache folder the tests' builds share, as a user's builds share
+/// theirs (chunk 8.4g): `XDG_CACHE_HOME` for `jadpo build`.
+pub(crate) fn shared_cache() -> PathBuf {
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/cache")
+}
+
+/// The environment `jadpo` is run in at `root`: nothing but the cache.
+pub(crate) fn at(root: &Path, cache: &Path) -> Environment {
+    Environment::empty()
+        .with_cwd(root)
+        .with_var("XDG_CACHE_HOME", &cache.to_string_lossy())
+}
+
 /// `jadpo` with `args` in `root`, which must succeed.
 fn jadpo(root: &Path, args: &[&str]) -> jadpo_cli::Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
-    let output = run(&args, &Environment::empty().with_cwd(root));
+    let output = run(&args, &at(root, &shared_cache()));
     assert_eq!(
         output.code, 0,
         "{args:?}: {}{}",
@@ -747,7 +773,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
     let root = repair_cafe();
     let output = run(
         &["build".to_string(), "--json".to_string()],
-        &Environment::empty().with_cwd(&root),
+        &at(&root, &shared_cache()),
     );
     assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
     let document: Value = serde_json::from_str(&output.stdout).expect("JSON");
@@ -1185,17 +1211,26 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
     assert_eq!(expected[0]["weekday"], "Thursday", "{}", expected[0]);
     assert_eq!(expected[1]["weekday"], "jeudi", "{}", expected[1]);
 
+    let cache = root.with_file_name("locale-shop-cache");
     let output = run(
         &["build".to_string(), "--json".to_string()],
-        &Environment::empty().with_cwd(&root),
+        &at(&root, &cache),
     );
     assert_eq!(output.code, 0, "{}{}", output.stdout, output.stderr);
 
-    // The data it was built with holds English and French month names,
-    // and no other language's.
-    let months =
-        fs::read_to_string(root.join("build/rust/cldr/datetime_names_month_gregorian_v1.rs.data"))
-            .expect("the carried month names");
+    // The data it was built with, the one locale set in its cache, holds
+    // English and French month names, and no other language's.
+    let carried: Vec<PathBuf> = within(&cache.join("jadpo/builds"), 3)
+        .into_iter()
+        .filter(|folder| {
+            folder
+                .parent()
+                .is_some_and(|parent| parent.ends_with("locales"))
+        })
+        .collect();
+    assert_eq!(carried.len(), 1, "{carried:?}");
+    let months = fs::read_to_string(carried[0].join("datetime_names_month_gregorian_v1.rs.data"))
+        .expect("the carried month names");
     for word in ["September", "septembre"] {
         assert!(months.contains(word), "{word} carried");
     }
@@ -1255,4 +1290,145 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
         .expect("kill runs");
     assert!(stopped.success());
     assert_eq!(ended(&mut child, 30), Some(0));
+}
+
+/// The folders `depth` levels below `folder`, but those whose names start
+/// with a dot.
+fn within(folder: &Path, depth: usize) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for entry in entries {
+        let path = entry.expect("an entry").path();
+        let hidden = path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with('.'));
+        if !path.is_dir() || hidden {
+            continue;
+        }
+        if depth == 1 {
+            found.push(path);
+        } else {
+            found.extend(within(&path, depth - 1));
+        }
+    }
+    found
+}
+
+/// A small project whose one route greets with `words`, written at `name`
+/// beside the other projects, its API's record brought up to date.
+fn greeter(name: &str, words: &str) -> PathBuf {
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable")
+        .join(name);
+    let action = format!(
+        "use greeting/types {{ Hello, Words }}\n\n/// Greets whoever asks.\naction greet() -> Hello {{\n    return Hello {{\n        words: Words(\"{words}\")\n    }}\n}}\n"
+    );
+    let files = [
+        ("app.jadpo", "application {}\n"),
+        (
+            "policy.jadpo",
+            "use greeting\n\npolicy {\n    actions: {\n        greeting.greet: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "domains/greeting/types/words.jadpo",
+            "/// What the greeting says.\ntype Words = Text {}\n",
+        ),
+        (
+            "domains/greeting/types/hello.jadpo",
+            "use greeting/types { Words }\n\n/// A greeting.\ntype Hello = Output {\n    words: Words\n}\n",
+        ),
+        ("domains/greeting/actions/greet.jadpo", action.as_str()),
+        (
+            "domains/greeting/routes/greeting.jadpo",
+            "use greeting/types { Hello }\nuse greeting/actions { greet }\n\n/// The greeting.\nroutes Greeting {\n    prefix: /greeting\n\n    /// Greets.\n    POST / {\n        authentication: RouteAuthentication.none\n        output: Hello\n        run: greet()\n    }\n}\n",
+        ),
+    ];
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("a folder")).expect("folders");
+        if fs::read_to_string(&path).ok().as_deref() != Some(text) {
+            fs::write(&path, text).expect("written");
+        }
+    }
+    jadpo(&root, &["api", "update"]);
+    root
+}
+
+/// The runtime's libraries in the shared cache's native targets, each
+/// with when it was written.
+fn runtime_libraries() -> Vec<(PathBuf, std::time::SystemTime)> {
+    let mut found = Vec::new();
+    for target in within(&shared_cache().join("jadpo/builds"), 3) {
+        let deps = target.join("release/deps");
+        let native = target
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with("native-"));
+        let Ok(entries) = fs::read_dir(&deps) else {
+            continue;
+        };
+        if !native {
+            continue;
+        }
+        for entry in entries {
+            let path = entry.expect("an entry").path();
+            let name = path.file_name().expect("a name").to_string_lossy();
+            if name.starts_with("libjadpo_runtime-") && name.ends_with(".rlib") {
+                let written = fs::metadata(&path)
+                    .and_then(|meta| meta.modified())
+                    .expect("a time");
+                found.push((path, written));
+            }
+        }
+    }
+    found
+}
+
+/// Two projects built into one cache share one build of the runtime
+/// (chunk 8.4g; docs/compiler-runtime.md §2.5, "Keeping rustc time
+/// down"): the second compiles none of what the first compiled of it,
+/// neither keeps a target or locale data of its own, and each binary
+/// holds its own greeting, never the other's, however their builds
+/// alternate, though both build a deployable `app` from packages of the
+/// same names; and neither binary holds its project's path or the
+/// cache's, so where a project is built doesn't change what it builds.
+#[cfg(unix)]
+#[test]
+fn projects_share_one_build_of_the_runtime_and_never_each_others_program() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let one = greeter("greeter-one", "Hello from one");
+    let two = greeter("greeter-two", "Hello from two");
+    jadpo(&one, &["build"]);
+    let compiled = runtime_libraries();
+    assert!(!compiled.is_empty(), "the runtime compiled in the cache");
+    jadpo(&two, &["build"]);
+    let after = runtime_libraries();
+    for library in &compiled {
+        assert!(after.contains(library), "{library:?} compiled again");
+    }
+    // The first again, changing nothing: its program is the one the
+    // other's build didn't leave behind.
+    jadpo(&one, &["build"]);
+    let cache = shared_cache();
+    for (root, own, other) in [
+        (&one, "Hello from one", "Hello from two"),
+        (&two, "Hello from two", "Hello from one"),
+    ] {
+        for leftover in ["build/rust/target", "build/rust/cldr"] {
+            assert!(!root.join(leftover).exists(), "{leftover} kept");
+        }
+        let binary = fs::read(root.join("build/target/app/app")).expect("the binary");
+        assert!(holds(&binary, own.as_bytes()), "{own} in its binary");
+        assert!(!holds(&binary, other.as_bytes()), "{other} in its binary");
+        for folder in [root.as_path(), cache.as_path()] {
+            let path = folder.to_string_lossy();
+            assert!(!holds(&binary, path.as_bytes()), "{path} in its binary");
+        }
+    }
 }

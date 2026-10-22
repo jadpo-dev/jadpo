@@ -1168,8 +1168,47 @@ checked arithmetic that returns a fault, never panics. *Rejected:* string templa
 only rustc catches.
 
 **Keeping rustc time down.** The runtime crates are compiled once per
-Jadpo version and target and cached, so a build compiles only the thin
-application crate. Generated code has no generics, because monomorphised
+Jadpo version, target and locale set and cached, so a build compiles
+only the thin application crate. Since chunk 8.4g (decided 2026-10-22,
+reversible) `jadpo build` compiles every project's deployables into
+cargo targets shared by them all, in `jadpo/builds/<version>-<runtime>/`
+of the user's cache folder (`$XDG_CACHE_HOME`, else `~/.cache`, where
+the package cache is; the project's `build/rust/cache/` with neither),
+`<runtime>` a digest of the runtime source's folder, so two copies of
+Jadpo of one version never share one. Its `locales/<digest>/` holds the
+CLDR data a locale set carries, named by a digest of the exported
+files, written under another name and renamed into place, so no build
+reads it half written and identical sets share it. Its
+`targets/<host>-<locales>[-<overrides>]/` is a cargo target for each
+host (`native`, `wasm`), locale data and set of cargo's
+`CARGO_PROFILE_RELEASE_*` overrides (the gate builds its test
+deployables without link-time optimisation): ICU4X's data crates read
+the data through `ICU4X_DATA_DIR`, whose change cargo rebuilds them and
+everything above them for, so two sets in one target would undo each
+other's build, as two profiles would. A workspace's own paths reach
+rustc relative to it, and the cache, the runtime's source and cargo's
+home are remapped alike for every project, so the shared units are the
+same for each and a binary holds no machine's path. A build holds the
+target's lock (`jadpo-build.lock`) from `cargo update` until it has
+copied what it built into its workspace: cargo's own lock keeps two
+builds from writing at once, not a second from replacing the first's
+binary before it is copied out. Cargo names a path package's unit by
+its name and its path within its workspace, so two projects'
+deployables of one name build the same units; the target records the
+workspace that last built each deployable name
+(`jadpo-built-by/<name>`), and a build from another marks its own
+files changed first, since cargo, going by the files' times, would
+otherwise take the other project's program as up to date. Nothing
+prunes the cache yet; deleting it costs a rebuild. The tests build into
+one cache, `target/jadpo-compiled/cache/`, so the four Workers
+scenarios compile the runtime once, and wasm-bindgen's library and the
+gzip that sizes a module are optimised in test builds (the root
+`Cargo.toml`). *Rejected:* one target for every locale set or profile,
+for the rebuilds above; a version for each project's packages, which
+would keep their units apart without marking files, but would make what
+a build gives depend on the folder it is built in, against reproducible
+builds (§2.8); and a target in each project, which made every app's
+first build a cold release build. Generated code has no generics, because monomorphised
 copies drive the LLVM IR rustc must optimise
 ([compile-time guide](https://nnethercote.github.io/perf-book/compile-times.html)).
 Tests run interpreted; compiled builds happen only in the differential
@@ -3219,8 +3258,9 @@ still deletes what has expired. `jadpo build` builds each deployable's
 workspace in `build/rust/<deployable>/`, its program the package
 `jadpo-program-<deployable>` (cargo names a path package's unit by its
 name and its path in its workspace, so several workspaces' `program`
-would share one), all into one cargo target with the paths remapped
-alike, so the runtime crates compile once; it places each binary as a
+would share one), all into the target §2.5's "Keeping rustc time down"
+shares with every project for the host and locale set (chunk 8.4g), so
+the runtime crates compile once; it places each binary as a
 new file, since macOS kills a binary copied over one it has run. The
 build id digested a declared deployable's declaration with the graph's
 digest (`jadpo_cli::stamp`) until chunk 8.1o3, and `jadpo check` writes
@@ -3315,7 +3355,7 @@ against 5 to 18 ms for the tokens).
 
 **A Workers deployable** (chunk 8.2b; area 14, "A Workers deployable").
 `jadpo build` builds a deployable with `target: Target.wasm` the way it
-builds a native one, into the same cargo target, with the same lock,
+builds a native one, into the shared target for wasm, with the same lock,
 toolchain, remapped paths and `SOURCE_DATE_EPOCH`: its workspace
 (`jadpo_codegen::deployable::workspace` with `Host::Workers`) holds the
 program's crate and a `cdylib`, `jadpo-worker-<deployable>`, which
@@ -3348,7 +3388,7 @@ at level 6 and gzip's 18 bytes). Until chunk 8.2d,
 `jadpo_host_workers::deployable::fetch` made the program once per
 isolate and answered every request 503 (since then, "Serving on
 Workers", below). Proved
-(`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group):
+(`crates/jadpo-cli/tests/workers/kiosk.rs`, the gate's `wasm32` group):
 teaching example 23 declared as a kiosk on Workers, built (42 s cold on
 the ten-core Mac, seconds warm), its files and Wrangler file as above,
 its stamp's target `wasm` in the manifest, its module linking
@@ -3402,7 +3442,7 @@ by `Serving` on that host, sharing the isolate's `http::Worker`, its
 deferred work run through `waitUntil`; the `Response` is built with each
 header appended, no body for a status that has none, and a streamed
 answer sent as a `ReadableStream` since chunk 8.2h (below). Proved under workerd
-(`crates/jadpo-cli/tests/workers.rs`, the gate's `wasm32` group, now
+(`crates/jadpo-cli/tests/workers/kiosk.rs`, the gate's `wasm32` group, now
 given the run's PostgreSQL, which CI's `wasm32` job starts as the others
 do; a local run's listens on a Unix socket, which `connect()` can't
 open, so the test starts one of its own on `127.0.0.1`): teaching
@@ -3584,7 +3624,7 @@ again at each such mark of the cron's minute, from its
 `scheduledTime`, one tick after the last ends (`next_tick`), so an
 invocation holds no more connections than one tick does and a mark a
 long tick passed isn't made up; it ends with the minute. Proved under
-workerd (`crates/jadpo-cli/tests/workers.rs`, the `wasm32` group): a
+workerd (`crates/jadpo-cli/tests/workers/depot.rs`, the `wasm32` group): a
 depot built for Workers that serves nothing, reads a local SQS through
 the SQS package and takes stock every minute, its Wrangler file naming
 the cron and `jadpo check` refusing the schedule at `every: 30s`; its
@@ -3712,7 +3752,7 @@ a Hyperdrive binding read as its address, its host the pooler and
 store reaching a scripted PostgreSQL elsewhere over TLS through
 `startTls()`, and one signed by an authority workerd doesn't trust
 refused as the fault (without `Checked`, unavailable); and
-(`crates/jadpo-cli/tests/workers.rs`) example 23's kiosk built with its
+(`crates/jadpo-cli/tests/workers/kiosk.rs`) example 23's kiosk built with its
 Wrangler file's Hyperdrive binding, with and without an id, then served
 through workerd's Hyperdrive binding to the run's PostgreSQL: the
 migrations compared, a repair booked, its thank-you pinned up after the
@@ -3765,7 +3805,7 @@ it: workerd finds the client gone when it next sends it a piece, rather
 than calling the source's `cancel`, which, when a platform does call it,
 stops the read in hand and drops the stream, aborting that `fetch()`
 itself; when Cloudflare's edge finds a client gone is for chunk 8.2n.
-Proved under workerd (`crates/jadpo-cli/tests/workers.rs`) by a news desk
+Proved under workerd (`crates/jadpo-cli/tests/workers/newsroom.rs`) by a news desk
 of its own whose model is a server the test starts: a draft's first piece
 reaching the client before the model writes the rest, a client that goes
 away closing the model's connection once the model writes again,
@@ -3919,8 +3959,9 @@ then each its fallback gives for that marker's configuration, down to
 with no `locales { }` can't sort by a locale, chunk 8.4j), and every
 marker with one entry, through
 icu_provider_export's `ExportDriver` and baked writer. The files go into
-`build/rust/cldr/`, written only where they changed, one folder for
-every deployable of the app since its locales are the app's, so the
+a folder of the build cache named by their digest (§2.5, "Keeping rustc
+time down"; chunk 8.4g), written whole and renamed into place, one
+folder for every project whose locales give the same files, so their
 shared target compiles the runtime crates once; `deployable::build` runs
 cargo with `ICU4X_DATA_DIR` naming it (`Release::cldr`), so each ICU4X
 data crate compiles them in place of its own: every `compiled_data` constructor is the same call,

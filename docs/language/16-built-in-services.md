@@ -2666,7 +2666,7 @@ conservative reading where the page leaves a choice open (2026-10-21):
   fails for it.
 
 Proved under workerd (`crates/jadpo-host-workers/tests/workerd.rs`,
-`crates/jadpo-cli/tests/workers.rs`) against a stand-in for Cloudflare's
+`crates/jadpo-cli/tests/workers/kiosk.rs`) against a stand-in for Cloudflare's
 binding (`tools/workers/ratelimit-binding.mjs`, a wrapped binding), since
 workerd has none: the binding decides where it is given, a refusal waits
 the window, and a broken or missing binding falls back to memory.

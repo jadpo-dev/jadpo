@@ -345,3 +345,22 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
+
+# A Workers deployable's module is bound by wasm-bindgen's library and its
+# size gzipped every time a test builds one (chunk 8.4g): unoptimised,
+# binding example 23's kiosk took 2.8 s and gzipping it 1.7 s, optimised
+# 0.8 s and 0.3 s, so those crates are optimised in test builds too.
+[profile.dev.package.walrus]
+opt-level = 3
+
+[profile.dev.package.wasm-bindgen-cli-support]
+opt-level = 3
+
+[profile.dev.package.wasmparser]
+opt-level = 3
+
+[profile.dev.package.wasm-encoder]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3

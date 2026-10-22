@@ -31,9 +31,11 @@
 //!   `jadpo_std::compiled::WASM_STACK_BYTES` of stack (chunk 8.4a).
 //!
 //! [`build`] runs cargo over it, for `wasm32-unknown-unknown` when it is
-//! a Worker, with the paths it was built from remapped and
-//! `SOURCE_DATE_EPOCH` fixed, so what it builds holds no machine's paths
-//! (reproducible builds are a goal CI can check, §2.8), and with
+//! a Worker, into a target shared with other projects' builds (chunk
+//! 8.4g), the workspace's own paths relative and every other path it was
+//! built from remapped, and `SOURCE_DATE_EPOCH` fixed, so what it builds
+//! holds no machine's paths (reproducible builds are a goal CI can check,
+//! §2.8), and with
 //! `ICU4X_DATA_DIR` naming the folder of the Unicode CLDR data it
 //! carries, the application's supported locales' only as `jadpo-cldr`
 //! exports it (area 10, "Locales"; chunk 8.2c), so ICU4X's data crates
@@ -407,7 +409,11 @@ pub struct Release<'a> {
     pub name: &'a str,
     /// What it is built to run on.
     pub host: Host,
-    /// Where cargo keeps what it builds, between builds.
+    /// Where cargo keeps what it builds, between builds: one folder for
+    /// every project this Jadpo builds for one host and locale set
+    /// (docs/compiler-runtime.md §2.5, "Keeping rustc time down"), so the
+    /// runtime crates compile once for them all, and so shared by builds
+    /// that may run at once.
     pub target: &'a Path,
     /// Each folder whose path the binary would otherwise hold, and what
     /// the binary names it instead.
@@ -417,21 +423,57 @@ pub struct Release<'a> {
     pub epoch: u64,
     /// The folder of the CLDR data it carries, `jadpo_cldr::export`'s
     /// files, which ICU4X's data crates compile in place of their own;
-    /// the same folder for every deployable of an app, whose locales are
-    /// the app's, so a shared target compiles them once.
+    /// one folder for every build with the same data, so a shared target
+    /// compiles them once.
     pub cldr: &'a Path,
 }
 
+/// The file in a target whose lock a build holds from its first cargo
+/// command until it has copied out what it built.
+const TARGET_LOCK: &str = "jadpo-build.lock";
+
+/// The folder in a target naming, for each deployable name, the
+/// workspace whose packages it last built.
+const BUILT_BY: &str = "jadpo-built-by";
+
 /// Builds `release`'s binary, or its Worker's module for
 /// `wasm32-unknown-unknown`, in the release profile, offline and keeping
-/// to the lock, with the CLDR data in `release.cldr`: its path, which
-/// cargo builds over next time.
+/// to the lock, with the CLDR data in `release.cldr`: its path, a copy in
+/// the workspace's folder of what cargo built.
+///
+/// The target is shared, so the build holds the target's lock until that
+/// copy is made: cargo's own lock keeps two builds from writing the
+/// target at once, but not a second build from replacing what the first
+/// built before it is copied out. Cargo names a path package's unit by
+/// its name and its path within its workspace, so two projects'
+/// deployables of one name build the same units (which keeps what one
+/// builds independent of the folder it is in); cargo tells a unit is out
+/// of date by its files' times, which another project's may predate, so
+/// a workspace building units another built last marks its files changed
+/// first.
 pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
+    let io = |error: std::io::Error| Failed::Start(error.to_string());
+    std::fs::create_dir_all(release.target.join(BUILT_BY)).map_err(io)?;
+    let lock = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(release.target.join(TARGET_LOCK))
+        .map_err(io)?;
+    lock.lock().map_err(io)?;
+    let folder = std::path::absolute(release.folder).map_err(io)?;
+    let built_by = release.target.join(BUILT_BY).join(release.name);
+    let claimed = folder.to_string_lossy().into_owned();
+    if std::fs::read_to_string(&built_by).ok().as_deref() != Some(claimed.as_str()) {
+        for packages in ["program", "deployable"] {
+            touched(&folder.join(packages)).map_err(io)?;
+        }
+    }
     // The two generated packages join the runtime crates' lock; nothing
     // else in it moves, which the build then holds it to.
     run(release, &["update", "--workspace", "--offline", "--quiet"])?;
     let built = ["build", "--release", "--locked", "--offline", "--quiet"];
-    match release.host {
+    let compiled = match release.host {
         Host::Native => {
             run(
                 release,
@@ -441,7 +483,7 @@ pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
             if cfg!(windows) {
                 binary.set_extension("exe");
             }
-            Ok(binary)
+            binary
         }
         Host::Workers(_) => {
             let package = worker_package(release.name);
@@ -453,13 +495,45 @@ pub fn build(release: &Release<'_>) -> Result<PathBuf, Failed> {
                 ]
                 .concat(),
             )?;
-            Ok(release
+            release
                 .target
                 .join(WASM)
                 .join("release")
-                .join(format!("{}.wasm", package.replace('-', "_"))))
+                .join(format!("{}.wasm", package.replace('-', "_")))
+        }
+    };
+    std::fs::write(&built_by, &claimed).map_err(io)?;
+    let kept = folder.join(compiled.file_name().unwrap_or_default());
+    // A new file, never one written over, since macOS kills a binary
+    // copied over one it has run.
+    if let Err(error) = std::fs::remove_file(&kept)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(io(error));
+    }
+    std::fs::copy(&compiled, &kept).map_err(io)?;
+    drop(lock);
+    Ok(kept)
+}
+
+/// Marks every file under `folder` changed now.
+fn touched(folder: &Path) -> std::io::Result<()> {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return Ok(());
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries {
+        let path = entry?.path();
+        if path.is_dir() {
+            touched(&path)?;
+        } else {
+            std::fs::File::options()
+                .write(true)
+                .open(&path)?
+                .set_modified(now)?;
         }
     }
+    Ok(())
 }
 
 /// cargo with `args` in the workspace, as [`build`] runs it.

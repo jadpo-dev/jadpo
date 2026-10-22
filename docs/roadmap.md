@@ -2992,12 +2992,23 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   to 14.8 MB; a rebuild 3.5 s to 63 s natively, 8 s to 33 s for
   Workers. The gate builds its test deployables without LTO
   (`TEST_RELEASE_PROFILE`).
-- [ ] **8.4g Builds and CI kept quick** `opus · high`: the runtime
+- [x] **8.4g Builds and CI kept quick** `opus · high`: the runtime
   compiled once per Jadpo version, target and locale set (one shared
   cargo target, locale data in a folder named by its digest), which
   tests use too, as §2.5 decided; wasm-bindgen's walrus optimised in
   test builds; `crates/jadpo-cli/tests/workers.rs` split into a file a
-  scenario; each CI job's time recorded after.
+  scenario; each CI job's time recorded after. Built (§2.5, "Keeping
+  rustc time down"; area 14, Decisions, 2026-10-22): targets in
+  `jadpo/builds/` of the user's cache folder, one a host, locale data
+  and set of `CARGO_PROFILE_RELEASE_*` overrides, held under a lock
+  until the build is copied out, a workspace marking its files changed
+  when another project last built its deployable's name. Local, ten-core
+  Mac, from nothing: the `wasm32` job's Workers step 505 s (1,407
+  CPU-seconds, four 920 MB targets) before, 107 s (294, one 981 MB
+  target) after; binding and gzipping a kiosk 2.8 s and 1.7 s before,
+  0.8 s and 0.3 s after. The `compiled` job's two native builds carry
+  different locales, so it gains nothing and builds two small greeters
+  more. CI's times wait for the pull request's run.
 - [ ] **8.4h The roadmap and the plan's header** `opus · high`: finished
   phases moved to an archive page and a ticked chunk one line naming its
   section, the copies that disagree (8.1g's plan format, 8.2e's group,
