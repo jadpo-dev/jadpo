@@ -175,6 +175,9 @@ pub fn queue_name_ok(name: &str) -> bool {
         && edge(name.chars().last())
 }
 
+/// Why no two connections name one queue, a dead-letter queue among them.
+const ONE_CONSUMER: &str = "Each queue on Cloudflare Queues has one consumer, and a batch Cloudflare hands it names its queue, so one connection names each queue; a dead-letter queue has a consumer too, which parks each message it hands back for its connection's operator.";
+
 const CLOUDFLARE_REASON: &str = "A connection with `driver: Driver.cloudflare_queues` names a queue on Cloudflare Queues, which pushes its messages to the app's consumer on Workers: `queue:`, the queue's name as Cloudflare knows it, and `dead_letter_queue:`, another queue Cloudflare moves a message to once its retries are spent, so none is dropped. Each is written out, lowercase letters, digits and dashes, starting and ending with a letter or digit, at most 63 characters, since the consumer is written into the Wrangler file when the app is built.";
 
 /// Each connection with `driver: Driver.cloudflare_queues`, read.
@@ -304,8 +307,30 @@ pub fn cloudflare_queues(db: &dyn Db, project: Project) -> CloudflareQueues {
                             format!("`{connection}` and `{first}` both name the queue `{queue}`"),
                         )
                         .at(span.clone(), "named already")
-                        .reason("Each queue on Cloudflare Queues has one consumer, and a batch Cloudflare hands it names its queue, so one connection names each queue.")
-                        .next(format!("Name `{first}` in `receiving:` and remove `{connection}`")),
+                        .reason(ONE_CONSUMER)
+                        .next(format!(
+                            "Name `{first}` in `receiving:` and remove `{connection}`"
+                        )),
+                    );
+                }
+                // The dead-letter queue has a consumer too, which parks each
+                // message for its own connection (chunk 8.4b).
+                if let Some((dead, span)) = &dead_letter_queue
+                    && let Some(first) = named.get(dead)
+                {
+                    out.problems.push(
+                        Diagnostic::new(
+                            &rule::CONNECTION_VALUE_INVALID,
+                            format!(
+                                "`{connection}`'s dead-letter queue `{dead}` is named by `{first}` already"
+                            ),
+                        )
+                        .at(span.clone(), "named already")
+                        .reason(ONE_CONSUMER)
+                        .next(format!(
+                            "Give `{connection}` a dead-letter queue of its own, such as `dead_letter_queue: \"{}-dead\"`",
+                            queue.as_ref().map_or(dead.as_str(), |(queue, _)| queue.as_str())
+                        )),
                     );
                 }
                 match (queue, dead_letter_queue) {
@@ -313,6 +338,7 @@ pub fn cloudflare_queues(db: &dyn Db, project: Project) -> CloudflareQueues {
                         if out.problems.len() == before =>
                     {
                         named.insert(queue.clone(), connection.clone());
+                        named.insert(dead_letter_queue.clone(), connection.clone());
                         out.list.push(CloudflareQueueModel {
                             name: connection,
                             queue,

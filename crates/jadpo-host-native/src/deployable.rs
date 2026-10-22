@@ -254,7 +254,8 @@ fn unbuilt_list(unbuilt: &[Unbuilt]) -> Value {
 /// can't be reached isn't waited for, since the scheduler's next run is
 /// the next try and the ticks missed meanwhile become one run; then the
 /// runtime's tick through `Serving` on a `NativeHost`, logged as
-/// `runtime.ticked`. Code 0, or 1 when the tick couldn't work in a store;
+/// `runtime.ticked`. Code 0, or 1 when the tick couldn't work in a store,
+/// panicked or outlasted the drain ([`tick_code`]);
 /// a schedule's failed run is recorded, alerted and retried at its next
 /// due time, as a server's is. The first SIGTERM or ctrl-c drains it as a
 /// server drains its background work, giving back what it holds, and it
@@ -278,7 +279,13 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
             problems.push(unaddressed(store.name, drivers.unbuilt()));
             continue;
         };
-        match runtime.block_on(compare(database, store, Then::NextTick)) {
+        let Some(compared) =
+            unless_stopped(&runtime, &stop, compare(database, store, Then::NextTick))
+        else {
+            log.event("runtime.stopped", []);
+            return Ok(ExitCode::SUCCESS);
+        };
+        match compared {
             Compared::Current => {}
             Compared::Refused(problem) => problems.push(problem),
             Compared::Unreachable => problems.push(json!({
@@ -326,9 +333,9 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
         }
         (slot.borrow_mut().take(), stopped)
     });
+    let code = tick_code(ticked.as_ref());
     let ticked = ticked.unwrap_or_default();
     let ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let failed = !ticked.problems.is_empty();
     log.event(
         "runtime.ticked",
         ticked_fields(program.plan().schedules(), &ticked, ms, &unbuilt),
@@ -336,11 +343,18 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
     if stopped {
         log.event("runtime.stopped", []);
     }
-    Ok(if failed {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    })
+    Ok(ExitCode::from(code))
+}
+
+/// The code `<deployable> tick` ends with for what its tick gave: 0 once
+/// it ran to its end and could work in every store, 1 when it couldn't,
+/// and 1 when it gave nothing, having panicked or outlasted the drain
+/// (chunk 8.4b), so the scheduler sees it didn't finish.
+fn tick_code(ticked: Option<&Ticked>) -> u8 {
+    match ticked {
+        Some(ticked) if ticked.problems.is_empty() => 0,
+        _ => 1,
+    }
 }
 
 /// What `runtime.ticked` says of a tick that took `ms`: each schedule it
@@ -512,7 +526,12 @@ fn check_stores(
         let mut wait = Duration::from_secs(1);
         let mut said = false;
         loop {
-            match runtime.block_on(compare(database, store, Then::Restart)) {
+            let Some(compared) =
+                unless_stopped(&runtime, stop, compare(database, store, Then::Restart))
+            else {
+                return Ok(drivers.unbuilt().to_vec());
+            };
+            match compared {
                 Compared::Current => break,
                 Compared::Refused(problem) => {
                     problems.push(problem);
@@ -548,6 +567,21 @@ fn check_stores(
     } else {
         Err(problems)
     }
+}
+
+/// `work` run to its end, or `None` once a stop has come: a database that
+/// takes the connection and never answers holds no start or tick past
+/// SIGTERM (chunk 8.4d).
+fn unless_stopped<T>(
+    runtime: &Runtime,
+    stop: &AtomicBool,
+    work: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    runtime.block_on(unless(work, async {
+        while !stop.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }))
 }
 
 /// Sleeps `wait`, a little at a time: whether a stop came meanwhile.
@@ -625,6 +659,43 @@ impl Handler for Unstarted {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tick ends 0 only once it ran to its end and worked in every
+    /// store: one that panicked or outlasted the drain gave nothing, and
+    /// ends 1 as one that couldn't work in a store does (chunk 8.4b).
+    #[test]
+    fn a_tick_that_didnt_finish_ends_with_code_1() {
+        let finished = Ticked::default();
+        assert_eq!(tick_code(Some(&finished)), 0);
+        let failed = Ticked {
+            problems: vec![("main".to_string(), jadpo_runtime::StoreError::Unavailable)],
+            ..Ticked::default()
+        };
+        assert_eq!(tick_code(Some(&failed)), 1);
+        assert_eq!(tick_code(None), 1);
+    }
+
+    /// Work that never ends, as a database that never answers, gives way
+    /// to a stop (chunk 8.4d); work that ends is its own answer.
+    #[test]
+    fn a_stop_ends_work_that_never_would() {
+        let runtime = Runtime::new().expect("a runtime");
+        let stop = Arc::new(AtomicBool::new(false));
+        let setter = {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                stop.store(true, Ordering::SeqCst);
+            })
+        };
+        let began = Instant::now();
+        let never = unless_stopped(&runtime, &stop, std::future::pending::<()>());
+        assert_eq!(never, None);
+        assert!(began.elapsed() < Duration::from_secs(5));
+        setter.join().expect("set");
+        let unstopped = AtomicBool::new(false);
+        assert_eq!(unless_stopped(&runtime, &unstopped, async { 7 }), Some(7));
+    }
 
     #[test]
     fn its_one_argument_is_serve_or_tick() {

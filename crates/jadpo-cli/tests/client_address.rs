@@ -177,7 +177,11 @@ fn forwarded_is_read_with_hops_from_a_setting() {
     let chain = |client: &str| format!("for=\"[{client}]:4711\", for=10.1.1.1");
     exhaust(|| through(&dev, "Forwarded", &chain("2001:db8::17")));
 
-    let other = through(&dev, "Forwarded", &chain("2001:db8::18"));
+    // An IPv6 client counts by its /64 (chunk 8.4d): a neighbour in it
+    // shares the allowance, a client in another /64 has its own.
+    let neighbour = through(&dev, "Forwarded", &chain("2001:db8::18"));
+    assert_eq!(neighbour.status, 429, "the same /64");
+    let other = through(&dev, "Forwarded", &chain("2001:db8:0:1::17"));
     assert_eq!(other.status, 404, "another client");
     // One proxy fewer than the setting says: the chain is short, so the
     // request counts as the connection's address, never as a guess.

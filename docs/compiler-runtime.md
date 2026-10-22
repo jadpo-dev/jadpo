@@ -2541,7 +2541,12 @@ run as one statement on their own (`Database::query_once`, autocommit),
 and the PostgreSQL driver sends a transaction's `BEGIN` with its first
 statement, both written before either answer is read; an idle connection
 found closed at that first round trip ran nothing, so it is sent again on
-another, as `begin` did. A `get` or a query for one record that policy
+another, as `begin` did, but an autocommitted statement only when none of
+its bytes were written, since once it left the server may have committed
+it (chunk 8.4d). Each attempt at a server, from the socket to its being
+ready, is bounded by the address's `connect_timeout`, or 10 seconds, and
+the native transport gives up on a socket that hasn't opened in 10
+seconds. A `get` or a query for one record that policy
 limits selects its grant as a column (`Select::permitted`) and filters
 only on what it asks and the record's visibility, so one statement tells
 a hidden record (`concealed_by: policy`) from one that isn't there; rows
@@ -3587,15 +3592,19 @@ host and the pieces left), which natively runs on the host that handed it
 on (`HandOn::run`) and on Workers is sent as its message
 (`HandOn::message`): JSON naming each delivery by its id and each batch
 run by its run's, with its store, never an event's value.
-`WorkersHost::hand_on` calls `handOn(message)` on the service binding
-`JADPO_HAND_ON`, which `jadpo build` writes into the Wrangler file of a
-Worker that runs subscribers or schedules, bound to the Worker's own
-`JadpoHandOn` entrypoint, a `WorkerEntrypoint` class the shim exports
-beside the default export, so no request from outside reaches it; the
-calling invocation keeps itself alive with `waitUntil` until the call
+`WorkersHost::hand_on` calls `handOn(message)` on `ctx.exports.JadpoHandOn`,
+the loopback binding Workers gives the Worker's own `JadpoHandOn`
+entrypoint, a `WorkerEntrypoint` class the shim exports beside the
+default export, so no request from outside reaches it; since chunk 8.4b
+no binding in the Wrangler file names the Worker, so a Worker deployed
+with `wrangler deploy --name` or `--env` hands work to itself, not to the
+one the file names (until then a service binding, `JADPO_HAND_ON`, did).
+The calling invocation keeps itself alive with `waitUntil` until the call
 returns. `jadpo_host_workers::deployable::hand_on`, which the generated
 crate exports as `hand_on`, starts the isolate as `fetch` does, builds
-its drivers on a host of its own and, in that invocation's `waitUntil`,
+its drivers on a host of its own (`for_hand_on`, whose background work
+has what is left of the invocation's 30 seconds counted from its start,
+`hand_on_left`, chunk 8.4b) and, in that invocation's `waitUntil`,
 once its stores are current, calls `runner::carry_on`: each delivery is
 read back from its record in one statement a store (`outbox::HANDED_ON`,
 `DUE`'s columns for the ids given, still `pending` or `running`), so one
@@ -3714,6 +3723,16 @@ start or whose stores aren't current retries every message after the
 delay its attempts give (`receiving::retry_delay`) and keeps nothing; a
 batch with a message retried logs `queue.retried` (the queue, how many,
 `not_started`, `not_received` or `store_unavailable`), never a body.
+Since chunk 8.4b the delay doubles up to an hour over 30 retries
+(`receiving::RETRY_DELAY_MAX_SECONDS`, `CONSUMER_RETRIES`), about 22
+hours, so a message outlasts a deploy's migration; each queue's
+dead-letter queue is a consumer too (`DEAD_LETTER_RETRIES`, 100), and
+`consume` given a batch from it parks each message as `dead_lettered`
+(`receiving::dead_lettered`), its id and event when they can be read;
+and `answer_messages` reports a message whose `ack()` or `retry()` was
+missing or threw, so the handler's promise rejects once every message is
+answered and Cloudflare hands again each one not acknowledged, rather
+than acknowledging it as a handler that ends well does.
 `jadpo build` adds `queues: { consumers: [ ] }` to the Wrangler file from
 the deployable's plan (`jadpo_codegen::workers::queued`, through
 `jadpo_std::receiving::wrangler_queues`), which keeps the queues only
@@ -4270,10 +4289,14 @@ never called, so the workspace builds, lints and tests as one.
   limit in the binding of its own the store names (`limit({ key })`, a
   refusal waiting the window's length), and in the isolate's memory, one
   table an isolate, while it can't be asked, the fallback area 16 allows
-  (chunk 8.2m2); and Workers' budgets (`budget_for`): 30 seconds after a response
+  (chunk 8.2m2), a binding that doesn't answer within 500 ms not waited
+  for and each binding's fallback logged once an isolate as
+  `rate_limits.fallback` (chunk 8.4b); and Workers' budgets
+  (`budget_for`): 30 seconds after a response
   and for work handed on, 15 minutes for the cron. Work handed on starts
-  a fresh invocation of the Worker through its binding to itself (chunk
-  8.2h, "After the response on Workers"); a database needs the crate's `postgres`
+  a fresh invocation of the Worker through the loopback `ctx.exports`
+  gives its `JadpoHandOn` (chunks 8.2h and 8.4b, "After the response on
+  Workers"); a database needs the crate's `postgres`
   feature, so a deployable that keeps none links no driver for one; the
   passkey ceremonies are `WorkersPasskeys`, below.
 - **`WorkersTransport`** opens every connection with `secureTransport:

@@ -11,7 +11,10 @@
 //! retries each message after the delay its attempts give; current, it
 //! keeps each message once as its event and acknowledges it, a repeat and
 //! one it parks too, and delivers the kept events after answering; a
-//! batch from a queue it doesn't receive is retried whole.
+//! batch from a queue it doesn't receive is retried whole; and a message
+//! handed back from the queue's dead-letter queue, its retries spent, is
+//! parked for an operator (chunk 8.4b), the dead-letter queue a consumer
+//! of the Worker's too.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -101,17 +104,26 @@ fn a_worker_consumes_a_cloudflare_queue_answering_each_message() {
         &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
     )
     .expect("JSON");
-    // The queue's consumer, by Wrangler's setting names.
+    // The queue's consumer, by Wrangler's setting names, retried for
+    // about 22 hours, and its dead-letter queue's (chunk 8.4b).
     assert_eq!(
         wrangler["queues"],
         json!({
-            "consumers": [{
-                "queue": "warehouse-events",
-                "max_batch_size": 10,
-                "max_batch_timeout": 5,
-                "max_retries": 3,
-                "dead_letter_queue": "warehouse-events-dead",
-            }]
+            "consumers": [
+                {
+                    "queue": "warehouse-events",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 5,
+                    "max_retries": 30,
+                    "dead_letter_queue": "warehouse-events-dead",
+                },
+                {
+                    "queue": "warehouse-events-dead",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 5,
+                    "max_retries": 100,
+                },
+            ]
         }),
         "{wrangler}"
     );
@@ -233,6 +245,31 @@ fn a_worker_consumes_a_cloudflare_queue_answering_each_message() {
         "{answered}"
     );
     assert_eq!(answered["explicitAcks"], json!([]), "{answered}");
+
+    // A message whose retries are spent comes back through the
+    // dead-letter queue: parked for an operator and acknowledged, no event
+    // kept (chunk 8.4b).
+    let answered = worker.queue(
+        "warehouse-events-dead",
+        json!([{ "id": "m-7", "body": shipped("w-5", "A-500"), "attempts": 1 }]),
+    );
+    assert_eq!(answered["outcome"], "ok", "{answered}\n{}", worker.log());
+    assert_eq!(answered["explicitAcks"], json!(["m-7"]), "{answered}");
+    assert_eq!(answered["retryMessages"], json!([]), "{answered}");
+    assert_eq!(
+        rows(
+            &database.native,
+            "SELECT \"queue\", \"message_id\" FROM \"jadpo_parked_messages\" WHERE \"reason\" = 'dead_lettered'",
+        ),
+        vec![vec!["warehouse_queue".to_string(), "w-5".to_string()]]
+    );
+    assert_eq!(
+        rows(
+            &database.native,
+            "SELECT count(*) FROM \"jadpo_received_events\" WHERE \"event_id\" = 'w-5'",
+        ),
+        vec![vec!["0".to_string()]]
+    );
     let retried: Vec<(String, String)> = worker
         .events("queue.retried")
         .iter()

@@ -37,9 +37,11 @@
 //!
 //! A streamed answer is sent as a `ReadableStream`, each event as it is
 //! read ([`crate::streamed`]); and [`hand_on`] is the fresh invocation
-//! work handed on starts, a request to the Worker itself through a service
-//! binding to its `JadpoHandOn` entrypoint (chunk 8.2h). [`queue`] is the
-//! consumer of each queue on Cloudflare Queues it receives (chunk 8.2k).
+//! work handed on starts, a request to the Worker itself through the
+//! loopback binding `ctx.exports` gives its `JadpoHandOn` entrypoint
+//! (chunks 8.2h and 8.4b). [`queue`] is the consumer of each queue on
+//! Cloudflare Queues it receives (chunk 8.2k), and of each one's
+//! dead-letter queue (chunk 8.4b).
 
 use std::cell::{Cell, OnceCell};
 use std::fmt;
@@ -66,7 +68,7 @@ use web_sys::{Headers, ReadableStreamDefaultReader, ResponseInit};
 use crate::{WorkersHost, js};
 
 mod queue;
-pub use queue::queue;
+pub use queue::{answer_messages, queue};
 
 pub use jadpo_runtime::deployable::{Deployable, Migration, Stamp, Store};
 
@@ -122,11 +124,12 @@ pub fn scheduled(
 /// handed on, which `work` names by its records
 /// ([`runner::HandOn::message`]). It starts the isolate as `fetch` does
 /// and, once the stores are current, carries the work on in its own
-/// `waitUntil`, with Workers' 30 seconds ([`runner::carry_on`]); it
+/// `waitUntil`, within what is left of Workers' 30 seconds counted from
+/// now, the invocation's start (chunk 8.4b; [`runner::carry_on`]); it
 /// answers at once, so the invocation that handed it on can end. Work it
 /// can't take on waits in the store for the minute's cron.
 pub fn hand_on(deployable: &Deployable, work: String, env: JsValue, ctx: JsValue) -> JsValue {
-    let host = WorkersHost::new(env, ctx);
+    let host = WorkersHost::new(env, ctx).for_hand_on();
     let Some(isolate) = isolate(deployable, &host) else {
         return JsValue::UNDEFINED;
     };
@@ -160,7 +163,8 @@ async fn respond(
     let drivers = drivers(&isolate.program, &host);
     let host = host
         .with_drivers(drivers)
-        .with_rate_limits(isolate.rate_limits.clone());
+        .with_rate_limits(isolate.rate_limits.clone())
+        .with_log(isolate.log);
     if !ready(deployable, &host, &isolate).await {
         return http::unavailable(&host);
     }

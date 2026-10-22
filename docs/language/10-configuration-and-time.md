@@ -696,7 +696,8 @@ How a header is read:
 - **Falling back is whole.** The connection's address replaces the choice;
   part of a header is never mixed with it.
 
-The address chosen is the one the default rate limits count, `jadpo dev`'s
+The address chosen is the one the default rate limits count (an IPv6
+address by its /64, area 16; chunk 8.4d), `jadpo dev`'s
 request lines show (after the time, muted, and as `address` with `--json`) and
 the request timeline records. Natively the connection's address comes from the
 host and the rest is the runtime's, so a deployable chooses an address the
@@ -6437,3 +6438,4 @@ the app doesn't support is written in (see Locales).
 | A constant or a setting (Richard) | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both: one source, one way to read it. If a constant could seed a setting, code reading the constant would silently ignore the environment variable (the `DEFAULT_PORT` bug of TypeScript and pydantic code); `default:` on the field already names the default. Tiers: `constant` (fixed in code), `config` (per deployment), `flags { }` (area 16, changes at runtime). Decided; constants built in chunk 5.3e, with a constant refused as `default:` | 2026-10-16 |
 | Making a constant a setting (Richard) | `jadpo config move <constant>`, and the editor's "Make this a setting" running the same code, adds a `config` field of the constant's name and type with its value as `default:` and its `///` description, deletes the constant and rewrites every read to `config.<name>`, so a reviewer sees each place that can now differ per deployment. Offered, never required, so not part of `jadpo fmt --layout`. Refuses, editing nothing, a type a setting can't hold, a name a setting already has, and a constant read in a query, an update by `id`, a backfill or another constant. No command moves a setting back. Rejected: a constant an environment variable can override (`setting: true`: hides per-deployment behaviour at the call site, agents add it everywhere, no single list of variables, moving a file renames its variable); a `config { }` per domain; settings declared beside their use and gathered by the compiler; values per environment in source (`production:`, `staging:`), against no layering. Built in chunk 5.3f | 2026-10-16 |
 | Fields in name order (Richard) | `jadpo fmt` sorts `config { }` fields by name, comments moving with each, so parallel workspaces adding settings rarely touch the same lines; nothing gives a field's position meaning (settings are read, bound and reported by name). `jadpo fmt --check` fails on one out of order. The page examples are sorted already. Built in chunk 5.3f | 2026-10-16 |
+| An IPv6 client's count (chunk 8.4d) | The address chosen is shown whole, and the default rate limits count an IPv6 one by its /64 (area 16, "Rate limits") (decided 2026-10-22) | 2026-10-22 |

@@ -329,6 +329,22 @@ fn a_queue_on_cloudflare_queues_names_the_queue_and_its_dead_letter_queue() {
             "app.jadpo connection.value_invalid: `billing` and `warehouse` both name the queue `warehouse-events`"
         ]
     );
+    // A dead-letter queue has a consumer of its own, which parks what it
+    // hands back for its connection (chunk 8.4b): it is named once too.
+    let shared = "        billing: {\n            driver: Driver.cloudflare_queues\n            queue: \"billing\"\n            dead_letter_queue: \"warehouse-events-dead\"\n        }\n";
+    assert_eq!(
+        cloudflare_problems(CLOUDFLARE, shared),
+        [
+            "app.jadpo connection.value_invalid: `billing`'s dead-letter queue `warehouse-events-dead` is named by `warehouse` already"
+        ]
+    );
+    let dead_as_queue = "        billing: {\n            driver: Driver.cloudflare_queues\n            queue: \"warehouse-events-dead\"\n            dead_letter_queue: \"billing-dead\"\n        }\n";
+    assert_eq!(
+        cloudflare_problems(CLOUDFLARE, dead_as_queue),
+        [
+            "app.jadpo connection.value_invalid: `billing` and `warehouse` both name the queue `warehouse-events-dead`"
+        ]
+    );
 }
 
 #[test]

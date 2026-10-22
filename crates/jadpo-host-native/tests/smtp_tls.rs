@@ -247,6 +247,44 @@ impl Transport for ToTheTestServer {
     }
 }
 
+/// The native transport as it is, Mozilla's roots and all, but sending
+/// every connection to the test's server on this machine.
+struct NativelyToTheTestServer(u16);
+
+impl Transport for NativelyToTheTestServer {
+    fn connect(&self, _: &Endpoint) -> LocalFuture<'_, std::io::Result<Box<dyn Stream>>> {
+        Box::pin(async move {
+            NativeTransport
+                .connect(&Endpoint::Tcp {
+                    host: "127.0.0.1".into(),
+                    port: self.0,
+                })
+                .await
+        })
+    }
+
+    fn upgrade<'a>(
+        &'a self,
+        stream: Box<dyn Stream>,
+        name: &'a str,
+        trust: jadpo_drivers::Trust<'a>,
+    ) -> LocalFuture<'a, std::io::Result<Box<dyn Stream>>> {
+        NativeTransport.upgrade(stream, name, trust)
+    }
+
+    fn spawn(&self, task: LocalFuture<'static, ()>) {
+        NativeTransport.spawn(task);
+    }
+
+    fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+        NativeTransport.sleep(millis)
+    }
+
+    fn local_address(&self, stream: &dyn Stream) -> Option<IpAddr> {
+        NativeTransport.local_address(stream)
+    }
+}
+
 fn envelope() -> Envelope {
     Envelope {
         from: "hello@acme.test".into(),
@@ -263,10 +301,10 @@ fn relayed(transport: &dyn Transport, server: &Server) -> Result<(), RelayError>
 
 #[test]
 fn starttls_secures_the_conversation_before_the_credential_goes() {
-    let authority = Authority::signing("localhost");
+    let authority = Authority::signing("smtp.example.test");
     let mail = Mail::start(Offers::StartTls, &authority);
     let transport = ToTheTestServer::new(&authority, &mail);
-    let server = Server::new("localhost", 587).signing_in("acme", "s3cret");
+    let server = Server::new("smtp.example.test", 587).signing_in("acme", "s3cret");
     assert_eq!(relayed(&transport, &server), Ok(()));
     let heard = mail.heard();
     assert_eq!(heard.over_tls("STARTTLS"), Some(false));
@@ -302,7 +340,7 @@ fn a_certificate_for_another_name_is_refused_and_nothing_is_sent() {
     let authority = Authority::signing("smtp.example.test");
     let mail = Mail::start(Offers::StartTls, &authority);
     let transport = ToTheTestServer::new(&authority, &mail);
-    let server = Server::new("localhost", 587).signing_in("acme", "s3cret");
+    let server = Server::new("mail.example.test", 587).signing_in("acme", "s3cret");
     let Err(RelayError::Insecure(why)) = relayed(&transport, &server) else {
         panic!("refused as insecure");
     };
@@ -314,11 +352,42 @@ fn a_certificate_for_another_name_is_refused_and_nothing_is_sent() {
 
 #[test]
 fn a_certificate_mozillas_roots_dont_vouch_for_is_refused_natively() {
+    let authority = Authority::signing("smtp.example.test");
+    let mail = Mail::start(Offers::StartTls, &authority);
+    let server = Server::new("smtp.example.test", 587).signing_in("acme", "s3cret");
+    let mail_capability = Smtp::new(Rc::new(NativelyToTheTestServer(mail.port)), server);
+    let answer = Runtime::new()
+        .expect("a runtime")
+        .block_on(mail_capability.call(&welcome()));
+    assert_eq!(answer, Answer::Misconfigured);
+    let heard = mail.heard();
+    assert!(heard.over_tls("AUTH").is_none());
+    assert!(heard.messages.is_empty());
+}
+
+/// A server on this machine is spoken to without `STARTTLS`, as a
+/// database on it is, even when it offers it: a stock Postfix offers it
+/// with a self-signed certificate no check would pass (Richard,
+/// 2026-10-22).
+#[test]
+fn a_server_on_this_machine_is_sent_to_without_starttls_though_it_offers_it() {
     let authority = Authority::signing("localhost");
     let mail = Mail::start(Offers::StartTls, &authority);
     let server = Server::new("localhost", mail.port).signing_in("acme", "s3cret");
     let mail_capability = Smtp::new(Rc::new(NativeTransport), server);
-    let call = Call::new(
+    let answer = Runtime::new()
+        .expect("a runtime")
+        .block_on(mail_capability.call(&welcome()));
+    assert_eq!(answer, Answer::Value(Value::Unit));
+    let heard = mail.heard();
+    assert_eq!(heard.over_tls("STARTTLS"), None, "never asked for");
+    assert_eq!(heard.over_tls("AUTH PLAIN"), Some(false));
+    assert_eq!(heard.messages.len(), 1);
+}
+
+/// The welcome email, as a call to the `mail` connection's `send`.
+fn welcome() -> Call {
+    Call::new(
         "mail",
         "send",
         Value::record(
@@ -333,14 +402,7 @@ fn a_certificate_mozillas_roots_dont_vouch_for_is_refused_natively() {
             ],
         ),
         jadpo_std::subscriber::Repeat::Unkeyed,
-    );
-    let answer = Runtime::new()
-        .expect("a runtime")
-        .block_on(mail_capability.call(&call));
-    assert_eq!(answer, Answer::Misconfigured);
-    let heard = mail.heard();
-    assert!(heard.over_tls("AUTH").is_none());
-    assert!(heard.messages.is_empty());
+    )
 }
 
 #[test]

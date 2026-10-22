@@ -20,6 +20,13 @@
 //! the build's, and a message is never acknowledged before it is kept.
 //! Each message retried is logged once a batch as `queue.retried`, with
 //! the queue's name, how many, and why by a code, never a body.
+//!
+//! The Worker consumes each such queue's dead-letter queue as well (chunk
+//! 8.4b), the runtime parking each message it hands back for an operator.
+//! A message whose answer can't be given, its `retry()` throwing, would be
+//! acknowledged by Cloudflare once the handler ended well, so the handler
+//! then throws once every message has been answered: Cloudflare hands
+//! again each one not acknowledged ([`answer_messages`]).
 
 use std::rc::Rc;
 
@@ -39,18 +46,25 @@ const STORE_UNAVAILABLE: &str = "store_unavailable";
 
 /// The Worker's `queue` for `deployable`: a promise that settles once
 /// every message of `batch` has been answered, the kept events'
-/// deliveries going on after it in `waitUntil`.
+/// deliveries going on after it in `waitUntil`, and rejects when a
+/// message's answer couldn't be given ([`answer_messages`]).
 pub fn queue(deployable: &Deployable, batch: JsValue, env: JsValue, ctx: JsValue) -> JsValue {
     let deployable = *deployable;
     wasm_bindgen_futures::future_to_promise(async move {
-        consume(&deployable, &batch, env, ctx).await;
+        consume(&deployable, &batch, env, ctx).await?;
         Ok(JsValue::UNDEFINED)
     })
     .into()
 }
 
-/// One batch, on a host of its own.
-async fn consume(deployable: &Deployable, batch: &JsValue, env: JsValue, ctx: JsValue) {
+/// One batch, on a host of its own: the error to end the handler with
+/// when a message couldn't be answered.
+async fn consume(
+    deployable: &Deployable,
+    batch: &JsValue,
+    env: JsValue,
+    ctx: JsValue,
+) -> Result<(), JsValue> {
     let name = Reflect::get(batch, &JsValue::from_str("queue"))
         .ok()
         .and_then(|name| name.as_string())
@@ -63,33 +77,33 @@ async fn consume(deployable: &Deployable, batch: &JsValue, env: JsValue, ctx: Js
     let pushed: Vec<Pushed> = messages.iter().map(pushed).collect();
     let host = WorkersHost::new(env, ctx);
     let Some(isolate) = isolate(deployable, &host) else {
-        retried(&messages, &pushed, None, &name, NOT_STARTED);
-        return;
+        return retried(&messages, &pushed, None, &name, NOT_STARTED);
     };
     let drivers = drivers(&isolate.program, &host);
     let host = host.with_drivers(drivers);
     if !ready(deployable, &host, &isolate).await {
-        retried(&messages, &pushed, Some(&isolate.log), &name, NOT_STARTED);
-        return;
+        return retried(&messages, &pushed, Some(&isolate.log), &name, NOT_STARTED);
     }
     let Some(now) = host.now_ms() else {
-        retried(&messages, &pushed, Some(&isolate.log), &name, NOT_STARTED);
-        return;
+        return retried(&messages, &pushed, Some(&isolate.log), &name, NOT_STARTED);
     };
     let program = Rc::clone(&isolate.program);
     let received = program.plan().receiving().is_some_and(|receiving| {
         receiving.queues.iter().any(|queue| {
-            matches!(&queue.source, jadpo_std::receiving::QueueSource::Cloudflare(cloudflare) if cloudflare.queue == name)
+            matches!(
+                &queue.source,
+                jadpo_std::receiving::QueueSource::Cloudflare(cloudflare)
+                    if cloudflare.queue == name || cloudflare.dead_letter_queue == name
+            )
         })
     });
     let consumed = receiving::consume(program.as_ref(), &host, &name, &pushed, now).await;
-    let mut retries = 0usize;
-    for (message, answer) in messages.iter().zip(&consumed.answers) {
-        if matches!(answer, Answer::Retry { .. }) {
-            retries += 1;
-        }
-        answered(message, *answer);
-    }
+    let retries = consumed
+        .answers
+        .iter()
+        .filter(|answer| matches!(answer, Answer::Retry { .. }))
+        .count();
+    let answered = answer_messages(&messages, &consumed.answers);
     if retries > 0 {
         let why = if received {
             STORE_UNAVAILABLE
@@ -103,6 +117,7 @@ async fn consume(deployable: &Deployable, batch: &JsValue, env: JsValue, ctx: Js
         Rc::new(host) as Rc<dyn Host>,
         consumed.received.deferred,
     );
+    answered
 }
 
 /// Retries every message of a batch nothing could be kept from, each
@@ -113,20 +128,20 @@ fn retried(
     log: Option<&jadpo_runtime::deployable::Log>,
     name: &str,
     why: &str,
-) {
-    for (message, pushed) in messages.iter().zip(pushed) {
-        answered(
-            message,
-            Answer::Retry {
-                delay_seconds: retry_delay(pushed.attempts),
-            },
-        );
-    }
+) -> Result<(), JsValue> {
+    let answers: Vec<Answer> = pushed
+        .iter()
+        .map(|pushed| Answer::Retry {
+            delay_seconds: retry_delay(pushed.attempts),
+        })
+        .collect();
+    let answered = answer_messages(messages, &answers);
     if let Some(log) = log
         && !messages.is_empty()
     {
         logged(log, name, messages.len(), why);
     }
+    answered
 }
 
 /// `queue.retried`: the queue, how many of its batch's messages were
@@ -142,8 +157,31 @@ fn logged(log: &jadpo_runtime::deployable::Log, name: &str, retried: usize, why:
     );
 }
 
-/// Answers `message`: `ack()`, or `retry({ delaySeconds })`.
-fn answered(message: &JsValue, answer: Answer) {
+/// Answers each of `messages` with its answer of `answers`, in order:
+/// `ack()`, or `retry({ delaySeconds })`. A message whose answer couldn't
+/// be given, its method missing or throwing, is an error once every other
+/// has been answered: the handler ends with it, so Cloudflare hands again
+/// every message not acknowledged rather than acknowledging the batch's
+/// unanswered ones as a handler that ends well does.
+pub fn answer_messages(messages: &[JsValue], answers: &[Answer]) -> Result<(), JsValue> {
+    let mut unanswered = 0usize;
+    for (message, answer) in messages.iter().zip(answers) {
+        if !answered(message, *answer) {
+            unanswered += 1;
+        }
+    }
+    if unanswered == 0 {
+        return Ok(());
+    }
+    Err(js_sys::Error::new(&format!(
+        "{unanswered} of the batch's messages couldn't be answered: Cloudflare hands again each one not acknowledged"
+    ))
+    .into())
+}
+
+/// Answers `message`: `ack()`, or `retry({ delaySeconds })`; whether it
+/// was given.
+fn answered(message: &JsValue, answer: Answer) -> bool {
     let (method, argument) = match answer {
         Answer::Ack => ("ack", JsValue::UNDEFINED),
         Answer::Retry { delay_seconds } => {
@@ -157,11 +195,11 @@ fn answered(message: &JsValue, answer: Answer) {
         }
     };
     let Ok(function) = Reflect::get(message, &JsValue::from_str(method)) else {
-        return;
+        return false;
     };
-    if let Some(function) = function.dyn_ref::<Function>() {
-        let _ = function.call1(message, &argument);
-    }
+    function
+        .dyn_ref::<Function>()
+        .is_some_and(|function| function.call1(message, &argument).is_ok())
 }
 
 /// A message as the runtime's seam takes it: its body as text, and how

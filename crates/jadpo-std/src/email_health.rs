@@ -278,7 +278,9 @@ fn is_local(host: &str) -> bool {
     host == "localhost"
         || host.ends_with(".localhost")
         || host == "[::1]"
-        || host.starts_with("127.")
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Why `html` is image-only, when it is: it has an image and fewer than
@@ -706,6 +708,11 @@ mod tests {
             Some(Check::LinkNotHttps)
         );
         assert_eq!(link_problem("http://127.0.0.1/x", true), None);
+        assert_eq!(
+            link_problem("http://127.mail.example.com/x", true),
+            Some(Check::LinkNotHttps),
+            "the host read as an address"
+        );
         assert_eq!(link_problem("http://[::1]:3000/x", true), None);
         assert_eq!(link_problem("mailto:help@notes.example", false), None);
         assert_eq!(

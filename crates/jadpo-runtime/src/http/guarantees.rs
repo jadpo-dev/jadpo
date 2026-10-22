@@ -964,6 +964,50 @@ fn a_credential_on_a_route_anyone_may_call_counts_its_address_before_it_runs() {
     assert_eq!(program.runs.get(), 1, "the refused request never ran");
 }
 
+/// An IPv6 client counts by its /64, the least a network hands one
+/// subscriber, so moving through its own block buys no allowance (chunk
+/// 8.4d); the request line still shows the whole address.
+#[test]
+fn an_ipv6_client_is_counted_by_its_64() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let host = Fake {
+        limits: Some(crate::RateLimits::new(1 << 20)),
+        ..Fake::default()
+    };
+    let from = |address: &str| {
+        let mut request = post(None, "a");
+        request.address = Some(address.into());
+        request
+    };
+    let first = send(&table, &program, &host, &from("2001:db8:1:2::17"), NOW);
+    assert_eq!(
+        (first.status, first.client.as_deref()),
+        (204, Some("2001:db8:1:2::17"))
+    );
+    let neighbour = send(
+        &table,
+        &program,
+        &host,
+        &from("2001:db8:1:2:ffff:ffff:ffff:ffff"),
+        NOW,
+    );
+    assert_eq!(
+        (neighbour.status, code(&neighbour)),
+        (429, Some("rate_limited")),
+        "an address in the same /64 shares its allowance"
+    );
+    let elsewhere = send(&table, &program, &host, &from("2001:db8:1:3::17"), NOW);
+    assert_eq!(elsewhere.status, 204, "another /64 has its own");
+    let four = send(&table, &program, &host, &from("203.0.113.9"), NOW);
+    let four_next = send(&table, &program, &host, &from("203.0.113.10"), NOW);
+    assert_eq!(
+        (four.status, four_next.status),
+        (204, 204),
+        "IPv4 by address"
+    );
+}
+
 #[test]
 fn two_clients_behind_a_proxy_are_counted_apart() {
     use super::address::{ClientAddress, Target};
