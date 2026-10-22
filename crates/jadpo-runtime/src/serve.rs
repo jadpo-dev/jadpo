@@ -193,8 +193,8 @@ mod tests {
     use jadpo_std::http::{
         ApiPlan, Authentication, Codec, CodecId, RoutePlan, RouteTable, Run, Segment,
     };
-    use jadpo_std::{Builtin, HttpMethod, Idempotency, SuccessStatus};
     use jadpo_std::types::ValidatorId;
+    use jadpo_std::{Builtin, HttpMethod, Idempotency, SuccessStatus};
     use jadpo_value::Value;
     use jadpo_value::json::Codecs;
 

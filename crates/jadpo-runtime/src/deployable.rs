@@ -204,12 +204,7 @@ impl Observer for Logged {
     fn ticked(&self, program: &dyn Executor, ticked: &Ticked, _now: i64, ms: u64) {
         self.log.event(
             "runtime.ticked",
-            ticked_fields(
-                program.plan().schedules(),
-                ticked,
-                ms,
-                self.unbuilt.clone(),
-            ),
+            ticked_fields(program.plan().schedules(), ticked, ms, self.unbuilt.clone()),
         );
     }
 }
@@ -1090,8 +1085,13 @@ mod tests {
                 .contains("give its connection in `app.jadpo` a `url:`"),
             "{stores:?}"
         );
-        let stores = block_on(compare_stores(&deployable, none, &unbuildable, Then::Restart))
-            .expect("nothing waits");
+        let stores = block_on(compare_stores(
+            &deployable,
+            none,
+            &unbuildable,
+            Then::Restart,
+        ))
+        .expect("nothing waits");
         assert_eq!(
             stores.problems[0]["message"],
             "`main`'s postgres reads a setting that has no value."

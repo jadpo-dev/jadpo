@@ -967,7 +967,9 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         "ALTER TABLE jadpo_idempotency_keys RENAME TO jadpo_idempotency_keys_away",
     );
     let line = ticked(&lines, 30, |line| {
-        line["problems"].as_array().is_some_and(|problems| !problems.is_empty())
+        line["problems"]
+            .as_array()
+            .is_some_and(|problems| !problems.is_empty())
     });
     rows(
         &connection,
@@ -982,7 +984,10 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
             .is_some_and(|message| message.starts_with("`main` couldn't be ticked: ")),
         "{line}"
     );
-    assert!(!line.to_string().contains(&url), "the log holds its address: {line}");
+    assert!(
+        !line.to_string().contains(&url),
+        "the log holds its address: {line}"
+    );
     Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()

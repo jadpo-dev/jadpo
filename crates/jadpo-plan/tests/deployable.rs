@@ -421,7 +421,9 @@ fn sign_in_keys_and_origin_are_kept_only_where_an_api_takes_them() {
             .routes
             .routes
             .iter()
-            .filter(|route| route.file == "generated" && !matches!(route.run, jadpo_std::http::Run::OpenApi(_)))
+            .filter(|route| {
+                route.file == "generated" && !matches!(route.run, jadpo_std::http::Run::OpenApi(_))
+            })
             .map(|route| route.key.clone())
             .collect()
     };

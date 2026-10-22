@@ -249,7 +249,11 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
     };
     let stores = runtime.block_on(compare_stores(
         deployable,
-        |name| drivers.database(name).map(|database| database as &dyn Database),
+        |name| {
+            drivers
+                .database(name)
+                .map(|database| database as &dyn Database)
+        },
         drivers.unbuilt(),
         Then::NextTick,
     ));
