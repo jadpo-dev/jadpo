@@ -4897,6 +4897,25 @@ Cold start, spawn to first answer: native 38 ms, Wasm 73 ms (its first
 request 40 ms of it), Bun 129 ms. Idle: native 13 MB, Bun 47 MB, workerd
 134 MB.
 
+Measured again after chunk 8.4c (2026-10-22), when deployables first
+answered through the typed per-route entries, native and Wasm only, the
+same harness and medians of 3 rounds, on a busier machine (load 3 to 12
+while measuring, from other builds):
+
+| Booking, after 8.4c | Wasm on workerd | Native |
+|---|---:|---:|
+| req/s, 1 / 16 / 64 connections | 215 / 407 / 388 | 807 / 3,493 / 3,508 |
+| p50 / p99 ms, 16 connections | 29.0 / 132 | 3.65 / 21.3 |
+| server CPU ms a booking, 16 connections | 2.26 | 0.79 |
+| peak resident MB, 64 connections | 522 | 32 |
+
+The readiness check at 16 connections: native 123,880 req/s at 27 µs a
+request, Wasm 16,290 at 62 µs. Native is unchanged within the spread;
+Wasm is within its rounds' spread of 8.3's (its quietest round 496 req/s
+and 2.05 CPU ms a booking at 16 connections), so reading through the
+entries moves neither noticeably: the socket bridge and the memory
+growth (8.4e) are still where Wasm's time goes.
+
 - **Wasm against Bun**: 75% behind on the booking route's throughput at 16
   connections (4.0×), 72% at one; p50 3.6× and p99 11× Bun's; 4× the
   CPU a booking. Both are one thread here, saturated from 16 connections.
