@@ -6,14 +6,18 @@
 // gives it as a wrapped binding, `limit` and `period` as its inner
 // bindings, as a Wrangler file's `simple: { limit, period }` does;
 // `broken: true` makes every call throw, as a binding that can't be
-// reached would, and `log: true` writes each answer to the console, so a
-// test sees the binding was asked.
+// reached would, `hang: true` never answers, as one stuck would (chunk
+// 8.4b), and `log: true` writes each answer to the console, so a test
+// sees the binding was asked.
 export default function (env) {
   const windows = new Map();
   return {
     async limit({ key }) {
       if (env.broken) {
         throw new Error("the rate-limiting binding can't be reached");
+      }
+      if (env.hang) {
+        return new Promise(() => {});
       }
       const now = Date.now();
       let window = windows.get(key);

@@ -105,8 +105,19 @@ const WASM: &str = "            target: Target.wasm\n";
 
 /// The café's problems with `app.jadpo` as `application`, but for the
 /// unused imports and declarations, migrations and records these
-/// projects don't keep, and a variable the sheet's action doesn't read.
+/// projects don't keep, and a variable the sheet's action doesn't read;
+/// and but for the café counting its rate limits in Redis on Workers, the
+/// judgement call `rate_limits.counted_in_memory`, which
+/// `on_workers_rate_limits_are_counted_in_a_store` checks.
 fn problems_with(application: &str, more: &[(&str, &str)]) -> Vec<String> {
+    every_problem_with(application, more)
+        .into_iter()
+        .filter(|problem| !problem.contains(" rate_limits.counted_in_memory:"))
+        .collect()
+}
+
+/// [`problems_with`], the café's counting in Redis on Workers among them.
+fn every_problem_with(application: &str, more: &[(&str, &str)]) -> Vec<String> {
     let mut files: Vec<(&str, &str)> = vec![("app.jadpo", application)];
     files.extend_from_slice(CAFE);
     // A file given again replaces the café's.
@@ -493,7 +504,7 @@ fn counted_in(store: &str, connection: &str, deployables: &str) -> Vec<String> {
         format!("    rate_limits: {{\n        store: {store}\n    }}\n")
     };
     let application = app(deployables, connection).replace(CACHE_STORE, &written);
-    problems_with(&application, &[])
+    every_problem_with(&application, &[])
 }
 
 #[test]
@@ -518,8 +529,22 @@ fn on_workers_rate_limits_are_counted_in_a_store() {
             "app.jadpo deployable.target_unsupported: `office` can't count its rate limits in `limits` natively: Cloudflare's rate-limiting binding is only a Worker's"
         ]
     );
-    // Redis counts them everywhere.
-    assert_eq!(counted_in("cache", "", &declared(WASM, NATIVE)), CLEAN);
+    // Redis counts them natively; on Workers, until Redis's driver comes,
+    // each instance would count them in its own memory: a judgement call,
+    // which a `decline` line above the deployable answers (chunk 8.4b).
+    assert_eq!(counted_in("cache", "", &declared(NATIVE, NATIVE)), CLEAN);
+    assert_eq!(counted_in("cache", "", &declared("", "")), CLEAN);
+    let in_memory = [
+        "app.jadpo rate_limits.counted_in_memory: `kiosk` would count its rate limits in each instance's memory on Workers",
+    ];
+    assert_eq!(counted_in("cache", "", &declared(WASM, NATIVE)), in_memory);
+    let declined = declared(WASM, NATIVE).replacen(
+        "        kiosk: {",
+        "        decline rate_limits.counted_in_memory: \"Redis's driver isn't built yet; one instance is enough for now\"\n        kiosk: {",
+        1,
+    );
+    assert_ne!(declined, declared(WASM, NATIVE));
+    assert_eq!(counted_in("cache", "", &declined), CLEAN);
 }
 
 #[test]

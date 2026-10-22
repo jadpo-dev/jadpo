@@ -47,12 +47,12 @@
 //! in `waitUntil`, and a walk through the archive's clippings is a batch
 //! run, both taking longer than an invocation's 30 seconds, so each hands
 //! what it didn't reach on to a fresh invocation of the Worker, a request
-//! to itself through its binding to its own `JadpoHandOn` entrypoint,
-//! which carries it on to its end. Since chunk 8.4a the desk answers its
-//! limits on the module's own stack and V8's: a thousand frames of a
-//! plain recursion and of a heavy one, four hundred inline functions
-//! running at once, and a level more of each the `recursion_limit` fault,
-//! the isolate serving on.
+//! to itself through the loopback `ctx.exports` gives its `JadpoHandOn`
+//! entrypoint, which carries it on to its end. Since chunk 8.4a the desk
+//! answers its limits on the module's own stack and V8's: a thousand
+//! frames of a plain recursion and of a heavy one, four hundred inline
+//! functions running at once, and a level more of each the
+//! `recursion_limit` fault, the isolate serving on.
 //!
 //! The build is kept beside the build's own folders
 //! (`target/jadpo-compiled/workers/`), so a second run compiles only what
@@ -1488,15 +1488,11 @@ fn a_worker_streams_answers_and_hands_on_what_one_invocation_leaves() {
         &fs::read_to_string(out.join("wrangler.json")).expect("the Wrangler file"),
     )
     .expect("JSON");
-    // It runs background work, so it is bound to its own entrypoint for
-    // work handed on, which its shim exports.
-    assert_eq!(
-        wrangler["services"],
-        serde_json::json!([
-            { "binding": "JADPO_HAND_ON", "service": "desk", "entrypoint": "JadpoHandOn" }
-        ]),
-        "{wrangler}"
-    );
+    // It runs background work, handed on through the loopback binding
+    // `ctx.exports` gives the entrypoint its shim exports, so no binding
+    // names the Worker, whatever name `wrangler deploy` gives it (chunk
+    // 8.4b).
+    assert!(wrangler.get("services").is_none(), "{wrangler}");
     // Beside its database's Hyperdrive binding, the minute's cron and its
     // rate-limiting bindings.
     assert_eq!(
@@ -1925,16 +1921,9 @@ impl Workerd {
                 )
             })
             .collect();
-        // A service binding to the Worker itself, to the entrypoint it
-        // names (chunk 8.2h).
-        for service in wrangler["services"].as_array().into_iter().flatten() {
-            assert_eq!(service["service"], wrangler["name"], "{service}");
-            bindings.push(format!(
-                "(name = \"{}\", service = (name = \"kiosk\", entrypoint = \"{}\"))",
-                service["binding"].as_str().expect("a binding"),
-                service["entrypoint"].as_str().expect("an entrypoint"),
-            ));
-        }
+        // Work is handed on through `ctx.exports`, which workerd gives
+        // each entrypoint the Worker exports (chunk 8.4b): no binding.
+        assert!(wrangler.get("services").is_none(), "{wrangler}");
         let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/workers");
         fs::copy(
             tools.join("ratelimit-binding.mjs"),

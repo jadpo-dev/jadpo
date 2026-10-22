@@ -2202,10 +2202,12 @@ stops short.
   budget of its own, once the invocation ran something; one that could
   run nothing leaves it for the tick rather than hand it on for ever.
   Natively that is a task of its own; on Workers a request to the Worker
-  itself, through a service binding to its own `JadpoHandOn` entrypoint,
-  naming each piece by its record, which the fresh invocation reads back
-  and runs in its own `waitUntil`, with 30 seconds of its own (decided
-  2026-10-21, chunk 8.2h; Decisions, "Work handed on, on Workers"). A
+  itself, through the loopback binding `ctx.exports` gives its own
+  `JadpoHandOn` entrypoint (a service binding naming the Worker until
+  chunk 8.4b), naming each piece by its record, which the fresh
+  invocation reads back and runs in its own `waitUntil`, within what is
+  left of its own 30 seconds, counted from its start (decided 2026-10-21,
+  chunk 8.2h; Decisions, "Work handed on, on Workers"). A
   hand-on the platform refuses, as past its limit on invocations one
   request chains, leaves the work in the store for the minute's cron. The tick finds what is due at its time, then runs
   each piece under the host's clock as that piece starts, so work that
@@ -2305,7 +2307,10 @@ application {
   dropped by the message id, stored in the database.
 - A message whose type is not listed is parked for an operator, never
   dropped. A message that keeps failing is left to the queue's own
-  dead-letter queue and parked for an operator.
+  dead-letter queue and parked for an operator: on Cloudflare Queues the
+  Worker consumes the dead-letter queue and parks each message it hands
+  back as `dead_lettered` (chunk 8.4b; area 11, "Chosen in chunk
+  7.7c2").
 - An HTTP API is a package and anything needing its own protocol or a
   platform binding is a built-in driver: Amazon SQS and Google Pub/Sub's
   pull API are packages; SNS and Pub/Sub's push are webhooks through a
@@ -2324,7 +2329,10 @@ application {
   connection with `driver: Driver.cloudflare_queues`, `queue:` and
   `dead_letter_queue:`, its consumer handed each batch and answering for
   each message, acknowledged once kept, as a repeat or parked, retried
-  when the store can't take it now.
+  when the store can't take it now. Since chunk 8.4b a message the Worker
+  can't take yet is retried for about 22 hours, its delay doubling up to
+  an hour, so it outlasts a deploy's migration, and the dead-letter
+  queue's consumer parks what reaches it.
 
 ## Retries and giving up
 
@@ -5273,6 +5281,7 @@ Not yet:
 | An event's tenant (after chunk 6.1b) | An event belongs to the tenant its one field holding a tenant's id names (e.g. `household_id: Household.id`), so the tenant is written in the event where a reviewer sees it; an event with no such field, or more than one, reaches no tenant's records (Richard, as recommended) | 2026-10-19 |
 | A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended; several naming the same tenant count as that one: "Schedule and batch defaults") | 2026-10-19 |
 | `jadpo schedules run` (after chunk 6.2b) | Against `jadpo dev` it runs the schedule straight away and shows the outcome; against a deployed application it marks the schedule due, so the application's own server runs it on its next tick under the lease, and the command waits for that run's record and shows it, so a deployment's settings and secrets never leave its servers (Richard, as recommended) | 2026-10-19 |
+| Work handed on, on Workers: the loopback and the budget (chunk 8.4b) | The fresh invocation is reached through the loopback binding `ctx.exports` gives the Worker's own `JadpoHandOn`, not a service binding naming it, since Wrangler keeps a binding's `service` when `wrangler deploy --name` or `--env` deploys the file under another name, which would hand a staging Worker's work to production's; workerd pinned in `tools/workers/` gives `ctx.exports` at the compatibility date without a flag, and chunk 8.2n checks it on the real edge. The fresh invocation's 30 seconds are counted from its start, so starting the isolate and reading the work back are spent from them (decided by the building session, reversible) | 2026-10-22 |
 | Work handed on, on Workers (chosen in chunk 8.2h) | `Host::hand_on` on Workers is a request to the Worker itself, through a service binding (`JADPO_HAND_ON`, which `jadpo build` writes into the Wrangler file of a Worker that runs background work) to a named entrypoint of its own shim (`JadpoHandOn`), never its default export, so nothing from outside reaches it. It is sent JSON naming each piece by its record and store, never an event's value; the fresh invocation reads each delivery back from its record, leaving out one run or given up since, and each batch run from its row, and carries them on in its own `waitUntil` with Workers' 30 seconds, handing on in turn; the invocation that handed it on is kept until that call returns. A hand-on that fails, as past the platform's limit on invocations one request chains, leaves the work in the store for the minute's cron. Rejected: a queue, which needs a queue made in the account and a consumer for every Worker, delays each hand-on by its batching, and would tie background work to chunk 8.2k's consumer; and a request to the Worker's own URL, which would reach its public `fetch` and need a secret to tell itself from a caller. Whether Cloudflare gives each handed-on invocation its own 30 seconds once the one that called it has ended is checked on the real deploy (chunk 8.2n) (decided for Richard, the conservative reading) | 2026-10-21 |
 | An `every:` under a minute on Workers (Phase 6 review) | An error naming the schedule when a Workers deployable reaches it, since a minute's cron can't run it and Jadpo has no warnings (Richard, as recommended) | 2026-10-19 |
 | The tick on Workers (chunk 8.2f) | Chosen in the chunk, each reversible: a Workers deployable reaches a schedule when its `runs:` lists `Trigger.schedules`, and one more often than once a minute is `deployable.target_unsupported` (area 14), at its `every:`, rather than a rule of its own, since it is one more thing a target can't run; the Wrangler file names the cron `* * * * *` for every Workers deployable whose tick has a store to keep or sweep, as every native deployable ticks; each run of the cron ticks once its stores are current (out of date, it logs why as a request does and ticks nothing), then, while the app ticks more often than once a minute (a received queue, every 10 seconds, as natively), again at each such mark of the cron's minute, one tick after the last ends, never two at once, so a Worker holds no more connections than one tick does, and a mark a long tick passed is not made up; the invocation ends with its minute, and each of its ticks has what is left of the cron's 15 minutes | 2026-10-21 |

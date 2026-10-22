@@ -285,7 +285,6 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
             },
         ],
         true,
-        true,
     ))
     .expect("JSON");
     assert_eq!(
@@ -311,17 +310,18 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
                 { "binding": "LEDGER_URL" },
             ],
             "triggers": { "crons": ["* * * * *"] },
-            // Bound to itself, to hand work on to a fresh invocation.
-            "services": [
-                { "binding": "JADPO_HAND_ON", "service": "back-office", "entrypoint": "JadpoHandOn" },
-            ],
+            // No binding to itself by name (chunk 8.4b): work is handed on
+            // through the loopback `ctx.exports` gives `JadpoHandOn`, which
+            // reaches the Worker that handed it on whatever name or
+            // environment `wrangler deploy --name` or `--env` gave it,
+            // where a service binding would still name `back-office`.
         })
     );
     // With no setting to give, there is no secret to require and no
     // binding to name; with no store for its tick to keep or sweep, no
-    // cron to run it; and running no background work, it hands nothing on.
+    // cron to run it.
     let bare: serde_json::Value =
-        serde_json::from_str(&workers::wrangler("web", &[], &[], false, false)).expect("JSON");
+        serde_json::from_str(&workers::wrangler("web", &[], &[], false)).expect("JSON");
     assert_eq!(bare["name"], "web");
     assert!(bare.get("secrets").is_none(), "{bare}");
     assert!(bare.get("hyperdrive").is_none(), "{bare}");
@@ -338,7 +338,7 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         jadpo_std::http::rate_limit_bindings("limits", 1001, &jadpo_std::http::COUNTED_LIMITS)
             .expect("numbered");
     let wrangler: serde_json::Value = serde_json::from_str(&workers::rate_limited(
-        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true, true),
+        workers::wrangler("web", &["DATABASE_URL".to_string()], &[], true),
         &bindings,
     ))
     .expect("JSON");
@@ -365,19 +365,14 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
         wrangler["triggers"]["crons"],
         serde_json::json!(["* * * * *"])
     );
-    // The binding to itself work is handed on through stays beside them
-    // (chunk 8.2h).
-    assert_eq!(
-        wrangler["services"][0]["entrypoint"], "JadpoHandOn",
-        "{wrangler}"
-    );
-    let plain = workers::wrangler("web", &[], &[], false, false);
+    let plain = workers::wrangler("web", &[], &[], false);
     assert_eq!(workers::rate_limited(plain.clone(), &[]), plain);
 }
 
 /// Each queue on Cloudflare Queues the Worker receives is a consumer in its
-/// Wrangler file, by Wrangler's own setting names (chunk 8.2k); a
-/// package's queue, fetched on the tick, is none.
+/// Wrangler file, by Wrangler's own setting names (chunk 8.2k), and so is
+/// its dead-letter queue (chunk 8.4b); a package's queue, fetched on the
+/// tick, is none.
 #[test]
 fn a_worker_consumes_each_cloudflare_queue_it_receives() {
     use jadpo_std::receiving::{CloudflareQueue, QueuePlan, QueueSource};
@@ -393,23 +388,36 @@ fn a_worker_consumes_each_cloudflare_queue_it_receives() {
         }),
     };
     let wrangler: serde_json::Value = serde_json::from_str(&workers::queued(
-        workers::wrangler("depot", &[], &[], true, true),
+        workers::wrangler("depot", &[], &[], true),
         &[queue("warehouse_queue", "warehouse-events")],
     ))
     .expect("JSON");
     assert_eq!(
         wrangler["queues"],
         serde_json::json!({
-            "consumers": [{
-                "queue": "warehouse-events",
-                "max_batch_size": 10,
-                "max_batch_timeout": 5,
-                "max_retries": 3,
-                "dead_letter_queue": "warehouse-events-dead",
-            }]
+            "consumers": [
+                {
+                    "queue": "warehouse-events",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 5,
+                    "max_retries": 30,
+                    "dead_letter_queue": "warehouse-events-dead",
+                },
+                // Its dead-letter queue's consumer parks what reaches it
+                // (chunk 8.4b).
+                {
+                    "queue": "warehouse-events-dead",
+                    "max_batch_size": 10,
+                    "max_batch_timeout": 5,
+                    "max_retries": 100,
+                },
+            ]
         })
     );
-    assert_eq!(wrangler["services"][0]["binding"], "JADPO_HAND_ON");
-    let plain = workers::wrangler("depot", &[], &[], false, false);
+    assert_eq!(
+        wrangler["triggers"]["crons"],
+        serde_json::json!(["* * * * *"])
+    );
+    let plain = workers::wrangler("depot", &[], &[], false);
     assert_eq!(workers::queued(plain.clone(), &[]), plain);
 }
