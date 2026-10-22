@@ -1,4 +1,4 @@
-/** Focused contract subset; Bun and Node run this exact strict TypeScript. */
+/** Generic microbenchmark scaffold; Bun and Node run this exact strict TypeScript. */
 import { serve } from '@hono/node-server';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { createMongoAbility, subject, type MongoAbility, type ForcedSubject } from '@casl/ability';
@@ -9,6 +9,7 @@ import { asc, eq, sql as statement } from 'drizzle-orm';
 import postgres from 'postgres';
 import { v7 as uuidv7 } from 'uuid';
 import { randomUUID } from 'node:crypto';
+import { scalarText } from './validation.js';
 
 const config = z.object({ DATABASE_URL: z.url(), SIGNING_KEY: z.string().min(32), PORT: z.coerce.number().int().positive() }).parse(process.env);
 const key = new TextEncoder().encode(config.SIGNING_KEY);
@@ -20,8 +21,10 @@ const samples = pgTable('sample', { id: uuid().primaryKey(), title: text().notNu
 type Principal = { kind: 'user'; id: string; subject: string };
 type Vars = { principal: Principal; requestId: string };
 const app = new OpenAPIHono<{ Variables: Vars }>({ defaultHook: result => { if (!result.success) throw new HttpFailure(422, 'invalid_input'); } });
-const todo = z.object({ id: z.uuid(), title: z.string().min(1).max(200) }).strict().openapi('TodoView');
-const sample = todo.extend({ payload: z.string().max(65536) }).strict().openapi('SampleView');
+const title = scalarText(1, 200);
+const handle = scalarText(1, 80);
+const todo = z.object({ id: z.uuid(), title }).strict().openapi('TodoView');
+const sample = todo.extend({ payload: scalarText(0, 65536) }).strict().openapi('SampleView');
 const failure = z.object({ code: z.string(), message: z.string(), request_id: z.string() }).strict();
 const messages: Record<string, string> = {
   authentication_required: 'Sign in first.', invalid_credentials: 'The credentials are invalid or have expired.',
@@ -70,7 +73,7 @@ app.use('/api/todos', async (c, next) => {
   rateLimit('user ' + c.get('principal').id, 600);
   await next();
 });
-const register = createRoute({ method: 'post', path: '/api/register', request: { body: { content: { 'application/json': { schema: z.object({ handle: z.string().min(1).max(80) }).strict() } } } }, responses: { 201: { description: 'Registered', content: { 'application/json': { schema: z.object({ id: z.uuid(), token: z.string() }).strict() } } } } });
+const register = createRoute({ method: 'post', path: '/api/register', request: { body: { content: { 'application/json': { schema: z.object({ handle }).strict() } } } }, responses: { 201: { description: 'Registered', content: { 'application/json': { schema: z.object({ id: z.uuid(), token: z.string() }).strict() } } } } });
 app.openapi(register, async c => {
   const { handle } = c.req.valid('json');
   const id = uuidv7();
@@ -92,7 +95,7 @@ async function readTodos(principal: Principal) {
 app.openapi(createRoute({ method: 'get', path: '/api/todos', responses: { 200: { description: 'Owner todos', content: { 'application/json': { schema: z.array(todo) } } } } }), async c => {
   return c.json(z.array(todo).parse(await readTodos(c.get('principal'))), 200);
 });
-app.openapi(createRoute({ method: 'post', path: '/api/todos', request: { body: { content: { 'application/json': { schema: z.object({ title: z.string().min(1).max(200) }).strict() } } } }, responses: { 201: { description: 'Created', content: { 'application/json': { schema: todo } } } } }), async c => {
+app.openapi(createRoute({ method: 'post', path: '/api/todos', request: { body: { content: { 'application/json': { schema: z.object({ title }).strict() } } } }, responses: { 201: { description: 'Created', content: { 'application/json': { schema: todo } } } } }), async c => {
   const principal = c.get('principal');
   const row = { id: uuidv7(), owner_id: principal.id, title: c.req.valid('json').title };
   if (!abilityFor(principal).can('create', subject('Todo', row))) throw new HttpFailure(403, 'invalid_credentials');

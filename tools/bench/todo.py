@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Validated local focused-todo benchmarks; see tools/bench/README.md.
+"""Validated local generic microbenchmark scaffold; see tools/bench/README.md.
 
-Builds native and workerd deployables, then runs the same request contracts on
+Builds native and workerd deployables, then probes and exercises four focused routes on
 native, workerd, Bun and Node, one server at a time. No account or deployment.
 """
 import argparse
@@ -334,7 +334,7 @@ def metadata():
     def version(command):
         return spike.run(command, capture_output=True, text=True).stdout.strip()
     sources = {}
-    for path in sorted([*[p for p in FIXTURE.rglob('*') if p.is_file() and 'build' not in p.relative_to(FIXTURE).parts], TS/'server.ts', TS/'package-lock.json', TS/'tsconfig.json', BENCH/'contracts.py', BENCH/'run.py', BENCH/'load/Cargo.lock', BENCH/'load/src/bin/load.rs', Path(__file__)]):
+    for path in sorted([*[p for p in FIXTURE.rglob('*') if p.is_file() and 'build' not in p.relative_to(FIXTURE).parts], *TS.glob('*.ts'), TS/'package-lock.json', TS/'tsconfig.json', BENCH/'contracts.py', BENCH/'run.py', BENCH/'load/Cargo.lock', BENCH/'load/src/bin/load.rs', Path(__file__)]):
         sources[str(path.relative_to(ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
     return {'schemaVersion': 1, 'revision': version(['git', 'rev-parse', 'HEAD']), 'dirty': bool(version(['git', 'status', '--porcelain'])), 'platform': platform.platform(), 'machine': platform.machine(), 'cpus': os.cpu_count(), 'rust': version(['rustc', '--version']), 'bun': version([spike.tool('bun'), '--version']), 'node': version([spike.tool('node'), '--version']), 'postgres': version([spike.tool('psql'), '--version']), 'workerd': version([str(spike.workerd()), '--version']), 'source_sha256': sources, 'artifact_sha256': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in [WORK/'native/build/target/app/app', *sorted((WORK/'workers/build/target/kiosk').glob('*.wasm'))] if p.is_file()}, 'seed': {'todos_per_principal': 50, 'other_owner_todos': 50, 'principals': 'options.principals for signed-list/write, 1 for read/large', 'small_payload_bytes': 100, 'large_payload_bytes': 65536}, 'authentication': {'bounded_seconds': 300, 'signed_list_authority_queries': 0, 'signed_list_business_queries': 1}}
 

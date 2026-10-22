@@ -21,6 +21,10 @@ fn serve(body: &'static [u8]) -> (String, std::thread::JoinHandle<Result<(), Str
                 Err(error) => return Err(format!("no load connection before deadline: {error}")),
             }
         };
+        // macOS can inherit the listener's O_NONBLOCK flag on accept.
+        // Timeouts do not clear it: a scheduled-later client must be allowed
+        // to send its request before this bounded blocking read returns.
+        socket.set_nonblocking(false).map_err(|e| e.to_string())?;
         socket
             .set_read_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;

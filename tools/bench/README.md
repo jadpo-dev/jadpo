@@ -101,7 +101,7 @@ the functions with the most self time; the profile itself is written to
 `work/<target>.cpuprofile`, which Chrome's DevTools opens.
 
 
-## Focused todo benchmarks (chunk 9.1)
+## Generic focused microbenchmark scaffold (chunk 9.1a)
 
 `todo.py` builds ordinary Jadpo sources in `fixtures/todo` and the strict
 TypeScript source in `typescript`, then runs native, Wasm under workerd,
@@ -115,17 +115,25 @@ python3 tools/bench/todo.py --skip-build --rounds 3 --duration 10
 python3 tools/bench/todo.py --skip-build --rounds 1 --duration 1 --warmup 0.2 --connections 1
 ```
 
-The fixture draws on the golden todo contract's owner-scoped CRUD, bounded
-signed authentication, stable list ordering, typed inputs and safe outputs.
-It deliberately contains only registration, create and a 50-row list, plus
-public small/large row reads. **It does not execute the 44 golden acceptance
-cases or implement the complete golden application.** Pagination, lifecycle,
-provider integration and the full authentication matrix remain Phase 10.
-The original 9.1 was split under the roadmap's session-sizing rule: 9.1b
-measures runtime changes and the 10,000-delivery backlog; 9.1c runs real
-Workers and publishes the full comparison after account/deployment approval.
+This is a generic todo-shaped microbenchmark, **not a golden-todo
+implementation or conformance subset**. It has registration, create and a
+50-row list, plus public small/large row reads. Golden `LIST-001` instead
+requires `created_at desc, id desc`, soft-delete filtering and cursor pages;
+this fixture orders by title and returns a bare array. Golden `REL-004`
+restricts deletion of users with retained todos; this fixture cascades.
+Golden `PUBLIC-001` permits only public app liveness; this fixture has public
+registration/sample routes. Golden `CREATE-003/004` due-date rules are absent.
+None of the 44 golden acceptance cases is claimed as passed by this scaffold.
 
-### Equivalent work
+Roadmap 9.1 retains the original full scope. Its order is 9.1a instrumentation,
+9.1d actual golden todo and strong TypeScript baseline with all 44 contract
+cases and local comparison, 9.1b measured runtime improvements including the
+10,000-delivery backlog, then 9.1c real Workers measurement with Richard's
+account/deployment approval. The existing repair-café subscriber benchmark
+remains reproducible; these short routes do not establish whole-app speed.
+No comparative performance result is published for this partial scaffold.
+
+### Exercised work
 
 | Workload | Request | Checked work |
 |---|---|---|
@@ -168,8 +176,8 @@ consistent snapshot; writes use Drizzle transactions. The physical schema,
 indexes and constraints are the same Jadpo-generated fixture DDL on all
 targets, so migration generators cannot accidentally create different
 indexes. Separate Drizzle-kit migrations, whole-app inventories, the full
-agent/lint framework and the golden contract remain Phase 10 obligations;
-this is the performance subset of the strong baseline specification.
+agent/lint framework and the actual golden contract are outstanding in 9.1d;
+the current scaffold does not fulfill the full strong baseline specification.
 
 Native startup checks its migration ledger. The TypeScript app checks all
 required application columns before accepting traffic. Readiness reaches the
@@ -186,8 +194,9 @@ Defaults are three rounds, rotating target order, at 1, 16 and 64 connections,
 2 seconds of warmup and 10 seconds measured. Servers restart per target per
 round; database reset, registration, renewal, seeding and correctness probes
 are outside timing. Cold start is spawn to first readiness response, and its
-request time is recorded separately. There is no compiler or other benchmark
-running during the final measured run.
+request time is recorded separately. A comparative run must have no compiler or other benchmark running. The
+16-cell short smoke verified instrumentation only; final comparison is held
+until the actual golden application and baseline satisfy 9.1d.
 
 A request admitted in the measured interval keeps its latency even when it
 finishes after the interval. Throughput divides measured completions by the
@@ -227,3 +236,51 @@ are not. The real load executable is tested against a slow server to prove
 p95 retains its drain, and against a corrupt 200 response to prove the
 correctness counters detect it. Local results and interpretation belong in
 `docs/compiler-runtime.md`, alongside this method.
+
+
+The scalar validation paths enforce the same bounds with their own implementations.
+Jadpo validates the fields it reads from PostgreSQL (including `RETURNING`),
+then its generated output writer serialises the known shape without a second
+schema-validation pass. Hono's OpenAPI integration validates request inputs;
+it does not automatically validate response bodies. The TypeScript handlers'
+Zod output parse is therefore one response validation, not a duplicate.
+Its text helper uses the built-in `isWellFormed()` and a UTF-16 length fast
+path, counting surrogate pairs only when necessary. It enforces the decided
+Unicode scalar bounds, rejects unpaired surrogates, and keeps OpenAPI's
+`minLength`/`maxLength` contract. Node and Bun boundary tests cover ASCII,
+astral characters, combining sequences and large payloads. It adds no query
+or transaction to imitate Jadpo's validation implementation.
+
+
+### Request-path coverage audit
+
+This audits the implemented scaffold against the generated Jadpo entries
+and the full runtime HTTP path, rather than inferring equivalence from the
+business SQL. Library delegation counts as implementation. The table records
+what currently exists; it does not waive missing guarantees or prescribe
+extra work merely to reproduce incidental overhead.
+
+| Boundary | Jadpo native / Wasm | Current Bun / Node scaffold | Assessment |
+|---|---|---|---|
+| Request admission | 1 MiB body cap; readable ASCII headers; route method/OPTIONS/HEAD handling; unused body/query rejection | Hono handles HEAD; strict known JSON object fields and typed path/input schemas; no explicit matching body cap, header/unused-input guards or OPTIONS/405 contract | Required guards/errors are incomplete. Missing/non-JSON content type and malformed JSON are not fully mapped. |
+| Bounded signed auth | Setup issues durable opaque session, first request renews to signed BLAKE3 part; five-minute signed authority reuse; expiry can renew from session | Five-minute JOSE HS256 bearer; typed claims; no authority reads in timed path | Only fresh signed happy path is exercised. Durable session renewal/revocation and complete credential selection are absent in TS. |
+| Address and caller limits | 120/minute address, 600/minute principal; trusted-hop address parsing/canonicalization, IPv6 /64; Retry-After on refusal | Same numeric limits and controlled IPv4/address pools; raw forwarded-header key, no matching canonicalization or Retry-After | Ordinary scaffold pool work matches; adversarial address/refusal guarantees do not. |
+| Owner reads | Required owner predicate, id/title projection, C-collation title/id ordering; one business SELECT after signed renewal | Typed CASL boundary supplies mandatory SQL scope and projection; same SELECT shape/order | Matches this fixture, not golden cursor/visibility semantics. One statement gives its own consistent snapshot; no artificial TS read transaction added. |
+| Create and storage | Same physical DDL, ReadCommitted transaction, INSERT RETURNING; DB fields validated before commit; response serialization before commit; retries ConcurrentChange up to three times | UUIDv7, same DDL and BEGIN/INSERT RETURNING/COMMIT shape; Zod output validation currently after transaction returns; no concurrent-change retry classification | Successful probe state matches, but invalid returned data could commit before TS validation fails. Validation must be within transaction for equivalent rollback safety. Retry semantics are not established. |
+| Output validation | Read/RETURNING DB fields checked by runtime Validator; generated writer serializes known output shape | Zod request middleware once and explicit output parse once; scalar bounds tested on Node and Bun | No duplicate automatic response parse: Hono OpenAPI response schema is metadata. Jadpo is not entirely free of runtime validation. |
+| Deadline/cancellation | Default ten-second route timer covers auth/body/action; abandoning the context drops uncommitted work; commit handled outside timeout | Load client has bounded request time, but app has no matching deadline/rollback fence or DB cancellation linkage | Client timeout does not supply server transaction safety. A naive Promise.race would be insufficient. |
+| Idempotency | Non-GET key selection; supplied key can claim/store/replay atomically | No Idempotency-Key behavior | Key is absent from timed traffic, so no key SQL is measured; full write guarantee remains absent. |
+| Errors and response identity | Safe boundary errors, storage/unavailable/deadline classification; x-request-id response header | Tested exact missing/forged/expired and invalid-input envelope; redacted unknown fault log; generated ID in error body, not response header | Common probes pass; complete error mapping and response identity remain incomplete. |
+| Traces and observation | Creates/continues trace context on every request; clock/deferred/observer dispatch; default deployable observer logs faults only | No trace context propagation; redacted fault log | A real full app can use trace propagation. Empty deferred/context/observer dispatch costs in this fixture are incidental architecture overhead, not a reason to pad TS with unused work. |
+| Startup | Migration-ledger validation plus readiness SELECT 1 reused for a second | Required application-column preflight plus readiness SELECT 1 reused for a second | Same migrated business schema, different startup guarantees. Cold-start timings would expose actual differing work, not equivalent migration validation. |
+
+Sources: runtime `http/mod.rs` admission, trace, route/deadline and commit
+paths; `read.rs`, `queries.rs` and `write.rs` stored-field validators;
+`serve.rs` and `deployable.rs` observation; generated fixture entries;
+installed Hono/OpenAPI validator implementation; and `typescript/server.ts`.
+The runtime's reusable machinery also serves jobs, events, providers and
+full identity flows absent from this scaffold. The repair-café benchmark's
+subscriber path is evidence for those costs; these microbenchmarks cannot
+stand in for it. Next comparison work must implement the actual golden
+contract and strong baseline, fix required reached-boundary gaps, and verify
+all 44 cases before making app performance claims.

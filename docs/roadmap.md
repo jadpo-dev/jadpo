@@ -206,15 +206,29 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
 
 Richard, 2026-10-13: developers won't touch this if it's slower.
 
-- [ ] **9.1 Local benchmark foundation:** `opus · high` focused golden-todo
-  contract fixtures (reads, writes, signed-in lists, large rows, cold start)
-  on native and Wasm under workerd against an equivalent Bun and TypeScript
-  app and Node; validated responses and persisted state, p95 and throughput,
-  repeatable method and local results. The strong TypeScript baseline follows
-  `examples/golden-todo/typescript-baseline.md`; the 44 golden acceptance
-  cases and full application remain Phase 10's. Split from 9.1 under the
-  session sizing rule (2026-10-22).
-- [ ] **9.1b Runtime performance:** `opus · high` after 9.1, measure the same
+- [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
+  writes, signed-in lists, large rows, cold start) on native, Wasm under
+  workerd and on Workers, against an equivalent Bun and TypeScript app and
+  Node; results published with the method. Full scope remains outstanding
+  through 9.1a, 9.1d, 9.1b and 9.1c, in that order; the split changes sizing,
+  not acceptance (2026-10-22).
+- [ ] **9.1a Instrumentation and focused scaffold:** `opus · high` robust local
+  load/verifier instrumentation, generic focused microbenchmark fixtures on
+  native and workerd against Bun and Node, p95/cold-start/raw method metadata,
+  fault-sensitive correctness checks in the gate. This is not golden-todo
+  conformance or an application speed claim; short smoke runs verify the
+  instruments only. Method and limits in `tools/bench/README.md`.
+- [ ] **9.1d Golden todo and local comparison:** `opus · high` after 9.1a,
+  implement the actual golden todo and strong TypeScript baseline from
+  `examples/golden-todo` on both sides, establish all 44 acceptance cases,
+  audit the reached request path and fix missing required guarantees, then
+  compare the complete application plus focused reads, writes, signed-in
+  lists, large rows and cold start on native, Wasm under workerd, Bun and
+  Node. Validate responses and persisted state, report p95 and throughput
+  with repeatable method and honest variability. Preserve Phase 10's broader
+  examples/polish obligations; do not substitute generic fixtures for this
+  benchmark. Needed before runtime performance changes.
+- [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
   From the Phase 6 review: deliveries swept concurrently within each
   sweep, with a bound, and a backlog of 10,000 deliveries among the
@@ -227,11 +241,11 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   breaker read joined into its claim.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
-  golden-todo focused workloads on Workers against the equivalent Bun and
+  golden todo plus focused workloads on Workers against the equivalent Bun and
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
   Real edge measurement is required before Phase 9 finishes.
-- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1 and 9.1b, until it matches the Bun app on throughput
+- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
   ([optimisation results](experiments/wasm-optimization-results.md)).
