@@ -1,8 +1,20 @@
 """Benchmark verification must fail closed before timings can be compared."""
 import unittest
-from contracts import validate_measurement, validate_list, validate_sample, validate_write_count
+from contracts import validate_measurement, validate_list, validate_sample, validate_write_count, validate_failure
 
 class Contracts(unittest.TestCase):
+    def test_failure_contract_requires_the_decided_status_and_code(self):
+        body = {"error": {"code": "invalid_input", "message": "Request input is invalid.", "request_id": "req_test"}}
+        validate_failure(422, body, 422, "invalid_input")
+        for status, code in [(400, "invalid_input"), (422, "wrong")]:
+            with self.assertRaises(ValueError):
+                validate_failure(status, body, 422, code)
+        for invalid_body in (None, [], "invalid"):
+            with self.assertRaises(ValueError):
+                validate_failure(422, invalid_body, 422, "invalid_input")
+        with self.assertRaises(ValueError):
+            validate_failure(422, {"error": {**body["error"], "credential": "leaked"}}, 422, "invalid_input")
+
     def test_corrupt_200_body_is_rejected(self):
         with self.assertRaises(ValueError):
             validate_sample({"id": "sample", "title": "small", "payload": "wrong"}, "sample", "small", "x" * 100)

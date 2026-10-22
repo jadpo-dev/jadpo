@@ -16,12 +16,13 @@ import shutil
 import subprocess
 import sys
 import threading
+import textwrap
 import time
 from pathlib import Path
 from uuid import UUID
 
 import run as spike
-from contracts import validate_list, validate_measurement, validate_sample, validate_write_count
+from contracts import validate_list, validate_measurement, validate_sample, validate_write_count, validate_failure
 
 ROOT = spike.ROOT
 BENCH = ROOT / 'tools/bench'
@@ -202,25 +203,22 @@ def prepare(server, pg, principals):
     seeded.extend(f"('20000000-0000-4000-8000-{i:012d}', '{bob['id']}', 'other-{i:03d}')" for i in range(50))
     pg.sql(database, 'INSERT INTO todo (id, owner_id, title) VALUES ' + ','.join(seeded))
     pg.sql(database, f"INSERT INTO sample (id,title,payload) VALUES ('{SMALL}','small',repeat('x',100)),('{LARGE}','large',repeat('x',65536))")
-    for credential in (None, 'forged.invalid.credential'):
+    for credential, code in ((None, 'authentication_required'), ('forged.invalid.credential', 'invalid_credentials')):
         status, data, _ = request(server, 'GET', '/api/todos', token=credential)
-        if status != 401 or not isinstance(data.get('error'), dict) or not {'code', 'message', 'request_id'} <= data['error'].keys():
-            raise ValueError('Missing or forged credentials were admitted')
+        validate_failure(status, data, 401, code)
     # Expiring an opaque issued session must fail. A still-bounded signed
     # credential may remain valid until refresh, as area 8 explicitly decides.
     if server.target in ('native', 'workers'):
         pg.sql(database, f"UPDATE jadpo_sessions SET ends_at = now() - interval '1 second' WHERE principal_id = '{bob['id']}'")
-        status, _, _ = request(server, 'GET', '/api/todos', token=bob['token'])
-        if status != 401:
-            raise ValueError('An expired opaque session was admitted')
+        status, expired_body, _ = request(server, 'GET', '/api/todos', token=bob['token'])
+        validate_failure(status, expired_body, 401, 'invalid_credentials')
     else:
         # The TypeScript baseline's idiomatic JOSE credential has the same
         # bounded lifetime. Produce an expired fixture outside the HTTP app.
         mint = "import { SignJWT } from 'jose'; const key=new TextEncoder().encode(process.env.SIGNING_KEY); console.log(await new SignJWT({handle:'bob'}).setProtectedHeader({alg:'HS256'}).setSubject(process.env.BENCH_SUBJECT).setIssuer('jadpo-bench').setAudience('jadpo-bench').setIssuedAt(Math.floor(Date.now()/1000)-301).setExpirationTime(Math.floor(Date.now()/1000)-1).sign(key));"
         expired = spike.run([spike.tool('node'), '--input-type=module', '-e', mint], cwd=TS, env={**os.environ, 'SIGNING_KEY': KEY, 'BENCH_SUBJECT': bob['id']}, capture_output=True, text=True).stdout.strip()
-        status, _, _ = request(server, 'GET', '/api/todos', token=expired)
-        if status != 401:
-            raise ValueError('An expired signed bearer was admitted')
+        status, expired_body, _ = request(server, 'GET', '/api/todos', token=expired)
+        validate_failure(status, expired_body, 401, 'invalid_credentials')
     # Every owner must see exactly its own list before timing starts.
     for case in cases[1:]:
         credential = case['headers'][0].removeprefix('authorization: Bearer ')
@@ -259,8 +257,7 @@ def prepare(server, pg, principals):
             raise ValueError('Sample read failed')
         validate_sample(data, identity, title, payload)
     status, data, _ = request(server, 'POST', '/api/todos', {'title': ''}, token=token)
-    if status < 400 or status >= 500:
-        raise ValueError('Invalid input was accepted or faulted')
+    validate_failure(status, data, 422, 'invalid_input')
     if int(pg.query(database, 'SELECT count(*) FROM todo')) != 50 * principals + 50:
         raise ValueError('Setup or invalid input changed the seeded row count')
     pg.logging(False)
@@ -402,6 +399,8 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ValueError, subprocess.CalledProcessError, OSError, TimeoutError) as error:
-        print(f'error: Benchmark verification failed\n  reason: {error}\n  next: Review tools/bench/work/todo/logs; increase a pool if a600/minute caller or120/minute address limit was reached', file=sys.stderr)
+    except (ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError, TimeoutError) as error:
+        print('error: Benchmark verification failed', file=sys.stderr)
+        print(textwrap.fill(str(error), width=80, initial_indent='  reason: ', subsequent_indent='          ', break_long_words=False, break_on_hyphens=False), file=sys.stderr)
+        print('  next: Review tools/bench/work/todo/logs.\n        Increase a pool if a 600/minute caller or 120/minute address limit\n        was reached.', file=sys.stderr)
         sys.exit(1)

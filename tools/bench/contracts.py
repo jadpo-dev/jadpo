@@ -28,3 +28,14 @@ def validate_measurement(row):
 def validate_write_count(*, before, after, successes):
     if after - before != successes:
         raise ValueError("Persisted writes differ from successful requests, including warmup and drain")
+
+
+def validate_failure(status, body, expected_status, code):
+    error = body.get("error") if isinstance(body, dict) else None
+    required = {"code", "message", "request_id"}
+    if (status != expected_status or not isinstance(body, dict) or set(body) != {"error"}
+            or not isinstance(error, dict) or not required <= error.keys()
+            or not error.keys() <= required | {"details"}
+            or error["code"] != code
+            or not all(isinstance(error[key], str) and error[key] for key in required)):
+        raise ValueError(f"Expected a safe {expected_status} {code} failure")

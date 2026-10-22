@@ -19,17 +19,17 @@ const todos = pgTable('todo', { id: uuid().primaryKey(), owner_id: uuid().notNul
 const samples = pgTable('sample', { id: uuid().primaryKey(), title: text().notNull(), payload: text().notNull() });
 type Principal = { kind: 'user'; id: string; subject: string };
 type Vars = { principal: Principal; requestId: string };
-const app = new OpenAPIHono<{ Variables: Vars }>({ defaultHook: result => { if (!result.success) throw new HttpFailure(400, 'invalid_input'); } });
+const app = new OpenAPIHono<{ Variables: Vars }>({ defaultHook: result => { if (!result.success) throw new HttpFailure(422, 'invalid_input'); } });
 const todo = z.object({ id: z.uuid(), title: z.string().min(1).max(200) }).strict().openapi('TodoView');
 const sample = todo.extend({ payload: z.string().max(65536) }).strict().openapi('SampleView');
 const failure = z.object({ code: z.string(), message: z.string(), request_id: z.string() }).strict();
 const messages: Record<string, string> = {
-  authentication_required: 'Sign in to continue.', invalid_credentials: 'The credentials are invalid or have expired.',
-  ambiguous_credentials: 'The request carries more than one credential.', invalid_input: 'The request is invalid.',
+  authentication_required: 'Sign in first.', invalid_credentials: 'The credentials are invalid or have expired.',
+  ambiguous_credentials: 'The request carries more than one credential.', invalid_input: 'Request input is invalid.',
   handle_taken: 'That handle is taken.', sample_not_found: 'That sample was not found.',
   fault: 'The request could not be completed.', rate_limited: 'Too many requests.',
 };
-class HttpFailure extends Error { readonly status: 400 | 401 | 403 | 404 | 409 | 429 | 500; readonly code: string; constructor(status: 400 | 401 | 403 | 404 | 409 | 429 | 500, code: string) { super(code); this.status = status; this.code = code; } }
+class HttpFailure extends Error { readonly status: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500; readonly code: string; constructor(status: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500, code: string) { super(code); this.status = status; this.code = code; } }
 type TodoSubject = { owner_id: string } & ForcedSubject<'Todo'>;
 type AppAbility = MongoAbility<['read' | 'create', 'Todo' | TodoSubject]>;
 const abilityFor = (principal: Principal) => createMongoAbility<AppAbility>([ { action: 'read', subject: 'Todo', conditions: { owner_id: principal.id } }, { action: 'create', subject: 'Todo', conditions: { owner_id: principal.id } } ]);
