@@ -1605,9 +1605,13 @@ each codec it writes (its output's, the same way), each written from the
 codec, its shape and its validator's number; and each route's entry,
 `jadpo_runtime::http::Entry`: a reader per placeholder, the input's
 reader and the output's writer. The crate gives the entries by route
-number (`Code::routes`), compiled code's `Program::app` hands them to the
-HTTP component (`App::entries`), and the interpreter's app has none, so
-the interpreter is unchanged and stays the reference.
+number (`Code::routes`), compiled code's `Executor::app` hands them to
+the HTTP component (`App::entries`), and the interpreter's app, the
+trait's default, has none, so the interpreter is unchanged and stays the
+reference. `Serving::handle` answers with the executor's `app()`, so a
+native or Workers deployable reads and writes through the entries as its
+compiled route tests do (chunk 8.4c; before it, a deployable served
+with its plan's app and the codec walk).
 
 Everything around the codecs stays the runtime's, in one function both
 executors go through, `http::read_request`: a placeholder's text
@@ -1674,7 +1678,9 @@ request's edge and the store.
 *Kept in step.* The differential run sends every compiled route test's
 request through the entries. Beside it, the harness reads a seeded set of
 requests for every route of every project with the entries and with the
-codec walk (`Program::app` and `Program::walked_app`), and writes a set of
+codec walk (`Executor::app`, called as any executor's, which a route
+the program answers without its entry fails, and `Program::walked_app`),
+and writes a set of
 values both ways (`jadpo_test::entries`): each value the input's type
 holds, written by the codec walk, then each place in the first two
 removed, given again, or set to other kinds and edge values; members the
@@ -3231,7 +3237,11 @@ webhook's reply action, is noted and the plan refused
 what the plan holds is Jadpo's own mistake, never a program that faults
 where it reaches the gap. Kept whole: the app's translations, since any
 enum value formatted may read its wording, its identity, its locales and
-its stores. A Worker links SMTP's driver when its plan holds an SMTP
+its stores; since chunk 8.4c its identity without a method's signing key
+where no API it serves takes the method, and without the browser
+session's origin where none takes browser sessions, so a deployable that
+serves no such API reads neither setting (the magic-link email still
+asks for the origin where subscribers run). A Worker links SMTP's driver when its plan holds an SMTP
 connection, which it does only where it reaches one. The build id
 (`jadpo_cli::stamp::program`) digests the program as compiled: the Rust
 its callables become, as the text of its tokens
@@ -3335,7 +3345,8 @@ console's `log` on Workers), the start-up problems (`setting_problem`,
 `unaddressed`, `client_address_refused`, `pending`, `diverged`), each
 store compared with the build's migrations (`compare`: `Current`,
 `Refused` with its problem, or `Unreachable`, which the native host waits
-for) and `Faults`, the observer logging `operation.failed`. An isolate
+for) and `Faults`, the observer logging `operation.failed` (since chunk
+8.4c `Logged`, and the start itself shared). An isolate
 starts at its first request (a thread-local `OnceCell`): the program
 made, `config::load` over the bindings (`HostVariables` of that
 request's `WorkersHost`), `ClientAddress::read` with `Target::Workers`,
@@ -3519,6 +3530,36 @@ an HTTP endpoint for the tick and its secret (Richard, 2026-10-21); a
 behind an outage that the next minute's run would see past; and
 `ScheduleTrigger.native` refused for a Worker, which would bar an app
 with a server and a Worker from writing the default down.
+
+**One start for both hosts** (chunk 8.4c; area 14, "A native
+deployable" and "A Workers deployable"). What the native host's
+`configured`, `check_stores` and `tick` and the Workers host's `started`
+and `stores_current` each did their own way is `jadpo_runtime::
+deployable`'s: `start` (the plan read, `config::load` over the host's
+variables, `ClientAddress::read` for the target, `Program::with_config_on`;
+the values given back for a native server's workers), `compare_store`
+(a store with no driver `store_unbuilt`, naming the factory's reason
+through `NotBuilt`, which `jadpo_drivers::factory::Unbuilt` implements,
+since the runtime can't name the drivers' crate), `compare_stores`
+(`Stores`: the problems, and the stores out of reach, which a tick,
+`Then::NextTick`, makes `store_unreachable` problems), `waiting`
+(`runtime.waiting`'s words by what follows), `unbuilt` (the list
+`runtime.started` and `runtime.ticked` give) and `Logged`, the observer
+both hosts serve through in place of `Faults`: `operation.failed` as
+before, and each tick's result as `runtime.ticked` (`ticked_fields`,
+moved from the native host), given its duration by `Serving::tick`
+(`Observer::ticked` takes the milliseconds the host's monotonic clock
+counted) and the connections the serving host's factory didn't build.
+So a native server's timer and a Worker's cron log each tick as `tick`
+does, a store a tick can't work in among it. Proved by the runtime's own
+tests (a tick on a host whose store can't be reached logged with its
+`store_failed` problem; each store compared alike), live by example 23's
+office logging its every-second ticks with a table it sweeps renamed for
+a moment, and under workerd by the depot's cron logging each of its
+ticks and the same failure. *Rejected:* a duration kept on `Ticked`,
+which every tick's caller would then fill; and logging only a tick that
+did something or failed, which a quiet log can't tell from a server that
+stopped ticking.
 
 **PostgreSQL through Hyperdrive** (chunk 8.2i; area 5, "PostgreSQL
 through Hyperdrive"). A database connection's address on Workers is its

@@ -547,8 +547,10 @@ fn now_ms() -> i64 {
 /// queue and delivers its event, and, since the depot receives a queue,
 /// ticks again at each 10-second mark of its minute, so a message sent
 /// between two marks is received in the same invocation; a schedule due
-/// runs on it. A schedule more often than once a minute is refused for
-/// Workers by `jadpo check`, naming it.
+/// runs on it. Each tick is logged as `runtime.ticked`, as a native
+/// server logs its ticks, a store it can't work in among it (chunk 8.4c).
+/// A schedule more often than once a minute is refused for Workers by
+/// `jadpo check`, naming it.
 #[test]
 fn a_workers_cron_ticks_runs_schedules_and_receives_a_queue_each_10_seconds() {
     let root = depot();
@@ -748,6 +750,36 @@ fn a_workers_cron_ticks_runs_schedules_and_receives_a_queue_each_10_seconds() {
         .filter(|seen| seen.target == "AmazonSQS.ReceiveMessage")
         .count();
     assert_eq!(receives, 1, "{:?}", sqs.seen());
+
+    // Each tick was logged: the 40-second cron's two and the last's,
+    // which ran the schedule, by its name; none couldn't work in a store.
+    let ticks = worker.events("runtime.ticked");
+    assert_eq!(ticks.len(), 3, "{}", worker.log());
+    for tick in &ticks {
+        assert_eq!(tick["problems"], serde_json::json!([]), "{tick}");
+        assert_eq!(tick["unbuilt"], serde_json::json!([]), "{tick}");
+    }
+    assert_eq!(ticks[2]["ran"][0]["schedule"], "stocktake", "{}", ticks[2]);
+    assert_eq!(ticks[2]["ran"][0]["outcome"], "succeeded", "{}", ticks[2]);
+    // A store the tick can't work in is logged, as a native server's tick
+    // logs it: here the table of idempotency keys every tick sweeps, gone
+    // for a moment.
+    rows(
+        &database.native,
+        "ALTER TABLE jadpo_idempotency_keys RENAME TO jadpo_idempotency_keys_away",
+    );
+    let ended = worker.scheduled(now_ms() - 59_000);
+    rows(
+        &database.native,
+        "ALTER TABLE jadpo_idempotency_keys_away RENAME TO jadpo_idempotency_keys",
+    );
+    assert_eq!(ended, "ok", "{}", worker.log());
+    let ticks = worker.events("runtime.ticked");
+    let [.., last] = ticks.as_slice() else {
+        panic!("{}", worker.log())
+    };
+    assert_eq!(last["problems"][0]["problem"], "store_failed", "{last}");
+    assert_eq!(last["problems"][0]["store"], "main", "{last}");
 
     let started = worker.events("runtime.started");
     assert_eq!(started.len(), 1, "{}", worker.log());

@@ -8,10 +8,11 @@
 //! invocation's event, `env` and `ctx`.
 //!
 //! [`fetch`] starts an isolate the way the native host starts a process,
-//! at its first request, since a Worker has no start of its own: it makes
-//! the program, which decodes its plan, reads the settings from the
-//! bindings through `config::load`, and refuses a `client_address:`
-//! source other than `cloudflare`; a problem there logs
+//! at its first request, since a Worker has no start of its own, through
+//! the runtime's start both hosts share (`jadpo_runtime::deployable`,
+//! chunk 8.4c): it makes the program, which decodes its plan, reads the
+//! settings from the bindings through `config::load`, and refuses a
+//! `client_address:` source other than `cloudflare`; a problem there logs
 //! `runtime.startup_failed` once and the isolate answers every request 503.
 //! Then each request builds its drivers through the factory over
 //! `connect()` and `fetch()`, on a host of its own, since a socket belongs
@@ -30,7 +31,8 @@
 //! [`scheduled`] is the minute's cron trigger (chunk 8.2f): it starts the
 //! isolate as `fetch` does, and once its stores are current runs the
 //! runtime's tick through `Serving` on a host of its own, whose ticks
-//! share the cron's 15 minutes. While the program ticks more often than
+//! share the cron's 15 minutes, each logged as `runtime.ticked` with the
+//! stores it couldn't work in, as a native server logs its ticks. While the program ticks more often than
 //! once a minute, as one receiving a queue does every 10 seconds, it ticks
 //! again at each such mark of the cron's minute, one tick after another,
 //! and ends with the minute, the next minute's cron going on from there.
@@ -42,24 +44,20 @@
 //! consumer of each queue on Cloudflare Queues it receives (chunk 8.2k).
 
 use std::cell::{Cell, OnceCell};
-use std::fmt;
 use std::rc::Rc;
 
-use jadpo_drivers::factory::{Drivers, Why};
+use jadpo_drivers::factory::Drivers;
 use jadpo_runtime::compiled::Program;
-use jadpo_runtime::config::{self, HostVariables, Mode};
-use jadpo_runtime::deployable::{
-    Compared, Faults, Log, Then, client_address_refused, compare, problem, setting_problem,
-    unaddressed,
-};
-use jadpo_runtime::http::address::{ClientAddress, Target};
+use jadpo_runtime::config::HostVariables;
+use jadpo_runtime::deployable::{Log, Logged, Then, compare_stores, waiting};
+use jadpo_runtime::http::address::Target;
 use jadpo_runtime::http::{self, BODY_LIMIT, Request, Response, Worker};
 use jadpo_runtime::runner;
 use jadpo_runtime::serve::Serving;
 use jadpo_runtime::{Executor, Host};
 use jadpo_std::http::RateLimitStore;
 use js_sys::Uint8Array;
-use serde_json::{Value, json};
+use serde_json::Value;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Headers, ReadableStreamDefaultReader, ResponseInit};
 
@@ -173,8 +171,9 @@ async fn respond(
 /// One run of the cron trigger, on a host of its own: the runtime's tick
 /// once the isolate has started and its stores are current, then again at
 /// each mark of the cron's minute while the program ticks more often than
-/// once a minute ([`next_tick`]). What stops it is logged as a request
-/// logs it, and nothing ticks.
+/// once a minute ([`next_tick`]), each logged as `runtime.ticked` by what
+/// it is served through ([`serving`]). What stops it is logged as a
+/// request logs it, and nothing ticks.
 async fn cron(deployable: &Deployable, controller: &JsValue, env: JsValue, ctx: JsValue) {
     let host = WorkersHost::new(env, ctx).for_cron();
     let Some(isolate) = isolate(deployable, &host) else {
@@ -250,14 +249,15 @@ async fn ready(deployable: &Deployable, host: &WorkersHost, isolate: &Isolate) -
 }
 
 /// The isolate's program served on `host`, sharing the isolate's
-/// `Worker`, each fault behind a 500 logged.
+/// `Worker`, each fault behind a 500 and each tick logged.
 fn serving(isolate: &Isolate, host: Rc<WorkersHost>) -> Serving {
     let program = Rc::clone(&isolate.program);
+    let logged = Rc::new(Logged::new(isolate.log, host.unbuilt()));
     Serving::new(host, move || -> Rc<dyn Executor> {
         Rc::clone(&program) as Rc<dyn Executor>
     })
     .sharing(Rc::clone(&isolate.worker))
-    .observed_by(Rc::new(Faults(isolate.log)))
+    .observed_by(logged)
 }
 
 /// The isolate's start, made at its first request.
@@ -292,36 +292,10 @@ fn start(deployable: &Deployable, host: &WorkersHost) -> Option<Rc<Isolate>> {
 }
 
 /// The program, reading the settings the bindings give on Workers, or
-/// what stops it.
+/// what stops it, as a native deployable starts.
 fn started(deployable: &Deployable, host: &WorkersHost) -> Result<Program, Vec<Value>> {
-    let program = (deployable.program)().map_err(|error| {
-        vec![problem(
-            "plan_unreadable",
-            format!("The program's plan can't be read: {error}."),
-        )]
-    })?;
-    let values = config::load(
-        &program.runtime().config,
-        program.validators(),
-        &HostVariables(host),
-        Mode::Environment,
-        &|_: &mut [u8]| false,
-    )
-    .map_err(|problems| problems.iter().map(setting_problem).collect::<Vec<_>>())?;
-    let refused = {
-        let plan = program.plan();
-        ClientAddress::read(
-            plan.routes
-                .and_then(|routes| routes.client_address.as_ref()),
-            &values,
-            Target::Workers,
-        )
-        .err()
-    };
-    if let Some(refused) = refused {
-        return Err(vec![client_address_refused(&refused)]);
-    }
-    Ok(program.with_config_on(&values, Target::Workers))
+    jadpo_runtime::deployable::start(deployable, &HostVariables(host), Target::Workers)
+        .map(|(program, _)| program)
 }
 
 /// The invocation's drivers, built by the factory from the program's
@@ -338,66 +312,30 @@ fn drivers(program: &Program, host: &WorkersHost) -> Drivers {
 /// holds and nothing else, logging what it found when one hasn't
 /// (`runtime.startup_failed`) or can't be reached (`runtime.waiting`).
 async fn stores_current(deployable: &Deployable, host: &WorkersHost, log: &Log) -> bool {
-    let mut problems = Vec::new();
-    let mut unreachable = Vec::new();
-    for store in deployable.stores {
-        let Some(database) = host.database(store.name) else {
-            let why = host
-                .unbuilt()
-                .iter()
-                .find(|unbuilt| unbuilt.connection == store.name)
-                .filter(|unbuilt| !matches!(unbuilt.why, Why::Unset(None)));
-            problems.push(unaddressed(
-                store.name,
-                why.map(|why| why as &dyn fmt::Display),
-            ));
-            continue;
-        };
-        match compare(database, store, Then::NextRequest).await {
-            Compared::Current => {}
-            Compared::Refused(problem) => problems.push(problem),
-            Compared::Unreachable => unreachable.push(store.name),
-        }
+    let stores = compare_stores(
+        deployable,
+        |name| host.database(name),
+        host.unbuilt(),
+        Then::NextRequest,
+    )
+    .await;
+    for store in &stores.unreachable {
+        waiting(log, store, Then::NextRequest);
     }
-    for store in &unreachable {
-        log.event(
-            "runtime.waiting",
-            [
-                ("store", Value::from(*store)),
-                (
-                    "message",
-                    Value::from(format!(
-                        "`{store}` can't be reached yet: the Worker serves once it can check the database's migrations, trying again at each request."
-                    )),
-                ),
-            ],
-        );
-    }
-    if !problems.is_empty() {
+    if !stores.problems.is_empty() {
         log.event(
             "runtime.startup_failed",
-            [("problems", Value::Array(problems))],
+            [("problems", Value::Array(stores.problems))],
         );
         return false;
     }
-    unreachable.is_empty()
+    stores.unreachable.is_empty()
 }
 
 /// Each connection whose driver wasn't built, for `runtime.started`: the
 /// runtime answers it `misconfigured` when it is used.
 fn unbuilt(host: &WorkersHost) -> Value {
-    Value::Array(
-        host.unbuilt()
-            .iter()
-            .map(|unbuilt| {
-                json!({
-                    "connection": unbuilt.connection,
-                    "driver": unbuilt.driver,
-                    "message": unbuilt.to_string(),
-                })
-            })
-            .collect(),
-    )
+    jadpo_runtime::deployable::unbuilt(host.unbuilt())
 }
 
 /// The runtime's request from Workers' `Request`: its body read whole or,

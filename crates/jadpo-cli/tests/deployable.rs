@@ -18,7 +18,9 @@
 //! holds no sweeping, the office's no booking. The kiosk books a repair
 //! but doesn't know the staff's route and, ticking, runs no schedule; the
 //! office lists the repair's notes but doesn't book, and runs its
-//! schedule. Once `schedules: { trigger: ScheduleTrigger.external }`
+//! schedule, logging each tick as `runtime.ticked` with the store it
+//! couldn't work in once a table it sweeps is gone (chunk 8.4c). Once
+//! `schedules: { trigger: ScheduleTrigger.external }`
 //! leaves its ticks to another scheduler (chunk 8.2g), the office's server
 //! never ticks, and `office tick` reads its settings, runs the schedule due
 //! once, logs `runtime.ticked` and ends.
@@ -45,7 +47,7 @@ use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jadpo_cli::run;
 use jadpo_term::Environment;
@@ -490,11 +492,32 @@ fn start_with(
     (child, read)
 }
 
-/// The next log event, within `seconds`.
+/// The next log event but a tick's, within `seconds`: a server logs each
+/// tick its timer runs (chunk 8.4c), whenever the timer comes round.
 fn next(lines: &Receiver<Value>, seconds: u64) -> Value {
-    lines
-        .recv_timeout(Duration::from_secs(seconds))
-        .expect("a log line in time")
+    let until = Instant::now() + Duration::from_secs(seconds);
+    loop {
+        let event = lines
+            .recv_timeout(until.saturating_duration_since(Instant::now()))
+            .expect("a log line in time");
+        if event["event"] != "runtime.ticked" {
+            return event;
+        }
+    }
+}
+
+/// The first tick logged that `wanted` holds of, within `seconds`,
+/// passing over any other line.
+fn ticked(lines: &Receiver<Value>, seconds: u64, wanted: impl Fn(&Value) -> bool) -> Value {
+    let until = Instant::now() + Duration::from_secs(seconds);
+    loop {
+        let event = lines
+            .recv_timeout(until.saturating_duration_since(Instant::now()))
+            .expect("a tick logged in time");
+        if event["event"] == "runtime.ticked" && wanted(&event) {
+            return event;
+        }
+    }
 }
 
 /// Waits for `child` to end, within `seconds`: its exit code.
@@ -928,6 +951,38 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
         std::thread::sleep(Duration::from_millis(250));
     }
     assert!(ran > 0, "the office ran no schedule");
+    // Each tick its timer runs is logged, as `office tick` logs its one,
+    // by the schedule's name (chunk 8.4c).
+    let line = ticked(&lines, 30, |line| {
+        line["ran"].as_array().is_some_and(|ran| !ran.is_empty())
+    });
+    stamped(&line, built, office);
+    assert_eq!(line["ran"][0]["schedule"], "sweep", "{line}");
+    assert_eq!(line["problems"], serde_json::json!([]), "{line}");
+    assert_eq!(line["unbuilt"], serde_json::json!([]), "{line}");
+    // A store the tick can't work in is logged too: here the table of
+    // idempotency keys every tick sweeps, gone for a moment.
+    rows(
+        &connection,
+        "ALTER TABLE jadpo_idempotency_keys RENAME TO jadpo_idempotency_keys_away",
+    );
+    let line = ticked(&lines, 30, |line| {
+        line["problems"].as_array().is_some_and(|problems| !problems.is_empty())
+    });
+    rows(
+        &connection,
+        "ALTER TABLE jadpo_idempotency_keys_away RENAME TO jadpo_idempotency_keys",
+    );
+    let problem = &line["problems"][0];
+    assert_eq!(problem["problem"], "store_failed", "{line}");
+    assert_eq!(problem["store"], "main", "{line}");
+    assert!(
+        problem["message"]
+            .as_str()
+            .is_some_and(|message| message.starts_with("`main` couldn't be ticked: ")),
+        "{line}"
+    );
+    assert!(!line.to_string().contains(&url), "the log holds its address: {line}");
     Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()
@@ -985,7 +1040,7 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
 
     // One tick runs the schedule due, says so, and ends.
     let (mut child, lines) = start_with(&binary, &["tick"], &[("DATABASE_URL", url.as_str())]);
-    let ticked = next(&lines, 60);
+    let ticked = ticked(&lines, 60, |_| true);
     assert_eq!(ticked["event"], "runtime.ticked", "{ticked}");
     stamped(&ticked, built, office);
     assert_eq!(ticked["ran"][0]["schedule"], "sweep", "{ticked}");

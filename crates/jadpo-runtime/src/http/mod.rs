@@ -1820,10 +1820,10 @@ pub async fn session(
         // `test_passkeys`, which only a route test calls (chunk 5.5z2),
         // through the generated passkey routes.
         (SessionOp::TestPasskeyRegister, _) => {
-            test_passkeys::register(&executor.plan().app(), executor, ctx, args, at).await
+            test_passkeys::register(&executor.app(), executor, ctx, args, at).await
         }
         (SessionOp::TestPasskeySignIn, _) => {
-            test_passkeys::sign_in(&executor.plan().app(), executor, ctx, args, at).await
+            test_passkeys::sign_in(&executor.app(), executor, ctx, args, at).await
         }
         (SessionOp::Start, [user]) => identity::start(ctx, plan, user, at).await,
         (SessionOp::End, []) => identity::end(ctx, plan, at).await,
