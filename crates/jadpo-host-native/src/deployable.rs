@@ -278,7 +278,13 @@ fn tick(deployable: &Deployable, log: &Log) -> Result<ExitCode, Vec<Value>> {
             problems.push(unaddressed(store.name, drivers.unbuilt()));
             continue;
         };
-        match runtime.block_on(compare(database, store, Then::NextTick)) {
+        let Some(compared) =
+            unless_stopped(&runtime, &stop, compare(database, store, Then::NextTick))
+        else {
+            log.event("runtime.stopped", []);
+            return Ok(ExitCode::SUCCESS);
+        };
+        match compared {
             Compared::Current => {}
             Compared::Refused(problem) => problems.push(problem),
             Compared::Unreachable => problems.push(json!({
@@ -512,7 +518,12 @@ fn check_stores(
         let mut wait = Duration::from_secs(1);
         let mut said = false;
         loop {
-            match runtime.block_on(compare(database, store, Then::Restart)) {
+            let Some(compared) =
+                unless_stopped(&runtime, stop, compare(database, store, Then::Restart))
+            else {
+                return Ok(drivers.unbuilt().to_vec());
+            };
+            match compared {
                 Compared::Current => break,
                 Compared::Refused(problem) => {
                     problems.push(problem);
@@ -548,6 +559,21 @@ fn check_stores(
     } else {
         Err(problems)
     }
+}
+
+/// `work` run to its end, or `None` once a stop has come: a database that
+/// takes the connection and never answers holds no start or tick past
+/// SIGTERM (chunk 8.4d).
+fn unless_stopped<T>(
+    runtime: &Runtime,
+    stop: &AtomicBool,
+    work: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    runtime.block_on(unless(work, async {
+        while !stop.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }))
 }
 
 /// Sleeps `wait`, a little at a time: whether a stop came meanwhile.
@@ -625,6 +651,28 @@ impl Handler for Unstarted {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Work that never ends, as a database that never answers, gives way
+    /// to a stop (chunk 8.4d); work that ends is its own answer.
+    #[test]
+    fn a_stop_ends_work_that_never_would() {
+        let runtime = Runtime::new().expect("a runtime");
+        let stop = Arc::new(AtomicBool::new(false));
+        let setter = {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                stop.store(true, Ordering::SeqCst);
+            })
+        };
+        let began = Instant::now();
+        let never = unless_stopped(&runtime, &stop, std::future::pending::<()>());
+        assert_eq!(never, None);
+        assert!(began.elapsed() < Duration::from_secs(5));
+        setter.join().expect("set");
+        let unstopped = AtomicBool::new(false);
+        assert_eq!(unless_stopped(&runtime, &unstopped, async { 7 }), Some(7));
+    }
 
     #[test]
     fn its_one_argument_is_serve_or_tick() {

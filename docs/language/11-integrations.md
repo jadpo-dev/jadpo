@@ -8388,7 +8388,8 @@ Provider calls, each choice the most conservative reading:
   takes the same steps; the generation is 0 until a provider's
   `new_key_on:` (chunks 7.5 and 7.9a).
 - **Where it is sent.** HTTPS, or plain HTTP only to this machine
-  (`localhost`, `127.x.x.x`, `[::1]`), which is how a test reaches its
+  (`localhost`, an IPv4 address in `127.0.0.0/8`, `[::1]`, the host read
+  as an address, so `127.api.example.com` is elsewhere), which is how a test reaches its
   server; any other address, or a connection whose address or credential
   has no value, is `misconfigured` and logged as refused, sent to nobody.
   A host holding a setting's placeholder (`{project_ref}`) isn't filled
@@ -9071,7 +9072,9 @@ each the most conservative reading where the pages left it open:
   (or `.amazonaws.com.cn`), a `.pem` path with no port, credentials or
   query, by the host's guard for the runtime's own requests: HTTPS only,
   no redirect followed, connected only to the public address it checked
-  (never loopback, private, link-local, shared, reserved or multicast),
+  (never loopback, private, link-local, shared, reserved or multicast,
+  and an IPv4 address carried inside IPv6, by NAT64, 6to4 or Teredo,
+  judged as itself),
   at most 16 KB within five seconds; each certificate is kept for a day.
   SNS signs the time it published and its retries keep it, so the
   five-minute tolerance holds only ahead of the host's clock: a message
@@ -9820,6 +9823,8 @@ packages and extension points, as each note says; 26 was decided then.
 |---|---|---|
 | `max_concurrent:` on Workers | Counted per isolate: Workers runs many isolates and a cap across them would need a Durable Object and a round trip per call, so the deploy report and `jadpo check` say "on Workers, per instance"; a provider that needs a hard global limit enforces it on its side, and its rate-limit answers already make calls back off (Richard; `jadpo check`'s "On Workers", listing each capped connection a deployable built for Workers reaches, built in chunk 8.1o2, and `jadpo build`'s `calls` line for each Worker in chunk 8.2m) | 2026-10-21 |
 | `max_concurrent:` between an isolate's invocations | Chosen in chunk 8.2j, reversible: on Workers a slot one invocation gives back is handed to the call of another that has waited longest, which finds it on its own timer every 10 ms rather than being woken by the first, since Workers runs each invocation's work in its own context; a call holding a slot says so every second and one not heard from for five seconds is forgotten, as is a waiter that stopped looking, so an invocation Workers ended mid-call never keeps a slot; natively the process's waiters are woken as before (compiler-runtime §2.6, "Six connections an invocation") | 2026-10-22 |
+| SMTP to this machine (Richard) | The SMTP driver speaks to a server on this machine (`localhost`, `127.0.0.1`, `::1`) without `STARTTLS`, whether it offers it or not, as PostgreSQL's driver does; a stock Postfix offers it with a self-signed certificate, so every send to it was `misconfigured`. A server elsewhere is still upgraded and its certificate checked, and port 465 still speaks TLS from the start. Built in chunk 8.4d | 2026-10-22 |
+| Addresses the runtime reaches (chunk 8.4d) | Plain HTTP's "this machine" is the host read as an address (`127.0.0.0/8`, `::1`) or `localhost`, never a name's first label; the runtime's own fetches judge an IPv4 address inside NAT64's `64:ff9b::/96`, 6to4's `2002::/16` or Teredo's `2001::/32` (its server's and its client's) as itself, and refuse site-local `fec0::/10`, NAT64's local-use `64:ff9b:1::/48` and the rest of `2001::/23` (decided 2026-10-22) | 2026-10-22 |
 | Keyword and folder | Carried from area 1: `integration` in `integrations/`, one declaration per provider version, contract beside it (Superseded 2026-10-13: reopened by questions 15 and 18.) | 2026-10-12 |
 | Mapping form | Carried from area 4: `condition: Failure`, e.g. `timed_out: ChargeUnavailable`; time limits are integration settings | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails`; integrations map provider problems to declared failures | 2026-10-12 |

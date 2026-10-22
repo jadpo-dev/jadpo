@@ -303,11 +303,16 @@ pub trait Outbound {
 /// Whether `ip` is an address on the public internet, what an
 /// [`Outbound`] reaches: not loopback, private, link-local, shared
 /// (100.64/10), reserved, documentation, benchmarking, unspecified,
-/// broadcast or multicast; IPv4 inside IPv6 judged as itself. One
-/// answer for every host's guard (the native host's since chunk 7.7b,
-/// moved here for the Workers host's in chunk 8.2a).
+/// broadcast or multicast; IPv4 inside IPv6 judged as itself: mapped
+/// (`::ffff:0:0/96`), compatible, NAT64's (`64:ff9b::/96`), 6to4's
+/// (`2002::/16`) and both of Teredo's (`2001::/32`, its server and its
+/// client), chunk 8.4d. Site-local (`fec0::/10`), NAT64's local-use
+/// prefix (`64:ff9b:1::/48`) and the rest of the IETF's protocol block
+/// (`2001::/23`) are never public. One answer for every host's guard (the
+/// native host's since chunk 7.7b, moved here for the Workers host's in
+/// chunk 8.2a).
 pub fn public_address(ip: std::net::IpAddr) -> bool {
-    use std::net::IpAddr;
+    use std::net::{IpAddr, Ipv4Addr};
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, c, _] = v4.octets();
@@ -328,14 +333,33 @@ pub fn public_address(ip: std::net::IpAddr) -> bool {
             if let Some(v4) = v6.to_ipv4_mapped().or_else(|| v6.to_ipv4()) {
                 return public_address(IpAddr::V4(v4));
             }
-            let [first, second, ..] = v6.segments();
+            let s = v6.segments();
+            let four = |high: u16, low: u16| {
+                IpAddr::V4(Ipv4Addr::from((u32::from(high) << 16) | u32::from(low)))
+            };
+            // NAT64's well-known prefix reaches the IPv4 address in its
+            // last 32 bits.
+            if s[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] {
+                return public_address(four(s[6], s[7]));
+            }
+            // 6to4 carries its IPv4 address in the 32 bits after 2002.
+            if s[0] == 0x2002 {
+                return public_address(four(s[1], s[2]));
+            }
+            // Teredo carries its server's address, and its client's with
+            // every bit flipped.
+            if s[0] == 0x2001 && s[1] == 0 {
+                return public_address(four(s[2], s[3])) && public_address(four(!s[6], !s[7]));
+            }
             !(v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
-                || first & 0xfe00 == 0xfc00
-                || first & 0xffc0 == 0xfe80
-                || first == 0x2001 && second == 0x0db8
-                || first == 0x0064 && second == 0xff9b)
+                || s[0] & 0xfe00 == 0xfc00
+                || s[0] & 0xffc0 == 0xfe80
+                || s[0] & 0xffc0 == 0xfec0
+                || s[0] == 0x2001 && s[1] < 0x0200
+                || s[0] == 0x2001 && s[1] == 0x0db8
+                || s[0] == 0x0064 && s[1] == 0xff9b)
         }
     }
 }
@@ -693,5 +717,44 @@ impl Host for MemoryHost {
     /// None: what runs on it runs under a seed.
     fn random(&self, _bytes: &mut [u8]) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::public_address;
+
+    fn public(address: &str) -> bool {
+        public_address(address.parse().expect("an address"))
+    }
+
+    /// IPv4 carried inside IPv6 is judged as itself, however it is carried
+    /// (chunk 8.4d).
+    #[test]
+    fn ipv4_inside_ipv6_is_judged_as_itself() {
+        // NAT64's well-known prefix.
+        assert!(public("64:ff9b::808:808"));
+        assert!(public("64:ff9b::8.8.8.8"));
+        assert!(!public("64:ff9b::a00:1"));
+        assert!(!public("64:ff9b::127.0.0.1"));
+        assert!(!public("64:ff9b::169.254.169.254"));
+        assert!(!public("64:ff9b:1::808:808"), "NAT64's local-use prefix");
+        // 6to4.
+        assert!(public("2002:808:808::1"));
+        assert!(!public("2002:a00:1::1"));
+        assert!(!public("2002:7f00:1::1"));
+        assert!(!public("2002:a9fe:a9fe::1"));
+        // Teredo: the server's address, then the client's flipped.
+        assert!(public("2001:0:808:808::f7f7:f7f7"));
+        assert!(!public("2001:0:808:808::f5ff:fffe"), "a client at 10.0.0.1");
+        assert!(!public("2001:0:a00:1::f7f7:f7f7"), "a server at 10.0.0.1");
+        // Site-local, and the rest of the IETF's protocol block.
+        assert!(!public("fec0::1"));
+        assert!(!public("feff::1"));
+        assert!(!public("2001:2::1"));
+        assert!(!public("2001:10::1"));
+        // Public IPv6 stays public.
+        assert!(public("2600:1f18::1"));
+        assert!(public("2001:4860:4860::8888"));
     }
 }

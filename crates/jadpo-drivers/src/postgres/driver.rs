@@ -57,19 +57,27 @@ impl Slots {
     }
 }
 
+/// How many bytes a connection has written to its stream, counted as they
+/// go ([`Counted`]).
+type Written = Rc<std::cell::Cell<u64>>;
+
+/// A connection kept between transactions: its client, what it has
+/// written, and its place among [`MAX_OPEN`].
+type Idle = (Client, Written, Slot);
+
 /// What a transaction begins on: an idle connection, or the place for a
 /// new one.
 enum Got {
-    Idle(Client, Slot),
+    Idle(Idle),
     New(Slot),
 }
 
 /// An idle connection, or a place for a new one once fewer than
 /// [`MAX_OPEN`] are open, waiting until there is either.
-async fn next(slots: &Rc<Slots>, idle: &RefCell<Vec<(Client, Slot)>>) -> Got {
+async fn next(slots: &Rc<Slots>, idle: &RefCell<Vec<Idle>>) -> Got {
     std::future::poll_fn(|cx| {
-        if let Some((client, slot)) = idle.borrow_mut().pop() {
-            return Poll::Ready(Got::Idle(client, slot));
+        if let Some(kept) = idle.borrow_mut().pop() {
+            return Poll::Ready(Got::Idle(kept));
         }
         if slots.open.get() < MAX_OPEN {
             slots.open.set(slots.open.get() + 1);
@@ -127,6 +135,11 @@ impl Security {
         }
     }
 }
+
+/// How long one attempt at a server may take, from opening the socket to
+/// its being ready for statements, when the address sets no
+/// `connect_timeout` (or sets it to 0, which libpq reads as forever).
+const CONNECT_MS: u64 = 10_000;
 
 /// How long a server has to answer the SSL request and finish the TLS
 /// handshake.
@@ -280,7 +293,10 @@ struct Pool {
     endpoints: Vec<Endpoint>,
     security: Security,
     transport: Rc<dyn Transport>,
-    idle: RefCell<Vec<(Client, Slot)>>,
+    /// How long one attempt at an endpoint may take: the address's
+    /// `connect_timeout`, or [`CONNECT_MS`].
+    connect_ms: u64,
+    idle: RefCell<Vec<Idle>>,
     slots: Rc<Slots>,
 }
 
@@ -289,61 +305,80 @@ impl Pool {
     /// its security says to; the platform's own pooler (Hyperdrive, on
     /// Workers) without, since the pooler uses TLS to the database (chunk
     /// 8.2i).
-    async fn connect(&self) -> Result<Client, StoreError> {
+    async fn connect(&self) -> Result<(Client, Written), StoreError> {
         let mut last = StoreError::Unavailable;
         for endpoint in &self.endpoints {
-            let Ok(stream) = self.transport.connect(endpoint).await else {
-                last = StoreError::Unavailable;
-                continue;
-            };
-            let trust = if self.transport.is_pooler(endpoint) {
-                None
-            } else {
-                self.security.trust(endpoint)
-            };
-            // A check Workers reports at the first write over TLS.
-            let refused = Rc::new(RefCell::new(None));
-            let stream = match (trust, endpoint) {
-                (Some(trust), Endpoint::Tcp { host, .. }) => {
-                    match secured(&*self.transport, stream, host, trust).await {
-                        Ok(secure) => Box::new(Checked {
-                            inner: secure,
-                            through: false,
-                            refused: Rc::clone(&refused),
-                        }) as Box<dyn Stream>,
-                        Err(StoreError::Unavailable) => {
-                            last = StoreError::Unavailable;
-                            continue;
-                        }
-                        Err(refused) => return Err(refused),
-                    }
-                }
-                _ => stream,
-            };
-            let connected = self.config.connect_raw(stream, NoTls).await;
-            if let (Err(_), Some(error), Some(trust), Endpoint::Tcp { host, .. }) =
-                (&connected, refused.borrow_mut().take(), trust, endpoint)
-            {
-                return Err(failed_check(host, trust, &error));
-            }
-            match connected {
-                Ok((client, connection)) => {
-                    self.transport.spawn(Box::pin(async move {
-                        // The connection ends when its client is dropped or
-                        // the server goes; either way its client sees it.
-                        let _ = connection.await;
-                    }));
-                    return Ok(client);
-                }
-                Err(error) => {
-                    last = store_error(&error);
-                    if last != StoreError::Unavailable {
-                        return Err(last);
-                    }
-                }
+            // Each attempt within the address's `connect_timeout`, or ten
+            // seconds, from opening the socket to the server being ready,
+            // so a server that never answers is the next one's turn
+            // (chunk 8.4d).
+            match within(&*self.transport, self.connect_ms, self.connect_to(endpoint)).await {
+                Some(Ok(connected)) => return Ok(connected),
+                Some(Err(Attempt::Next(error))) => last = error,
+                Some(Err(Attempt::Stop(error))) => return Err(error),
+                None => last = StoreError::Unavailable,
             }
         }
         Err(last)
+    }
+
+    /// One attempt at `endpoint`.
+    async fn connect_to(&self, endpoint: &Endpoint) -> Result<(Client, Written), Attempt> {
+        let Ok(stream) = self.transport.connect(endpoint).await else {
+            return Err(Attempt::Next(StoreError::Unavailable));
+        };
+        let trust = if self.transport.is_pooler(endpoint) {
+            None
+        } else {
+            self.security.trust(endpoint)
+        };
+        // A check Workers reports at the first write over TLS.
+        let refused = Rc::new(RefCell::new(None));
+        let stream = match (trust, endpoint) {
+            (Some(trust), Endpoint::Tcp { host, .. }) => {
+                match secured(&*self.transport, stream, host, trust).await {
+                    Ok(secure) => Box::new(Checked {
+                        inner: secure,
+                        through: false,
+                        refused: Rc::clone(&refused),
+                    }) as Box<dyn Stream>,
+                    Err(StoreError::Unavailable) => {
+                        return Err(Attempt::Next(StoreError::Unavailable));
+                    }
+                    Err(refused) => return Err(Attempt::Stop(refused)),
+                }
+            }
+            _ => stream,
+        };
+        let written = Written::default();
+        let stream = Counted {
+            inner: stream,
+            written: Rc::clone(&written),
+        };
+        let connected = self.config.connect_raw(stream, NoTls).await;
+        if let (Err(_), Some(error), Some(trust), Endpoint::Tcp { host, .. }) =
+            (&connected, refused.borrow_mut().take(), trust, endpoint)
+        {
+            return Err(Attempt::Stop(failed_check(host, trust, &error)));
+        }
+        match connected {
+            Ok((client, connection)) => {
+                self.transport.spawn(Box::pin(async move {
+                    // The connection ends when its client is dropped or
+                    // the server goes; either way its client sees it.
+                    let _ = connection.await;
+                }));
+                Ok((client, written))
+            }
+            Err(error) => {
+                let error = store_error(&error);
+                if error == StoreError::Unavailable {
+                    Err(Attempt::Next(error))
+                } else {
+                    Err(Attempt::Stop(error))
+                }
+            }
+        }
     }
 
     /// A connection to run on: an idle one, which may have been closed by
@@ -352,20 +387,22 @@ impl Pool {
     async fn take(&self) -> Result<Conn, StoreError> {
         loop {
             match next(&self.slots, &self.idle).await {
-                Got::Idle(client, slot) => {
+                Got::Idle((client, written, slot)) => {
                     if client.is_closed() {
                         continue;
                     }
                     return Ok(Conn {
                         client,
+                        written,
                         slot,
                         reused: true,
                     });
                 }
                 Got::New(slot) => {
-                    let client = self.connect().await?;
+                    let (client, written) = self.connect().await?;
                     return Ok(Conn {
                         client,
+                        written,
                         slot,
                         reused: false,
                     });
@@ -377,19 +414,80 @@ impl Pool {
     /// Keeps a connection for the next transaction, if it is still sound
     /// and fewer than [`MAX_IDLE`] are kept.
     fn give_back(&self, conn: Conn) {
-        let Conn { client, slot, .. } = conn;
+        let Conn {
+            client,
+            written,
+            slot,
+            ..
+        } = conn;
         let mut kept = self.idle.borrow_mut();
         if !client.is_closed() && kept.len() < MAX_IDLE {
-            kept.push((client, slot));
+            kept.push((client, written, slot));
             drop(kept);
             self.slots.wake();
         }
     }
 }
 
+/// How one attempt at an endpoint ended, when it didn't connect: the next
+/// endpoint's turn, or an answer that trying another doesn't change.
+enum Attempt {
+    Next(StoreError),
+    Stop(StoreError),
+}
+
+/// A connection's stream, counting the bytes written to it: once any of a
+/// statement's have gone, the server may have run it.
+struct Counted {
+    inner: Box<dyn Stream>,
+    written: Written,
+}
+
+impl tokio::io::AsyncRead for Counted {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for Counted {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let polled = std::pin::Pin::new(&mut self.inner).poll_write(cx, bytes);
+        if let Poll::Ready(Ok(written)) = &polled {
+            let total = self.written.get().saturating_add(*written as u64);
+            self.written.set(total);
+        }
+        polled
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
 /// One connection taken from the pool.
 struct Conn {
     client: Client,
+    /// What it has written, so a statement is sent again only when none of
+    /// it went.
+    written: Written,
     /// Its place among the store's [`MAX_OPEN`].
     slot: Slot,
     /// It was idle, so the server may have closed it meanwhile: a first
@@ -511,12 +609,16 @@ impl Postgres {
         // the stream.
         config.ssl_mode(tokio_postgres::config::SslMode::Disable);
         let endpoints = endpoints(&config)?;
+        let connect_ms = config.get_connect_timeout().map_or(CONNECT_MS, |timeout| {
+            u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX)
+        });
         Ok(Postgres {
             pool: Rc::new(Pool {
                 config,
                 endpoints,
                 security,
                 transport,
+                connect_ms,
                 idle: RefCell::new(Vec::new()),
                 slots: Rc::new(Slots::default()),
             }),
@@ -538,7 +640,7 @@ impl Postgres {
         sql: &'a str,
     ) -> LocalFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
-            let client = self.pool.connect().await?;
+            let (client, _) = self.pool.connect().await?;
             client
                 .batch_execute(sql)
                 .await
@@ -569,7 +671,9 @@ impl Database for Postgres {
     /// The statement on an idle connection, or a new one, outside any
     /// transaction, so PostgreSQL commits it as it runs. A connection the
     /// server closed while it was idle never ran it, so the statement is
-    /// sent again on another.
+    /// sent again on another, but only when none of it was written: once
+    /// it went, the server may have committed it, and it is never sent
+    /// twice (chunk 8.4d).
     fn query_once<'a>(
         &'a self,
         sql: &'a str,
@@ -580,6 +684,7 @@ impl Database for Postgres {
             let typed = typed(&bound);
             loop {
                 let conn = self.pool.take().await?;
+                let before = conn.written.get();
                 match conn.client.query_typed(sql, &typed).await {
                     Ok(rows) => {
                         self.pool.give_back(conn);
@@ -587,7 +692,10 @@ impl Database for Postgres {
                     }
                     Err(error) => {
                         let error = store_error(&error);
-                        if conn.reused && error == StoreError::Unavailable {
+                        if conn.reused
+                            && error == StoreError::Unavailable
+                            && conn.written.get() == before
+                        {
                             continue;
                         }
                         self.pool.give_back(conn);
@@ -1307,5 +1415,238 @@ mod tests {
                 other => panic!("{url}: {other:?}"),
             }
         }
+    }
+
+    /// A host whose connections never open, and whose timer goes off at
+    /// once, saying how long it was asked to wait.
+    #[derive(Default)]
+    struct Unreachable {
+        connected: RefCell<Vec<Endpoint>>,
+        waits: RefCell<Vec<u64>>,
+    }
+
+    impl Transport for Unreachable {
+        fn connect(&self, endpoint: &Endpoint) -> LocalFuture<'_, io::Result<Box<dyn Stream>>> {
+            self.connected.borrow_mut().push(endpoint.clone());
+            Box::pin(std::future::pending())
+        }
+
+        fn spawn(&self, _: LocalFuture<'static, ()>) {}
+
+        fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
+            self.waits.borrow_mut().push(millis);
+            Box::pin(std::future::ready(()))
+        }
+    }
+
+    /// Each attempt at a server is bounded by the address's
+    /// `connect_timeout`, or ten seconds, then the next server is tried
+    /// (chunk 8.4d), so a start against a server that never answers ends.
+    #[test]
+    fn an_unreachable_server_is_given_up_on_after_the_connect_timeout() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("a runtime");
+        for (url, wait) in [
+            (
+                "postgres://app@db.example.test/app?connect_timeout=3",
+                3_000,
+            ),
+            ("host=db.example.test dbname=app connect_timeout=7", 7_000),
+            ("postgres://app@db.example.test/app", CONNECT_MS),
+            (
+                "postgres://app@db.example.test/app?connect_timeout=0",
+                CONNECT_MS,
+            ),
+        ] {
+            let host = Rc::new(Unreachable::default());
+            let store = Postgres::new(url, Rc::clone(&host) as Rc<dyn Transport>).expect("a store");
+            let done = runtime.block_on(store.batch_outside_transaction("SELECT 1"));
+            assert_eq!(done, Err(StoreError::Unavailable), "{url}");
+            assert_eq!(*host.waits.borrow(), [wait], "{url}");
+        }
+        let host = Rc::new(Unreachable::default());
+        let store = Postgres::new(
+            "postgres://app@one.example.test,two.example.test/app?connect_timeout=2",
+            Rc::clone(&host) as Rc<dyn Transport>,
+        )
+        .expect("a store");
+        let done = runtime.block_on(store.batch_outside_transaction("SELECT 1"));
+        assert_eq!(done, Err(StoreError::Unavailable));
+        assert_eq!(host.connected.borrow().len(), 2, "each server tried");
+        assert_eq!(*host.waits.borrow(), [2_000, 2_000]);
+    }
+
+    /// A host whose connections are pipes to a PostgreSQL server the test
+    /// plays on the same thread ([`play`]), running each connection's task.
+    #[derive(Default)]
+    struct Played {
+        servers: RefCell<Vec<DuplexStream>>,
+        connects: std::cell::Cell<usize>,
+    }
+
+    impl Transport for Played {
+        fn connect(&self, _: &Endpoint) -> LocalFuture<'_, io::Result<Box<dyn Stream>>> {
+            self.connects.set(self.connects.get() + 1);
+            let (client, server) = tokio::io::duplex(1 << 16);
+            self.servers.borrow_mut().push(server);
+            Box::pin(async move { Ok(Box::new(client) as Box<dyn Stream>) })
+        }
+
+        fn spawn(&self, task: LocalFuture<'static, ()>) {
+            tokio::task::spawn_local(task);
+        }
+
+        fn sleep(&self, _: u64) -> LocalFuture<'_, ()> {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    /// One message from the client: its type and its body.
+    async fn message(server: &mut DuplexStream) -> Option<(u8, Vec<u8>)> {
+        let mut kind = [0u8; 1];
+        server.read_exact(&mut kind).await.ok()?;
+        let mut length = [0u8; 4];
+        server.read_exact(&mut length).await.ok()?;
+        let mut body = vec![0u8; (u32::from_be_bytes(length) as usize).checked_sub(4)?];
+        server.read_exact(&mut body).await.ok()?;
+        Some((kind[0], body))
+    }
+
+    /// The start-up message, answered as a server that asks for no
+    /// password.
+    async fn started(server: &mut DuplexStream) -> Option<()> {
+        let mut length = [0u8; 4];
+        server.read_exact(&mut length).await.ok()?;
+        let mut body = vec![0u8; (u32::from_be_bytes(length) as usize).checked_sub(4)?];
+        server.read_exact(&mut body).await.ok()?;
+        server
+            .write_all(b"R\0\0\0\x08\0\0\0\0Z\0\0\0\x05I")
+            .await
+            .ok()
+    }
+
+    /// One statement read to its `Sync`.
+    async fn statement(server: &mut DuplexStream) -> Option<()> {
+        loop {
+            let (kind, _) = message(server).await?;
+            if kind == b'S' {
+                return Some(());
+            }
+        }
+    }
+
+    /// The answer to a statement that gives no rows.
+    const ANSWERED: &[u8] = b"1\0\0\0\x042\0\0\0\x04n\0\0\0\x04C\0\0\0\x0dSELECT 0\0Z\0\0\0\x05I";
+
+    /// How the first connection a played server takes hangs up, once it
+    /// has answered its first statement.
+    #[derive(Clone, Copy)]
+    enum HangUp {
+        /// While idle, before another statement comes.
+        Idle,
+        /// Once it has read the next statement, before answering it.
+        Sent,
+    }
+
+    /// Plays the server for every connection `host` opens, counting the
+    /// statements it reads: the first connection hangs up after its first
+    /// statement as `hang_up` says; every other answers each.
+    async fn play(host: Rc<Played>, hang_up: HangUp, statements: Rc<std::cell::Cell<usize>>) {
+        let mut opened = 0;
+        loop {
+            let next = host.servers.borrow_mut().pop();
+            let Some(mut server) = next else {
+                tokio::task::yield_now().await;
+                continue;
+            };
+            opened += 1;
+            let first = opened == 1;
+            let statements = Rc::clone(&statements);
+            tokio::task::spawn_local(async move {
+                if started(&mut server).await.is_none() {
+                    return;
+                }
+                let mut read = 0;
+                while statement(&mut server).await.is_some() {
+                    read += 1;
+                    statements.set(statements.get() + 1);
+                    if first && read == 2 {
+                        return;
+                    }
+                    if server.write_all(ANSWERED).await.is_err() {
+                        return;
+                    }
+                    if first && matches!(hang_up, HangUp::Idle) {
+                        return;
+                    }
+                }
+            });
+        }
+    }
+
+    /// Runs `work` against a store on `host`, its server played alongside.
+    fn against<T>(
+        host: &Rc<Played>,
+        hang_up: HangUp,
+        work: impl AsyncFnOnce(&Postgres) -> T,
+    ) -> (T, usize) {
+        let store = Postgres::new(
+            "postgres://app@localhost/app",
+            Rc::clone(host) as Rc<dyn Transport>,
+        )
+        .expect("a store");
+        let statements = Rc::new(std::cell::Cell::new(0));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("a runtime");
+        let local = tokio::task::LocalSet::new();
+        let done = local.block_on(&runtime, async {
+            let server =
+                tokio::task::spawn_local(play(Rc::clone(host), hang_up, Rc::clone(&statements)));
+            let done = work(&store).await;
+            server.abort();
+            done
+        });
+        (done, statements.get())
+    }
+
+    /// An autocommitted statement that went out on a reused connection
+    /// which then dropped may have been committed, so it is never sent
+    /// again (chunk 8.4d): the store says it is unavailable.
+    #[test]
+    fn a_statement_sent_on_a_reused_connection_that_drops_is_not_sent_again() {
+        let host = Rc::new(Played::default());
+        let ((first, second), statements) =
+            against(&host, HangUp::Sent, async |store: &Postgres| {
+                let first = store.query_once("INSERT INTO t VALUES (1)", &[]).await;
+                let second = store.query_once("INSERT INTO t VALUES (2)", &[]).await;
+                (first, second)
+            });
+        assert_eq!(first, Ok(Vec::new()));
+        assert_eq!(second, Err(StoreError::Unavailable));
+        assert_eq!(statements, 2, "the second statement went once");
+        assert_eq!(
+            host.connects.get(),
+            1,
+            "no connection opened to send it again"
+        );
+    }
+
+    /// A statement still goes through when the connection it was given had
+    /// closed while idle, on another.
+    #[test]
+    fn a_connection_closed_while_idle_sends_its_statement_on_another() {
+        let host = Rc::new(Played::default());
+        let ((first, second), statements) =
+            against(&host, HangUp::Idle, async |store: &Postgres| {
+                let first = store.query_once("INSERT INTO t VALUES (1)", &[]).await;
+                let second = store.query_once("INSERT INTO t VALUES (2)", &[]).await;
+                (first, second)
+            });
+        assert_eq!(first, Ok(Vec::new()));
+        assert_eq!(second, Ok(Vec::new()));
+        assert_eq!(statements, 2);
+        assert_eq!(host.connects.get(), 2);
     }
 }
