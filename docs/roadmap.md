@@ -2847,12 +2847,113 @@ whose entry names them.
   From 8.2k: a queue's name in Jadpo's form and its consumer accepted by
   Cloudflare, and a batch's `retry({ delaySeconds })` honoured on the edge.
 
-- [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
+- [x] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
   as Wasm with Bun. Moved from an earlier chunk 4.5, which needed Phase 8's compiled code
   (Richard, 2026-10-14). **Needs Richard** if Wasm is more than 25% behind
-  Bun.
+  Bun. Measured (§2.11): example 23's `POST /repairs`, Wasm on
+  workerd 513 requests a second, Bun 2,052, native 3,554; Wasm leaking
+  about 17 KB a booking (8.4e). Richard (2026-10-22): the gap is closed,
+  not accepted, in 8.4e and Phase 9.
+
+### Phase 8 review (2026-10-22)
+
+Two independent reviewers, soundness and architecture for the phases
+ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
+their confirmed findings are the chunks below, taken before 8.2n and
+Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i beside any of them. The gap to Bun is not accepted: Phase 9 closes
+it (Richard, 2026-10-22). Claude builds these; Codex builds Phase 9
+once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
+
+- [ ] **8.4a Phase 8 review fixes: compiled parity** `opus · xhigh`: a
+  compiled `match` on a package action's call taking the caught boundary
+  (a savepoint) as the interpreter's `Task::Catch` does, so a failed
+  package action's writes and events are undone (`jadpo-codegen`
+  `subject()` leaving out `Callee::PackageAction`); compiled loops and
+  inline-function closures checking the deadline and yielding as the
+  interpreter does every 4,096 tasks (area 7, "Time limits"); the
+  differential record keeping a failure's site, a fault's site and
+  stack, and keyed digests of each outside call's input and each read's
+  bound parameters, and recording tests compared on more than their
+  verdict; and deep recursion (1,000 frames) tested on a deployable's
+  own stack sizes (2 MiB native workers, wasm's 1 MiB), raising
+  `recursion_limit` rather than aborting. Each proved by a corpus
+  project that fails before the fix.
+- [ ] **8.4b Phase 8 review fixes: Workers background work** `opus ·
+  xhigh`: a Queues message the Worker can't take yet (not started, a
+  store behind, unavailable) retried with long delays and enough
+  attempts to outlast a deploy's migration, and a generated dead-letter
+  consumer parking each message for `jadpo deliveries`, as areas 11 and
+  12 say; a free connection place handed on when a place is asked for
+  (`Placing::poll` calling `hand()`), with 8.2j's reproduction as its
+  test; `<deployable> tick` ending with code 1 when its tick panicked or
+  outlasted the drain; the hand-on's budget started at the invocation's
+  start, its binding following `wrangler deploy --name` and `--env`, and
+  a `retry()` that throws not acknowledged; on Workers a Redis
+  `rate_limits.store` said by `jadpo check` to count in memory until
+  Redis's driver comes, a missing binding logged once, and `limit()`
+  given a timeout.
+- [ ] **8.4c Phase 8 review fixes: what a deployable runs**
+  `opus · xhigh`: every deployable serving through the typed per-route
+  entries (`Executor::app()`, compiled code's own, used by
+  `Serving::handle`), so 8.1p's reading and writing reach production and
+  the route tests exercise what deployables run; sign-in's routes,
+  signing keys and origin kept only in a deployable that serves an API
+  with them (8.1o3's "only the settings those read"); and one start for
+  both hosts in `jadpo_runtime::deployable` (the program started, the
+  settings read, the stores compared with their migrations, the
+  connections not built listed, each tick's result logged as
+  `runtime.ticked`), so a store a tick can't work in is logged on
+  Workers and on a native server as it is by `tick`.
+- [ ] **8.4d Phase 8 review fixes: addresses and connections** `opus ·
+  high`: rate limits keying an IPv6 client by its /64 (decided
+  2026-10-22: stricter, reversible), including the magic-link and
+  passkey routes; `127.api.example.com` no longer loopback (the host
+  parsed as an address); `public_address` judging the IPv4 address
+  inside `64:ff9b::/96` and refusing 6to4, Teredo and `fec0::/10`
+  carrying a private one; a native connect timeout, PostgreSQL's
+  `connect_timeout` honoured, so start-up and `tick` against an
+  unreachable host answer SIGTERM; and an autocommitted statement not
+  sent again after a reused connection drops mid-flight; and SMTP
+  skipping STARTTLS to a server on this machine (loopback), as
+  PostgreSQL does, a remote server's still required and checked
+  (Richard, 2026-10-22; a stock Postfix offers it with a self-signed
+  certificate, so every send to it is `misconfigured` today).
+- [ ] **8.4e Workers speed and memory** `opus · xhigh`, after 8.4c:
+  the Wasm module's memory growing about 17 KB a booking and never
+  given back (5 MB to 253 MB over 14,000 bookings; Cloudflare's isolate
+  limit is 128 MB) found and fixed, proved by a long run under workerd
+  holding steady; one reader and one writer per socket for its life in
+  place of one per read and write (about half of workerd's CPU in 8.3's
+  profile); the drivers built when a request first uses a store; then
+  8.3's harness run again and its numbers recorded beside the first
+  (§2.11).
+- [ ] **8.4f Before the real deploy** `opus · high`: the release profile
+  `jadpo build` writes (link-time optimisation, one codegen unit,
+  `opt-level = "s"` for wasm, names stripped), so 8.2n measures the
+  module that ships, sizes recorded before and after; a Worker named
+  `<app>-<deployable>` so two apps' `kiosk`s don't meet in one account;
+  the Wrangler file built as one JSON value in one function, a binding
+  never silently dropped; `observability` written if Workers Logs needs
+  it (checked against Wrangler's pinned schema).
+- [ ] **8.4g Builds and CI kept quick** `opus · high`: the runtime
+  compiled once per Jadpo version, target and locale set (one shared
+  cargo target, locale data in a folder named by its digest), which
+  tests use too, as §2.5 decided; wasm-bindgen's walrus optimised in
+  test builds; `crates/jadpo-cli/tests/workers.rs` split into a file a
+  scenario; each CI job's time recorded after.
+- [ ] **8.4h The roadmap and the plan's header** `opus · high`: finished
+  phases moved to an archive page and a ticked chunk one line naming its
+  section, the copies that disagree (8.1g's plan format, 8.2e's group,
+  8.1j's CI time) gone with them; the plan's header taken from the
+  compiler's version rather than a number each chunk bumps.
+- [ ] **8.4i Collation for the supported locales** `opus · high`:
+  sorting in an unsupported `Locale` ordering by the supported one it
+  falls back to (area 10, Richard 2026-10-22), and `jadpo build` keeping
+  collation only for the supported locales; the module's size before and
+  after recorded.
 
 ## Phase 9 — Performance
 
@@ -2860,7 +2961,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 
 - [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
   writes, signed-in lists, large rows, cold start) on native, Wasm under
-  wasmtime and on Workers, against an equivalent Bun and TypeScript app and
+  workerd and on Workers, against an equivalent Bun and TypeScript app and
   Node; results published with the method.
   From the Phase 6 review: deliveries swept concurrently within each
   sweep, with a bound, and a backlog of 10,000 deliveries among the
@@ -2881,6 +2982,22 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   request's edge and the store; an answer's body sized before it is
   written, and a UUID's or an instant's text written without a string of
   its own (17 allocations write example 23's ticket either way).
+  From the Phase 8 review: the module is the runtime, not the app (the
+  generated program 32 KB of 13.4 MB): compiled code calling each
+  standard operation's own function, `effects::standard` the
+  interpreter's dispatcher over the same functions, and the runtime's
+  subsystems (HTML, regex, Markdown, geodesy, batches, webhooks, sign-in)
+  cargo features chosen from the plan, as `postgres` and `smtp` are;
+  validators' patterns compiled when first used if 9.1 shows cold start
+  pays for them.
+- [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
+  checks used by both hosts, `webauthn-rs` kept only as a test reference,
+  the test authenticator on `p256`, so no native deployable links
+  OpenSSL and passkey route tests run on workerd.
+- [ ] **9.2c `jadpo build` outside this checkout** `opus · high`: the
+  runtime's sources and crates found without the path `jadpo` was
+  compiled at or a warm cargo cache, so CI or a released `jadpo` can
+  build a deployable.
 
 ## Phase 10 — Golden todo
 
