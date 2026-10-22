@@ -456,11 +456,44 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
     );
     assert_eq!(status, 404, "{body}");
 
+    // Its isolate's memory holds steady over many bookings (chunk 8.4e):
+    // the connection each booking opens says goodbye to the database
+    // within the invocation that opened it, so nothing of it is kept once
+    // that ends. Before, each was left waiting for its socket to close,
+    // which workerd never settles once its invocation has ended: some 20 KB
+    // a booking, never given back. Each booking comes from an address of
+    // its own, within its allowance.
+    let book = |at: usize| {
+        let address = format!("198.51.100.{}", at % 250 + 1);
+        let (status, body) =
+            worker.send("POST", "/repairs", &[("CF-Connecting-IP", &address)], LAMP);
+        assert_eq!(status, 201, "{body}\n{}", worker.log());
+    };
+    (0..WARM_BOOKINGS).for_each(book);
+    let warm = worker.linear_memory();
+    (WARM_BOOKINGS..WARM_BOOKINGS + BOOKINGS).for_each(book);
+    let after = worker.linear_memory();
+    println!(
+        "measured: the kiosk's linear memory {warm} bytes after {WARM_BOOKINGS} bookings, {after} after {BOOKINGS} more"
+    );
+    assert!(
+        after.saturating_sub(warm) <= STEADY_BYTES,
+        "the kiosk's linear memory grew from {warm} to {after} bytes over {BOOKINGS} bookings"
+    );
+
     // Every line it logged is one JSON object carrying the stamp.
     for event in worker.events("") {
         stamped(&event, built, kiosk);
     }
 }
+
+/// The bookings that bring the kiosk's memory to its working size, and
+/// those its memory then holds steady over: by at most [`STEADY_BYTES`],
+/// a few of WebAssembly's 64 KiB pages, where a booking's leaked
+/// connection was some 20 KB, 8 MB over these (chunk 8.4e).
+const WARM_BOOKINGS: usize = 100;
+const BOOKINGS: usize = 400;
+const STEADY_BYTES: u64 = 512 * 1024;
 
 /// A depot built for Workers that serves nothing: it reads the
 /// warehouse's queue through the SQS package, recording each shipment
@@ -1842,8 +1875,21 @@ struct Workerd {
 /// handler for the time its `?at=` gives, in milliseconds, and answers
 /// with how it ended; a request to `/queue` hands the bound Worker's
 /// `queue` handler the batch its body gives, as Cloudflare Queues does
-/// (chunk 8.2k, `queues.rs`), and answers with how each message was.
-const CRON: &str = "export default {\n  async fetch(request, env) {\n    if (new URL(request.url).pathname === \"/queue\") {\n      const { queue, messages } = await request.json();\n      const answered = await env.WORKER.queue(queue, messages.map((message) => ({ ...message, timestamp: new Date() })));\n      return Response.json(answered);\n    }\n    const at = Number(new URL(request.url).searchParams.get(\"at\"));\n    const ended = await env.WORKER.scheduled({ scheduledTime: new Date(at), cron: \"* * * * *\" });\n    return Response.json(ended);\n  },\n};\n";
+/// (chunk 8.2k, `queues.rs`), and answers with how each message was; and
+/// a request to `/memory` answers with the size of the bound Worker's
+/// linear memory, through the test's own entrypoint ([`MEMORY_MAIN`]).
+const CRON: &str = "export default {\n  async fetch(request, env) {\n    if (new URL(request.url).pathname === \"/memory\") {\n      return Response.json({ bytes: await env.MEMORY.bytes() });\n    }\n    if (new URL(request.url).pathname === \"/queue\") {\n      const { queue, messages } = await request.json();\n      const answered = await env.WORKER.queue(queue, messages.map((message) => ({ ...message, timestamp: new Date() })));\n      return Response.json(answered);\n    }\n    const at = Number(new URL(request.url).searchParams.get(\"at\"));\n    const ended = await env.WORKER.scheduled({ scheduledTime: new Date(at), cron: \"* * * * *\" });\n    return Response.json(ended);\n  },\n};\n";
+
+/// The built Worker's main module as the test serves it (chunk 8.4e): the
+/// shim `jadpo build` wrote, re-exported whole, with one entrypoint more,
+/// which only the test's cron reaches, giving the size of the module's
+/// linear memory from the exports wasm-bindgen's `initSync` hands back once
+/// the shim has instantiated the module. Requests reach the shim's
+/// handlers as they would on Cloudflare.
+const MEMORY_MAIN: &str = "export * from \"./{main}\";\nexport { default } from \"./{main}\";\nimport { WorkerEntrypoint } from \"cloudflare:workers\";\nimport { initSync } from \"./{glue}\";\n\nexport class JadpoTestMemory extends WorkerEntrypoint {\n  bytes() {\n    return initSync().memory.buffer.byteLength;\n  }\n}\n";
+
+/// The test's main module's name, beside the Worker's own files.
+const TEST_MAIN: &str = "jadpo-test-main.mjs";
 
 impl Workerd {
     /// The Worker in `out` as `wrangler` describes it: its main module and
@@ -1867,7 +1913,11 @@ impl Workerd {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("the folder");
         let main = wrangler["main"].as_str().expect("a main module");
-        let mut modules = vec![format!("(name = \"{main}\", esModule = embed \"{main}\")")];
+        // The test's main module first, which workerd takes as the main.
+        let mut modules = vec![format!(
+            "(name = \"{TEST_MAIN}\", esModule = embed \"{TEST_MAIN}\")"
+        )];
+        let mut glue = Vec::new();
         for entry in fs::read_dir(out).expect("the Worker's folder") {
             let path = entry.expect("an entry").path();
             let name = path
@@ -1875,16 +1925,30 @@ impl Workerd {
                 .expect("a name")
                 .to_string_lossy()
                 .to_string();
-            if !path.is_file() || name == main {
+            if !path.is_file() {
                 continue;
             }
             let kind = match path.extension().and_then(|extension| extension.to_str()) {
-                Some("js" | "mjs") => "esModule",
+                Some("js") => {
+                    glue.push(name.clone());
+                    "esModule"
+                }
+                Some("mjs") => "esModule",
                 Some("wasm") => "wasm",
                 _ => continue,
             };
             modules.push(format!("(name = \"{name}\", {kind} = embed \"{name}\")"));
         }
+        // wasm-bindgen's JavaScript, which the shim instantiates the module
+        // through: the one `.js` beside it.
+        let [glue] = glue.as_slice() else {
+            panic!("one module's JavaScript beside the shim: {glue:?}");
+        };
+        fs::write(
+            dir.join(TEST_MAIN),
+            MEMORY_MAIN.replace("{main}", main).replace("{glue}", glue),
+        )
+        .expect("the test's main module");
         for module in fs::read_dir(out).expect("the Worker's folder") {
             let path = module.expect("an entry").path();
             if path.is_file() {
@@ -1970,7 +2034,7 @@ impl Workerd {
                  \x20 modules = [(name = \"cron.mjs\", esModule = embed \"cron.mjs\")],\n\
                  \x20 compatibilityDate = \"{date}\",\n\
                  \x20 compatibilityFlags = [\"service_binding_extra_handlers\"],\n\
-                 \x20 bindings = [(name = \"WORKER\", service = \"kiosk\")],\n\
+                 \x20 bindings = [(name = \"WORKER\", service = \"kiosk\"), (name = \"MEMORY\", service = (name = \"kiosk\", entrypoint = \"JadpoTestMemory\"))],\n\
                  );\n",
                 services.join("\n    "),
                 modules.join(", "),
@@ -2019,13 +2083,28 @@ impl Workerd {
     /// the minute at `at`, in milliseconds since 1970, waiting for the
     /// invocation to end: how it ended, `ok` or `exception`.
     fn scheduled(&self, at: i64) -> String {
+        let ended = self.ask_cron(&format!("/?at={at}"));
+        ended["outcome"].as_str().unwrap_or_default().to_string()
+    }
+
+    /// The built Worker's WebAssembly linear memory now, in bytes, read
+    /// through the test's own entrypoint (chunk 8.4e).
+    fn linear_memory(&self) -> u64 {
+        let answer = self.ask_cron("/memory");
+        answer["bytes"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("the memory's size: {answer}\n{}", self.log()))
+    }
+
+    /// The test's cron's JSON answer to a `GET` of `path`.
+    fn ask_cron(&self, path: &str) -> Value {
         let mut stream = TcpStream::connect(("127.0.0.1", self.cron)).expect("the cron listens");
         stream
             .set_read_timeout(Some(Duration::from_secs(180)))
             .expect("a timeout");
         write!(
             stream,
-            "GET /?at={at} HTTP/1.1\r\nHost: cron\r\nConnection: close\r\n\r\n"
+            "GET {path} HTTP/1.1\r\nHost: cron\r\nConnection: close\r\n\r\n"
         )
         .expect("sent");
         let mut answer = String::new();
@@ -2043,9 +2122,8 @@ impl Workerd {
                 }
             })
             .unwrap_or_else(|| panic!("an HTTP answer: {answer}\n{}", self.log()));
-        let ended: Value = serde_json::from_str(&body)
-            .unwrap_or_else(|_| panic!("the cron's answer: {answer}\n{}", self.log()));
-        ended["outcome"].as_str().unwrap_or_default().to_string()
+        serde_json::from_str(&body)
+            .unwrap_or_else(|_| panic!("the cron's answer: {answer}\n{}", self.log()))
     }
 
     /// The events the Worker has logged whose name starts with `event`,
