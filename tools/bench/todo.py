@@ -154,6 +154,12 @@ def request(server, method, path, body=None, token=None):
         conn.close()
 
 
+def log_since(offset):
+    with (WORK / 'pg.log').open('rb') as stream:
+        stream.seek(offset)
+        return stream.read().decode('utf-8')
+
+
 def registered(server, handle):
     status, data, _ = request(server, 'POST', '/api/register', {'handle': handle})
     if status != 201 or set(data) != {'id', 'token'} or not isinstance(data['token'], str):
@@ -230,7 +236,7 @@ def prepare(server, pg, principals):
     if status != 200:
         raise ValueError('Signed list failed')
     time.sleep(0.05)
-    logged = (WORK / 'pg.log').read_text()[offset:]
+    logged = log_since(offset)
     statements = re.findall(r'(?:statement:|execute [^:]*:)\s+(SELECT[^\n]*)', logged, re.IGNORECASE)
     if len(statements) != 1 or any('jadpo_sessions' in s or 'FROM "user"' in s for s in statements):
         raise ValueError(f'Signed list must have one business query and no authority reads; observed {len(statements)} SELECTs')
@@ -241,7 +247,7 @@ def prepare(server, pg, principals):
     if status != 201 or set(created) != {'id', 'title'} or created['title'] != 'probe-write' or UUID(created['id']).version != 7:
         raise ValueError('Write contract probe failed')
     time.sleep(0.05)
-    write_log = (WORK / 'pg.log').read_text()[offset:]
+    write_log = log_since(offset)
     write_statements = re.findall(r'(?:statement:|execute [^:]*:)\s+([^\n]+)', write_log, re.IGNORECASE)
     saved = pg.query(database, f"SELECT owner_id::text || ':' || title FROM todo WHERE id='{created['id']}'")
     if saved != alice['id'] + ':probe-write':
