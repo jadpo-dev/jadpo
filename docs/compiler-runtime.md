@@ -4910,11 +4910,12 @@ while measuring, from other builds):
 | peak resident MB, 64 connections | 522 | 32 |
 
 The readiness check at 16 connections: native 123,880 req/s at 27 µs a
-request, Wasm 16,290 at 62 µs. Native is unchanged within the spread;
-Wasm is within its rounds' spread of 8.3's (its quietest round 496 req/s
-and 2.05 CPU ms a booking at 16 connections), so reading through the
-entries moves neither noticeably: the socket bridge and the memory
-growth (8.4e) are still where Wasm's time goes.
+request, Wasm 16,290 at 62 µs. Native is unchanged within the spread.
+Wasm's medians are 10 to 20% under 8.3's, but its quietest round (496
+req/s and 2.05 CPU ms a booking at 16 connections) is within 4% of them,
+so the difference reads as the busier machine rather than the change:
+reading through the entries moves neither noticeably, and the socket
+bridge and the memory growth (8.4e) are still where Wasm's time goes.
 
 - **Wasm against Bun**: 75% behind on the booking route's throughput at 16
   connections (4.0×), 72% at one; p50 3.6× and p99 11× Bun's; 4× the
