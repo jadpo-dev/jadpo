@@ -269,6 +269,10 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   runtime's sources and crates found without the path `jadpo` was
   compiled at or a warm cargo cache, so CI or a released `jadpo` can
   build a deployable.
+- [ ] **9.3 The differential run's last two checks** `opus · high`
+  (after 9.2; low priority, from chunk 8.4h): each path through a body
+  numbered and the paths each run took compared, and fuzzed function
+  bodies run both ways, as §2.5 once promised.
 
 ## Phase 10 — Golden todo
 
