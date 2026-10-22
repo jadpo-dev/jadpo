@@ -66,7 +66,8 @@ async fn consume(deployable: &Deployable, batch: &JsValue, env: JsValue, ctx: Js
         retried(&messages, &pushed, None, &name, NOT_STARTED);
         return;
     };
-    let host = host.with_drivers(drivers(&isolate.program));
+    let drivers = drivers(&isolate.program, &host);
+    let host = host.with_drivers(drivers);
     if !ready(deployable, &host, &isolate).await {
         retried(&messages, &pushed, Some(&isolate.log), &name, NOT_STARTED);
         return;
