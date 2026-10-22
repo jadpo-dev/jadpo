@@ -62,3 +62,20 @@ impl Drop for Sleep {
         }
     }
 }
+
+/// `work`'s output, or `None` when `millis` passed first on a Worker's
+/// timer.
+pub(crate) async fn within<T>(millis: u64, work: impl Future<Output = T>) -> Option<T> {
+    let mut work = std::pin::pin!(work);
+    let mut timer = sleep(millis);
+    std::future::poll_fn(|cx| {
+        if let Poll::Ready(done) = work.as_mut().poll(cx) {
+            return Poll::Ready(Some(done));
+        }
+        if Pin::new(&mut timer).poll(cx).is_ready() {
+            return Poll::Ready(None);
+        }
+        Poll::Pending
+    })
+    .await
+}
