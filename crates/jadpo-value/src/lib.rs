@@ -1441,7 +1441,8 @@ mod tests {
         assert_eq!(sorted("sv_fi", Some(&plan(&["en_gb", "sv_se"]))), swedish);
         // No Swedish supported: the default's order.
         assert_eq!(sorted("sv_se", Some(&plan(&["en_gb", "fr_fr"]))), english);
-        // With no locales declared, every locale is the application's.
+        // With no locales declared (files on their own, which have no
+        // application to declare them), the locale it is given.
         assert_eq!(sorted("sv_se", None), swedish);
     }
 }

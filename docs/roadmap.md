@@ -2871,7 +2871,7 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
-8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i beside any of them. The gap to Bun is not accepted: Phase 9 closes
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i and 8.4j beside any of them. The gap to Bun is not accepted: Phase 9 closes
 it (Richard, 2026-10-22). Claude builds these; Codex builds Phase 9
 once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
 
@@ -3007,6 +3007,18 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   is, declaring no locales, 13,475,196 bytes before and 13,478,712 after
   (4,112,324 and 4,108,944 gzipped); declaring `en_gb`, 13,614,174 to
   12,727,979 (4,154,206 to 3,842,244 gzipped), 0.89 MB less.
+- [x] **8.4j `sort_by` by locale requires `locales { }`** `opus · high`:
+  `list.sort_by(..., locale:)` a check error without `locales { }`, as
+  formatting is (Richard, 2026-10-22), so `jadpo build` keeps collation
+  for the declared locales only; chunk 8.4i's "every locale's collation
+  with no `locales { }`" replaced. Built (area 10, "Locales" and
+  `type.temporal_locales_required`; area 19, "Text"): the call is
+  `type.temporal_locales_required` in a project, not for files on their
+  own or where `locale:` is already unused for its key; `jadpo-cldr`
+  keeps only the root's collation for an app with none. Example 23 sorts
+  by no locale; a one-action Workers project declaring no locales
+  (release, wasm-bindgen's module, gzip -9) went from 13,017,859 bytes
+  to 12,111,677 (3,959,704 to 3,647,526 gzipped), 0.91 MB less.
 
 ## Phase 9 — Performance
 
