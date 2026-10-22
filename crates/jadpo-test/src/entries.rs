@@ -18,23 +18,43 @@
 
 use std::fmt::Write as _;
 
+use jadpo_runtime::Executor;
 use jadpo_runtime::compiled::Program;
 use jadpo_runtime::http::{Request, read_request};
 use jadpo_std::Builtin;
-use jadpo_std::http::{Codec, CodecId, RoutePlan, Segment};
+use jadpo_std::http::{Codec, CodecId, RoutePlan, Run, Segment};
 use jadpo_value::Value;
 use jadpo_value::json::Codecs;
 
 /// Reads and writes every route of `program` with its entries and by the
 /// codec walk: how many requests and values were compared, or the first
-/// difference, with the request or value and both sides.
+/// difference, with the request or value and both sides. The entries are
+/// those the program answers its routes with as any executor
+/// ([`Executor::app`]), which is what a deployable serves with (chunk
+/// 8.4c): a route that runs an action, a query or a listing and reads a
+/// placeholder or writes an output without one is a difference too.
 pub fn compare(program: &Program) -> Result<usize, String> {
-    let typed = program.app();
+    let typed = (program as &dyn Executor).app();
     let walked = program.walked_app();
     let mut compared = 0;
     for (number, route) in walked.table.routes.iter().enumerate() {
         let number = u32::try_from(number).unwrap_or(u32::MAX);
         let Some(entry) = typed.entry(number) else {
+            let typed_run = matches!(
+                route.run,
+                Run::Action(_) | Run::Query(_) | Run::Listing { .. }
+            );
+            let reads_or_writes = route.output.is_some()
+                || route
+                    .segments
+                    .iter()
+                    .any(|segment| matches!(segment, Segment::Param { .. }));
+            if typed_run && reads_or_writes {
+                return Err(format!(
+                    "{} is answered without its typed entry",
+                    route.label()
+                ));
+            }
             continue;
         };
         let made = Made {

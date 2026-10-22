@@ -287,18 +287,10 @@ impl Program {
         (self.code.callable)(n)
     }
 
-    /// What the HTTP component answers its routes with: each route read
-    /// and written by its typed entry (chunk 8.1p).
-    pub fn app(&self) -> crate::http::App<'_> {
-        crate::http::App {
-            entries: Some(self.code.routes),
-            ..self.loaded.plan().app()
-        }
-    }
-
-    /// The same, every route read and written by the codec walk, as the
-    /// interpreter reads and writes them: what the differential harness
-    /// compares the entries with.
+    /// What the HTTP component answers its routes with, every route read
+    /// and written by the codec walk, as the interpreter reads and writes
+    /// them: what the differential harness compares the typed entries
+    /// ([`Executor::app`]) with.
     pub fn walked_app(&self) -> crate::http::App<'_> {
         self.loaded.plan().app()
     }
@@ -348,6 +340,15 @@ impl Executor for Program {
 
     fn plan(&self) -> crate::Plan<'_> {
         self.loaded.plan()
+    }
+
+    /// Each route read and written by its typed entry (chunk 8.1p), in a
+    /// deployable as in a route test (chunk 8.4c).
+    fn app(&self) -> crate::http::App<'_> {
+        crate::http::App {
+            entries: Some(self.code.routes),
+            ..self.loaded.plan().app()
+        }
     }
 
     fn started(&self) -> Option<Rc<Started>> {

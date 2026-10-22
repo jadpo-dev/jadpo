@@ -2912,7 +2912,7 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   logged once as `rate_limits.fallback`. Decisions on areas 11, 12 and
   16 (2026-10-22). 8.2n checks `ctx.exports` and the consumers on the
   real edge.
-- [ ] **8.4c Phase 8 review fixes: what a deployable runs**
+- [x] **8.4c Phase 8 review fixes: what a deployable runs**
   `opus · xhigh`: every deployable serving through the typed per-route
   entries (`Executor::app()`, compiled code's own, used by
   `Serving::handle`), so 8.1p's reading and writing reach production and
@@ -2923,7 +2923,15 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
   settings read, the stores compared with their migrations, the
   connections not built listed, each tick's result logged as
   `runtime.ticked`), so a store a tick can't work in is logged on
-  Workers and on a native server as it is by `tick`.
+  Workers and on a native server as it is by `tick`. Built:
+  `Executor::app`, compiled code's giving its entries, answers every
+  request `Serving` handles, and the entries harness holds any executor's
+  to them; a deployable keeps a method's signing key only where an API it
+  serves takes the method, and the origin only where one takes browser
+  sessions (area 14, Decisions); `jadpo_runtime::deployable::start`,
+  `compare_stores` and the `Logged` observer serve both hosts, each tick
+  logged as `runtime.ticked` with its duration, proved live on example
+  23's office and the depot's cron with a swept table renamed.
 - [x] **8.4d Phase 8 review fixes: addresses and connections** `opus ·
   high`. Built: `counted_as` keying an IPv6 client's default limits and
   AI budget by its /64; plain HTTP's and email health's "this machine"

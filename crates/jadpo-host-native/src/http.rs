@@ -874,6 +874,7 @@ mod tests {
             _program: &dyn Executor,
             ticked: &jadpo_runtime::schedules::Ticked,
             _now: i64,
+            _ms: u64,
         ) {
             let _ = self
                 .0

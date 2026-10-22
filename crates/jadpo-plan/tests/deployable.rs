@@ -339,6 +339,122 @@ fn the_one_deployable_of_an_app_that_declares_none_leaves_out_only_its_tests() {
     assert_eq!(app.runtime().connections, whole.runtime().connections);
 }
 
+/// The café signing people in: browsers on `main`, with the kiosk's
+/// session key and the site's origin, and robots on `staff`, with their
+/// own key; a pinner serving nothing runs the subscribers.
+fn signed_cafe(db: &Database) -> Project {
+    let mut files: Vec<(String, String)> = CAFE
+        .iter()
+        .map(|(path, text)| {
+            let text = match *path {
+                "app.jadpo" => "use cafe/entities { Member, Robot }\n\napplication {\n    revocation_delay: 5m\n    apis: {\n        main: {\n            prefix: /\n            authentication: [AuthenticationMethod.browser_session]\n        }\n        staff: {\n            prefix: /sheets\n            authentication: [AuthenticationMethod.service_key]\n        }\n    }\n    connections: {\n        main: {\n            driver: Driver.postgres\n            url: config.database_url\n        }\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/cafe/sheets\"\n        }\n    }\n    events: {\n        store: main\n    }\n    deployables: {\n        kiosk: {\n            serves: [main]\n        }\n        office: {\n            serves: [staff]\n            runs: [Trigger.schedules]\n        }\n        pinner: {\n            runs: [Trigger.subscribers]\n        }\n    }\n}\n\nprincipal {\n    user: {\n        subject: Member.handle\n    }\n    service: {\n        subject: Robot.name\n    }\n}\n".to_string(),
+                "config.jadpo" => text.replace(
+                    "    database_url: PostgresUrl\n",
+                    "    database_url: PostgresUrl\n    session_key: SigningKey\n    robot_key: SigningKey\n    site_origin: Url\n",
+                ),
+                _ => text.to_string(),
+            };
+            (path.to_string(), text)
+        })
+        .collect();
+    files.push((
+        "authentication.jadpo".to_string(),
+        "authentication {\n    browser_session: {\n        cookie: \"cafe_session\"\n        signing_key: config.session_key\n        origin: config.site_origin\n    }\n    service_key: {\n        signing_key: config.robot_key\n    }\n}\n".to_string(),
+    ));
+    files.push((
+        "domains/cafe/types/handle.jadpo".to_string(),
+        "type Handle = Text {\n    max_length: 40\n}\n".to_string(),
+    ));
+    files.push((
+        "domains/cafe/entities/member.jadpo".to_string(),
+        "use cafe/types { Handle }\n\nentity Member {\n    id: Uuid\n    handle: Handle {\n        unique: true\n    }\n\n    policy: {\n        read: [Access.system]\n    }\n}\n".to_string(),
+    ));
+    files.push((
+        "domains/cafe/entities/robot.jadpo".to_string(),
+        "use cafe/types { Handle }\n\nentity Robot {\n    id: Uuid\n    name: Handle {\n        unique: true\n    }\n\n    policy: {\n        read: [Access.system]\n    }\n}\n".to_string(),
+    ));
+    checked(db, &files)
+}
+
+/// The settings a plan reads, by name.
+fn settings_of(plan: &Plan) -> Vec<String> {
+    names(
+        plan.runtime()
+            .config
+            .fields
+            .iter()
+            .map(|field| field.name.as_str()),
+    )
+}
+
+/// Sign-in's keys and origin are kept only where an API that takes them
+/// is served (chunk 8.4c): the kiosk keeps the browser session's key and
+/// the origin, the office the robots' key and the exchange, and the
+/// pinner, serving nothing, neither, so it starts without them.
+#[test]
+fn sign_in_keys_and_origin_are_kept_only_where_an_api_takes_them() {
+    let db = Database::default();
+    let project = signed_cafe(&db);
+    let methods = |plan: &Plan| -> Vec<&'static str> {
+        plan.runtime()
+            .routes
+            .identity
+            .as_ref()
+            .map(|identity| {
+                identity
+                    .signing_keys
+                    .iter()
+                    .map(|(method, _)| method.name())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let origin = |plan: &Plan| {
+        plan.runtime()
+            .routes
+            .identity
+            .as_ref()
+            .and_then(|identity| identity.origin.clone())
+    };
+    let generated = |plan: &Plan| -> Vec<String> {
+        plan.runtime()
+            .routes
+            .routes
+            .iter()
+            .filter(|route| {
+                route.file == "generated" && !matches!(route.run, jadpo_std::http::Run::OpenApi(_))
+            })
+            .map(|route| route.key.clone())
+            .collect()
+    };
+
+    let kiosk = planned(&db, project, "kiosk");
+    assert_eq!(methods(&kiosk), ["browser_session"]);
+    assert_eq!(origin(&kiosk).as_deref(), Some("site_origin"));
+    assert_eq!(
+        settings_of(&kiosk),
+        ["database_url", "session_key", "site_origin", "greeting"]
+    );
+
+    let office = planned(&db, project, "office");
+    assert_eq!(methods(&office), ["service_key"]);
+    assert_eq!(origin(&office), None);
+    assert_eq!(
+        settings_of(&office),
+        ["database_url", "robot_key", "sheet_heading"]
+    );
+    assert_eq!(generated(&office), ["route POST /auth/exchange"]);
+
+    let pinner = planned(&db, project, "pinner");
+    assert_eq!(methods(&pinner), Vec::<&str>::new());
+    assert_eq!(origin(&pinner), None);
+    assert_eq!(settings_of(&pinner), ["database_url"]);
+    assert_eq!(generated(&pinner), Vec::<String>::new());
+    // It still knows who signs in, for the credentials an action issues
+    // and the sessions every tick sweeps.
+    assert!(pinner.runtime().routes.identity.is_some());
+}
+
 /// What a plan runs, besides its callables, by name: each route with
 /// what it runs and whether it waits for follow-on work, each subscriber,
 /// schedule, batch, purge, webhook, poll and queue, each email, and
