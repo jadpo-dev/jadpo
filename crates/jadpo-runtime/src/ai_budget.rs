@@ -207,11 +207,12 @@ fn cost_limit(value: &Value) -> Option<(u64, &'static str)> {
 }
 
 /// Who a call counts against: a digest of its signed-in caller, or of
-/// the address it came from; `None` for the system's own work.
+/// the address it came from, an IPv6 one by its /64 as the default rate
+/// limits count it; `None` for the system's own work.
 fn caller_key(ctx: &Ctx<'_>) -> Option<String> {
     let who = match (ctx.caller(), ctx.client()) {
         (Some(caller), _) => caller.key.clone(),
-        (None, Some(address)) => format!("address {address}"),
+        (None, Some(address)) => format!("address {}", crate::http::address::counted_as(address)),
         (None, None) => return None,
     };
     let digest = jadpo_value::hash::sha256(who.as_bytes());

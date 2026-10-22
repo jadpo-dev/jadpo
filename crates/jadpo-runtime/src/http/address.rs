@@ -166,6 +166,21 @@ fn connection(address: &str) -> String {
     }
 }
 
+/// What the default rate limits count `client`, an address [`ClientAddress::of`]
+/// gave, as (chunk 8.4d): an IPv4 address itself, and an IPv6 address its
+/// /64 (`2001:db8:1:2::/64`), the least a network hands one subscriber, so
+/// a client moving through its own block is one count. Anything that is no
+/// address is counted as given.
+pub fn counted_as(client: &str) -> String {
+    match client.parse::<IpAddr>() {
+        Ok(IpAddr::V6(v6)) => {
+            let network = u128::from(v6) & !u128::from(u64::MAX);
+            format!("{}/64", Ipv6Addr::from(network))
+        }
+        Ok(IpAddr::V4(_)) | Err(_) => client.to_string(),
+    }
+}
+
 /// An address in its one spelling.
 fn spell(ip: IpAddr) -> String {
     ip.to_canonical().to_string()
@@ -406,6 +421,21 @@ mod tests {
         assert_eq!(of("::ffff:203.0.113.9"), "203.0.113.9");
         assert_eq!(of("2001:0DB8:0:0:0:0:0:1"), "2001:db8::1");
         assert_eq!(of("route test"), "route test", "not an address, as given");
+    }
+
+    #[test]
+    fn an_ipv6_address_counts_as_its_64_and_ipv4_as_itself() {
+        assert_eq!(
+            counted_as("2001:db8:1:2:aaaa:bbbb:cccc:dddd"),
+            "2001:db8:1:2::/64"
+        );
+        assert_eq!(counted_as("2001:db8::1"), "2001:db8::/64");
+        assert_eq!(counted_as("203.0.113.9"), "203.0.113.9");
+        assert_eq!(
+            counted_as("route test"),
+            "route test",
+            "not an address, as given"
+        );
     }
 
     // --- X-Forwarded-For --------------------------------------------------------
