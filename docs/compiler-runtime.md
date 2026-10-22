@@ -4395,16 +4395,21 @@ never called, so the workspace builds, lints and tests as one.
   socket when dropped; a Unix socket is `Unsupported`. **A connection
   ends within the invocation that opened it** (chunk 8.4e): workerd never
   settles a promise of an invocation that has ended, and whatever waits
-  on one is kept for the isolate's life, so a connection's task runs
-  under the invocation's `waitUntil`, and shutting a stream down closes
-  its writable side after the driver's goodbye (PostgreSQL's
-  `Terminate`), then, with a read still waiting, the socket, waiting for
-  that read to settle. An invocation therefore lasts until its
-  connections have said goodbye, a round trip after its drivers are
-  dropped (chosen in chunk 8.4e, 2026-10-22: closing without the goodbye
-  would end it sooner, but leave the server and Hyperdrive a connection
-  broken off); before, each booking's connection was left waiting, some
-  20 KB of the module's memory never given back (§2.11).
+  on one is kept for the isolate's life. So the transport counts the
+  tasks it starts for its connections (`Tasks`), and an invocation's
+  `WorkersHost`, once dropped (after its response, with the work that
+  left, or with the answer it streams), keeps the invocation through
+  `waitUntil` until they have ended: dropping its drivers is what starts
+  each connection's goodbye. Shutting a stream down closes its writable
+  side after the driver's goodbye (PostgreSQL's `Terminate`), then, with
+  a read still waiting, the socket, waiting for that read to settle. An
+  invocation therefore lasts a round trip past its host (chosen in chunk
+  8.4e, 2026-10-22: closing without the goodbye would end it sooner but
+  leave the server or Hyperdrive a connection broken off; holding the
+  invocation from a connection's start instead kept it alive while a
+  streamed answer's host lived, so a client going away no longer ended
+  the model's call). Before, each booking's connection was left waiting,
+  some 20 KB of the module's memory never given back (§2.11).
 - **`WorkersFetch`** sends through `fetch()` with `redirect: "manual"`,
   so a `3xx` is an answer, races the whole exchange (or a streamed
   answer's head, then each piece) against a timer, and when the timer
@@ -4458,10 +4463,10 @@ more (without the abort it is held until the invocation ends, which the
 test was checked against), a streamed answer read piece by piece and
 stopped at a piece's timeout the same way, the outbound guard, work run
 after the response through `waitUntil`, rate limits kept across an
-isolate's requests, a connection's task run (since chunk 8.4e under its
-invocation's `waitUntil` too, ending after the answer, which it never did
-beside it), the drivers built only once a connection is reached, and the
-factory's supplies;
+isolate's requests, a connection's task run (since chunk 8.4e one still
+running when its host is dropped ending after the answer, which it never
+did once the invocation had ended), the drivers built only once a
+connection is reached, and the factory's supplies;
 since chunk 8.2l a seventeenth registers a passkey made by the test
 authenticator and signs in with it twice, keeping what the native host
 keeps of the same device's passkey, an answer from another site and a
