@@ -435,7 +435,8 @@ fn a_recording_read_as_another_value_differs_at_its_outcome() {
         );
     });
     assert!(
-        difference.test.contains("recording decodes"),
+        difference.test.starts_with("recording ")
+            && difference.test.ends_with("parcel_quotes.create.json"),
         "{difference}"
     );
     let (first, second) = (
@@ -443,9 +444,8 @@ fn a_recording_read_as_another_value_differs_at_its_outcome() {
         difference.second.clone().unwrap_or_default(),
     );
     assert!(
-        first.starts_with("outcome value ")
-            && second.starts_with("outcome value ")
-            && first != second,
+        first.starts_with("outcome value Quote { amount: money.from_minor(650,")
+            && second.starts_with("outcome value Quote { amount: money.from_minor(651,"),
         "{difference}"
     );
     assert_eq!(difference.at, 1, "{difference}");

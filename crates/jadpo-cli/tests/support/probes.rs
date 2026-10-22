@@ -21,19 +21,19 @@ pub const FILES: &[(&str, &str)] = &[
     ),
     (
         "domains/probe/types/reach_request.jadpo",
-        "/// How deep to walk.\ntype ReachRequest = Input {\n    depth: Depth\n}\n",
+        "use probe/types { Depth }\n\n/// How deep to walk.\ntype ReachRequest = Input {\n    depth: Depth\n}\n",
     ),
     (
         "domains/probe/types/reached.jadpo",
-        "/// How deep the walk went.\ntype Reached = Output {\n    depth: Depth\n}\n",
+        "use probe/types { Depth }\n\n/// How deep the walk went.\ntype Reached = Output {\n    depth: Depth\n}\n",
     ),
     (
         "domains/probe/types/spin_request.jadpo",
-        "/// The rounds to work through.\ntype SpinRequest = Input {\n    rounds: List<Total>\n}\n",
+        "use probe/types { Total }\n\n/// The rounds to work through.\ntype SpinRequest = Input {\n    rounds: List<Total>\n}\n",
     ),
     (
         "domains/probe/types/spun.jadpo",
-        "/// What the work counted.\ntype Spun = Output {\n    total: Total\n}\n",
+        "use probe/types { Total }\n\n/// What the work counted.\ntype Spun = Output {\n    total: Total\n}\n",
     ),
     (
         "domains/probe/actions/reach.jadpo",

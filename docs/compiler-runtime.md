@@ -1836,8 +1836,9 @@ Since chunk 8.4a the record holds what the review of Phase 8 found it
 left out. A failure's outcome names the site it was raised at, and each
 cause its own; a fault's names its site and its stack, innermost first, a
 run of one site written once with how many (`main.jadpo:8  function down
-×999`). Each read's bound values and each outside call's input are kept
-as a keyed digest, `#` and sixteen hex digits of an HMAC-SHA-256 under the
+×999`). Each read's bound values (a `SELECT`'s; a write's show in the
+rows the test leaves) and each outside call's input are kept as a keyed
+digest, `#` and sixteen hex digits of an HMAC-SHA-256 under the
 record's key, each identity in the value numbered in the order the record
 first met one, so a value is compared without being kept: the key is the
 process's own (`jadpo_test::differential::digest_key`), drawn at random

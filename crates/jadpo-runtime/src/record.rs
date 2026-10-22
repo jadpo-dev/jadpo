@@ -135,9 +135,13 @@ impl Record {
     }
 
     /// Keeps a statement and how it went; a read's parameters by their
-    /// digest.
+    /// digest. A read is a `SELECT`: a write that gives rows back
+    /// (`RETURNING`) binds what it writes, which the rows a test leaves
+    /// show, and the runtime's own bookkeeping, a step's time taken say,
+    /// which no run repeats.
     fn statement(&self, sql: &str, params: &[SqlValue], ran: Ran) {
-        let digest = (matches!(ran, Ran::Read(_)) && !params.is_empty()).then(|| {
+        let read = matches!(ran, Ran::Read(_)) && sql.trim_start().starts_with("SELECT");
+        let digest = (read && !params.is_empty()).then(|| {
             let mut text = String::new();
             for param in params {
                 param_text(param, &mut text);
