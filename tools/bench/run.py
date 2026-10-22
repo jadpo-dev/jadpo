@@ -23,6 +23,7 @@ each measure's median over the rounds and its range.
   python3 tools/bench/run.py                    # build, then 3 rounds
   python3 tools/bench/run.py --rounds 5 --duration 15
   python3 tools/bench/run.py --skip-build --targets native,bun
+  python3 tools/bench/run.py --skip-build --soak 600   # memory over a long run
 
 Everything it builds, installs and starts stays under tools/bench/work/
 (and tools/workers/node_modules for workerd); it stops what it starts.
@@ -200,21 +201,48 @@ def stop(process: subprocess.Popen):
             process.wait()
 
 
-def workerd_config(folder: Path, port: int, database_host: str, database: str) -> Path:
+# The kiosk's own main module with one entrypoint more, which only the
+# harness's `memory` Worker reaches: the size of the module's linear memory,
+# from the exports wasm-bindgen's `initSync` hands back once the module is
+# instantiated. Requests reach the kiosk's own handlers unchanged.
+MEMORY_MAIN = """export {{ default, JadpoHandOn }} from "./{main}";
+import {{ WorkerEntrypoint }} from "cloudflare:workers";
+import {{ initSync }} from "./kiosk.js";
+
+export class JadpoMemory extends WorkerEntrypoint {{
+  bytes() {{
+    return initSync().memory.buffer.byteLength;
+  }}
+}}
+"""
+
+# A Worker of the harness's own on a port of its own, answering with the
+# kiosk's linear memory in bytes.
+MEMORY_WORKER = """export default {
+  async fetch(request, env) {
+    return Response.json({ bytes: await env.KIOSK.bytes() });
+  },
+};
+"""
+
+
+def workerd_config(folder: Path, port: int, database_host: str, database: str, memory_port: int) -> Path:
     """The test harness's config (crates/jadpo-cli/tests/workers.rs) for the
     built kiosk: its modules, Hyperdrive binding and stand-in rate-limiting
-    binding, without the cron Worker."""
+    binding, without the cron Worker, and the harness's `memory` Worker on
+    `memory_port`."""
     out = WORK / 'workers' / 'build' / 'target' / 'kiosk'
     wrangler = json.loads((out / 'wrangler.json').read_text())
     shutil.rmtree(folder, ignore_errors=True)
     folder.mkdir(parents=True)
-    main = wrangler['main']
-    modules = [f'(name = "{main}", esModule = embed "{main}")']
+    (folder / 'bench-main.mjs').write_text(MEMORY_MAIN.format(main=wrangler['main']))
+    (folder / 'bench-memory.mjs').write_text(MEMORY_WORKER)
+    modules = ['(name = "bench-main.mjs", esModule = embed "bench-main.mjs")']
     for path in sorted(out.iterdir()):
         if path.is_file():
             shutil.copy(path, folder / path.name)
             kind = {'.js': 'esModule', '.mjs': 'esModule', '.wasm': 'wasm'}.get(path.suffix)
-            if kind and path.name != main:
+            if kind:
                 modules.append(f'(name = "{path.name}", {kind} = embed "{path.name}")')
     shutil.copy(ROOT / 'tools' / 'workers' / 'ratelimit-binding.mjs', folder / 'ratelimit-binding.mjs')
     bindings = ['(name = "DATABASE_URL", hyperdrive = (designator = "hyperdrive", '
@@ -229,10 +257,14 @@ def workerd_config(folder: Path, port: int, database_host: str, database: str) -
 const config :Workerd.Config = (
   services = [
     (name = "kiosk", worker = .kiosk),
+    (name = "memory", worker = .memory),
     (name = "machine", network = (allow = ["public", "private", "local"])),
     (name = "hyperdrive", external = (address = "{database_host}", tcp = ())),
   ],
-  sockets = [(name = "http", address = "127.0.0.1:{port}", http = (), service = "kiosk")],
+  sockets = [
+    (name = "http", address = "127.0.0.1:{port}", http = (), service = "kiosk"),
+    (name = "memory", address = "127.0.0.1:{memory_port}", http = (), service = "memory"),
+  ],
   extensions = [(modules = [(name = "bench:ratelimit", internal = true, esModule = embed "ratelimit-binding.mjs")])],
 );
 
@@ -241,6 +273,12 @@ const kiosk :Workerd.Worker = (
   compatibilityDate = "{wrangler["compatibility_date"]}",
   bindings = [{", ".join(bindings)}],
   globalOutbound = "machine",
+);
+
+const memory :Workerd.Worker = (
+  modules = [(name = "bench-memory.mjs", esModule = embed "bench-memory.mjs")],
+  compatibilityDate = "{wrangler["compatibility_date"]}",
+  bindings = [(name = "KIOSK", service = (name = "kiosk", entrypoint = "JadpoMemory"))],
 );
 '''
     (folder / 'config.capnp').write_text(config)
@@ -254,6 +292,8 @@ class Server:
         self.target = target
         self.port = free_port()
         self.helpers = []
+        # Where the harness reads a Worker's linear memory (`memory_mb`).
+        self.memory_port = None
         log = open(logs / f'{target}.log', 'ab')
         if target == 'native':
             command = [str(WORK / 'native' / 'build' / 'target' / 'app' / 'app')]
@@ -277,7 +317,9 @@ class Server:
                 self.helpers.append(pool)
                 wait_for_port(pool_port)
                 database_host = f'127.0.0.1:{pool_port}'
-            cwd = workerd_config(WORK / f'workerd-{target}', self.port, database_host, 'workers')
+            self.memory_port = free_port()
+            cwd = workerd_config(WORK / f'workerd-{target}', self.port, database_host, 'workers',
+                                 self.memory_port)
             command = [str(workerd()), 'serve', 'config.capnp']
             if inspector:
                 command.append(f'--inspector-addr=127.0.0.1:{inspector}')
@@ -311,6 +353,16 @@ class Server:
                 return (done - self.spawned) * 1000, (done - sent) * 1000
             time.sleep(0.01)
         sys.exit(f'{self.target} never answered its readiness check')
+
+    def memory_mb(self) -> float | None:
+        """A Worker's linear memory now, in MB; `None` for the others."""
+        if self.memory_port is None:
+            return None
+        connection = http.client.HTTPConnection('127.0.0.1', self.memory_port, timeout=60)
+        connection.request('GET', '/')
+        answer = json.loads(connection.getresponse().read())
+        connection.close()
+        return round(answer['bytes'] / 1024 / 1024, 1)
 
     def stop(self):
         stop(self.process)
@@ -371,8 +423,33 @@ def measure(server: Server, route: str, connections: int, warmup: float, duratio
     result = json.loads(out)
     result.update(target=server.target, route=route, load1=round(load_before, 2),
                   cpu_ms_per_request=round((cpu_after - cpu_before) * 1000 / max(result['requests'], 1), 3),
-                  cpu_cores=round((cpu_after - cpu_before) / duration, 2), peak_rss_mb=peak[0])
+                  cpu_cores=round((cpu_after - cpu_before) / duration, 2), peak_rss_mb=peak[0],
+                  wasm_mb=server.memory_mb())
     return result
+
+
+def soak(pg: Postgres, logs: Path, target: str, seconds: float, step: float, connections: int) -> list:
+    """Bookings on one server for `seconds`, a window of `step` seconds
+    at a time: each window's throughput and CPU, the server's peak
+    resident memory in it, and a Worker's linear memory at its end."""
+    pg.reset('workers' if target.startswith('workers') else target)
+    server = Server(target, pg, logs)
+    rows = []
+    started = time.monotonic()
+    booked = 0
+    print(f'{target}: {server.memory_mb()} MB of linear memory at its start', flush=True)
+    try:
+        while time.monotonic() - started < seconds:
+            row = measure(server, 'book', connections, 0, step)
+            booked += row['requests']
+            row.update(elapsed_s=round(time.monotonic() - started), booked=booked)
+            rows.append(row)
+            print(f"  {row['elapsed_s']:>5} s  {booked:>8,} bookings  {row['rps']:,.0f} req/s  "
+                  f"{row['cpu_ms_per_request']:.3f} CPU ms/booking  RSS {row['peak_rss_mb']} MB  "
+                  f"linear {row['wasm_mb']} MB  load {row['load1']}", flush=True)
+    finally:
+        server.stop()
+    return rows
 
 
 def profile(server: Server, inspector: int, route: str, connections: int, warmup: float, duration: float):
@@ -406,16 +483,18 @@ def summary(rows: list, starts: list) -> str:
         fmt = (lambda v: f'{v:,.{digits}f}')
         return f'{fmt(med)} ({fmt(values[0])}–{fmt(values[-1])})' if len(values) > 1 else fmt(med)
 
-    lines = ['| target | route | conns | req/s | p50 ms | p99 ms | server CPU ms/req | peak RSS MB | errors |',
-             '|---|---|---:|---:|---:|---:|---:|---:|---:|']
+    lines = ['| target | route | conns | req/s | p50 ms | p99 ms | server CPU ms/req | peak RSS MB | Wasm MB | errors |',
+             '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|']
     keys = sorted({(r['route'], r['connections'], r['target']) for r in rows})
     for route, connections, target in keys:
         group = [r for r in rows if (r['route'], r['connections'], r['target']) == (route, connections, target)]
+        linear = [r['wasm_mb'] for r in group if r.get('wasm_mb') is not None]
+        wasm = spread(linear, 1) if linear else '–'
         lines.append(
             f"| {target} | {route} | {connections} | {spread([r['rps'] for r in group])} | "
             f"{spread([r['p50_us'] / 1000 for r in group], 2)} | {spread([r['p99_us'] / 1000 for r in group], 2)} | "
             f"{spread([r['cpu_ms_per_request'] for r in group], 3)} | {spread([r['peak_rss_mb'] for r in group], 0)} | "
-            f"{sum(r['unexpected'] + r['errors'] for r in group)} |")
+            f"{wasm} | {sum(r['unexpected'] + r['errors'] for r in group)} |")
     lines += ['', '| target | cold start to first answer, ms | that first request, ms | idle RSS MB |',
               '|---|---:|---:|---:|']
     for target in sorted({s['target'] for s in starts}):
@@ -438,6 +517,10 @@ def main():
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--profile', action='store_true',
                         help="instead of measuring, profile each workerd target's routes through V8's inspector")
+    parser.add_argument('--soak', type=float, metavar='SECONDS',
+                        help='instead of measuring, book on each target for this long, a window at a time, '
+                             'recording memory as it goes')
+    parser.add_argument('--soak-step', type=float, default=30, metavar='SECONDS')
     args = parser.parse_args()
     WORK.mkdir(exist_ok=True)
     logs = WORK / 'logs'
@@ -459,6 +542,13 @@ def main():
                         profile(server, inspector, route, 16, args.warmup, args.duration)
                 finally:
                     server.stop()
+            return
+        if args.soak:
+            soaked = {}
+            for target in targets:
+                wait_for_quiet(args.quiet_load, 600)
+                soaked[target] = soak(pg, logs, target, args.soak, args.soak_step, 16)
+            (WORK / 'soak.json').write_text(json.dumps(soaked, indent=1))
             return
         for round_ in range(args.rounds):
             wait_for_quiet(args.quiet_load, 600)

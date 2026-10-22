@@ -3358,8 +3358,9 @@ request's `WorkersHost`), `ClientAddress::read` with `Target::Workers`,
 whose refusal is a problem, and `Program::with_config_on(values,
 Target::Workers)`; a failure is logged once and the isolate answers each
 request `http::unavailable` (503 with a request id, as the runtime
-answers). Each request then builds its drivers through the factory over
-`supplies()` on a `WorkersHost` of its own, and, until the isolate has
+answers). Each request then has its drivers built through the factory
+over `supplies()` on a `WorkersHost` of its own, when it first reaches a
+connection (chunk 8.4e), and, until the isolate has
 found every store current, compares them first through that host's
 databases, answering 503 with `runtime.startup_failed` or
 `runtime.waiting` while one isn't, so a migration applied after a
@@ -4318,12 +4319,17 @@ never called, so the workspace builds, lints and tests as one.
 - **`WorkersHost`** is one invocation's `Host`, made from its `env` and
   `ctx`: the drivers the factory built over `supplies()`
   (`Target::Workers`, `WorkersTransport`, `WorkersFetch`, no disk), for
-  each invocation, since a socket belongs to the request that opened it;
-  randomness from `crypto.getRandomValues`, 65,536 bytes a call; the
-  wall clock, `Date.now()`, and a monotonic clock made from it that never
-  goes back past an earlier reading (Workers moves both on only while an
-  invocation waits, never while it computes); timers on `setTimeout`,
-  cleared when a wait is dropped; settings from the bindings, a text
+  each invocation, since a socket belongs to the request that opened it,
+  built when it first reaches a connection, so one that reaches none (a
+  readiness check answered from its last second's) builds none, and the
+  connections that can't be built found once an isolate, at its start
+  (chunk 8.4e); randomness from `crypto.getRandomValues`, 65,536 bytes a
+  call; the wall clock, `Date.now()`, and a monotonic clock made from it
+  that never goes back past an earlier reading (Workers moves both on
+  only while an invocation waits, never while it computes); timers on
+  `setTimeout`, cleared when a wait is dropped, its promise then settled
+  by hand, so nothing is left waiting on it (chunk 8.4e); settings from
+  the bindings, a text
   binding being a variable or a secret; `defer` through `ctx.waitUntil`;
   rate limits in Cloudflare's rate-limiting binding when the plan's store
   (`RouteTable::rate_limits`, `rate_limits: { store: }`) is one, each
@@ -4352,10 +4358,24 @@ never called, so the workspace builds, lints and tests as one.
   a check that fails is natively; a driver that judges a failed check
   only by the upgrade's own answer (PostgreSQL's, chunk 8.1n) learns it
   at its first write instead, which PostgreSQL's driver keeps since chunk
-  8.2i ("PostgreSQL through Hyperdrive", below). A stream holds
-  its streams' locks only while it reads or writes, so it can be
-  upgraded between them, and closes its socket when dropped; a Unix
-  socket is `Unsupported`.
+  8.2i ("PostgreSQL through Hyperdrive", below). A stream reads and
+  writes through one reader and one writer for its socket's life, each
+  taken at its first read or write and released only to upgrade it,
+  between them (chunk 8.4e; before, one of each for every read and write
+  was about half of workerd's time on a booking, §2.11), and closes its
+  socket when dropped; a Unix socket is `Unsupported`. **A connection
+  ends within the invocation that opened it** (chunk 8.4e): workerd never
+  settles a promise of an invocation that has ended, and whatever waits
+  on one is kept for the isolate's life, so a connection's task runs
+  under the invocation's `waitUntil`, and shutting a stream down closes
+  its writable side after the driver's goodbye (PostgreSQL's
+  `Terminate`), then, with a read still waiting, the socket, waiting for
+  that read to settle. An invocation therefore lasts until its
+  connections have said goodbye, a round trip after its drivers are
+  dropped (chosen in chunk 8.4e, 2026-10-22: closing without the goodbye
+  would end it sooner, but leave the server and Hyperdrive a connection
+  broken off); before, each booking's connection was left waiting, some
+  20 KB of the module's memory never given back (§2.11).
 - **`WorkersFetch`** sends through `fetch()` with `redirect: "manual"`,
   so a `3xx` is an answer, races the whole exchange (or a streamed
   answer's head, then each piece) against a timer, and when the timer
@@ -4409,7 +4429,10 @@ more (without the abort it is held until the invocation ends, which the
 test was checked against), a streamed answer read piece by piece and
 stopped at a piece's timeout the same way, the outbound guard, work run
 after the response through `waitUntil`, rate limits kept across an
-isolate's requests, a connection's task run, and the factory's supplies;
+isolate's requests, a connection's task run (since chunk 8.4e under its
+invocation's `waitUntil` too, ending after the answer, which it never did
+beside it), the drivers built only once a connection is reached, and the
+factory's supplies;
 since chunk 8.2l a seventeenth registers a passkey made by the test
 authenticator and signs in with it twice, keeping what the native host
 keeps of the same device's passkey, an answer from another site and a

@@ -26,8 +26,10 @@
 //! waits, and answers with the ticket read back from the database; a thank
 //! you's note is pinned up after its answer, in `waitUntil`; its readiness
 //! check reaches the database; and each address `CF-Connecting-IP` gives
-//! has its own allowance of 120 requests a minute. Every event it logs is
-//! one JSON line carrying the build stamp.
+//! has its own allowance of 120 requests a minute; and over 500 bookings
+//! more its isolate's linear memory holds steady (chunk 8.4e), read
+//! through an entrypoint the test's own main module adds beside the
+//! shim's. Every event it logs is one JSON line carrying the build stamp.
 //!
 //! The Workers cron (chunk 8.2f) is proved on a depot of its own that
 //! serves nothing, receives a queue from a local SQS
