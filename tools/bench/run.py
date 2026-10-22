@@ -207,7 +207,7 @@ def stop(process: subprocess.Popen):
 # instantiated. Requests reach the kiosk's own handlers unchanged.
 MEMORY_MAIN = """export {{ default, JadpoHandOn }} from "./{main}";
 import {{ WorkerEntrypoint }} from "cloudflare:workers";
-import {{ initSync }} from "./kiosk.js";
+import {{ initSync }} from "./{glue}";
 
 export class JadpoMemory extends WorkerEntrypoint {{
   bytes() {{
@@ -235,7 +235,10 @@ def workerd_config(folder: Path, port: int, database_host: str, database: str, m
     wrangler = json.loads((out / 'wrangler.json').read_text())
     shutil.rmtree(folder, ignore_errors=True)
     folder.mkdir(parents=True)
-    (folder / 'bench-main.mjs').write_text(MEMORY_MAIN.format(main=wrangler['main']))
+    # wasm-bindgen's JavaScript, which the shim instantiates the module
+    # through: the one `.js` beside it.
+    [glue] = [path.name for path in out.iterdir() if path.suffix == '.js']
+    (folder / 'bench-main.mjs').write_text(MEMORY_MAIN.format(main=wrangler['main'], glue=glue))
     (folder / 'bench-memory.mjs').write_text(MEMORY_WORKER)
     modules = ['(name = "bench-main.mjs", esModule = embed "bench-main.mjs")']
     for path in sorted(out.iterdir()):
