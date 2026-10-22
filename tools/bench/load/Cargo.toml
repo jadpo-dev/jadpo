@@ -1,0 +1,19 @@
+# The performance spike's own tools (roadmap chunk 8.3; tools/bench/README.md):
+# `load`, a closed-loop HTTP/1.1 load generator, and `pool`, a
+# transaction-mode PostgreSQL pooler standing in for Hyperdrive under
+# workerd. Not a member of the Jadpo workspace and not in the gate.
+[package]
+name = "jadpo-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+tokio = { version = "=1.53.3", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "sync"] }
+
+[profile.release]
+debug = false
+
+# Its own workspace, so the repository's doesn't claim it.
+[workspace]
