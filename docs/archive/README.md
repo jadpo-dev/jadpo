@@ -5,6 +5,15 @@ be broken. Current work is in the [roadmap](../roadmap.md); the language is
 specified in [docs/language](../language/README.md), which wins wherever an
 archived document disagrees.
 
+## Finished roadmap chunks
+
+[roadmap-finished.md](roadmap-finished.md) holds the roadmap's finished
+phases (0 to 7 so far) and the full entries of later finished chunks, as
+they were written when each chunk merged. Unlike the rest of this folder it
+grows: each chunk's entry moves here when it is ticked. What a chunk built
+is written in [compiler-runtime.md](../compiler-runtime.md) and the
+language pages, which win wherever an entry disagrees.
+
 ## The v0 compiler (archived 2026-10-13)
 
 The first compiler, generating TypeScript for Bun, was replaced by the

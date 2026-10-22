@@ -137,10 +137,10 @@ jobs:
   # every test run interpreted and compiled with the same records, against
   # a PostgreSQL container of its own. A job of its own, so the `tests`
   # job doesn't share its runner with a second build of the compiler.
-  # Its budget is the job's timeout: 12 minutes from start to end, about
-  # twice what it took with no cargo cache at all (5 min 31 s and 5 min
-  # 41 s in two runs). Route tests on workerd (chunk 8.2e) run in the
-  # `wasm32` job, which this one's 12 minutes couldn't hold.
+  # Its budget is the job's timeout, 20 minutes (12 when chunk 8.1j set
+  # it, about twice what it took with no cargo cache at all: 5 min 31 s
+  # and 5 min 41 s in two runs). Route tests on workerd (chunk 8.2e) run
+  # in the `wasm32` job, which the 12 minutes couldn't hold.
   compiled:
     runs-on: ubuntu-24.04
     # The corpus step takes about 9 minutes and saving the cache about one

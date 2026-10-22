@@ -8,7 +8,8 @@ compiled native and WebAssembly deployables.
 ## Where things are
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
-  only tracker; each session takes the first unticked chunk.
+  only tracker; each session takes the first unticked chunk. Finished
+  chunks' full entries: [docs/archive/roadmap-finished.md](docs/archive/roadmap-finished.md).
 - What the language means: [docs/language](docs/language/README.md), twenty-one
   decided areas. Where anything else disagrees, the area page wins.
 - How it is built: [docs/compiler-runtime.md](docs/compiler-runtime.md).
@@ -30,13 +31,13 @@ merged and anything that needs Richard.
 
 ## Who builds what (Richard, 2026-10-22)
 
-Claude finishes Phase 8 (the review chunks 8.4a–8.4i) as usual. Codex
+Claude finishes Phase 8 (the review chunks 8.4a–8.4j) as usual. Codex
 builds Phase 9, performance, starting once 8.4c, 8.4e and 8.4f have
 merged, since they change what a deployable runs and how it is built.
-When
-Codex builds a chunk it works on its own `chunk-<id>` branch in a
+When Codex builds a chunk it works on its own `chunk-<id>` branch in a
 worktree beside the repository, follows the working rules below and
-passes the full gate, ticks the chunk with its "Built:" note, pushes, and
+passes the full gate, ticks the chunk as the roadmap's "How a session
+works" says (one line naming where what it built is written), pushes, and
 opens the pull request **without** `--auto`, its description saying what
 was built, what the gate showed and any decision it recorded. It never
 merges. Claude reviews the pull request against the area pages, fixes
