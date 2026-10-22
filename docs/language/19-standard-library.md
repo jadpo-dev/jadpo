@@ -4955,11 +4955,16 @@ take it.
   after `Z` in Swedish, beside `O` in German), through ICU4X's case mapping
   and collation; without it, case is Unicode's full default mapping (`ß`
   becomes `SS`, `İ` becomes `i` and a combining dot) and text sorts by
-  code point, as queries sort it (question 26). It takes any `Locale`, not
-  only the ones `locales { }` declares, since case mapping and collation
-  are Unicode's and CLDR's data, not the application's translations; a
-  deployable, which carries its supported locales' other data only,
-  carries every locale's collation for it (area 10, chunk 8.2c).
+  code point, as queries sort it (question 26). Case mapping takes any
+  `Locale`, not only the ones `locales { }` declares, since its data is
+  Unicode's, one table for every locale. Sorting takes any too, but an
+  application that declares `locales { }` sorts in those: a `Locale` it
+  doesn't support orders by the supported one a header asking for it
+  would get, else `default:`, as text for people is written (area 10,
+  "Locales"; Richard, 2026-10-22, built in chunk 8.4i), so a deployable,
+  which carries its supported locales' collation only, sorts as `jadpo
+  test` does. With no `locales { }`, every `Locale` sorts by its own
+  alphabet, and a deployable carries every locale's collation.
   Collation is the locale's default at CLDR's default strength, so keys
   equal by its rules keep their order. On `list.sort_by` it orders text
   keys only; with any other key it is `type.temporal_option_unused`, whose
@@ -5130,6 +5135,49 @@ test "a locale's case and order" {
     assert in_name_order([zopf, oland, oat], Locale.sv_se) == [oat, zopf, oland]
     assert tag_line(zopf) == "Swiss, plaited"
     assert count_pieces("Swiss,plaited", ",") == 2
+}
+```
+
+A shop that supports British English and Swedish sorts the list of a
+shopper writing Swedish in Finland in Swedish, the supported locale of
+their language, and one writing Finnish in British English, its default,
+since it supports no Finnish; in Finnish's own alphabet `Ö` would come
+after `Z` (chunk 8.4i):
+
+```jadpo check project=sorting-supported-locales file=app.jadpo
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.sv_se]
+}
+```
+
+```jadpo check project=sorting-supported-locales file=domains/shop/types/product_name.jadpo
+type ProductName = Text {
+    min_length: 1
+    max_length: 60
+}
+```
+
+```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.jadpo
+use shop/types { ProductName }
+
+/// The loaves in the order the shopper's alphabet puts their names, of the
+/// alphabets the shop supports.
+action in_name_order(loaves: List<ProductName>, shopper: Locale) -> List<ProductName> {
+    return list.sort_by(loaves, loaf -> loaf, locale: shopper)
+}
+```
+
+```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.test.jadpo
+use shop/types { ProductName }
+
+test "a locale the shop doesn't support sorts in one it does" {
+    var loaves: List<ProductName> = ["Zopf", "Ölandsbröd", "Oat"]
+    assert in_name_order(loaves, Locale.sv_se) == ["Oat", "Zopf", "Ölandsbröd"]
+    assert in_name_order(loaves, Locale.sv_fi) == ["Oat", "Zopf", "Ölandsbröd"]
+    assert in_name_order(loaves, Locale.fi_fi) == ["Oat", "Ölandsbröd", "Zopf"]
 }
 ```
 
