@@ -5138,10 +5138,11 @@ test "a locale's case and order" {
 }
 ```
 
-A shop that supports British English and Swedish sorts a Finnish reader's
-list in Swedish, the supported locale of Finnish Swedish's language, and a
-German reader's in British English, its default, since it supports no
-German (chunk 8.4i):
+A shop that supports British English and Swedish sorts the list of a
+shopper writing Swedish in Finland in Swedish, the supported locale of
+their language, and one writing Finnish in British English, its default,
+since it supports no Finnish; in Finnish's own alphabet `Ö` would come
+after `Z` (chunk 8.4i):
 
 ```jadpo check project=sorting-supported-locales file=app.jadpo
 application {}
@@ -5162,10 +5163,10 @@ type ProductName = Text {
 ```jadpo check project=sorting-supported-locales file=domains/shop/actions/in_name_order.jadpo
 use shop/types { ProductName }
 
-/// The names in the order the reader's alphabet puts them, of the
+/// The loaves in the order the shopper's alphabet puts their names, of the
 /// alphabets the shop supports.
-function in_name_order(names: List<ProductName>, reader: Locale) -> List<ProductName> {
-    return list.sort_by(names, name -> name, locale: reader)
+action in_name_order(loaves: List<ProductName>, shopper: Locale) -> List<ProductName> {
+    return list.sort_by(loaves, loaf -> loaf, locale: shopper)
 }
 ```
 
@@ -5173,10 +5174,10 @@ function in_name_order(names: List<ProductName>, reader: Locale) -> List<Product
 use shop/types { ProductName }
 
 test "a locale the shop doesn't support sorts in one it does" {
-    var names: List<ProductName> = ["Zopf", "Ölandsbröd", "Oat"]
-    assert in_name_order(names, Locale.sv_se) == ["Oat", "Zopf", "Ölandsbröd"]
-    assert in_name_order(names, Locale.sv_fi) == ["Oat", "Zopf", "Ölandsbröd"]
-    assert in_name_order(names, Locale.de_de) == ["Oat", "Ölandsbröd", "Zopf"]
+    var loaves: List<ProductName> = ["Zopf", "Ölandsbröd", "Oat"]
+    assert in_name_order(loaves, Locale.sv_se) == ["Oat", "Zopf", "Ölandsbröd"]
+    assert in_name_order(loaves, Locale.sv_fi) == ["Oat", "Zopf", "Ölandsbröd"]
+    assert in_name_order(loaves, Locale.fi_fi) == ["Oat", "Ölandsbröd", "Zopf"]
 }
 ```
 
