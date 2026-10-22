@@ -99,7 +99,7 @@ fn every_teaching_examples_plan_reads_back_and_is_the_same_twice() {
         let second = jadpo_db::load(&folder);
         let again = bytes_of(&second.db, second.project).expect("it checks again");
         assert!(bytes == again, "{} planned twice differs", folder.display());
-        // Every example's plan holds something: the format's header at
+        // Every example's plan holds something: the header at
         // least, and its routes or settings.
         assert!(
             bytes.starts_with(RuntimePlan::HEADER),
@@ -110,7 +110,7 @@ fn every_teaching_examples_plan_reads_back_and_is_the_same_twice() {
 }
 
 #[test]
-fn bytes_of_another_format_or_cut_short_are_refused() {
+fn bytes_of_another_version_or_cut_short_are_refused() {
     let files = vec![(
         "main.jadpo".to_string(),
         "type Count = Int {\n    max: 12\n}\n\nfunction one() -> Count {\n    return 1\n}\n"
@@ -118,13 +118,17 @@ fn bytes_of_another_format_or_cut_short_are_refused() {
     )];
     let bytes = planned(&files).expect("it checks");
     assert!(RuntimePlan::decode(&bytes).is_ok());
-    let mut other = bytes.clone();
-    if let Some(byte) = other.get_mut(RuntimePlan::HEADER.len() - 2) {
-        *byte = byte.wrapping_add(1);
-    }
+    // The header names the Jadpo that wrote the plan, taken from its
+    // version rather than a number bumped by hand.
+    assert_eq!(
+        RuntimePlan::HEADER,
+        format!("jadpo runtime plan {}\n", env!("CARGO_PKG_VERSION")).as_bytes()
+    );
+    let mut other = b"jadpo runtime plan 0.0.0-another\n".to_vec();
+    other.extend_from_slice(&bytes[RuntimePlan::HEADER.len()..]);
     assert!(
         RuntimePlan::decode(&other).is_err(),
-        "another format's header"
+        "another version's header"
     );
     assert!(RuntimePlan::decode(&bytes[..bytes.len() - 1]).is_err());
     assert!(RuntimePlan::decode(b"").is_err());

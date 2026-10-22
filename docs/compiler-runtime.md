@@ -1235,11 +1235,16 @@ shapes made per thread, since values never cross threads (§2.6). The
 interpreter's `Program` is such a thread, and reads its own validators
 and shapes from the same `Loaded`. Compiled code holds the plan as a
 constant in its canonical bytes (`RuntimePlan::encode`: a header naming
-the format, then the plan in `jadpo_std::canonical`, §2.1), decodes it
-once as it starts (`RuntimePlan::decode`) and loads it on each worker the
-same way; the site plans its generated code names (each read's, write's
+the Jadpo that wrote it, then the plan in `jadpo_std::canonical`, §2.1),
+decodes it once as it starts (`RuntimePlan::decode`) and loads it on each
+worker the same way; the site plans its generated code names (each read's, write's
 and call's) joined the same plan with the code generator (chunk 8.1f,
-"Compiled code" below).
+"Compiled code" below). The header is `jadpo runtime plan <version>`,
+the version of the Jadpo whose compiler wrote it (decided in chunk 8.4h,
+2026-10-22): a plan is only ever read by the program it was compiled
+into, built from that same Jadpo's runtime crates, so nothing else
+guards compatibility, and a chunk that changes the plan's shape bumps
+no number by hand.
 The same project always gives the same bytes, and the bytes always read
 back to an equal plan that writes them again: a test plans every page's
 project and every teaching example, and plans each example twice from a
@@ -1362,13 +1367,13 @@ plan, and each outside call's site, a provider operation's,
 `ai.generate`'s, `ai.stream`'s or `ai.embed`'s, numbered in callable and
 site order, `Plan::call_number`), `RuntimePlan::actions` (what the
 boundary needs of each action and fixture), the build id and the steps
-key: plan format 5. The interpreter reads the same plans from the
+key. The interpreter reads the same plans from the
 compiler's `Plan`, built in the same pass. The application's locales
 joined the runtime plan when compiled code first called the standard
-library (`RuntimePlan::locales`, chunk 8.1g, plan format 7), and the
+library (`RuntimePlan::locales`, chunk 8.1g), and the
 compiler's `Plan::locales` reads them there; the translations joined it
-with their first compiled call (`RuntimePlan::translations`, chunk 8.1i,
-plan format 8), and the runtime's view of the plan carries them, the
+with their first compiled call (`RuntimePlan::translations`, chunk 8.1i),
+and the runtime's view of the plan carries them, the
 locales and the outside calls' sites (`Plan::translations`, `locales` and
 `calls`, whose first `ai.generate` of a prompt `Plan::generate_site` finds
 for a test's scripted answer to it).
@@ -3247,7 +3252,7 @@ and email go through. A deployable that declares a target is refused
 each one `ConnectionDriver::targets` and the SMTP port rule it can't run
 (`deployable.target_unsupported`). The plan a deployable runs held
 only the routes of the APIs it serves, the webhooks only where it
-serves `webhooks`, and `RuntimePlan::runs` (plan format 9) says whether
+serves `webhooks`, and `RuntimePlan::runs` says whether
 it runs `Trigger.schedules` and `Trigger.subscribers`; since chunk 8.1o3
 it holds only what it reaches (below). The runtime holds to it
 where work joins a runner (`runner::split` drops a delivery or a batch
@@ -3289,7 +3294,7 @@ numbered among themselves, the runtime's own routes only in the API that
 holds them; the schedules, purges and polls only where it runs
 schedules; the queues and the emails' templates, sender and mail package
 only where it runs subscribers, every subscriber still listed, without
-its action (`Target::Elsewhere`, plan format 10), since an action that
+its action (`Target::Elsewhere`), since an action that
 emits writes a delivery for each subscriber that hears it; the webhooks
 where it serves `webhooks`; the connections it reaches and every
 database and Redis connection, which every tick sweeps; `ai:` where it
@@ -3647,7 +3652,7 @@ tick"; area 14, "A native deployable"). `jadpo_check::schedules::
 schedules_settings` reads `schedules: { trigger: }`, a `ScheduleTrigger`
 (`jadpo_std::ScheduleTrigger`: `native`, the default, or `external`),
 anything else `schedule.settings_invalid` with the nearest, and the plan
-carries it (`SchedulesPlan::trigger`, plan format 11). It changes only a
+carries it (`SchedulesPlan::trigger`). It changes only a
 native deployable: `jadpo_host_native::deployable::run` reads its one
 argument (`Command::read`: none or `serve`, `tick`, anything else
 `command_unknown` and code 2), and serving with `external` makes each
@@ -4003,10 +4008,7 @@ the record tools, which name a call from outside the plan
 package find theirs by number too: a package's `generate:`, `stream:` and
 `embed:` mappings carry their operation's number (`PackageAi::called`,
 `PackageStream::called`, `PackageEmbed::called`), its name kept for
-what is logged, recorded and faked. The plan's format was `jadpo runtime
-plan 4`; it is 5 since chunk 8.1f added compiled code's site plans
-(§2.5, "Compiled code"), and 6 since chunk 8.1n added a database
-connection's `tls`, and 7 since chunk 8.1g added the locales.
+what is logged, recorded and faked.
 
 **Snapshots before calls** (chunk 7.4; area 6, "Outside calls hold no
 transaction"). The seam closes what the running action has only read
