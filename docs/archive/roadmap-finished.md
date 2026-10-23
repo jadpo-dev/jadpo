@@ -3102,3 +3102,25 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   gated tree. Exact unmerged prerequisite `0bf65408` is included under
   Richard's stacked-dependency permission. No PR was merged or set to
   auto-merge by Codex.
+
+- [x] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
+  9.1b1a: measure idle-tick statements and latency, separate prompt work from
+  an hourly cleanup pass one instance takes under a lease, and batch every
+  delete. Preserve retention, handled-record safety, failure recovery and
+  multi-instance behaviour; report before/after measurements.
+  Built: prompt work remains on each tick; each store has an hourly, identity-fenced
+  cleanup lease, bounded deletes and immediate retry after incomplete cleanup.
+  Whole-schema cleanup holdings survive deployable pruning, including schedule,
+  batch and AI-only stores. Real races, retention and failure controls pass.
+  Native and local workerd idle ticks fell from eight SQL statements to five;
+  workerd median idle-tick p95 fell from 4.371 to 2.874 ms. The supporting warm
+  delivery comparison measured workerd 2,276/s, p95 53.274 ms, against Bun
+  3,897/s, p95 30.170 ms; ambient variation prevents a causal delivery-gain claim.
+  The final full gate passed 93/93 at `c1d7ab57`; the measured candidate
+  `4cb9e82d` has the identical complete tracked tree. Test subprocess ownership
+  was repaired; historical orphan-affected runs and failed/superseded attempts
+  remain qualified alongside fresh source/artifact identities, all rounds and
+  review constraints in compiler/runtime §2.6 and §2.11 and `tools/bench/README.md`.
+  Exact unmerged prerequisite `cb1b1a79` is included under Richard's stacked
+  dependency permission; Claude's review and merges remain pending. Codex
+  opens the PR without auto-merge and never merges it.

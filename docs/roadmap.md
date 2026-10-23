@@ -244,11 +244,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   breaker read joined into its claim.
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
 - [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
-- [ ] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
-  9.1b1a: measure idle-tick statements and latency, separate prompt work from
-  an hourly cleanup pass one instance takes under a lease, and batch every
-  delete. Preserve retention, handled-record safety, failure recovery and
-  multi-instance behaviour; report before/after measurements.
+- [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
 - [ ] **9.1b3 One-statement AI accounting:** `opus · high` after 9.1b2:
   make each reserve and charge one statement, including every applicable
   window. Preserve atomic refusal, concurrent limits, repair/retry top-ups,
