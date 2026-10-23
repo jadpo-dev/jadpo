@@ -33,8 +33,8 @@ def revision(path):return checked(['git','rev-parse','HEAD'],cwd=path,capture_ou
 
 def fingerprint(source):
     digest=hashlib.sha256()
-    files=list(PROJECT.rglob('*.jadpo'))+list(PROJECT.rglob('*.jadpo_record'))+list((PROJECT/'database').rglob('*'))+list((HERE/'native').rglob('*'))+list((HERE/'workers').rglob('*'))+[HERE/'worker.py',HERE/'run.py',HERE/'contract.py']
-    files += list(PROJECT.glob('acceptance*.json'))+list((source/'crates').rglob('Cargo.toml'))+list((source/'crates').rglob('*.rs'))+[source/'Cargo.lock',source/'Cargo.toml',source/'rust-toolchain.toml']
+    files=list(PROJECT.rglob('*.jadpo'))+list(PROJECT.rglob('*.jadpo_record'))+list((PROJECT/'database').rglob('*'))+list((HERE/'native').rglob('*'))+list((HERE/'workers').rglob('*'))+[HERE/'worker.py',HERE/'run.py',HERE/'contract.py',HERE/'test_contract.py']
+    files += list(PROJECT.glob('acceptance*.json'))+list((source/'crates').rglob('Cargo.toml'))+list((source/'crates').rglob('*.rs'))+[source/'Cargo.lock',source/'Cargo.toml',source/'rust-toolchain.toml',source/'tools/workers/package.json',source/'tools/workers/package-lock.json',source/'tools/workers/ratelimit-binding.mjs']
     for path in sorted(set(file for file in files if file.is_file() and not {'build','.jadpo','target'}.intersection(file.parts))):
         digest.update(str(path).encode());digest.update(path.read_bytes())
     return digest.hexdigest()
@@ -53,8 +53,8 @@ def build_native(source):
     if not (work/'Cargo.lock').exists():shutil.copy(source/'Cargo.lock',work/'Cargo.lock')
     for name in ['main.rs','build.rs','bind.rs']:shutil.copy(HERE/'native'/name,work/name)
     with (work/'build.log').open('w') as log:
-        checked(['cargo','build','--offline','--target-dir',str(CACHE/'native'),'--manifest-path',str(work/'Cargo.toml')],env={**os.environ,'GOLDEN_PROJECT':str(PROJECT),'CARGO_INCREMENTAL':'0'},stdout=log,stderr=subprocess.STDOUT)
-        checked(['cargo','test','--offline','--target-dir',str(CACHE/'native'),'--manifest-path',str(work/'Cargo.toml'),'--bin','golden-native-contract'],env={**os.environ,'GOLDEN_PROJECT':str(PROJECT),'CARGO_INCREMENTAL':'0'},stdout=log,stderr=subprocess.STDOUT)
+        checked(['cargo','build','--offline','--target-dir',str(CACHE/'native'),'--manifest-path',str(work/'Cargo.toml')],env={**os.environ,'GOLDEN_PROJECT':str(PROJECT),'CARGO_INCREMENTAL':'0','CARGO_PROFILE_DEV_DEBUG':'0'},stdout=log,stderr=subprocess.STDOUT)
+        checked(['cargo','test','--offline','--target-dir',str(CACHE/'native'),'--manifest-path',str(work/'Cargo.toml'),'--bin','golden-native-contract'],env={**os.environ,'GOLDEN_PROJECT':str(PROJECT),'CARGO_INCREMENTAL':'0','CARGO_PROFILE_DEV_DEBUG':'0'},stdout=log,stderr=subprocess.STDOUT)
     if fingerprint(source)!=before:raise RuntimeError('build inputs changed during native compilation; rebuild required')
     (work/'source-fingerprint').write_text(before)
     return CACHE/'native/debug/golden-native-contract'
@@ -190,7 +190,10 @@ def main():
     if set(targets)-{'native','workerd'}:parser.error('targets are native,workerd')
     WORK.mkdir(exist_ok=True)
     reports=[];postgres=None;driver=None
-    provenance={'compiler':str(args.compiler),'compilerSource':str(args.runtime_source),'runtimeRevision':revision(args.runtime_source),'applicationSource':str(PROJECT),'applicationRevision':revision(ROOT),'preview':args.runtime_source!=ROOT,'sourceFingerprint':fingerprint(args.runtime_source),'runtimeDirty':bool(checked(['git','status','--porcelain'],cwd=args.runtime_source,capture_output=True,text=True).stdout)}
+    metadata=json.loads(checked(['cargo','metadata','--no-deps','--format-version','1'],cwd=args.runtime_source,capture_output=True,text=True).stdout)
+    expected_compiler=(Path(metadata['target_directory'])/'debug/jadpo').resolve()
+    own_compiler=args.runtime_source==ROOT and args.compiler==expected_compiler
+    provenance={'compiler':str(args.compiler),'compilerSha256':hashlib.sha256(args.compiler.read_bytes()).hexdigest(),'compilerMatchesCheckout':own_compiler,'compilerSource':str(args.runtime_source),'runtimeRevision':revision(args.runtime_source),'applicationSource':str(PROJECT),'applicationRevision':revision(ROOT),'preview':not own_compiler,'sourceFingerprint':fingerprint(args.runtime_source),'runtimeDirty':bool(checked(['git','status','--porcelain'],cwd=args.runtime_source,capture_output=True,text=True).stdout)}
     try:
         tools=postgres_tools();shared=os.environ.get('JADPO_TEST_DATABASE_URL');postgres=SharedPostgres(shared,tools) if shared else tools.Postgres()
         if args.skip_build:
@@ -208,7 +211,7 @@ def main():
                 stamp.write_text(before)
         if not args.skip_build and any(identifier in selected for identifier in ['CONFIG-001','CONFIG-002']) and 'native' in targets:
             with (WORK/'native/deployable-build.log').open('w') as log:
-                checked([str(args.compiler),'build','--json'],cwd=PROJECT,env={**os.environ,'CARGO_INCREMENTAL':'0'},stdout=log,stderr=subprocess.STDOUT)
+                checked([str(args.compiler),'build','--json'],cwd=PROJECT,env={**os.environ,'CARGO_INCREMENTAL':'0','CARGO_PROFILE_DEV_DEBUG':'0'},stdout=log,stderr=subprocess.STDOUT)
         for target in targets:
             database='golden_contract_'+target+'_'+secrets.token_hex(5)
             if isinstance(postgres,SharedPostgres):postgres.create(database)
@@ -232,7 +235,7 @@ def main():
         if driver:driver.stop()
         if postgres:postgres.stop()
     failed=[r for r in reports if r['status']!='passed']
-    result={'schemaVersion':1,'contractVersion':contract['contractVersion'],'ok':not failed,'completeContract':not args.skip_build and not args.case and set(targets)=={'native','workerd'} and len(reports)==88 and not failed and args.runtime_source==ROOT,'sources':provenance,'counts':{'ran':len(reports),'passed':len(reports)-len(failed),'failed':len(failed)},'cases':reports}
+    result={'schemaVersion':1,'contractVersion':contract['contractVersion'],'ok':not failed,'completeContract':not args.skip_build and not args.case and set(targets)=={'native','workerd'} and len(reports)==88 and not failed and own_compiler,'sources':provenance,'counts':{'ran':len(reports),'passed':len(reports)-len(failed),'failed':len(failed)},'cases':reports}
     if args.json:print(json.dumps(result,indent=2))
     else:
         for item in failed:

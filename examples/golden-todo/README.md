@@ -120,4 +120,6 @@ obligation is unavailable. TypeScript and comparative timing remain 9.1d3/4.
 During development, the compiler and runtime source may be supplied explicitly
 from a verified prerequisite checkout. Such a preview is identified by path
 and revision and does not establish this branch’s full gate. The final gate
-runs in this worktree after the reviewed prerequisites reach main.
+runs against this worktree’s compiler/runtime and exact incorporated prerequisite
+histories. Richard authorized stacked builds before prerequisite PR review
+and merge on 2026-10-23; that authorization does not establish independent review.

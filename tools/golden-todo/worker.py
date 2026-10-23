@@ -40,10 +40,10 @@ def build(source, compiler, native, project, here, work, cache):
     if not (folder/'Cargo.lock').exists():shutil.copy(source/'Cargo.lock',folder/'Cargo.lock')
     for name in ['lib.rs','build.rs']:shutil.copy(here/'workers'/name,folder/name)
     with (folder/'build.log').open('w') as log:
-        subprocess.run(['cargo','build','--offline','--target','wasm32-unknown-unknown','--target-dir',str(cache/'workers'),'--manifest-path',str(folder/'Cargo.toml')],env={**os.environ,'GOLDEN_PROJECT':str(overlay),'CARGO_INCREMENTAL':'0'},stdout=log,stderr=subprocess.STDOUT,check=True)
+        subprocess.run(['cargo','build','--offline','--target','wasm32-unknown-unknown','--target-dir',str(cache/'workers'),'--manifest-path',str(folder/'Cargo.toml')],env={**os.environ,'GOLDEN_PROJECT':str(overlay),'CARGO_INCREMENTAL':'0','CARGO_PROFILE_DEV_DEBUG':'0'},stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run([str(native.parent/'golden-bind'),str(cache/'workers/wasm32-unknown-unknown/debug/golden_workers_contract.wasm'),str(folder/'bound')],check=True)
     with (folder/'deployable-build.log').open('w') as log:
-        subprocess.run([str(compiler),'build','--json'],cwd=overlay,env={**os.environ,'CARGO_INCREMENTAL':'0'},stdout=log,stderr=subprocess.STDOUT,check=True)
+        subprocess.run([str(compiler),'build','--json'],cwd=overlay,env={**os.environ,'CARGO_INCREMENTAL':'0','CARGO_PROFILE_DEV_DEBUG':'0'},stdout=log,stderr=subprocess.STDOUT,check=True)
     return overlay
 
 SHIM = r"""
