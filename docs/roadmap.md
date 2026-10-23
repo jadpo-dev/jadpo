@@ -241,12 +241,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   the AI budget's reserve and charge each one statement; a write after an
   outside call checking its version in its own `WHERE`; a delivery's
   breaker read joined into its claim.
-- [ ] **9.1b1 Bounded delivery sweeps and the backlog:** `opus · high` after
-  9.1d: measure the existing sweep, run deliveries concurrently within a
-  recorded bound, and add the 10,000-delivery workload. Keep the decided
-  sweep size, connection budgets, leases, retry safety, shutdown and hand-on
-  behaviour. Verify responses and durable effects, retain all runs, and
-  measure the same local protocol before and after the change.
+- [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
 - [ ] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
   9.1b1: measure idle-tick statements and latency, separate prompt work from
   an hourly cleanup pass one instance takes under a lease, and batch every
