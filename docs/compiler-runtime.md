@@ -5781,9 +5781,15 @@ lane can remain busy after the others finish. §2.6 records the implementation;
 This adds a focused pure-database background workload, not the full golden
 reminder workflow or HTTP list/read/write comparison above. Each cell drains
 exactly 10,000 durable deliveries with 100 production ticks. Native includes
-100 external tick process starts. Workerd invokes the generated production
-scheduled handler through a local binding and the existing transaction-pool
-stand-in capped at four; it is not real edge Hyperdrive. The identical pinned
+100 external tick process starts. Bun and Node also start one process per
+tick, whereas workerd stays running across ticks. Their startup and pool
+lifetimes therefore differ: the per-target serial-versus-bounded comparisons
+remain matched, but the cross-target times do not establish a warm-service
+Workers-versus-Bun win. Chunk 9.1b1a adds that missing warm-service comparison;
+these original results remain retained with this limitation. Workerd invokes
+the generated production scheduled handler through a local binding and the
+existing transaction-pool stand-in capped at four; it is not real edge
+Hyperdrive. The identical pinned
 Bun/Node specialized fixture uses postgres-js pool four, UUIDv7 receipt IDs,
 payload validation, conditional/fenced claims, and atomic receipt+handled
 commits. It covers the reached delivery path, not generic language/provider/

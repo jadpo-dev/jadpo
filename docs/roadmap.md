@@ -230,7 +230,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1d4 Local application comparison**: compiler/runtime §2.11, "Complete local application comparison"; `tools/bench/README.md`.
 - [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
-  Delivered through 9.1b1–9.1b5 below, in order. This split changes sizing,
+  Delivered through 9.1b1–9.1b5 below, with the warm-comparison correction
+  9.1b1a between 9.1b1 and 9.1b2. This split changes sizing,
   not acceptance; sessions take the first unticked concrete subchunk.
   From the Phase 6 review: deliveries swept concurrently within each
   sweep, with a bound, and a backlog of 10,000 deliveries among the
@@ -242,8 +243,21 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   outside call checking its version in its own `WHERE`; a delivery's
   breaker read joined into its claim.
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
+- [ ] **9.1b1a Warm delivery comparison:** `opus · high` after 9.1b1:
+  compare local workerd with persistent Bun and Node services, excluding
+  process startup and warming their pools consistently. The previous Bun/Node
+  fixture launched one process per tick while workerd stayed running, so its
+  cross-target result does not establish a warm-service win. Retain that
+  protocol and its results, add explicit invocation-lifetime metadata, and
+  measure both serial and bounded Jadpo with the same final warm protocol.
+  Preserve the durable effects, UUIDv7, leases, atomic handled writes, failure
+  controls and strict source/artifact guards. Show Workers/workerd versus Bun
+  first; label native's external-tick mode separately if a comparable warm
+  native host is unavailable. Record all results, variation and lessons;
+  full gate and a separate manual-review PR required (Richard's primary
+  comparison clarified 2026-10-23; verifier correction, no language change).
 - [ ] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
-  9.1b1: measure idle-tick statements and latency, separate prompt work from
+  9.1b1a: measure idle-tick statements and latency, separate prompt work from
   an hourly cleanup pass one instance takes under a lease, and batch every
   delete. Preserve retention, handled-record safety, failure recovery and
   multi-instance behaviour; report before/after measurements.

@@ -66,7 +66,10 @@ result. Correctness still takes precedence over speed.
 After each optimisation, lead Richard's update with Jadpo on Workers versus
 Bun: before/after throughput and p95 latency where the workload supports them,
 and the remaining gap. This is Phase 9's main target. Label local workerd
-measurements explicitly; they are not real Workers results. Native Jadpo and
+measurements explicitly; they are not real Workers results. Match and disclose
+process lifetimes and startup/pool warmup in cross-target comparisons; a
+persistent workerd isolate versus fresh Bun processes is not a warm-service
+comparison. Native Jadpo and
 Node comparisons provide supporting context where the same workload supports
 it. Name the workload and its scope, variation and trade-offs; do not imply
 that a background-work result also measures HTTP requests. After each completed
