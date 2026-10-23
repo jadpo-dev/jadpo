@@ -6406,10 +6406,10 @@ the locked current row, including held tokens/cost, and precheck the amount
 before a first-ever insert. On the multiwindow path a dependent CTE
 turns a skipped window into an exact private `jadpo_ai_usage_pkey` violation;
 PostgreSQL rolls back the entire statement, including first-ever inserted
-rows and `touched_at`. Only that exact conflict on the multiwindow path means `over_budget`;
-other store faults and empty/malformed multiwindow success results mean
-`unavailable`. No
-snapshot-only precheck or compensating write decides admission. The one
+rows and `touched_at`. Only that exact conflict on the multiwindow path means
+`over_budget`; other store faults and empty/malformed multiwindow success
+results mean `unavailable`. No snapshot-only precheck or compensating write
+decides admission. The one
 multirow charge updates APP, optional CALLER and PROMPT/model, releasing only
 APP/CALLER holds; any statement failure retains every hold conservatively.
 Request-spent accounting, UTC day, caller digests, cached-token/currency
@@ -6431,19 +6431,20 @@ that its driver preserves the exact constraint identity, caller refusal rolls
 back tentative APP insertion, reruns do not charge, and no provider request
 is made. Its seed spans the three adjacent UTC dates, ordered deterministically.
 
-The first candidate's gate4 passed **93/93 in 487 s**, exit0/reaped, at
+The first candidate's gate4 passed **93/93 in 487 s**, exit 0/reaped, at
 `6b951806890dcdb83d25a39fcc63b88df39f9a53`, complete tree
 `26955d0ca270450a5dd2402ac4a025733d592292` (3293 tracked entries). Native and
-workerd golden cases both passed44/44; corpus264 projects/526 tests/5832
-comparisons and27 teaching examples/327 tests agree both ways. Local pgvector
+workerd golden cases both passed 44/44; corpus 264 projects/526 tests/5832
+comparisons and 27 teaching examples / 327 tests agree both ways. Local pgvector
 0.7 versus required0.8 skips remain explicit. The owned process inventory was
 empty after the gate and around both campaigns. This is unrelated to 8.4e's
 separate resident-memory question.
 
 The first matched candidate used the same `ai_accounting.py/.rs` harness
 on both sides. Its APP-only CTE regression below motivated a second candidate
-with the single-window statement; this first pair remains retained. This is a release Rust executable calling public
-`ai::generate`, its testing-only AiFake and real local PostgreSQL16.3, not a
+with the single-window statement; this first pair remains retained. This is a
+release Rust executable calling public
+`ai::generate`, its testing-only AiFake and real local PostgreSQL 16.3, not a
 generated whole-application HTTP benchmark. Native versus Workers/Bun AI
 performance is **N/A**: no equivalent AI fixture exists in the specialized
 TypeScript delivery host. Actual Worker correctness above is separate.
@@ -6458,7 +6459,7 @@ executables and original/snapshot hashes. Wrapper settings were
 `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; inherited
 `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`, release OPT_LEVEL/LTO/CODEGEN_UNITS,
 `CARGO_TARGET_DIR` and the other selected overrides were unset on both sides.
-Rustc1.99.0 (`b940084d7`), Python3.14.0, macOS27.0.1 arm64/10 cores were
+Rustc 1.99.0 (`b940084d7`), Python 3.14.0, macOS 27.0.1 arm64/10 cores were
 recorded. Harness SHA-256: Python
 `6580fd856143f0d2a5ce06455bfb57d1d68fedb120d442b2f7ac3d7d198f19d4`, Rust
 `63e751ad36c5e9993639aebb738a31f093f546fce10aebff4d2231e0ca79bf39`.
@@ -6467,11 +6468,11 @@ full tracked hashes/modes and commands. Start/end source/artifact guards
 passed for both campaigns; the old reference stamp correctly refuses reuse
 at the candidate checkout.
 
-Three rounds rotate app/caller/retry order, each cell50 excluded warmups,
-one separate SQL census, then500 measured calls. The fixed prompt estimates
+Three rounds rotate app/caller/retry order, each cell 50 excluded warmups,
+one separate SQL census, then 500 measured calls. The fixed prompt estimates
 7 input tokens, max_output20, attempts1, timeout1000ms, request cap1000 and
-app/caller caps10^12; no prices. Fake success reports6 input/1 output/2 cached;
-retry-caller first returns unavailable, then success, charging13 input/1 output/
+app/caller caps10^12; no prices. Fake success reports 6 input/1 output/2 cached;
+retry-caller first returns unavailable, then success, charging 13 input/1 output/
 2 cached. Fixed `Clock::TEST` supplies no monotonic timer, so retry backoff is
 skipped: immediate fake resends isolate accounting rather than provider/retry
 wall time. The disposable server uses fsync and synchronous_commit off.
@@ -6479,7 +6480,7 @@ Each `ai::generate` sample yields nearest-rank p95. **Fixture calls/s** addition
 includes per-call Ctx/AiFake preparation and post-call assertions; it is not
 service or HTTP capacity. Statement logging is explicitly observed on for the
 census and off before timing. Direct query_once counts and actual PostgreSQL
-logs agree: **app3→2, caller5→2, retry-caller7→3 statements per call**.
+logs agree: **app 3→2, caller 5→2, retry-caller 7→3 statements per call**.
 Precheck refusal can legitimately issue no SQL in other workloads.
 
 | Scenario | Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
@@ -6494,24 +6495,24 @@ Precheck refusal can legitimately issue no SQL in other workloads.
 | Immediate retry+CALLER | 2 | 0.645542 | 0.575708 | 1563.42 | 1663.32 |
 | Immediate retry+CALLER | 3 | 0.667292 | 0.657625 | 1566.86 | 1638.44 |
 
-Medians of the three cell p95s are APP0.305167→0.353417ms (+15.8%),
-CALLER0.502833→0.380292ms (−24.4%), retry0.645542→0.575708ms (−10.8%).
+Medians of the three cell p95s are APP 0.305167→0.353417ms (+15.8%),
+CALLER 0.502833→0.380292ms (−24.4%), retry 0.645542→0.575708ms (−10.8%).
 Median fixture calls/s changes are −16.7%, +17.8%, +6.4% respectively.
 APP-only therefore regressed despite its smaller statement count; fewer
 round trips do not guarantee a faster local call with the more involved
 reservation statement. These are mixed local observations, not universal
-speed gains. Five-second ambient host busy was18.69% before reference versus
+speed gains. Five-second ambient host busy was 18.69% before reference versus
 7.67% before candidate; load8.98/13.30/32.38 versus4.17/9.77/28.16, and swap
 2405.31 versus2397.31MiB. The paired runs were quiet of owned builds/tests,
 but unrelated host activity and memory pressure varied. Whole-fixture/reaped
-child CPU was1.457949 versus1.252201s over5.096162 versus4.916940s including
+child CPU was 1.457949 versus1.252201s over 5.096162 versus4.916940s including
 setup/warmup/controls/census, excluding unmeasured daemonized PostgreSQL backend
 CPU. It is neither per-call/service CPU nor a CPU optimization result.
 
 All nine cells per side passed fault/refusal controls and identical persisted
-state: APP/optional CALLER/PROMPT all have551 calls,3306 input (7163 retry),
+state: APP/optional CALLER/PROMPT all have 551 calls, 3306 input (7163 retry),
 551 output,1102 cached, zero reserved tokens/micros, cost0/currencyNULL, exact
-prompt and caller digest. Census snapshots50→51 and final551 agree; unavailable
+prompt and caller digest. Census snapshots 50→51 and final 551 agree; unavailable
 storage never asks the fake, and full-budget refusal leaves state unchanged.
 Malformed/incomplete JSON, wrong accounting/census/quantiles, false controls,
 source/artifact/mode changes and same-content symlink retargets have executable
@@ -6537,7 +6538,7 @@ Paths below are under ignored `tools/bench/work/ai-accounting/`.
 | `candidate-final-premeasurement.json` | `807a59cbcc22c0bb60492875a03d02ed36aeeac62aa3b5b6be67a1c8c9359c79` |
 | `attempts/full-gate-round4.log` | `7ed961ca153f78aaa4b7895acfc6c338ca70ffa6ff77560a8c0fa8e10b899f3c` |
 
-Every preparation remains retained. Gate1 passed93/93 in1128s at `c58fa481`
+Every preparation remains retained. Gate1 passed 93/93 in 1128 s at `c58fa481`
 (tree `0218f58b`) but its source guard failed before the reference build or
 any accepted timing at `35c0e2be`: a tracked directory symlink was incorrectly
 read as a file. Literal-link hashing and NUL index parsing, including actual
@@ -6547,13 +6548,13 @@ interrupted130 for the final enumeration tests. Gate3 at `812f939a` was stopped
 and reaped143 to remove the Worker seed's timezone/midnight dependence and
 correct whole-fixture CPU wording; its interrupted checks are not product
 failures. The final UTC fixture's first targeted attempt used reserved alias
-`offset`; `day_delta` corrected it, and targeted Worker passed33.31s, all8
+`offset`; `day_delta` corrected it, and targeted Worker passed 33.31 s, all 8
 guard tests passed, then gate4 qualified the first candidate above. Early compile,
 SQL/rate-limit fixture, clippy and protocol1/2 smoke attempts are retained,
 not counted as comparative timing. Earlier CPU metadata wording overstated
 PostgreSQL inclusion; the accepted pair uses the corrected explicit scope.
 
-The retained62-file set, including both compiler/fixture snapshots, all raw
+The retained 62-file set, including both compiler/fixture snapshots, all raw
 attempts, build/host contexts and summaries, has canonical path→SHA-256 map
 digest `3c5ccd627a3bb5baaebae9e0cb8079dbeb52950815c48edf5ead02ed44c8ca9f`.
 `retained-index.json` records that map, excluding itself. Do not overwrite
@@ -6561,3 +6562,126 @@ failed attempts or reuse stamps after source edits. Reproduce the exact clean
 revisions with fresh labels using the method in `tools/bench/README.md`;
 changing the measured path/harness requires rebuilding and repeating the
 matched comparison. No real provider/account or deployment was used.
+
+
+##### Final single-window candidate: fresh matched comparison
+
+The first pair's APP-only regression motivated a bounded second candidate.
+Extra CTE planning/execution work was a plausible explanation, not a
+profile-proven cause. APP-only take/top-up now select `TAKE_APP`, byte-identical
+to the prerequisite's single-row reservation SQL; the multiwindow CTE and
+all-window debit remain unchanged. Empty rows mean refusal only for this
+single-row statement, while all actual store errors, including the private
+primary-key conflict, remain unavailable there. Both paths still use the
+same amount precheck and fail closed on malformed nonempty results.
+
+Failing focused tests were committed at `f9d4614465212fc03cf3b2f39be9a066f2386eba`
+before production edits: APP-only still sent ten parameters and treated an
+empty result as unavailable, and its registry entry did not exist. New live
+PostgreSQL coverage runs four 16-thread APP-only token/cost cohorts on first
+and existing rows, four held-row interleavings with observed real waiters,
+refusal timestamp invariance, failed top-up/debit hold preservation and exact
+release/charge. Production selection is tied to the same registered statement
+by runtime tests; first-insert amount prechecks require no SQL. Focused runtime
+11/11, live PostgreSQL 6/6, guard 8/8 and scoped clippy passed.
+
+Gate5 at `2114b84b7fdab1b685867c54e07540638f9129e6` / tree
+`935f9f649f57a7fd0b735c5e64eca4b2b7a448c3` failed one of 93 steps in 488 s.
+The existing `ai::tests::every_send_is_taken_from_the_limits_and_charged`
+observer filtered only `TAKE`, missing the now-successful APP-only `TAKE_APP`
+queries and finding `taken=[]`. A bounded search found no other stale
+observer. Targeted red reproduced this; the one-line filter correction kept
+all send/amount/charge assertions and passed. No production or measured
+harness change followed that gate failure.
+
+The **final gate6 passed 93/93 in 480 s**, exit 0/reaped, at
+`d709394e5b0abd830fd89d2aed6f4ec109a25203`, complete tree
+`1931a8bf3f897aea7952b2e5ee748193a2ac24cc` (3293 entries). Native/workerd
+golden 44/44 each, the 264-project / 526-test / 5832-comparison corpus and
+27 teaching examples / 327 tests passed again, with the same explicit local
+pgvector extension skips. This supersedes gate4 for the accepted candidate;
+the first comparison, its adverse result and every attempt remain retained.
+
+Both reference and candidate were freshly built and measured again with the
+unchanged final harness and 3×500-call protocol above. The reference restored
+`ai.rs`, `ai_budget.rs` and `statements.rs`, proving every production
+`crates/*/src` file exactly matches prerequisite `025a38c39d0a8d22b1e5ea59be41c26d95e2c124`.
+The candidate restored the **entire** final gated tree/modes, proven by
+`git write-tree` before its own build. Compiler/fixture snapshots are retained;
+all selected inherited flags remain unset and explicit build flags/toolchain
+match the first pair. No builds/tests ran during either timed campaign.
+
+| Build | Clean measured HEAD | Complete tree |
+|---|---|---|
+| Fresh reference | `9c3fae27fcd64a0b36bff77ac2d5befd265062c0` | `2e6d3652ebe6289940ec3a8fc9d59768719a48b9` |
+| Final candidate | `f7a7ce6d9c2f7485359ed9efd0b0a8d63500d6cb` | `1931a8bf3f897aea7952b2e5ee748193a2ac24cc` |
+
+| Scenario | Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
+|---|---:|---:|---:|---:|---:|
+| APP | 1 | 0.315208 | 0.274083 | 2922.39 | 3199.52 |
+| APP | 2 | 0.348125 | 0.285125 | 2862.63 | 3215.15 |
+| APP | 3 | 0.314834 | 0.323792 | 2903.49 | 3011.95 |
+| APP+CALLER | 1 | 0.472000 | 0.442958 | 2021.27 | 2313.29 |
+| APP+CALLER | 2 | 0.515500 | 0.426000 | 2000.71 | 2320.00 |
+| APP+CALLER | 3 | 0.526875 | 0.433625 | 1985.02 | 2280.34 |
+| Immediate retry+CALLER | 1 | 0.632416 | 0.639209 | 1555.91 | 1584.57 |
+| Immediate retry+CALLER | 2 | 0.681833 | 0.607250 | 1559.24 | 1631.20 |
+| Immediate retry+CALLER | 3 | 0.650209 | 0.645083 | 1546.26 | 1610.01 |
+
+Median cell p95: APP 0.315208→0.285125 ms (−9.54%), CALLER
+0.515500→0.433625 ms (−15.88%), immediate retry 0.650209→0.639209 ms
+(−1.69%). Median fixture calls/s: 2903.49→3199.52 (+10.20%),
+2000.71→2313.29 (+15.62%), 1555.91→1610.01 (+3.48%). The APP-only
+regression recovered **in this pair**; APP round3 and retry round1 still have
+higher candidate p95. The small retry change is within substantial round
+variation. These observations do not establish a universal gain or isolate
+causation. Verified SQL remains the primary result: **3→2 APP, 5→2 CALLER,
+7→3 immediate-retry statements**, with direct wrapper counts and PostgreSQL
+logs agreeing in every cell.
+
+All nine cells on each side passed known-fault/refusal controls, complete
+result validation and strict source/artifact guards at both ends. Every
+persisted APP/CALLER/PROMPT state is identical across the fresh pair, with
+the exact counts/cached tokens/digest/currency and zero holds described above.
+All owned service/process inventories were empty after the gate, builds and
+campaigns. Five-second ambient host busy was 12.22% reference versus 6.11%
+candidate, load 3.34/11.20/17.47 versus 3.15/8.25/15.38; swap stayed 2271.50 MiB.
+Unrelated host activity still varies. Whole-fixture/reaped child CPU was
+1.424293 versus 1.281173 s over 4.948474 versus 4.802539 s, with the same
+setup-included/daemonized-PG-excluded scope; it is not per-call/service CPU.
+The p95/fixture-throughput distinction, immediate fake resend without backoff,
+local non-durable test-server settings and Workers/Bun N/A scope above apply
+unchanged. No generated HTTP or real provider/account timing is claimed.
+
+Final raw paths are under `tools/bench/work/ai-accounting/`:
+
+| Retained path | SHA-256 |
+|---|---|
+| `b3-reference-app-final/build.json` | `42da07c2da4ce71b242ac6c75634e0741c33a3252b0f21b8fac886b943b1b106` |
+| `b3-reference-app-final/compiler-jadpo` | `00a6bb22758191ed84d61363006c57eee76d12e78aaa7ced8f1d87fb253250e9` |
+| `b3-reference-app-final/fixture` | `492325caeb2e02005a016e946a3c36635333abb47a77f912d00c6c09873dc07f` |
+| `b3-reference-app-final/runs-1792793007532617000.json` | `925bc9bab74082050888ad2a08f585866b86aa3f8819a49be10cafbdd3fd558c` |
+| `b3-reference-app-final/runs-1792793007532617000.meta.json` | `5937e5340f49520d8f09f2c31223b49e2f8ed0b30e615beb15d1efd75b33bbda` |
+| `b3-candidate-app-final/build.json` | `218fa80958ce809202ddb81493c5cabd895a2509c1de6308d0fd7a1d8a97d917` |
+| `b3-candidate-app-final/compiler-jadpo` | `c460a41d2f9c4d5b32ddfa609a2c3ce27190b720f598efadfde197b3b1f302b2` |
+| `b3-candidate-app-final/fixture` | `e193a1227f5b73586e7e01b75337f1dc74b21f2909db36c8724041d5501aaac8` |
+| `b3-candidate-app-final/runs-1792793139000242000.json` | `b39fcce88d1443627e8f6f68543de58b1b5c31eb4d9bd974e878b12d61bf1356` |
+| `b3-candidate-app-final/runs-1792793139000242000.meta.json` | `092bc66ee169b917b721b66c14cf614ad2e6e424818b82803973ec588fc45fd3` |
+| `reference-app-final-build-context.json` | `7139fc2bf2237fb7ba7746c061020afc84dd83cfc09a8357318b8593147aed93` |
+| `candidate-app-final-build-context.json` | `b28068c4575557f2029b0f5171c0bf2203b039f4316c5c298d1a6586ed4314b5` |
+| `reference-app-final-premeasurement.json` | `7f8fc3eee970517bb85b435e10436b31729462d70700c1a6c940002433142e6c` |
+| `candidate-app-final-premeasurement.json` | `cbc8c4e324a27c3b1935c4ee25eeed34a273047e26ca09330e1eed52f50f651c` |
+| `attempts/full-gate-round5.log` | `37b23034b9d748fd2253c27b7b93fcc832cb89d397c0f5485a62ed83256cb416` |
+| `attempts/full-gate-round6.log` | `12833c05d05fddde7a4b2fd0549eb162f17be3cceee36fcebe04f49f315c4766` |
+
+`first-pair-preserved.json` proves all 62 original retained files remain
+byte-identical (SHA-256 `529f67e63ff68013a62c30706a7e367edc11b5b9cd403efd2751497b96f25911`).
+The expanded 103-file canonical map is `retained-final-index.json`, excluding
+itself, with digest `f32d1f648bf7fa255440894f60591681bf73476793c0a7b738614302ad3da2ad`.
+It includes both comparisons, compiler/fixture snapshots, every red/fix/gate
+attempt, source/build/host contexts and complete result summaries. Exact
+reproduction uses the two clean revisions and fresh labels with the same
+`ai_accounting.py build` then `measure --calls 500` commands from the README;
+source/artifact guards require rebuilding after any checkout change. The
+postmeasurement updates are facts/method prose only; production and harness
+bytes match the final gated/measured candidate.

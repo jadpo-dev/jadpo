@@ -243,8 +243,9 @@ Whole-fixture child CPU includes setup, warmup, controls, census and reaped
 watchdog/client children; daemonized PostgreSQL backend CPU is excluded and
 unmeasured. It is not per-call or service CPU. Retain every failed/superseded
 attempt and all rounds under ignored `work/ai-accounting/`. The paired sources,
-artifacts, all-round SQL/latency/fixture-throughput and the app-only regression
-are in compiler/runtime §2.11, “One-statement AI accounting”. Host-load drift
+artifacts, all-round SQL/latency/fixture-throughput, the retained initial
+app-only regression and the final single-window comparison are in
+compiler/runtime §2.11, “One-statement AI accounting”. Host-load drift
 prevents a universal speed claim. Changing the measured path or harness
 requires fresh own builds and the affected matched campaign again.
 
