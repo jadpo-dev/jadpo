@@ -397,9 +397,10 @@ fn app_only_first_existing_rows_refuse_atomically_and_release_exactly() {
                     })
                 })
                 .collect();
+            let results: Vec<_> = joins.into_iter().map(|join| join.join()).collect();
             let mut passed = 0;
-            for join in joins {
-                let result = join.join().unwrap().unwrap();
+            for result in results {
+                let result = result.unwrap().unwrap();
                 if !result.is_empty() {
                     assert_eq!(result, vec![vec![SqlValue::Int4(1)]]);
                     passed += 1;
@@ -423,7 +424,7 @@ fn app_only_first_existing_rows_refuse_atomically_and_release_exactly() {
     let before = snapshot(&url);
     sql(
         &url,
-        "ALTER TABLE jadpo_ai_usage ADD CONSTRAINT injected_app CHECK (reserved_tokens <= 70)",
+        "ALTER TABLE jadpo_ai_usage ADD CONSTRAINT injected_app CHECK (day <> DATE '1970-01-02' OR reserved_tokens <= 70)",
     );
     assert!(matches!(
         app_reserve(&url, &params(1, None, 20, 30, (100, 100), Some(150), 2000)),
@@ -526,25 +527,30 @@ fn app_only_waiters_recheck_locked_current_tokens_and_cost() {
                 .collect();
             barrier.wait();
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-            loop {
+            let observed = loop {
                 let waiting = sql(
                     &url,
                     "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock' AND cardinality(pg_blocking_pids(pid)) > 0 AND query LIKE '%jadpo_ai_usage%'",
                 );
                 if waiting == vec![vec![SqlValue::Int8(2)]] {
-                    break;
+                    break true;
                 }
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "APP waiters must block: {waiting:?}"
-                );
+                if std::time::Instant::now() >= deadline {
+                    break false;
+                }
                 std::thread::yield_now();
-            }
-            runtime.block_on(holder.commit()).unwrap();
-            let successes = joins
+            };
+            let committed = runtime.block_on(holder.commit());
+            let results: Vec<_> = joins.into_iter().map(|join| join.join()).collect();
+            committed.unwrap();
+            assert!(
+                observed,
+                "both real APP reservations must block before release"
+            );
+            let successes = results
                 .into_iter()
-                .filter_map(|j| {
-                    let rows = j.join().unwrap().unwrap();
+                .filter_map(|result| {
+                    let rows = result.unwrap().unwrap();
                     (!rows.is_empty()).then_some(rows)
                 })
                 .collect::<Vec<_>>();

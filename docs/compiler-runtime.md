@@ -6397,13 +6397,18 @@ HEAD. The permanent method is also in `tools/bench/README.md`.
 
 #### One-statement AI accounting (chunk 9.1b3, measured 2026-10-23)
 
-Reservation and each repair/retry top-up now use one conditional multirow
-UPSERT for APP and optional CALLER, ordered APP then CALLER. Its predicates
-check the locked current row, including held tokens/cost. A dependent CTE
+Reservation and each repair/retry top-up use one conditional statement for
+all applicable windows. With APP alone, the simple `TAKE_APP` UPSERT uses
+its original eight parameters: a skipped row means `over_budget`, malformed
+nonempty results and every actual store error mean `unavailable`. With APP
+and CALLER, the multirow UPSERT orders APP then CALLER. Both statements check
+the locked current row, including held tokens/cost, and precheck the amount
+before a first-ever insert. On the multiwindow path a dependent CTE
 turns a skipped window into an exact private `jadpo_ai_usage_pkey` violation;
 PostgreSQL rolls back the entire statement, including first-ever inserted
-rows and `touched_at`. Only that exact conflict means `over_budget`; other
-store faults and empty/malformed success results mean `unavailable`. No
+rows and `touched_at`. Only that exact conflict on the multiwindow path means `over_budget`;
+other store faults and empty/malformed multiwindow success results mean
+`unavailable`. No
 snapshot-only precheck or compensating write decides admission. The one
 multirow charge updates APP, optional CALLER and PROMPT/model, releasing only
 APP/CALLER holds; any statement failure retains every hold conservatively.
@@ -6426,7 +6431,7 @@ that its driver preserves the exact constraint identity, caller refusal rolls
 back tentative APP insertion, reruns do not charge, and no provider request
 is made. Its seed spans the three adjacent UTC dates, ordered deterministically.
 
-The final full gate passed **93/93 in 487 s**, exit0/reaped, at
+The first candidate's gate4 passed **93/93 in 487 s**, exit0/reaped, at
 `6b951806890dcdb83d25a39fcc63b88df39f9a53`, complete tree
 `26955d0ca270450a5dd2402ac4a025733d592292` (3293 tracked entries). Native and
 workerd golden cases both passed44/44; corpus264 projects/526 tests/5832
@@ -6435,8 +6440,9 @@ comparisons and27 teaching examples/327 tests agree both ways. Local pgvector
 empty after the gate and around both campaigns. This is unrelated to 8.4e's
 separate resident-memory question.
 
-The first matched candidate uses the same final `ai_accounting.py/.rs`
-harness on both sides. This is a release Rust executable calling public
+The first matched candidate used the same `ai_accounting.py/.rs` harness
+on both sides. Its APP-only CTE regression below motivated a second candidate
+with the single-window statement; this first pair remains retained. This is a release Rust executable calling public
 `ai::generate`, its testing-only AiFake and real local PostgreSQL16.3, not a
 generated whole-application HTTP benchmark. Native versus Workers/Bun AI
 performance is **N/A**: no equivalent AI fixture exists in the specialized
@@ -6445,7 +6451,7 @@ TypeScript delivery host. Actual Worker correctness above is separate.
 | Build | Clean measured HEAD | Complete tree |
 |---|---|---|
 | Reference: production `crates/*/src` exactly prerequisite `025a38c39d0a8d22b1e5ea59be41c26d95e2c124` | `f5bcde5a528402abee15f417f5695d4236dd5532` | `c32c981ab8dbfba6afe69cd28d2791a0981a1865` |
-| Candidate: entire final gated tree/modes restored before own build | `406462ab48c562846d2da7f3a3cebff7cfed738d` | `26955d0ca270450a5dd2402ac4a025733d592292` |
+| First candidate: entire gate4 tree/modes restored before own build | `406462ab48c562846d2da7f3a3cebff7cfed738d` | `26955d0ca270450a5dd2402ac4a025733d592292` |
 
 Each side built its own dev compiler and release fixture, retaining both
 executables and original/snapshot hashes. Wrapper settings were
@@ -6542,7 +6548,7 @@ and reaped143 to remove the Worker seed's timezone/midnight dependence and
 correct whole-fixture CPU wording; its interrupted checks are not product
 failures. The final UTC fixture's first targeted attempt used reserved alias
 `offset`; `day_delta` corrected it, and targeted Worker passed33.31s, all8
-guard tests passed, then gate4 qualified the final source above. Early compile,
+guard tests passed, then gate4 qualified the first candidate above. Early compile,
 SQL/rate-limit fixture, clippy and protocol1/2 smoke attempts are retained,
 not counted as comparative timing. Earlier CPU metadata wording overstated
 PostgreSQL inclusion; the accepted pair uses the corrected explicit scope.

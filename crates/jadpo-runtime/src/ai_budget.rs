@@ -51,6 +51,12 @@ pub const CALLER: &str = "caller";
 /// usage` reads.
 pub const PROMPT: &str = "prompt";
 
+/// Reserves APP alone when no caller window applies. One conditional UPSERT
+/// is already atomic: a skipped row means over budget without changing it.
+/// The first eight parameters have the same meanings as [`TAKE`]; the caller
+/// prechecks amounts against their limits before a first INSERT.
+pub const TAKE_APP: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"touched_at\") VALUES ($1, $2, $3, 0, 0, 0, 0, $4::bigint, 0, $5::bigint, NULL, $8) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"reserved_tokens\" = \"used\".\"reserved_tokens\" + $4::bigint, \"reserved_micros\" = \"used\".\"reserved_micros\" + $5::bigint, \"touched_at\" = $8 WHERE \"used\".\"input_tokens\" + \"used\".\"output_tokens\" + \"used\".\"reserved_tokens\" + $4::bigint <= $6::bigint AND ($7::bigint IS NULL OR \"used\".\"cost_micros\" + \"used\".\"reserved_micros\" + $5::bigint <= $7::bigint) RETURNING 1";
+
 /// Reserves every applicable window together. The first eight parameters
 /// retain the APP row's amounts, limits and time; `$9` is the optional
 /// caller digest and `$10` its token limit. APP precedes CALLER, so calls
@@ -523,17 +529,26 @@ async fn reserve(
             SqlValue::Int8(clamp(*limit))
         }),
     ];
-    match database.query_once(TAKE, &params).await {
+    let (statement, params) = if caller.is_some() {
+        (TAKE, params.as_slice())
+    } else {
+        (TAKE_APP, &params[..8])
+    };
+    match database.query_once(statement, params).await {
         Ok(rows)
             if rows.len() == windows.len()
                 && rows.iter().all(|row| row.as_slice() == [SqlValue::Int4(1)]) =>
         {
             Ok(())
         }
-        Err(crate::StoreError::Conflict { constraint }) if constraint == "jadpo_ai_usage_pkey" => {
+        Ok(rows) if caller.is_none() && rows.is_empty() => Err(Refused::OverBudget),
+        Err(crate::StoreError::Conflict { constraint })
+            if caller.is_some() && constraint == "jadpo_ai_usage_pkey" =>
+        {
             Err(Refused::OverBudget)
         }
-        // Empty/malformed results cannot prove every reservation succeeded.
+        // Empty multiwindow or malformed results cannot prove success.
+        // Only the multiwindow statement deliberately raises the private conflict.
         _ => Err(Refused::Unavailable),
     }
 }
