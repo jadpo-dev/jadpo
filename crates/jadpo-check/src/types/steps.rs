@@ -1503,7 +1503,11 @@ pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::s
             key.clone(),
             jadpo_std::steps::RecordPlan {
                 store,
-                shape: digest,
+                shape: if steps.several() {
+                    digest
+                } else {
+                    format!("{}{digest}", jadpo_std::steps::DISPATCH_SHAPE_PREFIX)
+                },
                 replay: steps.several(),
             },
         );

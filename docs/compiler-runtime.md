@@ -4129,12 +4129,20 @@ of 10% and one hour parks as `outcome_unknown` before another send. Every
 physical send checks this horizon on the host clock and fences the runner's
 generation, including retries of a previously written step. Operator retry,
 abandon, visibility and 30-day cleanup use the existing record paths; a
-successful action deletes the metadata in its commit. Multi-call encrypted
-replay is unchanged. A storeless route still has no durable claim or historical
-window across independent requests; this change adds no configuration
+successful action deletes the metadata in its commit. New metadata-only
+shapes carry a `dispatch-v1:` prefix in `RecordPlan.shape` and in the stored
+shape; legacy untagged shapes remain encrypted replay.
+Opening an incompatible mode persists a `diverged` problem for operators
+before decoding answers or sending anything, including records with no answer
+and an empty request. This mode check does not compare whole shape digests.
+The existing operator build comparison reads the same tagged plan shape, so
+unchanged metadata records remain compatible across builds. Multi-call
+encrypted replay is unchanged. A storeless route still has no durable claim
+or historical window across independent requests; this change adds no configuration
 requirement to those accepted routes.
 
-**Connection URL structure** (chunk 9.1d2a; area 10, "Connections").
+**Connection URL structure** (chunk 9.1d2a; area 10, "Database and other
+connection URLs").
 `jadpo_std::connection_url` checks PostgreSQL and Redis URI structure without
 network I/O, through the built-in validator shared by literals, startup and
 `config check`. PostgreSQL multi-host and explicit socket forms need their own

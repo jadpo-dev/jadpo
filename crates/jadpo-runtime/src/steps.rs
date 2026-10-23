@@ -330,7 +330,7 @@ impl Record {
 /// it runs again. Nothing when it doesn't exist or a newer runner holds
 /// it. One an operator abandoned is left as it is, and says so (chunk
 /// 7.5c).
-pub const OPEN: &str = "UPDATE \"jadpo_step_records\" SET \"generation\" = CASE WHEN \"state\" = 'abandoned' THEN \"generation\" ELSE $2 END, \"taken_at\" = CASE WHEN \"state\" = 'abandoned' THEN \"taken_at\" ELSE $3 END, \"problem\" = CASE WHEN \"state\" = 'abandoned' THEN \"problem\" ELSE NULL END, \"state\" = CASE WHEN \"state\" = 'abandoned' THEN \"state\" ELSE 'running' END WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"started_at\", \"state\"";
+pub const OPEN: &str = "UPDATE \"jadpo_step_records\" SET \"generation\" = CASE WHEN \"state\" = 'abandoned' THEN \"generation\" ELSE $2 END, \"taken_at\" = CASE WHEN \"state\" = 'abandoned' THEN \"taken_at\" ELSE $3 END, \"problem\" = CASE WHEN \"state\" = 'abandoned' THEN \"problem\" ELSE NULL END, \"state\" = CASE WHEN \"state\" = 'abandoned' THEN \"state\" ELSE 'running' END WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"started_at\", \"state\", \"shape\"";
 
 /// A record an operator abandoned (chunk 7.5c): it never runs again.
 pub const ABANDONED: &str = "abandoned";
@@ -459,6 +459,48 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
             .query_once(STEPS, &[SqlValue::Uuid(id)])
             .await
             .map_err(|_| unavailable())?;
+        let dispatch = opened
+            .first()
+            .and_then(|row| match row.get(2) {
+                Some(SqlValue::Text(shape)) => {
+                    Some(shape.starts_with(jadpo_std::steps::DISPATCH_SHAPE_PREFIX))
+                }
+                _ => None,
+            })
+            .unwrap_or(false);
+        if dispatch == spec.plan.replay {
+            let operation = rows
+                .first()
+                .and_then(|row| match row.get(1) {
+                    Some(SqlValue::Text(operation)) => Some(operation.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| "outside call".into());
+            let problem = Diverged {
+                position: 1,
+                operation,
+                how: How::RecordMode {
+                    replay: spec.plan.replay,
+                },
+            };
+            let action = spec
+                .action
+                .split_once(' ')
+                .map_or(spec.action, |(_, name)| name);
+            let text = problem.text(action);
+            let _ = database
+                .query_once(
+                    DIVERGE,
+                    &[
+                        SqlValue::Uuid(id),
+                        SqlValue::Int8(generation),
+                        micros(now),
+                        SqlValue::Json(problem.json()),
+                    ],
+                )
+                .await;
+            return Err(Unanswered::Fault(FaultKind::Diverged(text)));
+        }
         for (at, row) in rows.iter().enumerate() {
             let [
                 SqlValue::Int4(position),
@@ -1049,6 +1091,8 @@ enum How {
     Missed,
     /// The provider says its key came with a different request.
     Reused,
+    /// This build changed between encrypted replay and dispatch metadata.
+    RecordMode { replay: bool },
 }
 
 impl Diverged {
@@ -1060,6 +1104,14 @@ impl Diverged {
             How::Operation(now) => format!("{at}, is now `{now}`"),
             How::Missed => format!("{at}, wasn't reached"),
             How::Reused => format!("{at}: the provider says its key came with a different request"),
+            How::RecordMode { replay } => {
+                let (recorded, current) = if *replay {
+                    ("dispatch metadata", "encrypted replay")
+                } else {
+                    ("encrypted replay", "dispatch metadata")
+                };
+                format!("{at}: its record uses {recorded}; this build uses {current}")
+            }
             How::Fields(fields) => format!(
                 "{at}: {} {} from the record",
                 fields
@@ -1090,6 +1142,8 @@ impl Diverged {
                     .filter_map(|field| field.as_str().map(str::to_string))
                     .collect(),
             )
+        } else if let Some(replay) = json.get("replay").and_then(serde_json::Value::as_bool) {
+            How::RecordMode { replay }
         } else if json.get("reused").is_some() {
             How::Reused
         } else {
@@ -1125,6 +1179,9 @@ impl Diverged {
             }
             How::Reused => {
                 object.insert("reused".into(), true.into());
+            }
+            How::RecordMode { replay } => {
+                object.insert("replay".into(), (*replay).into());
             }
         }
         serde_json::Value::Object(object).to_string()

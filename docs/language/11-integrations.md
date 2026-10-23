@@ -3178,7 +3178,10 @@ changing calls in one action").
   keeps only its operation, first dispatch time, key generation and runner
   generation in the step tables, with no request fingerprint or answer and
   no steps encryption setting. It keeps a fresh code clock and its existing
-  provider key; host time bounds retries. Storeless routes retain their
+  provider key; host time bounds retries. A saved record cannot switch
+  between encrypted replay and dispatch metadata: its saved mode disagrees
+  with the new build's, so it stops as `diverged` before sending anything,
+  with the problem kept for the operator. Storeless routes retain their
   existing behavior without durable history across independent requests.
 - **One runner per record.** Routes claim the client's key before the action
   runs (area 7). A delivery's lease carries a generation that every record
