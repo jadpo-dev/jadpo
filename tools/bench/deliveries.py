@@ -208,6 +208,7 @@ def worker(directory, pg, logs, owned):
       const kiosk:Workerd.Worker=(modules=[{','.join(modules)}],compatibilityDate="{wrangler['compatibility_date']}",
       bindings=[{','.join(bindings)}],globalOutbound="machine");
       const cron:Workerd.Worker=(modules=[(name="cron.mjs",esModule=embed "cron.mjs")],compatibilityDate="2026-10-07",
+      compatibilityFlags=["service_binding_extra_handlers"],
       bindings=[(name="WORKER",service="kiosk")]);''')
     log = logs.open('ab')
     process = subprocess.Popen([str(spike.workerd()), 'serve', '--experimental', 'config.capnp'], cwd=folder, stdout=log, stderr=log)
