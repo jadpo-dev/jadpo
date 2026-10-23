@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Check the teaching examples in examples/ (docs/compiler-runtime.md §2.7).
 
-Each project in examples/ (a folder holding app.jadpo; golden-todo/ holds
-only the golden app's contract) is copied to a temporary folder, so the
+Each project in examples/ (a folder holding app.jadpo, including golden-todo/) is copied to a temporary folder, so the
 manifest `jadpo check` writes never lands in the repository, and must:
 
 - check with no diagnostics at all (`jadpo check --json`);

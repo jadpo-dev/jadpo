@@ -4779,7 +4779,7 @@ project and its `test.json`, and `build/` is not committed).
 
 **Teaching examples** (chunk 2.4; decision "Examples teach every feature",
 2026-10-14). Each project in `examples/` (a folder holding `app.jadpo`;
-`golden-todo/` holds only the golden contract) is copied to a temporary
+`golden-todo/` includes its application and authored tests) is copied to a temporary
 folder by `tools/examples.py`, which fails unless `jadpo check --json`
 reports no diagnostics at all, `jadpo fmt --check` passes, and `jadpo test
 --json --seed 1` runs at least one test with every test passing; each
@@ -4931,8 +4931,9 @@ it), may use them.
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
-| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, a record created and read back, in the `wasm32` group (built: chunks 8.2b and 8.2d); the golden todo built for wasm32 and smoke-tested in local workerd |
-| 10 | `--require-golden`: every golden contract case on both targets |
+| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, a record created and read back, in the `wasm32` group (built: chunks 8.2b and 8.2d) |
+| 9 | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`), built in chunk 9.1d2b |
+| 10 | Independent whole-first-build review and agent comparison remain outstanding |
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
 and every test binary once (`cargo test --workspace --no-run`, which also
@@ -5352,3 +5353,40 @@ instruments only; 9.1d must implement and validate the actual golden todo and
 strong TypeScript baseline before local app comparison, then 9.1b measures
 runtime improvements and 9.1c measures real Workers with Richard. The short
 scaffold is no evidence that the full application performance gap has closed.
+
+
+**The golden application and contract** (chunk 9.1d2b). The ordinary source
+in `examples/golden-todo/` implements owner-scoped todos, current provisioned
+user/service authentication, omission-aware patches, keyset lists, bounded
+relationships, soft deletion and generated retention. Private reminder
+revisions distinguish rescheduling, including A→B→A. Queue marking and the
+first event commit together; a preparation subscriber snapshots immutable
+mail input, and a sending subscriber rechecks current eligibility and owner
+status before the typed provider call. Only an acknowledged provider
+`accepted_at` is persisted as the receipt; this does not prove inbox delivery.
+There are no compiler branches for the application.
+
+`tools/golden-todo/run.py` executes the same 44 IDs on generated native code
+and generated Wasm under workerd. Its private host controls supply clocks,
+provisioned signed credentials, SQL fixtures and deterministic provider
+responses; raw malformed inputs still cross the production request decoder.
+`record::Recorded` observes physical SQL calls, with transaction starts
+reported separately, and the harness classifies each statement once as
+principal authority, credential authority, business, runtime or transaction.
+Response assertions include persisted state, request identifiers, privacy,
+order, pagination, credential expiry and background failure correlation.
+Reminder checks include concurrent runners, edits while dispatch is pending,
+immutable lost-ack replay and an unsafe key window; retention runs the actual
+generated schedule. Preflight checks use actual generated deployables and
+successful-start positive controls. The public-host fixture interception is
+not evidence about production DNS or TLS filtering.
+
+The original `acceptance.json` bytes remain unchanged; `acceptance-v0.2.json`
+retains every ID and records the current-area corrections in its README.
+A missing target/control or failed case fails visibly. Completion requires
+all 44 on both targets, no case filter, fresh source-stamped builds and this
+checkout’s compiler/runtime. Explicit prerequisite-checkout previews cannot
+establish completion. Full gate ownership is split between native in the
+`compiled` CI group and workerd in `wasm32`, with shared compiled-test caches
+under `target/jadpo-compiled/golden-todo`. Independent review, TypeScript
+comparison and comparative timing remain separate roadmap work.
