@@ -39,7 +39,15 @@
 //!   and the schedule's due run didn't take it on the same tick: one run
 //!   of a schedule per tick, so a request waits for the next tick then.
 //!
-//! On each tick the runtime also sweeps its own tables in every store
+//! On each tick the runtime first performs prompt work in every store
+//! (deliveries, queues, polls, alerts and expired batch leases). Then it
+//! attempts an hourly cleanup pass under each store's own fenced lease
+//! (`jadpo_housekeeping`). Only a pass that finishes all bounded cleanup
+//! batches records completion; a failed, capped or interrupted pass is
+//! eligible on the next tick, and a crashed owner loses its lease after
+//! the remaining tick budget and margin. Cleanup covers every store
+//! holding runtime state, including AI-only and schedule-only stores.
+//! It sweeps the retention tables in every store
 //! that holds them: deliveries left behind ([`runner::sweep`]), expired
 //! idempotency keys (area 7), events every subscriber has had,
 //! [`SETTLED_KEPT_MS`] after they were emitted, with their delivery
@@ -51,9 +59,8 @@
 //! it, with its handled records ([`settle_by_hand`]), and so its event,
 //! once no delivery of it is left that could run; and the operator's log
 //! rows that long after they were written, once their delivery or run is
-//! gone ([`OLD_DELIVERY_ACTIONS`], [`OLD_RUN_ACTIONS`]); then each of
-//! [`HOOKS`], where batch runs resume (chunk 6.4) and ended ones are
-//! deleted after 30 days (chunk 6.6a). The whole tick runs within the
+//! gone ([`OLD_DELIVERY_ACTIONS`], [`OLD_RUN_ACTIONS`]); ended batch runs
+//! are deleted after 30 days (chunk 6.6a). The whole tick runs within the
 //! budget its host gives a tick (chunk 6.7): once that is spent it starts
 //! nothing more, and the next tick carries on.
 //!
@@ -65,6 +72,10 @@
 //! What an operator reads and does with them, `jadpo schedules`, is
 //! [`watch`] (chunk 6.2b); `jadpo why`'s answer is [`why`] (chunk 6.9).
 
+#[cfg(test)]
+mod cleanup_tests;
+pub(crate) mod housekeeping;
+use housekeeping::run as housekeeping;
 pub mod watch;
 pub mod why;
 
@@ -113,9 +124,9 @@ pub type Hook = for<'a, 'h> fn(
 ) -> LocalFuture<'a, Vec<Deferred>>;
 
 /// What the tick runs after its sweeps: batch runs whose runner's lease
-/// lapsed are picked up from where they committed (chunk 6.4), and runs
-/// that ended 30 days ago are deleted (chunk 6.6a).
-pub const HOOKS: &[Hook] = &[resume_batches, clean_batches];
+/// lapsed are picked up from where they committed (chunk 6.4). Ended
+/// runs are deleted later by hourly housekeeping.
+pub const HOOKS: &[Hook] = &[resume_batches];
 
 /// [`crate::batches::resume`] as a [`Hook`], within the tick's budget:
 /// what the runs it picked up left for after.
@@ -129,19 +140,6 @@ fn resume_batches<'a, 'h>(
         crate::batches::resume_within(executor, host, budget, now)
             .await
             .1
-    })
-}
-
-/// [`crate::batches::clean`] as a [`Hook`]: it leaves nothing for after.
-fn clean_batches<'a, 'h>(
-    executor: &'a dyn Executor,
-    host: &'a dyn Host,
-    _budget: &'a Budget<'h>,
-    now: i64,
-) -> LocalFuture<'a, Vec<Deferred>> {
-    Box::pin(async move {
-        crate::batches::clean(executor, host, now).await;
-        Vec::new()
     })
 }
 
@@ -425,21 +423,6 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             }
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
-        match delete(host, store, OLD_RUNS, now.saturating_sub(RUNS_KEPT_MS)).await {
-            Ok(count) => ticked.deleted.runs += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
-        match delete(
-            host,
-            store,
-            OLD_RUN_ACTIONS,
-            now.saturating_sub(RUNS_KEPT_MS),
-        )
-        .await
-        {
-            Ok(count) => ticked.deleted.actions += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
     }
     for store in &plan.stores {
         if budget.spent() {
@@ -453,73 +436,15 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
                     continue;
                 }
             }
+            if budget.spent() {
+                return ticked;
+            }
             // A circuit breaker that opened raises its alert once (chunk
             // 7.2b).
             match crate::breaker::raise(host, store, now).await {
                 Ok(raised) => ticked.raised.extend(raised),
                 Err(error) => ticked.problems.push((store.clone(), error)),
             }
-        }
-        match delete(host, store, EXPIRED_KEYS, now).await {
-            Ok(count) => ticked.deleted.keys += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
-        let kept = now.saturating_sub(RUNS_KEPT_MS);
-        if let Err(problem) =
-            settle_by_hand(host, &plan.stores, store, kept, &mut ticked.deleted).await
-        {
-            ticked.problems.push(problem);
-        }
-        let before = now.saturating_sub(SETTLED_KEPT_MS);
-        if let Err(problem) = settle(host, &plan.stores, store, before, &mut ticked.deleted).await {
-            ticked.problems.push(problem);
-        }
-        match delete(host, store, OLD_DELIVERY_ACTIONS, kept).await {
-            Ok(count) => ticked.deleted.actions += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
-        if plan.sessions.as_ref() == Some(store) {
-            match delete(host, store, ENDED_SESSIONS, now).await {
-                Ok(count) => ticked.deleted.sessions += count,
-                Err(error) => ticked.problems.push((store.clone(), error)),
-            }
-        }
-        if plan.keys.as_ref() == Some(store) {
-            match delete(host, store, ENDED_SERVICE_KEYS, now).await {
-                Ok(count) => ticked.deleted.service_keys += count,
-                Err(error) => ticked.problems.push((store.clone(), error)),
-            }
-        }
-        if plan.received.as_ref() == Some(store) {
-            let before = now.saturating_sub(crate::webhooks::RECEIVED_KEPT_MS);
-            match delete(host, store, crate::webhooks::OLD_RECEIVED, before).await {
-                Ok(count) => ticked.deleted.received += count,
-                Err(error) => ticked.problems.push((store.clone(), error)),
-            }
-        }
-        // Parked queue messages an operator dismissed, and the log rows of
-        // those gone (chunk 7.7c).
-        if plan.parked.as_ref() == Some(store) {
-            let before = now.saturating_sub(crate::receiving::DISMISSED_KEPT_MS);
-            match delete(host, store, crate::receiving::OLD_DISMISSED, before).await {
-                Ok(count) => ticked.deleted.parked += count,
-                Err(error) => ticked.problems.push((store.clone(), error)),
-            }
-            match delete(host, store, crate::receiving::OLD_MESSAGE_ACTIONS, kept).await {
-                Ok(count) => ticked.deleted.actions += count,
-                Err(error) => ticked.problems.push((store.clone(), error)),
-            }
-        }
-    }
-    // The counts of what `ai` calls used, once `jadpo ai usage` no
-    // longer shows their day (chunk 5.5v5).
-    if let Some(store) = &plan.ai_usage
-        && !budget.spent()
-    {
-        let before = now.saturating_sub(crate::ai_budget::KEPT_MS);
-        match delete(host, store, crate::ai_budget::OLD_DAYS, before).await {
-            Ok(count) => ticked.deleted.ai_usage += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
         }
     }
     // Each queue's messages, kept as events and delivered within what is
@@ -548,10 +473,8 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             .extend(runner::run_within(executor, host, &budget, polled.deferred).await);
         ticked.polled = Some((polled.called, polled.changed)).filter(|&(called, _)| called > 0);
     }
-    // Unfinished records of several changing calls keep their answers 30
-    // days after their last run, then only their step list; an abandoned
-    // one goes 30 days after it was abandoned (chunk 7.5c).
-    let kept = now.saturating_sub(crate::unfinished::ANSWERS_KEPT_MS);
+    // Unfinished-record metrics and alerts remain prompt; their retention
+    // work belongs to hourly housekeeping (chunk 9.1b2).
     for store in &plan.steps {
         if budget.spent() {
             return ticked;
@@ -569,18 +492,6 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             }
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
-        match delete(host, store, crate::unfinished::OLD_ANSWERS, kept).await {
-            Ok(count) => ticked.deleted.answers += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
-        match delete(host, store, crate::unfinished::ABANDONED, kept).await {
-            Ok(count) => ticked.deleted.step_records += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
-        match delete(host, store, crate::unfinished::OLD_ACTIONS, kept).await {
-            Ok(count) => ticked.deleted.actions += count,
-            Err(error) => ticked.problems.push((store.clone(), error)),
-        }
     }
     // Batch runs are picked up again where schedules run.
     for hook in HOOKS {
@@ -592,6 +503,7 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             .deliveries
             .extend(runner::run_within(executor, host, &budget, left).await);
     }
+    housekeeping(host, &budget, plan, now, &mut ticked).await;
     ticked
 }
 
@@ -1196,22 +1108,31 @@ async fn run_purge(
 
 /// Runs delete `sql` in `store` with cut-off `before`, batch after batch
 /// until one comes back short or [`DELETE_BATCHES`] have run. How many
-/// rows it deleted.
-async fn delete(host: &dyn Host, store: &str, sql: &str, before: i64) -> Result<u64, StoreError> {
+/// rows it deleted and whether a short batch proved the pass complete.
+async fn delete(
+    host: &dyn Host,
+    budget: &Budget<'_>,
+    store: &str,
+    sql: &str,
+    before: i64,
+) -> Result<(u64, bool), StoreError> {
     let database = host
         .database(store)
         .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
     let mut deleted = 0u64;
     for _ in 0..DELETE_BATCHES {
+        if budget.spent() {
+            return Ok((deleted, false));
+        }
         let rows = database
             .query_once(sql, &[micros(before), SqlValue::Int8(DELETE_BATCH)])
             .await?;
         deleted += rows.len() as u64;
         if (rows.len() as i64) < DELETE_BATCH {
-            break;
+            return Ok((deleted, true));
         }
     }
-    Ok(deleted)
+    Ok((deleted, false))
 }
 
 /// Deletes in `store` the events every subscriber had, emitted at or
@@ -1224,13 +1145,17 @@ async fn delete(host: &dyn Host, store: &str, sql: &str, before: i64) -> Result<
 /// stops it, named with why; the next tick carries on.
 async fn settle(
     host: &dyn Host,
+    budget: &Budget<'_>,
     stores: &[String],
     store: &str,
     before: i64,
     deleted: &mut Deleted,
-) -> Result<(), (String, StoreError)> {
+) -> Result<bool, (String, StoreError)> {
     let database = open(host, store)?;
     for _ in 0..DELETE_BATCHES {
+        if budget.spent() {
+            return Ok(false);
+        }
         let rows = database
             .query_once(SETTLED, &[micros(before), SqlValue::Int8(DELETE_BATCH)])
             .await
@@ -1249,12 +1174,12 @@ async fn settle(
             }
         }
         deleted.events += events.len() as u64;
-        deleted.handled += handled_elsewhere(host, stores, store, &elsewhere).await?;
+        deleted.handled += handled_elsewhere(host, budget, stores, store, &elsewhere).await?;
         if (events.len() as i64) < DELETE_BATCH {
-            break;
+            return Ok(!budget.spent());
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 /// Deletes in `store` the deliveries an operator dismissed or cancelled
@@ -1266,13 +1191,17 @@ async fn settle(
 /// [`DELETE_BATCHES`] times; a store that fails stops it, named with why.
 async fn settle_by_hand(
     host: &dyn Host,
+    budget: &Budget<'_>,
     stores: &[String],
     store: &str,
     before: i64,
     deleted: &mut Deleted,
-) -> Result<(), (String, StoreError)> {
+) -> Result<bool, (String, StoreError)> {
     let database = open(host, store)?;
     for _ in 0..DELETE_BATCHES {
+        if budget.spent() {
+            return Ok(false);
+        }
         let rows = database
             .query_once(
                 SETTLED_BY_HAND,
@@ -1289,12 +1218,12 @@ async fn settle_by_hand(
             }
         }
         deleted.deliveries += rows.len() as u64;
-        deleted.handled += handled_elsewhere(host, stores, store, &elsewhere).await?;
+        deleted.handled += handled_elsewhere(host, budget, stores, store, &elsewhere).await?;
         if (rows.len() as i64) < DELETE_BATCH {
-            break;
+            return Ok(!budget.spent());
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 /// Deletes the handled records of deliveries `ids`, whose records `store`
@@ -1302,6 +1231,7 @@ async fn settle_by_hand(
 /// many there were.
 async fn handled_elsewhere(
     host: &dyn Host,
+    budget: &Budget<'_>,
     stores: &[String],
     store: &str,
     ids: &[SqlValue],
@@ -1313,6 +1243,11 @@ async fn handled_elsewhere(
     for other in stores.iter().filter(|other| other.as_str() != store) {
         let database = open(host, other)?;
         for ids in ids.chunks(DELETE_BATCH as usize) {
+            // Its event has already committed. Leaving this handled row
+            // costs space but cannot permit a duplicate delivery.
+            if budget.spent() {
+                return Ok(gone);
+            }
             let rows = database
                 .query_once(HANDLED, &[SqlValue::Array(SqlType::Uuid, ids.to_vec())])
                 .await

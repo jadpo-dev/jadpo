@@ -1508,11 +1508,12 @@ pub async fn resume_within(
 /// Deletes, in each store the program keeps runs in, the runs that ended
 /// [`ENDED_KEPT_MS`] or more before `now`, with their problems and
 /// cancels, and the cancels as old of runs no store keeps (chunk 6.6a):
-/// what the runtime's minute tick runs, a thousand rows at a time, at
+/// the retention work run by hourly housekeeping, a thousand rows at a time, at
 /// most ten times a tick, as its other deletes. A run still going is
 /// never deleted. How many runs and cancels it deleted.
 pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
     use crate::schedules::{DELETE_BATCH, DELETE_BATCHES};
+    let budget = Budget::start(host, Invocation::Tick);
     let Some(batches) = executor.plan().batches() else {
         return 0;
     };
@@ -1526,11 +1527,17 @@ pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
     let before = at(now.saturating_sub(ENDED_KEPT_MS));
     let mut deleted = 0;
     for store in stores {
+        if budget.spent() {
+            break;
+        }
         let Some(database) = host.database(store) else {
             continue;
         };
         for sql in [ENDED, UNKEPT_CANCELS] {
             for _ in 0..DELETE_BATCHES {
+                if budget.spent() {
+                    break;
+                }
                 let Ok(rows) = database
                     .query_once(sql, &[before.clone(), SqlValue::Int8(DELETE_BATCH)])
                     .await

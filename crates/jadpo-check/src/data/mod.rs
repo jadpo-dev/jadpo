@@ -2797,6 +2797,15 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 .insert(system.table.to_string(), columns::system_table(system));
         }
     }
+    // Every schema store keeps runtime state (entities have the outbox,
+    // and state-only stores hold schedules or AI usage). Add this after
+    // all feature stores have been collected, including AI-only stores.
+    for store in schema.stores.values_mut() {
+        store.tables.insert(
+            system::HOUSEKEEPING.table.to_string(),
+            columns::system_table(&system::HOUSEKEEPING),
+        );
+    }
     Arc::new(schema)
 }
 

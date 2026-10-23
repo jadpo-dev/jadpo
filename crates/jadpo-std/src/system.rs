@@ -769,6 +769,22 @@ pub const AI_USAGE: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// One hourly cleanup lease per store. Completion is kept separately from the
+/// lease: a failed, capped or interrupted pass is eligible on the next tick.
+pub const HOUSEKEEPING: SystemTable = SystemTable {
+    table: "jadpo_housekeeping",
+    columns: &[
+        column("slot", "integer", false),
+        column("lease_id", "uuid", true),
+        column("lease_until", "timestamptz(3)", true),
+        column("last_cleaned_at", "timestamptz(3)", true),
+    ],
+    primary_key: &["slot"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -795,7 +811,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 22] = [
+pub const ALL: [&SystemTable; 23] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -818,6 +834,7 @@ pub const ALL: [&SystemTable; 22] = [
     &PARKED_MESSAGES,
     &POLLS,
     &AI_USAGE,
+    &HOUSEKEEPING,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name
