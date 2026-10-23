@@ -378,6 +378,26 @@ def host_cpu_ticks():
     return None
 
 
+def load_output(process, timeout, row):
+    def as_text(value):
+        return value.decode('utf-8', errors='replace') if isinstance(value, bytes) else value or ''
+    try:
+        out, error = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as failure:
+        row.update(load_timeout=True, load_stdout=as_text(failure.stdout), load_stderr=as_text(failure.stderr))
+        spike.stop(process)
+        # Reap and finish reading its pipes after termination; communicate may
+        # have captured more than TimeoutExpired exposed at the boundary.
+        out, error = process.communicate(timeout=5)
+        row.update(load_stdout=as_text(out) or row['load_stdout'],
+                   load_stderr=as_text(error) or row['load_stderr'], load_exit_code=process.returncode)
+        raise ValueError('Load generator timed out; raw output retained') from failure
+    if process.returncode:
+        row.update(load_stdout=as_text(out), load_stderr=as_text(error), load_exit_code=process.returncode)
+        raise ValueError('Load generator failed; raw output retained')
+    return out
+
+
 def measure(server, pg, owners, cases, route, connections, warmup, duration, row):
     before = pg.state(server.target)
     filename = WORK / 'credential-cases.json'
@@ -406,13 +426,10 @@ def measure(server, pg, owners, cases, route, connections, warmup, duration, row
         cpu_before = spike.cpu_s(server.process.pid)
         helper_before = sum(spike.cpu_s(helper.pid) for helper in server.helpers)
         host_before = host_cpu_ticks()
-        out, error = process.communicate(timeout=warmup + duration + 45)
+        out = load_output(process, warmup + duration + 45, row)
         cpu_after = spike.cpu_s(server.process.pid)
         helper_after = sum(spike.cpu_s(helper.pid) for helper in server.helpers)
         host_after = host_cpu_ticks()
-        if process.returncode:
-            row.update(load_stdout=out, load_stderr=error, load_exit_code=process.returncode)
-            raise ValueError('Load generator failed: ' + error[-500:])
         row.update(json.loads(out))
         validate_measurement(row)
         after = pg.state(server.target)

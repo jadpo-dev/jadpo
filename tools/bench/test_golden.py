@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from golden_contracts import validate_conformance, validate_build, validate_state, validate_receipts
+from golden import load_output
 
 
 class GoldenControls(unittest.TestCase):
@@ -80,6 +81,27 @@ class GoldenControls(unittest.TestCase):
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(answer.returncode, 2, answer.stderr)
             self.assertIn('error:', answer.stderr)
+
+    def test_nonzero_load_and_timeout_keep_both_raw_streams(self):
+        for failure in (True, False):
+            script = ("import sys,time; print('partial stdout',flush=True); "
+                      "print('partial stderr',file=sys.stderr,flush=True); "
+                      + ('sys.exit(7)' if failure else 'time.sleep(30)'))
+            process = subprocess.Popen([sys.executable, '-c', script], stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True)
+            row = {}
+            try:
+                with self.assertRaises(ValueError):
+                    load_output(process, 5 if failure else 1, row)
+                self.assertIn('partial stdout', row['load_stdout'])
+                self.assertIn('partial stderr', row['load_stderr'])
+                self.assertIsNotNone(process.poll())
+                self.assertEqual(row.get('load_timeout', False), not failure)
+                if failure:
+                    self.assertEqual(row['load_exit_code'], 7)
+            finally:
+                if process.poll() is None:
+                    process.kill(); process.communicate(timeout=5)
 
 
 if __name__ == '__main__':

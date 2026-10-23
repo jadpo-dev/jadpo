@@ -24,7 +24,7 @@ from uuid import UUID
 
 import run as spike
 from contracts import validate_list, validate_measurement, validate_sample, validate_write_count, validate_failure
-from golden import fingerprint, source_hashes, host_cpu_ticks
+from golden import fingerprint, source_hashes, host_cpu_ticks, load_output
 from golden_contracts import validate_build
 
 ROOT = spike.ROOT
@@ -319,11 +319,9 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
         time.sleep(max(0, warmup - (time.monotonic() - load_started)))
         cpu_before = spike.cpu_s(server.process.pid)
         host_before = host_cpu_ticks()
-        out, _ = process.communicate(timeout=warmup + duration + 45)
+        out = load_output(process, warmup + duration + 45, row)
         cpu_after = spike.cpu_s(server.process.pid)
         host_after = host_cpu_ticks()
-        if process.returncode:
-            raise ValueError('Load generator failed; no timing result accepted')
         row.update(json.loads(out))
         validate_measurement(row)
         after = int(pg.query(server.target, 'SELECT count(*) FROM todo'))
