@@ -4966,7 +4966,7 @@ contract fingerprints. These results describe the exercised contract, not an
 independent review or comparative performance measurement.
 
 Validation on 2026-10-23 used clean implementation commit
-`09f6184caea8b133876d1f0d178bebefc506fed6`, including dependency head
+`c351051ff48c7e160f7a926b30ea7d77931a879f`, including dependency head
 `deb6d7e03b1e56aa2e9e4e4c85d84f2d372cd428`. The full
 `python3 tools/verify.py` gate passed all 90 steps in this worktree. Its
 TypeScript pipeline passed 42 Vitest tests, static checks, private verifier
@@ -4984,9 +4984,9 @@ Both generated targets' source stamps equal the own-checkout
 application/runtime/harness fingerprint
 `47d5b6c4b770b3d1df048ec81137677b8037a197585f2a75132fd5784bc6561b`.
 The TypeScript source/schema/migration/lock/contract/orchestration fingerprint
-is `d9fb23aa5ada23cdffdef022aa36b5ff62c4841b09799258b34ea39b98b167fa`.
-Only these permanent validation facts and tracker/history documentation
-follow the passing implementation gate; fingerprinted inputs remain unchanged.
+is `e534516450542afa273950fd4e8e0519fdc5459f6eaed3b40fb7ed87d473e5c5`.
+These permanent validation facts follow the passing implementation gate;
+fingerprinted inputs remain unchanged.
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
 and every test binary once (`cargo test --workspace --no-run`, which also
