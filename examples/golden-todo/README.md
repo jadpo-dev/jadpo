@@ -2,7 +2,7 @@
 
 **Active executable contract:** `todo-v0.2`
 
-**Status:** implementation successor; conformance and independent freeze outstanding
+**Status:** implemented and locally validated; independent freeze outstanding
 
 The golden todo is an ordinary Jadpo application whose 44-case contract runs
 on native and compiled workerd. [`acceptance-v0.2.json`](acceptance-v0.2.json)
@@ -107,8 +107,8 @@ its queue emission supplies no application delivery receipt.
 The shared contract runner under `tools/golden-todo/` targets generated native
 code and compiled Wasm under workerd, with controlled test clocks, actual
 credential verification, raw HTTP inputs and SQL-level query observation.
-Conformance is incomplete until all 44 cases pass on each target using this
-checkout; partial and prerequisite-preview runs do not establish completion.
+All 44 cases pass on each target using the integrated checkout. Partial
+and prerequisite-preview runs do not establish complete conformance.
 The fixture intercepts only its declared public HTTPS identity/key/mail hosts
 and supplies local responses; it does not prove production DNS or TLS filtering.
 SQL fixture writes and signing helpers are private test controls, and HTTP
