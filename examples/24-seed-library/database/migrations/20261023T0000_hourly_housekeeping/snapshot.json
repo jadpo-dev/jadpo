@@ -397,20 +397,20 @@
         },
         "jadpo_housekeeping": {
           "columns": {
-            "completed_at": {
+            "last_cleaned_at": {
               "nullable": true,
               "position": 3,
               "type": "timestamptz(3)"
+            },
+            "lease_id": {
+              "nullable": true,
+              "position": 1,
+              "type": "uuid"
             },
             "lease_until": {
               "nullable": true,
               "position": 2,
               "type": "timestamptz(3)"
-            },
-            "owner": {
-              "nullable": true,
-              "position": 1,
-              "type": "uuid"
             },
             "slot": {
               "position": 0,

@@ -3,8 +3,8 @@
 -- store: main
 CREATE TABLE "jadpo_housekeeping" (
     "slot" integer NOT NULL,
-    "owner" uuid,
+    "lease_id" uuid,
     "lease_until" timestamptz(3),
-    "completed_at" timestamptz(3),
+    "last_cleaned_at" timestamptz(3),
     CONSTRAINT "jadpo_housekeeping_pkey" PRIMARY KEY ("slot")
 );

@@ -736,13 +736,13 @@ fn hourly_housekeeping_failure_in_one_store_does_not_suppress_another() {
         host.rows(&host.main,"ALTER TABLE jadpo_idempotency_keys RENAME TO hidden_keys").await;
         let failed=tick(&program,&host,T0).await;
         assert!(!failed.problems.is_empty());
-        assert_eq!(host.count(&host.main,"SELECT count(*) FROM jadpo_housekeeping WHERE completed_at IS NULL AND owner IS NULL").await,1);
-        assert_eq!(host.count(&host.tallies,"SELECT count(*) FROM jadpo_housekeeping WHERE completed_at IS NOT NULL AND owner IS NULL").await,1);
+        assert_eq!(host.count(&host.main,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NULL AND lease_id IS NULL").await,1);
+        assert_eq!(host.count(&host.tallies,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NOT NULL AND lease_id IS NULL").await,1);
         host.rows(&host.main,"ALTER TABLE hidden_keys RENAME TO jadpo_idempotency_keys").await;
         let recovered=tick(&program,&host,T0+MINUTE).await;
         assert!(recovered.problems.is_empty(),"{recovered:?}");
-        assert_eq!(host.count(&host.main,"SELECT count(*) FROM jadpo_housekeeping WHERE completed_at IS NOT NULL AND owner IS NULL").await,1);
+        assert_eq!(host.count(&host.main,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NOT NULL AND lease_id IS NULL").await,1);
         // The successful store's completion is unchanged on the next tick.
-        assert_eq!(host.count(&host.tallies,"SELECT count(*) FROM jadpo_housekeeping WHERE completed_at='2026-10-19T09:00:00Z'").await,1);
+        assert_eq!(host.count(&host.tallies,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at='2026-10-19T09:00:00Z'").await,1);
     });
 }

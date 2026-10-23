@@ -775,9 +775,9 @@ pub const HOUSEKEEPING: SystemTable = SystemTable {
     table: "jadpo_housekeeping",
     columns: &[
         column("slot", "integer", false),
-        column("owner", "uuid", true),
+        column("lease_id", "uuid", true),
         column("lease_until", "timestamptz(3)", true),
-        column("completed_at", "timestamptz(3)", true),
+        column("last_cleaned_at", "timestamptz(3)", true),
     ],
     primary_key: &["slot"],
     unique: &[],

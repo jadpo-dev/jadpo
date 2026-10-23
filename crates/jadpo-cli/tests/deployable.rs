@@ -521,9 +521,57 @@ pub(crate) fn apply(connection: &str, migrations: &[jadpo_std::Migration]) {
         .expect("applied");
 }
 
+/// A test owns its server even if an assertion or readiness check panics.
+/// Killing and waiting also closes inherited gate output pipes.
+struct OwnedChild(Child);
+impl std::ops::Deref for OwnedChild {
+    type Target = Child;
+    fn deref(&self) -> &Child {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for OwnedChild {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.0
+    }
+}
+impl Drop for OwnedChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn an_owned_deployable_is_stopped_and_reaped_when_a_test_panics() {
+    let child = Command::new("/bin/sh")
+        .args(["-c", "exec sleep 30"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let id = child.id();
+    let result = std::panic::catch_unwind(move || {
+        let _owned = OwnedChild(child);
+        panic!("exercise failure cleanup");
+    });
+    assert!(result.is_err());
+    assert!(
+        !Command::new("kill")
+            .args(["-0", &id.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
 /// The deployable at `binary` started with only `variables` in its
 /// environment, and its log lines as they come.
-fn start(binary: &Path, variables: &[(&str, &str)]) -> (Child, Receiver<Value>) {
+fn start(binary: &Path, variables: &[(&str, &str)]) -> (OwnedChild, Receiver<Value>) {
     start_with(binary, &[], variables)
 }
 
@@ -533,7 +581,7 @@ fn start_with(
     binary: &Path,
     arguments: &[&str],
     variables: &[(&str, &str)],
-) -> (Child, Receiver<Value>) {
+) -> (OwnedChild, Receiver<Value>) {
     let mut command = Command::new(binary);
     command
         .args(arguments)
@@ -544,7 +592,7 @@ fn start_with(
     for (name, value) in variables {
         command.env(name, value);
     }
-    let mut child = command.spawn().expect("it starts");
+    let mut child = OwnedChild(command.spawn().expect("it starts"));
     let stdout = child.stdout.take().expect("its output");
     let (lines, read) = channel();
     std::thread::spawn(move || {
@@ -1046,7 +1094,11 @@ fn a_teaching_example_is_built_refuses_to_start_out_of_date_serves_and_drains_th
     assert_eq!(line["problems"], serde_json::json!([]), "{line}");
     assert_eq!(line["unbuilt"], serde_json::json!([]), "{line}");
     // A store the tick can't work in is logged too: here the table of
-    // idempotency keys every tick sweeps, gone for a moment.
+    // idempotency keys the hourly pass sweeps, made due then gone for a moment.
+    rows(
+        &connection,
+        "UPDATE jadpo_housekeeping SET last_cleaned_at = NULL",
+    );
     rows(
         &connection,
         "ALTER TABLE jadpo_idempotency_keys RENAME TO jadpo_idempotency_keys_away",

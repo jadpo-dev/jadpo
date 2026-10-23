@@ -5,13 +5,13 @@ use crate::lease::{self, Leased};
 pub const EVERY_MS: i64 = 60 * 60 * 1000;
 /// One conditional upsert: the first tick inserts the singleton; later
 /// ticks claim it only after a completed hour and any former lease.
-pub const CLAIM: &str = "INSERT INTO \"jadpo_housekeeping\" (\"slot\", \"owner\", \"lease_until\") VALUES (0, $1, $2) ON CONFLICT (\"slot\") DO UPDATE SET \"owner\" = $1, \"lease_until\" = $2 WHERE (\"jadpo_housekeeping\".\"lease_until\" IS NULL OR \"jadpo_housekeeping\".\"lease_until\" <= $3) AND (\"jadpo_housekeeping\".\"completed_at\" IS NULL OR \"jadpo_housekeeping\".\"completed_at\" <= $4) RETURNING \"slot\"";
-/// Only its owner may release or complete a pass. A partial pass keeps
+pub const CLAIM: &str = "INSERT INTO \"jadpo_housekeeping\" (\"slot\", \"lease_id\", \"lease_until\") VALUES (0, $1, $2) ON CONFLICT (\"slot\") DO UPDATE SET \"lease_id\" = $1, \"lease_until\" = $2 WHERE (\"jadpo_housekeeping\".\"lease_until\" IS NULL OR \"jadpo_housekeeping\".\"lease_until\" <= $3) AND (\"jadpo_housekeeping\".\"last_cleaned_at\" IS NULL OR \"jadpo_housekeeping\".\"last_cleaned_at\" <= $4) RETURNING \"slot\"";
+/// Only the matching lease identity may release or complete a pass. A partial pass keeps
 /// the previous completion time, so the next tick can resume at once.
-pub const RELEASE: &str = "UPDATE \"jadpo_housekeeping\" SET \"owner\" = NULL, \"lease_until\" = NULL, \"completed_at\" = COALESCE($2, \"completed_at\") WHERE \"slot\" = 0 AND \"owner\" = $1 RETURNING \"slot\"";
+pub const RELEASE: &str = "UPDATE \"jadpo_housekeeping\" SET \"lease_id\" = NULL, \"lease_until\" = NULL, \"last_cleaned_at\" = COALESCE($2, \"last_cleaned_at\") WHERE \"slot\" = 0 AND \"lease_id\" = $1 RETURNING \"slot\"";
 
 struct Pass {
-    owner: [u8; 16],
+    lease_id: [u8; 16],
     completed: bool,
 }
 impl Leased for Pass {
@@ -19,7 +19,7 @@ impl Leased for Pass {
         (
             CLAIM,
             vec![
-                SqlValue::Uuid(self.owner),
+                SqlValue::Uuid(self.lease_id),
                 micros(until),
                 micros(now),
                 micros(now.saturating_sub(EVERY_MS)),
@@ -30,7 +30,7 @@ impl Leased for Pass {
         (
             RELEASE,
             vec![
-                SqlValue::Uuid(self.owner),
+                SqlValue::Uuid(self.lease_id),
                 if self.completed {
                     micros(now)
                 } else {
@@ -77,8 +77,8 @@ pub(super) async fn run(
                 continue;
             }
         };
-        let mut owner = [0; 16];
-        if !host.random(&mut owner) {
+        let mut lease_id = [0; 16];
+        if !host.random(&mut lease_id) {
             ticked.problems.push((
                 store.clone(),
                 StoreError::Fault("housekeeping requires random lease ownership".into()),
@@ -86,7 +86,7 @@ pub(super) async fn run(
             continue;
         }
         let mut pass = Pass {
-            owner,
+            lease_id,
             completed: false,
         };
         match lease::claim(database, budget, &pass, now).await {

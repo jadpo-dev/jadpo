@@ -4,6 +4,10 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+import os
+import subprocess
+import tempfile
+from unittest import mock
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import worker
@@ -65,4 +69,48 @@ class ContractVerifier(unittest.TestCase):
         class Missing:
             def call(self,command):raise NotImplementedError('missing target obligation')
         with self.assertRaises(NotImplementedError):contract.Contract(Missing()).call('tick')
+
+class WorkerOwnership(unittest.TestCase):
+    def platform(self, root, version, name='workerd-test', executable='workerd'):
+        package=root/'tools/workers/node_modules/@cloudflare'/name
+        (package/'bin').mkdir(parents=True,exist_ok=True)
+        (package/'package.json').write_text(json.dumps({'version':version}))
+        binary=package/'bin'/executable
+        binary.write_text('#!/bin/sh\nexec sleep 30\n')
+        binary.chmod(0o755)
+        return binary
+
+    def test_only_the_pinned_native_platform_binary_is_selected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            tools=root/'tools/workers'
+            tools.mkdir(parents=True)
+            (tools/'package.json').write_text(json.dumps({'dependencies':{'workerd':'pinned'}}))
+            self.platform(root,'older','workerd-old')
+            self.assertIsNone(worker.installed_workerd(root))
+            binary=self.platform(root,'pinned',executable='workerd.exe')
+            self.assertEqual(worker.installed_workerd(root),binary)
+            self.assertNotIn('.bin',binary.parts)
+
+    @unittest.skipUnless(os.name=='posix','the lifecycle fixture executes a POSIX sleep')
+    def test_failed_constructor_stops_and_reaps_the_actual_native_child(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            (root/'tools/workers').mkdir(parents=True)
+            (root/'tools/workers/package.json').write_text(json.dumps({'dependencies':{'workerd':'pinned'}}))
+            binary=self.platform(root,'pinned')
+            children=[]
+            def fail_start(instance):
+                instance.log=tempfile.TemporaryFile(mode='w+')
+                instance.process=subprocess.Popen([str(instance.executable)],stdout=instance.log,stderr=instance.log)
+                children.append(instance.process)
+                raise RuntimeError('exercise startup failure cleanup')
+            with mock.patch.dict(os.environ,{},clear=True),mock.patch.object(worker,'Fixture') as fixture,mock.patch.object(worker.Worker,'start',fail_start):
+                with self.assertRaisesRegex(RuntimeError,'startup failure'):
+                    worker.Worker(mock.Mock(environment={}),root,root,root,root,'local-test')
+                fixture.return_value.stop.assert_called_once()
+            self.assertEqual(len(children),1)
+            self.assertIsNotNone(children[0].poll())
+            with self.assertRaises(ProcessLookupError):os.kill(children[0].pid,0)
+
 if __name__=='__main__':unittest.main()

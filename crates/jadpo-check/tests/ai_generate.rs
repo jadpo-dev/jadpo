@@ -750,7 +750,7 @@ fn ai_only_store_migrates_the_housekeeping_lease() {
         migration.contains("CREATE TABLE \"jadpo_housekeeping\""),
         "{migration}"
     );
-    for column in ["owner", "lease_until", "completed_at"] {
+    for column in ["lease_id", "lease_until", "last_cleaned_at"] {
         assert!(migration.contains(&format!("\"{column}\"")), "{migration}");
     }
 }

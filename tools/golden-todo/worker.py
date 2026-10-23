@@ -138,15 +138,33 @@ class Fixture:
 
     def stop(self):self.server.shutdown();self.server.server_close();self.thread.join()
 
+def installed_workerd(source):
+    """The pinned platform executable; terminating npm's wrapper leaks its child."""
+    tools=source/'tools/workers'
+    pinned=json.loads((tools/'package.json').read_text())['dependencies']['workerd']
+    for package in sorted((tools/'node_modules/@cloudflare').glob('workerd-*')):
+        manifest=package/'package.json'
+        if not manifest.is_file() or json.loads(manifest.read_text()).get('version')!=pinned:continue
+        for name in ('workerd','workerd.exe'):
+            binary=package/'bin'/name
+            if binary.is_file():return binary
+    return None
+
+
 class Worker:
     def __init__(self,helper,source,project,here,work,url):
-        self.helper=helper;self.environment=helper.environment;self.source=source;self.project=project;self.here=here;self.work=work;self.url=url;self.fixture=Fixture(helper);self.process=None
+        self.helper=helper;self.environment=helper.environment;self.source=source;self.project=project;self.here=here;self.work=work;self.url=url;self.process=None
         executable=os.environ.get('JADPO_WORKERD')
-        self.executable=Path(executable) if executable else source/'tools/workers/node_modules/.bin/workerd'
-        if not self.executable.exists():
+        self.executable=Path(executable) if executable else installed_workerd(source)
+        if self.executable is None or not self.executable.exists():
             if executable:raise RuntimeError('JADPO_WORKERD executable does not exist')
+            # Preserve the existing missing-install behavior, without invoking
+            # npm's process wrapper to serve the Worker.
             with (work/'workers/npm.log').open('w') as log:
                 subprocess.run(['npm','ci','--ignore-scripts'],cwd=source/'tools/workers',stdout=log,stderr=subprocess.STDOUT,check=True)
+            self.executable=installed_workerd(source)
+            if self.executable is None:raise RuntimeError('pinned platform workerd executable was not installed')
+        self.fixture=Fixture(helper)
         try:self.start()
         except Exception:
             self.close_process();self.fixture.stop();raise

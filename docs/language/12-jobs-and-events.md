@@ -678,7 +678,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   identity has a name no call now gives, and ends `failed` because "it was
   started by a release that named its `batches.each` call another way".
   Listing such runs before a deploy is area 14's `jadpo runs unfinished`.
-- **Kept 30 days.** On each tick, in every store that keeps batch runs, a
+- **Kept 30 days.** In each hourly cleanup pass, in every store that keeps batch runs, a
   run that ended (finished, failed or cancelled) 30 days or more ago is
   deleted with its problems and its cancel, as are cancels as old of runs
   no store keeps (asked of a `BatchRun` a field held after its run was

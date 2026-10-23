@@ -2544,7 +2544,7 @@ error: No migration creates these entities' tables yet
   |
 1 | entity Note {
   |        ^^^^ no table yet
-  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for idempotency keys, and 2 more.
+  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for housekeeping, and 3 more.
   next: Run `jadpo migrate new initial` (agent)
   rule: migration.out_of_date
   help: docs/language/05-data.html#migration-out-of-date

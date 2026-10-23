@@ -1818,36 +1818,36 @@ fn hourly_housekeeping_contends_retries_and_preserves_retention() {
         assert!(a.problems.is_empty() && b.problems.is_empty(), "{a:?} {b:?}");
         let tail = tick(&program,&host,T0 + 1).await;
         assert_eq!(a.deleted.keys + b.deleted.keys + tail.deleted.keys,10001);
-        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE completed_at IS NOT NULL AND owner IS NULL").await,1);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NOT NULL AND lease_id IS NULL").await,1);
         host.rows("INSERT INTO jadpo_idempotency_keys (scope,key,request_digest,stored_at,kept_until) VALUES ('anonymous','late','d','2026-01-01','2026-01-02') RETURNING 1").await;
         assert_eq!(tick(&program,&other,T0 + 60_000).await.deleted.keys,0);
         assert_eq!(tick(&program,&host,T0 + 3_600_001).await.deleted.keys,1);
-        host.rows("UPDATE jadpo_housekeeping SET completed_at=NULL RETURNING 1").await;
+        host.rows("UPDATE jadpo_housekeeping SET last_cleaned_at=NULL RETURNING 1").await;
         host.rows("ALTER TABLE jadpo_idempotency_keys RENAME TO hidden_keys").await;
         let failed = tick(&program,&host,T0 + 3_600_002).await;
         assert!(!failed.problems.is_empty());
-        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE completed_at IS NULL AND owner IS NULL").await,1);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NULL AND lease_id IS NULL").await,1);
         host.rows("ALTER TABLE hidden_keys RENAME TO jadpo_idempotency_keys").await;
         assert!(tick(&program,&other,T0 + 3_600_003).await.problems.is_empty());
-        // Execute the actual registered lease statements: a crashed owner
+        // Execute the actual registered lease statements: a crashed lease_id
         // expires, only one independent connection claims its replacement,
-        // and the stale owner cannot complete or clear the replacement.
+        // and the stale lease_id cannot complete or clear the replacement.
         use jadpo_runtime::Database;
         let statements=jadpo_runtime::statements::system_statements();
         let claim=&statements.iter().find(|(name,_)|*name=="schedules::housekeeping::CLAIM").unwrap().1;
         let release=&statements.iter().find(|(name,_)|*name=="schedules::housekeeping::RELEASE").unwrap().1;
-        host.rows("UPDATE jadpo_housekeeping SET completed_at=NULL,owner='01010101-0101-0101-0101-010101010101',lease_until='2026-10-19T09:00:01Z' RETURNING 1").await;
+        host.rows("UPDATE jadpo_housekeeping SET last_cleaned_at=NULL,lease_id='01010101-0101-0101-0101-010101010101',lease_until='2026-10-19T09:00:01Z' RETURNING 1").await;
         let now=T0+3_600_004;
-        let params=|owner|vec![SqlValue::Uuid([owner;16]),SqlValue::Timestamp((now+60_000)*1000),SqlValue::Timestamp(now*1000),SqlValue::Timestamp((now-3_600_000)*1000)];
+        let params=|lease_id|vec![SqlValue::Uuid([lease_id;16]),SqlValue::Timestamp((now+60_000)*1000),SqlValue::Timestamp(now*1000),SqlValue::Timestamp((now-3_600_000)*1000)];
         let a=params(2);let b=params(3);
         let (a,b)=futures_join(host.store().query_once(claim,&a),other.store().query_once(claim,&b)).await;
         assert_eq!(a.unwrap().len()+b.unwrap().len(),1);
         assert!(host.store().query_once(release,&[SqlValue::Uuid([1;16]),SqlValue::Timestamp(now*1000)]).await.unwrap().is_empty());
-        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE owner IS NOT NULL AND completed_at IS NULL").await,1);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NOT NULL AND last_cleaned_at IS NULL").await,1);
         assert!(tick(&program,&host,now+1).await.problems.is_empty());
-        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE owner IS NOT NULL AND completed_at IS NULL").await,1);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NOT NULL AND last_cleaned_at IS NULL").await,1);
         assert!(tick(&program,&host,now+60_000).await.problems.is_empty());
-        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE owner IS NULL AND completed_at IS NOT NULL").await,1);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NULL AND last_cleaned_at IS NOT NULL").await,1);
 
     });
 }
