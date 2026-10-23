@@ -43,10 +43,8 @@
 //! ([`crate::schedules`], chunk 6.2), and the tick calls [`sweep`].
 
 use std::collections::VecDeque;
-use std::future::Future;
 use std::ops::ControlFlow;
 use std::rc::Rc;
-use std::task::Poll;
 
 use jadpo_std::Runs;
 use jadpo_std::subscriber::Target;

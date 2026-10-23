@@ -2867,6 +2867,26 @@ item resets the boundary's event allowance (`Boundary::allowance`); and
 `batches::clean`, a tick hook, deletes runs that ended 30 days ago with
 their problems and cancels.
 
+**Bounded delivery sweeps** (chunk 9.1b1). A sweep still reads at most 100
+oldest due deliveries, waking breakers and parking lost/unreadable work first.
+It partitions that selection round-robin into four static lanes and drains
+them with the same local `race::join_all` schedules use. Every lane calls the
+ordinary serial `runner::drive`: each piece gets its own context and current
+host time; descendants and a batch run's own batches remain sequential. Four
+is a reversible implementation bound, shared by both targets, below Workers'
+six connection-opening slots; every actual connection/provider call retains
+its host guard. Lanes share the invocation's host and budget, and stop
+admission when spent/shutting down while draining admitted work through the
+existing claim, body-only timeout, held commit, retry/release and handled-record
+paths. Unstarted work remains durable for the tick. Static lanes do not steal
+work, so one slow lane may outlive the others; completion order is unspecified.
+After-response work and route settlement retain their existing serial driver.
+Real PostgreSQL regressions rendezvous four subscriber bodies, enforce 100
+selected deliveries including sequential descendants, race duplicate sweeps,
+and advance shutdown/monotonic expiry after four claims, proving settlement
+without assuming a fast machine. The focused 10,000-delivery method and
+comparator boundaries are in `tools/bench/README.md`.
+
 **Schedules and the tick** (chunk 6.2). The checker reads each schedule
 (`jadpo_check::schedules`: `every:` and `run:`, an action of its own
 domain taking nothing) and where their state is kept

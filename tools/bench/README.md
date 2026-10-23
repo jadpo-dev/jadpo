@@ -1,5 +1,73 @@
 # Performance harnesses
 
+## Durable delivery backlog (chunk 9.1b1)
+
+`deliveries.py` measures a focused database-only subscriber, separately from
+any golden reminder/provider workflow. Commit the inputs first; each build
+requires a clean checkout, builds its own compiler, and records the exact
+commit, source/artifact SHA-256 maps, tool versions and flags. Missing or
+changed inputs/artifacts are refused before and after measurement.
+
+```sh
+python3 tools/bench/deliveries.py build --label serial
+python3 tools/bench/deliveries.py measure --label serial --rounds 1 --count 100
+python3 tools/bench/deliveries.py measure --label serial
+# After committing a runtime change, build and measure a new label.
+python3 tools/bench/deliveries.py build --label bounded
+python3 tools/bench/deliveries.py measure --label bounded
+```
+
+The default protocol is three rounds rotating native, workerd, Bun and Node.
+Each cell starts with exactly 10,000 durable deliveries/events in a disposable
+PostgreSQL 16 server (`synchronous_commit=off`, 400 connections, 256MB shared
+buffers). Each tick selects 100, and 100 ticks drain the backlog. Native runs
+its ordinary external `app tick` process each time; startup is included.
+Workerd is a fresh persistent process per cell, with an excluded empty
+readiness tick, invoking the production generated `scheduled` handler through
+a local service binding with `service_binding_extra_handlers`. Its Hyperdrive
+binding reaches the existing release transaction-pool stand-in, cap 4; helper
+CPU is recorded separately. No debug/testing controller is timed.
+
+The fixture's real calibration POST must return the exact 202 ticket response
+and commit one handled receipt. Its actual event/subscriber keys and encoding
+seed the backlog, with fixed UUID delivery/event identities and ticket payloads.
+Each successful delivery creates a UUIDv7 receipt and commits its handled
+marker in the same transaction. Audits require exact 10,000 receipt tickets,
+valid UUIDv7 identifiers, exact handled/succeeded/attempt counts, no missing or
+unexpected effects, and an unchanged fingerprint of the joined event/delivery
+identities, payloads, encodings, times, trace/depth and subscriber mapping.
+One post-window replay cohort must add attempts without adding effects.
+
+Before timing each target, real controls exercise malformed payload parking,
+a refused handled-marker insert rolling back the preceding receipt, live and
+expired leases, and two simultaneous sweeps. The ledger refusal must leave
+pending/unavailable retries and no writes: area6's atomic transaction and
+area12's retry-on-unavailable, implemented by the existing held-commit and
+outbox retry paths. It differs from the receipt's authored unique-conflict
+failure. Verifier unit faults reject missing/duplicate effects and stale builds.
+
+The specialized `typescript/deliveries.ts` is identical on pinned Bun/Node,
+using postgres-js with pool 4 and uuid 13's UUIDv7 generation. It validates
+payloads, conditionally claims/fences a 16-minute lease, observes the fixture's
+10-attempt/24-hour window, atomically writes receipt+handled marker, and handles
+ledger refusal conservatively. This is a focused comparator; it supplies no
+full application, auth, tenants, provider, shutdown or generic-language proof.
+Jadpo's existing housekeeping is included in its tick, while the specialized
+comparator only drains deliveries. The strong golden TypeScript remains the
+separate application comparison. These measurements add the delivery path;
+they do not replace or repeat the unchanged 9.1d4 HTTP matrix.
+
+Builds use `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`;
+production native/Wasm use ordinary `jadpo build` release profiles. All owned
+builds/tests stop before timing. Unrelated apps remain running; load and whole
+host CPU counters, per-tick durations/responses, child CPU, workerd/helper CPU
+and workerd RSS are retained. Raw attempts and failed setup/smokes stay under
+ignored `work/deliveries/<label>/runs-*.json` with logs; none is overwritten or
+converted into a passing result. Three busy-host rounds are exploratory and
+do not establish edge capacity, a latency SLO or an inherent language win.
+The superseded initial `before` protocol used UUIDv4 in the TypeScript receipt;
+only matched `before-v7` and candidate data support the final comparison.
+
 ## Golden application comparison (chunk 9.1d4)
 
 `golden.py` uses the complete `examples/golden-todo` application and its
