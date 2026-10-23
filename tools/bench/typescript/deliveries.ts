@@ -3,7 +3,7 @@
  * handled marker + receipt in one transaction. Not the golden application.
  */
 import postgres from 'postgres';
-import { randomUUID } from 'node:crypto';
+import { v7 as uuidv7 } from 'uuid';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -47,7 +47,7 @@ try {
       await db.begin(async tx => {
         const handled = await tx`SELECT id FROM jadpo_handled_deliveries WHERE id=${item.id}`;
         if (!handled.length) {
-          await tx`INSERT INTO receipt(id,ticket) VALUES(${randomUUID()},${item.ticket})`;
+          await tx`INSERT INTO receipt(id,ticket) VALUES(${uuidv7()},${item.ticket})`;
           writingHandled = true;
           await tx`INSERT INTO jadpo_handled_deliveries(id,handled_at) VALUES(${item.id},${now})`;
         }

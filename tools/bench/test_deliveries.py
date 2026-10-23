@@ -8,7 +8,7 @@ from deliveries import digest, validate_build, validate_backlog
 class DeliveryGuards(unittest.TestCase):
     def test_every_durable_obligation_is_required(self):
         state = {key: 10000 for key in ('receipts', 'unique', 'succeeded', 'handled', 'events', 'attempts')}
-        state.update(pending=0, unexpected=0, missing=0)
+        state.update(pending=0, unexpected=0, missing=0, invalid_id=0)
         validate_backlog(state, 10000)
         for key, value in state.items():
             corrupt = {**state, key: value + 1}

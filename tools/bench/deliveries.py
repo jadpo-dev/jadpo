@@ -110,7 +110,7 @@ def validate_backlog(state, count):
     for field in ('receipts', 'unique', 'succeeded', 'handled', 'events', 'attempts'):
         if state.get(field) != count:
             raise ValueError(f'backlog {field}: expected {count}: {state}')
-    for field in ('pending', 'unexpected', 'missing'):
+    for field in ('pending', 'unexpected', 'missing', 'invalid_id'):
         if state.get(field) != 0:
             raise ValueError(f'backlog {field}: expected zero: {state}')
 
@@ -126,6 +126,7 @@ class Database(golden.Database):
           'receipts',(SELECT count(*) FROM receipt),
           'unique',(SELECT count(DISTINCT ticket) FROM receipt),
           'unexpected',(SELECT count(*) FROM receipt WHERE ticket !~ '^ticket-[0-9]{5}$'),
+          'invalid_id',(SELECT count(*) FROM receipt WHERE substring(id::text,15,1)<>'7' OR substring(id::text,20,1) NOT IN ('8','9','a','b')),
           'succeeded',(SELECT count(*) FROM jadpo_deliveries WHERE status='succeeded'),
           'pending',(SELECT count(*) FROM jadpo_deliveries WHERE status<>'succeeded'),
           'attempts',(SELECT coalesce(sum(attempts),0) FROM jadpo_deliveries),
