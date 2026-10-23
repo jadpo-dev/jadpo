@@ -4965,6 +4965,29 @@ states, runtime versions and before/after source, schema, migration, lock and
 contract fingerprints. These results describe the exercised contract, not an
 independent review or comparative performance measurement.
 
+Validation on 2026-10-23 used clean implementation commit
+`09f6184caea8b133876d1f0d178bebefc506fed6`, including dependency head
+`deb6d7e03b1e56aa2e9e4e4c85d84f2d372cd428`. The full
+`python3 tools/verify.py` gate passed all 90 steps in this worktree. Its
+TypeScript pipeline passed 42 Vitest tests, static checks, private verifier
+controls, actual host-disconnect controls and all 44 shared cases on each of
+Node 24.18.1 and Bun 1.2.20, using the gate's shared Unix-socket PostgreSQL
+server. The same gate passed all 44 native and all 44 workerd cases using
+this checkout's freshly built compiler, plus the corpus differential run,
+non-testing deployable, Workers deployable and watch checks. Local optional
+vector tests recorded the existing pgvector 0.7.0 versus required 0.8.0
+extension skip; the golden application uses no vectors.
+
+The compiler SHA-256 for this run is
+`191936bec0cc17149c92437e5f982c98c4230adbfb2f902a62a187a06e96f3a5`.
+Both generated targets' source stamps equal the own-checkout
+application/runtime/harness fingerprint
+`47d5b6c4b770b3d1df048ec81137677b8037a197585f2a75132fd5784bc6561b`.
+The TypeScript source/schema/migration/lock/contract/orchestration fingerprint
+is `d9fb23aa5ada23cdffdef022aa36b5ff62c4841b09799258b34ea39b98b167fa`.
+Only these permanent validation facts and tracker/history documentation
+follow the passing implementation gate; fingerprinted inputs remain unchanged.
+
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
 and every test binary once (`cargo test --workspace --no-run`, which also
 builds `jadpo` and `jadpo-test-server`), starts the run's PostgreSQL
@@ -5488,6 +5511,6 @@ are reviewable declarations, not a proof of arbitrary handler behavior.
 TypeScript supplies no general information-flow or policy proof; the rate
 counter's 16MiB accounting budget is not a proof about JavaScript heap overhead.
 Local fixtures do not establish production public DNS/TLS or edge deployment.
-The own-checkout shared run and full repository gate remain acceptance
-conditions; independent review, dependency merges and comparative measurements
+The own-checkout shared run and full repository gate passed as recorded in
+§2.7. Independent review, dependency merges and comparative measurements
 remain separate obligations.
