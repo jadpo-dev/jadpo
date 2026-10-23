@@ -451,6 +451,8 @@ def measure(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    if not __debug__:
+        parser.error('benchmark assertions must remain enabled; remove -O/PYTHONOPTIMIZE')
     parser.add_argument('command', choices=('build', 'measure'))
     parser.add_argument('--label', required=True)
     parser.add_argument('--rounds', type=int, default=3)

@@ -1080,13 +1080,13 @@ pub(crate) async fn sweep_within(
         .into_iter()
         .filter(|lane| !lane.is_empty())
         .map(|lane| {
-            Box::pin(drive(
+            drive(
                 executor,
                 host,
                 budget,
                 vec![Deferred::Deliveries(lane)],
                 Some(now),
-            ))
+            )
         })
         .collect();
     // Drain every admitted lane, including after shutdown or a spent
