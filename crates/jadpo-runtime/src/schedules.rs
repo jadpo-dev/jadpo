@@ -68,9 +68,7 @@
 pub mod watch;
 pub mod why;
 
-use std::future::Future;
-use std::pin::Pin;
-use std::task::Poll;
+use crate::race::join_all;
 
 use jadpo_std::schedule::{SchedulePlan, ScheduleRun, SchedulesPlan};
 
@@ -1335,32 +1333,11 @@ fn open<'h>(host: &'h dyn Host, name: &str) -> Result<&'h dyn Database, (String,
     })
 }
 
-/// Runs `futures` together on this thread until every one has finished,
-/// giving their outputs in order: each due schedule's run goes on beside
-/// the others, so a long one holds none of them up.
-async fn join_all<F: Future>(futures: Vec<F>) -> Vec<F::Output> {
-    let mut pending: Vec<Pin<Box<F>>> = futures.into_iter().map(Box::pin).collect();
-    let mut done: Vec<Option<F::Output>> = pending.iter().map(|_| None).collect();
-    std::future::poll_fn(|cx| {
-        let mut all = true;
-        for (future, out) in pending.iter_mut().zip(done.iter_mut()) {
-            if out.is_some() {
-                continue;
-            }
-            match future.as_mut().poll(cx) {
-                Poll::Ready(value) => *out = Some(value),
-                Poll::Pending => all = false,
-            }
-        }
-        if all { Poll::Ready(()) } else { Poll::Pending }
-    })
-    .await;
-    done.into_iter().flatten().collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
+    use std::pin::Pin;
 
     #[test]
     fn missed_due_slots_become_one_run_on_the_same_grid() {
