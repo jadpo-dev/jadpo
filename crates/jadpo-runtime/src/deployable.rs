@@ -858,9 +858,8 @@ mod tests {
             Some(&Down)
         }
 
-        fn random(&self, bytes: &mut [u8]) -> bool {
-            bytes.fill(1);
-            true
+        fn random(&self, _bytes: &mut [u8]) -> bool {
+            false
         }
 
         fn now_ms(&self) -> Option<i64> {
