@@ -2939,3 +2939,28 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   by no locale; a one-action Workers project declaring no locales
   (release, wasm-bindgen's module, gzip -9) went from 13,017,859 bytes
   to 12,111,677 (3,959,704 to 3,647,526 gzipped), 0.91 MB less.
+
+## Phase 9 — Performance
+
+- [x] **9.1a Instrumentation and focused scaffold:** `opus · high` robust local
+  load/verifier instrumentation, generic focused microbenchmark fixtures on
+  native and workerd against Bun and Node, p95/cold-start/raw method metadata,
+  fault-sensitive correctness checks in the gate. This is not golden-todo
+  conformance or an application speed claim; short smoke runs verify the
+  instruments only. Method and limits in `tools/bench/README.md`.
+  Built: reusable local load/verifier instrumentation and ordinary generic
+  fixtures on native, workerd, Bun and Node; short smoke checks validate the
+  instruments, without a golden-conformance or application-speed claim.
+  Request-path omissions and method in `tools/bench/README.md`; compiler/runtime
+  §2.11 records the scope and limits. The original 9.1 remains outstanding
+  through 9.1d, 9.1b and 9.1c.
+
+- [x] **9.1d1 Provisioned external JWT subjects:** `opus · high` a generic
+  prerequisite of the golden todo: the declared issuer and audience, bounded
+  discovery and public signing keys, area 19 verification, and one current
+  application-user lookup per request. Public HTTPS providers only, with no
+  redirects; trusted issuer metadata may name another public HTTPS key host
+  (Richard, 2026-10-22). Native and compiled workerd tests cover algorithms,
+  typed subjects, provider failures, cancellation and fresh authority.
+  First-sign-in hooks for external subjects and scope declarations remain
+  explicitly unbuilt; no application-specific compiler path.
