@@ -1073,8 +1073,13 @@ pub(crate) async fn sweep_within(
     // Each lane still uses the ordinary driver: its contexts, descendants
     // and each batch run remain serial; no action context crosses lanes.
     let mut lanes: Vec<Vec<Delivery>> = (0..SWEEP_CONCURRENCY).map(|_| Vec::new()).collect();
-    for (index, delivery) in work.into_iter().enumerate() {
-        lanes[index % SWEEP_CONCURRENCY].push(delivery);
+    let mut due: VecDeque<_> = work.into();
+    while !due.is_empty() {
+        for lane in &mut lanes {
+            if let Some(delivery) = due.pop_front() {
+                lane.push(delivery);
+            }
+        }
     }
     let pending: Vec<_> = lanes
         .into_iter()
