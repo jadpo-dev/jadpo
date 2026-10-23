@@ -647,9 +647,7 @@ impl Planner<'_> {
                     ty: SqlType::Text,
                 });
                 let expected = jadpo_sql::placeholder(version as usize);
-                conditions.push(format!(
-                    "({expected}::text IS NULL OR \"xmin\"::text = {expected})"
-                ));
+                conditions.push(text::holds_row_version(&expected));
                 row = Some(RowCheck {
                     table: table.to_string(),
                     id: id_source,

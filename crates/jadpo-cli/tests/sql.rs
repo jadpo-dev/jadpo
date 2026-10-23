@@ -173,7 +173,7 @@ fn an_action_prints_the_statement_each_write_sends() {
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert_eq!(
         out.stdout,
-        "write Note.archive\n  UPDATE \"note\"\n  SET \"archived_at\" = $1\n  WHERE \"id\" = $2\n    AND \"archived_at\" IS NULL\n  RETURNING \"id\", \"author_id\", \"body\", \"archived_at\"\n\n  writes: runs Note.archive on the Note with that id\n  file: domains/notes/actions/archive_note.jadpo:6\n  sends: 1 statement\n  $1: clock.now · timestamptz\n  $2: note_id · uuid\n  refused: when: of Note.archive → NoteArchived, mapped in conflict:\n  no row: NoteNotFound\n\nwhen no row changed\n  SELECT 1\n  FROM \"note\"\n  WHERE \"id\" = $1\n\n  then: a row means the record is there, so when: refused it → NoteArchived\n  $1: note_id · uuid\n"
+        "write Note.archive\n  UPDATE \"note\"\n  SET \"archived_at\" = $1\n  WHERE \"id\" = $2\n    AND \"archived_at\" IS NULL\n    AND ($3::text IS NULL OR \"xmin\"::text = $3)\n  RETURNING \"id\", \"author_id\", \"body\", \"archived_at\"\n\n  writes: runs Note.archive on the Note with that id\n  file: domains/notes/actions/archive_note.jadpo:6\n  sends: 1 statement\n  $1: clock.now · timestamptz\n  $2: note_id · uuid\n  $3: NULL::text · text\n  refused: when: of Note.archive → NoteArchived, mapped in conflict:\n  no row: NoteNotFound\n\nwhen no row changed\n  SELECT 1\n  FROM \"note\"\n  WHERE \"id\" = $1\n\n  then: a row means the record is there, so when: refused it → NoteArchived\n  $1: note_id · uuid\n"
     );
     let created = jadpo(&root, &["sql", "add_note", "--json"]);
     assert_eq!(created.code, 0, "{}", created.stderr);

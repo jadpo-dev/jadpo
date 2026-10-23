@@ -159,7 +159,7 @@ fn invoke(
             clock: Clock::TEST,
         },
     );
-    ctx.set_call_key("request", &format!("version-{serial}"));
+    ctx.set_call_key("request", format!("version-{serial}"));
     let args = match id {
         Some(id) => vec![id, Value::text("N1"), Value::text("am")],
         None => vec![Value::text("Plain")],
@@ -220,7 +220,7 @@ fn main() {
         )
         .unwrap();
     let schema = jadpo_check::data::schema(&loaded.db, loaded.project);
-    let sql = jadpo_graph::migration::migration_sql(&Default::default(), &schema, &|_| None)
+    let sql = jadpo_graph::migration::migration_sql(&Default::default(), schema, &|_| None)
         .unwrap()
         .to_document("20261023T0000_versions");
     let program = Program::new(prepared).with_config(&config);
@@ -350,7 +350,7 @@ fn main() {
                     line.contains("LOG:  execute ") || line.contains("LOG:  statement: ")
                 })
                 .count();
-            if actual >= statements + 1 {
+            if actual > statements {
                 break (log, actual);
             }
             assert!(
