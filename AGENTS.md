@@ -63,12 +63,15 @@ comparison and update its record, making any lost gain or correctness trade-off
 explicit. Do not silently restore an older implementation or omit an adverse
 result. Correctness still takes precedence over speed.
 
-After each optimisation, update Richard with a compact before/after comparison
-of native Jadpo, WebAssembly/workerd, Bun and Node wherever the same workload
-supports it. Name the workload and its scope, variation and trade-offs; do not
-imply that a background-work result also measures HTTP requests. After each
-completed chunk, also report what was built, the gate result and the PR link
-in three lines. Codex never merges these pull requests or enables auto merge.
+After each optimisation, lead Richard's update with Jadpo on Workers versus
+Bun: before/after throughput and p95 latency where the workload supports them,
+and the remaining gap. This is Phase 9's main target. Label local workerd
+measurements explicitly; they are not real Workers results. Native Jadpo and
+Node comparisons provide supporting context where the same workload supports
+it. Name the workload and its scope, variation and trade-offs; do not imply
+that a background-work result also measures HTTP requests. After each completed
+chunk, also report what was built, the gate result and the PR link in three
+lines. Codex never merges these pull requests or enables auto merge.
 
 ## Working rules
 
