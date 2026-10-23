@@ -1489,7 +1489,11 @@ of the runner holding it, whether it diverged and when the alert on
 unfinished records was raised for it, chunk 7.5f; and `jadpo_steps`: each
 step's operation, its request's fingerprint, when it was sent and its
 sealed answer; area 12, built in chunk 7.5b) goes in the store such an
-action writes, or `events: { store: }`'s, only where one is kept.
+action writes, or `events: { store: }`'s, only where one is kept. Since chunk 9.1d2a a resumable single keyed
+changing call with an existing record store uses these tables for dispatch
+metadata only, with no request fingerprints or encrypted answers, so the
+provider's safe key window also bounds its retries (area 11, "Keys and
+windows").
 
 Browser sessions and API tokens (`jadpo_sessions`: each one's user, the
 verifiers of its token and a browser session's CSRF token, and when it

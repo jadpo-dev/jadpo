@@ -1174,3 +1174,30 @@ Made largest_page a setting
     let after = jadpo(&root, &["check"]);
     assert_eq!(after.code, 0, "{}", after.stdout);
 }
+
+#[test]
+fn every_invalid_connection_address_is_reported_without_its_credentials() {
+    let root = folder("connection-structure");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "config.jadpo",
+        "config { database_url: PostgresUrl\n issuer: Url\n }\n",
+    );
+    let output = jadpo_with(
+        Environment::empty()
+            .with_var("DATABASE_URL", "postgres://user:secret-password@")
+            .with_var("ISSUER", "not-a-url"),
+        &root,
+        &["config", "check", "--json"],
+    );
+    assert_ne!(output.code, 0);
+    let text = format!("{}{}", output.stdout, output.stderr);
+    let json: serde_json::Value = serde_json::from_str(&output.stdout).expect("JSON report");
+    assert_eq!(
+        json["diagnostics"].as_array().expect("diagnostics").len(),
+        2,
+        "{text}"
+    );
+    assert!(!text.contains("secret-password"), "{text}");
+}

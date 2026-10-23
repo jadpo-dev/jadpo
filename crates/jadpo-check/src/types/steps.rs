@@ -80,6 +80,8 @@ enum Call {
     /// It changes something under its package's key, or is safe to send
     /// again as it is (`idempotent: true`), or is a store's `put`.
     Safe,
+    /// A provider change protected by its finite idempotency window.
+    Keyed,
     /// It changes something with no key.
     Unkeyed,
 }
@@ -104,9 +106,19 @@ struct Calls {
 impl Calls {
     fn new(db: &dyn Db, project: Project) -> Calls {
         let operations = crate::providers::operations(db, project);
+        let keyed: BTreeSet<String> = crate::surface::homes(db, project)
+            .into_values()
+            .filter(|home| {
+                crate::connections::reach(db, project, home)
+                    .and_then(|reach| reach.idempotency)
+                    .is_some_and(|key| !key.header.is_empty())
+            })
+            .map(|home| home.folder)
+            .collect();
         let call = |operation: &crate::providers::Operation| {
             let call = match (operation.changes, operation.idempotent) {
                 (false, _) => Call::Reads,
+                (true, true) if keyed.contains(&operation.folder) => Call::Keyed,
                 (true, true) => Call::Safe,
                 (true, false) => Call::Unkeyed,
             };
@@ -240,6 +252,8 @@ pub struct Steps {
     /// How many changing calls it can make at all, every way through it
     /// counted.
     pub changing: u32,
+    /// Whether a changing provider call relies on a finite key window.
+    pub keyed: bool,
     /// Its first outside call of any kind.
     pub calls: Option<String>,
     /// Its first changing call.
@@ -365,6 +379,7 @@ struct Walk<'a> {
     loops: u32,
     longest: u32,
     changing: u32,
+    keyed: bool,
     /// The first outside call, of any kind.
     first_call: Option<Made>,
     /// Each changing call, in the order walked.
@@ -400,6 +415,7 @@ impl<'a> Walk<'a> {
             loops: 0,
             longest: 0,
             changing: 0,
+            keyed: false,
             first_call: None,
             made: Vec::new(),
             unkeyed: Vec::new(),
@@ -544,6 +560,7 @@ impl<'a> Walk<'a> {
         if call == Call::Reads {
             return;
         }
+        self.keyed |= call == Call::Keyed;
         if call == Call::Unkeyed {
             self.unkeyed.push(made.clone());
         }
@@ -559,6 +576,7 @@ impl<'a> Walk<'a> {
     /// A call of an action, which makes what it makes as part of this one.
     fn joins(&mut self, site: SiteId, node: &Node, callee: &Key, way: &mut Way) {
         let steps = (self.steps)(callee);
+        self.keyed |= steps.keyed;
         // A package's action's own calls go through the connection the
         // app called it through.
         let budget = match node {
@@ -684,6 +702,7 @@ impl<'a> Walk<'a> {
         Steps {
             longest: self.longest,
             changing: self.changing,
+            keyed: self.keyed,
             calls: self
                 .first_call
                 .as_ref()
@@ -1447,8 +1466,8 @@ pub fn record_store(db: &dyn Db, project: Project, action: &str) -> Option<Strin
         .or_else(|| crate::events::events_settings(db, project).store.clone())
 }
 
-/// What the runtime keeps for each action that makes several changing
-/// calls and is run where its key survives a retry (chunk 7.5b), by key:
+/// What the runtime keeps for resumable several-changing-call actions
+/// (encrypted replay), or single keyed changes (dispatch metadata), by key:
 /// the store its record is kept in and a digest of its step shape.
 #[salsa::tracked(returns(ref))]
 pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::steps::RecordPlan> {
@@ -1462,9 +1481,9 @@ pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::s
     let calls = Calls::new(db, project);
     let mut out = BTreeMap::new();
     for key in resumable_runs(db, project) {
-        if !all.get(key).is_some_and(Steps::several) {
+        let Some(steps) = all.get(key).filter(|steps| steps.several() || steps.keyed) else {
             continue;
-        }
+        };
         let Some(store) = record_store(db, project, key.name()) else {
             continue;
         };
@@ -1484,7 +1503,12 @@ pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::s
             key.clone(),
             jadpo_std::steps::RecordPlan {
                 store,
-                shape: digest,
+                shape: if steps.several() {
+                    digest
+                } else {
+                    format!("{}{digest}", jadpo_std::steps::DISPATCH_SHAPE_PREFIX)
+                },
+                replay: steps.several(),
             },
         );
     }

@@ -2214,7 +2214,8 @@ any write. `jadpo_runtime::purge(host, plan, now, batches)` is purge's
 entry point, outside every action: batch after batch, each its own transaction, one
 `DELETE ... WHERE "id" IN (SELECT ... LIMIT 500 FOR UPDATE SKIP LOCKED)
 RETURNING "id"` of hidden records whose `since:` field is older than `now`
-less `after:`, oldest first, leaving out with `NOT EXISTS` any a
+less `after:` (strict `<`, including literal and configured retention
+boundaries since chunk 9.1d2a), oldest first, leaving out with `NOT EXISTS` any a
 `restricted` reference holds, directly or through a cascade, until a batch
 comes back short (since chunk 3.10 through every chain of cascades, and,
 when one leads back to an entity already on it, such as a folder inside a
@@ -4171,6 +4172,41 @@ replaying every recorded step diverges (`steps::finished`), and
 record write is one statement that takes the record over only from an
 equal or older generation (`steps::SEND`, `ANSWER`, `DIVERGE`,
 `DELETE`). The runner holds a diverged delivery as `outbox::DIVERGED`.
+
+**Single changing calls and safe key windows** (chunk 9.1d2a; areas 11,
+"Keys and windows", and 12, "A step in doubt"). A resumable action reaching
+a keyed changing provider call, with a store already available for its writes
+or events, also has a `RecordPlan`, with `replay: false`. It uses the existing
+step tables only for operation, first dispatch time, key generation and runner
+generation: no request fingerprint or answer is kept, and no steps encryption
+setting is required. Code keeps a fresh `clock.now`; provider keys retain their
+existing derivation. A retry at or beyond the provider window less the smaller
+of 10% and one hour parks as `outcome_unknown` before another send. Every
+physical send checks this horizon on the host clock and fences the runner's
+generation, including retries of a previously written step. Operator retry,
+abandon, visibility and 30-day cleanup use the existing record paths; a
+successful action deletes the metadata in its commit. New metadata-only
+shapes carry a `dispatch-v1:` prefix in `RecordPlan.shape` and in the stored
+shape; legacy untagged shapes remain encrypted replay.
+Opening an incompatible mode persists a `diverged` problem for operators
+before decoding answers or sending anything, including records with no answer
+and an empty request. This mode check does not compare whole shape digests.
+The existing operator build comparison reads the same tagged plan shape, so
+unchanged metadata records remain compatible across builds. Multi-call
+encrypted replay is unchanged. A storeless route still has no durable claim
+or historical window across independent requests; this change adds no configuration
+requirement to those accepted routes.
+
+**Connection URL structure** (chunk 9.1d2a; area 10, "Database and other
+connection URLs").
+`jadpo_std::connection_url` checks PostgreSQL and Redis URI structure without
+network I/O, through the built-in validator shared by literals, startup and
+`config check`. PostgreSQL multi-host and explicit socket forms need their own
+URI handling rather than a web URL parser. Legacy hostless database paths
+retain their type acceptance; this does not add implicit socket or user
+defaults to the host driver. Existing TLS-parameter checks
+still run after structure checks, and configuration reports all invalid
+settings without their values.
 
 **A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
 kept"). The plan marks a `BatchCall` whose action makes outside calls

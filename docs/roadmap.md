@@ -233,15 +233,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
   the split isolates generic defects exposed by the executable contract
   (2026-10-23), without reducing its 44-case scope.
-- [ ] **9.1d2a Generic runtime contract fixes:** `opus · high` after 9.1a:
-  fix the area 5 strict retention cutoff for literal and configured periods,
-  and area 11's safe provider-key window for a single changing call, using
-  generic regressions including real delivery replay beyond the safe window.
-  Preserve keyed replay, failure classification, lease fencing and existing
-  single-call applications. A separate branch/worktree and full gate are
-  required. Also validate connection URL structure in shared startup/config
-  checking, retaining valid explicit local-socket forms and reporting every
-  invalid declaration without credentials (Richard, 2026-10-23).
+- [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
 - [ ] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
   and 9.1d2a: implement the actual application from `examples/golden-todo`
   using the current area pages, with all 44 case IDs executable on native

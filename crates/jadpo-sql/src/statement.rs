@@ -334,9 +334,9 @@ pub fn equal(column: &str, value: &str) -> String {
     format!("{} = {value}", ident(column))
 }
 
-/// `column <= value`.
-pub fn at_most(column: &str, value: &str) -> String {
-    format!("{} <= {value}", ident(column))
+/// `column < value`.
+pub fn less_than(column: &str, value: &str) -> String {
+    format!("{} < {value}", ident(column))
 }
 
 /// `column = ANY(keys)`: the rows an include's keys match.

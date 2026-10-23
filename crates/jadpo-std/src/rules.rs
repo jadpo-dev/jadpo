@@ -673,7 +673,7 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             "isn't an `http://` or `https://` URL with a host, such as `https://example.com`"
                 .into(),
         ),
-        Builtin::PostgresUrl if !is_connection_url(text, &["postgres", "postgresql"]) => {
+        Builtin::PostgresUrl if !crate::connection_url::postgres(text) => {
             Err("isn't a PostgreSQL address, which starts `postgres://` or `postgresql://`".into())
         }
         Builtin::PostgresUrl => match crate::database_tls::tls_parameter(text) {
@@ -682,7 +682,7 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
             )),
             None => Ok(()),
         },
-        Builtin::RedisUrl if !is_connection_url(text, &["redis", "rediss"]) => {
+        Builtin::RedisUrl if !crate::connection_url::redis(text) => {
             Err("isn't a Redis address, which starts `redis://` or `rediss://`".into())
         }
         Builtin::SigningKey if !is_signing_key(text) => Err(format!(
@@ -967,5 +967,65 @@ mod tests {
         assert!(check_builtin_text(Builtin::Email, "a@b").is_err());
         assert!(check_builtin_text(Builtin::Url, "https://example.com").is_ok());
         assert!(check_builtin_text(Builtin::Text, "anything").is_ok());
+    }
+
+    #[test]
+    fn connection_urls_validate_structure_without_opening_a_connection() {
+        for text in [
+            "postgres://localhost/app",
+            "postgresql://db1:5432,db2:5433/app",
+            "postgres://u:p%40ss%3Aword@[::1]:5432/app",
+            "postgres://%2Ftmp/app",
+            "postgresql:///app?host=/tmp",
+            "postgres:///app",
+            "postgres://u:p@/app?host=%2Ftmp",
+        ] {
+            assert!(
+                check_builtin_text(Builtin::PostgresUrl, text).is_ok(),
+                "{text}"
+            );
+        }
+        for text in [
+            "postgres://user:password@",
+            "postgres://db:abc/app",
+            "postgres://db:65536/app",
+            "postgres://[::1/app",
+            "postgres://[not-ip]/app",
+            "postgres://db%xy/app",
+            "postgres://db/app#fragment",
+            "postgres://db/app?host=",
+            "postgres://db,,other/app",
+            "postgres://db|bad/app",
+            "postgres://db<bad/app",
+        ] {
+            assert!(
+                check_builtin_text(Builtin::PostgresUrl, text).is_err(),
+                "{text}"
+            );
+        }
+        for text in [
+            "redis://localhost",
+            "rediss://user:p%40ss@[::1]:6380/12",
+            "redis://:password@cache/0",
+        ] {
+            assert!(
+                check_builtin_text(Builtin::RedisUrl, text).is_ok(),
+                "{text}"
+            );
+        }
+        for text in [
+            "redis://user:password@",
+            "redis:///0",
+            "redis://cache:abc/0",
+            "redis://cache/-1",
+            "redis://cache/abc",
+            "redis://cache/0/1",
+            "redis://cache\\bad/0",
+        ] {
+            assert!(
+                check_builtin_text(Builtin::RedisUrl, text).is_err(),
+                "{text}"
+            );
+        }
     }
 }

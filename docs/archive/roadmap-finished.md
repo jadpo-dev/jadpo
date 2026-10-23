@@ -2964,3 +2964,13 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   typed subjects, provider failures, cancellation and fresh authority.
   First-sign-in hooks for external subjects and scope declarations remain
   explicitly unbuilt; no application-specific compiler path.
+
+- [x] **9.1d2a Generic runtime contract fixes:** `opus · high` after 9.1a:
+  fix the area 5 strict retention cutoff for literal and configured periods,
+  and area 11's safe provider-key window for a single changing call, using
+  generic regressions including real delivery replay beyond the safe window.
+  Preserve keyed replay, failure classification, lease fencing and existing
+  single-call applications. A separate branch/worktree and full gate are
+  required. Also validate connection URL structure in shared startup/config
+  checking, retaining valid explicit local-socket forms and reporting every
+  invalid declaration without credentials (Richard, 2026-10-23).
