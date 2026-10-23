@@ -37,6 +37,12 @@ class PatchControls(unittest.TestCase):
         for receipts,successes in (([],1),(self.receipts*2,1),(self.receipts,2)):
             with self.assertRaises(ValueError):self.verify(receipts=receipts,successes=successes)
 
+    def test_missing_or_shared_partition_rows_fail(self):
+        self.cases*=2
+        with self.assertRaises(ValueError):self.verify()
+        self.cases=[self.cases[0],{'owner':'bob','expected_json':{'id':'foreign'}}]
+        with self.assertRaises(ValueError):self.verify()
+
     def test_all_unallowed_stored_changes_fail(self):
         for index,field in ((0,'owner_id'),(0,'status'),(0,'reminder_revision'),(0,'deleted_at'),(0,'created_at'),(1,'title')):
             after=copy.deepcopy(self.after);after[index][field]='bad'

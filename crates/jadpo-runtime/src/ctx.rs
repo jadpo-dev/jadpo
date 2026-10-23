@@ -1307,9 +1307,26 @@ impl<'p> Ctx<'p> {
             .is_some_and(Boundary::loaded_before_call)
     }
 
+    pub(crate) fn expected_row(
+        &self,
+        row: &jadpo_std::write::RowCheck,
+        id: &SqlValue,
+    ) -> Option<String> {
+        self.boundary
+            .as_ref()
+            .and_then(|boundary| boundary.expected(row, id))
+    }
+
+    pub(crate) fn checked_row(&mut self, row: &jadpo_std::write::RowCheck, id: SqlValue) {
+        if let Some(boundary) = &mut self.boundary {
+            boundary.checked(row, id);
+        }
+    }
+
     /// Holds the row `row` names, `id`, to the version a snapshot an
-    /// outside call closed loaded it at, before a write to it in `store`
-    /// (chunk 7.4): `ConcurrentChange` when it changed or went since.
+    /// outside call closed loaded it at, when a write in `store` changed
+    /// no row: `ConcurrentChange` before its ordinary refusal when it
+    /// changed or went since (chunk 9.1b4).
     pub(crate) async fn check_row(
         &mut self,
         store: &str,

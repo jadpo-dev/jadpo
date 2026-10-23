@@ -759,12 +759,15 @@ There are two deliberately separate workloads:
   lifetime, fresh seed, real signed sessions, startup/readiness phase and
   two-second pool/isolate warmup. Three rounds rotate target order, with
   one and eight closed-loop keep-alive clients for five seconds per cell.
-  Each concurrent client has a disjoint fixed owned row and credential;
-  no overlapping requests share a row. The Rust load tool's opt-in fixed
-  case mapping preserves its existing default protocol. Every response
+  Each cell starts a fresh service/limit store and seeds 256 independent
+  owners, credentials and owned rows. Client i cycles cases i, i+C, ...
+  for C clients, so no overlapping requests share a row. All 256 cases must
+  return verified receipts. This distributes demand under the real 600/min
+  caller quota; any 429 still rejects the cell. The Rust load tool's opt-in
+  partition mapping preserves its existing fixed/default protocols. Every response
   must match the expected identity, owner, title, status, due date and
   creation time; update times must be valid zoned instants within the cell.
-  Final persisted rows must agree with the last response for each client,
+  Final persisted rows must agree with the last response for each case/row,
   and all fields except title/update time, including reminder/lifecycle
   fields and every untouched row, must stay identical. Invalid-title and
   foreign-owner refusals preserve all data. Deliberately bad receipt

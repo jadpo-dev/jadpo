@@ -280,6 +280,12 @@ pub fn row_version(table: &str) -> String {
     )
 }
 
+/// A mutation's expected pre-call version, or typed NULL when it needs
+/// no check. The UPDATE or DELETE both checks and locks its matching row.
+pub fn holds_row_version(expected: &str) -> String {
+    format!("({expected}::text IS NULL OR \"xmin\"::text = {expected})")
+}
+
 /// Adds `conditions` to `sql` as its `WHERE`, one to a line.
 pub fn where_clause(sql: &mut String, conditions: &[String], indent: &str) {
     for (i, condition) in conditions.iter().enumerate() {

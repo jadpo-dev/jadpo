@@ -38,6 +38,7 @@ struct Options {
     created_todo_title: Option<String>,
     updated_todo_title: Option<String>,
     case_per_connection: bool,
+    partition_cases: bool,
     cases: Vec<Case>,
     address_pool: u64,
 }
@@ -59,6 +60,7 @@ fn options() -> Options {
         created_todo_title: None,
         updated_todo_title: None,
         case_per_connection: false,
+        partition_cases: false,
         cases: Vec::new(),
         address_pool: 0,
     };
@@ -110,6 +112,7 @@ fn options() -> Options {
                 assert!(!o.cases.is_empty(), "at least one case");
             }
             "--case-per-connection" => o.case_per_connection = true,
+            "--partition-cases" => o.partition_cases = true,
             "--expect-updated-todo-title" => o.updated_todo_title = Some(value()),
             "--expect-created-title" => o.created_title = Some(value()),
             "--expect-created-todo-title" => o.created_todo_title = Some(value()),
@@ -132,20 +135,49 @@ fn options() -> Options {
         o.duration.is_finite() && o.duration > 0.0 && o.warmup.is_finite() && o.warmup >= 0.0,
         "finite positive duration and nonnegative warmup"
     );
-    if o.case_per_connection {
+    validate_case_mapping(
+        &o.cases,
+        o.connections,
+        o.case_per_connection,
+        o.partition_cases,
+    );
+    o
+}
+
+fn validate_case_mapping(cases: &[Case], connections: usize, fixed: bool, partitioned: bool) {
+    assert!(!(fixed && partitioned), "choose one case mapping");
+    if fixed || partitioned {
         assert!(
-            o.cases.len() >= o.connections,
+            cases.len() >= connections,
             "one case per connection is required"
         );
+        if partitioned {
+            assert!(
+                cases.len().is_multiple_of(connections),
+                "equal case partitions are required"
+            );
+        }
         let mut paths = std::collections::BTreeSet::new();
-        for case in o.cases.iter().take(o.connections) {
+        for case in cases.iter().take(if partitioned {
+            cases.len()
+        } else {
+            connections
+        }) {
             assert!(
                 case.path.as_ref().is_some_and(|path| paths.insert(path)),
-                "fixed cases require distinct paths"
+                "mapped cases require distinct paths"
             );
         }
     }
-    o
+}
+
+fn partitioned_case_index(
+    connection: usize,
+    connections: usize,
+    sequence: usize,
+    count: usize,
+) -> usize {
+    connection + (sequence % (count / connections)) * connections
 }
 
 #[derive(Default)]
@@ -358,6 +390,7 @@ fn main() {
                 let mut tally = Tally::default();
                 let mut buf = Vec::with_capacity(16 * 1024);
                 let mut stream: Option<TcpStream> = None;
+                let mut case_sequence = 0;
                 while Instant::now() < until {
                     if stream.is_none() {
                         match tokio::time::timeout(
@@ -390,10 +423,18 @@ fn main() {
                         &o.cases,
                         if o.case_per_connection {
                             connection as u64
+                        } else if o.partition_cases {
+                            partitioned_case_index(
+                                connection,
+                                o.connections,
+                                case_sequence,
+                                o.cases.len(),
+                            ) as u64
                         } else {
                             n
                         },
                     );
+                    case_sequence += 1;
                     let address = if o.address_pool == 0 {
                         n
                     } else {
@@ -563,6 +604,62 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn partitions_cycle_all_cases_without_sharing_rows() {
+        for connections in [1, 8] {
+            let mut all = std::collections::BTreeSet::new();
+            for connection in 0..connections {
+                let cycle: Vec<_> = (0..256 / connections)
+                    .map(|sequence| partitioned_case_index(connection, connections, sequence, 256))
+                    .collect();
+                assert_eq!(cycle.len(), 256 / connections);
+                for index in cycle {
+                    assert!(all.insert(index), "a case was shared across clients");
+                }
+                assert_eq!(
+                    partitioned_case_index(connection, connections, 256 / connections, 256),
+                    connection
+                );
+            }
+            assert_eq!(all, (0..256).collect());
+        }
+    }
+
+    #[test]
+    fn invalid_case_mappings_fail_before_loading() {
+        let cases = |paths: &[&str]| {
+            paths
+                .iter()
+                .map(|path| Case {
+                    headers: vec![],
+                    owner: None,
+                    path: Some((*path).into()),
+                    expected_json: None,
+                })
+                .collect::<Vec<_>>()
+        };
+        for (paths, connections, fixed, partitioned) in [
+            (vec!["a"], 2, false, true),
+            (vec!["a", "b", "c"], 2, false, true),
+            (vec!["a", "b", "a", "d"], 2, false, true),
+            (vec!["a", "b"], 2, true, true),
+            (vec!["a", "a"], 2, true, false),
+        ] {
+            assert!(
+                std::panic::catch_unwind(|| validate_case_mapping(
+                    &cases(&paths),
+                    connections,
+                    fixed,
+                    partitioned
+                ))
+                .is_err()
+            );
+        }
+        validate_case_mapping(&cases(&["a", "b", "c", "d"]), 2, false, true);
+        validate_case_mapping(&cases(&["a", "b"]), 2, true, false);
+        validate_case_mapping(&[], 2, false, false);
+    }
+
     #[test]
     fn rotating_cases_keep_each_credential_with_its_own_response() {
         let cases = [

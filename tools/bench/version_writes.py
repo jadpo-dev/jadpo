@@ -100,6 +100,7 @@ def instant(value):
 def validate_patch(before,after,receipts,cases,successes,started,ended):
     old={r['id']:r for r in before};new={r['id']:r for r in after}
     owned={c['expected_json']['id']:c['owner'] for c in cases}
+    if len(owned)!=len(cases) or len(set(owned.values()))!=len(cases):raise ValueError('PATCH cases must have independent owners/rows')
     if len(old)!=len(before) or len(new)!=len(after) or set(old)!=set(new):raise ValueError('PATCH changed row identities')
     if len(receipts)!=successes or not receipts:raise ValueError('incomplete PATCH receipts')
     last={}
@@ -121,7 +122,8 @@ def validate_patch(before,after,receipts,cases,successes,started,ended):
 
 
 def patch_cell(server,pg,owners,concurrency,warmup,duration,row):
-    cases=golden.cases_for(server,owners,'read')[:concurrency]
+    cases=golden.cases_for(server,owners,'read')
+    if len(cases)!=256 or len({c['owner'] for c in cases})!=256 or len({c['path'] for c in cases})!=256:raise ValueError('256 independent PATCH owners/rows required')
     before=pg.state(server.target)
     # Refusals must preserve every column of every seeded row.
     status,body=golden.request(server,'PATCH',cases[0]['path'],owners[0]['token'],{'title':''})
@@ -134,7 +136,7 @@ def patch_cell(server,pg,owners,concurrency,warmup,duration,row):
     filename=WORK/f'cases-{secrets.token_hex(8)}.json';filename.write_text(json.dumps(cases));filename.chmod(0o600)
     args=[str(golden.spike.LOAD),'--addr',f'127.0.0.1:{server.port}','--connections',str(concurrency),
           '--warmup',str(warmup),'--duration',str(duration),'--address-pool','16384','--header',server.header,
-          '--cases-file',str(filename),'--case-per-connection','--method','PATCH','--body','{"title":"bench-patch"}',
+          '--cases-file',str(filename),'--partition-cases','--method','PATCH','--body','{"title":"bench-patch"}',
           '--expect','200','--expect-updated-todo-title','bench-patch']
     started=time.time();wall=time.monotonic();process=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
     try:
@@ -184,7 +186,7 @@ def measure(label,kind,count,warmup,duration):
                 for round_ in range(1,4):
                     for target in (('workers','bun') if round_%2 else ('bun','workers')):
                         for concurrency in (1,8):
-                            environment=golden.configuration(pg.url(target),secrets.token_urlsafe(32));owners,signed=golden.credentials(target,environment,8);golden.seed(pg,target,owners)
+                            environment=golden.configuration(pg.url(target),secrets.token_urlsafe(32));owners,signed=golden.credentials(target,environment,256);golden.seed(pg,target,owners)
                             server=golden.Server(target,pg,environment)
                             try:
                                 if time.time()*1000-signed+(warmup+duration+45)*1000>=230000:raise ValueError('credentials too old')
