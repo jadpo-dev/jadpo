@@ -200,7 +200,7 @@ def worker(directory, pg, logs, owned):
         bindings.append(f'(name="{limit["name"]}",wrapped=(moduleName="bench:ratelimit",innerBindings=[(name="limit",json="{limit["simple"]["limit"]}"),(name="period",json="{limit["simple"]["period"]}"),(name="log",json="false")]))')
     port = spike.free_port()
     (folder / 'config.capnp').write_text(f'''using Workerd=import "/workerd/workerd.capnp";
-      const config:Workerd.Config=(services=[(name="kiosk",worker=.kiosk),(name="cron",worker=.cron),
+      const config:Workerd.Config=(services=[(name="kiosk",worker = .kiosk),(name="cron",worker = .cron),
       (name="pg",external=(address="127.0.0.1:{pool_port}",tcp=())),
       (name="machine",network=(allow=["public","private","local"]))],
       sockets=[(name="cron",address="127.0.0.1:{port}",http=(),service="cron")],
