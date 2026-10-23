@@ -18,6 +18,7 @@ export const failures = {
   method_not_allowed: [405, "Method not allowed."],
   rate_limited: [429, "Too many requests."],
   unavailable: [503, "Unavailable."],
+  authentication_misconfigured: [500, "Authentication misconfigured."],
   authentication_unavailable: [503, "Authentication unavailable."],
   deadline_exceeded: [504, "Request deadline exceeded."],
   internal_fault: [500, "Internal fault."],

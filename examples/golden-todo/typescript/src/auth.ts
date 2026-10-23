@@ -20,9 +20,9 @@ import type { Store } from "./db/store.ts";
 import { users, services, sessions, serviceKeys } from "./db/schema.ts";
 import { AppError } from "./errors.ts";
 import type { Principal } from "./schemas.ts";
-import type { Clock, RequestScope } from "./runtime.ts";
+import { RequestScope, type Clock } from "./runtime.ts";
 import type { Egress } from "./egress.ts";
-import { publicHttps } from "./egress.ts";
+import { publicHttps, ResponseTooLarge } from "./egress.ts";
 
 const compactId = z.string().regex(/^[0-9a-f]{32}$/);
 const Claims = z.strictObject({
@@ -116,6 +116,8 @@ export class AuthenticationService {
   #keys: ReturnType<typeof createLocalJWKSet> | undefined;
   #keysUntil = 0;
   #refreshAt = -Infinity;
+  #refreshing: Promise<void> | undefined;
+  #refreshError: AppError | undefined;
   constructor(config: Config, store: Store, clock: Clock, egress: Egress) {
     this.config = config;
     this.store = store;
@@ -126,6 +128,7 @@ export class AuthenticationService {
     this.#keys = undefined;
     this.#keysUntil = 0;
     this.#refreshAt = -Infinity;
+    this.#refreshError = undefined;
   }
   async authenticate(
     request: Request,
@@ -391,8 +394,10 @@ export class AuthenticationService {
         error &&
         typeof error === "object" &&
         "code" in error &&
-        error.code === "ERR_JWKS_NO_MATCHING_KEY" &&
-        this.clock() - this.#refreshAt >= 30000
+        [
+          "ERR_JWKS_NO_MATCHING_KEY",
+          "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
+        ].includes(String(error.code))
       ) {
         await this.refresh(scope);
         try {
@@ -468,40 +473,126 @@ export class AuthenticationService {
       throw new AppError("invalid_credentials");
     return result;
   }
-  private async refresh(scope: RequestScope) {
+  private async refresh(scope: RequestScope): Promise<void> {
+    scope.check();
+    if (this.#refreshing) {
+      // A waiter's cancellation must not cancel the request owning this refresh.
+      const pending = this.#refreshing;
+      return await new Promise<void>((resolve, reject) => {
+        const cancelled = () => {
+          cleanup();
+          reject(new AppError("unavailable"));
+        };
+        scope.signal.addEventListener("abort", cancelled, { once: true });
+        const cleanup = () => {
+          scope.signal.removeEventListener("abort", cancelled);
+        };
+        void pending.then(
+          () => {
+            cleanup();
+            resolve();
+          },
+          (error: unknown) => {
+            cleanup();
+            reject(
+              error instanceof Error
+                ? error
+                : new AppError("authentication_unavailable"),
+            );
+          },
+        );
+        if (scope.signal.aborted) cancelled();
+      });
+    }
+    if (this.clock() - this.#refreshAt < 30000) {
+      if (this.#refreshError) throw this.#refreshError;
+      if (!this.#keys || this.#keysUntil <= this.clock())
+        throw new AppError("authentication_unavailable");
+      return;
+    }
+    // Reserve before awaiting, including cold/expired/failing/cancelled requests.
     this.#refreshAt = this.clock();
+    this.#refreshError = new AppError("authentication_unavailable");
+    const pending = (async () => {
+      try {
+        const discovery =
+          this.config.issuer.replace(/\/$/, "") +
+          "/.well-known/openid-configuration";
+        const metadata = z
+          .object({
+            issuer: z.literal(this.config.issuer),
+            jwks_uri: z.string(),
+          })
+          .parse(await this.fetchDocument(discovery, 65536, scope));
+        // fetchDocument permits a distinct public HTTPS JWKS host.
+        const keys = await readPublicKeys(
+          await this.fetchDocument(metadata.jwks_uri, 262144, scope),
+        );
+        scope.check();
+        this.#keys = createLocalJWKSet(keys);
+        this.#keysUntil = this.clock() + 300000;
+        this.#refreshError = undefined;
+      } catch (error) {
+        this.#refreshError =
+          error instanceof AppError &&
+          [
+            "authentication_unavailable",
+            "unavailable",
+            "deadline_exceeded",
+          ].includes(error.code)
+            ? new AppError("authentication_unavailable")
+            : new AppError("authentication_misconfigured");
+        throw this.#refreshError;
+      } finally {
+        this.#refreshAt = this.clock();
+      }
+    })();
+    this.#refreshing = pending;
     try {
-      const discovery =
-        this.config.issuer.replace(/\/$/, "") +
-        "/.well-known/openid-configuration";
-      publicHttps(discovery);
-      const metadataAnswer = await this.egress.send(
-        {
-          url: discovery,
-          method: "GET",
-          headers: { accept: "application/json" },
-        },
-        scope,
-      );
-      if (metadataAnswer.status !== 200) throw new Error();
-      const metadata = z
-        .object({ issuer: z.literal(this.config.issuer), jwks_uri: z.string() })
-        .parse(uniqueJson(metadataAnswer.body, 524288));
-      publicHttps(metadata.jwks_uri); // A distinct public HTTPS JWKS host is permitted.
-      const answer = await this.egress.send(
-        {
-          url: metadata.jwks_uri,
-          method: "GET",
-          headers: { accept: "application/json" },
-        },
-        scope,
-      );
-      if (answer.status !== 200) throw new Error();
-      const keys = await readPublicKeys(uniqueJson(answer.body, 524288));
-      this.#keys = createLocalJWKSet(keys);
-      this.#keysUntil = this.clock() + 300000;
+      await pending;
+    } finally {
+      this.#refreshing = undefined;
+    }
+  }
+  private async fetchDocument(
+    url: string,
+    maximum: number,
+    parent: RequestScope,
+  ): Promise<unknown> {
+    // Validate configuration separately from transport failures; no raw value escapes.
+    try {
+      publicHttps(url);
     } catch {
-      throw new AppError("authentication_unavailable");
+      throw new AppError("authentication_misconfigured");
+    }
+    const scope = new RequestScope(
+      parent.signal,
+      Math.min(3000, parent.remaining()),
+    );
+    try {
+      let answer;
+      try {
+        answer = await this.egress.send(
+          {
+            url,
+            method: "GET",
+            headers: { accept: "application/json" },
+            maxResponseBytes: maximum,
+          },
+          scope,
+        );
+      } catch (error) {
+        throw new AppError(
+          error instanceof ResponseTooLarge
+            ? "authentication_misconfigured"
+            : "authentication_unavailable",
+        );
+      }
+      if (answer.status !== 200)
+        throw new AppError("authentication_unavailable");
+      return uniqueJson(answer.body, maximum);
+    } finally {
+      scope.close();
     }
   }
 }
@@ -530,9 +621,20 @@ function publicBytes(text: string): Buffer {
   return bytes;
 }
 export async function readPublicKeys(value: unknown): Promise<JSONWebKeySet> {
-  const set = z.strictObject({ keys: z.array(jwkReader).max(50) }).parse(value);
+  const set = z
+    .strictObject({ keys: z.array(z.unknown()).min(1).max(64) })
+    .parse(value);
   const result: JSONWebKeySet = { keys: [] };
-  for (const raw of set.keys) {
+  for (const entry of set.keys) {
+    // OIDC encryption-only members never enter the signing key reader.
+    if (
+      typeof entry === "object" &&
+      entry !== null &&
+      "use" in entry &&
+      entry.use === "enc"
+    )
+      continue;
+    const raw = jwkReader.parse(entry);
     if (
       ["d", "p", "q", "dp", "dq", "qi", "oth", "k", "key_ops"].some((name) =>
         Object.hasOwn(raw, name),
@@ -615,5 +717,6 @@ export async function readPublicKeys(value: unknown): Promise<JSONWebKeySet> {
     }
     result.keys.push(key);
   }
+  if (!result.keys.length) throw Error("No signing keys");
   return result;
 }

@@ -6,7 +6,7 @@ const payload = {
   to: "alice@example.test",
   title: "Original",
   todo_id: "00000000-0000-4000-8000-000000000011",
-  revision: 1,
+  revision: "1",
 };
 describe("bounded keyed provider calls", () => {
   it("retries transient failures under the same key/payload with bounded full-jitter waits", async () => {
@@ -40,6 +40,12 @@ describe("bounded keyed provider calls", () => {
       scope.close();
     }
     expect(calls).toHaveLength(3);
+    expect(calls[0]).toMatchObject({
+      url: "https://mail.example.invalid/v1/reminders",
+      method: "POST",
+      headers: { "idempotency-key": "jd1_key" },
+      body: JSON.stringify({ ...payload, revision: "1" }),
+    });
     expect(calls[1]).toEqual(calls[0]);
     expect(calls[2]).toEqual(calls[0]);
     expect(waits).toEqual([100, 200]);

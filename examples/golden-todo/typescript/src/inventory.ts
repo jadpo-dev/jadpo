@@ -66,7 +66,6 @@ export function inventory() {
       },
       reminderMail: {
         ...reminderMail,
-        url: "https://mail.example.invalid/reminders",
         credential: "config.mailApiKey",
         payload: "MailPayload",
         receipt: "MailReceipt",

@@ -134,7 +134,7 @@ export class Jobs {
       scope.close();
     }
   }
-  private eligible(now: string, revision?: number, id?: string) {
+  private eligible(now: string, revision?: string, id?: string) {
     return and(
       eq(todos.status, "open"),
       isNull(todos.deleted_at),
@@ -143,7 +143,7 @@ export class Jobs {
       eq(users.status, "active"),
       revision === undefined
         ? undefined
-        : eq(todos.reminder_revision, revision),
+        : eq(todos.reminder_revision, BigInt(revision)),
       id === undefined ? undefined : eq(todos.id, id),
     );
   }
@@ -194,7 +194,10 @@ export class Jobs {
             await this.enqueue(
               db,
               "prepare_delivery",
-              QueuedEvent.parse({ todo_id: row.id, revision: row.revision }),
+              QueuedEvent.parse({
+                todo_id: row.id,
+                revision: row.revision.toString(),
+              }),
               now,
             );
         }
@@ -334,7 +337,7 @@ export class Jobs {
             to: current.email,
             title: current.title,
             todo_id: current.id,
-            revision: current.revision,
+            revision: current.revision.toString(),
           }),
           now,
         );
@@ -475,7 +478,7 @@ export class Jobs {
         .where(
           and(
             eq(todos.id, current.id),
-            eq(todos.reminder_revision, payload.revision),
+            eq(todos.reminder_revision, BigInt(payload.revision)),
             sql`"todo".xmin::text = ${current.version}`,
           ),
         )

@@ -100,7 +100,7 @@ const transport: Transport = async (input, _scope) => {
     if (input.url === "https://keys.example/jwks")
       return { status: 200, body: JSON.stringify({ keys: [publicKey] }) };
   }
-  if (input.url !== "https://mail.example.invalid/reminders")
+  if (input.url !== "https://mail.example.invalid/v1/reminders")
     throw new Error("undeclared fixture egress");
   const key = input.headers["idempotency-key"];
   if (!key || !input.body) throw new Error("missing keyed mail");

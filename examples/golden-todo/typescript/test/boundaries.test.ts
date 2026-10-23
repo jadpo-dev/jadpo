@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { CreateTodo, PatchTodo, TodoView, ListTodos } from "../src/schemas.ts";
+import {
+  CreateTodo,
+  PatchTodo,
+  TodoView,
+  ListTodos,
+  Instant,
+  Id,
+  Revision,
+} from "../src/schemas.ts";
 import { loadConfig, ConfigError } from "../src/config.ts";
 import { selectCredential } from "../src/auth.ts";
 import { Admission, RequestScope } from "../src/runtime.ts";
@@ -145,4 +153,57 @@ it("serializes an explicit safe log whitelist even for structurally wider object
   expect(JSON.stringify(safeLogRecord(event))).not.toContain(
     "private-provider-secret",
   );
+});
+
+describe("Jadpo value codecs", () => {
+  it("normalizes millisecond Instants before digesting decoded input", () => {
+    expect(Instant.parse("2026-01-15T13:00:00.100+01:00")).toBe(
+      "2026-01-15T12:00:00.100Z",
+    );
+    expect(Instant.parse("2026-01-15T12:00:00.000Z")).toBe(
+      "2026-01-15T12:00:00Z",
+    );
+    for (const value of ["0000-01-01T00:00:00Z", "9999-12-30T22:00:00.999Z"])
+      expect(Instant.parse(value)).toBe(value);
+    for (const value of [
+      "2026-01-15T12:00:00.0001Z",
+      "9999-12-30T22:00:01Z",
+      "9999-12-31T00:00:00Z",
+      "0000-01-01T00:00:00+00:01",
+      "2026-02-30T12:00:00Z",
+    ])
+      expect(Instant.safeParse(value).success, value).toBe(false);
+  });
+  it("accepts every UUID bit pattern and canonicalizes uppercase", () => {
+    expect(Id.parse("ABCDEF01-2345-F678-0123-456789ABCDEF")).toBe(
+      "abcdef01-2345-f678-0123-456789abcdef",
+    );
+    expect(Id.parse("00000000-0000-0000-0000-000000000000")).toBe(
+      "00000000-0000-0000-0000-000000000000",
+    );
+    for (const value of [
+      "abcdef012345f6780123456789abcdef",
+      "abcdef01-2345-g678-0123-456789abcdef",
+    ])
+      expect(Id.safeParse(value).success).toBe(false);
+  });
+});
+
+it("preserves the entire signed64 revision domain as canonical decimal text", () => {
+  for (const value of [
+    "-9223372036854775808",
+    "0",
+    "2147483648",
+    "9007199254740993",
+    "9223372036854775807",
+  ])
+    expect(Revision.parse(value)).toBe(value);
+  for (const value of [
+    "9223372036854775808",
+    "-9223372036854775809",
+    "01",
+    "1.1",
+    9007199254740992,
+  ])
+    expect(Revision.safeParse(value).success).toBe(false);
 });

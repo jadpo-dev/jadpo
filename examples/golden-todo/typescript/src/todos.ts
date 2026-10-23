@@ -89,7 +89,7 @@ export class TodoService {
           title: input.title,
           status: "open",
           due_at: input.due_at ?? null,
-          reminder_revision: 1,
+          reminder_revision: 1n,
           created_at: now,
           updated_at: now,
         })
@@ -170,7 +170,7 @@ export class TodoService {
         updated_at: new Date(this.clock()).toISOString(),
         ...(dueSupplied
           ? {
-              reminder_revision: before.reminder_revision + 1,
+              reminder_revision: before.reminder_revision + 1n,
               reminder_sent_at: null,
               reminder_queued_at: null,
             }

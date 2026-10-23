@@ -5,7 +5,7 @@ import type { RequestScope } from "./runtime.ts";
 import { uniqueJson } from "./strict-json.ts";
 import { MailPayload, MailReceipt } from "./schemas.ts";
 export const reminderMail = Object.freeze({
-  url: "https://mail.example.invalid/reminders",
+  url: "https://mail.example.invalid/v1/reminders",
   attempts: 3,
   withinMs: 30000,
   windowMs: 86400000,
@@ -45,6 +45,8 @@ export class MailProvider {
     guard: () => Promise<void>,
   ) {
     const payload = MailPayload.parse(input);
+    // Plain Int has an unbounded declared range in SendReminder, so Jadpo's
+    // provider codec writes it as a decimal JSON string, even for small values.
     const body = JSON.stringify(payload);
     const started = performance.now();
     for (let attempt = 0; attempt < reminderMail.attempts; attempt++) {

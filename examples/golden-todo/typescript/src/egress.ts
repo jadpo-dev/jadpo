@@ -112,6 +112,7 @@ export type OutboundRequest = Readonly<{
   method: "GET" | "POST";
   headers: Readonly<Record<string, string>>;
   body?: string;
+  maxResponseBytes?: number;
 }>;
 export type Transport = (
   input: OutboundRequest,
@@ -121,6 +122,11 @@ export type Transport = (
   body: string;
   headers?: Readonly<Record<string, string>>;
 }>;
+export class ResponseTooLarge extends Error {
+  constructor() {
+    super("Response too large.");
+  }
+}
 export const httpsTransport: Transport = async (input, scope) => {
   const url = publicHttps(input.url);
   scope.check();
@@ -181,11 +187,18 @@ export const httpsTransport: Transport = async (input, scope) => {
         const chunks: Buffer[] = [];
         incoming.on("data", (chunk: Buffer) => {
           bytes += chunk.length;
-          if (bytes > 524288) outgoing.destroy(new AppError("unavailable"));
-          else chunks.push(chunk);
+          if (bytes > (input.maxResponseBytes ?? 524288)) {
+            const error = new ResponseTooLarge();
+            reject(error);
+            outgoing.destroy(error);
+          } else chunks.push(chunk);
         });
-        incoming.on("error", () => {
-          reject(new AppError("unavailable"));
+        incoming.on("error", (error) => {
+          reject(
+            error instanceof ResponseTooLarge
+              ? error
+              : new AppError("unavailable"),
+          );
         });
         incoming.on("end", () => {
           resolve({
@@ -202,8 +215,10 @@ export const httpsTransport: Transport = async (input, scope) => {
     outgoing.on("timeout", () => {
       outgoing.destroy(new AppError("unavailable"));
     });
-    outgoing.on("error", () => {
-      reject(new AppError("unavailable"));
+    outgoing.on("error", (error) => {
+      reject(
+        error instanceof ResponseTooLarge ? error : new AppError("unavailable"),
+      );
     });
     outgoing.end(input.body);
   });
@@ -222,8 +237,8 @@ export class Egress {
     // Transports do not follow redirects; never interpret redirects as success.
     if (answer.status >= 300 && answer.status < 400)
       throw new AppError("unavailable");
-    if (Buffer.byteLength(answer.body) > 524288)
-      throw new AppError("unavailable");
+    if (Buffer.byteLength(answer.body) > (input.maxResponseBytes ?? 524288))
+      throw new ResponseTooLarge();
     return answer;
   }
 }

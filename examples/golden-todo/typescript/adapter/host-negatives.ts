@@ -99,23 +99,24 @@ try {
     ),
     0,
   );
-  const create = async (due: boolean) =>
+  const send = async (
+    json: string,
+    key: string,
+    method = "POST",
+    path = "/todos",
+  ) =>
     await new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const json = JSON.stringify({
-        title: "e\u0301".repeat(200),
-        ...(due ? { due_at: null } : {}),
-      });
       const outgoing = request(
         {
           hostname: "127.0.0.1",
           port: server.port,
-          path: "/todos",
-          method: "POST",
+          path,
+          method,
           headers: {
             authorization: "Bearer " + token,
             "content-type": "application/json",
             "content-length": Buffer.byteLength(json),
-            "idempotency-key": "native-replay",
+            "idempotency-key": key,
           },
         },
         (incoming) => {
@@ -135,13 +136,46 @@ try {
       outgoing.on("error", reject);
       outgoing.end(json);
     });
-  const first = await create(false);
-  const replay = await create(true);
+  const create = (due: string | null | undefined, key = "native-replay") =>
+    send(
+      JSON.stringify({
+        title: "e\u0301".repeat(200),
+        ...(due !== undefined ? { due_at: due } : {}),
+      }),
+      key,
+    );
+  const first = await create(undefined);
+  const replay = await create(null);
   assert.equal(first.status, 201);
   assert.deepEqual(replay, first);
   assert.equal(
     (JSON.parse(first.body) as { title: string }).title,
     "é".repeat(200),
+  );
+  const offset = await create(
+    "2026-12-01T13:00:00.100+01:00",
+    "native-instant",
+  );
+  const utc = await create("2026-12-01T12:00:00.1Z", "native-instant");
+  assert.equal(offset.status, 201);
+  assert.deepEqual(utc, offset);
+  assert.equal(
+    (JSON.parse(utc.body) as { due_at: string }).due_at,
+    "2026-12-01T12:00:00.100Z",
+  );
+  const target = "/todos/" + (JSON.parse(utc.body) as { id: string }).id;
+  const omittedPatch = await send("{}", "native-patch", "PATCH", target);
+  const nullPatch = await send(
+    '{"due_at":null}',
+    "native-patch",
+    "PATCH",
+    target,
+  );
+  assert.equal(omittedPatch.status, 200);
+  assert.equal(nullPatch.status, 422);
+  assert.equal(
+    (JSON.parse(nullPatch.body) as { error: { code: string } }).error.code,
+    "idempotency_key_reused",
   );
   process.stdout.write(
     JSON.stringify({

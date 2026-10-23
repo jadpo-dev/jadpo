@@ -37,7 +37,7 @@ export const todos = pgTable(
     due_at: instant("due_at"),
     reminder_sent_at: instant("reminder_sent_at"),
     reminder_queued_at: instant("reminder_queued_at"),
-    reminder_revision: integer().notNull(),
+    reminder_revision: bigint({ mode: "bigint" }).notNull(),
     deleted_at: instant("deleted_at"),
     created_at: instant("created_at").notNull(),
     updated_at: instant("updated_at").notNull(),

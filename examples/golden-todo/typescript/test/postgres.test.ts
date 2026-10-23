@@ -5,6 +5,8 @@ import { RequestScope } from "../src/runtime.ts";
 import { jobNegatives } from "./jobs.postgres.ts";
 import { idempotencyNegatives } from "./idempotency.postgres.ts";
 import { httpNegatives } from "./http.postgres.ts";
+import { revisionNegatives } from "./revisions.postgres.ts";
+import { resolverNegatives } from "./auth-resolver.postgres.ts";
 import { externalNegatives } from "./auth.postgres.ts";
 import { Egress } from "../src/egress.ts";
 import { TodoService } from "../src/todos.ts";
@@ -35,6 +37,12 @@ describe.sequential("real PostgreSQL mutation/lifetime boundaries", () => {
   it("verifies the strict external JOSE and local provisioning boundary for every allowed algorithm", async () => {
     await externalNegatives(store, url);
   }, 20000);
+  it("bounds and coalesces issuer resolution with safe failure classifications", async () => {
+    await resolverNegatives(store, url);
+  });
+  it("preserves signed64 revision storage, ABA fences, outbox and exact provider bytes", async () => {
+    await revisionNegatives(store, url);
+  });
   it("enforces HTTP decoding boundaries over a real socket", async () => {
     await httpNegatives(store, url);
   });
@@ -188,7 +196,7 @@ describe.sequential("real PostgreSQL mutation/lifetime boundaries", () => {
           await db.execute(sql`UPDATE "user" SET status='disabled'`);
           await egress.send(
             {
-              url: "https://mail.example.invalid/reminders",
+              url: "https://mail.example.invalid/v1/reminders",
               method: "POST",
               headers: {},
             },
