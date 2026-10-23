@@ -58,6 +58,56 @@ class TrackedModes(unittest.TestCase):
             a.tracked_entry(path,'100755')
 
 
+class SourceEnumeration(unittest.TestCase):
+    @staticmethod
+    def git(root,*args):
+        import subprocess
+        return subprocess.check_output(['git',*args],cwd=root,stderr=subprocess.DEVNULL)
+
+    def fixture(self,root):
+        self.git(root,'init','-q')
+        self.git(root,'config','user.name','Benchmark guard test')
+        self.git(root,'config','user.email','benchmark-test@example.invalid')
+        (root/'directory').mkdir();(root/'directory'/'data').write_bytes(b'same')
+        (root/'directory-copy').mkdir();(root/'directory-copy'/'data').write_bytes(b'same')
+        (root/'regular').write_bytes(b'payload')
+        (root/'link-dir').symlink_to('directory',target_is_directory=True)
+        (root/'link-file').symlink_to('regular')
+        name='naïve space\tline\nname.txt'
+        (root/name).write_bytes(b'literal name')
+        self.git(root,'add','.')
+        self.git(root,'commit','-qm','fixture')
+        return name
+
+    def test_real_source_reads_directory_file_links_and_literal_pathnames(self):
+        import hashlib
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);name=self.fixture(root)
+            with patch.object(a,'ROOT',root):
+                source=a.source()
+                self.assertIn(name,source['files'])
+                self.assertEqual(source['files']['link-dir']['sha256'],hashlib.sha256(b'directory').hexdigest())
+                self.assertEqual(source['files']['link-file']['sha256'],hashlib.sha256(b'regular').hexdigest())
+                (root/'link-dir').unlink();(root/'link-dir').symlink_to('directory-copy',target_is_directory=True)
+                self.git(root,'add','link-dir');self.git(root,'commit','-qm','retarget equal contents')
+                changed=a.source()
+                self.assertNotEqual(source['files']['link-dir'],changed['files']['link-dir'])
+                with self.assertRaisesRegex(ValueError,'rebuild'):
+                    a.validate({'source':source,'artifacts':{'unused':'unused'}},changed)
+
+    def test_real_source_accepts_git_materialized_symlinks(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);self.fixture(root)
+            with patch.object(a,'ROOT',root):
+                before=a.source()
+                self.git(root,'config','core.symlinks','false')
+                for name,target in [('link-dir','directory'),('link-file','regular')]:
+                    (root/name).unlink();(root/name).write_bytes(target.encode())
+                self.assertEqual(a.source(),before)
+
+
 class Results(unittest.TestCase):
     @staticmethod
     def sample():

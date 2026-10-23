@@ -52,12 +52,13 @@ def source():
     dirty = command(['git', 'status', '--porcelain', '--untracked-files=normal'], capture_output=True, text=True).stdout
     if dirty.strip():
         raise ValueError('commit all source inputs before building or measuring')
-    names = command(['git', 'ls-files', '-s'], capture_output=True, text=True).stdout.splitlines()
+    names = command(['git', 'ls-files', '-s', '-z'], capture_output=True).stdout.split(b'\0')
     files = {}
-    for entry in names:
-        identity, name = entry.split('\t', 1)
-        mode, _, stage = identity.split()
-        if stage != '0': raise ValueError('unmerged index')
+    for entry in filter(None, names):
+        identity, raw_name = entry.split(b'\t', 1)
+        raw_mode, _, stage = identity.split()
+        if stage != b'0': raise ValueError('unmerged index')
+        mode, name = raw_mode.decode('ascii'), os.fsdecode(raw_name)
         path = ROOT / name
         # A mode mutation can leave contents unchanged; status catches it,
         # and retaining the tree/index modes makes that proof reviewable.
