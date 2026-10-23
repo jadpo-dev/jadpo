@@ -31,6 +31,23 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def tracked_entry(path, mode):
+    # Git records a symlink's literal target, not the destination's bytes.
+    # With core.symlinks=false Git materializes that payload as a file.
+    if mode == '120000':
+        payload = os.fsencode(os.readlink(path)) if path.is_symlink() else path.read_bytes()
+    elif mode in ('100644', '100755'):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f'tracked regular file changed type: {path}')
+        actual_mode = '100755' if path.stat().st_mode & 0o111 else '100644'
+        if actual_mode != mode:
+            raise ValueError(f'tracked executable mode changed: {path}')
+        payload = path.read_bytes()
+    else:
+        raise ValueError(f'unsupported tracked mode {mode}: {path}')
+    return {'mode':mode, 'sha256':hashlib.sha256(payload).hexdigest()}
+
+
 def source():
     dirty = command(['git', 'status', '--porcelain', '--untracked-files=normal'], capture_output=True, text=True).stdout
     if dirty.strip():
@@ -44,7 +61,7 @@ def source():
         path = ROOT / name
         # A mode mutation can leave contents unchanged; status catches it,
         # and retaining the tree/index modes makes that proof reviewable.
-        files[name] = {'mode': mode, 'sha256': sha(path)}
+        files[name] = tracked_entry(path, mode)
     return {'head': command(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip(),
             'tree': command(['git', 'write-tree'], capture_output=True, text=True).stdout.strip(), 'files': files}
 

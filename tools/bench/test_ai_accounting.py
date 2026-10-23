@@ -22,6 +22,42 @@ class Guards(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'artifact changed'):a.validate(stamp,source)
 
 
+class TrackedModes(unittest.TestCase):
+    def test_directory_and_file_symlinks_hash_the_literal_target(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'folder').mkdir()
+            (root/'file').write_bytes(b'content')
+            for target in ('folder','file'):
+                link=root/('link-'+target)
+                link.symlink_to(target,target_is_directory=target=='folder')
+                entry=a.tracked_entry(link,'120000')
+                self.assertEqual(entry,{'mode':'120000','sha256':hashlib.sha256(target.encode()).hexdigest()})
+
+    def test_retargeting_same_content_requires_rebuild(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for name in ('a','b'):(root/name).write_bytes(b'same')
+            link=root/'link';link.symlink_to('a')
+            before={'link':a.tracked_entry(link,'120000')}
+            stamp={'source':before,'artifacts':{'unused':'unused'}}
+            link.unlink();link.symlink_to('b')
+            with self.assertRaisesRegex(ValueError,'rebuild'):
+                a.validate(stamp,{'link':a.tracked_entry(link,'120000')})
+
+    def test_git_materialized_symlink_and_executable_modes(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'materialized'
+            path.write_bytes(b'../directory-target')
+            self.assertEqual(a.tracked_entry(path,'120000')['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+            path.chmod(0o644);a.tracked_entry(path,'100644')
+            path.chmod(0o755)
+            with self.assertRaisesRegex(ValueError,'mode changed'):a.tracked_entry(path,'100644')
+            a.tracked_entry(path,'100755')
+
+
 class Results(unittest.TestCase):
     @staticmethod
     def sample():
