@@ -3002,3 +3002,21 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   remain pending. Shared local PostgreSQL connection handling and generic
   declared-provider readiness metadata close the contract without application-
   specific compiler paths.
+
+- [x] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
+  implement the same versioned application contract and all 44 cases with
+  the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
+  on Bun and Node. Audit the reached request path against Jadpo's required
+  guarantees, including durable authentication, admission, cancellation,
+  transaction retries, idempotency and output validation before commit.
+  Declared schemas alone do not establish runtime response validation.
+  Its final gate may use the exact unmerged prerequisite histories above;
+  dependency review and merges remain separate.
+  Built: the strict TypeScript/Hono/Zod/Drizzle/CASL/JOSE application and
+  production Node/Bun hosts, durable authentication, admission, cancellation,
+  serializable retries, idempotency and output validation before commit. All 44
+  cases pass on each of native, workerd, Node and Bun, with 42 TypeScript unit
+  tests and the full 90-step gate passing. Existing optional pgvector version
+  skips are recorded in the permanent validation facts. General compiler proofs
+  and production provider/edge transport remain outside this baseline;
+  independent review and performance comparison remain required.
