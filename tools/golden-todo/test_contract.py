@@ -7,6 +7,7 @@ import unittest
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import worker
+import run
 import contract
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -43,6 +44,19 @@ class ContractVerifier(unittest.TestCase):
             self.assertEqual(fixture.accept('same-key',{'title':'Changed'})[0],'conflict')
             self.assertEqual(len(fixture.receipts),1)
         finally:fixture.stop()
+    def test_completion_refuses_partial_failed_stale_and_external_runs(self):
+        reports=[{'target':target,'id':identifier,'status':'passed'} for target in ['native','workerd'] for identifier in contract.CASES]
+        complete=lambda rows=reports,targets=['native','workerd'],filtered=False,stale=False,own=True:run.complete_contract(targets,rows,filtered,stale,own)
+        self.assertTrue(complete())
+        self.assertFalse(complete(reports[:-1]))
+        self.assertFalse(complete(reports[:-1]+[reports[0]]))
+        self.assertFalse(complete(targets=['native']))
+        self.assertFalse(complete(targets=['native','workerd','native']))
+        self.assertFalse(complete(filtered=True))
+        self.assertFalse(complete(stale=True))
+        self.assertFalse(complete(own=False))
+        reports[0]={**reports[0],'status':'failed'}
+        self.assertFalse(complete())
     def test_missing_obligation_is_a_failure(self):
         class Missing:
             def call(self,command):raise NotImplementedError('missing target obligation')
