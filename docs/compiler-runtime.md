@@ -2374,7 +2374,8 @@ Compiler-owned bounds are 64 KiB discovery, 256 KiB JWKS, 64 keys,
 A generation-owned refresh lease reserves cooldown before awaiting and
 survives cancellation without clearing a newer owner. Typed retained
 failures preserve configuration (500) versus provider availability (503)
-classification during cooldown; known-invalid claims remain 401 without
+classification during cooldown; shared strict JWT structural preflight rejects
+unsupported algorithms and malformed/duplicate JSON before provider I/O; known-invalid claims remain 401 without
 refreshing valid cached keys. Outer HTTP deadlines drop native fetches
 and abort Workers fetches through an `AbortController` drop guard.
 Generated API/OpenAPI metadata, redacted failure wording and the network

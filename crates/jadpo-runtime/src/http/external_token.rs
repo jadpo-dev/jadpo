@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 /// Compiler-owned bounds (area 8): fixed per provider and startup state.
 pub const DOCUMENT_BYTES: usize = 65_536;
-pub const KEY_SET_BYTES: usize = 262_144;
+pub const JWKS_BYTES: usize = 262_144;
 pub const MOST_KEYS: usize = 64;
 pub const FETCH_MS: u64 = 3_000;
 const CACHE_MS: i64 = 300_000;
@@ -95,7 +95,7 @@ impl Settings {
         token: &str,
         now: i64,
     ) -> Result<String, Failure> {
-        if !jadpo_std::standard::security::is_jwt(token) {
+        if jadpo_value::jwt::preflight_jwt(token).is_err() {
             return Err(INVALID_CREDENTIALS);
         }
         if discovery(&self.issuer).is_none() || self.audience.is_empty() {
@@ -201,13 +201,13 @@ impl Settings {
             .filter(|url| https(url))
             .ok_or(AUTHENTICATION_MISCONFIGURED)?;
         let (status, bytes) = outbound
-            .get(jwks, KEY_SET_BYTES, FETCH_MS)
+            .get(jwks, JWKS_BYTES, FETCH_MS)
             .await
             .map_err(|_| AUTHENTICATION_UNAVAILABLE)?;
         if status != 200 {
             return Err(AUTHENTICATION_UNAVAILABLE);
         }
-        if bytes.len() > KEY_SET_BYTES {
+        if bytes.len() > JWKS_BYTES {
             return Err(AUTHENTICATION_MISCONFIGURED);
         }
         let document =
@@ -438,7 +438,7 @@ mod tests {
                     serde_json::json!({"issuer":if self.mismatch.get() { "https://wrong.example/" } else { ISSUER }, "jwks_uri":"https://keys.example/published"})
                 } else {
                     assert_eq!(url, "https://keys.example/published");
-                    assert_eq!(limit, KEY_SET_BYTES);
+                    assert_eq!(limit, JWKS_BYTES);
                     self.keys.borrow().clone()
                 };
                 Ok((200, document.to_string().into_bytes()))
@@ -488,6 +488,41 @@ mod tests {
             Err(AUTHENTICATION_MISCONFIGURED)
         );
         assert_eq!(host.calls.borrow().len(), 1);
+    }
+
+    #[test]
+    fn cold_invalid_structure_is_refused_before_an_offline_provider_is_contacted() {
+        for denied in [
+            token(r#"{"alg":"none"}"#, &claims().to_string()),
+            token(r#"{"alg":"HS256"}"#, &claims().to_string()),
+            token(r#"{"alg":"EdDSA","alg":"EdDSA"}"#, &claims().to_string()),
+            token(HEADER, r#"{"sub":"first","sub":"second"}"#),
+            token(HEADER, "{"),
+        ] {
+            let host = Provider::new();
+            host.offline.set(true);
+            assert_eq!(run(&settings(), &host, &denied), Err(INVALID_CREDENTIALS));
+            assert!(
+                host.calls.borrow().is_empty(),
+                "independently invalid tokens do not fetch"
+            );
+        }
+        // Area 19 ignores these headers; they are not independently invalid
+        // and must never choose a provider URL or become a key source.
+        let host = Provider::new();
+        host.offline.set(true);
+        let supplied = token(
+            r#"{"alg":"EdDSA","jku":"https://token-controlled.example/keys","x5u":"https://token-controlled.example/cert"}"#,
+            &claims().to_string(),
+        );
+        assert_eq!(
+            run(&settings(), &host, &supplied),
+            Err(AUTHENTICATION_UNAVAILABLE)
+        );
+        assert_eq!(
+            &*host.calls.borrow(),
+            &["https://identity.example/tenant/.well-known/openid-configuration"]
+        );
     }
 
     #[test]

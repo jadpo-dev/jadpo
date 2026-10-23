@@ -111,7 +111,7 @@ pub(super) fn token_with(header: Value, claims: Value) -> String {
 }
 pub(super) fn claims(subject: &str) -> Value {
     json!({"iss":ISSUER, "aud":AUDIENCE, "sub":subject,
-        "exp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("clock").as_secs() as i64 * 1000 / 1000 + 3600,
+        "exp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("clock").as_secs() as i64 + 3600,
         "email":"attacker@example.test", "role":"administrator"})
 }
 pub(super) fn token(subject: &str) -> String {

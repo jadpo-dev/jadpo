@@ -443,15 +443,16 @@ fn claim_names(codecs: &Codecs<'_>, codec: CodecId) -> Vec<String> {
         .collect()
 }
 
-/// The token's registered claims as a `JwtClaims`, and every claim it
-/// makes, once its signature, times, issuer and audience hold.
-fn verified(
-    token: &str,
-    keys: &[Value],
-    issuer: Option<&str>,
-    audience: Option<&str>,
-    now: i64,
-) -> Result<(Value, serde_json::Map<String, Json>), Fault> {
+/// A compact token's untrusted structure, shared by verification and
+/// provider preflight. No claim becomes authority at this boundary.
+struct Compact<'a> {
+    header: &'a str,
+    payload: &'a str,
+    protected: serde_json::Map<String, Json>,
+    signature: Vec<u8>,
+}
+
+fn compact(token: &str) -> Result<Compact<'_>, Fault> {
     if !is_jwt(token) {
         return Err(refused(RuleKey::Malformed));
     }
@@ -461,14 +462,13 @@ fn verified(
         return Err(refused(RuleKey::Malformed));
     };
     let protected = object(header)?;
-    let Some(Json::String(algorithm)) = protected.get("alg") else {
+    let Some(Json::String(_algorithm)) = protected.get("alg") else {
         return Err(refused(RuleKey::Malformed));
     };
-    let kid = match protected.get("kid") {
-        None => None,
-        Some(Json::String(kid)) => Some(kid.as_str()),
+    match protected.get("kid") {
+        None | Some(Json::String(_)) => {}
         Some(_) => return Err(refused(RuleKey::Malformed)),
-    };
+    }
     // A nested token's claims are another token, which this doesn't read.
     if protected
         .get("cty")
@@ -481,8 +481,50 @@ fn verified(
     if protected.contains_key("crit") {
         return Err(refused(RuleKey::InvalidSignature));
     }
-    let signed = format!("{header}.{payload}");
     let signature = decode_base64url(signature).ok_or(refused(RuleKey::Malformed))?;
+    Ok(Compact {
+        header,
+        payload,
+        protected,
+        signature,
+    })
+}
+
+/// Rejects independently invalid token structure before provider I/O.
+/// It reads strict JSON structure only, never trusts a claim or a token
+/// URL, and does not replace signature, issuer, audience or time checks.
+pub fn preflight_jwt(token: &str) -> Result<(), Fault> {
+    let token = compact(token)?;
+    if !matches!(
+        token.protected.get("alg").and_then(Json::as_str),
+        Some("EdDSA" | "RS256" | "ES256")
+    ) {
+        return Err(refused(RuleKey::InvalidSignature));
+    }
+    object(token.payload)?;
+    Ok(())
+}
+
+/// The token's registered claims as a `JwtClaims`, and every claim it
+/// makes, once its signature, times, issuer and audience hold.
+fn verified(
+    token: &str,
+    keys: &[Value],
+    issuer: Option<&str>,
+    audience: Option<&str>,
+    now: i64,
+) -> Result<(Value, serde_json::Map<String, Json>), Fault> {
+    let compact = compact(token)?;
+    let header = compact.header;
+    let payload = compact.payload;
+    let protected = &compact.protected;
+    let algorithm = protected
+        .get("alg")
+        .and_then(Json::as_str)
+        .ok_or(refused(RuleKey::Malformed))?;
+    let kid = protected.get("kid").and_then(Json::as_str);
+    let signed = format!("{header}.{payload}");
+    let signature = compact.signature;
     // Only a key used with the algorithm the header names is tried, with
     // that key's own algorithm: `none` and every algorithm no key is used
     // with find none.

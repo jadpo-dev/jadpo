@@ -113,7 +113,7 @@ pub fn messages_on(db: &dyn Db, project: Project) -> Vec<&'static Message> {
     let on = features(db, project);
     jadpo_text::MESSAGES
         .iter()
-        .filter(|message| message.enabled(&on))
+        .filter(|message| message.enabled(on))
         .collect()
 }
 
@@ -284,7 +284,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
         for message in jadpo_text::MESSAGES
             .iter()
-            .filter(|message| message.kind == jadpo_text::Kind::Message && message.enabled(&on))
+            .filter(|message| message.kind == jadpo_text::Kind::Message && message.enabled(on))
         {
             out.entries.push(jadpo_std::translation::TranslationEntry {
                 key: member_name(message.key),
@@ -389,7 +389,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     // 7.3b), each given its fields and then `app_name`.
     for message in jadpo_text::MESSAGES
         .iter()
-        .filter(|message| message.kind == jadpo_text::Kind::Message && message.enabled(&on))
+        .filter(|message| message.kind == jadpo_text::Kind::Message && message.enabled(on))
     {
         let mut by_locale = found.remove(message.key).unwrap_or_default();
         for &locale in &plan.supported {
@@ -418,7 +418,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     // chunk 7.3).
     for message in jadpo_text::MESSAGES
         .iter()
-        .filter(|message| message.kind == jadpo_text::Kind::Enum && message.enabled(&on))
+        .filter(|message| message.kind == jadpo_text::Kind::Enum && message.enabled(on))
     {
         let mut by_locale = found.remove(message.key).unwrap_or_default();
         for &locale in &plan.supported {
