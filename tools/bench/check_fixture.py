@@ -7,10 +7,10 @@ import tempfile
 from pathlib import Path
 from golden import PROJECT, WORK, application_for
 root = Path(__file__).resolve().parents[2]
-fixture = root / 'tools/bench/fixtures/todo'
 jadpo = os.environ.get('JADPO_BIN', str(root / 'target/debug/jadpo'))
-for args in [('check',), ('fmt', '--check')]:
-    subprocess.run([jadpo, *args], cwd=fixture, check=True)
+for name in ('todo', 'deliveries'):
+    for args in [('check',), ('fmt', '--check')]:
+        subprocess.run([jadpo, *args], cwd=root / 'tools/bench/fixtures' / name, check=True)
 
 # Check the exact production overlays before paying for release compilation.
 # The negative variants keep the compiler's target and trigger safeguards live.

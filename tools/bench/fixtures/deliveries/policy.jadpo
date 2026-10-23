@@ -1,0 +1,7 @@
+use backlog
+
+policy {
+    actions: {
+        backlog.queue: [Access.public]
+    }
+}
