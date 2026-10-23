@@ -245,7 +245,7 @@ def calibrate(directory, pg):
                 pass
             time.sleep(.025)
         status, body = request(port, '/api/queue', '{"ticket":"ticket-00000"}')
-        if status != 202:
+        if status != 202 or json.loads(body) != {'ticket': 'ticket-00000'}:
             raise ValueError(f'calibration response: {status} {body}')
         for _ in range(200):
             if pg.state('native')['receipts'] == 1:
@@ -295,6 +295,8 @@ def tick(target, directory, pg, port=None):
 
 def controls(target, directory, pg, template, port, reports):
     for name in ('malformed', 'rollback', 'live-lease', 'expired-lease', 'duplicate-sweeps'):
+        report = {'name': name, 'ok': False}
+        reports.append(report)
         pg.seed(target, template, 100)
         if name == 'malformed':
             pg.sql(target, "UPDATE jadpo_outbox SET payload='{\"ticket\":42}'::jsonb")
@@ -312,16 +314,25 @@ def controls(target, directory, pg, template, port, reports):
                     answers = list(pool.map(lambda _: tick(target, directory, pg, port), range(2)))
             else:
                 answers = [tick(target, directory, pg, port)]
+            report['responses'] = answers
             state = pg.state(target)
+            report['state'] = state
             if name in ('malformed', 'rollback', 'live-lease'):
                 assert state['receipts'] == state['handled'] == state['succeeded'] == 0, state
-                if name != 'live-lease':
+                if name == 'malformed':
                     failed = int(pg.query(target, "SELECT count(*) FROM jadpo_deliveries WHERE status='failed'"))
                     assert failed == 100, (name, state, failed)
                 assert state['attempts'] == (100 if name == 'rollback' else 0), state
+                if name == 'rollback':
+                    retrying = int(pg.query(target, "SELECT count(*) FROM jadpo_deliveries WHERE status='pending' AND last_failure->>'code'='unavailable'"))
+                    assert retrying == 100, (state, retrying)
             else:
                 assert state['receipts'] == state['unique'] == state['handled'] == state['succeeded'] == state['attempts'] == 100, state
-            reports.append({'name': name, 'responses': answers, 'state': state})
+            report['ok'] = True
+        except Exception as error:
+            report['error'] = repr(error)
+            report['failure_response'] = getattr(error, 'response', None)
+            raise
         finally:
             if name == 'rollback':
                 pg.sql(target, 'ALTER TABLE jadpo_handled_deliveries DROP CONSTRAINT benchmark_refusal')
@@ -382,13 +393,13 @@ def measure(args):
                         row.setdefault('responses', []).append(response)
                         row['ticks'].append(time.perf_counter() - began)
                     row['seconds'] = time.perf_counter() - before
+                    usage_after = resource.getrusage(resource.RUSAGE_CHILDREN)
                     row['worker_cpu_seconds'] = spike.cpu_s(process.pid)-worker_cpu_before if process else None
                     row['helper_cpu_seconds'] = spike.cpu_s(helper.pid)-helper_cpu_before if helper else None
                     row['worker_rss_mb_at_end'] = spike.rss_mb(process.pid) if process else None
                     row['host_cpu_before'] = cpu_before
                     row['host_cpu_after'] = golden.host_cpu_ticks()
                     row['load'] = os.getloadavg()
-                    usage_after = resource.getrusage(resource.RUSAGE_CHILDREN)
                     row['child_cpu_seconds'] = usage_after.ru_utime + usage_after.ru_stime - usage_before.ru_utime - usage_before.ru_stime
                     row['child_cpu_scope'] = 'tick processes; persistent workerd and PostgreSQL excluded'
                     row['deliveries_per_second'] = args.count / row['seconds']

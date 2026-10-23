@@ -42,11 +42,13 @@ try {
           WHERE id=${item.id} AND status='running' AND attempts=${claimed[0]!.attempts}`;
         continue;
       }
+      let writingHandled = false;
       try {
       await db.begin(async tx => {
         const handled = await tx`SELECT id FROM jadpo_handled_deliveries WHERE id=${item.id}`;
         if (!handled.length) {
           await tx`INSERT INTO receipt(id,ticket) VALUES(${randomUUID()},${item.ticket})`;
+          writingHandled = true;
           await tx`INSERT INTO jadpo_handled_deliveries(id,handled_at) VALUES(${item.id},${now})`;
         }
       });
@@ -55,7 +57,7 @@ try {
       completed++;
       } catch (error) {
         const code = (error as {code?:string}).code;
-        const terminal = code?.startsWith('23') || code?.startsWith('22') || code?.startsWith('42');
+        const terminal = !writingHandled && (code?.startsWith('23') || code?.startsWith('22') || code?.startsWith('42'));
         await db`UPDATE jadpo_deliveries SET status=${terminal ? 'failed' : 'pending'},
           next_attempt_at=${terminal ? null : new Date(now.getTime()+1000)},
           last_failure=${db.json({code:terminal ? 'internal_fault' : 'unavailable'})}
