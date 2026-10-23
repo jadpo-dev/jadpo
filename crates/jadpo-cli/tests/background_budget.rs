@@ -1049,7 +1049,7 @@ fn a_sweep_stops_admission_and_settles_all_four_inflight_claims_on_shutdown() {
                 host.call(
                     program,
                     "post_note",
-                    vec![Value::text(&format!("note-{index}"))],
+                    vec![Value::text(format!("note-{index}"))],
                 )
                 .await,
             );
@@ -1097,7 +1097,7 @@ fn a_sweep_budget_settles_four_timed_out_attempts_and_leaves_the_other_four_uncl
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         for index in 0..8 {
-            drop(host.call(program, "post_note", vec![Value::text(&format!("note-{index}"))]).await);
+            drop(host.call(program, "post_note", vec![Value::text(format!("note-{index}"))]).await);
         }
         host.stall.set(true);
         host.expire_after_claims.set(Some(4));

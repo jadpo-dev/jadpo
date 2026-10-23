@@ -729,15 +729,15 @@ fn sweeps_overlap_four_bodies_keep_the_hundred_limit_and_commit_each_effect_once
         let mut right = Box::pin(sweep(&executor, &host, "main", T0));
         let (mut a, mut b) = (None, None);
         std::future::poll_fn(|cx| {
-            if a.is_none()
-                && let std::task::Poll::Ready(out) = left.as_mut().poll(cx)
-            {
-                a = Some(out);
+            if a.is_none() {
+                if let std::task::Poll::Ready(out) = left.as_mut().poll(cx) {
+                    a = Some(out);
+                }
             }
-            if b.is_none()
-                && let std::task::Poll::Ready(out) = right.as_mut().poll(cx)
-            {
-                b = Some(out);
+            if b.is_none() {
+                if let std::task::Poll::Ready(out) = right.as_mut().poll(cx) {
+                    b = Some(out);
+                }
             }
             if a.is_some() && b.is_some() {
                 std::task::Poll::Ready(())
