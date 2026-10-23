@@ -17,7 +17,7 @@ import tempfile
 import time
 import threading
 import worker
-from urllib.parse import urlsplit,urlunsplit
+from postgres import postgres_uri
 
 ROOT=Path(__file__).resolve().parents[2]
 HERE=Path(__file__).resolve().parent
@@ -33,7 +33,7 @@ def revision(path):return checked(['git','rev-parse','HEAD'],cwd=path,capture_ou
 
 def fingerprint(source):
     digest=hashlib.sha256()
-    files=list(PROJECT.rglob('*.jadpo'))+list(PROJECT.rglob('*.jadpo_record'))+list((PROJECT/'database').rglob('*'))+list((HERE/'native').rglob('*'))+list((HERE/'workers').rglob('*'))+[HERE/'worker.py',HERE/'run.py',HERE/'contract.py',HERE/'test_contract.py']
+    files=list(PROJECT.rglob('*.jadpo'))+list(PROJECT.rglob('*.jadpo_record'))+list((PROJECT/'database').rglob('*'))+list((HERE/'native').rglob('*'))+list((HERE/'workers').rglob('*'))+[HERE/'worker.py',HERE/'run.py',HERE/'contract.py',HERE/'test_contract.py',HERE/'postgres.py',HERE/'test_postgres.py']
     files += list(PROJECT.glob('acceptance*.json'))+list((source/'crates').rglob('Cargo.toml'))+list((source/'crates').rglob('*.rs'))+[source/'Cargo.lock',source/'Cargo.toml',source/'rust-toolchain.toml',source/'tools/workers/package.json',source/'tools/workers/package-lock.json',source/'tools/workers/ratelimit-binding.mjs']
     for path in sorted(set(file for file in files if file.is_file() and not {'build','.jadpo','target'}.intersection(file.parts))):
         digest.update(str(path).encode());digest.update(path.read_bytes())
@@ -164,8 +164,8 @@ def postgres_tools():
 
 class SharedPostgres:
     """Own databases on the gate's server; never stop that shared server."""
-    def __init__(self,url,tools):self.base=urlsplit(url);self.tools=tools;self.owned=[]
-    def url(self,database):return urlunsplit(self.base._replace(path='/'+database))
+    def __init__(self,url,tools):self.base=postgres_uri(url);self.tools=tools;self.owned=[]
+    def url(self,database):return postgres_uri(self.base,database)
     def sql(self,database,statement):
         checked([self.tools.tool('psql'),'-q','-v','ON_ERROR_STOP=1','-d',self.url(database),'-c',statement],stdout=subprocess.DEVNULL)
     def create(self,database):self.sql('postgres',f'CREATE DATABASE {database}');self.owned.append(database)

@@ -57,6 +57,10 @@ class ContractVerifier(unittest.TestCase):
         self.assertFalse(complete(own=False))
         reports[0]={**reports[0],'status':'failed'}
         self.assertFalse(complete())
+    def test_workerd_routes_the_same_socket_server_through_its_external_binding(self):
+        self.assertEqual(worker.postgres_address("host='/tmp/socket space' port=5544 user=jadpo dbname=postgres"), 'unix:/tmp/socket space/.s.PGSQL.5544')
+        self.assertEqual(worker.postgres_address('postgresql://u:p@localhost:5544/db?host=%2Ftmp%2Fsock'), 'unix:/tmp/sock/.s.PGSQL.5544')
+        self.assertEqual(worker.postgres_address('postgresql://u:p@[::1]:5544/db'), '[::1]:5544')
     def test_missing_obligation_is_a_failure(self):
         class Missing:
             def call(self,command):raise NotImplementedError('missing target obligation')
