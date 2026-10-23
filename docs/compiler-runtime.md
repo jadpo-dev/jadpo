@@ -5386,7 +5386,7 @@ one-second admission and 0.2-second warmup) passed its instrumentation
 checks. It was performed while build load was decaying and is not a
 comparative performance result. Later write probes checked UUIDv7 responses,
 owner/title persistence and BEGIN/INSERT RETURNING/COMMIT statement shapes.
-No final comparative data is published for this scaffold. Its generic title
+That checkpoint published no final comparative data. Its generic title
 ordering, bare list, cascade and public sample routes differ from the actual
 golden todo; none of the 44 golden acceptance cases is claimed as passed.
 
@@ -5514,3 +5514,230 @@ Local fixtures do not establish production public DNS/TLS or edge deployment.
 The own-checkout shared run and full repository gate passed as recorded in
 §2.7. Independent review, dependency merges and comparative measurements
 remain separate obligations.
+
+
+**Complete local application comparison** (chunk 9.1d4, 2026-10-23).
+These are provisional, exploratory measurements on a busy local host. The
+complete golden application passed all 44 current cases on native, workerd,
+Bun and Node (176/176) before timing, from this checkout and its compiler.
+The final source `ead8d2c889c3aac9677f0f91595b303e77bdaa89` passed the full
+92-step gate, including real workerd ingress/configuration controls, the
+strong TypeScript's 42 tests and all 88 Node/Bun contract obligations. The
+TypeScript test configuration collects authored tests exactly once even when
+production compilation has emitted JavaScript copies; its deadline-sensitive
+pipeline runs after parallel builders, retaining every assertion and timeout.
+Functional production-host smokes passed before the final gate. The timed
+runs used that clean, frozen source and fresh, hash-checked artifacts; no
+prerequisite checkout's compiler or test-controller transport was substituted.
+
+The machine was an Apple M1 Pro, ten cores (eight performance), 16 GiB RAM,
+macOS 27.0.1 arm64. Tools: Rust 1.99.0 (`b940084d7`), PostgreSQL 16.3,
+Bun 1.2.20, Node v24.18.1 and workerd 2026-10-07. Ordinary `jadpo build`
+release deployables used native opt-level 3 and Wasm opt-level `s`, fat LTO
+and one codegen unit; no wasm-opt. The compiler was a dev build and was not
+timed; the load/pool tools were release builds. Preparation and the gate
+used `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`.
+TypeScript was emitted by its pinned compiler and used Bun.serve or Hono's
+Node binding. All HTTP went directly to actual loopback production hosts.
+No builder or other owned benchmark ran during comparison. The five-second
+pre-campaign host CPU sample was nevertheless 51.8%; Creative Cloud, Claude
+and macOS indexing remained active. No unrelated app or service was stopped.
+
+Three complete rounds rotated target order, with 1/16/64 connections, two
+seconds of warmup and ten seconds of measurement per cell. Requests admitted
+in that window were drained and included in latency and guarded throughput;
+throughput's denominator includes the drain. This is closed-loop offered
+load, not an open-loop latency SLO. All 108 golden cells and all 72 focused
+cells passed, with zero transport, unexpected-status or body-validation
+errors, including warmup. No timed cell was retried, replaced or omitted.
+The complete per-run data retain p50/p90/p95/p99/max, statuses, drain, CPU,
+RSS, linear memory, source/artifact identities and load measurements. The
+largest drain was 0.231 s for golden and 0.081 s for focused reads.
+
+Golden fixtures used 2,048 real signed owner sessions, plus a foreign owner:
+104,499 seeded todos (50 visible and one hidden per owner including foreign),
+2,049 users and 2,048 sessions. This fixed pool on every target avoids using
+the normal 600/minute caller allowance as a throughput cap; the 120/minute
+unsigned/refused-address limit also remained active. Credentials used the
+production codecs, with four-minute bounded authority within the five-minute
+limit. Signing and fixture preparation were outside timing. Every cell
+started a fresh server, verified every owner's expected response and refusal
+controls, then checked original rows unchanged and every successful write's
+complete six-field response against its committed row and exact signed owner.
+Across golden measurement windows there were 4,751,906 completed requests;
+1,977,178 successful write receipts including warmup and drain were audited.
+
+The copied app's native client-address setting declares one trusted forwarded
+hop; the TypeScript host accepts one strict forwarded IPv4 value only from
+an actual loopback TCP peer. Workerd uses the required Cloudflare source and
+a local socket fixture that overwrites CF-Connecting-IP with the actual
+127.0.0.1 peer; forged/missing header controls exercise the real runtime.
+Its declared default rate-limit binding is present. Workerd also declares
+required schedule/subscriber runners, with external triggering and no cron.
+No due reminder was seeded and no job ran inside the request timings. All 44
+cases establish reminder/lifecycle correctness; the request throughput below
+does not measure an entire reminder workflow or the 10,000-job backlog.
+
+All targets used one disposable PostgreSQL with synchronous_commit off,
+max_connections 400 and shared_buffers 256MB. Each applied its own migrations,
+then an explicit benchmark-only physical-schema fixture normalised `todo` to
+Jadpo's four business indexes (created/id, owner/created/id and status/created/id
+partial on visible rows, plus owner), preserving constraint indexes. Drizzle's
+natural migration has one nonpartial owner/created/id index; these numbers
+therefore describe the common physical fixture, not natural schema-design
+performance. Exact DDL and resulting index definitions are retained in raw
+results; the DDL SHA-256 is
+`a5f0b6916c43e063d652d02d29a7d08da176c8b1e3c118bd40af1442970f34ff`.
+
+Pool architecture was left as built. Native logged ten server workers, each
+with its own driver permitting ten open/eight idle connections; retained
+sound idle connections have no timed expiry. Golden TypeScript has five
+general connections plus five exclusive transaction clients, 20-second idle
+and two-second connect timeouts. Golden workerd serves one isolate through
+a local transaction-pool stand-in capped at ten connections, retained until
+its fixture stops. This is not Hyperdrive query caching, edge latency or TLS.
+The TypeScript hosts have one serving event loop, with runtime/helper threads
+included in process CPU. Their process-core use is not a count of serving
+loops. No production pool was rewritten to improve a result.
+
+For the tables, each cell is **median req/s / median per-run p95 ms**, over
+three runs. The p95 summaries are medians of per-run percentiles, not pooled
+percentiles. Timed golden work is a signed exact six-field todo read, a
+validated/committed UUIDv7 todo create, or the signed 50-row owner-filtered,
+ordered visible list with full six-field projections and null next cursor.
+
+| Golden target / work | 1 connection | 16 connections | 64 connections |
+|---|---:|---:|---:|
+| Native read | 5,177 / 0.299 | 21,576 / 1.515 | 24,396 / 7.007 |
+| Native write | 4,963 / 0.334 | 17,278 / 2.174 | 18,435 / 9.958 |
+| Native signed-list | 2,168 / 0.564 | 9,923 / 3.491 | 10,930 / 15.285 |
+| workerd read | 794 / 1.752 | 1,540 / 15.431 | 1,553 / 69.712 |
+| workerd write | 643 / 2.008 | 1,495 / 15.381 | 1,397 / 77.446 |
+| workerd signed-list | 578 / 2.191 | 923 / 25.106 | 918 / 123.557 |
+| Bun read | 1,828 / 1.093 | 4,815 / 5.170 | 4,357 / 20.435 |
+| Bun write | 1,139 / 1.877 | 2,078 / 12.199 | 1,915 / 51.618 |
+| Bun signed-list | 355 / 3.688 | 466 / 42.080 | 459 / 160.201 |
+| Node read | 2,131 / 0.717 | 4,037 / 7.275 | 3,877 / 26.426 |
+| Node write | 1,278 / 1.211 | 2,039 / 13.130 | 2,312 / 39.325 |
+| Node signed-list | 211 / 9.534 | 263 / 77.579 | 261 / 284.918 |
+
+The 64-connection spreads below retain all three runs, including unfavourable
+ones. CPU/request, process cores and sampled RSS are three-run medians at
+64 connections. RSS and Wasm linear memory use MiB (the raw keys say `mb`);
+RSS is sampled every 250 ms, not a lifetime high-water measurement. End-of-cell
+linear memory is not JavaScript heap or total workerd RSS.
+
+| Golden target / work | req/s min–max | p95 ms min–max | CPU ms/req | Process cores | Sampled RSS MiB | Wasm MiB |
+|---|---:|---:|---:|---:|---:|---:|
+| Native read | 23,064–24,457 | 6.529–7.131 | 0.108 | 2.53 | 18.5 | — |
+| Native write | 17,852–18,831 | 8.918–10.152 | 0.126 | 2.33 | 16.9 | — |
+| Native signed-list | 9,885–11,200 | 14.069–16.434 | 0.343 | 3.66 | 19.2 | — |
+| workerd read | 1,454–1,634 | 59.623–78.592 | 0.630 | 0.98 | 234.5 | 13.8 |
+| workerd write | 1,362–1,567 | 63.734–91.295 | 0.682 | 0.97 | 257.2 | 14.1 |
+| workerd signed-list | 867–1,011 | 111.391–126.570 | 1.013 | 0.93 | 258.9 | 14.2 |
+| Bun read | 4,183–4,573 | 19.184–22.197 | 0.249 | 1.09 | 170.3 | — |
+| Bun write | 1,820–2,135 | 39.492–52.194 | 0.625 | 1.20 | 155.6 | — |
+| Bun signed-list | 458–459 | 149.702–175.030 | 2.355 | 1.08 | 143.5 | — |
+| Node read | 3,538–4,461 | 20.520–33.275 | 0.318 | 1.23 | 277.4 | — |
+| Node write | 2,280–2,332 | 37.312–39.358 | 0.524 | 1.21 | 282.4 | — |
+| Node signed-list | 251–262 | 264.869–336.754 | 6.665 | 1.73 | 367.8 | — |
+
+The golden workerd stand-in pool adds median 0.180/0.185/0.322 CPU ms per
+read/write/list request at 64 connections, outside the workerd process figures.
+Native's higher-concurrency cells used roughly the whole host once PostgreSQL,
+the load generator and unrelated activity are included. Across golden cells,
+whole-host CPU was 40.1–99.9% (median 62.1%) and start/end one-minute load was
+5.77–27.79. Focused cells were 39.4–99.9% (median 56.2%), load 6.29–14.78.
+The two-thread load generator used at most 0.787 process cores for golden
+and 0.624 for focused reads. These CPU observations do not prove client or
+host capacity headroom; the machine was not isolated, and whole-host
+saturation limits attribution of throughput differences.
+
+Golden cold start is spawn through the first fully valid database-backed
+readiness response, with fixture signing and the external pool startup
+excluded. There are 27 starts per target. Values below are median [min–max];
+large outliers remain included, and this is not a controlled OS cold-cache test.
+
+| Golden target | Ready ms | First request ms | Idle RSS MiB |
+|---|---:|---:|---:|
+| Native | 21.73 [18.38–385.34] | 3.16 [2.59–4.72] | 11.9 |
+| workerd | 71.10 [69.45–350.50] | 39.44 [33.13–268.68] | 97.5 |
+| Bun | 113.61 [102.19–432.03] | 16.06 [14.38–31.80] | 92.0 |
+| Node | 463.56 [422.75–1364.96] | 33.05 [24.48–128.79] | 257.5 |
+
+**Distinct large-row scaffold.** The golden title bound is 200 Unicode
+scalars. The separate 9.1a scaffold measures public sample reads with stored
+payloads of 100 and 65,536 bytes (64 KiB), plus their JSON envelope; it is not
+the golden app or signed-list work. The `--principals 2048` command option
+applies to the scaffold's signed workloads; these public routes deliberately
+prepare one owner plus the foreign fixture, and retain normal unsigned
+address admission through the declared bounded metadata fixture. Exact
+sample bodies are checked. The TypeScript scaffold's pool and the local
+workerd stand-in are each capped at 20, as in 9.1a; these are separate from
+the golden pool configuration above. It completed 4,872,023 measured requests.
+The same median req/s / median per-run p95 ms notation applies.
+
+| Focused target / stored payload | 1 connection | 16 connections | 64 connections |
+|---|---:|---:|---:|
+| Native 100 B | 6,125 / 0.256 | 25,856 / 1.150 | 30,718 / 5.512 |
+| Native 64 KiB | 2,304 / 0.579 | 10,506 / 3.239 | 10,637 / 18.446 |
+| workerd 100 B | 882 / 1.625 | 1,637 / 13.298 | 1,624 / 70.488 |
+| workerd 64 KiB | 421 / 2.986 | 819 / 33.742 | 822 / 122.786 |
+| Bun 100 B | 4,638 / 0.338 | 10,772 / 2.463 | 9,712 / 9.809 |
+| Bun 64 KiB | 2,235 / 0.716 | 4,449 / 5.899 | 4,750 / 17.854 |
+| Node 100 B | 4,038 / 0.393 | 9,537 / 2.598 | 9,210 / 10.021 |
+| Node 64 KiB | 2,023 / 0.737 | 4,625 / 4.943 | 4,687 / 18.805 |
+
+For the focused 64-KiB route at 64 connections, req/s ranges were native
+10,636–11,444, workerd 713–823, Bun 4,708–4,880 and Node 4,666–5,107;
+p95 ranges were respectively 15.973–19.105, 116.279–159.705,
+17.215–18.590 and 17.159–20.518 ms. Median CPU/request was
+0.308/1.181/0.245/0.208 ms; median sampled RSS was
+42.4/370.7/127.9/291.4 MiB, in that same order. Workerd's final linear memory
+was 18.1–18.2 MiB. The complete smaller-read spreads and all other metrics
+remain in the raw result, without choosing favourable rounds.
+
+In these observations workerd was behind Bun on golden reads and writes,
+but ahead on golden signed lists. There is no single overall performance-gap
+number. Native's extra serving workers, pool differences and the saturated,
+busy host also prevent treating the table as an isolated language comparison.
+These short closed-loop windows do not establish production capacity, an
+open-loop SLO, stable p99, edge performance or long-run memory behaviour.
+The earlier unexplained outer workerd RSS increase from 250 to 306 MB in
+the long repair-café run remains a specific runtime/edge investigation;
+short-cell linear-memory observations here do not resolve it.
+
+**Reproduction identities.** The methods and fault controls are in
+`tools/bench/README.md`; comparison remains outside CI. Reproduce with fresh
+preparation, then `golden.py --skip-build --principals 2048` and
+`todo.py --skip-build --routes read,large --principals 2048` (the defaults are
+the three rounds/connection counts/windows above). Current-source input
+fingerprint for both artifact stamps is
+`20e30cba0878710a98d38cd4c64639b6a3bd5584cece6fc36bf31947c493fe67`.
+The raw, ignored results are `tools/bench/work/golden/matrix-busy-host-ead8d2c8.json`
+and `tools/bench/work/todo/matrix-busy-host-ead8d2c8.json`, SHA-256 respectively
+`2dbfaa2e830bbbda05b479ef783360c4775691fa4a50428eb0a31d26f356ace8` and
+`25aa350f613547b84947a10d6da1de6bc5c3ba7084f9d9fbf523f2002cac6205`.
+The failed setup-only functional smoke is retained separately and supplies
+no comparison cell. Each result includes full source and artifact maps;
+selected exact SHA-256 identities are below.
+
+| Input or artifact | SHA-256 |
+|---|---|
+| `Cargo.lock` | `215fd087c4bf5cd03f21311e67f388883a7aba013af53a3445fa99aca01f4950` |
+| `examples/golden-todo/typescript/package-lock.json` | `73933caaffe00f1ebabe4bbc05630e91eaa596e40ea8113228849aed0857d82c` |
+| `tools/bench/load/Cargo.lock` | `cbe692030d0854b6e2927dd5b71641aed5e8b5771541a197b92c8a2e109dad38` |
+| `tools/bench/typescript/package-lock.json` | `cf6506f6515e0029255285d0a94ae47cab4fd7213902f6c1c09347590df66316` |
+| `tools/workers/package-lock.json` | `7649655efb232dcc01dc327a9b2830b4e9fabfffd47a16cb3e59b9e93bfa9453` |
+| Compiler (not timed) | `ae662ebca57b28e314ed702782b8d48ac43455691a906faa06b1d42c765bb5c1` |
+| Golden native (14,196,128 bytes) | `53904c09887ce6f7b19ef6a7319b76f17259099bcb2e37e1be739b2db23e5634` |
+| Golden Wasm (7,302,702 bytes) | `9c04cf6aecbf3b519812e502d3d0e97275e17ccb0df0d87eb3120917c9573254` |
+| Release load generator | `6a7cc932bcf970d7e59a8f44b8b8c8da3e0ea0351508dd8e17a4ef5b86811545` |
+| Release pool stand-in | `b56ab11147b2bcf68cb05adee3e7f652629d2c3340a085ec2e129ac65df4646f` |
+| Golden emitted TypeScript: 20-file relative-path/digest manifest | `36712c181369da46ad502a201a6426fdb13dd7900f4378b25ddefb889f1a542b` |
+| Focused native | `6fcf5636e1d178ca7ff94815c116225388013631ca833e6108b969abcdb56a82` |
+| Focused Wasm | `9e25734534b67b9eac4c79a34e19463ab6ae36c4b391670664229c47c29db7c3` |
+
+The TypeScript manifest digest hashes sorted JSON of relative emitted `src/`
+paths to their SHA-256 strings, identically for Bun and Node. Full maps also
+retain the production shim/glue, fixture signer and configuration inputs.
