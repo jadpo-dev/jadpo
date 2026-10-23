@@ -139,7 +139,7 @@ def build():
         raise ValueError('Production Wasm artifact is missing')
     stamp = {'inputs': before, 'sources': source_hashes(), 'artifacts': {str(path): sha(path) for path in paths},
              'build_environment': {name: value for name, value in environment.items()
-                 if name.startswith('CARGO_PROFILE_') or name in ('CARGO_INCREMENTAL', 'RUSTFLAGS', 'RUSTUP_TOOLCHAIN')},
+                 if name.startswith('CARGO_PROFILE_') or name in ('CARGO_INCREMENTAL', 'CARGO_BUILD_JOBS', 'RUSTFLAGS', 'RUSTUP_TOOLCHAIN')},
              'profiles': {'compiler': 'dev; not measured', 'native': 'jadpo build release',
                           'workers': 'jadpo build release; no wasm-opt', 'load': 'release'},
              'conformance': cases}
