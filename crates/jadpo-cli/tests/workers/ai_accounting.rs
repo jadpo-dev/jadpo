@@ -55,12 +55,17 @@ fn an_atomic_budget_refusal_is_recognised_by_the_compiled_worker() {
     rows(
         &database.native,
         &format!(
-            "INSERT INTO jadpo_ai_usage VALUES (CURRENT_DATE, 'caller', '{caller}', 0, 0, 0, 0, 1090, 0, 0, NULL, '2000-01-01')"
+            "INSERT INTO jadpo_ai_usage SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date + day_delta, 'caller', '{caller}', 0, 0, 0, 0, 1090, 0, 0, NULL, '2000-01-01' FROM generate_series(-1, 1) AS days(day_delta)"
         ),
     );
     let before = rows(
         &database.native,
-        "SELECT * FROM jadpo_ai_usage ORDER BY scope, key",
+        "SELECT * FROM jadpo_ai_usage ORDER BY day, scope, key",
+    );
+    assert_eq!(
+        before.len(),
+        3,
+        "adjacent UTC caller windows cover midnight"
     );
     let out = root.join("build/target/worker");
     let wrangler: Value =
@@ -91,7 +96,7 @@ fn an_atomic_budget_refusal_is_recognised_by_the_compiled_worker() {
         assert_eq!(
             rows(
                 &database.native,
-                "SELECT * FROM jadpo_ai_usage ORDER BY scope, key"
+                "SELECT * FROM jadpo_ai_usage ORDER BY day, scope, key"
             ),
             before,
             "APP insertion rolled back with unchanged caller"

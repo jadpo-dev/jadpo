@@ -166,7 +166,7 @@ def measure(label, count):
         after = resource.getrusage(resource.RUSAGE_CHILDREN)
         metadata.update({'seconds':time.perf_counter()-began,
                          'whole_fixture_children_cpu_s':after.ru_utime+after.ru_stime-before.ru_utime-before.ru_stime,
-                         'cpu_scope':'entire fixture process and reaped descendants including local PostgreSQL/setup/controls/census; not per-call server CPU',
+                         'cpu_scope':'whole fixture process and reaped setup/watchdog/client children, including warmup/controls/census; daemonized PostgreSQL backend CPU excluded/unmeasured; not per-call/service CPU',
                          'host_end':{'load':os.getloadavg(),'time':time.time()}})
         try:
             validate(stamp, source())
