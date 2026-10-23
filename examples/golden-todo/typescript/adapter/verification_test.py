@@ -86,7 +86,8 @@ with dependency_lock(Path(sys.argv[1])):
 
 class SharedPostgres(unittest.TestCase):
     def test_keyword_socket_runs_real_node_bun_requests_and_preserves_parameters(self):
-        with tempfile.TemporaryDirectory(prefix="d3 sock ' ", dir='/private/tmp') as socket_path, \
+        # Keep the socket path short on both macOS and Linux, including quoting.
+        with tempfile.TemporaryDirectory(prefix="d3 sock ' ", dir='/tmp') as socket_path, \
                 tempfile.TemporaryDirectory(prefix='socket-control-', dir=PROJECT / 'build') as temporary:
             server = harness.Postgres(Path(temporary), socket_directory=Path(socket_path))
             shared = None
