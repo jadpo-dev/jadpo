@@ -1,0 +1,33 @@
+use todo/entities { Todo }
+use todo/types { CreateTodo, TodoStatus, TodoView }
+use todo/failures { DueDateInPast }
+
+action add_todo(input: CreateTodo, caller: Principal.user) fails DueDateInPast -> TodoView {
+    match input.due_at {
+        some(due) -> {
+            if (due <= clock.now) {
+                reject DueDateInPast
+            }
+        }
+        none -> {}
+    }
+    var item: Todo = Todo.create {
+        set: {
+            owner_id: caller.id
+            title: input.title
+            status: TodoStatus.open
+            due_at: input.due_at
+            reminder_sent_at: none
+            reminder_queued_at: none
+            reminder_revision: 1
+        }
+    }
+    return TodoView {
+        id: item.id
+        title: item.title
+        status: item.status
+        due_at: item.due_at
+        created_at: item.created_at
+        updated_at: item.updated_at
+    }
+}
