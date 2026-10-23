@@ -411,7 +411,11 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
             jadpo_runtime::purge(&host, &plan, Clock::TEST.now() + 30 * DAY, PURGE_BATCHES)
                 .await
                 .expect("purge at the retention boundary");
-        assert_eq!(at_cutoff.removed(), 0, "only older than the cutoff: {at_cutoff:?}");
+        assert_eq!(
+            at_cutoff.removed(),
+            0,
+            "only older than the cutoff: {at_cutoff:?}"
+        );
         assert_eq!(names(&check, "member").await, ["Ada", "Bob", "Cy", "Dee"]);
 
         // Hidden for 31 days: Bob and Dee go, with Dee's visits; Cy's badge
@@ -533,7 +537,11 @@ fn purge_waits_as_long_as_a_setting_says() {
         )
         .await
         .expect("configured retention at the boundary");
-        assert_eq!(at_cutoff.removed(), 0, "only older than the configured cutoff");
+        assert_eq!(
+            at_cutoff.removed(),
+            0,
+            "only older than the configured cutoff"
+        );
         assert_eq!(names(&check, "member").await, ["Bob"]);
         let purged = jadpo_runtime::purge_after(
             &host,

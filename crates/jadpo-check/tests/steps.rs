@@ -826,7 +826,7 @@ fn the_steps_key_is_a_signing_key_setting() {
 
 /// An action a subscriber runs making several changing calls has its
 /// record planned in the store it writes, and the store keeps the
-/// record's tables; one making a single changing call has none.
+/// record's tables; a single keyed change instead plans dispatch metadata.
 #[test]
 fn the_record_is_planned_in_the_store_its_action_writes() {
     let files = files(true, &subscribe(), &[SUBSCRIBER]);
@@ -1162,4 +1162,41 @@ fn the_longest_way_counts_with_its_connections_settings() {
         ),
         Vec::<String>::new()
     );
+}
+
+#[test]
+fn single_keyed_calls_plan_only_dispatch_metadata_and_add_no_configuration_requirement() {
+    let keep = format!(
+        "action keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n{}    assert customer.id != \"\"\n}}\n",
+        keyed("customer", "customers.create", "plan")
+    );
+    for events in [true, false] {
+        let mut source = files(events, &keep, &[PARTNERS, POLICY]);
+        source[0].1 = app_with(events, "");
+        let source: Vec<(&str, &str)> = source
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str()))
+            .collect();
+        let db = Database::default();
+        let project = support::project(&db, Layout::Project, &source);
+        let problems = jadpo_check::check(&db, project);
+        assert!(
+            !problems.iter().any(|p| matches!(
+                p.rule.id,
+                "step.store_required" | "step.encryption_key_required"
+            )),
+            "{problems:?}"
+        );
+        let plans = jadpo_check::types::record_plans(&db, project);
+        if events {
+            let plan = plans.values().next().expect("dispatch metadata");
+            assert_eq!(plan.store, "main");
+            assert!(!plan.replay);
+        } else {
+            assert!(
+                plans.is_empty(),
+                "storeless routes keep their accepted behavior"
+            );
+        }
+    }
 }

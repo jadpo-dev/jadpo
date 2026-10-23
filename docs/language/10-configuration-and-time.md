@@ -517,6 +517,19 @@ read a setting of the type its `driver:` needs (`configuration.url_type`); an
 address written in source is refused the same way. The runtime opens the
 connection only through that setting.
 
+Since chunk 9.1d2a (Richard, 2026-10-23), connection types check URI
+structure as well as the scheme, using the same pure validator for literals,
+startup and `config check`. Empty targets after user information, malformed
+percent escapes, invalid ports and broken IPv6 brackets are invalid; checking
+never resolves a name or opens a connection. PostgreSQL multi-host URIs,
+encoded credentials, bracketed IPv6 and explicit socket addresses
+(`postgres://%2Ftmp/app`, `postgresql:///app?host=/tmp`) pass the structural
+check. The type also retains its earlier acceptance of `postgres:///app`;
+that alone supplies no socket directory to a host driver and establishes no
+implicit driver default. Driver-specific options and connection availability
+are checked separately by the driver. A Redis address needs a host and, when supplied, a nonnegative numeric database path.
+All invalid declarations are reported together; credentials are never shown.
+
 A project that declares no database has one called `main` on PostgreSQL, and
 it opens at `config.database_url` when the project declares one (and it is a
 `PostgresUrl`).
@@ -6417,6 +6430,7 @@ the app doesn't support is written in (see Locales).
 | Variables (chosen in chunk 5.1) | A variable is capitals, digits and `_` starting with a capital (`configuration.binding_invalid`, `configuration.binding_empty`); no two settings share one, and a `SigningKey`'s `_PREVIOUS` counts as taken (`configuration.duplicate_binding`) | 2026-10-16 |
 | `default:` and `test:` (chosen in chunk 5.1) | A literal of the setting's type, checked against every rule of the type and its parents (`configuration.default_literal_required`, `configuration.default_type`, `configuration.default_invalid`, the same three for `test:` and a test's `config:`); an enum's variant is written `Type.value`. A secret has neither (`configuration.secret_default`), and `secret:` is `true` or `false` (`configuration.secret_invalid`) | 2026-10-16 |
 | Built-in connection types (chosen in chunk 5.1) | `Url` accepts only `http://` and `https://`. `PostgresUrl` (`postgres://`, `postgresql://`), `RedisUrl` (`redis://`, `rediss://`) and `SigningKey` (at least 32 visible characters) are built in, text underneath, always secret and never stored by an entity | 2026-10-16 |
+| Connection URL structure (chosen in chunk 9.1d2a) | Connection types check URI structure at literals, startup and `config check`, without network I/O; preserve PostgreSQL multi-host, IPv6, encoded credentials and local sockets, reject malformed targets, escapes and ports, and report every invalid declaration without values | 2026-10-23 |
 | A database's authority (chosen in chunk 8.1n) | A setting may be area 19's `Certificate`, read from its PEM, as a database connection's `authority:` needs (area 5, "PostgreSQL over TLS"); a `PostgresUrl` that sets `sslmode` or another `ssl…` setting is invalid | 2026-10-21 |
 | Where a secret may go (chosen in chunk 5.1) | The value of a `url:`, `credential:`, `signing_key:` or `secret:` member of `application { }` or `authentication { }`, and nowhere else: no function, action, query, fixture or test is a place the compiler owns, so any read of a secret there is `configuration.secret_flow`, which needs no tracking through variables and calls, and covers comparing | 2026-10-16 |
 | Connection addresses (chosen in chunk 5.1) | A connection's `url: config.<name>` reads a setting of the type its driver needs (`configuration.url_type`); an address written in source is refused the same way. A project with no database declared opens `main` at `config.database_url` when it declares one (of the right type) | 2026-10-16 |
