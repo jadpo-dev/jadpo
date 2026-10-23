@@ -1324,8 +1324,9 @@ impl<'p> Ctx<'p> {
     }
 
     /// Holds the row `row` names, `id`, to the version a snapshot an
-    /// outside call closed loaded it at, before a write to it in `store`
-    /// (chunk 7.4): `ConcurrentChange` when it changed or went since.
+    /// outside call closed loaded it at, when a write in `store` changed
+    /// no row: `ConcurrentChange` before its ordinary refusal when it
+    /// changed or went since (chunk 9.1b4).
     pub(crate) async fn check_row(
         &mut self,
         store: &str,

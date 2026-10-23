@@ -88,7 +88,7 @@ pub(crate) struct Boundary {
     /// what a write after the call holds it to.
     versions: BTreeMap<RowKey, String>,
     /// Of `versions`, the rows its open transaction checked and locked,
-    /// which stay as checked until it ends.
+    /// which stay checked while their locks survive, including savepoints.
     checked: BTreeSet<RowKey>,
 }
 
@@ -217,9 +217,9 @@ impl Boundary {
     }
 
     /// Holds the row `row` names, `id`, to the version a snapshot an
-    /// outside call closed loaded it at, before a write to it (chunk 7.4):
-    /// read and locked in its transaction in `store`, once in that
-    /// transaction. A row changed or gone since is a concurrent change.
+    /// outside call closed loaded it at, when a mutation changed no row:
+    /// read and locked in its transaction in `store`, before classifying
+    /// the ordinary refusal. A row changed or gone is a concurrent change.
     pub(crate) async fn check(
         &mut self,
         capabilities: &Capabilities<'_>,
