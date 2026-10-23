@@ -236,24 +236,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   below; sessions take their first unticked concrete subchunk. The split
   changes sizing, not the application or comparison scope.
 - [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
-- [ ] **9.1d2 Golden todo and executable contract:** `opus · high` after
-  9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
-  the split isolates generic defects exposed by the executable contract
-  (2026-10-23), without reducing its 44-case scope.
+- [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
-- [ ] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
-  and 9.1d2a: implement the actual application from `examples/golden-todo`
-  using the current area pages, with all 44 case IDs executable on native
-  and workerd. Preserve the original candidate and make any correction
-  required by a decided area an explicit versioned successor, retaining the
-  case and its policy obligation. Include authentication timelines, physical
-  query accounting, omission-aware patches, pagination, relationships,
-  lifecycle, reminder delivery, preflight and dependency failures.
-  Unsupported cases remain visible and block completion; generic fixtures
-  do not count. Independent application and harness authoring may proceed
-  against an explicitly identified verified prerequisite checkout. Final
-  validation uses its own checkout with the exact prerequisite histories
-  incorporated, under Richard’s stacked-dependency authorization above.
+- [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [ ] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
   implement the same versioned application contract and all 44 cases with
   the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
