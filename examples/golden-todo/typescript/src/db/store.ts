@@ -41,6 +41,21 @@ function cancellable<T extends postgres.Sql | postgres.TransactionSql>(
     },
   });
 }
+// postgres-js treats URL query keys as startup parameters and does not consume
+// libpq's explicit Unix-socket host. Map that already-valid URL form to its
+// driver option, removing only the consumed key; pool/security settings stay here.
+function postgresConnection(url: string) {
+  const parsed = new URL(url);
+  const host = parsed.searchParams.get("host");
+  const options: { host?: string } = {};
+  if (host?.startsWith("/")) {
+    options.host = host;
+    parsed.searchParams.delete("host");
+    return { url: parsed.toString(), options };
+  }
+  return { url, options };
+}
+
 export class Store {
   readonly client: postgres.Sql;
   readonly db: PostgresJsDatabase<typeof schema>;
@@ -49,7 +64,9 @@ export class Store {
     url: string,
     observe?: (query: string, parameters: readonly unknown[]) => void,
   ) {
-    this.client = postgres(url, {
+    const connection = postgresConnection(url);
+    this.client = postgres(connection.url, {
+      ...connection.options,
       max: 5,
       connect_timeout: 2,
       idle_timeout: 20,
@@ -63,7 +80,8 @@ export class Store {
     this.db = drizzle(cancellable(this.client), { schema });
     this.transactions = new TransactionPool(
       Array.from({ length: 5 }, () =>
-        postgres(url, {
+        postgres(connection.url, {
+          ...connection.options,
           max: 1,
           connect_timeout: 2,
           idle_timeout: 20,

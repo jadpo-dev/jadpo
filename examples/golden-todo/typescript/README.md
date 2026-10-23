@@ -18,8 +18,9 @@ Run the wrapper from this directory:
 python3 adapter/verify.py
 ```
 
-It uses `JADPO_TEST_DATABASE_URL` when the repository gate supplies one, creating
-and dropping only its own randomly named databases. Otherwise it starts and
+It uses `JADPO_TEST_DATABASE_URL` when the repository gate supplies one, accepting
+URI and libpq keyword forms while retaining explicit Unix sockets and connection
+parameters, and creating/dropping only its own randomly named databases. Otherwise it starts and
 stops an isolated PostgreSQL16 cluster on 127.0.0.1. Failed migrations and tests
 still clean up owned databases and await child shutdown.
 
@@ -55,6 +56,30 @@ transaction; tests deliberately corrupt an output field and prove rollback.
 The real-database tests also cover active query cancellation, saturated-pool
 cancellation, CPU deadline overruns and serialization-conflict retries.
 
+The request boundary enforces strict JSON/media/body rules, NFC scalar text,
+canonical millisecond Instants and default rate/admission limits. Inputs accept
+unrefined UUID bit patterns; app-created Todo IDs default to UUIDv7. A closed
+principal, centralized CASL/SQL predicates and typed mutation inputs protect
+ownership; policy limits apply before pagination. Durable sessions renew
+against current authority, and destructive user operations force a fresh read.
+A verified external subject must resolve to an active local user; no user and
+no sign-in hook produces safe `sign_in_refused` (403), while invalid JWTs stay 401. No provider claims auto-provision users or permissions.
+
+External verification accepts only EdDSA, RS256 and ES256, validates full public
+signing-key sets and strict duplicate-free JWT documents, and rechecks subject
+authority. Discovery/JWKS fetches have 64KiB/256KiB and 64-key bounds, a
+three-second budget each, a five-minute cache, and one coalesced refresh per
+30 seconds including failure and cancellation. Invalid issuer/key configuration
+is 500; fetch unavailability is 503. All issuer/mail network answers in local
+controls are injected; production public DNS/TLS and deployment remain outside
+this evidence.
+
+The inventory distinguishes static diagnostic rejection, runtime guards and
+behavior exercised by tests. Neither a route effect label nor TypeScript's
+structural typing proves arbitrary policy or secret information flow. The
+rate limiter enforces a 16MiB accounting budget; JavaScript engine heap
+overhead is not proved by that counter.
+
 Reminder events, preparation, attempts and provider keys are durable. Provider
 acceptance is recorded only after a validated acknowledgement. Lease tokens,
 revision predicates and PostgreSQL row versions protect edits during IO.
@@ -63,7 +88,10 @@ provider outages, retention and operator-held outcomes past the 23-hour safe
 retry horizon. Fixture-only signing, SQL, clocks, network answers and mutation
 hooks remain under `adapter/`, outside the production server/import graph.
 
-Provider calls retry at most three times with bounded full-jitter waits.
+Reminder revisions retain every signed64 bit in PostgreSQL/JavaScript bigint
+arithmetic and canonical decimal-string JSON outbox/provider payloads. Provider
+calls use the declared `/v1/reminders` protocol and retry at most three times
+with bounded full-jitter waits.
 Subscribers have five attempts within 24 hours; durable connection breaker state
 holds pending work after five unavailable deliveries. Optional request keys
 commit their response receipts atomically with writes, fence expired runners

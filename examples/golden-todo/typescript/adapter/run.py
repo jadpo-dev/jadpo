@@ -11,11 +11,12 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import shlex
 import socket
 import subprocess
 import sys
 import tempfile
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlencode
 
 from support import dependency_lock
 
@@ -80,14 +81,17 @@ class DatabaseHost:
 
 
 class Postgres(DatabaseHost):
-    def __init__(self, directory):
+    def __init__(self, directory, socket_directory=None):
         self.data = directory / 'pg'
+        self.socket_directory = socket_directory
         self.port = port()
         self.started = False
         run([tool('initdb'), '-D', str(self.data), '-U', 'golden', '--auth=trust', '-E', 'UTF8'],
             stdout=subprocess.DEVNULL)
-        options = (f'-p {self.port} -c unix_socket_directories= -c listen_addresses=127.0.0.1 '
-                   '-c max_connections=100 -c shared_buffers=32MB')
+        socket_value = '' if socket_directory is None else '"' + str(socket_directory).replace('"', '""') + '"'
+        listen = '127.0.0.1' if socket_directory is None else ''
+        options = shlex.join(['-p', str(self.port), '-c', 'unix_socket_directories=' + socket_value,
+                              '-c', 'listen_addresses=' + listen, '-c', 'max_connections=100', '-c', 'shared_buffers=32MB'])
         try:
             run([tool('pg_ctl'), '-D', str(self.data), '-l', str(directory / 'postgres.log'),
                  '-o', options, '-w', 'start'], stdout=subprocess.DEVNULL)
@@ -99,7 +103,10 @@ class Postgres(DatabaseHost):
             raise
 
     def url(self, name):
-        return f'postgresql://golden@127.0.0.1:{self.port}/{name}'
+        uri = f'postgresql://golden@127.0.0.1:{self.port}/{name}'
+        if self.socket_directory is not None:
+            uri += '?' + urlencode({'host': str(self.socket_directory)}, quote_via=quote)
+        return uri
 
     def stop(self):
         if self.started:
@@ -111,13 +118,15 @@ class Postgres(DatabaseHost):
 class SharedPostgres(DatabaseHost):
     """Own random databases on the gate's server; never stop the shared server."""
     def __init__(self, url):
-        self.base = urlsplit(url)
+        specification = importlib.util.spec_from_file_location('golden_postgres', ROOT / 'tools/golden-todo/postgres.py')
+        normalizer = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(normalizer)
+        self.normalize = normalizer.postgres_uri
+        self.base = self.normalize(url)
         self.owned = []
-        if self.base.scheme not in {'postgres', 'postgresql'}:
-            raise ValueError('Invalid shared PostgreSQL configuration')
 
     def url(self, name):
-        return urlunsplit(self.base._replace(path='/' + name))
+        return self.normalize(self.base, name)
 
     def created(self, name):
         # Register before migration: even a failed migration owns a database.
@@ -175,8 +184,11 @@ def inputs(source):
     files = [path for path in PROJECT.rglob('*') if path.is_file()
              and not {'node_modules', 'build', '__pycache__'}.intersection(path.relative_to(PROJECT).parts)]
     files += [source / 'tools/golden-todo/contract.py',
-              source / 'examples/golden-todo/acceptance-v0.2.json']
-    for path in sorted(files):
+              source / 'tools/golden-todo/test_contract.py',
+              source / 'examples/golden-todo/acceptance-v0.2.json',
+              ROOT / 'tools/golden-todo/postgres.py', ROOT / 'tools/golden-todo/test_postgres.py',
+              ROOT / 'tools/verify.py', ROOT / '.github/workflows/validation.yml']
+    for path in sorted(set(files)):
         digest.update(str(path).encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()

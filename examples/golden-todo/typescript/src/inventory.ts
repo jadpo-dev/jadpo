@@ -146,7 +146,7 @@ export function inventory() {
     outstanding: [
       "Arbitrary handler policy correctness and information flow are not proved by TypeScript or the route effect labels.",
       "Real public DNS/TLS/edge deployment is outside local fixture evidence.",
-      "Reviewed-main shared conformance, own-worktree full repository gate and independent review remain required.",
+      "Conformance and full repository-gate results must identify the own checkout and exact dependency histories; independent review remains separate.",
     ],
   };
 }

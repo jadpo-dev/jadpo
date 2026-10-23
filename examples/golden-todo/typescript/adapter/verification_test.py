@@ -85,6 +85,43 @@ with dependency_lock(Path(sys.argv[1])):
 
 
 class SharedPostgres(unittest.TestCase):
+    def test_keyword_socket_runs_real_node_bun_requests_and_preserves_parameters(self):
+        with tempfile.TemporaryDirectory(prefix="d3 sock ' ", dir='/private/tmp') as socket_path, \
+                tempfile.TemporaryDirectory(prefix='socket-control-', dir=PROJECT / 'build') as temporary:
+            server = harness.Postgres(Path(temporary), socket_directory=Path(socket_path))
+            shared = None
+            try:
+                escaped = socket_path.replace('\\', '\\\\').replace("'", "\\'")
+                dsn = f"host='{escaped}' port={server.port} user=golden dbname=postgres application_name='gate socket + marker' connect_timeout=2"
+                shared = harness.SharedPostgres(dsn)
+                database = 'golden_socket_' + os.urandom(5).hex()
+                shared.prepare(database)
+                code = """import { Store } from './src/db/store.ts';
+const store = new Store(process.env.DATABASE_URL);
+try {
+  const [row] = await store.client.unsafe("SELECT current_setting('application_name') AS name");
+  process.stdout.write(JSON.stringify(row));
+} finally { await store.close(); }
+"""
+                result = subprocess.check_output([harness.tool('node'), '--input-type=module', '-e', code], cwd=PROJECT,
+                                                 env={**os.environ, 'DATABASE_URL': shared.url(database)}, text=True)
+                self.assertEqual(json.loads(result)['name'], 'gate socket + marker')
+                before = subprocess.check_output([harness.tool('psql'), '-At', '-d', dsn,
+                                                  '-c', 'SELECT datname FROM pg_database ORDER BY datname'], text=True)
+                with patch.dict(os.environ, {'JADPO_TEST_DATABASE_URL': dsn}):
+                    # Call the runner's production execution function; the outer
+                    # wrapper already owns the dependency lock in gate runs.
+                    result = harness.verify_contract(ROOT, ['node', 'bun'], ['CREATE-001'])
+                self.assertEqual(result['counts'], {'ran': 2, 'passed': 2, 'failed': 0})
+                self.assertFalse(result['completeContract'])
+                after = subprocess.check_output([harness.tool('psql'), '-At', '-d', dsn,
+                                                 '-c', 'SELECT datname FROM pg_database ORDER BY datname'], text=True)
+                self.assertEqual(before, after)
+            finally:
+                if shared is not None:
+                    shared.stop()
+                server.stop()
+
     def test_failure_drops_only_owned_databases_and_keeps_server_alive(self):
         with tempfile.TemporaryDirectory(prefix='gate-test-', dir=PROJECT / 'build') as temporary:
             owner = None
