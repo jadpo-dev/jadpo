@@ -1,11 +1,11 @@
-import { lookup } from "node:dns/promises";
+import { Resolver } from "node:dns/promises";
 import { request } from "node:https";
 import { BlockList, isIP } from "node:net";
+import { assertOutsideTransaction } from "./transaction-context.ts";
 import { AppError } from "./errors.ts";
 import type { RequestScope } from "./runtime.ts";
 
 const denied = new BlockList();
-const deniedV6 = new BlockList();
 for (const [base, prefix] of [
   ["0.0.0.0", 8],
   ["10.0.0.0", 8],
@@ -23,28 +23,68 @@ for (const [base, prefix] of [
   ["240.0.0.0", 4],
 ] as const)
   denied.addSubnet(base, prefix, "ipv4");
-for (const [base, prefix] of [
-  ["::", 96],
-  ["::ffff:0:0", 96],
-  ["64:ff9b::", 96],
-  ["64:ff9b:1::", 48],
-  ["100::", 64],
-  ["2001::", 23],
-  ["2001:db8::", 32],
-  ["2002::", 16],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["fec0::", 10],
-  ["ff00::", 8],
-] as const)
-  deniedV6.addSubnet(base, prefix, "ipv6");
+function ipv6Segments(address: string): number[] {
+  let text = address;
+  if (text.includes(".")) {
+    const at = text.lastIndexOf(":");
+    const tail = text
+      .slice(at + 1)
+      .split(".")
+      .map(Number);
+    text =
+      text.slice(0, at) +
+      ":" +
+      ((tail[0] ?? 0) * 256 + (tail[1] ?? 0)).toString(16) +
+      ":" +
+      ((tail[2] ?? 0) * 256 + (tail[3] ?? 0)).toString(16);
+  }
+  const [left = "", right = ""] = text.split("::");
+  const head = left ? left.split(":") : [];
+  const tail = right ? right.split(":") : [];
+  return (
+    text.includes("::")
+      ? [
+          ...head,
+          ...Array<string>(8 - head.length - tail.length).fill("0"),
+          ...tail,
+        ]
+      : head
+  ).map((part) => parseInt(part, 16));
+}
 export function publicAddress(address: string): boolean {
   const family = isIP(address);
-  return (
-    family !== 0 &&
-    !(family === 4
-      ? denied.check(address, "ipv4")
-      : deniedV6.check(address, "ipv6"))
+  if (family === 4) return !denied.check(address, "ipv4");
+  if (family !== 6) return false;
+  const segments = ipv6Segments(address);
+  const first = segments[0] ?? 0;
+  const second = segments[1] ?? 0;
+  const four = (high: number, low: number) =>
+    publicAddress([high >>> 8, high & 255, low >>> 8, low & 255].join("."));
+  if (
+    segments.slice(0, 5).every((segment) => segment === 0) &&
+    (segments[5] === 0 || segments[5] === 65535)
+  )
+    return four(segments[6] ?? 0, segments[7] ?? 0);
+  if (
+    first === 0x64 &&
+    second === 0xff9b &&
+    segments.slice(2, 6).every((segment) => segment === 0)
+  )
+    return four(segments[6] ?? 0, segments[7] ?? 0);
+  if (first === 0x2002) return four(segments[1] ?? 0, segments[2] ?? 0);
+  if (first === 0x2001 && second === 0)
+    return (
+      four(segments[2] ?? 0, segments[3] ?? 0) &&
+      four(~(segments[6] ?? 0) & 65535, ~(segments[7] ?? 0) & 65535)
+    );
+  return !(
+    (first & 0xfe00) === 0xfc00 ||
+    (first & 0xffc0) === 0xfe80 ||
+    (first & 0xffc0) === 0xfec0 ||
+    (first & 0xff00) === 0xff00 ||
+    (first === 0x2001 && second < 0x200) ||
+    (first === 0x2001 && second === 0xdb8) ||
+    (first === 0x64 && second === 0xff9b)
   );
 }
 export function publicHttps(value: string): URL {
@@ -60,7 +100,6 @@ export function publicHttps(value: string): URL {
     url.username ||
     url.password ||
     url.hash ||
-    (url.port && url.port !== "443") ||
     hostname === "localhost" ||
     hostname.endsWith(".localhost") ||
     (isIP(hostname) && !publicAddress(hostname))
@@ -77,12 +116,45 @@ export type OutboundRequest = Readonly<{
 export type Transport = (
   input: OutboundRequest,
   scope: RequestScope,
-) => Promise<{ status: number; body: string }>;
+) => Promise<{
+  status: number;
+  body: string;
+  headers?: Readonly<Record<string, string>>;
+}>;
 export const httpsTransport: Transport = async (input, scope) => {
   const url = publicHttps(input.url);
   scope.check();
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
-  const addresses = await lookup(hostname, { all: true });
+  const literal = isIP(hostname);
+  const resolver = new Resolver();
+  const cancel = () => {
+    resolver.cancel();
+  };
+  scope.signal.addEventListener("abort", cancel, { once: true });
+  const timer = setTimeout(cancel, Math.min(10000, scope.remaining()));
+  timer.unref();
+  let addresses: { address: string; family: number }[];
+  try {
+    if (literal) addresses = [{ address: hostname, family: literal }];
+    else {
+      const results = await Promise.allSettled([
+        resolver.resolve4(hostname),
+        resolver.resolve6(hostname),
+      ]);
+      addresses = results.flatMap((result, index) =>
+        result.status === "fulfilled"
+          ? result.value.map((address) => ({
+              address,
+              family: index === 0 ? 4 : 6,
+            }))
+          : [],
+      );
+    }
+  } finally {
+    clearTimeout(timer);
+    scope.signal.removeEventListener("abort", cancel);
+  }
+  scope.check();
   scope.check();
   if (
     !addresses.length ||
@@ -96,6 +168,7 @@ export const httpsTransport: Transport = async (input, scope) => {
       url,
       {
         method: input.method,
+        family: pinned.family,
         headers: input.headers,
         signal: scope.signal,
         lookup: (_hostname, _options, callback) => {
@@ -117,6 +190,10 @@ export const httpsTransport: Transport = async (input, scope) => {
         incoming.on("end", () => {
           resolve({
             status: incoming.statusCode ?? 0,
+            headers:
+              typeof incoming.headers["retry-after"] === "string"
+                ? { "retry-after": incoming.headers["retry-after"] }
+                : {},
             body: Buffer.concat(chunks).toString("utf8"),
           });
         });
@@ -137,6 +214,7 @@ export class Egress {
     this.transport = transport;
   }
   async send(input: OutboundRequest, scope: RequestScope) {
+    assertOutsideTransaction();
     publicHttps(input.url);
     scope.check();
     const answer = await this.transport(input, scope);

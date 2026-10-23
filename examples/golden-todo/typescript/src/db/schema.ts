@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   index,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 const instant = (name: string) =>
   timestamp(name, { withTimezone: true, mode: "string" });
@@ -88,4 +89,28 @@ export const scheduleRuns = pgTable("jadpo_schedule_runs", {
 export const scheduleClaims = pgTable("todo_schedule_claims", {
   name: text().primaryKey(),
   bucket: bigint({ mode: "number" }).notNull(),
+});
+
+export const idempotency = pgTable(
+  "todo_request_receipts",
+  {
+    caller: text().notNull(),
+    key: text().notNull(),
+    fingerprint: text().notNull(),
+    token: uuid().notNull(),
+    lease_until: instant("lease_until").notNull(),
+    expires_at: instant("expires_at").notNull(),
+    response_status: integer(),
+    response_body: text(),
+  },
+  (table) => [primaryKey({ columns: [table.caller, table.key] })],
+);
+
+export const providerBreakers = pgTable("todo_provider_breakers", {
+  name: text().primaryKey(),
+  failures: integer().notNull().default(0),
+  open_until: instant("open_until"),
+  backoff_ms: integer().notNull().default(60000),
+  probe_token: uuid(),
+  probe_until: instant("probe_until"),
 });

@@ -7,7 +7,6 @@
     "check": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --exclude test/postgres.test.ts",
-    "test:bun": "bun run test",
     "build": "tsc --noEmit false --outDir build",
     "start": "node --experimental-strip-types src/server.ts",
     "start:bun": "bun src/server.ts",

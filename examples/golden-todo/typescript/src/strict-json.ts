@@ -1,7 +1,7 @@
 // Validate JSON's object member uniqueness before JSON.parse can erase evidence.
 // Bounds are intentionally small at the credential boundary.
-export function uniqueJson(text: string): unknown {
-  if (text.length > 16384) throw Error("JSON limit");
+export function uniqueJson(text: string, maximum = 16384): unknown {
+  if (text.length > maximum) throw Error("JSON limit");
   let at = 0;
   const space = () => {
     while (/[\x20\t\r\n]/.test(text[at] ?? "!")) at++;
@@ -15,12 +15,16 @@ export function uniqueJson(text: string): unknown {
         at++;
         continue;
       }
-      if (char === '"') return JSON.parse(text.slice(start, at)) as string;
+      if (char === '"') {
+        const parsed = JSON.parse(text.slice(start, at)) as string;
+        if (!parsed.isWellFormed()) throw Error("Unpaired JSON surrogate");
+        return parsed;
+      }
     }
     throw Error("JSON string");
   };
   const value = (depth: number): void => {
-    if (depth > 32) throw Error("JSON depth");
+    if (depth > 128) throw Error("JSON depth");
     space();
     const char = text[at];
     if (char === '"') {

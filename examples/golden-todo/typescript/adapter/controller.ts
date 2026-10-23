@@ -1,7 +1,8 @@
 // Private JSONL fixture process. Never imported by the production server.
 import { createInterface } from "node:readline";
+import { createServer } from "node:net";
 import { request as rawRequest } from "node:http";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync, spawn } from "node:child_process";
 import { writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -24,7 +25,9 @@ let statements: string[] = [];
 let databaseOut = false;
 let issuerOut = false;
 let hook: { match: string; sql: string } | undefined;
-const psql = "/Applications/Postgres.app/Contents/Versions/16/bin/psql";
+const psql = environment.GOLDEN_PSQL ?? "";
+if (!psql)
+  throw Error("Private controller requires the resolved local psql tool");
 function text(value: unknown): string {
   if (typeof value !== "string") throw Error("Expected fixture text");
   return value;
@@ -227,7 +230,95 @@ function policyProbe() {
     unlinkSync(path);
   }
 }
-function preflight(command: Record<string, unknown>) {
+let startupVerified = false;
+async function positiveStartup(): Promise<void> {
+  if (startupVerified) return;
+  const [queued] = await store.client.unsafe(
+    "SELECT (SELECT count(*) FROM todo)+(SELECT count(*) FROM jadpo_deliveries) AS work",
+  );
+  if (Number(queued?.work) !== 0)
+    throw Error("Positive startup requires an empty private work fixture");
+  const reservation = createServer();
+  await new Promise<void>((resolve) => {
+    reservation.listen(0, "127.0.0.1", resolve);
+  });
+  const address = reservation.address();
+  if (!address || typeof address === "string")
+    throw Error("Positive startup port unavailable");
+  const port = address.port;
+  await new Promise<void>((resolve) => {
+    reservation.close(() => {
+      resolve();
+    });
+  });
+  const child = spawn(process.execPath, [resolve(here, "src/server.ts")], {
+    env: { ...environment, PORT: String(port) },
+    stdio: "ignore",
+  });
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => {
+      resolve();
+    });
+  });
+  try {
+    const until = performance.now() + 10000;
+    while (performance.now() < until && child.exitCode === null) {
+      try {
+        const healthy = await new Promise<boolean>((resolve) => {
+          const outgoing = rawRequest(
+            { hostname: "127.0.0.1", port, path: "/health/live", timeout: 200 },
+            (incoming) => {
+              const chunks: Buffer[] = [];
+              incoming.on("data", (chunk: Buffer) => {
+                chunks.push(chunk);
+              });
+              incoming.on("end", () => {
+                resolve(
+                  incoming.statusCode === 200 &&
+                    Buffer.concat(chunks).toString("utf8") ===
+                      '{"status":"live"}',
+                );
+              });
+              incoming.on("error", () => {
+                resolve(false);
+              });
+            },
+          );
+          outgoing.on("timeout", () => {
+            outgoing.destroy();
+            resolve(false);
+          });
+          outgoing.on("error", () => {
+            resolve(false);
+          });
+          outgoing.end();
+        });
+        if (healthy) {
+          startupVerified = true;
+          return;
+        }
+      } catch {
+        /* Child may still be importing its pinned dependencies. */
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+      });
+    }
+    throw Error("Positive control: production server did not serve liveness");
+  } finally {
+    if (child.exitCode === null) child.kill("SIGTERM");
+    const timeout = setTimeout(() => {
+      if (child.exitCode === null) child.kill("SIGKILL");
+    }, 3000);
+    try {
+      await exited;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+async function preflight(command: Record<string, unknown>) {
+  await positiveStartup();
   const changes = command.environment as Record<string, string | null>;
   const env: Record<string, string | undefined> = { ...environment, PORT: "0" };
   for (const [key, value] of Object.entries(changes))
@@ -385,7 +476,7 @@ async function dispatch(command: Record<string, unknown>): Promise<unknown> {
       }
       return {};
     case "preflight":
-      return preflight(command);
+      return await preflight(command);
     case "policy_probe":
       return policyProbe();
     case "api_record":

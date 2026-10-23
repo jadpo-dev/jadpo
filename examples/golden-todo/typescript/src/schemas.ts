@@ -11,11 +11,18 @@ export const Title = z
       [...value].length <= 200,
   )
   .openapi({ type: "string", minLength: 1, maxLength: 200 });
-export const Id = z.uuid();
+export const Id = z
+  .uuid()
+  .transform((value) => value.toLowerCase())
+  .openapi({ type: "string", format: "uuid" });
+export const IdempotencyKey = z
+  .string()
+  .regex(/^[\x20-\x7e]{1,255}$/)
+  .openapi({ minLength: 1, maxLength: 255 });
 export const Instant = z.iso.datetime({ offset: true });
 export const Status = z.enum(["open", "done"]);
 export const CreateTodo = z
-  .strictObject({ title: Title, due_at: Instant.nullable().optional() })
+  .strictObject({ title: Title, due_at: Instant.nullable().default(null) })
   .openapi("CreateTodo");
 export const PatchTodo = z
   .strictObject({

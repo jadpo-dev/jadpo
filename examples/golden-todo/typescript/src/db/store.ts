@@ -5,6 +5,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { AppError } from "../errors.ts";
 import type { RequestScope } from "../runtime.ts";
+import { currentTransaction, inTransaction } from "../transaction-context.ts";
 import * as schema from "./schema.ts";
 export type Database = Pick<
   PostgresJsDatabase<typeof schema>,
@@ -83,6 +84,11 @@ export class Store {
     scope: RequestScope,
     body: (db: Database) => Promise<T>,
   ): Promise<T> {
+    const existing = currentTransaction();
+    if (existing?.owner === this) {
+      scope.check();
+      return await body(existing.database);
+    }
     return await this.run(scope, async () => {
       for (let attempt = 0; ; attempt++) {
         scope.check();
@@ -98,7 +104,10 @@ export class Store {
             await db.execute(
               sql`select set_config('statement_timeout', ${String(scope.remaining())}, true)`,
             );
-            const value = await body(db);
+            const value = await inTransaction(
+              { owner: this, database: db, scope },
+              () => body(db),
+            );
             scope.check();
             await scoped.unsafe("COMMIT");
             begun = false;

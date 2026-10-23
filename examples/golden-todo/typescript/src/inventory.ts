@@ -3,6 +3,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { apiDocument, routeSchemas } from "./app.ts";
+import { reminderMail } from "./provider.ts";
 import { failures } from "./errors.ts";
 import * as tables from "./db/schema.ts";
 
@@ -64,6 +65,7 @@ export function inventory() {
         jwks: "discovery metadata; public HTTPS; distinct host permitted",
       },
       reminderMail: {
+        ...reminderMail,
         url: "https://mail.example.invalid/reminders",
         credential: "config.mailApiKey",
         payload: "MailPayload",
@@ -108,8 +110,18 @@ export function inventory() {
         claim:
           "No provider IO in transactions; acknowledgement fencing and immutable preparation",
         classification: "runtime validated and test supported",
-        enforcedBy: ["jobs.ts", "db/store.ts"],
-        tests: ["shared JOB-001–004"],
+        enforcedBy: [
+          "jobs.ts",
+          "db/store.ts",
+          "transaction-context.ts",
+          "egress.ts",
+        ],
+        tests: [
+          "shared JOB-001–004",
+          "provider-in-transaction negative",
+          "provider.test.ts",
+          "jobs.postgres.ts",
+        ],
       },
       {
         claim: "Secret-safe log/output projection",
@@ -133,8 +145,6 @@ export function inventory() {
       },
     ],
     outstanding: [
-      "Subscriber budget/jitter and provider circuit-breaker parity need further hardening beyond44case preview.",
-      "Request Idempotency-Key replay behavior needs an explicit area7 audit and implementation if reached.",
       "Arbitrary handler policy correctness and information flow are not proved by TypeScript or the route effect labels.",
       "Real public DNS/TLS/edge deployment is outside local fixture evidence.",
       "Reviewed-main shared conformance, own-worktree full repository gate and independent review remain required.",

@@ -1,7 +1,18 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  timingSafeEqual,
+  X509Certificate,
+} from "node:crypto";
 import { and, eq, gt, isNull, isNotNull } from "drizzle-orm";
-import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
-import type { JSONWebKeySet } from "jose";
+import {
+  createLocalJWKSet,
+  decodeProtectedHeader,
+  jwtVerify,
+  importJWK,
+  errors,
+} from "jose";
+import type { JSONWebKeySet, JWK } from "jose";
 import { z } from "zod";
 import { uniqueJson } from "./strict-json.ts";
 import type { Config } from "./config.ts";
@@ -344,11 +355,17 @@ export class AuthenticationService {
     token: string,
     scope: RequestScope,
   ): Promise<Authentication> {
-    if (token.length > 8192) throw new AppError("invalid_credentials");
+    if (
+      token.length > 8192 ||
+      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)
+    )
+      throw new AppError("invalid_credentials");
     let header;
     try {
       uniqueJson(
-        Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf8"),
+        new TextDecoder("utf-8", { fatal: true }).decode(
+          Buffer.from(token.split(".")[0] ?? "", "base64url"),
+        ),
       );
       header = decodeProtectedHeader(token);
     } catch {
@@ -356,8 +373,11 @@ export class AuthenticationService {
     }
     if (
       !["EdDSA", "RS256", "ES256"].includes(header.alg ?? "") ||
-      (header.kid && header.kid.length > 256) ||
+      (header.kid !== undefined &&
+        (typeof header.kid !== "string" ||
+          !/^[\x21-\x7e]{1,256}$/.test(header.kid))) ||
       header.crit !== undefined ||
+      (header.cty !== undefined && typeof header.cty !== "string") ||
       header.cty?.toUpperCase() === "JWT"
     )
       throw new AppError("invalid_credentials");
@@ -407,18 +427,34 @@ export class AuthenticationService {
   }
   private async verifyExternal(token: string) {
     if (!this.#keys) throw new AppError("authentication_unavailable");
-    const result = (
-      await jwtVerify(token, this.#keys, {
-        algorithms: ["EdDSA", "RS256", "ES256"],
-        issuer: this.config.issuer,
-        audience: this.config.audience,
-        requiredClaims: ["sub", "iss", "aud", "exp"],
-        currentDate: new Date(this.clock()),
-        clockTolerance: 30,
-      })
-    ).payload;
+    const options = {
+      algorithms: ["EdDSA", "RS256", "ES256"],
+      issuer: this.config.issuer,
+      audience: this.config.audience,
+      requiredClaims: ["sub", "iss", "aud", "exp"],
+      currentDate: new Date(this.clock()),
+      clockTolerance: 30,
+    };
+    let verified;
+    try {
+      verified = await jwtVerify(token, this.#keys, options);
+    } catch (error) {
+      if (!(error instanceof errors.JWKSMultipleMatchingKeys)) throw error;
+      for await (const key of error) {
+        try {
+          verified = await jwtVerify(token, key, options);
+          break;
+        } catch {
+          /* Try every matching public key, never a token-supplied key. */
+        }
+      }
+      if (!verified) throw new AppError("invalid_credentials");
+    }
+    const result = verified.payload;
     uniqueJson(
-      Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
+      new TextDecoder("utf-8", { fatal: true }).decode(
+        Buffer.from(token.split(".")[1] ?? "", "base64url"),
+      ),
     );
     for (const name of ["exp", "nbf", "iat"] as const) {
       const value = result[name];
@@ -450,7 +486,7 @@ export class AuthenticationService {
       if (metadataAnswer.status !== 200) throw new Error();
       const metadata = z
         .object({ issuer: z.literal(this.config.issuer), jwks_uri: z.string() })
-        .parse(JSON.parse(metadataAnswer.body));
+        .parse(uniqueJson(metadataAnswer.body, 524288));
       publicHttps(metadata.jwks_uri); // A distinct public HTTPS JWKS host is permitted.
       const answer = await this.egress.send(
         {
@@ -461,26 +497,123 @@ export class AuthenticationService {
         scope,
       );
       if (answer.status !== 200) throw new Error();
-      const keys = z
-        .object({
-          keys: z
-            .array(
-              z
-                .object({
-                  kty: z.string(),
-                  kid: z.string().max(256).optional(),
-                  d: z.never().optional(),
-                })
-                .passthrough(),
-            )
-            .min(1)
-            .max(50),
-        })
-        .parse(JSON.parse(answer.body));
-      this.#keys = createLocalJWKSet(keys as unknown as JSONWebKeySet);
+      const keys = await readPublicKeys(uniqueJson(answer.body, 524288));
+      this.#keys = createLocalJWKSet(keys);
       this.#keysUntil = this.clock() + 300000;
     } catch {
       throw new AppError("authentication_unavailable");
     }
   }
+}
+
+const jwkReader = z
+  .object({
+    kty: z.enum(["OKP", "RSA", "EC"]),
+    crv: z.enum(["Ed25519", "P-256"]).nullish(),
+    x: z.string().nullish(),
+    y: z.string().nullish(),
+    n: z.string().nullish(),
+    e: z.string().nullish(),
+    kid: z
+      .string()
+      .regex(/^[\x21-\x7e]{1,256}$/)
+      .nullish(),
+    alg: z.enum(["EdDSA", "RS256", "ES256"]).nullish(),
+    use: z.literal("sig").nullish(),
+    x5c: z.array(z.string()).nullish(),
+  })
+  .passthrough();
+function publicBytes(text: string): Buffer {
+  if (!/^[A-Za-z0-9_-]+$/.test(text)) throw Error("Invalid public key");
+  const bytes = Buffer.from(text, "base64url");
+  if (bytes.toString("base64url") !== text) throw Error("Invalid public key");
+  return bytes;
+}
+export async function readPublicKeys(value: unknown): Promise<JSONWebKeySet> {
+  const set = z.strictObject({ keys: z.array(jwkReader).max(50) }).parse(value);
+  const result: JSONWebKeySet = { keys: [] };
+  for (const raw of set.keys) {
+    if (
+      ["d", "p", "q", "dp", "dq", "qi", "oth", "k", "key_ops"].some((name) =>
+        Object.hasOwn(raw, name),
+      )
+    )
+      throw Error("Private or restricted key");
+    const algorithm =
+      raw.kty === "OKP" ? "EdDSA" : raw.kty === "RSA" ? "RS256" : "ES256";
+    if (raw.alg && raw.alg !== algorithm)
+      throw Error("Incoherent key algorithm");
+    if (raw.kty === "OKP") {
+      if (
+        raw.crv !== "Ed25519" ||
+        !raw.x ||
+        publicBytes(raw.x).length !== 32 ||
+        raw.y ||
+        raw.n ||
+        raw.e
+      )
+        throw Error("Invalid Ed25519 public key");
+    }
+    if (raw.kty === "EC") {
+      if (
+        raw.crv !== "P-256" ||
+        !raw.x ||
+        !raw.y ||
+        publicBytes(raw.x).length !== 32 ||
+        publicBytes(raw.y).length !== 32 ||
+        raw.n ||
+        raw.e
+      )
+        throw Error("Invalid P256 public key");
+    }
+    if (raw.kty === "RSA") {
+      if (!raw.n || !raw.e || raw.crv || raw.x || raw.y)
+        throw Error("Invalid RSA public key");
+      const n = publicBytes(raw.n);
+      const e = publicBytes(raw.e);
+      const bits = n.length * 8 - Math.clz32(n[0] ?? 0) + 24;
+      let exponent = 0;
+      for (const byte of e) exponent = exponent * 256 + byte;
+      if (
+        n[0] === 0 ||
+        bits < 2048 ||
+        bits > 4096 ||
+        !((n.at(-1) ?? 0) & 1) ||
+        !e.length ||
+        e.length > 4 ||
+        e[0] === 0 ||
+        exponent < 3 ||
+        exponent % 2 !== 1
+      )
+        throw Error("Invalid RSA public key");
+    }
+    const key: JWK = {
+      kty: raw.kty,
+      alg: algorithm,
+      ...Object.fromEntries(
+        ["kid", "crv", "x", "y", "n", "e", "use"].flatMap((name) =>
+          raw[name] === null || raw[name] === undefined
+            ? []
+            : [[name, raw[name]]],
+        ),
+      ),
+    };
+    await importJWK(key, algorithm); // Includes point-on-curve validation for every EC member.
+    if (raw.x5c?.length) {
+      for (const certificate of raw.x5c)
+        if (
+          !/^[A-Za-z0-9+/]+={0,2}$/.test(certificate) ||
+          Buffer.from(certificate, "base64").toString("base64") !== certificate
+        )
+          throw Error("Invalid certificate");
+      const certified = new X509Certificate(
+        Buffer.from(raw.x5c[0] ?? "", "base64"),
+      ).publicKey.export({ format: "jwk" });
+      for (const field of ["kty", "crv", "x", "y", "n", "e"] as const)
+        if (certified[field] !== key[field])
+          throw Error("Certificate public key mismatch");
+    }
+    result.keys.push(key);
+  }
+  return result;
 }

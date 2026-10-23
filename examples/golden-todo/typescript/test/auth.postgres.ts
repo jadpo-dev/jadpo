@@ -25,6 +25,7 @@ export async function externalNegatives(store: Store, url: string) {
       alg,
     };
     let fetched = 0;
+    let providedKeys = [jwk];
     const egress = new Egress(async (input) => {
       await new Promise<void>((resolve) => {
         setImmediate(resolve);
@@ -39,7 +40,7 @@ export async function externalNegatives(store: Store, url: string) {
           }),
         };
       expect(input.url).toBe("https://keys.example/jwks");
-      return { status: 200, body: JSON.stringify({ keys: [jwk] }) };
+      return { status: 200, body: JSON.stringify({ keys: providedKeys }) };
     });
     const service = new AuthenticationService(config, store, () => now, egress);
     const authenticate = async (token: string) => {
@@ -136,6 +137,26 @@ export async function externalNegatives(store: Store, url: string) {
       ).principal.kind,
     ).toBe("user");
     expect(fetched).toBe(2);
+    await expect(
+      authenticate(await signed(claims, { kid: 1 })),
+    ).rejects.toThrow("Invalid credentials.");
+    await expect(
+      authenticate(await signed(claims, { cty: 1 })),
+    ).rejects.toThrow("Invalid credentials.");
+    const replacement = await generateKeyPair(alg);
+    providedKeys = [
+      jwk,
+      {
+        ...(await exportJWK(replacement.publicKey)),
+        kid: "replacement-" + alg,
+        alg,
+      },
+    ];
+    service.clearKeys();
+    const rollover = await new SignJWT(claims)
+      .setProtectedHeader({ alg })
+      .sign(replacement.privateKey);
+    expect((await authenticate(rollover)).principal.kind).toBe("user");
     await store.client.unsafe(
       "UPDATE \"user\" SET status='disabled' WHERE authentication_subject='alice'",
     );

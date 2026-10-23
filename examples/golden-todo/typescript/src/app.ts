@@ -9,11 +9,18 @@ import { AuthenticationService } from "./auth.ts";
 import { Egress } from "./egress.ts";
 import { TodoService } from "./todos.ts";
 import { Admission, RequestScope } from "./runtime.ts";
+import { uniqueJson } from "./strict-json.ts";
+import { Idempotency } from "./idempotency.ts";
 import { DefaultLimits } from "./limits.ts";
 import type { Peer } from "./host.ts";
 import type { Principal } from "./schemas.ts";
 import type { Clock } from "./runtime.ts";
-import { AppError, publicFailure, structuredLog } from "./errors.ts";
+import {
+  AppError,
+  publicFailure,
+  structuredLog,
+  newRequestId,
+} from "./errors.ts";
 import type { Logger } from "./errors.ts";
 import {
   CreateTodo,
@@ -25,6 +32,7 @@ import {
   ExchangedToken,
   Failure,
   Id,
+  IdempotencyKey,
 } from "./schemas.ts";
 
 const none = z.undefined();
@@ -130,11 +138,51 @@ export function apiDocument() {
       security: [{ browser_session: [] }, { bearer: [] }],
       request: {
         ...body,
+        ...(route.path.includes("{todo_id}")
+          ? { params: z.object({ todo_id: Id }) }
+          : route.path.includes("{user_id}")
+            ? { params: z.object({ user_id: Id }) }
+            : {}),
+        ...(route.method !== "get" && route.path !== "/auth/exchange"
+          ? {
+              headers: z.object({
+                "Idempotency-Key": IdempotencyKey.optional(),
+              }),
+            }
+          : {}),
         ...(route.method === "get" && route.path === "/todos"
           ? { query: ListTodos }
           : {}),
       },
       responses: {
+        400: {
+          description: "Invalid request",
+          content: { "application/json": { schema: Failure } },
+        },
+        404: {
+          description: "Concealed not found",
+          content: { "application/json": { schema: Failure } },
+        },
+        409: {
+          description: "Conflict",
+          content: { "application/json": { schema: Failure } },
+        },
+        413: {
+          description: "Request too large",
+          content: { "application/json": { schema: Failure } },
+        },
+        429: {
+          description: "Rate limited",
+          content: { "application/json": { schema: Failure } },
+        },
+        500: {
+          description: "Internal fault",
+          content: { "application/json": { schema: Failure } },
+        },
+        504: {
+          description: "Deadline exceeded",
+          content: { "application/json": { schema: Failure } },
+        },
         [route.status]: {
           description: "Success",
           ...(route.status === 204
@@ -228,6 +276,7 @@ export function createApplication(options: {
     options.egress ?? new Egress(),
   );
   const service = new TodoService(store, clock);
+  const receipts = new Idempotency(store, clock);
   const admission = options.admission ?? new Admission();
   const logger = options.logger ?? structuredLog;
   const limits = new DefaultLimits(clock);
@@ -247,6 +296,10 @@ export function createApplication(options: {
     }
   };
   const app = new Hono<{ Bindings: Peer }>();
+  app.use("*", async (c, next) => {
+    c.header("x-request-id", newRequestId());
+    await next();
+  });
   app.use("/health/*", async (c, next) => {
     c.header("cache-control", "no-store");
     await next();
@@ -304,7 +357,7 @@ export function createApplication(options: {
   for (const route of routeSchemas) {
     const path = route.path.replaceAll(/\{([^}]+)\}/g, ":$1");
     app.on(route.method.toUpperCase(), path, async (c) => {
-      const requestId = crypto.randomUUID();
+      const requestId = newRequestId();
       c.header("x-request-id", requestId);
       let release: (() => void) | undefined;
       let counted = false;
@@ -340,11 +393,31 @@ export function createApplication(options: {
           const url = new URL(request.url);
           if (route.path !== "/todos" || route.method !== "get")
             if (url.search) throw new AppError("invalid_input");
-          const todoId = c.req.param("todo_id");
-          const targetUser = c.req.param("user_id");
-          if (todoId !== undefined) parse(Id, todoId);
-          if (targetUser !== undefined) parse(Id, targetUser);
+          const rawTodoId = c.req.param("todo_id");
+          const rawUserId = c.req.param("user_id");
+          const todoId =
+            rawTodoId === undefined ? undefined : parse(Id, rawTodoId);
+          const targetUser =
+            rawUserId === undefined ? undefined : parse(Id, rawUserId);
           const principal = identity.principal;
+          const replay: {
+            value: { status: number; body: string } | undefined;
+          } = { value: undefined };
+          const mutate = (decoded: unknown, action: () => Promise<unknown>) =>
+            receipts.execute({
+              principal,
+              key: request.headers.get("idempotency-key"),
+              route: route.method + " " + route.path,
+              decoded: { todoId, targetUser, input: decoded },
+              status: route.status,
+              output: route.output,
+              scope,
+              requestId,
+              action,
+              onReplay: (response) => {
+                replay.value = response;
+              },
+            });
           let output: unknown;
           if (route.method === "get" && route.path === "/todos") {
             if (raw) throw new AppError("invalid_input");
@@ -371,23 +444,21 @@ export function createApplication(options: {
               throw new AppError("invalid_request");
             let input: unknown;
             try {
-              input = JSON.parse(raw);
+              input = uniqueJson(raw, 1048576);
             } catch {
               throw new AppError("invalid_request");
             }
-            if (route.method === "post")
-              output = await service.create(
-                principal,
-                parse(CreateTodo, input),
-                scope,
+            if (route.method === "post") {
+              const decoded = parse(CreateTodo, input);
+              output = await mutate(decoded, () =>
+                service.create(principal, decoded, scope),
               );
-            else
-              output = await service.patch(
-                principal,
-                parse(Id, todoId),
-                parse(PatchTodo, input),
-                scope,
+            } else {
+              const decoded = parse(PatchTodo, input);
+              output = await mutate(decoded, () =>
+                service.patch(principal, parse(Id, todoId), decoded, scope),
               );
+            }
           } else {
             if (raw) throw new AppError("invalid_input");
             if (route.method === "get")
@@ -395,13 +466,27 @@ export function createApplication(options: {
                 ? await service.userTodos(principal, targetUser, scope)
                 : await service.get(principal, parse(Id, todoId), scope);
             else if (targetUser)
-              await service.disable(principal, targetUser, scope);
-            else await service.remove(principal, parse(Id, todoId), scope);
+              output = await mutate(undefined, () =>
+                service.disable(principal, targetUser, scope),
+              );
+            else
+              output = await mutate(undefined, () =>
+                service.remove(principal, parse(Id, todoId), scope),
+              );
           }
           scope.check();
+          if (replay.value) {
+            const headers = new Headers(c.res.headers);
+            if (replay.value.body)
+              headers.set("content-type", "application/json");
+            return new Response(replay.value.body || null, {
+              status: replay.value.status,
+              headers,
+            });
+          }
           // Mutation outputs were parsed within the transaction; this checks the common response boundary too.
           const validated = route.output.parse(output);
-          if (identity.renewal)
+          if (identity.renewal && !replay.value)
             c.header(identity.renewal[0], identity.renewal[1]);
           return route.status === 204
             ? c.body(null, 204)
@@ -442,7 +527,7 @@ export function createApplication(options: {
     });
   }
   app.notFound((c) => {
-    const requestId = crypto.randomUUID();
+    const requestId = newRequestId();
     c.header("x-request-id", requestId);
     const path = new URL(c.req.url).pathname;
     const matches = routeSchemas.filter((route) =>
@@ -472,7 +557,7 @@ export function createApplication(options: {
     }
   });
   app.onError((_error, c) => {
-    const requestId = crypto.randomUUID();
+    const requestId = newRequestId();
     const safe = publicFailure(new AppError("internal_fault"), requestId);
     c.header("x-request-id", requestId);
     return c.json(safe.body, 500);

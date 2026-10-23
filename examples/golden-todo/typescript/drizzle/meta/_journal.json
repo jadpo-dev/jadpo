@@ -8,6 +8,20 @@
       "when": 1792739037034,
       "tag": "0000_minor_nextwave",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792740312308,
+      "tag": "0001_aromatic_mauler",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792740683160,
+      "tag": "0002_deep_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

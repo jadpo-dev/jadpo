@@ -60,6 +60,16 @@ class Controller:
             except subprocess.TimeoutExpired:self.process.kill();self.process.wait()
         self.log.close()
 
+def git_state(path):
+    return {'revision':run(['git','rev-parse','HEAD'],cwd=path,capture_output=True,text=True).stdout.strip(),
+            'dirty':bool(run(['git','status','--porcelain'],cwd=path,capture_output=True,text=True).stdout)}
+def inputs(source):
+    digest=hashlib.sha256()
+    files=[path for path in PROJECT.rglob('*') if path.is_file() and not {'node_modules','build','__pycache__'}.intersection(path.relative_to(PROJECT).parts)]
+    files+=[source/'tools/golden-todo/contract.py',source/'examples/golden-todo/acceptance-v0.2.json']
+    for path in sorted(files):digest.update(str(path).encode());digest.update(path.read_bytes())
+    return digest.hexdigest()
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--contract-source',type=Path,required=True)
@@ -72,18 +82,22 @@ def main():
     spec=importlib.util.spec_from_file_location('golden_shared_contract',contract);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     document=json.loads(specification.read_text());module.validate_registry(document)
     runtimes=args.runtimes.split(',')
-    if set(runtimes)-{'node','bun'}:parser.error('runtimes are node,bun')
+    if not all(runtimes) or len(runtimes)!=len(set(runtimes)) or set(runtimes)-{'node','bun'}:parser.error('runtimes are node,bun')
     selected=[case['id'] for case in document['cases'] if not args.case or case['id'] in args.case]
     if set(args.case)-module.CASES.keys():parser.error('unknown case')
-    revision=run(['git','rev-parse','HEAD'],cwd=source,capture_output=True,text=True).stdout.strip()
+    before=inputs(source)
+    provenance={'typescriptSource':str(PROJECT),'typescriptGit':git_state(ROOT),'sharedContractSource':str(source),'sharedContractGit':git_state(source),'beforeFingerprint':before,'runtimeVersions':{runtime:run([tool(runtime),'--version'],capture_output=True,text=True).stdout.strip() for runtime in runtimes}}
     reports=[];server=None;controller=None;(PROJECT/'build').mkdir(exist_ok=True)
     temporary=tempfile.TemporaryDirectory(prefix='local-',dir=PROJECT/'build')
     try:
         directory=Path(temporary.name);server=Postgres(directory)
-        env={**os.environ,'SESSION_SIGNING_KEY':secrets.token_urlsafe(32),'BROWSER_ORIGIN':'https://todo.example.test','OIDC_ISSUER':'https://identity.example/tenant/','OIDC_AUDIENCE':'golden-todo','MAIL_API_KEY':secrets.token_urlsafe(32),'CONTROL_DATABASE_URL':server.url('postgres')}
+        env={**os.environ,'GOLDEN_PSQL':tool('psql'),'SESSION_SIGNING_KEY':secrets.token_urlsafe(32),'BROWSER_ORIGIN':'https://todo.example.test','OIDC_ISSUER':'https://identity.example/tenant/','OIDC_AUDIENCE':'golden-todo','MAIL_API_KEY':secrets.token_urlsafe(32),'CONTROL_DATABASE_URL':server.url('postgres')}
         if args.unit:
             server.prepare('golden_tests');run(['npm','run','test:all'],cwd=PROJECT,env={**env,'TEST_DATABASE_URL':server.url('golden_tests')})
         for runtime in runtimes:
+            if args.unit:
+                host_database='golden_host_'+runtime;server.prepare(host_database)
+                run([tool(runtime),str(HERE/'host-negatives.ts')],cwd=PROJECT,env={**env,'DATABASE_URL':server.url(host_database)})
             name='golden_'+runtime;server.prepare(name);controller=Controller(runtime,{**env,'DATABASE_URL':server.url(name)},directory)
             for identifier in selected:
                 try:
@@ -95,7 +109,9 @@ def main():
         if controller:controller.stop()
         if server:server.stop()
         temporary.cleanup()
+    after=inputs(source);provenance['afterFingerprint']=after;provenance['inputsUnchanged']=before==after
+    if before!=after:reports.append({'runtime':'all','id':'INPUTS','status':'failed','message':'source inputs changed during verification'})
     failed=[report for report in reports if report['status']!='passed']
-    print(json.dumps({'contractVersion':document['contractVersion'],'preview':True,'completeContract':False,'sources':{'sharedContractSource':str(source),'sharedContractRevision':revision,'sharedContractSha256':hashlib.sha256(contract.read_bytes()).hexdigest(),'acceptanceSha256':hashlib.sha256(specification.read_bytes()).hexdigest()},'counts':{'ran':len(reports),'passed':len(reports)-len(failed),'failed':len(failed)},'cases':reports},indent=2))
+    print(json.dumps({'contractVersion':document['contractVersion'],'preview':True,'completeContract':False,'sources':{**provenance,'sharedContractSha256':hashlib.sha256(contract.read_bytes()).hexdigest(),'acceptanceSha256':hashlib.sha256(specification.read_bytes()).hexdigest()},'counts':{'ran':len(reports),'passed':len(reports)-len(failed),'failed':len(failed)},'cases':reports},indent=2))
     return bool(failed)
 if __name__=='__main__':raise SystemExit(main())

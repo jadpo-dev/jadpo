@@ -45,11 +45,24 @@ describe("outbound destination guard", () => {
       "https://127.0.0.1",
       "https://user:secret@identity.example",
       "https://localhost",
-      "https://identity.example:444",
     ])
       expect(() => publicHttps(url)).toThrow();
     expect(publicHttps("https://keys.example/jwks").hostname).toBe(
       "keys.example",
     );
   });
+});
+
+it("allows public embedded IPv4 destinations and explicit public HTTPS ports", () => {
+  for (const address of [
+    "::ffff:8.8.8.8",
+    "::8.8.8.8",
+    "64:ff9b::808:808",
+    "2002:808:808::",
+    "2001:0:808:808:0:0:f7f7:f7f7",
+  ])
+    expect(publicAddress(address), address).toBe(true);
+  expect(publicHttps("https://keys.example:8443/jwks").port).toBe("8443");
+  for (const raw of ['{"sub":"\\ud800"}', '{"\\ud800":"value"}'])
+    expect(() => uniqueJson(raw)).toThrow();
 });

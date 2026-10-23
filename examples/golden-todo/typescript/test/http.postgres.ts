@@ -44,8 +44,13 @@ export async function httpNegatives(store: Store, url: string) {
     body = "",
     contentType = "application/json",
     authorization = "Bearer " + bearer,
+    idempotencyKey?: string,
   ) =>
-    await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    await new Promise<{
+      status: number;
+      body: string;
+      headers: Record<string, string | string[] | undefined>;
+    }>((resolve, reject) => {
       const outgoing = request(
         {
           hostname: "127.0.0.1",
@@ -54,8 +59,11 @@ export async function httpNegatives(store: Store, url: string) {
           path,
           headers: {
             authorization,
+            ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
             "content-type": contentType,
             "content-length": Buffer.byteLength(body),
+            "x-forwarded-for":
+              "192.0.2." + String(Math.floor(Math.random() * 254) + 1),
           },
         },
         (incoming) => {
@@ -66,6 +74,7 @@ export async function httpNegatives(store: Store, url: string) {
           incoming.on("end", () => {
             resolve({
               status: incoming.statusCode ?? 0,
+              headers: incoming.headers,
               body: Buffer.concat(chunks).toString("utf8"),
             });
           });
@@ -99,6 +108,23 @@ export async function httpNegatives(store: Store, url: string) {
         )
       ).status,
     ).toBe(401);
+    expect(
+      (await call("POST", "/todos", '{"title":"one","\\u0074itle":"two"}'))
+        .status,
+    ).toBe(400);
+    expect(
+      (await call("POST", "/todos", '{"title":"safe","extra":{"a":1,"a":2}}'))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await call(
+          "POST",
+          "/todos",
+          " ".repeat(20000) + '{"title":"Whitespace"}',
+        )
+      ).status,
+    ).toBe(201);
     const valid = await call(
       "POST",
       "/todos",
@@ -109,6 +135,89 @@ export async function httpNegatives(store: Store, url: string) {
     expect((JSON.parse(valid.body) as { title: string }).title).toBe(
       "é".repeat(200),
     );
+    const once = await call(
+      "POST",
+      "/todos",
+      '{"title":"Once"}',
+      "application/json",
+      "Bearer " + bearer,
+      "once",
+    );
+    const replay = await call(
+      "POST",
+      "/todos",
+      '{ "title": "Once", "due_at": null }',
+      "application/json",
+      "Bearer " + bearer,
+      "once",
+    );
+    expect(once.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(replay.body).toBe(once.body);
+    expect(
+      (
+        await call(
+          "POST",
+          "/todos",
+          '{"title":"Different"}',
+          "application/json",
+          "Bearer " + bearer,
+          "once",
+        )
+      ).status,
+    ).toBe(422);
+    const rows = await store.client.unsafe(
+      "SELECT count(*) AS amount FROM todo WHERE title='Once'",
+    );
+    expect(Number(rows[0]?.amount)).toBe(1);
+    const item = JSON.parse(once.body) as { id: string };
+    expect(
+      (
+        await call(
+          "PATCH",
+          "/todos/" + item.id,
+          "{}",
+          "application/json",
+          "Bearer " + bearer,
+          "presence",
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(
+          "PATCH",
+          "/todos/" + item.id,
+          '{"due_at":null}',
+          "application/json",
+          "Bearer " + bearer,
+          "presence",
+        )
+      ).status,
+    ).toBe(422);
+    expect((await call("HEAD", "/todos")).body).toBe("");
+    expect((await call("OPTIONS", "/todos")).status).toBe(204);
+    expect((await call("POST", "/health/live")).status).toBe(405);
+    let refused;
+    for (let attempt = 0; attempt < 121; attempt++) {
+      refused = await call(
+        "GET",
+        "/todos",
+        "",
+        "application/json",
+        "Bearer invalid",
+      );
+      if (refused.status === 429) break;
+      expect(refused.status).toBe(401);
+    }
+    expect(refused?.status).toBe(429);
+    expect(Number(refused?.headers["retry-after"])).toBeGreaterThan(0);
+    expect(refused?.headers.ratelimit).toBeTruthy();
+    const live = await call("GET", "/health/live");
+    expect(live.status).toBe(200);
+    expect(live.headers["cache-control"]).toBe("no-store");
+    expect(live.headers["x-request-id"]).toMatch(/^req_[a-f0-9]{16}$/);
+    expect(live.headers.ratelimit).toBeUndefined();
     expect(admission.active).toBe(0);
   } finally {
     await server.close();

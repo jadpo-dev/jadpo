@@ -3,7 +3,7 @@ import { CreateTodo, PatchTodo, TodoView, ListTodos } from "../src/schemas.ts";
 import { loadConfig, ConfigError } from "../src/config.ts";
 import { selectCredential } from "../src/auth.ts";
 import { Admission, RequestScope } from "../src/runtime.ts";
-import { AppError, publicFailure } from "../src/errors.ts";
+import { AppError, publicFailure, safeLogRecord } from "../src/errors.ts";
 
 describe("strict public boundaries", () => {
   it("CREATE-002 / REL-003 rejects ownership, lifecycle and generated inputs", () => {
@@ -128,4 +128,21 @@ describe("request lifetime", () => {
       ),
     ).not.toMatch(/SELECT|password|secret/);
   });
+});
+
+it("serializes an explicit safe log whitelist even for structurally wider objects", () => {
+  const event = {
+    event: "request_failed",
+    request_id: crypto.randomUUID(),
+    code: "internal_fault",
+    secret: "private-provider-secret",
+  } as const;
+  expect(Object.keys(safeLogRecord(event)).sort()).toEqual([
+    "code",
+    "event",
+    "request_id",
+  ]);
+  expect(JSON.stringify(safeLogRecord(event))).not.toContain(
+    "private-provider-secret",
+  );
 });

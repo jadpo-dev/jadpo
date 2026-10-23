@@ -2,8 +2,11 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { Store } from "../src/db/store.ts";
 import { RequestScope } from "../src/runtime.ts";
+import { jobNegatives } from "./jobs.postgres.ts";
+import { idempotencyNegatives } from "./idempotency.postgres.ts";
 import { httpNegatives } from "./http.postgres.ts";
 import { externalNegatives } from "./auth.postgres.ts";
+import { Egress } from "../src/egress.ts";
 import { TodoService } from "../src/todos.ts";
 
 // npm test runs fast unit tests; adapter/run.py --unit requires and supplies the
@@ -35,6 +38,12 @@ describe.sequential("real PostgreSQL mutation/lifetime boundaries", () => {
   it("enforces HTTP decoding boundaries over a real socket", async () => {
     await httpNegatives(store, url);
   });
+  it("fences idempotency replay, concurrent claims, cancelled writes and expired runners", async () => {
+    await idempotencyNegatives(store);
+  });
+  it("enforces durable subscriber budgets and connection circuit holds", async () => {
+    await jobNegatives(store, url);
+  }, 15000);
   it("rolls back a mutation when its actual public response is invalid", async () => {
     await store.client.unsafe(
       `INSERT INTO todo(id,owner_id,title,status,reminder_revision,created_at,updated_at) VALUES ('${todo}','${user}','Original','corrupt',1,now(),now())`,
@@ -165,5 +174,33 @@ describe.sequential("real PostgreSQL mutation/lifetime boundaries", () => {
     expect(attempts).toBe(3);
     const rows = await store.client.unsafe("SELECT title FROM todo");
     expect(rows[0]?.title).toBe("2");
+  });
+  it("refuses provider IO inside a real mutation transaction before transport and rolls back", async () => {
+    let reached = false;
+    const egress = new Egress(() => {
+      reached = true;
+      return Promise.resolve({ status: 200, body: "{}" });
+    });
+    const lifetime = scope();
+    try {
+      await expect(
+        store.transaction(lifetime, async (db) => {
+          await db.execute(sql`UPDATE "user" SET status='disabled'`);
+          await egress.send(
+            {
+              url: "https://mail.example.invalid/reminders",
+              method: "POST",
+              headers: {},
+            },
+            lifetime,
+          );
+        }),
+      ).rejects.toThrow("Internal fault.");
+    } finally {
+      lifetime.close();
+    }
+    expect(reached).toBe(false);
+    const rows = await store.client.unsafe('SELECT status FROM "user"');
+    expect(rows[0]?.status).toBe("active");
   });
 });

@@ -5,6 +5,7 @@ import type { Database } from "./db/store.ts";
 import {
   deliveries,
   scheduleClaims,
+  providerBreakers,
   scheduleRuns,
   todos,
   users,
@@ -15,14 +16,23 @@ import { RequestScope } from "./runtime.ts";
 import type { Clock } from "./runtime.ts";
 import type { Egress } from "./egress.ts";
 import type { Config } from "./config.ts";
-import { MailPayload, MailReceipt, QueuedEvent } from "./schemas.ts";
+import { MailPayload, QueuedEvent } from "./schemas.ts";
+import { MailProvider, ProviderFailure } from "./provider.ts";
 import { digest } from "./auth.ts";
 
 export const deliveryKey = (id: string) =>
   "jd1_" + digest("golden-todo:reminder-mail:v1:send:" + id);
 export const retryDisposition = (first: number | null, now: number) =>
   first !== null && now - first >= 23 * 3600000 ? "outcome_unknown" : "pending";
-class ProviderRefusal extends Error {}
+class SendHeld extends Error {
+  readonly state: "held" | "outcome_unknown";
+  readonly until: number;
+  constructor(state: "held" | "outcome_unknown", until: number) {
+    super("Delivery held.");
+    this.state = state;
+    this.until = until;
+  }
+}
 type Delivery = typeof deliveries.$inferSelect;
 export class Jobs {
   readonly store: Store;
@@ -30,6 +40,7 @@ export class Jobs {
   readonly egress: Egress;
   readonly config: Config;
   readonly logger: Logger;
+  readonly provider: MailProvider;
   constructor(options: {
     store: Store;
     clock: Clock;
@@ -42,6 +53,78 @@ export class Jobs {
     this.egress = options.egress;
     this.config = options.config;
     this.logger = options.logger;
+    this.provider = new MailProvider(options.egress, options.config.mailApiKey);
+  }
+  private async providerPermit(
+    row: Delivery,
+    scope: RequestScope,
+  ): Promise<void> {
+    await this.store.transaction(scope, async (db) => {
+      await db
+        .insert(providerBreakers)
+        .values({ name: "reminder_mail" })
+        .onConflictDoNothing();
+      const [breaker] = await db
+        .select()
+        .from(providerBreakers)
+        .where(eq(providerBreakers.name, "reminder_mail"))
+        .for("update");
+      if (!breaker) throw new AppError("unavailable");
+      if (breaker.open_until === null) return;
+      if (Date.parse(breaker.open_until) > this.clock())
+        throw new SendHeld("held", Date.parse(breaker.open_until));
+      if (breaker.probe_until && Date.parse(breaker.probe_until) > this.clock())
+        throw new SendHeld("held", Date.parse(breaker.probe_until));
+      await db
+        .update(providerBreakers)
+        .set({ probe_token: row.lease_token, probe_until: row.lease_until })
+        .where(eq(providerBreakers.name, "reminder_mail"));
+    });
+  }
+  private async providerOutcome(
+    row: Delivery,
+    unavailable: boolean,
+    scope: RequestScope,
+  ): Promise<void> {
+    await this.store.transaction(scope, async (db) => {
+      const [breaker] = await db
+        .select()
+        .from(providerBreakers)
+        .where(eq(providerBreakers.name, "reminder_mail"))
+        .for("update");
+      if (!breaker) return;
+      if (breaker.probe_token && breaker.probe_token !== row.lease_token)
+        return;
+      if (!unavailable)
+        await db
+          .update(providerBreakers)
+          .set({
+            failures: 0,
+            open_until: null,
+            backoff_ms: 60000,
+            probe_token: null,
+            probe_until: null,
+          })
+          .where(eq(providerBreakers.name, "reminder_mail"));
+      else {
+        const failures = breaker.failures + 1;
+        const opened = failures >= 5;
+        await db
+          .update(providerBreakers)
+          .set({
+            failures,
+            open_until: opened
+              ? new Date(this.clock() + breaker.backoff_ms).toISOString()
+              : null,
+            backoff_ms: opened
+              ? Math.min(600000, breaker.backoff_ms * 2)
+              : breaker.backoff_ms,
+            probe_token: null,
+            probe_until: null,
+          })
+          .where(eq(providerBreakers.name, "reminder_mail"));
+      }
+    });
   }
   private async work<T>(body: (scope: RequestScope) => Promise<T>): Promise<T> {
     const scope = new RequestScope(new AbortController().signal, 30000);
@@ -156,6 +239,7 @@ export class Jobs {
     for (const [name, interval] of [
       ["overdue_reminders", 60000],
       ["Todo.purge", 3600000],
+      ["RequestReceipts.cleanup", 60000],
     ] as const) {
       const bucket = Math.floor(this.clock() / interval);
       const execute = await this.work(
@@ -180,7 +264,23 @@ export class Jobs {
             return claim.length === 1;
           }),
       );
-      if (execute) await this.schedule(name);
+      if (execute) {
+        if (name === "RequestReceipts.cleanup")
+          await this.work(async (scope) => {
+            for (let batch = 0; batch < 10; batch++) {
+              const now = new Date(this.clock()).toISOString();
+              const removed = await this.store.transaction(
+                scope,
+                async (db) =>
+                  await db.execute(
+                    sql`DELETE FROM "todo_request_receipts" WHERE ctid IN (SELECT ctid FROM "todo_request_receipts" WHERE "expires_at"<=${now} OR "response_status" IS NULL AND "lease_until"<=${now} ORDER BY "expires_at" LIMIT 1000) RETURNING "key"`,
+                  ),
+              );
+              if (removed.length < 1000) break;
+            }
+          });
+        else await this.schedule(name);
+      }
     }
     await this.drain();
   }
@@ -188,7 +288,7 @@ export class Jobs {
     return await this.store.transaction(scope, async (db) => {
       const now = new Date(this.clock()).toISOString();
       const rows = await db.execute(
-        sql`UPDATE "jadpo_deliveries" SET "status"='running', "lease_token"=${crypto.randomUUID()}, "lease_until"=${new Date(this.clock() + 30000).toISOString()}, "attempts"="attempts"+1 WHERE "id"=(SELECT "id" FROM "jadpo_deliveries" WHERE ("status"='pending' OR "status"='running' AND "lease_until" < ${now}) AND "next_attempt_at" <= ${now} ORDER BY "created_at", "subscriber", "id" FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`,
+        sql`UPDATE "jadpo_deliveries" SET "status"='running', "lease_token"=${crypto.randomUUID()}, "lease_until"=${new Date(this.clock() + 30000).toISOString()}, "attempts"="attempts"+1 WHERE "id"=(SELECT "id" FROM "jadpo_deliveries" WHERE ("status" IN ('pending','held') OR "status"='running' AND "lease_until" < ${now}) AND "next_attempt_at" <= ${now} ORDER BY "created_at", "subscriber", "id" FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`,
       );
       const row = rows[0];
       if (!row) return undefined;
@@ -257,6 +357,9 @@ export class Jobs {
       });
       return;
     }
+    await this.providerPermit(row, scope);
+    const firstAttempt =
+      row.first_attempt_at ?? new Date(this.clock()).toISOString();
     // The current eligibility snapshot is released before provider IO.
     const current = await this.store.transaction(scope, async (db) => {
       const [todo] = await db
@@ -281,16 +384,14 @@ export class Jobs {
       const changes = await db
         .update(deliveries)
         .set({
-          first_attempt_at:
-            row.first_attempt_at ?? new Date(this.clock()).toISOString(),
+          first_attempt_at: firstAttempt,
         })
         .where(this.fenced(row))
         .returning({ id: deliveries.id });
       if (!changes.length) throw new AppError("unavailable");
       return {
         ...todo,
-        firstAttempt:
-          row.first_attempt_at ?? new Date(this.clock()).toISOString(),
+        firstAttempt: firstAttempt,
       };
     });
     if (!current) return;
@@ -312,33 +413,48 @@ export class Jobs {
       });
       return;
     }
-    const answer = await this.egress.send(
-      {
-        url: "https://mail.example.invalid/reminders",
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: "Bearer " + this.config.mailApiKey,
-          "idempotency-key": row.provider_key,
-        },
-        body: JSON.stringify(payload),
-      },
-      scope,
-    );
-    if (
-      answer.status === 401 ||
-      answer.status === 403 ||
-      answer.status === 400 ||
-      answer.status === 422
-    )
-      throw new ProviderRefusal();
-    if (answer.status < 200 || answer.status >= 300)
-      throw new AppError("unavailable");
-    let receipt: z.infer<typeof MailReceipt>;
+    let receipt;
     try {
-      receipt = MailReceipt.parse(JSON.parse(answer.body));
-    } catch {
-      throw new AppError("unavailable");
+      receipt = await this.provider.send(
+        payload,
+        row.provider_key,
+        scope,
+        async () => {
+          if (
+            retryDisposition(Date.parse(firstAttempt), this.clock()) ===
+            "outcome_unknown"
+          )
+            throw new SendHeld("outcome_unknown", this.clock());
+          const [lease] = await this.store.db
+            .select({
+              token: deliveries.lease_token,
+              until: deliveries.lease_until,
+              status: deliveries.status,
+            })
+            .from(deliveries)
+            .where(eq(deliveries.id, row.id))
+            .limit(1);
+          scope.check();
+          if (
+            retryDisposition(Date.parse(firstAttempt), this.clock()) ===
+            "outcome_unknown"
+          )
+            throw new SendHeld("outcome_unknown", this.clock());
+          if (
+            !lease ||
+            lease.token !== row.lease_token ||
+            lease.status !== "running" ||
+            !lease.until ||
+            Date.parse(lease.until) <= this.clock()
+          )
+            throw new AppError("unavailable");
+        },
+      );
+      await this.providerOutcome(row, false, scope);
+    } catch (error) {
+      if (error instanceof ProviderFailure)
+        await this.providerOutcome(row, !error.permanent, scope);
+      throw error;
     }
     await this.store.transaction(scope, async (db) => {
       const claimed = await db
@@ -353,7 +469,7 @@ export class Jobs {
         .returning({ id: deliveries.id });
       if (!claimed.length) throw new AppError("unavailable");
       // xmin prevents an acknowledgement from marking a row edited during IO.
-      await db
+      const updated = await db
         .update(todos)
         .set({ reminder_sent_at: receipt.accepted_at })
         .where(
@@ -362,7 +478,9 @@ export class Jobs {
             eq(todos.reminder_revision, payload.revision),
             sql`"todo".xmin::text = ${current.version}`,
           ),
-        );
+        )
+        .returning({ id: todos.id });
+      if (!updated.length) throw new AppError("unavailable");
     });
   }
   async deliverOne(): Promise<boolean> {
@@ -370,16 +488,75 @@ export class Jobs {
       const row = await this.claim(scope);
       if (!row) return false;
       try {
+        const first =
+          row.first_attempt_at === null
+            ? null
+            : Date.parse(row.first_attempt_at);
+        if (
+          row.subscriber === "send_reminder" &&
+          retryDisposition(first, this.clock()) === "outcome_unknown"
+        )
+          throw new SendHeld("outcome_unknown", this.clock());
+        if (
+          row.attempts > 5 ||
+          this.clock() - Date.parse(row.created_at) >= 86400000
+        ) {
+          await this.store.transaction(scope, async (db) => {
+            await db
+              .update(deliveries)
+              .set({
+                status: "failed",
+                attempts: row.attempts - 1,
+                lease_token: null,
+                lease_until: null,
+                last_failure: row.last_failure ?? {
+                  code: "deadline_exceeded",
+                  delivery_id: row.id,
+                },
+              })
+              .where(this.fenced(row));
+          });
+          return true;
+        }
         if (row.subscriber === "prepare_delivery")
           await this.prepare(row, scope);
         else if (row.subscriber === "send_reminder")
           await this.send(row, scope);
         else throw new AppError("internal_fault");
       } catch (error) {
-        // No provider response, SQL or exception details are persisted/logged.
+        if (error instanceof SendHeld) {
+          await this.store.transaction(scope, async (db) => {
+            await db
+              .update(deliveries)
+              .set({
+                status: error.state,
+                attempts: Math.max(
+                  0,
+                  row.attempts - (error.state === "held" ? 1 : 0),
+                ),
+                lease_token: null,
+                lease_until: null,
+                next_attempt_at: new Date(error.until).toISOString(),
+              })
+              .where(
+                and(
+                  eq(deliveries.id, row.id),
+                  eq(deliveries.lease_token, row.lease_token ?? ""),
+                  eq(deliveries.status, "running"),
+                ),
+              );
+          });
+          return true;
+        }
+        const defect =
+          !(error instanceof ProviderFailure) &&
+          (!(error instanceof AppError) || error.code === "internal_fault");
+        const permanent =
+          defect || (error instanceof ProviderFailure && error.permanent);
         const failure = {
-          code:
-            error instanceof ProviderRefusal
+          code: defect
+            ? "internal_fault"
+            : permanent
               ? "provider_refused"
               : "unavailable",
           delivery_id: row.id,
@@ -389,17 +566,24 @@ export class Jobs {
           request_id: row.id,
           code: failure.code,
         });
+        const delay = Math.max(
+          1000,
+          Math.floor(
+            Math.random() * Math.min(21600000, 30000 * 2 ** (row.attempts - 1)),
+          ),
+        );
+        const exhausted =
+          row.attempts >= 5 ||
+          this.clock() + delay - Date.parse(row.created_at) >= 86400000;
         await this.store.transaction(scope, async (db) => {
           await db
             .update(deliveries)
             .set({
-              status: error instanceof ProviderRefusal ? "failed" : "pending",
+              status: permanent || exhausted ? "failed" : "pending",
               lease_until: null,
               lease_token: null,
               last_failure: failure,
-              next_attempt_at: new Date(
-                this.clock() + (row.attempts % 3 === 0 ? 60000 : 0),
-              ).toISOString(),
+              next_attempt_at: new Date(this.clock() + delay).toISOString(),
             })
             .where(this.fenced(row));
         });

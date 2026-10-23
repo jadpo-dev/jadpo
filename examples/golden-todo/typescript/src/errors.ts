@@ -1,4 +1,6 @@
 export const failures = {
+  idempotency_key_reused: [422, "Idempotency key reused."],
+  conflict: [409, "Conflict."],
   authentication_required: [401, "Authentication required."],
   invalid_credentials: [401, "Invalid credentials."],
   ambiguous_credentials: [401, "Ambiguous credentials."],
@@ -9,7 +11,7 @@ export const failures = {
   request_too_large: [413, "Request too large."],
   invalid_request: [400, "Invalid request."],
   invalid_input: [422, "Invalid input."],
-  due_date_in_past: [422, "Due date is in the past."],
+  due_date_in_past: [422, "The due date must be in the future."],
   todo_not_found: [404, "Todo not found."],
   user_not_found: [404, "User not found."],
   route_not_found: [404, "Route not found."],
@@ -21,6 +23,8 @@ export const failures = {
   internal_fault: [500, "Internal fault."],
   relationship_conflict: [409, "Relationship conflict."],
 } as const;
+export const newRequestId = () =>
+  "req_" + crypto.randomUUID().replaceAll("-", "").slice(0, 16);
 export type FailureCode = keyof typeof failures;
 export class AppError extends Error {
   readonly code: FailureCode;
@@ -53,7 +57,7 @@ export function safeLogRecord(event: LogEvent) {
     )
       ? event.event
       : "request_failed",
-    request_id: /^[a-f0-9-]{36}$/.test(event.request_id)
+    request_id: /^(?:[a-f0-9-]{36}|req_[a-f0-9]{16})$/.test(event.request_id)
       ? event.request_id
       : "redacted",
     code:

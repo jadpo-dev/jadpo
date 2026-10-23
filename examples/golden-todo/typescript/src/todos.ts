@@ -5,12 +5,18 @@ import { todos, users } from "./db/schema.ts";
 import { AppError } from "./errors.ts";
 import { todoScope, userId, self } from "./policy.ts";
 import type { Clock, RequestScope } from "./runtime.ts";
-import { Cursor, TodoPage, TodoView, UserWithTodos } from "./schemas.ts";
+import {
+  Cursor,
+  TodoPage,
+  TodoView,
+  UserWithTodos,
+  CreateTodo,
+  PatchTodo,
+} from "./schemas.ts";
 import type {
   Principal,
   PublicTodo,
   TodoChanges,
-  CreateTodo,
   ListTodos,
 } from "./schemas.ts";
 
@@ -70,6 +76,7 @@ export class TodoService {
     input: z.infer<typeof CreateTodo>,
     scope: RequestScope,
   ) {
+    input = CreateTodo.parse(input);
     const owner = userId(principal);
     this.due(input.due_at);
     return await this.store.transaction(scope, async (db) => {
@@ -147,6 +154,7 @@ export class TodoService {
     changes: TodoChanges,
     scope: RequestScope,
   ) {
+    changes = PatchTodo.parse(changes);
     this.due(changes.due_at);
     return await this.store.transaction(scope, async (db) => {
       const [before] = await db

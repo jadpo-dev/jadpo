@@ -56,8 +56,11 @@ const configuration = {
   BROWSER_ORIGIN: Origin,
   OIDC_ISSUER: HttpsUrl,
   OIDC_AUDIENCE: z.string().min(1).max(1024),
-  SESSION_SIGNING_KEY: z.string().min(32),
-  SESSION_SIGNING_KEY_PREVIOUS: z.string().min(32).optional(),
+  SESSION_SIGNING_KEY: z.string().regex(/^[\x21-\x7e]{32,}$/),
+  SESSION_SIGNING_KEY_PREVIOUS: z
+    .string()
+    .regex(/^[\x21-\x7e]{32,}$/)
+    .optional(),
   MAIL_API_KEY: z.string().min(1),
   CACHE_URL: RedisUrl.optional(),
 } as const;
