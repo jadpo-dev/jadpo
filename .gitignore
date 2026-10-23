@@ -21,3 +21,6 @@ tools/workers/.install.lock
 # The performance spike's builds, database and results (tools/bench/README.md).
 tools/bench/work/
 tools/bench/load/target/
+
+# Golden contract adapter builds and local fixtures.
+tools/golden-todo/work/

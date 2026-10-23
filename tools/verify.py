@@ -326,6 +326,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
              [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
+        Step('golden contract verifier controls', 'lint', [python, 'tools/golden-todo/test_contract.py']),
         # The docs renderer finishes every page, and its list parser's
         # cases, each under a time limit (tools/language_docs_test.py).
         Step('docs renderer', 'lint', [python, 'tools/language_docs_test.py']),
@@ -396,6 +397,9 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         name, tests, args = COMPILED
         checks.append(Step(name, 'compiled', tests=modules(tests), args=[*args, '--show-output'],
                            show=COMPILED_SHOWN, postgres=True, env=dict(TEST_RELEASE_PROFILE)))
+        checks.append(Step('golden todo: all 44 native cases', 'compiled',
+                           [python, 'tools/golden-todo/run.py', '--targets', 'native'], jadpo=True, postgres=True, lane='cargo',
+                           env=dict(TEST_RELEASE_PROFILE), show=True))
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
         # have, so tokio-postgres is proven to build for wasm32 too.
@@ -409,6 +413,9 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # points.
         checks.append(Step('a deployable built without testing', 'tests',
                            [python, 'tools/deployable.py'], lane='cargo'))
+        checks.append(Step('golden todo: all 44 workerd cases', 'wasm32',
+                           [python, 'tools/golden-todo/run.py', '--targets', 'workerd'],
+                           jadpo=True, postgres=True, lane='cargo', env=dict(TEST_RELEASE_PROFILE), show=True))
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))
