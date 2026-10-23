@@ -427,6 +427,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         checks.append(Step('golden todo: all 44 workerd cases', 'wasm32',
                            [python, 'tools/golden-todo/run.py', '--targets', 'workerd'],
                            jadpo=True, postgres=True, lane='cargo', env=dict(TEST_RELEASE_PROFILE), show=True))
+        checks.append(Step('benchmark workerd trusted ingress controls', 'wasm32',
+                           [python, 'tools/bench/check_transport.py'], lane='cargo'))
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))

@@ -57,17 +57,27 @@ HTTP process starts; bounded authority lasts four minutes within the app's
 five-minute limit. Setup must leave enough lifetime for measurement and its
 maximum drain. Timed routes retain normal auth, output codecs, owner policies,
 lifecycle visibility, deadlines, transaction safety and the default 600/minute
-caller and 120/minute address limits. A 429 invalidates a cell: increase
-`--principals`, not the limits. The load rotates a bounded 16,384-address pool.
+caller and 120/minute address limits. Accepted signed requests count against
+the caller; unsigned/refused credentials count against the address. A 429
+invalidates a cell: increase `--principals`, not the limits. The native/TS
+trusted metadata fixture rotates a bounded 16,384-address pool.
 
-Only loopback listeners are opened. The benchmark explicitly declares one
-trusted proxy: Jadpo's copied application has
+Only loopback listeners are opened. For native, the benchmark explicitly
+declares one trusted proxy in the copied application:
 `client_address: { source: ClientAddressSource.forwarded_for hops: 1 }`;
 the small TypeScript transport host trusts one strict IPv4 X-Forwarded-For
 value only when the real TCP peer is 127.0.0.1, ::1 or ::ffff:127.0.0.1.
 Untrusted peers and malformed/multiple forwarded values cannot supply the
 caller address. This declared local transport fixture preserves rate limits;
 it is not a claim that arbitrary forwarded headers are trusted in deployment.
+Workers requires `ClientAddressSource.cloudflare` instead. Its workerd
+incoming socket uses the pinned runtime's `injectRequestHeaders` to remove
+any caller-supplied CF-Connecting-IP and set 127.0.0.1, the actual local peer.
+A real workerd echo control proves missing and forged headers are overwritten.
+This is the local platform metadata fixture, with no additional HTTP forwarder
+or app/controller hop. Authenticated golden traffic still counts against each
+real signed caller, and its declared local rate-limit bindings retain the
+default allowances; unsigned failures retain the normal address allowance.
 
 Native and Wasm are ordinary release deployables from `jadpo build`.
 workerd runs the generated shim and its production request handler unchanged;
@@ -78,7 +88,9 @@ transport host supplies the declared proxy boundary and external scheduling;
 it imports no contract controller, SQL recorder, fake app or test hook.
 The complete contract checks reminder delivery, lifecycle, provider failures
 and authentication timelines before timing. The measured requests above do
-not run a reminder workflow. Scheduling is external and no due reminders are
+not run a reminder workflow. The Worker declares the required subscriber and
+schedule runners; the local configuration supplies no cron. Scheduling is
+external and no due reminders are
 seeded on any measured target; 9.1b owns idle ticking and the 10,000-delivery
 backlog.
 

@@ -96,6 +96,19 @@ def conformance():
     return reports
 
 
+def application_for(target):
+    application = (PROJECT / 'app.jadpo').read_text().replace('application {', '''application {
+    client_address: { source: ClientAddressSource.forwarded_for hops: 1 }''', 1)
+    if target == 'workers':
+        application = application.replace('ClientAddressSource.forwarded_for hops: 1', 'ClientAddressSource.cloudflare')
+        application = application.replace('    connections: {', '''    connections: {
+        limits: { driver: Driver.cloudflare_rate_limits namespace: 1001 }''', 1)
+        application = application.replace('application {', '''application {
+    rate_limits: { store: limits }
+    deployables: { kiosk: { serves: [main] runs: [Trigger.subscribers, Trigger.schedules] target: Target.wasm } }''', 1)
+    return application
+
+
 def build():
     before = fingerprint()
     environment = {**os.environ, 'CARGO_INCREMENTAL': '0', 'CARGO_PROFILE_DEV_DEBUG': '0'}
@@ -113,15 +126,7 @@ def build():
                     shutil.rmtree(child) if child.is_dir() else child.unlink()
         shutil.copytree(PROJECT, directory, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('typescript', 'build', '.jadpo'))
-        application = (directory / 'app.jadpo').read_text().replace('application {', '''application {
-    client_address: { source: ClientAddressSource.forwarded_for hops: 1 }''', 1)
-        if target == 'workers':
-            application = application.replace('    connections: {', '''    connections: {
-        limits: { driver: Driver.cloudflare_rate_limits namespace: 1001 }''', 1)
-            application = application.replace('application {', '''application {
-    rate_limits: { store: limits }
-    deployables: { kiosk: { serves: [main] target: Target.wasm } }''', 1)
-        (directory / 'app.jadpo').write_text(application)
+        (directory / 'app.jadpo').write_text(application_for(target))
         checked([str(spike.JADPO), 'check'], cwd=directory)
         # jadpo build emits release native/Wasm deployables. No test-module timing.
         checked([str(spike.JADPO), 'build'], cwd=directory, env=environment)
@@ -276,7 +281,7 @@ class Server(spike.Server):
                 spike.EXTRA_BINDINGS = [f'(name = {json.dumps(key)}, text = {json.dumps(value)})'
                                         for key, value in environment.items() if key != 'DATABASE_URL']
                 cwd = spike.workerd_config(WORK / 'workerd', self.port, f'127.0.0.1:{pool_port}',
-                                           target, self.memory_port)
+                                           target, self.memory_port, trusted_loopback=True)
                 command = [str(spike.workerd()), 'serve', 'config.capnp']
             self.spawned = time.monotonic()
             self.process = subprocess.Popen(command, cwd=cwd,
@@ -476,7 +481,8 @@ def metadata(stamp):
             'workerd': version([str(spike.workerd()), '--version']),
             'business_index_sql': INDEX_SQL, 'business_index_sha256': hashlib.sha256(INDEX_SQL.encode()).hexdigest(),
             'database': {'synchronous_commit': 'off', 'max_connections': 400, 'shared_buffers': '256MB'},
-            'transport': 'loopback one trusted proxy; forwarded_for hops 1; TS checks actual loopback peer',
+            'transport': {'native_typescript': 'loopback one trusted proxy; forwarded_for hops 1; TS checks actual loopback peer',
+                          'workers': 'Cloudflare source; loopback workerd socket overwrites CF-Connecting-IP with 127.0.0.1'},
             'scheduling': 'external on all targets; no jobs inside request timings',
             'pools': {'native': '10 open/8 idle per driver per server worker thread',
                       'workers': 'one isolate; local transaction pool cap 10',
