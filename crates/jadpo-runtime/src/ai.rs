@@ -2003,7 +2003,7 @@ mod tests {
         let statements = host.host().0.borrow();
         let taken: Vec<i64> = statements
             .iter()
-            .filter(|(sql, _)| sql == crate::ai_budget::TAKE)
+            .filter(|(sql, _)| sql == crate::ai_budget::TAKE_APP)
             .map(|(_, params)| tokens(params, 3))
             .collect();
         let [first, again] = taken[..] else {

@@ -51,22 +51,78 @@ pub const CALLER: &str = "caller";
 /// usage` reads.
 pub const PROMPT: &str = "prompt";
 
-/// Takes `$4` tokens and `$5` millionths of a currency from window `$2`
-/// `$3` of day `$1` at `$8`, unless its tokens, with what calls under way
-/// still hold, would pass `$6`, or its cost would pass `$7` (`NULL` for no
-/// cost limit): a row when taken, none when not. A first call of the day
-/// makes the row, its use already checked against the limits.
-pub const TAKE: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"touched_at\") VALUES ($1, $2, $3, 0, 0, 0, 0, $4::bigint, 0, $5::bigint, NULL, $8) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"reserved_tokens\" = \"used\".\"reserved_tokens\" + $4::bigint, \"reserved_micros\" = \"used\".\"reserved_micros\" + $5::bigint, \"touched_at\" = $8 WHERE \"used\".\"input_tokens\" + \"used\".\"output_tokens\" + \"used\".\"reserved_tokens\" + $4::bigint <= $6::bigint AND ($7::bigint IS NULL OR \"used\".\"cost_micros\" + \"used\".\"reserved_micros\" + $5::bigint <= $7::bigint) RETURNING 1";
+/// Reserves APP alone when no caller window applies. One conditional UPSERT
+/// is already atomic: a skipped row means over budget without changing it.
+/// The first eight parameters have the same meanings as [`TAKE`]; the caller
+/// prechecks amounts against their limits before a first INSERT.
+pub const TAKE_APP: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"touched_at\") VALUES ($1, $2, $3, 0, 0, 0, 0, $4::bigint, 0, $5::bigint, NULL, $8) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"reserved_tokens\" = \"used\".\"reserved_tokens\" + $4::bigint, \"reserved_micros\" = \"used\".\"reserved_micros\" + $5::bigint, \"touched_at\" = $8 WHERE \"used\".\"input_tokens\" + \"used\".\"output_tokens\" + \"used\".\"reserved_tokens\" + $4::bigint <= $6::bigint AND ($7::bigint IS NULL OR \"used\".\"cost_micros\" + \"used\".\"reserved_micros\" + $5::bigint <= $7::bigint) RETURNING 1";
 
-/// Charges window `$2` `$3` of day `$1` one call of `$4` input, `$5`
-/// output and `$6` cached tokens costing `$8` millionths of `$10` (`NULL`
-/// with no price), at `$11`, giving back the `$7` tokens and `$9`
-/// millionths it took.
-pub const DEBIT: &str = "INSERT INTO \"jadpo_ai_usage\" AS \"used\" (\"day\", \"scope\", \"key\", \"calls\", \"input_tokens\", \"output_tokens\", \"cached_tokens\", \"reserved_tokens\", \"cost_micros\", \"reserved_micros\", \"currency\", \"touched_at\") VALUES ($1, $2, $3, 1, $4::bigint, $5::bigint, $6::bigint, 0, $8::bigint, 0, $10, $11) ON CONFLICT (\"day\", \"scope\", \"key\") DO UPDATE SET \"calls\" = \"used\".\"calls\" + 1, \"input_tokens\" = \"used\".\"input_tokens\" + $4::bigint, \"output_tokens\" = \"used\".\"output_tokens\" + $5::bigint, \"cached_tokens\" = \"used\".\"cached_tokens\" + $6::bigint, \"reserved_tokens\" = GREATEST(\"used\".\"reserved_tokens\" - $7::bigint, 0), \"cost_micros\" = \"used\".\"cost_micros\" + $8::bigint, \"reserved_micros\" = GREATEST(\"used\".\"reserved_micros\" - $9::bigint, 0), \"currency\" = COALESCE($10, \"used\".\"currency\"), \"touched_at\" = $11";
+/// Reserves every applicable window together. The first eight parameters
+/// retain the APP row's amounts, limits and time; `$9` is the optional
+/// caller digest and `$10` its token limit. APP precedes CALLER, so calls
+/// sharing either window lock their rows in the same order.
+///
+/// Each UPSERT checks the *locked current row*, not a statement snapshot.
+/// A conditional UPSERT may skip a row; a dependent insert then deliberately
+/// conflicts with APP's private primary key to roll back the WHOLE statement,
+/// including new rows and timestamps. APP either existed (and refused) or
+/// was inserted by `taken`, so this insert cannot succeed. No compensation
+/// writes, snapshot prechecks or second updates of the same row are used.
+/// Only that exact private constraint is a budget refusal; other errors
+/// remain unavailable. The caller checks that each amount fits alone first.
+pub const TAKE: &str = r#"WITH windows AS (
+    SELECT $2::text AS scope, $3::text AS key
+    UNION ALL SELECT 'caller', $9::text WHERE $9::text IS NOT NULL
+), taken AS (
+    INSERT INTO "jadpo_ai_usage" AS used
+        (day, scope, key, calls, input_tokens, output_tokens, cached_tokens,
+         reserved_tokens, cost_micros, reserved_micros, currency, touched_at)
+    SELECT $1::date, scope, key, 0, 0, 0, 0, $4::bigint, 0, $5::bigint, NULL, $8::timestamptz
+    FROM windows ORDER BY scope, key
+    ON CONFLICT (day, scope, key) DO UPDATE SET
+        reserved_tokens = used.reserved_tokens + $4::bigint,
+        reserved_micros = used.reserved_micros + $5::bigint,
+        touched_at = $8::timestamptz
+    WHERE used.input_tokens + used.output_tokens + used.reserved_tokens + $4::bigint
+            <= CASE WHEN used.scope = 'app' THEN $6::bigint ELSE $10::bigint END
+        AND (used.scope <> 'app' OR $7::bigint IS NULL
+             OR used.cost_micros + used.reserved_micros + $5::bigint <= $7::bigint)
+    RETURNING 1
+), refused AS (
+    INSERT INTO "jadpo_ai_usage"
+        (day, scope, key, calls, input_tokens, output_tokens, cached_tokens,
+         reserved_tokens, cost_micros, reserved_micros, currency, touched_at)
+    SELECT $1::date, $2::text, $3::text, 0, 0, 0, 0, 0, 0, 0, NULL, $8::timestamptz
+    FROM (SELECT count(*) AS count FROM taken) AS tally
+    WHERE tally.count <> (SELECT count(*) FROM windows)
+    RETURNING 1
+)
+SELECT * FROM taken UNION ALL SELECT * FROM refused"#;
 
-/// Gives back to window `$2` `$3` of day `$1` the `$4` tokens and `$5`
-/// millionths a call took and didn't use, at `$6`.
-pub const GIVE_BACK: &str = "UPDATE \"jadpo_ai_usage\" SET \"reserved_tokens\" = GREATEST(\"reserved_tokens\" - $4::bigint, 0), \"reserved_micros\" = GREATEST(\"reserved_micros\" - $5::bigint, 0), \"touched_at\" = $6 WHERE \"day\" = $1 AND \"scope\" = $2 AND \"key\" = $3";
+/// Charges APP, optional CALLER (`$12`) and PROMPT (`$13`) together,
+/// releasing the full reservation in each budget window and none in
+/// PROMPT. A statement error leaves every window held. Parameters 1–11
+/// retain their previous meanings (day, APP scope/key, usage, releases,
+/// cost, currency and timestamp), so accounting and rounding stay exact.
+pub const DEBIT: &str = r#"INSERT INTO "jadpo_ai_usage" AS used
+    (day, scope, key, calls, input_tokens, output_tokens, cached_tokens,
+     reserved_tokens, cost_micros, reserved_micros, currency, touched_at)
+SELECT $1::date, scope, key, 1, $4::bigint, $5::bigint, $6::bigint,
+       0, $8::bigint, 0, $10::text, $11::timestamptz
+FROM (SELECT $2::text AS scope, $3::text AS key
+      UNION ALL SELECT 'caller', $12::text WHERE $12::text IS NOT NULL
+      UNION ALL SELECT 'prompt', $13::text) AS windows
+ORDER BY scope, key
+ON CONFLICT (day, scope, key) DO UPDATE SET
+    calls = used.calls + 1,
+    input_tokens = used.input_tokens + $4::bigint,
+    output_tokens = used.output_tokens + $5::bigint,
+    cached_tokens = used.cached_tokens + $6::bigint,
+    reserved_tokens = GREATEST(used.reserved_tokens - CASE WHEN used.scope = 'prompt' THEN 0 ELSE $7::bigint END, 0),
+    cost_micros = used.cost_micros + $8::bigint,
+    reserved_micros = GREATEST(used.reserved_micros - CASE WHEN used.scope = 'prompt' THEN 0 ELSE $9::bigint END, 0),
+    currency = COALESCE($10::text, used.currency),
+    touched_at = $11::timestamptz"#;
 
 /// The application's and each prompt's counts from day `$1` on, for
 /// `jadpo ai usage`.
@@ -322,40 +378,20 @@ pub(crate) async fn take(
     let Some(database) = ctx.host().database(&limits.store) else {
         return Err(Refused::Unavailable);
     };
-    let now = crate::outbox::micros(ctx.now());
-    let mut taken: Vec<(&'static str, String, u64)> = Vec::new();
-    for (scope, key, most_tokens) in windows {
-        let cost_limit = match (scope, limit) {
-            (APP, Some((limit, _))) => SqlValue::Int8(clamp(limit)),
-            _ => SqlValue::Null(SqlType::Int8),
-        };
-        let params = [
-            SqlValue::Date(day),
-            SqlValue::Text(scope.to_string()),
-            SqlValue::Text(key.clone()),
-            SqlValue::Int8(clamp(tokens)),
-            SqlValue::Int8(clamp(micros)),
-            SqlValue::Int8(clamp(most_tokens)),
-            cost_limit,
-            now.clone(),
-        ];
-        let refused = match database.query_once(TAKE, &params).await {
-            Ok(rows) if !rows.is_empty() => None,
-            Ok(_) => Some(Refused::OverBudget),
-            Err(_) => Some(Refused::Unavailable),
-        };
-        if let Some(refused) = refused {
-            for (scope, key, _) in &taken {
-                give_back(database, day, scope, key, (tokens, micros), ctx.now()).await;
-            }
-            return Err(refused);
-        }
-        taken.push((scope, key, most_tokens));
-    }
+    reserve(
+        database,
+        day,
+        &windows,
+        limit.map(|(limit, _)| limit),
+        tokens,
+        micros,
+        ctx.now(),
+    )
+    .await?;
     Ok(Some(Taken {
         store: limits.store.clone(),
         day,
-        windows: taken,
+        windows,
         cost_limit: limit.map(|(limit, _)| limit),
         per_request: limits.per_request,
         tokens,
@@ -423,32 +459,19 @@ pub(crate) async fn top_up(ctx: &Ctx<'_>, taken: &mut Option<Taken>, tokens: u64
     let Some(database) = ctx.host().database(&taken.store) else {
         return false;
     };
-    let at = ctx.now();
-    let mut took: Vec<(&'static str, &str)> = Vec::new();
-    for (scope, key, limit) in &taken.windows {
-        let cost_limit = match (*scope, taken.cost_limit) {
-            (APP, Some(limit)) => SqlValue::Int8(clamp(limit)),
-            _ => SqlValue::Null(SqlType::Int8),
-        };
-        let params = [
-            SqlValue::Date(taken.day),
-            SqlValue::Text(scope.to_string()),
-            SqlValue::Text(key.clone()),
-            SqlValue::Int8(clamp(tokens)),
-            SqlValue::Int8(clamp(micros)),
-            SqlValue::Int8(clamp(*limit)),
-            cost_limit,
-            crate::outbox::micros(at),
-        ];
-        let covered =
-            matches!(database.query_once(TAKE, &params).await, Ok(rows) if !rows.is_empty());
-        if !covered {
-            for (scope, key) in &took {
-                give_back(database, taken.day, scope, key, (tokens, micros), at).await;
-            }
-            return false;
-        }
-        took.push((scope, key));
+    if reserve(
+        database,
+        taken.day,
+        &taken.windows,
+        taken.cost_limit,
+        tokens,
+        micros,
+        ctx.now(),
+    )
+    .await
+    .is_err()
+    {
+        return false;
     }
     taken.tokens = taken.tokens.saturating_add(tokens);
     taken.micros = taken.micros.saturating_add(micros);
@@ -467,29 +490,67 @@ fn clamp(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
 
-/// Gives back what a call took from one window and didn't use. What
-/// can't be given back stays taken: the limit is kept the more strictly.
-async fn give_back(
+/// One atomic reservation, shared by the initial call, repair and retry.
+async fn reserve(
     database: &dyn Database,
     day: i32,
-    scope: &str,
-    key: &str,
-    (tokens, micros): (u64, u64),
+    windows: &[(&'static str, String, u64)],
+    cost_limit: Option<u64>,
+    tokens: u64,
+    micros: u64,
     now: i64,
-) {
-    let _ = database
-        .query_once(
-            GIVE_BACK,
-            &[
-                SqlValue::Date(day),
-                SqlValue::Text(scope.to_string()),
-                SqlValue::Text(key.to_string()),
-                SqlValue::Int8(clamp(tokens)),
-                SqlValue::Int8(clamp(micros)),
-                crate::outbox::micros(now),
-            ],
-        )
-        .await;
+) -> Result<(), Refused> {
+    // Also protects a first row on a top-up if housekeeping removed an
+    // old day: ON CONFLICT's predicate is not run for a new INSERT.
+    if windows.iter().any(|(_, _, limit)| tokens > *limit)
+        || cost_limit.is_some_and(|limit| micros > limit)
+    {
+        return Err(Refused::OverBudget);
+    }
+    let Some((_, _, app_limit)) = windows.first() else {
+        return Err(Refused::Unavailable);
+    };
+    let caller = windows.iter().find(|(scope, _, _)| *scope == CALLER);
+    let params = [
+        SqlValue::Date(day),
+        SqlValue::Text(APP.into()),
+        SqlValue::Text(String::new()),
+        SqlValue::Int8(clamp(tokens)),
+        SqlValue::Int8(clamp(micros)),
+        SqlValue::Int8(clamp(*app_limit)),
+        cost_limit.map_or(SqlValue::Null(SqlType::Int8), |limit| {
+            SqlValue::Int8(clamp(limit))
+        }),
+        crate::outbox::micros(now),
+        caller.map_or(SqlValue::Null(SqlType::Text), |(_, key, _)| {
+            SqlValue::Text(key.clone())
+        }),
+        caller.map_or(SqlValue::Null(SqlType::Int8), |(_, _, limit)| {
+            SqlValue::Int8(clamp(*limit))
+        }),
+    ];
+    let (statement, params) = if caller.is_some() {
+        (TAKE, params.as_slice())
+    } else {
+        (TAKE_APP, &params[..8])
+    };
+    match database.query_once(statement, params).await {
+        Ok(rows)
+            if rows.len() == windows.len()
+                && rows.iter().all(|row| row.as_slice() == [SqlValue::Int4(1)]) =>
+        {
+            Ok(())
+        }
+        Ok(rows) if caller.is_none() && rows.is_empty() => Err(Refused::OverBudget),
+        Err(crate::StoreError::Conflict { constraint })
+            if caller.is_some() && constraint == "jadpo_ai_usage_pkey" =>
+        {
+            Err(Refused::OverBudget)
+        }
+        // Empty multiwindow or malformed results cannot prove success.
+        // Only the multiwindow statement deliberately raises the private conflict.
+        _ => Err(Refused::Unavailable),
+    }
 }
 
 /// Charges a call what it `used`, giving back what it took, and counts it
@@ -508,33 +569,29 @@ pub(crate) async fn debit(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) {
         Some(price) => SqlValue::Text(price.currency.clone()),
         None => SqlValue::Null(SqlType::Text),
     };
-    let now = crate::outbox::micros(ctx.now());
-    let prompt = (PROMPT, taken.prompt.clone(), 0, 0);
-    let windows = taken
-        .windows
-        .iter()
-        .map(|(scope, key, _)| (*scope, key.clone(), taken.tokens, taken.micros))
-        .chain([prompt]);
-    for (scope, key, tokens, reserved_micros) in windows {
-        let _ = database
-            .query_once(
-                DEBIT,
-                &[
-                    SqlValue::Date(taken.day),
-                    SqlValue::Text(scope.to_string()),
-                    SqlValue::Text(key),
-                    SqlValue::Int8(clamp(used.input)),
-                    SqlValue::Int8(clamp(used.output)),
-                    SqlValue::Int8(clamp(used.cached)),
-                    SqlValue::Int8(clamp(tokens)),
-                    SqlValue::Int8(clamp(micros)),
-                    SqlValue::Int8(clamp(reserved_micros)),
-                    currency.clone(),
-                    now.clone(),
-                ],
-            )
-            .await;
-    }
+    let caller = taken.windows.iter().find(|(scope, _, _)| *scope == CALLER);
+    let _ = database
+        .query_once(
+            DEBIT,
+            &[
+                SqlValue::Date(taken.day),
+                SqlValue::Text(APP.into()),
+                SqlValue::Text(String::new()),
+                SqlValue::Int8(clamp(used.input)),
+                SqlValue::Int8(clamp(used.output)),
+                SqlValue::Int8(clamp(used.cached)),
+                SqlValue::Int8(clamp(taken.tokens)),
+                SqlValue::Int8(clamp(micros)),
+                SqlValue::Int8(clamp(taken.micros)),
+                currency,
+                crate::outbox::micros(ctx.now()),
+                caller.map_or(SqlValue::Null(SqlType::Text), |(_, key, _)| {
+                    SqlValue::Text(key.clone())
+                }),
+                SqlValue::Text(taken.prompt),
+            ],
+        )
+        .await;
 }
 
 /// [`debit`], then `done`: what a call that ends early gives.
@@ -546,6 +603,390 @@ pub(crate) async fn debited<T>(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::{
+        Clock, Env, Host, Isolation, JsonCodecs, LocalFuture, Places, StoreError, Transaction,
+    };
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
+
+    #[derive(Default)]
+    struct Metered {
+        calls: RefCell<Vec<(String, Vec<SqlValue>)>>,
+        answers: RefCell<VecDeque<Result<Vec<crate::Row>, StoreError>>>,
+        missing: Cell<bool>,
+    }
+    impl Database for Metered {
+        fn begin_at(
+            &self,
+            _: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            Box::pin(async { Err(StoreError::Unavailable) })
+        }
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<crate::Row>, StoreError>> {
+            self.calls.borrow_mut().push((sql.into(), params.to_vec()));
+            let answer = self.answers.borrow_mut().pop_front().unwrap_or_else(|| {
+                Ok(vec![
+                    vec![SqlValue::Int4(1)];
+                    if params
+                        .get(8)
+                        .is_some_and(|v| matches!(v, SqlValue::Text(_)))
+                    {
+                        2
+                    } else {
+                        1
+                    }
+                ])
+            });
+            Box::pin(async { answer })
+        }
+    }
+    impl Host for Metered {
+        fn random(&self, bytes: &mut [u8]) -> bool {
+            bytes.fill(7);
+            true
+        }
+        fn database(&self, _: &str) -> Option<&dyn Database> {
+            (!self.missing.get()).then_some(self)
+        }
+    }
+    fn plan() -> jadpo_std::ai::AiPlan {
+        jadpo_std::ai::AiPlan {
+            connection: "local".into(),
+            driver: AiDriver::OpenAiCompatible(jadpo_std::ai::AiUrl::Written(
+                "http://localhost/v1".into(),
+            )),
+            models: vec![],
+            schema: jadpo_std::ai::SchemaMode::StrictSubset,
+            limits: Some(jadpo_std::ai::AiLimits {
+                store: "main".into(),
+                per_request: Some(1000),
+                per_day: 1000,
+                per_caller_per_day: Some(500),
+                cost: None,
+            }),
+            prices: vec![],
+        }
+    }
+    fn ai(plan: &jadpo_std::ai::AiPlan) -> Ai<'_> {
+        static PROMPTS: jadpo_std::prompt::PromptPlan =
+            jadpo_std::prompt::PromptPlan { entries: vec![] };
+        Ai {
+            plan,
+            prompts: &PROMPTS,
+            json: JsonCodecs::NONE,
+            providers: None,
+        }
+    }
+    const ASKED: Asked<'static> = Asked {
+        prompt: "answer",
+        model: "default",
+        max_output: 20,
+        attempts: 1,
+    };
+
+    #[test]
+    fn reserve_topup_and_debit_each_send_every_window_in_one_statement() {
+        let host = Metered::default();
+        let places = Places::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            },
+        );
+        ctx.set_client(Some("2001:db8::1234".into()));
+        let plan = plan();
+        let ai = ai(&plan);
+        let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            host.calls.borrow().len(),
+            1,
+            "APP and CALLER reserved together"
+        );
+        assert_eq!(taken.as_ref().unwrap().windows.len(), 2);
+        assert!(crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+        assert_eq!(host.calls.borrow().len(), 2, "one top-up for both windows");
+        crate::block_on(debit(
+            &mut ctx,
+            taken,
+            Used {
+                input: 31,
+                output: 7,
+                cached: 9,
+            },
+        ))
+        .unwrap();
+        let calls = host.calls.borrow();
+        assert_eq!(calls.len(), 3, "one charge for APP, CALLER and PROMPT");
+        assert_eq!(calls[0].0, TAKE);
+        assert_eq!(calls[1].0, TAKE);
+        assert_eq!(calls[2].0, DEBIT);
+        assert_eq!(calls[2].1[6], SqlValue::Int8(65));
+        assert_eq!(ctx.ai_spent(), 38);
+        assert_eq!(calls[2].1[12], SqlValue::Text("answer local/model".into()));
+        let SqlValue::Text(caller) = &calls[0].1[8] else {
+            panic!("caller digest");
+        };
+        assert_eq!(caller.len(), 32);
+        assert!(!caller.contains(':'));
+        assert_eq!(calls[2].1[11], SqlValue::Text(caller.clone()));
+    }
+
+    #[test]
+    fn refused_and_failed_topups_leave_taken_exactly_held_without_compensation() {
+        for error in [
+            StoreError::Conflict {
+                constraint: "jadpo_ai_usage_pkey".into(),
+            },
+            StoreError::Conflict {
+                constraint: "another_key".into(),
+            },
+            StoreError::Statement("injected".into()),
+            StoreError::Unavailable,
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            ctx.set_client(Some("192.0.2.1".into()));
+            let plan = plan();
+            let ai = ai(&plan);
+            let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                .unwrap()
+                .unwrap();
+            host.calls.borrow_mut().clear();
+            host.answers.borrow_mut().push_back(Err(error));
+            assert!(!crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+            let held = taken.as_ref().unwrap();
+            assert_eq!((held.tokens, held.micros), (50, 0));
+            assert_eq!(host.calls.borrow().len(), 1, "no compensating statement");
+            host.missing.set(true);
+            assert!(!crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+            crate::block_on(debit(
+                &mut ctx,
+                taken,
+                Used {
+                    input: 4,
+                    ..Used::default()
+                },
+            ))
+            .unwrap();
+            assert_eq!(
+                ctx.ai_spent(),
+                4,
+                "request usage still counted when store disappears"
+            );
+            assert_eq!(host.calls.borrow().len(), 1);
+        }
+    }
+
+    #[test]
+    fn app_only_take_and_topup_use_the_registered_single_window_statement() {
+        let host = Metered::default();
+        let places = Places::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            },
+        );
+        let plan = plan();
+        let ai = ai(&plan);
+        let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+            .unwrap()
+            .unwrap();
+        assert!(crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+        let calls = host.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0].1.len(),
+            8,
+            "APP-only reservation needs only its own eight parameters"
+        );
+        let registered = crate::statements::system_statements()
+            .into_iter()
+            .find(|(name, _)| *name == "ai_budget::TAKE_APP")
+            .expect("APP-only statement registered")
+            .1;
+        assert_eq!(calls[0].0, registered);
+        assert_eq!(calls[1].0, registered);
+        assert_eq!(taken.as_ref().unwrap().tokens, 65);
+    }
+
+    #[test]
+    fn app_only_empty_is_refusal_but_malformed_or_any_store_fault_is_unavailable() {
+        for (answer, expected) in [
+            (Ok(vec![]), Refused::OverBudget),
+            (Ok(vec![vec![SqlValue::Int4(0)]]), Refused::Unavailable),
+            (Ok(vec![vec![SqlValue::Int8(1)]]), Refused::Unavailable),
+            (Ok(vec![vec![SqlValue::Int4(1)]; 2]), Refused::Unavailable),
+            (
+                Err(StoreError::Conflict {
+                    constraint: "jadpo_ai_usage_pkey".into(),
+                }),
+                Refused::Unavailable,
+            ),
+            (
+                Err(StoreError::Conflict {
+                    constraint: "other".into(),
+                }),
+                Refused::Unavailable,
+            ),
+            (Err(StoreError::ConcurrentChange), Refused::Unavailable),
+            (
+                Err(StoreError::Statement("injected".into())),
+                Refused::Unavailable,
+            ),
+            (Err(StoreError::Unavailable), Refused::Unavailable),
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            host.answers.borrow_mut().push_back(answer.clone());
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            let plan = plan();
+            let ai = ai(&plan);
+            assert_eq!(
+                crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                    .unwrap()
+                    .unwrap_err(),
+                expected
+            );
+            assert_eq!(ctx.ai_spent(), 0);
+            assert_eq!(host.calls.borrow().len(), 1);
+            let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                .unwrap()
+                .unwrap();
+            host.calls.borrow_mut().clear();
+            host.answers.borrow_mut().push_back(answer);
+            assert!(!crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+            assert_eq!(
+                (
+                    taken.as_ref().unwrap().tokens,
+                    taken.as_ref().unwrap().micros
+                ),
+                (50, 0)
+            );
+            assert_eq!(host.calls.borrow().len(), 1);
+        }
+    }
+
+    #[test]
+    fn app_only_first_row_and_topup_precheck_tokens_and_cost_without_sql() {
+        let host = Metered::default();
+        let windows = vec![(APP, String::new(), 100)];
+        for (tokens, micros) in [(101, 0), (1, 101)] {
+            assert_eq!(
+                crate::block_on(reserve(&host, 1, &windows, Some(100), tokens, micros, 0)).unwrap(),
+                Err(Refused::OverBudget)
+            );
+        }
+        assert!(
+            host.calls.borrow().is_empty(),
+            "cannot INSERT an oversized first row"
+        );
+    }
+
+    #[test]
+    fn only_the_private_refusal_constraint_means_over_budget() {
+        for (error, expected) in [
+            (
+                StoreError::Conflict {
+                    constraint: "jadpo_ai_usage_pkey".into(),
+                },
+                Refused::OverBudget,
+            ),
+            (
+                StoreError::Conflict {
+                    constraint: "other".into(),
+                },
+                Refused::Unavailable,
+            ),
+            (StoreError::ConcurrentChange, Refused::Unavailable),
+            (
+                StoreError::Statement("injected".into()),
+                Refused::Unavailable,
+            ),
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            host.answers.borrow_mut().push_back(Err(error));
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            ctx.set_client(Some("192.0.2.1".into()));
+            let plan = plan();
+            let ai = ai(&plan);
+            let answer =
+                crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[])).unwrap();
+            assert_eq!(answer.unwrap_err(), expected);
+            assert_eq!(host.calls.borrow().len(), 1);
+            assert_eq!(ctx.ai_spent(), 0);
+        }
+    }
+
+    #[test]
+    fn a_reservation_requires_every_expected_success_row() {
+        for rows in [
+            vec![],
+            vec![vec![SqlValue::Int4(0)]],
+            vec![vec![SqlValue::Int4(1)]; 3],
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            host.answers.borrow_mut().push_back(Ok(rows));
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            ctx.set_client(Some("192.0.2.1".into()));
+            let plan = plan();
+            let ai = ai(&plan);
+            assert_eq!(
+                crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                    .unwrap()
+                    .unwrap_err(),
+                Refused::Unavailable
+            );
+            assert_eq!(
+                host.calls.borrow().len(),
+                1,
+                "no compensation after uncertain result"
+            );
+        }
+    }
 
     fn price() -> AiPrice {
         AiPrice {
