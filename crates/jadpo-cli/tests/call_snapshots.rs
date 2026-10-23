@@ -735,7 +735,7 @@ fn a_waiting_write_rechecks_the_version_after_the_holder_commits() {
 /// The same ordinary source with one route, so workerd exercises a real
 /// non-NULL expected version decoded from its generated deployable plan.
 pub(crate) fn compiled_route_files() -> Vec<(String, String)> {
-    let mut files: Vec<(String, String)> = files("https://sandbox.acme-couriers.example")
+    let mut files: Vec<(String, String)> = files("http://127.0.0.1:1")
         .into_iter()
         .map(|(p, t)| (p.into(), t))
         .collect();

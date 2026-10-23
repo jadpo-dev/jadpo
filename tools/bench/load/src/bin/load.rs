@@ -536,12 +536,17 @@ fn main() {
         .map(|(_, c)| c)
         .sum();
     let elapsed = last_done.duration_since(measure_from).as_secs_f64();
+    let (created_rows, updated_rows) = if o.updated_todo_title.is_some() {
+        (Vec::new(), created_rows)
+    } else {
+        (created_rows, Vec::new())
+    };
     println!(
         "{}",
         serde_json::json!({
             "schemaVersion": 3,
-            "created_rows": if o.updated_todo_title.is_none() { created_rows.clone() } else { Vec::new() },
-            "updated_rows": if o.updated_todo_title.is_some() { created_rows } else { Vec::new() },
+            "created_rows": created_rows,
+            "updated_rows": updated_rows,
             "connections": o.connections,
             "load_cpu_s": cpu_seconds() - cpu_started, "load_wall_s": started.elapsed().as_secs_f64(), "load_threads": o.threads, "requests": latencies.len(),
             "rps": latencies.len() as f64 / elapsed, "p50_us": pct(50.0),

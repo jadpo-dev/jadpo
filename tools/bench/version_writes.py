@@ -26,7 +26,10 @@ from contracts import validate_failure, validate_measurement
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / 'tools/bench/work/version-writes'
-INHERITED_FLAGS = {k:v for k,v in os.environ.items() if k.startswith(('CARGO_PROFILE_','RUST')) or k in ('CARGO_INCREMENTAL','CARGO_BUILD_JOBS')}
+FLAG_NAMES = ('CARGO_INCREMENTAL','CARGO_BUILD_JOBS','CARGO_TARGET_DIR','CARGO_ENCODED_RUSTFLAGS','RUSTFLAGS','RUSTUP_TOOLCHAIN')
+def selected_flags(environment):
+    return {name:environment.get(name) for name in sorted(set(FLAG_NAMES) | {k for k in environment if k.startswith('CARGO_PROFILE_')})}
+INHERITED_FLAGS = selected_flags(os.environ)
 FLAGS = {'CARGO_INCREMENTAL':'0','CARGO_PROFILE_DEV_DEBUG':'0','CARGO_BUILD_JOBS':'4'}
 ENV = {**os.environ, **FLAGS}
 
@@ -38,7 +41,7 @@ def command(args, **kwargs):
 def context():
     return {'time':time.time(),'load':os.getloadavg(),
             'processes':command(['ps','-axo','pid=,ppid=,pcpu=,comm='],capture_output=True,text=True).stdout,
-            'flags':{k:v for k,v in ENV.items() if k.startswith(('CARGO_PROFILE_','RUST')) or k in ('CARGO_INCREMENTAL','CARGO_BUILD_JOBS')}}
+            'flags':selected_flags(ENV)}
 
 
 def build(label):
