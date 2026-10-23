@@ -110,6 +110,73 @@ campaign again, with unfavorable attempts retained. Reproduce a historical
 pair from its exact clean source revisions; later method edits do not authorize
 reusing that pair's build stamps at a different HEAD.
 
+## Idle ticks and hourly housekeeping (chunk 9.1b2)
+
+`idle_ticks.py` measures generated native external ticks and a persistent local
+workerd scheduled handler against empty business state, separately from warm
+delivery throughput. Use the same clean build/source/artifact guard and compiler
+snapshot as `deliveries.py`; commit inputs before building, finish/reap all
+builds/tests, and record host/process context before timing.
+
+```sh
+python3 tools/bench/deliveries.py build --label idle-reference
+python3 tools/bench/idle_ticks.py --label idle-reference --ticks 5 --rounds 1
+python3 tools/bench/idle_ticks.py --label idle-reference --ticks 100 --rounds 3
+python3 tools/bench/deliveries.py measure --label idle-reference --mode warm --count 100 --rounds 1
+python3 tools/bench/deliveries.py measure --label idle-reference --mode warm --count 10000 --rounds 3
+```
+
+The default idle protocol alternates Workers/native order over three rounds,
+100 samples per cell after ten excluded empty ticks. It requires one actual
+successful `runtime.ticked` per sample, with no problems, ran schedules,
+deliveries or deletions, plus unchanged empty business state. A Workers
+scheduled outcome `ok` alone does not establish this. A real negative control
+renames the deliveries table, requires the runtime audit to reject the failed
+tick, restores it, and audits success. Unit faults reject missing/duplicate/
+failed ticks in the gate; no production instrumentation or fast runtime path
+is added for the harness.
+
+Each cell separately enables PostgreSQL statement logging for one audited
+census tick, retains the SQL/response, excludes migration/readiness/admin
+startup and requires the prompt due-delivery SELECT and breaker UPDATE.
+Logging is disabled before the latency loop. The count is for this fixture's
+completed-hour fastpath; a due hourly pass still performs bounded retention
+plus lease claim/release. The final paired census is four unchanged prompt
+operations plus four reference cleanup statements (8), versus those four plus
+one declining conditional housekeeping claim (5). Other schema holdings can
+add work. Bun/Node generic housekeeping/idle metrics are N/A: the specialized
+TypeScript comparator drains deliveries only.
+
+Latency uses `perf_counter`, p95 nearest-rank over the 100 ticks; native includes
+100 ordinary process starts while Workers stays warm. Resource/service/helper
+CPU snapshots bracket only the timed loop, excluding DB state/log audits and
+psql children. Workerd's separate pool helper must be included in server CPU;
+PostgreSQL/Python are excluded. Short service CPU samples are quantized. No
+wall-clock speed assertions run in CI. Raw `idle-<timestamp>.json` retains
+per-tick replies/logs/durations, control/census evidence, counts, CPU/load,
+empty-state audits, exact source/artifact map and end freshness.
+
+Retain separate timestamped smoke/full attempts; never overwrite a failed
+result. Rebuild/repeat both sides when the measured harness/protocol changes.
+For b2 the fresh reference's production `crates/*/src` and all generated schema
+fixture inputs exactly matched prerequisite cb1, retaining the final measured
+harness; the restored candidate's complete tracked tree/modes matched its
+passing full gate. Sources, trees, compiler/artifact hashes, all rounds/CPU,
+raw paths/digests and every superseded preparation are in compiler/runtime
+§2.11, "Fast ticks and hourly housekeeping: matched measurements".
+
+The earlier b2 reference was repeated after proven test-helper workerd orphans
+were stopped. Those came from an npm wrapper lifetime bug and a native failed-
+readiness child without kill+wait ownership; actual failure-path regressions
+cover the narrow fixes. A clean benchmark shutdown is not proof that every
+other test descendant stopped: record exact owned executable identities after
+the full gate and before/after timing. Preserve unrelated apps/services and
+record ambient CPU/load, memory/swap and control drift. The b1/b1a historical
+results remain exploratory under an unknown orphan-host condition, and the
+separate 8.4e resident-memory question is unchanged. Idle SQL reduction is the
+primary b2 result; observed small warm-delivery changes under varying load do
+not establish a causal throughput win or full TS/Jadpo housekeeping equivalence.
+
 ## Golden application comparison (chunk 9.1d4)
 
 `golden.py` uses the complete `examples/golden-todo` application and its

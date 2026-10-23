@@ -2864,8 +2864,8 @@ its commit.
 runs late work at the tick's time. A batch run's row keeps the chain
 depth it started at (`depth`), which each page's context takes; each
 item resets the boundary's event allowance (`Boundary::allowance`); and
-`batches::clean`, a tick hook, deletes runs that ended 30 days ago with
-their problems and cancels.
+hourly housekeeping deletes runs that ended 30 days ago with their problems
+and cancels (chunk 9.1b2).
 
 **Bounded delivery sweeps** (chunk 9.1b1). A sweep still reads at most 100
 oldest due deliveries, waking breakers and parking lost/unreadable work first.
@@ -2887,6 +2887,43 @@ and advance shutdown/monotonic expiry after four claims, proving settlement
 without assuming a fast machine. The focused 10,000-delivery method and
 comparator boundaries are in `tools/bench/README.md`.
 
+**Fast ticks and hourly housekeeping** (chunk 9.1b2). Prompt work stays on
+ordinary ticks: due schedules, delivery sweeps and breaker alerts, queue
+receiving, polls, unfinished-work metrics/alerts and expired batch-lease
+recovery. Retention runs afterwards, once an hour per successfully completed
+store, in `schedules::housekeeping`. The generated `jadpo_housekeeping` table
+holds a singleton slot, random `lease_id`, `lease_until` and `last_cleaned_at`.
+It is part of physical schema snapshots, generated migrations, drift checking
+and prepared-statement coverage, including schedule-only and AI-usage-only
+stores. There is no runtime DDL or state hidden in application rows.
+
+One conditional upsert claims a due store. The lease uses the remaining tick
+budget plus the existing minute margin; release/completion matches its random
+identity, fencing a former owner. Stores contend independently: a successful
+store is not suppressed by another store's failure. Completion requires every
+eligible delete to finish; failure, a 10,000-row cap, exhausted budget or
+shutdown leaves the previous completion unchanged, so the next tick may
+resume. A crash leaves a lease that expires. Every delete admits at most
+1,000 rows per batch and ten batches, checking budget/shutdown between batches.
+The same retention windows and event/delivery/handled ordering remain: local
+handled deletion commits atomically with its event, remote handled deletion
+follows that commit; interruption can retain a safe orphan, never remove a
+replay guard early. Expired auth and idempotency reads still enforce expiry
+independently of cleanup.
+
+`SchedulesPlan.cleanup_schedules` and `.cleanup_batches` come from whole-schema
+`SCHEDULE_RUNS`/`BATCH_RUNS` holdings, separately from runnable schedules and
+batch bodies. `ticks()` includes those holdings. A web role can therefore win
+cleanup for a shared store without omitting history that only the jobs role
+executes. All PostgreSQL/Redis connection settings were already retained for
+every role; providers and unreachable bodies stay pruned. Actual pruned-plan
+and native two-role regressions cover a state-only schedule store, batch
+history/problems/cancels in another store, no web runners, and the jobs tick
+skipping completed cleanup while retaining prompt work. Live contention,
+failed/partial/crashed retry, stale-owner fencing, independent stores, retention,
+budget/shutdown and cross-store handled safety run in the gate. Measurement,
+failed preparations and the superseded role-pruning bug are recorded in §2.11.
+
 **Schedules and the tick** (chunk 6.2). The checker reads each schedule
 (`jadpo_check::schedules`: `every:` and `run:`, an action of its own
 domain taking nothing) and where their state is kept
@@ -2901,13 +2938,12 @@ schedule's state row (`jadpo_schedules`), takes the lease of each one due
 in one conditional statement, runs them side by side as the system with
 no tenant under the tick's clock and a new trace, records each run and
 skipped tick (`jadpo_schedule_runs`) and delivers what they emitted; then
-in each store it calls `runner::sweep` and deletes expired idempotency
-keys; events every subscriber has had, with their delivery records and,
-in the same statement, the handled records kept beside them, then the
-rest of those handled records in each other store by the deliveries'
-ids (chunk 6.10); and ended sessions, tokens and service keys where
-they are kept; then it runs `schedules::HOOKS`,
-which picks up batch runs whose lease lapsed (`batches::resume`). The
+in each store it calls `runner::sweep`. Queue receiving, polls and
+unfinished-work observation remain prompt, followed by `schedules::HOOKS`,
+which picks up batch runs whose lease lapsed (`batches::resume`). Hourly
+housekeeping then sweeps expired keys, retained events/deliveries/handled
+records and ended sessions, tokens, service keys and other runtime history
+in their stores, as described above (chunk 9.1b2). The
 whole tick runs within the budget its host gives a tick (chunk 6.7),
 each step starting only while it isn't spent, its runs' actions through
 `runner::within_budget`. Natively the HTTP server's first
@@ -5944,7 +5980,10 @@ label artifacts before preparing the next revision. Never reuse a stale stamp
 across HEAD/source/compiler changes. `-O`/`PYTHONOPTIMIZE` is rejected at entry,
 with a subprocess negative check, so disabled assertions cannot authorize data.
 All owned tick children, workerd, pool stand-ins and disposable PostgreSQL
-servers were stopped; no shared server/database or unrelated app was changed.
+servers used by the benchmark harness were stopped; no shared server/database
+or unrelated app was changed. The broader test-descendant assurance is
+qualified by the chunk 9.1b2 orphan diagnosis below: completed test helpers
+had leaked workerd children, so the historic host condition is unknown.
 Review must retain the four-lane bound, separate contexts, serial batch work,
 drain/hand-on behavior and exact handled atomicity, and version any altered
 workload/ID/provenance protocol. These measurements support continuing the
@@ -6090,8 +6129,12 @@ timing. `gate-interrupted-cda60ea6.log` SHA-256 is
 `gate-final.log` is
 `e3f93a127c61bc266b3873195e6213d3c79d22a9a5e4d632c7016aaa3e1949db`.
 The existing optional pgvector 0.7.0 versus required 0.8.0 skips remain explicit;
-no extension was upgraded. All owned services, helpers, tick children and
-PostgreSQL servers stopped; their retained artifacts/raws remain available.
+no extension was upgraded. The benchmark harness reaped its services,
+helpers, tick children and PostgreSQL servers; retained artifacts/raws remain
+available. This did not establish that every golden-test descendant had
+stopped: chunk 9.1b2 found completed-b1-path workerd orphans. The historic
+paired result remains exploratory with that unknown host-load condition;
+the fresh b2 reference below was repeated after their cleanup.
 
 To reproduce, use each exact clean timed revision above in its worktree, run
 `python3 tools/bench/deliveries.py build --label <fresh-label>`, finish every
@@ -6104,3 +6147,249 @@ process lifetime/warmup explicit alongside Workers-versus-Bun results, retain
 all adverse rounds, and rerun an affected matched comparison if measured paths
 change. The lesson is to match the service boundary and pool lifetime before
 claiming a cross-target win; the measured remaining workerd gap still needs work.
+
+
+**Fast ticks and hourly housekeeping: matched measurements** (chunk 9.1b2,
+2026-10-23).
+
+The main warm comparison still leaves local Workers behind Bun: candidate
+median 2,276 deliveries/s and tick p95 53.274 ms versus Bun 3,897/s and
+30.170 ms, about 58.4% of Bun throughput. The fresh reference was 2,183/s and
+56.299 ms versus Bun 3,822/s and 31.464 ms. These small delivery differences
+are supporting controls, not an attributed throughput win: rounds vary,
+reference round one was slower, and background host load fell between runs.
+The unchanged HTTP/golden application matrices were not rerun.
+
+The deterministic b2 result is **8 → 5 runtime SQL statements per completed-hour
+idle tick**, in all three censuses on both native and Workers, 37.5% fewer.
+Both retain four prompt operations: wake held deliveries, mark expired
+`sending` deliveries, select due deliveries, and raise breaker alerts. The
+reference also deletes expired idempotency keys, settles operator-ended
+deliveries, settles old successful events with their local handled rows, and
+removes old delivery operator actions. The candidate replaces those four
+cleanup statements with one conditional housekeeping claim that declines a
+completed-hour pass. This is one empty fixture store, not a universal count:
+a due hourly pass still does its bounded retention work plus claim/release.
+Bun/Node cleanup count and generic idle latency are **N/A**: their specialized
+fixture drains deliveries and does not implement generic Jadpo housekeeping.
+
+Idle rounds use 100 ticks per cell after ten excluded empty ticks, alternating
+Workers/native order, actual generated entry points and ordinary clocks.
+Each cell first proves a renamed delivery table makes the tick audit reject
+failure, restores it and audits a successful tick. Census runs separately
+with PostgreSQL statement logging and an independently audited tick; only
+runtime `jadpo_*` statements are counted, excluding migration/readiness/admin
+startup. It retains the SQL and responses, requires the due-delivery SELECT
+and breaker UPDATE, then disables statement logging before timing. Each
+measured tick must have exactly one successful `runtime.ticked` record with
+no problems, deliveries, deleted rows or ran schedules; empty business state
+is audited before/after. Missing, duplicate and failed tick fault tests are
+in the gate. A platform scheduled `ok` response alone is insufficient.
+
+| Idle target/source | SQL/tick, every census | Ticks/s, rounds 1 / 2 / 3 | Tick p95 ms, rounds 1 / 2 / 3 | CPU s per 100 ticks |
+|---|---:|---|---|---|
+| workerd warm reference | 8 | 298.683 / 298.956 / 298.043 | 4.371 / 4.583 / 4.354 | 0.240 / 0.230 / 0.230 |
+| native external reference | 8 | 64.866 / 68.027 / 66.864 | 16.008 / 16.020 / 16.090 | 0.759 / 0.747 / 0.747 |
+| workerd warm candidate | 5 | 468.629 / 474.888 / 477.791 | 2.833 / 3.317 / 2.874 | 0.180 / 0.180 / 0.170 |
+| native external candidate | 5 | 77.630 / 76.463 / 76.095 | 13.625 / 13.439 / 14.220 | 0.710 / 0.712 / 0.716 |
+
+Observed median idle workerd p95 was 4.371 → 2.874 ms; native external p95 was
+16.020 → 13.625 ms. This local sample has no speed assertions or latency
+promise. Native starts 100 external processes per cell; workerd keeps one
+process and a separate pool helper. Idle CPU brackets exactly the timed loop,
+excluding the state/log audits and their psql children. Workerd CPU sums
+service+helper; native CPU is external children. PostgreSQL/Python are excluded;
+short service-CPU samples are quantized to 0.01 s.
+
+Warm delivery rounds use the unchanged final b1a warm protocol: three rotated
+rounds, 10,000 durable deliveries, a verified 100-delivery cohort before every
+cell, persistent workerd/Bun/Node and external native ticks. All cells passed
+state/fingerprint/UUIDv7/handled/replay and failure/race controls. The following
+retains every round; p95 is nearest-rank over 100 ticks, not delivery latency.
+CPU is workerd+pool or in-process Bun/Node; native is external tick-child CPU.
+All exclude PostgreSQL and Python.
+
+| Warm delivery target/source | Deliveries/s, rounds 1 / 2 / 3 | Tick p95 ms, rounds 1 / 2 / 3 | Server/external-child CPU s |
+|---|---|---|---|
+| workerd warm reference | 1908 / 2183 / 2188 | 68.896 / 55.165 / 56.299 | 6.950 / 6.460 / 6.430 |
+| Bun warm reference | 3378 / 3822 / 3930 | 34.049 / 31.464 / 30.189 | 2.660 / 2.450 / 2.410 |
+| Node warm reference | 3603 / 3625 / 3504 | 34.885 / 34.667 / 34.601 | 2.610 / 2.610 / 2.670 |
+| native external reference | 2405 / 2570 / 2623 | 53.891 / 42.442 / 42.785 | 1.940 / 1.885 / 1.858 |
+| workerd warm candidate | 2276 / 2238 / 2279 | 52.990 / 59.432 / 53.274 | 6.170 / 6.370 / 6.260 |
+| Bun warm candidate | 3930 / 3649 / 3897 | 30.170 / 32.687 / 30.162 | 2.390 / 2.490 / 2.420 |
+| Node warm candidate | 3728 / 3474 / 3655 | 34.274 / 37.023 / 33.957 | 2.520 / 2.720 / 2.610 |
+| native external candidate | 2908 / 2704 / 2657 | 38.646 / 40.931 / 40.521 | 1.778 / 1.901 / 1.896 |
+
+Workerd's reference CPU splits worker 4.39 / 4.12 / 4.10 s plus pool
+2.56 / 2.34 / 2.33 s; candidate 3.91 / 4.06 / 4.00 s plus
+2.26 / 2.31 / 2.26 s. Omitting that helper would understate Workers cost.
+Unchanged Bun median throughput drifted +2.0% and Node +1.4%; Workers +4.3%
+and native +5.2% are not isolated causal estimates of housekeeping's effect.
+Workers p95 ranges overlap (55.165–68.896 → 52.990–59.432 ms), and the remaining
+Bun gap is material. No edge capacity, inherent language win, full guarantee
+equivalence or unrelated memory-creep fix follows from this sample.
+
+Both campaigns used this same 10-core arm64 macOS 27.0.1 host, PostgreSQL 16.3,
+Rust 1.99.0, Bun 1.2.20, Node 24.18.1 and the pinned workerd. Normal release
+native/Wasm builds and compiler flags match the method; no builds/tests or
+parent host work ran during timing, and no unrelated app was stopped. Five-second
+ambient CPU was 26.7% reference versus 16.5% candidate. Before-campaign top
+samples were 73.1% versus 90.6% idle; one-minute load 11.71 versus 3.94.
+Allocated swap was 3,266 → 3,258 MiB around reference and 3,218 → 3,066 MiB
+around candidate; top reported zero interval swap I/O in both before samples.
+The host was not controlled or freshly booted. Per-cell counters/load,
+vm_stat/top/swap context and exact-path empty owned-process inventories are
+retained. SQL count reduction is independent of this latency/throughput drift.
+
+The final gate passed **93 steps in 703 s** at
+`c1d7ab57407f8a8d1726dcb9d33379766f73398f`, complete tree
+`5e9f5b5896743bead4e8fa296e940f61294089bc`; existing pgvector 0.7.0/required
+0.8.0 skips remain explicit. It includes all 44 native and all 44 Workers
+golden cases, 264 compiled corpus projects/526 tests/5,832 request/write
+comparisons and 27 teaching examples/327 tests passing both ways.
+The fresh reference `abc08b2d4aeb16e55e27a71398498dfeb2550277`, tree
+`0c7975aa58da11dfcec72bc794ae78690145e151`, restored all production crate
+`src` and authored/generated schema fixture inputs to exact prerequisite
+`cb1b1a793f214cd9acf5816e533e8501a76ec57e`, while retaining the final measured
+harness. Its production-source diff against that prerequisite is empty.
+Restored candidate `4cb9e82d91fbc5e6de07cc188451332365276b33` has **the complete
+tracked tree identical to the passing gate tree**, including modes, not just
+selected runtime files. Reference/candidate measured harness hashes match;
+source proofs and clean HEAD checks are retained. Own builds, compiler
+snapshots and artifact guards passed at both ends of each campaign before
+these documentation edits. Later documentation HEADs must fail those old
+stamps; no historical bypass exists.
+
+| Artifact | Fresh reference SHA-256 | Gated-tree candidate SHA-256 |
+|---|---|---|
+| Compiler snapshot | `2e52d5040ef0c5850d1f38d4ffae4b569a104f3cf69df3a0a9d27e9f8ffa8044` | `38fc43503219e7e3be88b15dee8fa932ee9eeda3c2db91e0f1544a3f40a6ea96` |
+| Native | `ee141b61ea5eac2403ea36d694f7b9f35f8c6d1047de0ac872880f75096b518a` | `6787c06fa58ef44f814a6bb4b2ba5561fcdec1791fa22d913249db5bba45c90d` |
+| Wasm | `c14e82b9ac4b5c4b057816ceb98dbcff35cfd0c8c856f623e25305ba9c05ded7` | `2ee91add2c52c1cfd01cd333364582a97a389066047ad52ad55ba11a7a83c6a0` |
+
+Identical Bun/Node emitted delivery JS SHA-256 is
+`66977add90729e3a8ea7535bd1ed8becd3f6dcfbc9bfc8df79e900ce8f325d91`.
+Each `build.json` below contains the complete source/artifact/lock/version map
+and original compiler path; its retained `compiler-jadpo` copy preserves that
+compiler when the workspace binary is overwritten by the next build.
+
+All following paths are under
+`/Users/richardwillars/Documents/Codex/LLM-coding-chunk-9.1b2/tools/bench/work/deliveries/`.
+The JSONs retain control results, responses, SQL census/logs, raw durations,
+CPU/load and freshness checks. Every fresh full cell and separate smoke passed;
+no failed cell was discarded. Early reference builds and old timings are
+superseded as described below.
+
+| Retained raw path | Outcome | SHA-256 |
+|---|---|---|
+| `b2-reference/build.json` | build/source/artifact map; superseded harness draft | `86cc8710b55d5da067e3fcc7ace716fd6e8da0388cd9322e0046b6cbac89a7e2` |
+| `b2-reference-audited/build.json` | build/source/artifact map; superseded harness draft | `89f8d4c6738a60cd1c9e7141f2f19f8f1ca892c316423b2e7d4e1e542417ea67` |
+| `b2-reference-final/build.json` | build/source/artifact map; superseded orphan-host condition | `604b8f59c7265b6382aedd4b1da72879db3f999fee9f7388f8ecc289408269c4` |
+| `b2-reference-final/idle-1792778072082072000.json` | separate smoke; all checks passed; superseded orphan-host condition | `7e91bdc398036ece383b80f249fe5f1202a5df14661e776a061ead1e331d292e` |
+| `b2-reference-final/idle-1792778085956445000.json` | idle 3×100; all checks passed; superseded orphan-host condition | `805e9fc60b99b4983e0535326b7ee733e70467aa8cda085a98e4baebb2eed36e` |
+| `b2-reference-final/runs-1792778096916364000.json` | warm 3×10,000; all checks passed; superseded orphan-host condition | `709ae0a8542513d8a5bf12a9efa4824fd29ecb220377a03f071b7d9a6ce632bf` |
+| `b2-clean-reference/build.json` | build/source/artifact map | `d45c03b1f1ee65ac00671116f808ecb3954ae4e82fb224f16baa6142b8f02206` |
+| `b2-clean-reference/idle-1792785990808352000.json` | separate smoke; all checks passed | `a1277cb4e30d81c6a3b67b87065d9c0baa35faf1c82cc9fb0a0355652c811ab2` |
+| `b2-clean-reference/idle-1792786031239858000.json` | idle 3×100; all checks passed | `055228d457f8fc2dda3a0712f6c3e02832bba98b58681b825e980fa28887e587` |
+| `b2-clean-reference/runs-1792786010570180000.json` | separate smoke; all checks passed | `d6d8b9cc07fab5c0eab0450125eed4c95c620e54278cc470700866bf58f48772` |
+| `b2-clean-reference/runs-1792786050175036000.json` | warm 3×10,000; all checks passed | `fc2cafb4384a00240a87184d0126ea2745c6f08a74b9030e96e3aafd42200edc` |
+| `b2-clean-candidate/build.json` | build/source/artifact map | `4c7ade2c6926885088fe7b25ca7e70f6aae5b0af3082bd9384f2e68973fc0422` |
+| `b2-clean-candidate/idle-1792786392986314000.json` | separate smoke; all checks passed | `8544d512e7dde407cab48de3a86300c8fac2923a99bb138ce20456929e508899` |
+| `b2-clean-candidate/idle-1792786429822112000.json` | idle 3×100; all checks passed | `1a5fd79e6f3ffb084c20e42ab5dab91cd476f8a21efaa6c62782666a1e581fda` |
+| `b2-clean-candidate/runs-1792786412971689000.json` | separate smoke; all checks passed | `72865d19aec735fa3bc30673d26595eb42e7b9e39795463e9b294fb19849b54c` |
+| `b2-clean-candidate/runs-1792786453991614000.json` | warm 3×10,000; all checks passed | `ebd163ec66366e0be68e9601537efdaca4a289cc6ddb1309b29dbc37e502595d` |
+
+Preparations and failures remain part of the record. The first real live red
+failed on the absent `jadpo_housekeeping` relation before production edits.
+The initial invalid Cargo target invocation was setup failure; its output
+was overwritten by that first red log and cannot be reconstructed. Later
+commands use distinct log names. Initial idle harness drafts at `05063be9`
+and `a24d4578` were replaced before the first audited measurements: scheduled HTTP
+`ok` did not prove the runtime tick succeeded, and native child-CPU brackets
+included audit subprocesses. `e3a3fcbf` fixed both and produced the old
+`b2-reference-final` results above, but those timings were then superseded
+after the orphan-host diagnosis. No candidate timing used a failed gate.
+
+Gate 1 at `39fb307ecaf52ce1c255fd55d90c9d5835ca6928` failed five steps in
+1,463 s: internal column names (`owner`/`completed_at`), the actual new-table docs expected
+output, test-host random ownership, and two fault probes assuming cleanup on
+every tick. The probes now explicitly make cleanup due before hiding its
+table. During that run a failed native test leaked a process holding captured
+output open; exact-path evidence identified one b2 native and 63 b2 workerd
+orphans. The Python helper had killed npm's wrapper rather than its native
+workerd child. Its narrow fix resolves the already-installed pinned platform
+executable directly, preserving pin checks/cross-platform paths and the
+existing `--ignore-scripts` install fallback. Native test children now have
+kill+wait ownership from spawn through readiness failure/panic; actual
+failure-path regressions prove reaping. Only proven owned identities were
+stopped, not unrelated services.
+
+A later bounded inventory found and stopped another 63 PPID-1 workerd
+processes with exact completed-b1 executable paths. Their precise start times
+were not established. The benchmark harness itself had reaped its own
+services; prior broad assertions that every test descendant stopped were too
+strong and are corrected in the b1/b1a entries above. Those historic pairs
+remain exploratory under an unknown orphan-host condition; this b2 matched
+pair was repeated after cleanup. This test-child fix does not establish a fix
+for the separate single-process resident-memory growth investigated in 8.4e.
+
+Focused follow-ups retained actual old generated initial-migration caches for
+depot/warehouse/newsroom, reset only those owned test caches and regenerated
+through the existing helper/compiler. An empty parent migrations directory
+initially prevented initial generation, producing three failed Workers probes;
+explicit regeneration restored all six probes. Authored migrations, drift
+checks, benchmark inputs and compiler snapshots were preserved. Corpus output
+was blessed only for the actual added system table. Earlier AI schema/Arc,
+clippy, fixture syntax/page cursor/SQL quoting and incorrect test-target setup
+failures remain in distinct raw logs; they were fixed before the final gate.
+
+Gate 2 passed 93 steps in 693 s at `e9c439c80f67f8e945163132064c0eca7735f487`,
+but review found a real role-pruning bug before timing: a web role could win
+shared-store cleanup using selected executable plans, omit schedule/batch
+history, and suppress the jobs role for an hour. A mocked `store: Some` with
+runners disabled missed the actual pruned `store: None` plan. Actual compiled
+two-role and state-only plan regressions then failed on retained history and
+`ticks() == false`. Whole-schema cleanup holdings fixed both; the final full
+gate was repeated. Passing broad tests does not replace testing the actual
+pruned representation at a shared completion boundary.
+
+| Decisive diagnostic path under `b2-diagnostics/` | SHA-256 |
+|---|---|
+| `jadpo-b2-red.log` | `03d832b4fbafee0f2ff3c87b92dd91ff3c0cb253a6d83007cb8dc57ac504a107` |
+| `jadpo-b2-full-gate-1.log` | `b441b0796bf589f83885ca9ed58afd7a4f7a14207f01a915d63d862281ab5576` |
+| `jadpo-b2-full-gate-2.log` | `79bf3add332ecd331e435c5c8c53f101fa5a17ceb19fcdb6177f697b1fcd256b` |
+| `jadpo-b2-full-gate-3.log` | `e128c62b0f35a8349b265901acc2ef6830b573f7390cfb621cb26bcc4d298279` |
+| `jadpo-b2-pruned-plan-red-2.log` | `4062dc9bce4ca07ff912acca6b1f37956c83653348122b703c8e6bdc255b60a7` |
+| `jadpo-b2-pruned-red-7.log` | `500cc850eb48813d9daf3a34f3bce5a83dd4cab3c538097a393e663df8d4f533` |
+| `jadpo-b2-pruned-green-2.log` | `82b6a3158843054c4dcdc987a368cd944235492d03eccad8e942da580c1cc95d` |
+| `jadpo-b2-orphans-1.log` | `4da58a0f3f572d41baf2cf75ea7dc32378f3c49af988f62dd5ad008352eb4841` |
+| `jadpo-completed-worker-orphans-20261023.json` | `8f231478501182523f6f260eb6f65b9b981986d28e3641ad2ed062c8d0e116d5` |
+| `clean-reference-source-proof.json` | `472839abebf09a5ba56d287274cc00c8514914249504eebd9c71ad1591319b5b` |
+| `clean-candidate-source-proof.json` | `ff0d9ec0b2e2a5277973deb31630c6ddb88518f56f1e8c031c5a6c28c5c342f3` |
+| `gate3-after-process-inventory.json` | `5c8e62693ef898e4e9ad962875e212483e0bc98bc13f1bb9030ed1b2cffff071` |
+
+The immutable diagnostic set contains 70 files under `b2-diagnostics/`:
+all closed `jadpo-b2-*.log` attempts, both orphan identity proofs, source/tree
+proofs, before/after host contexts, and raw copies of the three gate1-generated
+initial migration folders. Its canonical path→SHA-256 map digest is
+`c40b999767f01ef903ee61cbc740c297c27ddb3b8335676d9fe09594b6aba945`. Recompute it without an extra evidence document:
+
+```python
+from pathlib import Path
+import hashlib, json
+root = Path("tools/bench/work/deliveries/b2-diagnostics")
+index = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+         for p in sorted(root.rglob("*")) if p.is_file()}
+print(len(index), hashlib.sha256(json.dumps(index, sort_keys=True,
+      separators=(",", ":")).encode()).hexdigest())
+```
+
+Reproduce from the two exact clean measured revisions above, in this worktree,
+building a fresh label with `deliveries.py build`. Finish/reap builds/tests,
+record owned-process and ambient/memory context, then run `idle_ticks.py --label
+<label> --ticks 5 --rounds 1` and warm `deliveries.py measure --label <label>
+--count 100 --rounds 1` smokes, followed by `idle_ticks.py --label <label>
+--ticks 100 --rounds 3` and `deliveries.py measure --label <label> --mode warm
+--count 10000 --rounds 3`. Preserve every JSON/log and compiler snapshot; verify
+strict end freshness and reap owned services before changing source. To compare
+a new harness or protocol, repeat both sides, never reuse an old stamp at a new
+HEAD. The permanent method is also in `tools/bench/README.md`.
