@@ -3124,3 +3124,25 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   Exact unmerged prerequisite `cb1b1a79` is included under Richard's stacked
   dependency permission; Claude's review and merges remain pending. Codex
   opens the PR without auto-merge and never merges it.
+
+- [x] **9.1b3 One-statement AI accounting:** `opus · high` after 9.1b2:
+  make each reserve and charge one statement, including every applicable
+  window. Preserve atomic refusal, concurrent limits, repair/retry top-ups,
+  usage accounting and conservative failure handling; measure statements
+  and latency before and after, using local fixtures without real accounts.
+  Built: each reserve/top-up and charge is one statement across applicable
+  windows. APP-only uses a simple conditional UPSERT; APP plus CALLER uses
+  an atomic all-window reservation, with unchanged conservative failure handling.
+  Real PostgreSQL races, exact accounting and compiled Workers refusal checks pass.
+  The final own-checkout full gate passed 93/93 in 480 s at `d709394e`;
+  measured candidate `f7a7ce6d` has its identical complete tracked tree.
+  The fresh native-runtime microfixture reduced SQL 3→2 (APP), 5→2 (CALLER)
+  and 7→3 (immediate fake retry). Median p95 was 0.315→0.285 ms,
+  0.516→0.434 ms and 0.650→0.639 ms respectively under varying host load.
+  Workers/Bun AI timing is N/A; this is not whole-application HTTP throughput.
+  The first candidate's APP-only regression, its replacement, every round,
+  failed/superseded checks, exact sources/artifacts and review invariants remain
+  in compiler/runtime §2.11 and `tools/bench/README.md`. Exact unmerged
+  prerequisite `025a38c3` is included under Richard's stacked-dependency
+  permission. Claude reviews and merges; Codex opens the PR without auto-merge
+  and never merges it.

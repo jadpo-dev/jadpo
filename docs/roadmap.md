@@ -245,11 +245,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
 - [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
 - [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
-- [ ] **9.1b3 One-statement AI accounting:** `opus · high` after 9.1b2:
-  make each reserve and charge one statement, including every applicable
-  window. Preserve atomic refusal, concurrent limits, repair/retry top-ups,
-  usage accounting and conservative failure handling; measure statements
-  and latency before and after, using local fixtures without real accounts.
+- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11, "One-statement AI accounting"; area 21, "Chosen in chunk 5.5v5"; `tools/bench/README.md`.
 - [ ] **9.1b4 Version checks in writes:** `opus · high` after 9.1b3:
   check a row loaded before an outside call in the write's own WHERE.
   Preserve first-loaded versions, row/policy refusals, repeated writes,
