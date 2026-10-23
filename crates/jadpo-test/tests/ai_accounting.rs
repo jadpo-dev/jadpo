@@ -349,3 +349,218 @@ fn reservations_waiting_on_app_recheck_its_committed_current_count() {
         assert_eq!(app, vec![vec![SqlValue::Int8(80)]]);
     }
 }
+
+// The runtime selection test binds APP-only take/top-up to this exact registry entry.
+fn app_reserve(url: &str, p: &[SqlValue]) -> Result<Vec<jadpo_runtime::Row>, StoreError> {
+    let statement = jadpo_runtime::statements::system_statements()
+        .into_iter()
+        .find(|(name, _)| *name == "ai_budget::TAKE_APP")
+        .expect("APP-only statement registered")
+        .1;
+    let rt = Runtime::new().unwrap();
+    let store = postgres(url).unwrap();
+    rt.block_on(store.query_once(&statement, &p[..8]))
+}
+
+#[test]
+fn app_only_first_existing_rows_refuse_atomically_and_release_exactly() {
+    let Some((_server, url)) = setup("ai_app_races") else {
+        return;
+    };
+    for cost in [false, true] {
+        for existing in [false, true] {
+            let day = 10 + i32::from(cost) * 2 + i32::from(existing);
+            if existing {
+                app_reserve(
+                    &url,
+                    &params(day, None, 0, 0, (100, 100), cost.then_some(100), 1000),
+                )
+                .unwrap();
+            }
+            let barrier = Arc::new(Barrier::new(16));
+            let joins: Vec<_> = (0..16)
+                .map(|_| {
+                    let barrier = Arc::clone(&barrier);
+                    let url = url.clone();
+                    std::thread::spawn(move || {
+                        let p = params(
+                            day,
+                            None,
+                            if cost { 1 } else { 30 },
+                            if cost { 30 } else { 0 },
+                            (100, 100),
+                            cost.then_some(100),
+                            2000,
+                        );
+                        barrier.wait();
+                        app_reserve(&url, &p)
+                    })
+                })
+                .collect();
+            let mut passed = 0;
+            for join in joins {
+                let result = join.join().unwrap().unwrap();
+                if !result.is_empty() {
+                    assert_eq!(result, vec![vec![SqlValue::Int4(1)]]);
+                    passed += 1;
+                }
+            }
+            assert_eq!(passed, 3);
+            let before = snapshot(&url);
+            assert!(
+                app_reserve(
+                    &url,
+                    &params(day, None, 30, 30, (100, 100), Some(100), 3000)
+                )
+                .unwrap()
+                .is_empty()
+            );
+            assert_eq!(snapshot(&url), before, "refusal does not touch APP");
+        }
+    }
+    // Failed top-up and failed charge keep the APP hold, then one charge releases it.
+    app_reserve(&url, &params(1, None, 60, 90, (100, 100), Some(150), 1000)).unwrap();
+    let before = snapshot(&url);
+    sql(
+        &url,
+        "ALTER TABLE jadpo_ai_usage ADD CONSTRAINT injected_app CHECK (reserved_tokens <= 70)",
+    );
+    assert!(matches!(
+        app_reserve(&url, &params(1, None, 20, 30, (100, 100), Some(150), 2000)),
+        Err(StoreError::Statement(_))
+    ));
+    assert_eq!(snapshot(&url), before);
+    let rt = Runtime::new().unwrap();
+    let store = postgres(&url).unwrap();
+    let charge = vec![
+        SqlValue::Date(1),
+        SqlValue::Text("app".into()),
+        SqlValue::Text(String::new()),
+        SqlValue::Int8(21),
+        SqlValue::Int8(7),
+        SqlValue::Int8(5),
+        SqlValue::Int8(60),
+        SqlValue::Int8(31),
+        SqlValue::Int8(90),
+        SqlValue::Text("USD".into()),
+        SqlValue::Timestamp(2000),
+        SqlValue::Null(SqlType::Text),
+        SqlValue::Text("answer model".into()),
+    ];
+    sql(
+        &url,
+        "ALTER TABLE jadpo_ai_usage ADD CONSTRAINT injected_charge CHECK (scope <> 'prompt')",
+    );
+    assert!(
+        rt.block_on(store.query_once(ai_budget::DEBIT, &charge))
+            .is_err()
+    );
+    assert_eq!(snapshot(&url), before);
+    sql(
+        &url,
+        "ALTER TABLE jadpo_ai_usage DROP CONSTRAINT injected_charge",
+    );
+    rt.block_on(store.query_once(ai_budget::DEBIT, &charge))
+        .unwrap();
+    assert_eq!(
+        sql(
+            &url,
+            "SELECT scope, calls, input_tokens, output_tokens, cached_tokens, reserved_tokens, cost_micros, reserved_micros, currency FROM jadpo_ai_usage WHERE day = '1970-01-02' ORDER BY scope"
+        ),
+        ["app", "prompt"].map(|scope| vec![
+            SqlValue::Text(scope.into()),
+            SqlValue::Int4(1),
+            SqlValue::Int8(21),
+            SqlValue::Int8(7),
+            SqlValue::Int8(5),
+            SqlValue::Int8(0),
+            SqlValue::Int8(31),
+            SqlValue::Int8(0),
+            SqlValue::Text("USD".into())
+        ])
+    );
+}
+
+#[test]
+fn app_only_waiters_recheck_locked_current_tokens_and_cost() {
+    let Some((_server, url)) = setup("ai_app_blocked") else {
+        return;
+    };
+    for cost in [false, true] {
+        for first in [false, true] {
+            let day = 10 + i32::from(cost) * 2 + i32::from(first);
+            if !first {
+                app_reserve(
+                    &url,
+                    &params(day, None, 0, 0, (100, 100), cost.then_some(100), 1000),
+                )
+                .unwrap();
+            }
+            let runtime = Runtime::new().unwrap();
+            let store = postgres(&url).unwrap();
+            let mut holder = runtime.block_on(store.begin()).unwrap();
+            if first {
+                runtime.block_on(holder.execute(&format!("INSERT INTO jadpo_ai_usage VALUES (DATE '1970-01-01' + {day}, 'app', '', 0, 0, 0, 0, {}, 0, {}, NULL, '2000-01-01')",if cost {0}else{40},if cost {40}else{0}),&[])).unwrap();
+            } else {
+                runtime.block_on(holder.execute(&format!("UPDATE jadpo_ai_usage SET reserved_tokens = {}, reserved_micros = {} WHERE day = DATE '1970-01-01' + {day} AND scope = 'app'",if cost {0}else{40},if cost {40}else{0}),&[])).unwrap();
+            }
+            let barrier = Arc::new(Barrier::new(3));
+            let joins: Vec<_> = (0..2)
+                .map(|_| {
+                    let url = url.clone();
+                    let barrier = Arc::clone(&barrier);
+                    std::thread::spawn(move || {
+                        let p = params(
+                            day,
+                            None,
+                            if cost { 1 } else { 40 },
+                            if cost { 40 } else { 0 },
+                            (100, 100),
+                            cost.then_some(100),
+                            2000,
+                        );
+                        barrier.wait();
+                        app_reserve(&url, &p)
+                    })
+                })
+                .collect();
+            barrier.wait();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let waiting = sql(
+                    &url,
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock' AND cardinality(pg_blocking_pids(pid)) > 0 AND query LIKE '%jadpo_ai_usage%'",
+                );
+                if waiting == vec![vec![SqlValue::Int8(2)]] {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "APP waiters must block: {waiting:?}"
+                );
+                std::thread::yield_now();
+            }
+            runtime.block_on(holder.commit()).unwrap();
+            let successes = joins
+                .into_iter()
+                .filter_map(|j| {
+                    let rows = j.join().unwrap().unwrap();
+                    (!rows.is_empty()).then_some(rows)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(successes, vec![vec![vec![SqlValue::Int4(1)]]]);
+            assert_eq!(
+                sql(
+                    &url,
+                    &format!(
+                        "SELECT reserved_tokens, reserved_micros FROM jadpo_ai_usage WHERE day = DATE '1970-01-01' + {day} AND scope = 'app'"
+                    )
+                ),
+                vec![vec![
+                    SqlValue::Int8(if cost { 1 } else { 80 }),
+                    SqlValue::Int8(if cost { 80 } else { 0 })
+                ]]
+            );
+        }
+    }
+}

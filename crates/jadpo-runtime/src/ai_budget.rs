@@ -781,6 +781,121 @@ mod tests {
     }
 
     #[test]
+    fn app_only_take_and_topup_use_the_registered_single_window_statement() {
+        let host = Metered::default();
+        let places = Places::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            },
+        );
+        let plan = plan();
+        let ai = ai(&plan);
+        let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+            .unwrap()
+            .unwrap();
+        assert!(crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+        let calls = host.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0].1.len(),
+            8,
+            "APP-only reservation needs only its own eight parameters"
+        );
+        let registered = crate::statements::system_statements()
+            .into_iter()
+            .find(|(name, _)| *name == "ai_budget::TAKE_APP")
+            .expect("APP-only statement registered")
+            .1;
+        assert_eq!(calls[0].0, registered);
+        assert_eq!(calls[1].0, registered);
+        assert_eq!(taken.as_ref().unwrap().tokens, 65);
+    }
+
+    #[test]
+    fn app_only_empty_is_refusal_but_malformed_or_any_store_fault_is_unavailable() {
+        for (answer, expected) in [
+            (Ok(vec![]), Refused::OverBudget),
+            (Ok(vec![vec![SqlValue::Int4(0)]]), Refused::Unavailable),
+            (Ok(vec![vec![SqlValue::Int8(1)]]), Refused::Unavailable),
+            (Ok(vec![vec![SqlValue::Int4(1)]; 2]), Refused::Unavailable),
+            (
+                Err(StoreError::Conflict {
+                    constraint: "jadpo_ai_usage_pkey".into(),
+                }),
+                Refused::Unavailable,
+            ),
+            (
+                Err(StoreError::Conflict {
+                    constraint: "other".into(),
+                }),
+                Refused::Unavailable,
+            ),
+            (Err(StoreError::ConcurrentChange), Refused::Unavailable),
+            (
+                Err(StoreError::Statement("injected".into())),
+                Refused::Unavailable,
+            ),
+            (Err(StoreError::Unavailable), Refused::Unavailable),
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            host.answers.borrow_mut().push_back(answer.clone());
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            let plan = plan();
+            let ai = ai(&plan);
+            assert_eq!(
+                crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                    .unwrap()
+                    .unwrap_err(),
+                expected
+            );
+            assert_eq!(ctx.ai_spent(), 0);
+            assert_eq!(host.calls.borrow().len(), 1);
+            let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                .unwrap()
+                .unwrap();
+            host.calls.borrow_mut().clear();
+            host.answers.borrow_mut().push_back(answer);
+            assert!(!crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+            assert_eq!(
+                (
+                    taken.as_ref().unwrap().tokens,
+                    taken.as_ref().unwrap().micros
+                ),
+                (50, 0)
+            );
+            assert_eq!(host.calls.borrow().len(), 1);
+        }
+    }
+
+    #[test]
+    fn app_only_first_row_and_topup_precheck_tokens_and_cost_without_sql() {
+        let host = Metered::default();
+        let windows = vec![(APP, String::new(), 100)];
+        for (tokens, micros) in [(101, 0), (1, 101)] {
+            assert_eq!(
+                crate::block_on(reserve(&host, 1, &windows, Some(100), tokens, micros, 0)).unwrap(),
+                Err(Refused::OverBudget)
+            );
+        }
+        assert!(
+            host.calls.borrow().is_empty(),
+            "cannot INSERT an oversized first row"
+        );
+    }
+
+    #[test]
     fn only_the_private_refusal_constraint_means_over_budget() {
         for (error, expected) in [
             (
@@ -812,6 +927,7 @@ mod tests {
                     clock: Clock::TEST,
                 },
             );
+            ctx.set_client(Some("192.0.2.1".into()));
             let plan = plan();
             let ai = ai(&plan);
             let answer =
@@ -827,7 +943,7 @@ mod tests {
         for rows in [
             vec![],
             vec![vec![SqlValue::Int4(0)]],
-            vec![vec![SqlValue::Int4(1)]; 2],
+            vec![vec![SqlValue::Int4(1)]; 3],
         ] {
             let host = Metered::default();
             let places = Places::new();
@@ -840,6 +956,7 @@ mod tests {
                     clock: Clock::TEST,
                 },
             );
+            ctx.set_client(Some("192.0.2.1".into()));
             let plan = plan();
             let ai = ai(&plan);
             assert_eq!(
