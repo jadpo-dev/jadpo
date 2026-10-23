@@ -112,16 +112,16 @@ def measure(args):
                     pg.sql('postgres', "ALTER SYSTEM SET log_statement='none'")
                     pg.sql('postgres', "SELECT pg_reload_conf()")
                     time.sleep(.1)
-                    row['host_cpu_before'] = golden.host_cpu_ticks()
-                    before = resource.getrusage(resource.RUSAGE_CHILDREN)
-                    service_before = spike.cpu_s(process.pid) if process else 0
-                    helper_before = spike.cpu_s(helper.pid) if helper else 0
                     row['latency_ms'] = []
                     row['responses']=[]
                     row['tick_logs']=[]
                     row['empty_before']=pg.state(target)
                     assert all(value==0 for value in row['empty_before'].values()),row['empty_before']
                     log_start=logs.stat().st_size if process else 0
+                    row['host_cpu_before'] = golden.host_cpu_ticks()
+                    before = resource.getrusage(resource.RUSAGE_CHILDREN)
+                    service_before = spike.cpu_s(process.pid) if process else 0
+                    helper_before = spike.cpu_s(helper.pid) if helper else 0
                     began = time.perf_counter()
                     for _ in range(args.ticks):
                         at = time.perf_counter()
@@ -131,16 +131,16 @@ def measure(args):
                         if not process:
                             row['tick_logs'].extend(audit_tick(response['stderr']+'\n'+response['stdout']))
                     row['seconds'] = time.perf_counter()-began
-                    if process:
-                        row['tick_logs']=audit_tick(logs.read_bytes()[log_start:].decode(),expected=args.ticks)
-                    row['empty_after']=pg.state(target)
-                    assert row['empty_after']==row['empty_before']
-                    row['ticks_per_second'] = args.ticks/row['seconds']
                     after = resource.getrusage(resource.RUSAGE_CHILDREN)
                     row['external_children_cpu_s'] = after.ru_utime+after.ru_stime-before.ru_utime-before.ru_stime
                     row['service_cpu_s'] = spike.cpu_s(process.pid)-service_before if process else None
                     row['helper_cpu_s'] = spike.cpu_s(helper.pid)-helper_before if helper else None
                     row['server_cpu_scope'] = 'workerd+pool helper, or native external child; excludes PostgreSQL and Python'
+                    if process:
+                        row['tick_logs']=audit_tick(logs.read_bytes()[log_start:].decode(),expected=args.ticks)
+                    row['empty_after']=pg.state(target)
+                    assert row['empty_after']==row['empty_before']
+                    row['ticks_per_second'] = args.ticks/row['seconds']
                     row['host_cpu_after'] = golden.host_cpu_ticks()
                     row['load'] = os.getloadavg()
                     row['ok'] = True
