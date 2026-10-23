@@ -3020,3 +3020,41 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   skips are recorded in the permanent validation facts. General compiler proofs
   and production provider/edge transport remain outside this baseline;
   independent review and performance comparison remain required.
+
+- [x] **9.1d Golden todo and local comparison:** `opus · high` after 9.1a,
+  implement the actual golden todo and strong TypeScript baseline from
+  `examples/golden-todo` on both sides, establish all 44 acceptance cases,
+  audit the reached request path and fix missing required guarantees, then
+  compare the complete application plus focused reads, writes, signed-in
+  lists, large rows and cold start on native, Wasm under workerd, Bun and
+  Node. Validate responses and persisted state, report p95 and throughput
+  with repeatable method and honest variability. Phase 10.1's golden todo
+  end to end on both targets, its contract cases passing, and independent
+  review of the whole first build remain required, as does Phase 10.2's
+  agent comparison. Do not substitute generic fixtures for this benchmark.
+  Needed before runtime performance changes. Delivered through 9.1d1–9.1d4
+  below; sessions take their first unticked concrete subchunk. The split
+  changes sizing, not the application or comparison scope.
+  Built through 9.1d1–9.1d4: the actual golden app, generic prerequisites,
+  its strong TypeScript counterpart and all 44 cases on all four local
+  targets. Full application and separate focused comparisons are published
+  in compiler/runtime §2.11 with method and busy-host limitations. Phase
+  10's whole-build independent review and agent comparison remain required;
+  review and PR merges remain pending.
+
+- [x] **9.1d4 Local application comparison:** `opus · high` after 9.1a,
+  9.1d2 and 9.1d3: run the complete golden todo plus focused reads, writes,
+  signed-in lists, large rows and cold start on native, workerd, Bun and
+  Node. Use the same validated contracts, authentication and fixtures;
+  check responses and persisted state, and record throughput, p95, cold
+  start, memory, exact sources and repeatable method with honest variability.
+  Tick 9.1d only after all four subchunks meet its original acceptance.
+  Built: ordinary production hosts, strict source/artifact freshness,
+  response and persisted-state verification, and complete three-round
+  local matrices: 108 golden cells and 72 focused cells, all verified.
+  The own-checkout full gate passed 92/92, including all 176 contract
+  obligations and 42 TypeScript tests. Measurements are explicitly
+  provisional on a busy host; they establish neither edge performance nor
+  production capacity. Permanent facts and all-run variability are in
+  compiler/runtime §2.11; raw results remain in the ignored harness work
+  directories. No PR was merged or set to auto-merge by Codex.

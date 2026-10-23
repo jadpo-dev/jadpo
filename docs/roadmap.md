@@ -221,34 +221,17 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   not acceptance (2026-10-22). This is an umbrella: sessions take the first
   unticked concrete subchunk below; tick 9.1 only once all four are complete.
 - [x] **9.1a Instrumentation and focused scaffold**: `tools/bench/README.md`; compiler/runtime §2.11.
-- [ ] **9.1d Golden todo and local comparison:** `opus · high` after 9.1a,
-  implement the actual golden todo and strong TypeScript baseline from
-  `examples/golden-todo` on both sides, establish all 44 acceptance cases,
-  audit the reached request path and fix missing required guarantees, then
-  compare the complete application plus focused reads, writes, signed-in
-  lists, large rows and cold start on native, Wasm under workerd, Bun and
-  Node. Validate responses and persisted state, report p95 and throughput
-  with repeatable method and honest variability. Phase 10.1's golden todo
-  end to end on both targets, its contract cases passing, and independent
-  review of the whole first build remain required, as does Phase 10.2's
-  agent comparison. Do not substitute generic fixtures for this benchmark.
-  Needed before runtime performance changes. Delivered through 9.1d1–9.1d4
-  below; sessions take their first unticked concrete subchunk. The split
-  changes sizing, not the application or comparison scope.
+- [x] **9.1d Golden todo and local comparison**: compiler/runtime §2.6, §2.7 and §2.11; `tools/bench/README.md`.
 - [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
 - [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
-- [ ] **9.1d4 Local application comparison:** `opus · high` after 9.1a,
-  9.1d2 and 9.1d3: run the complete golden todo plus focused reads, writes,
-  signed-in lists, large rows and cold start on native, workerd, Bun and
-  Node. Use the same validated contracts, authentication and fixtures;
-  check responses and persisted state, and record throughput, p95, cold
-  start, memory, exact sources and repeatable method with honest variability.
-  Tick 9.1d only after all four subchunks meet its original acceptance.
+- [x] **9.1d4 Local application comparison**: compiler/runtime §2.11, "Complete local application comparison"; `tools/bench/README.md`.
 - [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
+  Delivered through 9.1b1–9.1b5 below, in order. This split changes sizing,
+  not acceptance; sessions take the first unticked concrete subchunk.
   From the Phase 6 review: deliveries swept concurrently within each
   sweep, with a bound, and a backlog of 10,000 deliveries among the
   workloads.
@@ -258,6 +241,32 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   the AI budget's reserve and charge each one statement; a write after an
   outside call checking its version in its own `WHERE`; a delivery's
   breaker read joined into its claim.
+- [ ] **9.1b1 Bounded delivery sweeps and the backlog:** `opus · high` after
+  9.1d: measure the existing sweep, run deliveries concurrently within a
+  recorded bound, and add the 10,000-delivery workload. Keep the decided
+  sweep size, connection budgets, leases, retry safety, shutdown and hand-on
+  behaviour. Verify responses and durable effects, retain all runs, and
+  measure the same local protocol before and after the change.
+- [ ] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
+  9.1b1: measure idle-tick statements and latency, separate prompt work from
+  an hourly cleanup pass one instance takes under a lease, and batch every
+  delete. Preserve retention, handled-record safety, failure recovery and
+  multi-instance behaviour; report before/after measurements.
+- [ ] **9.1b3 One-statement AI accounting:** `opus · high` after 9.1b2:
+  make each reserve and charge one statement, including every applicable
+  window. Preserve atomic refusal, concurrent limits, repair/retry top-ups,
+  usage accounting and conservative failure handling; measure statements
+  and latency before and after, using local fixtures without real accounts.
+- [ ] **9.1b4 Version checks in writes:** `opus · high` after 9.1b3:
+  check a row loaded before an outside call in the write's own WHERE.
+  Preserve first-loaded versions, row/policy refusals, repeated writes,
+  transaction retries and keyed/unkeyed-call safety; exercise real races
+  and measure the same protocol before and after.
+- [ ] **9.1b5 Breakers in delivery claims:** `opus · high` after 9.1b4:
+  join a delivery's breaker read into its claim. Preserve multi-connection
+  holds, the one-probe lease, retry budgets and release/claim races; measure
+  statement counts and delivery performance before and after. Tick 9.1b
+  only when all five subchunks meet its original acceptance.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
   golden todo plus focused workloads on Workers against the equivalent Bun and
