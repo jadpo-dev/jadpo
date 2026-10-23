@@ -74,7 +74,7 @@ pub(crate) fn plan(
     let mut conditions = vec![
         // Hidden: `visible:` doesn't hold.
         jadpo_sql::condition(&mut purging, entity, visible, true)?,
-        text::at_most(&since.born, &cutoff),
+        text::less_than(&since.born, &cutoff),
     ];
     match held_by(model, &entity.name) {
         Some(paths) => {
