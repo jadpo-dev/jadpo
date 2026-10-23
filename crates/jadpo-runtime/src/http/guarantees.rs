@@ -624,7 +624,7 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
 #[test]
 fn readiness_lists_integrations_without_calling_them() {
     let mut encoded = serde_json::to_value(table(Some("main"), false)).expect("table");
-    encoded["integrations"] = serde_json::json!(["couriers", "ledger"]);
+    encoded["integrations"] = serde_json::json!(["provider_a", "provider_b"]);
     let table: RouteTable = serde_json::from_value(encoded).expect("table metadata");
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
@@ -638,7 +638,7 @@ fn readiness_lists_integrations_without_calling_them() {
     let body: serde_json::Value = serde_json::from_slice(&ready.body).expect("readiness");
     assert_eq!(
         body["integrations"],
-        serde_json::json!({"couriers":"unchecked","ledger":"unchecked"})
+        serde_json::json!({"provider_a":"unchecked","provider_b":"unchecked"})
     );
     assert_eq!(ready.header("cache-control"), Some("no-store"));
     let head = send(&table, &program, &host, &request("HEAD"), NOW);
@@ -662,7 +662,7 @@ fn readiness_lists_integrations_without_calling_them() {
     let body: serde_json::Value = serde_json::from_slice(&failed.body).expect("readiness");
     assert_eq!(
         body["integrations"],
-        serde_json::json!({"couriers":"unchecked","ledger":"unchecked"})
+        serde_json::json!({"provider_a":"unchecked","provider_b":"unchecked"})
     );
 }
 
