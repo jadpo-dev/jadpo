@@ -4156,15 +4156,23 @@ a new transaction at the same level in the same store, counted by a
 generation `boundary::Undo` compares, so a caught action whose call
 closed the snapshot its savepoint was in has its own transaction rolled
 back whole instead. Every update and delete plan carries a `RowCheck`
-(its table, where its `id` comes from, and `row_version`'s statement,
-`FOR NO KEY UPDATE`): before the write, a row loaded before a call is
-read and locked in the new transaction, once per transaction
-(`Ctx::check_row`), and another version, or none, is
-`StoreError::ConcurrentChange`, which reruns the action within
-`RERUN_ATTEMPTS`; the rerun takes the same steps, so a keyed call
+(its table, where its `id` comes from, its expected-version parameter and
+`row_version`'s failure-only `FOR NO KEY UPDATE` statement). Since chunk
+9.1b4 the write's own `WHERE` compares `xmin::text` with that parameter;
+a typed NULL bypasses it for an untracked row or a row this transaction
+already checked and locked. Only a mutation changing no row needs the
+extra probe, before policy, field, lifecycle-condition and missing-row
+classification. Another version, or none, is `StoreError::ConcurrentChange`,
+which reruns the action within `RERUN_ATTEMPTS`. The write transaction opens
+before consulting checked keys, and `Undo` restores the pre-savepoint set
+on rollback (clearing it when the callee's whole transaction ends), so a
+released lock never leaves an obsolete bypass. Successful tracked writes
+mark the row checked, allowing repeated updates or a delete after our own
+update without rejecting our own new `xmin`. The rerun takes the same steps,
+so a keyed call
 repeats under its key. A reference's refusal planned as `Raises::Gone`
 is a concurrent change too once rows were loaded before a call. The SQL
-goldens show both statements.
+goldens show the predicate and failure-only probe.
 
 **Calls before writes, checked** (chunk 7.4b; area 6, "Several outside
 calls"). `jadpo_check::types::outside_calls` works out, once per project,

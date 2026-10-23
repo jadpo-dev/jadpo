@@ -1901,10 +1901,13 @@ through:
   run in it; if another call comes before any write, they were a snapshot
   of their own and close the same way.
 - **The row version check.** An update, delete or transition of a row
-  loaded in a snapshot a call closed first reads that row's version in the
-  new transaction, locked as an update locks it (`FOR NO KEY UPDATE`),
-  once per transaction. A different version, or no row, is a concurrent
-  change. A write by `id` is held to it too when the action loaded that
+  loaded in a snapshot a call closed compares that row's version in the
+  write's own `WHERE` (chunk 9.1b4). A successful write locks it and checks
+  it in one statement, once per transaction. When no row is changed, a
+  failure-only `FOR NO KEY UPDATE` probe distinguishes a different version
+  or no row, a concurrent change, before the ordinary policy, field,
+  lifecycle-condition or missing-row refusal. A failed nested action's
+  savepoint restores only version checks whose locks survive its rollback. A write by `id` is held to it too when the action loaded that
   row before the call, as repeatable read holds any write to a row changed
   since the snapshot. A row is held to the version the action first
   loaded, so one read again after the call, or in a second snapshot, is

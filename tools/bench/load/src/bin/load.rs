@@ -36,6 +36,8 @@ struct Options {
     expected_json: Option<serde_json::Value>,
     created_title: Option<String>,
     created_todo_title: Option<String>,
+    updated_todo_title: Option<String>,
+    case_per_connection: bool,
     cases: Vec<Case>,
     address_pool: u64,
 }
@@ -55,6 +57,8 @@ fn options() -> Options {
         expected_json: None,
         created_title: None,
         created_todo_title: None,
+        updated_todo_title: None,
+        case_per_connection: false,
         cases: Vec::new(),
         address_pool: 0,
     };
@@ -105,6 +109,8 @@ fn options() -> Options {
                     .collect();
                 assert!(!o.cases.is_empty(), "at least one case");
             }
+            "--case-per-connection" => o.case_per_connection = true,
+            "--expect-updated-todo-title" => o.updated_todo_title = Some(value()),
             "--expect-created-title" => o.created_title = Some(value()),
             "--expect-created-todo-title" => o.created_todo_title = Some(value()),
             "--threads" => o.threads = value().parse().expect("a count"),
@@ -126,6 +132,19 @@ fn options() -> Options {
         o.duration.is_finite() && o.duration > 0.0 && o.warmup.is_finite() && o.warmup >= 0.0,
         "finite positive duration and nonnegative warmup"
     );
+    if o.case_per_connection {
+        assert!(
+            o.cases.len() >= o.connections,
+            "one case per connection is required"
+        );
+        let mut paths = std::collections::BTreeSet::new();
+        for case in o.cases.iter().take(o.connections) {
+            assert!(
+                case.path.as_ref().is_some_and(|path| paths.insert(path)),
+                "fixed cases require distinct paths"
+            );
+        }
+    }
     o
 }
 
@@ -289,6 +308,30 @@ fn cpu_seconds() -> f64 {
         + usage.ru_stime.tv_usec as f64 / 1e6
 }
 
+// UPDATE receipts keep the exact case identity and all stable public
+// fields. The external guard checks each timestamp against cell bounds
+// and every final stored column, after completed tails drain.
+fn updated_todo(title: &str, body: &[u8], case: Option<&Case>) -> Option<serde_json::Value> {
+    let case = case?;
+    let mut actual: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let object = actual.as_object_mut()?;
+    let expected = case.expected_json.as_ref()?.as_object()?;
+    if object.len() != 6
+        || object.get("title")?.as_str()? != title
+        || object.get("updated_at")?.as_str()?.is_empty()
+        || ["id", "status", "due_at", "created_at"]
+            .iter()
+            .any(|key| object.get(*key) != expected.get(*key))
+    {
+        return None;
+    }
+    object.insert(
+        "owner_id".into(),
+        serde_json::Value::String(case.owner.clone()?),
+    );
+    Some(actual)
+}
+
 fn main() {
     let o = Arc::new(options());
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -308,7 +351,7 @@ fn main() {
     let until = measure_from + Duration::from_secs_f64(o.duration);
     let tallies = runtime.block_on(async {
         let mut tasks = Vec::new();
-        for _ in 0..o.connections {
+        for connection in 0..o.connections {
             let o = o.clone();
             let counter = counter.clone();
             tasks.push(tokio::spawn(async move {
@@ -343,7 +386,14 @@ fn main() {
                         break;
                     }
                     let n = counter.fetch_add(1, Ordering::Relaxed);
-                    let case = case_at(&o.cases, n);
+                    let case = case_at(
+                        &o.cases,
+                        if o.case_per_connection {
+                            connection as u64
+                        } else {
+                            n
+                        },
+                    );
                     let address = if o.address_pool == 0 {
                         n
                     } else {
@@ -385,18 +435,26 @@ fn main() {
                     match answered {
                         Ok(Ok((status, close, body))) => {
                             *tally.all_statuses.entry(status).or_default() += 1;
-                            let mut valid = valid_body(
-                                case.and_then(|c| c.expected_json.as_ref())
-                                    .or(o.expected_json.as_ref()),
-                                o.created_title.as_deref(),
-                                &body,
-                            );
+                            let mut valid = o.updated_todo_title.is_some()
+                                || valid_body(
+                                    case.and_then(|c| c.expected_json.as_ref())
+                                        .or(o.expected_json.as_ref()),
+                                    o.created_title.as_deref(),
+                                    &body,
+                                );
                             if let Some(title) = &o.created_todo_title {
                                 if let Some(receipt) = created_todo(
                                     title,
                                     &body,
                                     case.and_then(|c| c.owner.as_deref()),
                                 ) {
+                                    tally.created_rows.push(receipt);
+                                } else {
+                                    valid = false;
+                                }
+                            }
+                            if let Some(title) = &o.updated_todo_title {
+                                if let Some(receipt) = updated_todo(title, &body, case) {
                                     tally.created_rows.push(receipt);
                                 } else {
                                     valid = false;
@@ -481,7 +539,10 @@ fn main() {
     println!(
         "{}",
         serde_json::json!({
-            "schemaVersion": 3, "created_rows": created_rows, "connections": o.connections,
+            "schemaVersion": 3,
+            "created_rows": if o.updated_todo_title.is_none() { created_rows.clone() } else { Vec::new() },
+            "updated_rows": if o.updated_todo_title.is_some() { created_rows } else { Vec::new() },
+            "connections": o.connections,
             "load_cpu_s": cpu_seconds() - cpu_started, "load_wall_s": started.elapsed().as_secs_f64(), "load_threads": o.threads, "requests": latencies.len(),
             "rps": latencies.len() as f64 / elapsed, "p50_us": pct(50.0),
             "p90_us": pct(90.0), "p95_us": pct(95.0), "p99_us": pct(99.0),
@@ -604,6 +665,50 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn updated_receipts_hold_identity_fields_and_reject_bad_values() {
+        let expected = serde_json::json!({"id":"row","title":"before","status":"open","due_at":null,"created_at":"2026-01-15T12:00:00Z","updated_at":"old"});
+        let case = Case {
+            headers: vec![],
+            owner: Some("owner".into()),
+            path: Some("/todos/row".into()),
+            expected_json: Some(expected.clone()),
+        };
+        let mut actual = expected;
+        actual["title"] = serde_json::json!("bench-patch");
+        actual["updated_at"] = serde_json::json!("new");
+        assert!(
+            updated_todo(
+                "bench-patch",
+                &serde_json::to_vec(&actual).unwrap(),
+                Some(&case)
+            )
+            .is_some()
+        );
+        for field in ["id", "title", "status", "due_at", "created_at"] {
+            let mut wrong = actual.clone();
+            wrong[field] = serde_json::json!("wrong");
+            assert!(
+                updated_todo(
+                    "bench-patch",
+                    &serde_json::to_vec(&wrong).unwrap(),
+                    Some(&case)
+                )
+                .is_none(),
+                "{field}"
+            );
+        }
+        actual["updated_at"] = serde_json::json!(null);
+        assert!(
+            updated_todo(
+                "bench-patch",
+                &serde_json::to_vec(&actual).unwrap(),
+                Some(&case)
+            )
+            .is_none()
+        );
+    }
+
     #[tokio::test]
     async fn responses_return_the_whole_content_length_body() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

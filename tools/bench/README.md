@@ -695,3 +695,88 @@ subscriber path is evidence for those costs; these microbenchmarks cannot
 stand in for it. Next comparison work must implement the actual golden
 contract and strong baseline, fix required reached-boundary gaps, and verify
 all 44 cases before making app performance claims.
+
+### Version checks in writes (9.1b4)
+
+`version_writes.py` compares the exact prerequisite's production
+`crates/*/src` with the candidate, retaining the same final harness on both
+sides. The build label is immutable. `ai_accounting.source()` and
+`validate()` guard every tracked file, Git mode (including literal symlink
+targets), HEAD, tree and executable at both ends. Each label saves the
+compiler, fixture, HTTP load tool, generated native/Worker artifacts,
+TypeScript output and the actual Bun/Node/workerd/PostgreSQL client
+binaries, hashes and versions. Original artifact paths remain guarded too.
+A source or artifact change requires a fresh build; no old-source bypass.
+
+```
+CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4 \
+  python3 tools/bench/version_writes.py build --label <fresh-label>
+python3 tools/bench/version_writes.py runtime --label <fresh-label> --calls 500
+python3 tools/bench/version_writes.py patch --label <fresh-label> --warmup 2 --duration 5
+```
+
+The first command runs the existing golden application's complete 44-case
+contract on all four targets before generating its production HTTP
+artifacts. All pinned npm installs disable lifecycle scripts. Selected
+inherited and effective Rust build flags are recorded separately. Before
+building a reference, restore all affected production source directories
+from its exact commit and commit that state, retaining the final harness.
+Before building the candidate, restore the entire clean gated tree,
+including modes, and prove `git write-tree` equals its gated tree. Run both
+sides sequentially, with no concurrent builds or benchmarks; retain start
+and end host/process inventories and all failed attempts. Never reuse a
+label or overwrite a result.
+
+There are two deliberately separate workloads:
+
+- **Compiler-generated-plan runtime fixture.** A release Rust executable
+  loads the shared ordinary Jadpo shipping project with `Prepared`, after
+  its matched compiler makes a migration. It executes through interpreter
+  dispatch and the production action boundary/write runtime, with a local
+  capability fake and real disposable PostgreSQL. It is not generated
+  native application or HTTP throughput. Each of three rounds performs
+  malformed-provider and real-stale-row controls, 50 warmups, one SQL census,
+  and 500 measured calls. Each call reads a shipment, closes its snapshot,
+  calls a changing keyed provider operation, then updates the shipment.
+  It validates the returned label, final persisted note/label, one provider
+  call per successful measured action, and no open action transaction at
+  every provider call. The stale control must rerun and read the fresh note;
+  malformed wire output must preserve stored state. Python negative controls
+  reject incomplete rounds, wrong counts/quantiles, missing controls and
+  incorrect persisted values. PostgreSQL logging is observed on all three
+  active connections before the census offset. File-log readiness is
+  bounded by observed statement records, not an assumed flush delay.
+  The wrapper counts data SQL and explicit BEGIN/ROLLBACK/COMMIT commands
+  separately; PostgreSQL must observe that total plus the provider's one
+  independent no-transaction assertion query. Those control queries stay
+  in both timings, labelled separately. The raw census includes SQL and
+  bound parameter values. Bun and Workers timing are N/A for this fixture.
+  Whole-fixture child CPU includes compiler/setup, warmups, census and
+  controls; daemonized PostgreSQL backend CPU is excluded and unmeasured.
+- **Warm ordinary HTTP PATCH.** The existing golden application's
+  title-only `PATCH /todos/{todo_id}` runs on its generated release Worker
+  under local workerd and on persistent Bun, each with the same process
+  lifetime, fresh seed, real signed sessions, startup/readiness phase and
+  two-second pool/isolate warmup. Three rounds rotate target order, with
+  one and eight closed-loop keep-alive clients for five seconds per cell.
+  Each concurrent client has a disjoint fixed owned row and credential;
+  no overlapping requests share a row. The Rust load tool's opt-in fixed
+  case mapping preserves its existing default protocol. Every response
+  must match the expected identity, owner, title, status, due date and
+  creation time; update times must be valid zoned instants within the cell.
+  Final persisted rows must agree with the last response for each client,
+  and all fields except title/update time, including reminder/lifecycle
+  fields and every untouched row, must stay identical. Invalid-title and
+  foreign-owner refusals preserve all data. Deliberately bad receipt
+  timestamps and untouched-row mutations must fail the independent guard.
+  Server, helper/pool and load-generator CPU are reported separately;
+  PostgreSQL daemon CPU is unmeasured. This is local workerd evidence,
+  not Cloudflare edge capacity or an open-loop latency SLO.
+
+The focused statement reduction is the primary invariant. PATCH is the
+common-write regression control and the supported Worker/Bun comparison.
+Report every round and its range, including adverse cells. Investigate a
+material common-path slowdown rather than dropping a case or counting a
+short smoke as qualification. Raw files live under the ignored
+`tools/bench/work/version-writes/`; fact sections in `docs/compiler-runtime.md`
+record exact paired identities, results, failures, digests and limitations.

@@ -58,3 +58,9 @@ path = "tests/main.rs"
 name = "jadpo-bench-ai"
 path = "../../tools/bench/ai_accounting.rs"
 test = false
+
+# Ordinary compiler-generated write plans through the shared runtime.
+[[bin]]
+name = "jadpo-bench-versions"
+path = "../../tools/bench/version_writes.rs"
+test = false

@@ -680,6 +680,13 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "the repair café",
             example_project("23-repair-cafe", "workerd-repair-cafe"),
         ),
+        (
+            "a write after an outside call",
+            corpus_project(
+                &crate::call_snapshots::compiled_route_files(),
+                "workerd-version-write",
+            ),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -696,7 +703,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .iter()
         .map(|compared| (compared.tests, compared.passed))
         .collect();
-    assert_eq!(counts, [(3, 3), (4, 4)]);
+    assert_eq!(counts, [(3, 3), (4, 4), (1, 1)]);
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
         counts.iter().map(|(tests, _)| tests).sum::<usize>(),
