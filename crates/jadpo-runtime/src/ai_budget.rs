@@ -547,6 +547,228 @@ pub(crate) async fn debited<T>(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Us
 mod tests {
     use super::*;
 
+    use crate::{
+        Clock, Env, Host, Isolation, JsonCodecs, LocalFuture, Places, StoreError, Transaction,
+    };
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
+
+    #[derive(Default)]
+    struct Metered {
+        calls: RefCell<Vec<(String, Vec<SqlValue>)>>,
+        answers: RefCell<VecDeque<Result<Vec<crate::Row>, StoreError>>>,
+        missing: Cell<bool>,
+    }
+    impl Database for Metered {
+        fn begin_at(
+            &self,
+            _: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            Box::pin(async { Err(StoreError::Unavailable) })
+        }
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<crate::Row>, StoreError>> {
+            self.calls.borrow_mut().push((sql.into(), params.to_vec()));
+            let answer = self
+                .answers
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| Ok(vec![vec![SqlValue::Int4(1)]]));
+            Box::pin(async { answer })
+        }
+    }
+    impl Host for Metered {
+        fn random(&self, bytes: &mut [u8]) -> bool { bytes.fill(7); true }
+        fn database(&self, _: &str) -> Option<&dyn Database> {
+            (!self.missing.get()).then_some(self)
+        }
+    }
+    fn plan() -> jadpo_std::ai::AiPlan {
+        jadpo_std::ai::AiPlan {
+            connection: "local".into(),
+            driver: AiDriver::OpenAiCompatible(jadpo_std::ai::AiUrl::Written(
+                "http://localhost/v1".into(),
+            )),
+            models: vec![],
+            schema: jadpo_std::ai::SchemaMode::StrictSubset,
+            limits: Some(jadpo_std::ai::AiLimits {
+                store: "main".into(),
+                per_request: Some(1000),
+                per_day: 1000,
+                per_caller_per_day: Some(500),
+                cost: None,
+            }),
+            prices: vec![],
+        }
+    }
+    fn ai(plan: &jadpo_std::ai::AiPlan) -> Ai<'_> {
+        static PROMPTS: jadpo_std::prompt::PromptPlan =
+            jadpo_std::prompt::PromptPlan { entries: vec![] };
+        Ai {
+            plan,
+            prompts: &PROMPTS,
+            json: JsonCodecs::NONE,
+            providers: None,
+        }
+    }
+    const ASKED: Asked<'static> = Asked {
+        prompt: "answer",
+        model: "default",
+        max_output: 20,
+        attempts: 1,
+    };
+
+    #[test]
+    fn reserve_topup_and_debit_each_send_every_window_in_one_statement() {
+        let host = Metered::default();
+        let places = Places::new();
+        let mut ctx = Ctx::new(
+            &places,
+            &host,
+            Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            },
+        );
+        ctx.set_client(Some("2001:db8::1234".into()));
+        let plan = plan();
+        let ai = ai(&plan);
+        let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            host.calls.borrow().len(),
+            1,
+            "APP and CALLER reserved together"
+        );
+        assert_eq!(taken.as_ref().unwrap().windows.len(), 2);
+        assert!(crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+        assert_eq!(host.calls.borrow().len(), 2, "one top-up for both windows");
+        crate::block_on(debit(
+            &mut ctx,
+            taken,
+            Used {
+                input: 31,
+                output: 7,
+                cached: 9,
+            },
+        ))
+        .unwrap();
+        let calls = host.calls.borrow();
+        assert_eq!(calls.len(), 3, "one charge for APP, CALLER and PROMPT");
+        assert_eq!(calls[0].0, TAKE);
+        assert_eq!(calls[1].0, TAKE);
+        assert_eq!(calls[2].0, DEBIT);
+        assert_eq!(calls[2].1[6], SqlValue::Int8(65));
+        assert_eq!(ctx.ai_spent(), 38);
+        assert_eq!(calls[2].1[12], SqlValue::Text("answer local/model".into()));
+        let SqlValue::Text(caller) = &calls[0].1[8] else {
+            panic!("caller digest");
+        };
+        assert_eq!(caller.len(), 32);
+        assert!(!caller.contains(':'));
+        assert_eq!(calls[2].1[11], SqlValue::Text(caller.clone()));
+    }
+
+    #[test]
+    fn refused_and_failed_topups_leave_taken_exactly_held_without_compensation() {
+        for error in [
+            StoreError::Conflict {
+                constraint: "jadpo_ai_usage_pkey".into(),
+            },
+            StoreError::Conflict {
+                constraint: "another_key".into(),
+            },
+            StoreError::Statement("injected".into()),
+            StoreError::Unavailable,
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            ctx.set_client(Some("192.0.2.1".into()));
+            let plan = plan();
+            let ai = ai(&plan);
+            let mut taken = crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[]))
+                .unwrap()
+                .unwrap();
+            host.calls.borrow_mut().clear();
+            host.answers.borrow_mut().push_back(Err(error));
+            assert!(!crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+            let held = taken.as_ref().unwrap();
+            assert_eq!((held.tokens, held.micros), (50, 0));
+            assert_eq!(host.calls.borrow().len(), 1, "no compensating statement");
+            host.missing.set(true);
+            assert!(!crate::block_on(top_up(&ctx, &mut taken, 15)).unwrap());
+            crate::block_on(debit(
+                &mut ctx,
+                taken,
+                Used {
+                    input: 4,
+                    ..Used::default()
+                },
+            ))
+            .unwrap();
+            assert_eq!(
+                ctx.ai_spent(),
+                4,
+                "request usage still counted when store disappears"
+            );
+            assert_eq!(host.calls.borrow().len(), 1);
+        }
+    }
+
+    #[test]
+    fn only_the_private_refusal_constraint_means_over_budget() {
+        for (error, expected) in [
+            (
+                StoreError::Conflict {
+                    constraint: "jadpo_ai_usage_pkey".into(),
+                },
+                Refused::OverBudget,
+            ),
+            (
+                StoreError::Conflict {
+                    constraint: "other".into(),
+                },
+                Refused::Unavailable,
+            ),
+            (StoreError::ConcurrentChange, Refused::Unavailable),
+            (
+                StoreError::Statement("injected".into()),
+                Refused::Unavailable,
+            ),
+        ] {
+            let host = Metered::default();
+            let places = Places::new();
+            host.answers.borrow_mut().push_back(Err(error));
+            let mut ctx = Ctx::new(
+                &places,
+                &host,
+                Env {
+                    seed: Some(1),
+                    clock: Clock::TEST,
+                },
+            );
+            let plan = plan();
+            let ai = ai(&plan);
+            let answer =
+                crate::block_on(take(&mut ctx, &ai, ASKED, "local/model", 30, &[])).unwrap();
+            assert_eq!(answer.unwrap_err(), expected);
+            assert_eq!(host.calls.borrow().len(), 1);
+            assert_eq!(ctx.ai_spent(), 0);
+        }
+    }
+
     fn price() -> AiPrice {
         AiPrice {
             model: "acme-small".into(),

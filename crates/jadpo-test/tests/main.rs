@@ -15,3 +15,5 @@ mod authority;
 mod postgres;
 mod postgres_tls;
 mod records;
+
+mod ai_accounting;
