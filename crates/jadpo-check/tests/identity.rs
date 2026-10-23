@@ -614,3 +614,23 @@ authentication {
         "{found:?}"
     );
 }
+
+#[test]
+fn external_compound_subjects_are_explicitly_not_built() {
+    let source = r#"principal { user: { subject: Member.identity } }
+config { issuer: Url audience: Text }
+authentication { external_token: { issuer: config.issuer audience: config.audience } }
+entity Member {
+    id: Uuid
+    identity: Money { unique: true }
+}
+"#;
+    let found = support::problems(Layout::Loose, &[("main.jadpo", source)]);
+    assert!(
+        found
+            .iter()
+            .any(|problem| problem.contains("toolchain.not_built_yet:")
+                && problem.contains("subject")),
+        "{found:?}"
+    );
+}

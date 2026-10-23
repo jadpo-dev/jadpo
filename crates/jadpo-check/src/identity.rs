@@ -13,9 +13,10 @@
 //! `signing_key:` and a browser session's `origin:` read from settings
 //! (area 10), and the generated `POST /auth/exchange`; in chunk 5.5z:
 //! `sign_in:` with `passkey:`, whose routes the runtime answers; in chunk
-//! 7.3b: `magic_link:` and `on_first_sign_in:`. External tokens, sign-in
-//! providers and acting as an OAuth provider come later: each is
-//! `toolchain.not_built_yet` where it is written.
+//! 7.3b: `magic_link:` and `on_first_sign_in:`; in chunk 9.1d1:
+//! `external_token:` for provisioned active subjects. Its first-sign-in
+//! hook, sign-in providers and acting as an OAuth provider come later:
+//! each is `toolchain.not_built_yet` where it is written.
 
 use std::sync::Arc;
 
@@ -1427,6 +1428,36 @@ impl Reader<'_> {
             }
         }
         if !ok {
+            return None;
+        }
+        let unsupported_subject = self
+            .out
+            .variants
+            .iter()
+            .find(|variant| variant.kind == PrincipalKind::User)
+            .and_then(|variant| {
+                crate::data::entity_model(
+                    self.db,
+                    self.project,
+                    crate::lookups::Name::new(self.db, variant.entity.clone()),
+                )
+                .as_ref()
+                .and_then(|entity| {
+                    entity
+                        .fields
+                        .iter()
+                        .find(|field| field.name == variant.subject)
+                })
+                .map(|field| {
+                    field.compound.is_some()
+                        || field.json.is_some()
+                        || crate::data::sql_type(field).is_none()
+                })
+            })
+            .unwrap_or(false);
+        if unsupported_subject {
+            self.later(span.clone(), "A compound external-token subject",
+                "External-token subjects currently use a unique field with a scalar stored form; multi-column and structured subject lookups are not built yet");
             return None;
         }
         self.out.external_token = Some(ExternalToken {

@@ -1107,6 +1107,9 @@ impl Plan {
                 routes.apis.iter().any(|api| api.methods.contains(&method))
             };
             identity.signing_keys.retain(|(method, _)| taken(*method));
+            if !taken(jadpo_std::AuthenticationMethod::ExternalToken) {
+                identity.external_token = None;
+            }
             if !taken(jadpo_std::AuthenticationMethod::BrowserSession) {
                 identity.origin = None;
             }

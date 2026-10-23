@@ -303,6 +303,7 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
             },
         ],
         ticks: true,
+        public_identity: false,
         rate_limits: &[],
         queues: &[],
     };
@@ -368,6 +369,7 @@ fn a_worker_is_deployed_from_its_shim_and_its_wrangler_file() {
         required: &[],
         hyperdrive: &[],
         ticks: false,
+        public_identity: false,
         rate_limits: &[],
         queues: &[],
     }))
@@ -435,6 +437,7 @@ fn a_worker_is_given_a_rate_limiting_binding_for_each_limit() {
             required: &["DATABASE_URL".to_string()],
             hyperdrive: &[],
             ticks: true,
+            public_identity: false,
             rate_limits: &bindings,
             queues: &[],
         }))
@@ -491,6 +494,7 @@ fn a_worker_consumes_each_cloudflare_queue_it_receives() {
         required: &[],
         hyperdrive: &[],
         ticks: true,
+        public_identity: false,
         rate_limits: &bindings,
         queues: &[queue("warehouse_queue", "warehouse-events")],
     };
@@ -538,4 +542,23 @@ fn a_worker_consumes_each_cloudflare_queue_it_receives() {
     .expect("JSON");
     assert!(none.get("queues").is_none(), "{none}");
     assert_eq!(none["ratelimits"].as_array().map(Vec::len), Some(2));
+}
+
+#[test]
+fn external_identity_fetches_are_strictly_public_on_workers() {
+    let written = workers::wrangler(&workers::Wrangler {
+        app: "identity",
+        deployable: "web",
+        required: &[],
+        hyperdrive: &[],
+        ticks: false,
+        public_identity: true,
+        rate_limits: &[],
+        queues: &[],
+    });
+    let config: serde_json::Value = serde_json::from_str(&written).expect("JSON");
+    assert_eq!(
+        config["compatibility_flags"],
+        serde_json::json!(["global_fetch_strictly_public"])
+    );
 }

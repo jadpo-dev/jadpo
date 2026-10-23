@@ -989,6 +989,9 @@ pub struct ExternalTokenPlan {
     pub issuer: String,
     pub audience: String,
     pub lookup: String,
+    /// Subject field's codec in the program's JSON type table.
+    pub subject_type: u32,
+    pub subject_sql: crate::SqlType,
 }
 
 /// Listing, issuing and revoking credentials, limited to holders whose

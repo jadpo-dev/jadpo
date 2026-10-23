@@ -343,6 +343,10 @@ fn the_one_deployable_of_an_app_that_declares_none_leaves_out_only_its_tests() {
 /// session key and the site's origin, and robots on `staff`, with their
 /// own key; a pinner serving nothing runs the subscribers.
 fn signed_cafe(db: &Database) -> Project {
+    configured_cafe(db, false)
+}
+
+fn configured_cafe(db: &Database, external: bool) -> Project {
     let mut files: Vec<(String, String)> = CAFE
         .iter()
         .map(|(path, text)| {
@@ -373,6 +377,24 @@ fn signed_cafe(db: &Database) -> Project {
         "domains/cafe/entities/robot.jadpo".to_string(),
         "use cafe/types { Handle }\n\nentity Robot {\n    id: Uuid\n    name: Handle {\n        unique: true\n    }\n\n    policy: {\n        read: [Access.system]\n    }\n}\n".to_string(),
     ));
+    if external {
+        for (path, text) in &mut files {
+            if path == "app.jadpo" {
+                *text = text.replace(
+                    "AuthenticationMethod.browser_session",
+                    "AuthenticationMethod.external_token",
+                );
+            } else if path == "config.jadpo" {
+                *text = text.replacen(
+                    "config {",
+                    "config {\n    issuer: Url\n    audience: Text",
+                    1,
+                );
+            } else if path == "authentication.jadpo" {
+                *text = text.replacen("browser_session: {\n        cookie: \"cafe_session\"\n        signing_key: config.session_key\n        origin: config.site_origin\n    }", "external_token: {\n        issuer: config.issuer\n        audience: config.audience\n    }", 1);
+            }
+        }
+    }
     checked(db, &files)
 }
 
@@ -627,4 +649,40 @@ fn every_corpus_projects_deployables_hold_what_they_name() {
     }
     assert!(problems.is_empty(), "{problems:#?}");
     assert!(planned_count > 150, "the corpus was read: {planned_count}");
+}
+
+#[test]
+fn external_issuer_and_audience_are_kept_only_where_the_method_is_served() {
+    let db = Database::default();
+    let project = configured_cafe(&db, true);
+    let kiosk = planned(&db, project, "kiosk");
+    assert!(
+        kiosk
+            .runtime()
+            .routes
+            .identity
+            .as_ref()
+            .expect("identity")
+            .external_token
+            .is_some()
+    );
+    assert_eq!(
+        settings_of(&kiosk),
+        ["issuer", "audience", "database_url", "greeting"]
+    );
+    for name in ["office", "pinner"] {
+        let plan = planned(&db, project, name);
+        assert!(
+            plan.runtime()
+                .routes
+                .identity
+                .as_ref()
+                .is_none_or(|identity| identity.external_token.is_none())
+        );
+        assert!(
+            !settings_of(&plan)
+                .iter()
+                .any(|name| name == "issuer" || name == "audience")
+        );
+    }
 }

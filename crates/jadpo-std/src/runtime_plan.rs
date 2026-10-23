@@ -237,6 +237,10 @@ impl RuntimePlan {
                     .map(|(_, setting)| setting.as_str()),
             );
             out.extend(identity.origin.as_deref());
+            if let Some(external) = &identity.external_token {
+                out.push(external.issuer.as_str());
+                out.push(external.audience.as_str());
+            }
         }
         if let Some(crate::http::Hops::Setting(name)) = self
             .routes
