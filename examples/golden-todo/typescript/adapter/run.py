@@ -70,6 +70,10 @@ def inputs(source):
     for path in sorted(files):digest.update(str(path).encode());digest.update(path.read_bytes())
     return digest.hexdigest()
 
+def runtime_version(name):
+    try:return run([tool(name),'--version'],capture_output=True,text=True).stdout.strip()
+    except (RuntimeError,subprocess.SubprocessError):return 'unavailable'
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--contract-source',type=Path,required=True)
@@ -86,7 +90,7 @@ def main():
     selected=[case['id'] for case in document['cases'] if not args.case or case['id'] in args.case]
     if set(args.case)-module.CASES.keys():parser.error('unknown case')
     before=inputs(source)
-    provenance={'typescriptSource':str(PROJECT),'typescriptGit':git_state(ROOT),'sharedContractSource':str(source),'sharedContractGit':git_state(source),'beforeFingerprint':before,'runtimeVersions':{runtime:run([tool(runtime),'--version'],capture_output=True,text=True).stdout.strip() for runtime in runtimes}}
+    provenance={'typescriptSource':str(PROJECT),'typescriptGit':git_state(ROOT),'sharedContractSource':str(source),'sharedContractGit':git_state(source),'beforeFingerprint':before,'runtimeVersions':{runtime:runtime_version(runtime) for runtime in runtimes}}
     reports=[];server=None;controller=None;(PROJECT/'build').mkdir(exist_ok=True)
     temporary=tempfile.TemporaryDirectory(prefix='local-',dir=PROJECT/'build')
     try:
@@ -95,6 +99,8 @@ def main():
         if args.unit:
             server.prepare('golden_tests');run(['npm','run','test:all'],cwd=PROJECT,env={**env,'TEST_DATABASE_URL':server.url('golden_tests')})
         for runtime in runtimes:
+            if provenance['runtimeVersions'][runtime]=='unavailable':
+                reports.extend({'runtime':runtime,'id':identifier,'status':'failed','message':runtime+' executable unavailable'} for identifier in selected);continue
             if args.unit:
                 host_database='golden_host_'+runtime;server.prepare(host_database)
                 run([tool(runtime),str(HERE/'host-negatives.ts')],cwd=PROJECT,env={**env,'DATABASE_URL':server.url(host_database)})
@@ -105,6 +111,9 @@ def main():
                 except Exception as error:reports.append({'runtime':runtime,'id':identifier,'status':'failed','message':str(error)})
             controller.stop();controller=None
         server.stop();server=None
+    except Exception as error:
+        reached={(report['runtime'],report['id']) for report in reports}
+        reports.extend({'runtime':runtime,'id':identifier,'status':'failed','message':str(error)} for runtime in runtimes for identifier in selected if (runtime,identifier) not in reached)
     finally:
         if controller:controller.stop()
         if server:server.stop()
