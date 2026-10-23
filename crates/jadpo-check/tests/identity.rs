@@ -512,3 +512,125 @@ fn a_route_anyone_may_call_lists_only_what_everyone_may_read() {
         "{found:?}"
     );
 }
+
+/// External JWTs carry an identity provider's subject, never its profile
+/// or policy. Issuer and audience are deployment configuration (area 8).
+fn external(settings: &str, configuration: &str) -> Vec<String> {
+    with(
+        &format!("authentication {{\n    external_token: {{\n{settings}\n    }}\n}}"),
+        &format!("config {{\n{configuration}\n}}"),
+    )
+}
+
+#[test]
+fn an_external_token_reads_its_issuer_and_audience_from_configuration() {
+    let found = external(
+        "        issuer: config.issuer\n        audience: config.audience",
+        "    issuer: Url\n    audience: Text",
+    );
+    assert_eq!(found, Vec::<String>::new(), "{found:?}");
+}
+
+#[test]
+fn an_external_token_requires_both_settings_and_their_declared_types() {
+    for (settings, configuration, rule) in [
+        (
+            "issuer: config.issuer",
+            "issuer: Url",
+            "semantic.auth_setting_required",
+        ),
+        (
+            "audience: config.audience",
+            "audience: Text",
+            "semantic.auth_setting_required",
+        ),
+        (
+            "issuer: config.issuer\naudience: config.audience",
+            "issuer: Text\naudience: Text",
+            "semantic.auth_setting_invalid",
+        ),
+        (
+            "issuer: config.issuer\naudience: config.audience",
+            "issuer: Url\naudience: Int",
+            "semantic.auth_setting_invalid",
+        ),
+        (
+            "issuer: config.issuer\naudience: config.audience\njwks_uri: config.issuer",
+            "issuer: Url\naudience: Text",
+            "semantic.auth_setting_unknown",
+        ),
+        (
+            "issuer: \"https://login.example\"\naudience: config.audience",
+            "audience: Text",
+            "semantic.auth_setting_invalid",
+        ),
+    ] {
+        let found = external(settings, configuration);
+        assert!(
+            found.iter().any(|p| p.contains(&format!(" {rule}:"))),
+            "{settings}: {found:?}"
+        );
+        assert!(
+            !found
+                .iter()
+                .any(|p| p.contains(" toolchain.not_built_yet:")),
+            "{found:?}"
+        );
+    }
+}
+
+#[test]
+fn external_provider_signatures_do_not_need_an_application_signing_key() {
+    let found = with(
+        "authentication {\n    external_token: { issuer: config.issuer audience: config.audience }\n}",
+        "application { revocation_delay: 5m }\nconfig { issuer: Url audience: Text }",
+    );
+    assert_eq!(found, Vec::<String>::new(), "{found:?}");
+}
+
+#[test]
+fn an_external_token_still_requires_the_application_user_principal() {
+    let found = support::problems(
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            r#"config {
+    issuer: Url
+    audience: Text
+}
+authentication {
+    external_token: {
+        issuer: config.issuer
+        audience: config.audience
+    }
+}
+"#,
+        )],
+    );
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("semantic.auth_principal_required:")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn external_compound_subjects_are_explicitly_not_built() {
+    let source = r#"principal { user: { subject: Member.identity } }
+config { issuer: Url audience: Text }
+authentication { external_token: { issuer: config.issuer audience: config.audience } }
+entity Member {
+    id: Uuid
+    identity: Money { unique: true }
+}
+"#;
+    let found = support::problems(Layout::Loose, &[("main.jadpo", source)]);
+    assert!(
+        found
+            .iter()
+            .any(|problem| problem.contains("toolchain.not_built_yet:")
+                && problem.contains("subject")),
+        "{found:?}"
+    );
+}

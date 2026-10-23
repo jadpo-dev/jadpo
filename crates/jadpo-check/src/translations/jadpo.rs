@@ -53,7 +53,7 @@ pub fn api_features(db: &dyn Db, project: Project, api: &str) -> BTreeSet<Featur
     let methods = crate::routes::apis::accepted_methods(db, project, api);
     let users = methods
         .iter()
-        .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+        .any(|method| matches!(method, M::BrowserSession | M::ApiToken | M::ExternalToken));
     let services = methods.contains(&M::ServiceKey);
     let browser = methods.contains(&M::BrowserSession);
     let callers: Vec<_> = routes
@@ -66,6 +66,9 @@ pub fn api_features(db: &dyn Db, project: Project, api: &str) -> BTreeSet<Featur
     out.insert(Feature::SignIn);
     if users {
         out.insert(Feature::UserSignIn);
+    }
+    if methods.contains(&M::ExternalToken) {
+        out.insert(Feature::ExternalToken);
     }
     if services {
         out.insert(Feature::ServiceSignIn);
@@ -110,7 +113,7 @@ pub fn messages_on(db: &dyn Db, project: Project) -> Vec<&'static Message> {
     let on = features(db, project);
     jadpo_text::MESSAGES
         .iter()
-        .filter(|message| on.contains(&message.feature))
+        .filter(|message| message.enabled(on))
         .collect()
 }
 
@@ -279,9 +282,10 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         // Jadpo words them (area 16, "Built-in emails", level 1; chunk
         // 7.3b).
         let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
-        for message in jadpo_text::MESSAGES.iter().filter(|message| {
-            message.kind == jadpo_text::Kind::Message && on.contains(&message.feature)
-        }) {
+        for message in jadpo_text::MESSAGES
+            .iter()
+            .filter(|message| message.kind == jadpo_text::Kind::Message && message.enabled(on))
+        {
             out.entries.push(jadpo_std::translation::TranslationEntry {
                 key: member_name(message.key),
                 params: message
@@ -383,9 +387,10 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     // supported locale: the app's own, then what Jadpo ships. What Jadpo's
     // own emails are written with (area 16, "Built-in emails"; chunk
     // 7.3b), each given its fields and then `app_name`.
-    for message in jadpo_text::MESSAGES.iter().filter(|message| {
-        message.kind == jadpo_text::Kind::Message && on.contains(&message.feature)
-    }) {
+    for message in jadpo_text::MESSAGES
+        .iter()
+        .filter(|message| message.kind == jadpo_text::Kind::Message && message.enabled(on))
+    {
         let mut by_locale = found.remove(message.key).unwrap_or_default();
         for &locale in &plan.supported {
             if by_locale.iter().any(|(at, _)| *at == locale) {
@@ -413,7 +418,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     // chunk 7.3).
     for message in jadpo_text::MESSAGES
         .iter()
-        .filter(|message| message.kind == jadpo_text::Kind::Enum && on.contains(&message.feature))
+        .filter(|message| message.kind == jadpo_text::Kind::Enum && message.enabled(on))
     {
         let mut by_locale = found.remove(message.key).unwrap_or_default();
         for &locale in &plan.supported {
@@ -746,8 +751,7 @@ pub fn failure_texts(
             .failures
             .iter()
             .filter(|words| {
-                jadpo_text::message_named(&words.code)
-                    .is_some_and(|message| on.contains(&message.feature))
+                jadpo_text::message_named(&words.code).is_some_and(|message| message.enabled(&on))
             })
             .map(|words| super::failures::FailureText {
                 code: words.code.clone(),

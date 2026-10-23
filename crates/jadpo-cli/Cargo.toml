@@ -54,6 +54,9 @@ getrandom.workspace = true
 openssl.workspace = true
 
 [dev-dependencies]
+# Local OIDC provider TLS fixtures, using the native host's test authority.
+rcgen.workspace = true
+rustls.workspace = true
 # The software authenticator the passkey tests sign in with (area 8).
 jadpo-host-native = { workspace = true, features = ["test-authenticator", "test-outbound"] }
 regex.workspace = true

@@ -31,6 +31,8 @@ pub enum Feature {
     SignIn,
     /// The API signs users in (a browser session or an API token).
     UserSignIn,
+    /// Tokens from an external identity provider.
+    ExternalToken,
     /// The API signs services in (a service key).
     ServiceSignIn,
     /// The API accepts browser sessions, whose writes carry a CSRF token.
@@ -56,6 +58,7 @@ impl Feature {
             Feature::Requests => "Requests",
             Feature::SignIn => "Signing in",
             Feature::UserSignIn => "Signing users in",
+            Feature::ExternalToken => "External identity tokens",
             Feature::ServiceSignIn => "Signing services in",
             Feature::BrowserSession => "Browser sessions",
             Feature::Locales => "Locales",
@@ -71,6 +74,7 @@ impl Feature {
             Feature::Requests => "requests",
             Feature::SignIn => "sign_in",
             Feature::UserSignIn => "user_sign_in",
+            Feature::ExternalToken => "external_token",
             Feature::ServiceSignIn => "service_sign_in",
             Feature::BrowserSession => "browser_session",
             Feature::Locales => "locales",
@@ -86,6 +90,7 @@ impl Feature {
             Feature::Requests => "an API serves routes",
             Feature::SignIn => "a route needs a caller",
             Feature::UserSignIn => "an API signs users in",
+            Feature::ExternalToken => "an API accepts external identity tokens",
             Feature::ServiceSignIn => "an API signs services in",
             Feature::BrowserSession => "an API accepts browser sessions",
             Feature::Locales => "the application declares its locales",
@@ -95,10 +100,11 @@ impl Feature {
         }
     }
 
-    pub const ALL: [Feature; 9] = [
+    pub const ALL: [Feature; 10] = [
         Feature::Requests,
         Feature::SignIn,
         Feature::UserSignIn,
+        Feature::ExternalToken,
         Feature::ServiceSignIn,
         Feature::BrowserSession,
         Feature::Locales,
@@ -222,9 +228,17 @@ const fn message(
     }
 }
 
-/// Every message, in the order `jadpo translations builtin` lists a
-/// feature's.
-pub static MESSAGES: [Message; 37] = [
+/// A refusal shared by built-in sign-in methods belongs to each method
+/// that can produce it, without switching on unrelated method messages.
+impl Message {
+    pub fn enabled(&self, features: &std::collections::BTreeSet<Feature>) -> bool {
+        features.contains(&self.feature)
+            || (self.key == "sign_in_refused" && features.contains(&Feature::ExternalToken))
+    }
+}
+
+/// Every message, in the order `jadpo translations builtin` lists a feature's.
+pub static MESSAGES: [Message; 38] = [
     failure(
         "invalid_request",
         Feature::Requests,
@@ -314,6 +328,12 @@ pub static MESSAGES: [Message; 37] = [
         Feature::SignIn,
         "The store sessions are kept in cannot be reached.",
         "Signing in isn't available right now. Try again soon.",
+    ),
+    failure(
+        "authentication_misconfigured",
+        Feature::ExternalToken,
+        "The external identity provider's configuration or published keys are invalid.",
+        "Signing in isn't configured correctly.",
     ),
     failure(
         "user_disabled",

@@ -365,6 +365,64 @@ pub(crate) async fn authenticate(
         }
         return Ok(admitted);
     }
+    if let Some(external) = &identity.external_token
+        && accepts(AuthenticationMethod::ExternalToken)
+        && !matches!(route.run, Run::Exchange)
+    {
+        let settings = started
+            .auth()
+            .external()
+            .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
+        let subject = settings
+            .subject(ctx.host(), credential, ctx.now())
+            .await
+            .map_err(Refused::new)?;
+        let user = identity
+            .user
+            .as_ref()
+            .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
+        let database = ctx
+            .host()
+            .database(&user.store)
+            .ok_or_else(|| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
+        let codec = app
+            .json
+            .codec_of(external.subject_type)
+            .ok_or_else(|| Refused::new(AUTHENTICATION_MISCONFIGURED))?;
+        let value = app
+            .json
+            .codecs
+            .read_text(
+                codec,
+                &subject,
+                &jadpo_value::json::Path::default(),
+                &mut Vec::new(),
+            )
+            .ok_or_else(|| Refused::new(INVALID_CREDENTIALS))?;
+        let subject = crate::to_sql(&value, external.subject_sql)
+            .map_err(|_| Refused::new(INVALID_CREDENTIALS))?;
+        let rows = database
+            .query_once(
+                &external.lookup,
+                &[
+                    subject.clone(),
+                    SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
+                ],
+            )
+            .await
+            .map_err(|_| Refused::new(AUTHENTICATION_UNAVAILABLE))?;
+        let Some(row) = rows.first() else {
+            return Err(Refused::new(super::magic_links::REFUSED));
+        };
+        let [id @ SqlValue::Uuid(_), SqlValue::Bool(active)] = row.as_slice() else {
+            return Err(Refused::new(AUTHENTICATION_UNAVAILABLE));
+        };
+        if !active {
+            return Err(Refused::new(USER_DISABLED));
+        }
+        let caller = caller_of(route, user, PrincipalKind::User, id, &subject, None)?;
+        return Ok(Admitted::new(caller));
+    }
     Err(Refused::new(INVALID_CREDENTIALS))
 }
 
@@ -1409,6 +1467,7 @@ mod tests {
             signs_in: true,
             cookie: Some("todo_session".into()),
             api_tokens: false,
+            external_token: None,
             user: None,
             service: None,
             gated: Default::default(),

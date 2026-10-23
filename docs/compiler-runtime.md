@@ -2347,6 +2347,54 @@ wrong kind for the route with `not_permitted`; a service caller is keyed
 repeat. A route test's `as:` keeps a real credential of the kind the
 route's API accepts (`http::identity::test_credentials`).
 
+Built in chunk 9.1d1: provisioned external JWT subjects (area 8).
+`Identity::external_token` reads the issuer's `Url` setting and audience's
+`Text` setting into `ExternalTokenPlan`, together with the subject's JSON
+codec, SQL parameter type and current-user lookup. Deployable pruning
+keeps these settings only where a served API accepts the method. The
+runtime's `AuthSettings` owns one resolver cache per application startup;
+`http::external_token` obtains discovery from the configured issuer path,
+requires its exact issuer identity, and obtains keys only from that
+trusted document's HTTPS `jwks_uri`. It uses area 19's duplicate-refusing
+JSON parser, strict public `Jwk` import and shared JWT verification
+(EdDSA, RS256, ES256). Explicit encryption entries are skipped; invalid
+signing entries refuse the provider configuration. Only the verified
+subject reaches the user's typed field decoder and parameterized
+current-user query; every request reads that authority. It never imports
+provider profile fields or permission claims.
+
+Richard's 2026-10-22 network decision requires public HTTPS endpoints,
+including cross-authority keys named by exact trusted metadata, with no
+redirects. Native `Outward` filters DNS answers and connects only to
+public addresses with normal TLS verification. Workers' Rust outbound
+code rejects private literal addresses and local names; its platform
+network filters DNS answers ([workerd Network configuration](https://github.com/cloudflare/workerd/blob/main/src/workerd/server/workerd.capnp)).
+Generated Wrangler configuration enables
+[`global_fetch_strictly_public`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public)
+where the method is reached, avoiding same-zone origin routing.
+The test harness maps exactly two public fixture authorities to a local
+HTTPS server through transports trusted by that test's generated CA;
+its explicitly private/local test network is separate from production
+public-network enforcement. No production TLS or address guard is weakened.
+
+Compiler-owned bounds are 64 KiB discovery, 256 KiB JWKS, 64 keys,
+3 seconds per fetch, a 5-minute key cache and one refresh per 30 seconds.
+A generation-owned refresh lease reserves cooldown before awaiting and
+survives cancellation without clearing a newer owner. Typed retained
+failures preserve configuration (500) versus provider availability (503)
+classification during cooldown; shared strict JWT structural preflight rejects
+unsupported algorithms and malformed/duplicate JSON before provider I/O; known-invalid claims remain 401 without
+refreshing valid cached keys. Outer HTTP deadlines drop native fetches
+and abort Workers fetches through an `AbortController` drop guard.
+Generated API/OpenAPI metadata, redacted failure wording and the network
+inventory expose the method's runtime-owned egress. The external
+first-sign-in hook and multi-column/structured subject fields remain
+compile-time `toolchain.not_built_yet` gates;
+without it an unknown subject is 403 `sign_in_refused`. Scope declarations
+remain unbuilt; area 9 says an external method narrows only when it
+declares the scopes it reads. This slice builds neither provider login
+nor the golden application or its comparison baseline.
+
 Built in chunk 5.1b: signed sessions (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`
 setting) and a browser session's `origin:` (a `Url` setting) into the

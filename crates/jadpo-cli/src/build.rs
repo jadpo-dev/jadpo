@@ -290,6 +290,11 @@ pub fn build(call: &Call) -> Reply {
                         workers::wrangler(&workers::Wrangler {
                             app: project.name(db),
                             deployable: name,
+                            public_identity: plan
+                                .routes()
+                                .identity
+                                .as_ref()
+                                .is_some_and(|identity| identity.external_token.is_some()),
                             required: &required,
                             hyperdrive: &hyperdrive,
                             ticks: plan.schedules().ticks(),
