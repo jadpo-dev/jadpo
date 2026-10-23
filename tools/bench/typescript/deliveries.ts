@@ -3,14 +3,15 @@
  * handled marker + receipt in one transaction. Not the golden application.
  */
 import postgres from 'postgres';
+import { createServer } from 'node:http';
 import { v7 as uuidv7 } from 'uuid';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
 const db = postgres(databaseUrl, { max: 4, prepare: false });
-const now = new Date();
-const lease = new Date(now.getTime() + 16 * 60 * 1000);
-try {
+async function tick() {
+  const now = new Date();
+  const lease = new Date(now.getTime() + 16 * 60 * 1000);
   const due = await db<{ id: string; payload: unknown; emitted_at: Date }[]>`
     SELECT d.id,o.payload,o.emitted_at FROM jadpo_deliveries d JOIN jadpo_outbox o ON o.id=d.outbox_id
     WHERE (d.status='pending' AND d.next_attempt_at<=${now})
@@ -27,7 +28,7 @@ try {
   }
   let cursor = 0;
   let completed = 0;
-  await Promise.all(Array.from({ length: 4 }, async () => {
+  const lanes = await Promise.allSettled(Array.from({ length: 4 }, async () => {
     for (;;) {
       const item = readable[cursor++];
       if (!item) break;
@@ -65,7 +66,33 @@ try {
       }
     }
   }));
-  console.log(JSON.stringify({ selected: due.length, completed }));
-} finally {
-  await db.end({ timeout: 5 });
+  // Drain every admitted lane before returning an error or accepting shutdown.
+  for (const lane of lanes) if (lane.status === 'rejected') throw lane.reason;
+  return { selected: due.length, completed, pid: process.pid };
+}
+
+if (process.argv.includes('--serve')) {
+  let stopping = false;
+  const server = createServer(async (request, response) => {
+    if (stopping) { response.writeHead(503).end(); return; }
+    if (request.method !== 'POST' || request.url !== '/tick') {
+      response.writeHead(404).end(); return;
+    }
+    try {
+      const answer = await tick();
+      response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(answer));
+    } catch (error) {
+      response.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: String(error) }));
+    }
+  });
+  server.requestTimeout = 120_000;
+  server.listen(Number(process.env.PORT), '127.0.0.1');
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
+    stopping = true;
+    server.close(() => { void db.end({ timeout: 5 }); });
+    server.closeIdleConnections();
+  });
+} else {
+  try { console.log(JSON.stringify(await tick())); }
+  finally { await db.end({ timeout: 5 }); }
 }

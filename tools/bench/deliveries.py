@@ -47,7 +47,7 @@ def build(label):
     before = sources()
     clean_source()
     checked(['cargo', 'build', '--locked', '-p', 'jadpo-cli', '--bin', 'jadpo'], cwd=ROOT, env=ENV)
-    checked(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=HERE / 'typescript')
+    checked(['npm', 'ci', '--offline', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=HERE / 'typescript')
     checked(['npm', 'run', 'build'], cwd=HERE / 'typescript')
     spike.workerd()
     checked(['cargo', 'build', '--locked', '--release', '--manifest-path', str(HERE / 'load/Cargo.toml'), '--bin', 'pool'], cwd=ROOT, env=ENV)
@@ -65,13 +65,16 @@ def build(label):
         (project / 'app.jadpo').write_text(application)
         for command in (['check'], ['build']):
             checked([str(spike.JADPO), *command], cwd=project, env=ENV)
-    artifacts = [directory / 'native/build/target/app/app', spike.JADPO,
+    compiler = directory / 'compiler-jadpo'
+    shutil.copy2(spike.JADPO, compiler)
+    artifacts = [directory / 'native/build/target/app/app', spike.JADPO, compiler,
                  *sorted((directory / 'workers/build/target/kiosk').glob('*')),
                  HERE / 'typescript/build/deliveries.js', spike.workerd(), spike.POOL]
     artifacts = [path for path in artifacts if path.is_file()]
     if sources() != before:
         raise ValueError('source changed during build')
     stamp = {'source': checked(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip(),
+             'compiler_snapshot': {'original_path': str(spike.JADPO), 'path': str(compiler), 'sha256': digest(compiler)},
              'dirty': False, 'sources': before, 'artifacts': {str(p): digest(p) for p in artifacts},
              'flags': {name: ENV[name] for name in ('CARGO_INCREMENTAL', 'CARGO_PROFILE_DEV_DEBUG', 'CARGO_BUILD_JOBS')},
              'profiles': {'native': 'jadpo build release', 'workers': 'jadpo build release, no wasm-opt',
@@ -158,10 +161,10 @@ class Database(golden.Database):
         assert state['events'] == state['pending'] == count and state['attempts'] == state['receipts'] == 0, state
 
 
-def request(port, path, body=None):
+def request(port, path, body=None, *, method=None):
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=120)
     try:
-        connection.request('POST' if body else 'GET', path, body,
+        connection.request(method or ('POST' if body else 'GET'), path, body,
                            {'content-type': 'application/json'} if body else {})
         response = connection.getresponse()
         return response.status, response.read().decode()
@@ -229,6 +232,25 @@ def worker(directory, pg, logs, owned):
     raise RuntimeError('workerd readiness failed')
 
 
+def typescript_service(target, directory, pg, logs, owned):
+    port = spike.free_port()
+    with logs.open('ab') as log:
+        process = subprocess.Popen([spike.tool(target), str(HERE / 'typescript/build/deliveries.js'), '--serve'],
+            env={**os.environ, 'DATABASE_URL': pg.url(target), 'PORT': str(port)}, stdout=log, stderr=log)
+    owned.append(process)
+    # Real HTTP tick, against unavailable work, matching workerd readiness.
+    for _ in range(200):
+        if process.poll() is not None:
+            raise RuntimeError(f'{target} exited: ' + logs.read_text()[-4000:])
+        try:
+            if request(port, '/tick', method='POST')[0] == 200:
+                return process, port
+        except OSError:
+            pass
+        time.sleep(.025)
+    raise RuntimeError(f'{target} readiness failed')
+
+
 def calibrate(directory, pg):
     port = spike.free_port()
     log = (directory / 'calibration.log').open('ab')
@@ -268,11 +290,11 @@ class TickError(RuntimeError):
 
 def tick(target, directory, pg, port=None):
     response = {'target': target}
-    if target == 'workers':
+    if target == 'workers' or (target in ('bun', 'node') and port is not None):
         try:
-            status, body = request(port, '/tick')
+            status, body = request(port, '/tick', method='POST')
             response.update(status=status, body=body)
-            if status != 200 or json.loads(body)['outcome'] != 'ok':
+            if status != 200 or (target == 'workers' and json.loads(body)['outcome'] != 'ok'):
                 raise TickError(response)
             return response
         except Exception as error:
@@ -349,14 +371,22 @@ def measure(args):
               'load': os.getloadavg(), 'classification': 'busy-host exploratory'},
               'protocol': {'count': args.count, 'rounds': args.rounds, 'sweep': 100,
                            'typescript_bound': 4, 'worker_pool_size': 4, 'native_tick': 'external process incl startup',
-                           'workers_tick': 'production scheduled through local service binding'}, 'runs': [], 'controls': {}}
+                           'workers_tick': 'persistent production scheduled through local HTTP service binding',
+                           'typescript_tick': 'persistent local HTTP service, reused postgres-js pool4' if args.mode == 'warm' else 'external process incl startup',
+                           'mode': args.mode, 'warmup': 'verified100-delivery cohort then reset exact measured seed' if args.mode == 'warm' else 'empty readiness only',
+                           'native_warm_service': False}, 'runs': [], 'controls': {}}
     def save():
         output.write_text(json.dumps(result, indent=2) + '\n')
+    result['host']['ambient_cpu_before'] = golden.host_cpu_ticks()
+    time.sleep(5)
+    result['host']['ambient_cpu_after'] = golden.host_cpu_ticks()
+    result['host']['ambient_sample_seconds'] = 5
     save()
     spike.WORK = directory
     pg = Database.__new__(Database)
     owned = []
     process = helper = None
+    port = None
     try:
         pg.__init__()
         pg.project = directory / 'native'
@@ -376,10 +406,18 @@ def measure(args):
                     pg.sql(target, "UPDATE jadpo_deliveries SET next_attempt_at=clock_timestamp()+interval '1 hour'")
                     if target == 'workers':
                         process, helper, port = worker(directory, pg, directory / f'workers-{round_index}.log', owned)
+                    if target in ('bun', 'node') and args.mode == 'warm':
+                        process, port = typescript_service(target, directory, pg, directory / f'{target}-{round_index}.log', owned)
                     if target not in result['controls']:
                         reports = result['controls'].setdefault(target, [])
-                        controls(target, directory, pg, template, port if target == 'workers' else None, reports)
+                        controls(target, directory, pg, template, port, reports)
+                    if args.mode == 'warm':
+                        pg.seed(target, template, 100)
+                        row['warmup_response'] = tick(target, directory, pg, port)
+                        row['warmup_state'] = pg.state(target)
+                        validate_backlog(row['warmup_state'], 100)
                     pg.seed(target, template, args.count)
+                    row['process_pid'] = process.pid if process else None
                     row['seed_fingerprint'] = pg.fingerprint(target)
                     cpu_before = golden.host_cpu_ticks()
                     worker_cpu_before = spike.cpu_s(process.pid) if process else None
@@ -388,22 +426,27 @@ def measure(args):
                     before = time.perf_counter()
                     for tick_index in range((args.count + 99) // 100):
                         began = time.perf_counter()
-                        response = tick(target, directory, pg, port if target == 'workers' else None)
+                        response = tick(target, directory, pg, port)
                         if target in ('bun', 'node'):
-                            answer = json.loads(response['stdout'])
+                            answer = json.loads(response['body'] if port is not None else response['stdout'])
+                            if process is not None:
+                                assert answer['pid'] == process.pid, 'tick process identity changed'
                             assert answer['selected'] == answer['completed'] == min(100, args.count - tick_index * 100), answer
                         row.setdefault('responses', []).append(response)
                         row['ticks'].append(time.perf_counter() - began)
                     row['seconds'] = time.perf_counter() - before
                     usage_after = resource.getrusage(resource.RUSAGE_CHILDREN)
-                    row['worker_cpu_seconds'] = spike.cpu_s(process.pid)-worker_cpu_before if process else None
+                    row['service_cpu_seconds'] = spike.cpu_s(process.pid)-worker_cpu_before if process else None
+                    row['worker_cpu_seconds'] = row['service_cpu_seconds'] if target == 'workers' else None
                     row['helper_cpu_seconds'] = spike.cpu_s(helper.pid)-helper_cpu_before if helper else None
-                    row['worker_rss_mb_at_end'] = spike.rss_mb(process.pid) if process else None
+                    row['server_cpu_seconds'] = ((row['service_cpu_seconds'] or 0) + (row['helper_cpu_seconds'] or 0)) if process else None
+                    row['server_cpu_scope'] = 'persistent service plus separate workerd pool; PostgreSQL and Python excluded'
+                    row['service_rss_mb_at_end'] = spike.rss_mb(process.pid) if process else None
                     row['host_cpu_before'] = cpu_before
                     row['host_cpu_after'] = golden.host_cpu_ticks()
                     row['load'] = os.getloadavg()
                     row['child_cpu_seconds'] = usage_after.ru_utime + usage_after.ru_stime - usage_before.ru_utime - usage_before.ru_stime
-                    row['child_cpu_scope'] = 'tick processes; persistent workerd and PostgreSQL excluded'
+                    row['child_cpu_scope'] = 'external tick children only; persistent services, PostgreSQL and Python excluded'
                     row['deliveries_per_second'] = args.count / row['seconds']
                     row['state'] = pg.state(target)
                     state = row['state']
@@ -415,7 +458,7 @@ def measure(args):
                     # Repeating every succeeded delivery exercises production handled replay.
                     pg.sql(target, "UPDATE jadpo_deliveries SET status='pending',next_attempt_at=clock_timestamp()-interval '1 minute'")
                     # One replay sweep proves a selected cohort does not double its effects.
-                    row['replay_response'] = tick(target, directory, pg, port if target == 'workers' else None)
+                    row['replay_response'] = tick(target, directory, pg, port)
                     replay = pg.state(target)
                     assert replay['receipts'] == replay['unique'] == args.count and replay['attempts'] == args.count + min(100, args.count), replay
                     row['replay'] = replay
@@ -429,6 +472,7 @@ def measure(args):
                         spike.stop(child)
                     owned.clear()
                     process = helper = None
+                    port = None
                     save()
                 print(json.dumps({key: row[key] for key in ('round', 'target', 'seconds', 'deliveries_per_second', 'ok')}), flush=True)
     finally:
@@ -456,6 +500,7 @@ def main():
     parser.add_argument('command', choices=('build', 'measure'))
     parser.add_argument('--label', required=True)
     parser.add_argument('--rounds', type=int, default=3)
+    parser.add_argument('--mode', choices=('warm', 'external'), default='warm')
     parser.add_argument('--count', type=int, default=10000)
     args = parser.parse_args()
     if not args.label.replace('-', '').isalnum() or args.count < 100 or args.count > 10000 or args.rounds < 1:
