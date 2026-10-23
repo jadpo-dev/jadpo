@@ -34,6 +34,25 @@ describe.sequential("real PostgreSQL mutation/lifetime boundaries", () => {
   afterAll(async () => {
     await store.close();
   });
+  it("creates default entity IDs as UUIDv7 and persists the same identifier", async () => {
+    const lifetime = scope();
+    try {
+      const service = new TodoService(store, Date.now);
+      const created = await service.create(
+        { kind: "user", id: user, subject: "alice" },
+        { title: "Generated", due_at: null },
+        lifetime,
+      );
+      expect(created.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect((await store.client.unsafe("SELECT id FROM todo"))[0]?.id).toBe(
+        created.id,
+      );
+    } finally {
+      lifetime.close();
+    }
+  });
   it("verifies the strict external JOSE and local provisioning boundary for every allowed algorithm", async () => {
     await externalNegatives(store, url);
   }, 20000);

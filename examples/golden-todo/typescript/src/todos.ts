@@ -1,3 +1,4 @@
+import { v7 as uuidv7 } from "uuid";
 import { and, asc, desc, eq, lt, or } from "drizzle-orm";
 import type { z } from "zod";
 import type { Store, Database } from "./db/store.ts";
@@ -84,7 +85,7 @@ export class TodoService {
       const [row] = await db
         .insert(todos)
         .values({
-          id: crypto.randomUUID(),
+          id: uuidv7(),
           owner_id: owner,
           title: input.title,
           status: "open",

@@ -3,6 +3,7 @@ import { CompactSign, SignJWT, exportJWK, generateKeyPair } from "jose";
 import { AuthenticationService } from "../src/auth.ts";
 import { Egress } from "../src/egress.ts";
 import { loadConfig } from "../src/config.ts";
+import { publicFailure } from "../src/errors.ts";
 import { RequestScope } from "../src/runtime.ts";
 import type { Store } from "../src/db/store.ts";
 
@@ -97,12 +98,25 @@ export async function externalNegatives(store: Store, url: string) {
       { exp: 9e15 },
       { iss: "https://wrong.example/" },
       { aud: "wrong" },
-      { sub: "unprovisioned" },
     ]) {
       await expect(
         authenticate(await signed({ ...claims, ...extra })),
       ).rejects.toThrow();
     }
+    const refused = await authenticate(
+      await signed({ ...claims, sub: "unprovisioned" }),
+    ).then(
+      () => null,
+      (error: unknown) => publicFailure(error, "req_0000000000000000"),
+    );
+    expect(refused).toMatchObject({
+      status: 403,
+      body: { error: { code: "sign_in_refused" } },
+    });
+    expect(JSON.stringify(refused)).not.toContain("unprovisioned");
+    await expect(
+      authenticate(await signed({ ...claims, iss: "https://wrong.example/" })),
+    ).rejects.toMatchObject({ code: "invalid_credentials" });
     await expect(
       authenticate(await signed(claims, { cty: "JWT" })),
     ).rejects.toThrow();
