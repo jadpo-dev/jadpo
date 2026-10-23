@@ -239,15 +239,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
-- [ ] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
-  implement the same versioned application contract and all 44 cases with
-  the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
-  on Bun and Node. Audit the reached request path against Jadpo's required
-  guarantees, including durable authentication, admission, cancellation,
-  transaction retries, idempotency and output validation before commit.
-  Declared schemas alone do not establish runtime response validation.
-  Its final gate may use the exact unmerged prerequisite histories above;
-  dependency review and merges remain separate.
+- [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
 - [ ] **9.1d4 Local application comparison:** `opus · high` after 9.1a,
   9.1d2 and 9.1d3: run the complete golden todo plus focused reads, writes,
   signed-in lists, large rows and cold start on native, workerd, Bun and
