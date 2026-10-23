@@ -230,14 +230,30 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   changes sizing, not the application or comparison scope.
 - [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
 - [ ] **9.1d2 Golden todo and executable contract:** `opus · high` after
-  9.1d1: implement the actual application from `examples/golden-todo` using
-  the current area pages, with all 44 case IDs executable on native and
-  workerd. Preserve the original candidate and make any correction required
-  by a decided area an explicit versioned successor, retaining the case and
-  its policy obligation. Include authentication timelines, physical query
-  accounting, omission-aware patches, pagination, relationships, lifecycle,
-  reminder delivery, preflight and dependency failures. Unsupported cases
-  remain visible and block completion; generic fixtures do not count.
+  9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
+  the split isolates generic defects exposed by the executable contract
+  (2026-10-23), without reducing its 44-case scope.
+- [ ] **9.1d2a Generic runtime contract fixes:** `opus · high` after 9.1a:
+  fix the area 5 strict retention cutoff for literal and configured periods,
+  and area 11's safe provider-key window for a single changing call, using
+  generic regressions including real delivery replay beyond the safe window.
+  Preserve keyed replay, failure classification, lease fencing and existing
+  single-call applications. A separate branch/worktree and full gate are
+  required. Also validate connection URL structure in shared startup/config
+  checking, retaining valid explicit local-socket forms and reporting every
+  invalid declaration without credentials (Richard, 2026-10-23).
+- [ ] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
+  and 9.1d2a: implement the actual application from `examples/golden-todo`
+  using the current area pages, with all 44 case IDs executable on native
+  and workerd. Preserve the original candidate and make any correction
+  required by a decided area an explicit versioned successor, retaining the
+  case and its policy obligation. Include authentication timelines, physical
+  query accounting, omission-aware patches, pagination, relationships,
+  lifecycle, reminder delivery, preflight and dependency failures.
+  Unsupported cases remain visible and block completion; generic fixtures
+  do not count. Independent application and harness authoring may proceed
+  against an explicitly identified verified prerequisite checkout; final
+  own-worktree validation and completion await reviewed prerequisites on main.
 - [ ] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
   implement the same versioned application contract and all 44 cases with
   the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
