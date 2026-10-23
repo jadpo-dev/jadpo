@@ -228,15 +228,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   Needed before runtime performance changes. Delivered through 9.1d1–9.1d4
   below; sessions take their first unticked concrete subchunk. The split
   changes sizing, not the application or comparison scope.
-- [ ] **9.1d1 Provisioned external JWT subjects:** `opus · high` a generic
-  prerequisite of the golden todo: the declared issuer and audience, bounded
-  discovery and public signing keys, area 19 verification, and one current
-  application-user lookup per request. Public HTTPS providers only, with no
-  redirects; trusted issuer metadata may name another public HTTPS key host
-  (Richard, 2026-10-22). Native and compiled workerd tests cover algorithms,
-  typed subjects, provider failures, cancellation and fresh authority.
-  First-sign-in hooks for external subjects and scope declarations remain
-  explicitly unbuilt; no application-specific compiler path.
+- [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
 - [ ] **9.1d2 Golden todo and executable contract:** `opus · high` after
   9.1d1: implement the actual application from `examples/golden-todo` using
   the current area pages, with all 44 case IDs executable on native and
