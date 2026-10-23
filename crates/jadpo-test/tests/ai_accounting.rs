@@ -38,8 +38,7 @@ fn params(
     caller: Option<&str>,
     tokens: i64,
     micros: i64,
-    app: i64,
-    caller_limit: i64,
+    (app, caller_limit): (i64, i64),
     cost: Option<i64>,
     at: i64,
 ) -> Vec<SqlValue> {
@@ -92,23 +91,23 @@ fn refusal_rolls_back_every_window_and_its_timestamp_even_on_first_rows() {
     let before = snapshot(&url);
     refused(reserve(
         &url,
-        &params(1, Some("a"), 20, 0, 1000, 100, None, 2000),
+        &params(1, Some("a"), 20, 0, (1000, 100), None, 2000),
     ));
     assert_eq!(snapshot(&url), before, "no new APP and caller unchanged");
     // Existing APP refuses, new caller must vanish too.
-    reserve(&url, &params(2, None, 90, 0, 100, 100, None, 1000)).unwrap();
+    reserve(&url, &params(2, None, 90, 0, (100, 100), None, 1000)).unwrap();
     let before = snapshot(&url);
     refused(reserve(
         &url,
-        &params(2, Some("new"), 20, 0, 100, 100, None, 2000),
+        &params(2, Some("new"), 20, 0, (100, 100), None, 2000),
     ));
     assert_eq!(snapshot(&url), before, "no new caller and APP unchanged");
     // Existing APP succeeds before existing caller refuses: no touch or compensation.
-    reserve(&url, &params(1, None, 10, 0, 1000, 100, None, 1000)).unwrap();
+    reserve(&url, &params(1, None, 10, 0, (1000, 100), None, 1000)).unwrap();
     let before = snapshot(&url);
     refused(reserve(
         &url,
-        &params(1, Some("a"), 20, 0, 1000, 100, None, 2000),
+        &params(1, Some("a"), 20, 0, (1000, 100), None, 2000),
     ));
     assert_eq!(snapshot(&url), before);
 }
@@ -123,7 +122,11 @@ fn first_rows_and_existing_rows_share_atomic_token_and_cost_limits() {
         for existing in [false, true] {
             let day = round * 10 + i32::from(existing);
             if existing {
-                reserve(&url, &params(day, Some("same"), 0, 0, 100, 100, None, 1000)).unwrap();
+                reserve(
+                    &url,
+                    &params(day, Some("same"), 0, 0, (100, 100), None, 1000),
+                )
+                .unwrap();
             }
             let barrier = Arc::new(Barrier::new(16));
             let joins: Vec<_> = (0..16)
@@ -141,8 +144,7 @@ fn first_rows_and_existing_rows_share_atomic_token_and_cost_limits() {
                             Some(&caller),
                             if cost { 1 } else { 30 },
                             if cost { 30 } else { 0 },
-                            100,
-                            if same { 70 } else { 100 },
+                            (100, if same { 70 } else { 100 }),
                             cost.then_some(100),
                             2000,
                         );
@@ -186,7 +188,7 @@ fn statement_errors_keep_all_reservations_and_debit_counts_every_window() {
     };
     reserve(
         &url,
-        &params(1, Some("a"), 60, 90, 100, 100, Some(150), 1000),
+        &params(1, Some("a"), 60, 90, (100, 100), Some(150), 1000),
     )
     .unwrap();
     let before = snapshot(&url);
@@ -197,7 +199,7 @@ fn statement_errors_keep_all_reservations_and_debit_counts_every_window() {
     assert!(matches!(
         reserve(
             &url,
-            &params(1, Some("a"), 20, 30, 100, 100, Some(150), 2000)
+            &params(1, Some("a"), 20, 30, (100, 100), Some(150), 2000)
         ),
         Err(StoreError::Statement(_))
     ));
@@ -264,5 +266,86 @@ fn statement_errors_keep_all_reservations_and_debit_counts_every_window() {
                 SqlValue::Text("USD".into())
             ]
         );
+    }
+}
+
+/// Hold APP changed in an uncommitted transaction, observe both actual
+/// reservations waiting in PostgreSQL, THEN commit. Their statement snapshots
+/// predate that commit; only predicates on locked current rows enforce 100.
+#[test]
+fn reservations_waiting_on_app_recheck_its_committed_current_count() {
+    let Some((_server, url)) = setup("ai_blocked") else {
+        return;
+    };
+    for first in [false, true] {
+        let day = if first { 2 } else { 1 };
+        if !first {
+            reserve(&url, &params(day, None, 0, 0, (100, 100), None, 1000)).unwrap();
+        }
+        let runtime = Runtime::new().unwrap();
+        let store = postgres(&url).unwrap();
+        let mut holder = runtime.block_on(store.begin()).unwrap();
+        if first {
+            runtime.block_on(holder.execute("INSERT INTO jadpo_ai_usage VALUES ('1970-01-03', 'app', '', 0, 0, 0, 0, 40, 0, 0, NULL, '2000-01-01')", &[])).unwrap();
+        } else {
+            runtime.block_on(holder.execute("UPDATE jadpo_ai_usage SET reserved_tokens = 40 WHERE day = '1970-01-02' AND scope = 'app'", &[])).unwrap();
+        }
+        let barrier = Arc::new(Barrier::new(3));
+        let joins: Vec<_> = (0..2)
+            .map(|n| {
+                let barrier = Arc::clone(&barrier);
+                let url = url.clone();
+                std::thread::spawn(move || {
+                    let rt = Runtime::new().unwrap();
+                    let store = postgres(&url).unwrap();
+                    let p = params(
+                        day,
+                        Some(&format!("blocked-{n}")),
+                        40,
+                        0,
+                        (100, 100),
+                        None,
+                        2000,
+                    );
+                    barrier.wait();
+                    rt.block_on(store.query_once(ai_budget::TAKE, &p))
+                })
+            })
+            .collect();
+        barrier.wait();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let waiting = sql(
+                &url,
+                "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock' AND cardinality(pg_blocking_pids(pid)) > 0 AND query LIKE '%jadpo_ai_usage%'",
+            );
+            if waiting == vec![vec![SqlValue::Int8(2)]] {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "both real reservations must wait on the held APP row: {waiting:?}"
+            );
+            std::thread::yield_now();
+        }
+        runtime.block_on(holder.commit()).unwrap();
+        let mut passed = 0;
+        for join in joins {
+            match join.join().unwrap() {
+                Ok(rows) => {
+                    assert_eq!(rows.len(), 2);
+                    passed += 1;
+                }
+                other => refused(other),
+            }
+        }
+        assert_eq!(passed, 1, "only one caller fits after the committed 40");
+        let app = sql(
+            &url,
+            &format!(
+                "SELECT reserved_tokens FROM jadpo_ai_usage WHERE day = DATE '1970-01-01' + {day} AND scope = 'app'"
+            ),
+        );
+        assert_eq!(app, vec![vec![SqlValue::Int8(80)]]);
     }
 }

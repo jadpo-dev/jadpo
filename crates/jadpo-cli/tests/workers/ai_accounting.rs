@@ -10,17 +10,13 @@ fn an_atomic_budget_refusal_is_recognised_by_the_compiled_worker() {
     if !jadpo_test::live() {
         return;
     }
-    let root = desk(
-        "worker-accounting",
-        "https://sandbox.acme-models.example",
-        STRICT,
-        "",
-    );
+    let provider = crate::support::fake_provider::FakeProvider::start();
+    let root = desk("worker-accounting", &provider.url, STRICT, "");
     let app_path = root.join("app.jadpo");
     let app = std::fs::read_to_string(&app_path).unwrap()
-        .replacen("    connections: {", "    connections: {\n        main: { driver: Driver.postgres url: config.database_url }", 1)
-        .replacen("    ai: {", "    deployables: {\n        worker: { serves: [main] target: Target.wasm }\n    }\n    ai: {", 1)
-        .replace("        limits: {", "        limits: {\n            per_caller_per_day: 1100");
+        .replacen("    connections: {", "    connections: {\n        limits: { driver: Driver.cloudflare_rate_limits namespace: 1001 }\n        main: { driver: Driver.postgres url: config.database_url }", 1)
+        .replacen("    ai: {", "    rate_limits: { store: limits }\n    deployables: {\n        worker: { serves: [main] target: Target.wasm }\n    }\n    ai: {", 1)
+        .replace("        limits: {\n            per_day:", "        limits: {\n            per_caller_per_day: 1100\n            per_day:");
     std::fs::write(&app_path, app).unwrap();
     let config = std::fs::read_to_string(root.join("config.jadpo"))
         .unwrap()
@@ -101,5 +97,9 @@ fn an_atomic_budget_refusal_is_recognised_by_the_compiled_worker() {
             "APP insertion rolled back with unchanged caller"
         );
     }
+    assert!(
+        provider.requests().is_empty(),
+        "refusal never contacts the local provider"
+    );
     drop(worker);
 }

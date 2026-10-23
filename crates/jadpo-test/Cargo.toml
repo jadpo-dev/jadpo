@@ -52,3 +52,9 @@ test = false
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+# Scoped native-runtime AI accounting microfixture (no HTTP/provider).
+[[bin]]
+name = "jadpo-bench-ai"
+path = "../../tools/bench/ai_accounting.rs"
+test = false
