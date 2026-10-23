@@ -5573,9 +5573,10 @@ an actual loopback TCP peer. Workerd uses the required Cloudflare source and
 a local socket fixture that overwrites CF-Connecting-IP with the actual
 127.0.0.1 peer; forged/missing header controls exercise the real runtime.
 Its declared default rate-limit binding is present. Workerd also declares
-required schedule/subscriber runners, with external triggering and no cron.
+required schedule/subscriber runners; the local workerd configuration supplies
+no cron, while native and TypeScript use the external-tick fixture.
 No due reminder was seeded and no job ran inside the request timings. All 44
-cases establish reminder/lifecycle correctness; the request throughput below
+cases exercise the reminder/lifecycle contract; the request throughput below
 does not measure an entire reminder workflow or the 10,000-job backlog.
 
 All targets used one disposable PostgreSQL with synchronous_commit off,
