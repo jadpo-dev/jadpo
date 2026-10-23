@@ -397,8 +397,10 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     if full:
         # One wrapper owns npm installation and the whole TS pipeline under an
         # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
+        # Real deadline controls and cold type-aware lint checks need the same
+        # isolation from builders as watch latency, without relaxing deadlines.
         checks.append(Step('TypeScript golden todo: static, integration and shared conformance', 'tests',
-                           [python, 'examples/golden-todo/typescript/adapter/verify.py'], postgres=True))
+                           [python, 'examples/golden-todo/typescript/adapter/verify.py'], postgres=True, alone=True))
         # Each prints its `skipped:` lines (a server too old for a test, on
         # a developer's machine), which libtest otherwise keeps to itself.
         checks += [Step(name, 'tests', tests=modules(tests),
