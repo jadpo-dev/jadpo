@@ -177,6 +177,77 @@ separate 8.4e resident-memory question is unchanged. Idle SQL reduction is the
 primary b2 result; observed small warm-delivery changes under varying load do
 not establish a causal throughput win or full TS/Jadpo housekeeping equivalence.
 
+## AI accounting (chunk 9.1b3)
+
+`ai_accounting.py` builds a release Rust executable calling the public
+`jadpo_runtime::ai::generate` path with `AiFake` and real disposable local
+PostgreSQL. This is a native runtime microfixture, separate from generated
+application HTTP throughput. Workers/Bun timings are N/A: the existing
+specialized delivery comparator has no AI path. The actual compiled Worker
+refusal regression supplies separate correctness evidence.
+
+```sh
+python3 tools/bench/ai_accounting.py build --label ai-reference
+python3 tools/bench/ai_accounting.py measure --label ai-reference --calls 500
+# Restore/commit the entire final gated candidate tree, including modes.
+python3 tools/bench/ai_accounting.py build --label ai-candidate
+python3 tools/bench/ai_accounting.py measure --label ai-candidate --calls 500
+python3 -m unittest discover -s tools/bench -p test_ai_accounting.py
+```
+
+Both sides must use the same final harness. The reference restores production
+`crates/*/src` from its exact prerequisite; the candidate restores the entire
+passing gated tree, proven by `git write-tree` before its own build. Each clean
+build records HEAD, full tracked tree/modes/content, compiler and fixture
+hashes, and retains both executable snapshots. NUL-delimited Git index paths
+are read literally; symlinks hash their target text, including directory links
+and Git's materialized-link checkout mode. A changed HEAD, tree, mode or
+original/saved executable refuses timing before and after. Historical build
+stamps never authorize a new checkout. Retain selected inherited compiler/
+release-profile environment beside each build; the wrapper explicitly sets
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4` and otherwise
+uses normal dev compiler/release fixture profiles. The compiler is provenance
+context and is excluded from the timed path.
+
+Three rounds alternate app/caller/retry order. Each cell resets state, runs
+missing-table and full-budget controls, then warms 50 calls. One separate
+census call retains all `query_once` SQL/parameters and corroborates the count
+with PostgreSQL statement logs. The measured connection must observe
+`SHOW log_statement = all` before that census and `none` before timing; admin,
+readiness, logging and state audits are outside latency. The local test server
+has `fsync=off` and `synchronous_commit=off`; no account-configured database or
+provider is used. The fixed prompt estimates seven input tokens, with
+`max_output:20`, `attempts:1`, `timeout:1000ms`, request cap1000 and app/caller
+caps10^12. Prices are absent. The fake reports six input, one output and two
+cached tokens. Retry-caller scripts one unavailable send followed by success;
+it is charged 13 input, one output and two cached tokens. `Clock::TEST` has no
+monotonic timer here, so retry backoff is skipped: these are immediate fake
+resends isolating accounting, not provider latency or real retry wall time.
+
+The default is 500 measured calls per cell. Each sample brackets only
+`ai::generate`; p95 uses nearest rank. **Fixture calls/s** also includes each
+call's Ctx/AiFake preparation and post-call answer/request-count assertions.
+It is not HTTP/service capacity. Exact APP/CALLER/PROMPT counts, caller digest,
+reported/cached tokens, zero remaining holds, currency and cost are validated
+at warmup50, census51 and final551 calls. Timing uses logging off and requires
+the same query count as the census. Missing accounting storage must stop
+before asking the fake; full budget must refuse without requests or state
+changes. Partial JSON is incomplete until all nine cells pass. Unit controls
+reject incomplete/corrupt state, false controls, wrong census/quantiles, stale
+source/artifacts, retargeted links and changed modes. There are no speed
+assertions in the gate.
+
+Finish/reap all owned builds/tests/services before timing and record bounded
+exact-path process inventories, five-second ambient CPU/load, memory and swap.
+Whole-fixture child CPU includes setup, warmup, controls, census and reaped
+watchdog/client children; daemonized PostgreSQL backend CPU is excluded and
+unmeasured. It is not per-call or service CPU. Retain every failed/superseded
+attempt and all rounds under ignored `work/ai-accounting/`. The paired sources,
+artifacts, all-round SQL/latency/fixture-throughput and the app-only regression
+are in compiler/runtime §2.11, “One-statement AI accounting”. Host-load drift
+prevents a universal speed claim. Changing the measured path or harness
+requires fresh own builds and the affected matched campaign again.
+
 ## Golden application comparison (chunk 9.1d4)
 
 `golden.py` uses the complete `examples/golden-todo` application and its

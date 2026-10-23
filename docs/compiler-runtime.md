@@ -6393,3 +6393,165 @@ record owned-process and ambient/memory context, then run `idle_ticks.py --label
 strict end freshness and reap owned services before changing source. To compare
 a new harness or protocol, repeat both sides, never reuse an old stamp at a new
 HEAD. The permanent method is also in `tools/bench/README.md`.
+
+
+#### One-statement AI accounting (chunk 9.1b3, measured 2026-10-23)
+
+Reservation and each repair/retry top-up now use one conditional multirow
+UPSERT for APP and optional CALLER, ordered APP then CALLER. Its predicates
+check the locked current row, including held tokens/cost. A dependent CTE
+turns a skipped window into an exact private `jadpo_ai_usage_pkey` violation;
+PostgreSQL rolls back the entire statement, including first-ever inserted
+rows and `touched_at`. Only that exact conflict means `over_budget`; other
+store faults and empty/malformed success results mean `unavailable`. No
+snapshot-only precheck or compensating write decides admission. The one
+multirow charge updates APP, optional CALLER and PROMPT/model, releasing only
+APP/CALLER holds; any statement failure retains every hold conservatively.
+Request-spent accounting, UTC day, caller digests, cached-token/currency
+rules, every-send charging and step reruns retain area 21's semantics.
+
+The failing regressions preceded production changes (`b6ab5b03`). Actual
+PostgreSQL tests cover partial refusal on existing and first-ever rows,
+unchanged timestamps/no new APP after caller refusal, exact charge/currency
+counts, injected reserve/debit failures, and six 16-thread cohorts for shared
+APP, same/different callers, token/cost caps and independent days. Two
+controlled races hold an existing or uncommitted first APP row, observe both
+waiters with PostgreSQL blocking-lock data before release, and prove only
+one competing reservation fits. Runtime controls cover top-ups, unchanged
+Taken after errors, exact private-conflict classification, malformed result
+shape, request usage with missing storage, and statement registration. Existing
+generate/repair/retry/embed/stream/fake/rerun suites remain passing. A compiled
+Worker against real local PostgreSQL and a loopback fake separately proves
+that its driver preserves the exact constraint identity, caller refusal rolls
+back tentative APP insertion, reruns do not charge, and no provider request
+is made. Its seed spans the three adjacent UTC dates, ordered deterministically.
+
+The final full gate passed **93/93 in 487 s**, exit0/reaped, at
+`6b951806890dcdb83d25a39fcc63b88df39f9a53`, complete tree
+`26955d0ca270450a5dd2402ac4a025733d592292` (3293 tracked entries). Native and
+workerd golden cases both passed44/44; corpus264 projects/526 tests/5832
+comparisons and27 teaching examples/327 tests agree both ways. Local pgvector
+0.7 versus required0.8 skips remain explicit. The owned process inventory was
+empty after the gate and around both campaigns. This is unrelated to 8.4e's
+separate resident-memory question.
+
+The first matched candidate uses the same final `ai_accounting.py/.rs`
+harness on both sides. This is a release Rust executable calling public
+`ai::generate`, its testing-only AiFake and real local PostgreSQL16.3, not a
+generated whole-application HTTP benchmark. Native versus Workers/Bun AI
+performance is **N/A**: no equivalent AI fixture exists in the specialized
+TypeScript delivery host. Actual Worker correctness above is separate.
+
+| Build | Clean measured HEAD | Complete tree |
+|---|---|---|
+| Reference: production `crates/*/src` exactly prerequisite `025a38c39d0a8d22b1e5ea59be41c26d95e2c124` | `f5bcde5a528402abee15f417f5695d4236dd5532` | `c32c981ab8dbfba6afe69cd28d2791a0981a1865` |
+| Candidate: entire final gated tree/modes restored before own build | `406462ab48c562846d2da7f3a3cebff7cfed738d` | `26955d0ca270450a5dd2402ac4a025733d592292` |
+
+Each side built its own dev compiler and release fixture, retaining both
+executables and original/snapshot hashes. Wrapper settings were
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; inherited
+`RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`, release OPT_LEVEL/LTO/CODEGEN_UNITS,
+`CARGO_TARGET_DIR` and the other selected overrides were unset on both sides.
+Rustc1.99.0 (`b940084d7`), Python3.14.0, macOS27.0.1 arm64/10 cores were
+recorded. Harness SHA-256: Python
+`6580fd856143f0d2a5ce06455bfb57d1d68fedb120d442b2f7ac3d7d198f19d4`, Rust
+`63e751ad36c5e9993639aebb738a31f093f546fce10aebff4d2231e0ca79bf39`.
+The exact build contexts record selected inherited values, tool versions,
+full tracked hashes/modes and commands. Start/end source/artifact guards
+passed for both campaigns; the old reference stamp correctly refuses reuse
+at the candidate checkout.
+
+Three rounds rotate app/caller/retry order, each cell50 excluded warmups,
+one separate SQL census, then500 measured calls. The fixed prompt estimates
+7 input tokens, max_output20, attempts1, timeout1000ms, request cap1000 and
+app/caller caps10^12; no prices. Fake success reports6 input/1 output/2 cached;
+retry-caller first returns unavailable, then success, charging13 input/1 output/
+2 cached. Fixed `Clock::TEST` supplies no monotonic timer, so retry backoff is
+skipped: immediate fake resends isolate accounting rather than provider/retry
+wall time. The disposable server uses fsync and synchronous_commit off.
+Each `ai::generate` sample yields nearest-rank p95. **Fixture calls/s** additionally
+includes per-call Ctx/AiFake preparation and post-call assertions; it is not
+service or HTTP capacity. Statement logging is explicitly observed on for the
+census and off before timing. Direct query_once counts and actual PostgreSQL
+logs agree: **app3→2, caller5→2, retry-caller7→3 statements per call**.
+Precheck refusal can legitimately issue no SQL in other workloads.
+
+| Scenario | Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
+|---|---:|---:|---:|---:|---:|
+| APP | 1 | 0.305167 | 0.397208 | 2973.34 | 2391.57 |
+| APP | 2 | 0.331375 | 0.351250 | 2947.27 | 2465.20 |
+| APP | 3 | 0.302791 | 0.353417 | 2960.28 | 2466.07 |
+| APP+CALLER | 1 | 0.465500 | 0.400917 | 2041.36 | 2325.85 |
+| APP+CALLER | 2 | 0.506334 | 0.368125 | 2026.24 | 2405.36 |
+| APP+CALLER | 3 | 0.502833 | 0.380292 | 2028.71 | 2389.47 |
+| Immediate retry+CALLER | 1 | 0.628584 | 0.556958 | 1561.98 | 1676.45 |
+| Immediate retry+CALLER | 2 | 0.645542 | 0.575708 | 1563.42 | 1663.32 |
+| Immediate retry+CALLER | 3 | 0.667292 | 0.657625 | 1566.86 | 1638.44 |
+
+Medians of the three cell p95s are APP0.305167→0.353417ms (+15.8%),
+CALLER0.502833→0.380292ms (−24.4%), retry0.645542→0.575708ms (−10.8%).
+Median fixture calls/s changes are −16.7%, +17.8%, +6.4% respectively.
+APP-only therefore regressed despite its smaller statement count; fewer
+round trips do not guarantee a faster local call with the more involved
+reservation statement. These are mixed local observations, not universal
+speed gains. Five-second ambient host busy was18.69% before reference versus
+7.67% before candidate; load8.98/13.30/32.38 versus4.17/9.77/28.16, and swap
+2405.31 versus2397.31MiB. The paired runs were quiet of owned builds/tests,
+but unrelated host activity and memory pressure varied. Whole-fixture/reaped
+child CPU was1.457949 versus1.252201s over5.096162 versus4.916940s including
+setup/warmup/controls/census, excluding unmeasured daemonized PostgreSQL backend
+CPU. It is neither per-call/service CPU nor a CPU optimization result.
+
+All nine cells per side passed fault/refusal controls and identical persisted
+state: APP/optional CALLER/PROMPT all have551 calls,3306 input (7163 retry),
+551 output,1102 cached, zero reserved tokens/micros, cost0/currencyNULL, exact
+prompt and caller digest. Census snapshots50→51 and final551 agree; unavailable
+storage never asks the fake, and full-budget refusal leaves state unchanged.
+Malformed/incomplete JSON, wrong accounting/census/quantiles, false controls,
+source/artifact/mode changes and same-content symlink retargets have executable
+negative controls. Raw SQL parameters and server logs remain in each result.
+
+Paths below are under ignored `tools/bench/work/ai-accounting/`.
+
+| Retained path | SHA-256 |
+|---|---|
+| `b3-reference-final/build.json` | `fdc8330b07d0a6ccc61e61c16f573d8cd87e7efcd0b250e7e372794c2dc2859c` |
+| `b3-reference-final/compiler-jadpo` | `00a6bb22758191ed84d61363006c57eee76d12e78aaa7ced8f1d87fb253250e9` |
+| `b3-reference-final/fixture` | `492325caeb2e02005a016e946a3c36635333abb47a77f912d00c6c09873dc07f` |
+| `b3-reference-final/runs-1792791184303755000.json` | `c26d30b256145c3ec074f9e63c01cbaf2a2059b5aa5ebdae014158456d83ec33` |
+| `b3-reference-final/runs-1792791184303755000.meta.json` | `459a327b5f12b8bd4e51ad1d62ff5ac5f2c52ab352a859fb8206b8b3a6a3abf4` |
+| `b3-candidate-final/build.json` | `5292fe34e38eaea9788e29c07e20c74a977a49127f1c5b2e0fca50ba7a72e102` |
+| `b3-candidate-final/compiler-jadpo` | `b74aa3ced4d02872d410aa86e2423ac3d7dcb92f0f66668a9986be8c861bbacc` |
+| `b3-candidate-final/fixture` | `355b8efffe866e87f3f5525910a483e868e47b448eed8e12c8539b0f17a8f5bc` |
+| `b3-candidate-final/runs-1792791319915240000.json` | `962eab9b9babadc333dfb7519aa105e626b69af8a4043cf381e250ce9b1fbb91` |
+| `b3-candidate-final/runs-1792791319915240000.meta.json` | `2c22aa6dcaa8afe0d545161b278347dac59f6b4592017fff730b56df7735e8bf` |
+| `reference-final-build-context.json` | `81802a8be7462dceaa65adce7cfd5eff042ac68889b8d609a48241a71018f12f` |
+| `candidate-final-build-context.json` | `b512bccdc602f262bdcda818ad63ffbd7194b61c51ef0bf5d2feb7bb2ceada75` |
+| `reference-final-premeasurement.json` | `1e0a5f4b0ae32890b596ba0df0ac556acb2e82a5bd66563e2977787ad46386b0` |
+| `candidate-final-premeasurement.json` | `807a59cbcc22c0bb60492875a03d02ed36aeeac62aa3b5b6be67a1c8c9359c79` |
+| `attempts/full-gate-round4.log` | `7ed961ca153f78aaa4b7895acfc6c338ca70ffa6ff77560a8c0fa8e10b899f3c` |
+
+Every preparation remains retained. Gate1 passed93/93 in1128s at `c58fa481`
+(tree `0218f58b`) but its source guard failed before the reference build or
+any accepted timing at `35c0e2be`: a tracked directory symlink was incorrectly
+read as a file. Literal-link hashing and NUL index parsing, including actual
+source()-level Git regressions for directory/file links, materialized links
+and non-ASCII/tab/newline paths, fixed the verifier. Gate2 at `2fe7bce2` was
+interrupted130 for the final enumeration tests. Gate3 at `812f939a` was stopped
+and reaped143 to remove the Worker seed's timezone/midnight dependence and
+correct whole-fixture CPU wording; its interrupted checks are not product
+failures. The final UTC fixture's first targeted attempt used reserved alias
+`offset`; `day_delta` corrected it, and targeted Worker passed33.31s, all8
+guard tests passed, then gate4 qualified the final source above. Early compile,
+SQL/rate-limit fixture, clippy and protocol1/2 smoke attempts are retained,
+not counted as comparative timing. Earlier CPU metadata wording overstated
+PostgreSQL inclusion; the accepted pair uses the corrected explicit scope.
+
+The retained62-file set, including both compiler/fixture snapshots, all raw
+attempts, build/host contexts and summaries, has canonical path→SHA-256 map
+digest `3c5ccd627a3bb5baaebae9e0cb8079dbeb52950815c48edf5ead02ed44c8ca9f`.
+`retained-index.json` records that map, excluding itself. Do not overwrite
+failed attempts or reuse stamps after source edits. Reproduce the exact clean
+revisions with fresh labels using the method in `tools/bench/README.md`;
+changing the measured path/harness requires rebuilding and repeating the
+matched comparison. No real provider/account or deployment was used.
