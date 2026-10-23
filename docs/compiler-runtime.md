@@ -5950,3 +5950,157 @@ drain/hand-on behavior and exact handled atomicity, and version any altered
 workload/ID/provenance protocol. These measurements support continuing the
 remaining generic runtime work; they do not establish the cause of the wider
 Wasm gap or replace profiling of the separate typed-execution work in 9.2.
+
+
+**Warm durable delivery comparison** (chunk 9.1b1a, 2026-10-23).
+Local workerd's four-lane runtime delivers 2,239/s against warm Bun's 4,017/s on
+the database-only backlog: 56% of Bun throughput, with median tick p95 55.206 ms
+against 29.479 ms. Serial workerd was 1,155/s and 107.064 ms. Bounded workerd's
+elapsed time fell 48.4%, but it still takes 1.79 times Bun's time. This corrects
+the earlier cross-target interpretation: 9.1b1's fresh Bun/Node processes charged
+startup and pool creation on every tick while workerd stayed alive. That method
+establishes each target's serial/bounded change, not a warm-service Bun win.
+Both the original protocol/results above and `--mode external` remain available.
+These are local workerd background-delivery measurements, not real Workers,
+HTTP request latency, per-delivery latency or a full application comparison.
+
+The hypothesis here was that matching service lifetimes would reveal the actual
+remaining workerd/Bun gap. No production runtime/compiler change was added.
+`typescript/deliveries.ts` now serves ordinary HTTP ticks in a persistent process
+on both runtimes, using the identical `node:http` compatibility host and pool
+four; this is a specialized comparator, distinct from the strong golden Bun
+app's `Bun.serve` host. Each invocation gets a fresh clock, 16-minute lease,
+cursor and counts; the same UUIDv7, payload validation, selected-100 bound,
+conditional/fenced claims, 10-attempt/24-hour window and atomic receipt/handled
+write are retained. Concurrent invocations share the bounded pool. Failed ticks
+drain admitted lanes before answering; owned processes are stopped/reaped on
+errors or HTTP deadlines, and graceful service shutdown closes the pool.
+
+Workerd retains its production local HTTP→scheduled binding and separate
+four-connection pool stand-in. Every persistent service restarts per cell,
+receives an excluded empty readiness tick, then a real verified 100-delivery
+warmup cohort before reset to exactly 10,000 measured deliveries. Thus process
+startup and ordinary pool/JIT initialization are outside timing on both sides.
+Controls precede the first warmup for each target. Native has no equivalent
+ordinary HTTP tick service here: its external `app tick` starts, even after
+its excluded warmup cohort, are included and reported only as supporting context.
+Jadpo includes housekeeping; the specialized TypeScript fixture only drains
+deliveries. This comparison does not establish generic auth/provider/language
+or shutdown equivalence. No real providers, keys, accounts or deployments ran.
+
+Both campaigns passed all 12 cells, all 20 malformed/rollback/live-lease/
+expired-lease/duplicate-sweep controls, and strict start/end source/artifact
+freshness. All 240,000 measured deliveries had exact receipt ticket sets,
+UUIDv7 IDs, handled/succeeded/attempt/event counts, zero pending/missing/unexpected
+effects, unchanged joined identity/payload fingerprints, and a replay cohort
+adding 100 attempts without effects. The real HTTP/PostgreSQL regression tests
+also prove PID reuse, later-due work and later timestamps across ticks, fresh
+cohorts, SQL-error recovery and pool cleanup on Bun and Node. They run in the
+full gate's own isolated step; lint/quick remain free of live services.
+
+The host remained busy: M1 Pro, ten cores, 16 GB, macOS 27.0.1. No owned
+build/test ran during either campaign. Five-second ambient CPU was 10.45% busy
+before serial and 16.97% before bounded; one-minute loads were 4.73 and 4.67.
+Whole-host per-cell counters are retained; the adverse serial Node cell saw
+64.58% busy and is included. Unchanged Bun median elapsed rose 0.12%, Node
+3.01%; these controls and all-round spread limit pure code-effect claims.
+PostgreSQL 16.3 settings match 9.1b1. Rust 1.99.0, Bun 1.2.20, Node 24.18.1 and
+pinned workerd 2026-10-07 were unchanged. Builds used
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; ordinary
+native/Wasm release `jadpo build`, without wasm-opt; compiler build CPU excluded.
+
+Elapsed is median [min–max] seconds of three rotated rounds; throughput is
+10,000/median elapsed [min–max round throughput]. Tick p95 is median [min–max] of each round's
+nearest-rank p95 over its 100 tick durations. Native's lifetime differs.
+
+| Target | Serial 10k seconds | Bounded 10k seconds | Deliveries/s serial → bounded | Tick p95 ms serial → bounded |
+|---|---:|---:|---:|---:|
+| Local workerd Jadpo, warm | 8.6557 [8.3320–9.0474] | 4.4663 [4.4212–4.6057] | 1,155 [1,105–1,200] → 2,239 [2,171–2,262] | 107.064 [94.337–109.694] → 55.206 [53.525–60.498] |
+| Bun control, warm | 2.4864 [2.4125–2.5130] | 2.4893 [2.4671–2.6585] | 4,022 [3,979–4,145] → 4,017 [3,762–4,053] | 29.096 [28.555–30.689] → 29.479 [28.676–30.942] |
+| Node control, warm | 2.6868 [2.6544–3.7901] | 2.7676 [2.6816–2.9654] | 3,722 [2,638–3,767] → 3,613 [3,372–3,729] | 33.390 [30.197–50.443] → 33.479 [32.743–34.285] |
+| Native Jadpo, external ticks | 5.1046 [5.0771–5.1303] | 3.8295 [3.8144–3.9550] | 1,959 [1,949–1,970] → 2,611 [2,528–2,622] | 56.309 [55.700–56.850] → 45.841 [44.089–47.899] |
+
+CPU seconds, median [min–max]:
+
+| Target | Process CPU serial → bounded | Separate pool CPU serial → bounded |
+|---|---|---|
+| workerd | 5.44 [5.44–5.59] → 4.02 [3.89–4.13] | 2.22 [2.16–2.23] → 2.28 [2.24–2.36] |
+| Bun | 2.36 [2.29–2.37] → 2.35 [2.34–2.48] | — |
+| Node | 2.52 [2.52–3.01] → 2.59 [2.52–2.76] | — |
+| Native external | 1.686 [1.674–1.692] → 1.915 [1.905–1.944] | — |
+
+Every round follows (1/2/3), including the slower Node run. Process CPU for
+warm services includes their in-process pooling; workerd's separate pool is
+listed explicitly. Combined workerd+pool median CPU fell 7.67 [7.60–7.81]→6.26 [6.17–6.49] s (18.4%),
+while median pool CPU rose 2.22→2.28 s. Native tick-child CPU rose 1.686→1.915 s
+(13.6%) despite lower elapsed. PostgreSQL and Python CPU are excluded; these
+are server-process costs, not total system costs. Workerd RSS at cell end
+was 229.3/240.0/241.2 MiB serial, 234.7/245.3/243.0 MiB bounded (not peak).
+
+| Target / variant | 10k seconds | Deliveries/s | Tick p95 ms | Process CPU seconds | Separate pool CPU seconds |
+|---|---|---|---|---|---|
+| workerd serial | 9.0474 / 8.6557 / 8.3320 | 1,105 / 1,155 / 1,200 | 107.064 / 109.694 / 94.337 | 5.44 / 5.59 / 5.44 | 2.23 / 2.22 / 2.16 |
+| workerd bounded | 4.4212 / 4.4663 / 4.6057 | 2,262 / 2,239 / 2,171 | 53.525 / 55.206 / 60.498 | 3.89 / 4.02 / 4.13 | 2.28 / 2.24 / 2.36 |
+| Bun serial | 2.4125 / 2.5130 / 2.4864 | 4,145 / 3,979 / 4,022 | 28.555 / 30.689 / 29.096 | 2.29 / 2.37 / 2.36 | — |
+| Bun bounded | 2.4671 / 2.4893 / 2.6585 | 4,053 / 4,017 / 3,762 | 28.676 / 29.479 / 30.942 | 2.34 / 2.35 / 2.48 | — |
+| Node serial | 3.7901 / 2.6544 / 2.6868 | 2,638 / 3,767 / 3,722 | 50.443 / 33.390 / 30.197 | 3.01 / 2.52 / 2.52 | — |
+| Node bounded | 2.6816 / 2.7676 / 2.9654 | 3,729 / 3,613 / 3,372 | 32.743 / 33.479 / 34.285 | 2.52 / 2.59 / 2.76 | — |
+| Native external serial | 5.0771 / 5.1046 / 5.1303 | 1,970 / 1,959 / 1,949 | 55.700 / 56.309 / 56.850 | 1.674 / 1.686 / 1.692 | — |
+| Native external bounded | 3.8295 / 3.9550 / 3.8144 | 2,611 / 2,528 / 2,622 | 45.841 / 47.899 / 44.089 | 1.915 / 1.944 / 1.905 | — |
+
+**Source, verification and reproduction.** Full gate passed 93/93 in 982 s at
+`f1e1e045ccd0d0be7c0795ddf83291ae325dbaf6`. Serial
+`cc4563ce1b39ab0b65e1dc65b165a0c65c14c762` restored **only**
+`crates/jadpo-runtime/src/{runner,race,schedules}.rs` from
+`67c3b4e049408f050e9c25f831d3d3bfd0185b9d`, retaining the final harness/tests.
+Bounded `cf9c443b026f7cd9155c224e153430c13d6e8b1f` restored those files from the
+gated candidate. Its **entire** tracked Git tree, including modes/symlinks,
+equals gated tree `cf3fc3b115bd2a45d949fac939394219b09691a5`; `git write-tree`
+and a complete `git diff` proved equality before building. The two timed source
+maps differ only in those three runtime files. TypeScript's generated artifact
+is identical, SHA-256
+`66977add90729e3a8ea7535bd1ed8becd3f6dcfbc9bfc8df79e900ce8f325d91`.
+
+Each label built its own compiler and retains `compiler-jadpo` beside its
+`build.json`, which names the original `target/debug/jadpo` path, source,
+flags and complete source/artifact hashes. Serial compiler SHA-256 is
+`ae82452b7505dc916713002556b95d949e0988d840e0ca216c3e061a764bc960`;
+bounded is `28c630307d1f035d5f5c7a7fc218bea891a6b35b3d4cd9a39c618635edf22ac7`.
+Their build-stamp SHA-256s are respectively
+`c3cb695e5cba661dbc711e0aff009b5124e666b41f142501703a71ef872a38f5` and
+`fcc9903da5692ce7b027086e050bcad27a0c92827887e003c17a6bb341eb0a09`.
+All paths below are under
+`/Users/richardwillars/Documents/Codex/LLM-coding-chunk-9.1b1a/tools/bench/work/deliveries/`.
+
+| Raw path | Outcome | SHA-256 |
+|---|---|---|
+| `warm-serial/runs-1792776205096359000.json` | 4×100 smoke and 20 controls passed | `9e486278ae1f7b74a676170e00b561a93fc0f3368c87b34ca6e8c03a664f4aec` |
+| `warm-serial/runs-1792776228246358000.json` | 12×10k serial, matched warm protocol | `64c5f376fe0252cbd98151bfd0c74463d4bb75e1763660b6a63d6de7712beff3` |
+| `warm-bounded/runs-1792776755285015000.json` | 12×10k bounded, matched warm protocol | `e56731cf87d59760ac4faf8549c33693461bdc2847e7af9b2f8b0712de5fa417` |
+
+No timed campaign failed or was replaced. An initial gate at `cda60ea6` was
+interrupted after review found that new test orchestration assumed URI DSNs
+and ran live checks in lint. The correction reuses the shared normalizer for
+keyword/socket DSNs, maps explicit socket hosts into postgres-js options,
+preserves quoted endpoint/startup parameters, and places real service checks
+in an isolated full-profile tests step. Direct TCP and actual gate keyword/
+socket controls passed before the final gate; no failed preparation authorized
+timing. `gate-interrupted-cda60ea6.log` SHA-256 is
+`87a6991cf4ef31ff4ac024d88f3410ab8fb87f812b1e904f597d9372b7822a6c`;
+`gate-final.log` is
+`e3f93a127c61bc266b3873195e6213d3c79d22a9a5e4d632c7016aaa3e1949db`.
+The existing optional pgvector 0.7.0 versus required 0.8.0 skips remain explicit;
+no extension was upgraded. All owned services, helpers, tick children and
+PostgreSQL servers stopped; their retained artifacts/raws remain available.
+
+To reproduce, use each exact clean timed revision above in its worktree, run
+`python3 tools/bench/deliveries.py build --label <fresh-label>`, finish every
+build/test, then `python3 tools/bench/deliveries.py measure --label <fresh-label>
+--mode warm` (default three rounds, 10,000 deliveries). Preserve the compiler
+snapshot/stamp/raws before changing source. Method/fact edits followed both
+campaigns and their end-freshness checks; these old stamps must reject the new
+documentation HEAD. No historical override weakens the guards. Review must keep
+process lifetime/warmup explicit alongside Workers-versus-Bun results, retain
+all adverse rounds, and rerun an affected matched comparison if measured paths
+change. The lesson is to match the service boundary and pool lifetime before
+claiming a cross-target win; the measured remaining workerd gap still needs work.

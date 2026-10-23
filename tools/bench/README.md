@@ -1,12 +1,14 @@
 # Performance harnesses
 
-## Durable delivery backlog (chunk 9.1b1)
+## Durable delivery backlog (chunks 9.1b1–9.1b1a)
 
 `deliveries.py` measures a focused database-only subscriber, separately from
 any golden reminder/provider workflow. Commit the inputs first; each build
 requires a clean checkout, builds its own compiler, and records the exact
 commit, source/artifact SHA-256 maps, tool versions and flags. Missing or
-changed inputs/artifacts are refused before and after measurement.
+changed inputs/artifacts are refused before and after measurement. Each label
+retains a hashed `compiler-jadpo` copy and a `build.json` naming its original
+compiler path, source and artifact map before another build can overwrite it.
 
 ```sh
 python3 tools/bench/deliveries.py build --label serial
@@ -17,16 +19,39 @@ python3 tools/bench/deliveries.py build --label bounded
 python3 tools/bench/deliveries.py measure --label bounded
 ```
 
-The default protocol is three rounds rotating native, workerd, Bun and Node.
-Each cell starts with exactly 10,000 durable deliveries/events in a disposable
-PostgreSQL 16 server (`synchronous_commit=off`, 400 connections, 256MB shared
-buffers). Each tick selects 100, and 100 ticks drain the backlog. Native runs
-its ordinary external `app tick` process each time; startup is included.
-Workerd is a fresh persistent process per cell, with an excluded empty
-readiness tick, invoking the production generated `scheduled` handler through
-a local service binding with `service_binding_extra_handlers`. Its Hyperdrive
-binding reaches the existing release transaction-pool stand-in, cap 4; helper
-CPU is recorded separately. No debug/testing controller is timed.
+The default `--mode warm` protocol is three rounds rotating native, workerd,
+Bun and Node. Each measured cell starts with exactly 10,000 durable deliveries/
+events in disposable PostgreSQL 16 (`synchronous_commit=off`, 400 connections,
+256MB shared buffers); 100 ticks of at most 100 drain the backlog. Workerd,
+Bun and Node each start one persistent process per cell. Bun and Node use the
+same ordinary `node:http` compatibility host, `POST /tick`, event loop and
+postgres-js pool capped at four. This specialized Bun host differs from the
+strong golden app's native `Bun.serve` binding. Workerd invokes the production
+generated `scheduled` handler through local HTTP and a service binding with
+`service_binding_extra_handlers`; its Hyperdrive binding reaches the release
+transaction-pool stand-in, cap four. No JSONL controller or virtual clock is timed.
+
+An empty readiness tick is excluded. Before **every** measured cell, a real
+100-delivery cohort must pass the durable-state audit; the harness then resets
+to the exact measured seed. This ordinary-work warmup initializes the persistent
+services' pools/JIT outside timing. Negative/race controls run once per target
+per campaign, before its first warmup. The clock, lease, lane cursor and counts
+are recomputed per tick; measured Bun/Node replies must keep the same owned PID.
+HTTP calls have a 120-second deadline; any failure invalidates the cell, retains
+its attempt, and stops/reaps the owned services. TypeScript drains every admitted
+lane before answering an error and closes its pool on graceful shutdown.
+
+Native uses its ordinary external `app tick` process every time, including
+startup. Its warmup cohort cannot warm subsequent processes: it is supporting
+external-tick context, outside the warm-service comparison. There is no equivalent
+ordinary native HTTP tick host in this fixture.
+
+`--mode external` retains the original per-tick Bun/Node process starts and
+empty-readiness protocol. The 9.1b1 raw results and their exact source revisions
+remain in compiler/runtime §2.11; their per-target serial/bounded comparisons
+are valid, but persistent workerd versus fresh Bun processes is not a warm-service
+comparison. Only compare serial and bounded builds under the **same** final
+mode, harness and warmup protocol. Record invocation lifetimes next to the numbers.
 
 The fixture's real calibration POST must return the exact 202 ticket response
 and commit one handled receipt. Its actual event/subscriber keys and encoding
@@ -51,7 +76,8 @@ using postgres-js with pool 4 and uuid 13's UUIDv7 generation. It validates
 payloads, conditionally claims/fences a 16-minute lease, observes the fixture's
 10-attempt/24-hour window, atomically writes receipt+handled marker, and handles
 ledger refusal conservatively. This is a focused comparator; it supplies no
-full application, auth, tenants, provider, shutdown or generic-language proof.
+full application, auth, tenants, provider or generic-language proof. Its service
+shutdown controls do not establish generic Jadpo shutdown equivalence.
 Jadpo's existing housekeeping is included in its tick, while the specialized
 comparator only drains deliveries. The strong golden TypeScript remains the
 separate application comparison. These measurements add the delivery path;
@@ -60,13 +86,29 @@ they do not replace or repeat the unchanged 9.1d4 HTTP matrix.
 Builds use `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`;
 production native/Wasm use ordinary `jadpo build` release profiles. All owned
 builds/tests stop before timing. Unrelated apps remain running; load and whole
-host CPU counters, per-tick durations/responses, child CPU, workerd/helper CPU
-and workerd RSS are retained. Raw attempts and failed setup/smokes stay under
+host CPU counters, per-tick durations/responses, external tick-child CPU,
+persistent service CPU and service RSS at cell end are retained. Workerd pool
+CPU is separate and also summed with workerd for the server-CPU comparison;
+Bun/Node include their pool in-process. PostgreSQL and Python CPU are excluded
+from those server numbers. Five-second ambient and per-cell whole-host counters
+retain unrelated load. Tick p95 is nearest-rank over the 100 ticks in a cell;
+a median of those three p95s is not per-delivery or HTTP request latency. Raw attempts and failed setup/smokes stay under
 ignored `work/deliveries/<label>/runs-*.json` with logs; none is overwritten or
 converted into a passing result. Three busy-host rounds are exploratory and
 do not establish edge capacity, a latency SLO or an inherent language win.
 The superseded initial `before` protocol used UUIDv4 in the TypeScript receipt;
-only matched `before-v7` and candidate data support the final comparison.
+only matched UUIDv7 pairs support that original external-mode comparison.
+The warm-service pair and all-round variation are recorded in compiler/runtime
+§2.11, "Warm durable delivery comparison". The new behavioral PostgreSQL/HTTP
+controls run in an isolated full-gate step (`delivery_services.py`), after their
+own pinned install/build; lint and quick profiles do not run live services.
+Shared gate URI/keyword/socket DSNs reuse `tools/golden-todo/postgres.py`, preserve
+endpoint/quoted startup settings, and never fall back to another server. Review
+must retain these controls, exact state/fingerprint/replay audits and strict
+source/artifact guards. Changes to a measured path require the affected matched
+campaign again, with unfavorable attempts retained. Reproduce a historical
+pair from its exact clean source revisions; later method edits do not authorize
+reusing that pair's build stamps at a different HEAD.
 
 ## Golden application comparison (chunk 9.1d4)
 
