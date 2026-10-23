@@ -8,7 +8,16 @@ import { v7 as uuidv7 } from 'uuid';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
-const db = postgres(databaseUrl, { max: 4, prepare: false });
+// Normalized shared-test socket URIs need postgres-js's explicit host option;
+// consuming only this key preserves the requested endpoint/startup settings.
+const parsed = new URL(databaseUrl);
+const socketHost = parsed.searchParams.get('host');
+const socketOptions: { host?: string } = {};
+if (socketHost?.startsWith('/')) {
+  socketOptions.host = socketHost;
+  parsed.searchParams.delete('host');
+}
+const db = postgres(parsed.toString(), { ...socketOptions, max: 4, prepare: false });
 async function tick() {
   const now = new Date();
   const lease = new Date(now.getTime() + 16 * 60 * 1000);

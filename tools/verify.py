@@ -325,7 +325,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         Step('teaching examples: check, format and jadpo test', 'docs',
              [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
-        Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'tools/bench/check_typescript.py'], postgres=True),
+        Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'tools/bench/check_typescript.py']),
         Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'tools/bench', '-p', 'test_*.py']),
         Step('benchmark trusted proxy controls', 'lint', ['node', '--test', 'tools/bench/golden_proxy.test.mjs']),
         Step('benchmark load correctness', 'lint', ['cargo', 'test', '--locked', '--manifest-path', 'tools/bench/load/Cargo.toml', '--bin', 'load', '--test', 'protocol'], lane='cargo'),
@@ -395,6 +395,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # a tag of its own, and templates are built under a name of their own
     # and renamed.
     if full:
+        checks.append(Step('warm delivery services: reuse, fresh ticks and durable failure controls', 'tests',
+                           [python, 'tools/bench/delivery_services.py'], postgres=True, alone=True))
         # One wrapper owns npm installation and the whole TS pipeline under an
         # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
         # Real deadline controls and cold type-aware lint checks need the same
