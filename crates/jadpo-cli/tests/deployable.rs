@@ -1494,3 +1494,206 @@ fn projects_share_one_build_of_the_runtime_and_never_each_others_program() {
         }
     }
 }
+
+/// A role with no background runners can own hourly cleanup, so its
+/// compiled plan must retain every store's history independently of bodies.
+#[test]
+fn a_pruned_deployable_cleans_schedule_and_batch_history_before_the_jobs_role() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let target = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let root = target
+        .parent()
+        .unwrap_or(target)
+        .join("jadpo-compiled/deployable/cleanup-roles");
+    let _ = fs::remove_dir_all(&root);
+    let files = [
+        (
+            "app.jadpo",
+            r#"application {
+    connections: {
+        main: { driver: Driver.postgres url: config.main_url }
+        state: { driver: Driver.postgres url: config.state_url }
+    }
+    schedules: { store: state trigger: ScheduleTrigger.external }
+    deployables: {
+        web: { serves: [main] target: Target.native }
+        jobs: { runs: [Trigger.schedules] target: Target.native }
+    }
+}
+"#,
+        ),
+        (
+            "config.jadpo",
+            "config { main_url: PostgresUrl state_url: PostgresUrl }\n",
+        ),
+        (
+            "policy.jadpo",
+            "use desk\npolicy { actions: { desk.ready: [Access.public] } }\n",
+        ),
+        (
+            "domains/desk/entities/item.jadpo",
+            "entity Item { id: Uuid store: main policy: { read: [Access.system] } }\n",
+        ),
+        (
+            "domains/desk/types/health_status.jadpo",
+            "type HealthStatus = Output { okay: Bool }\n",
+        ),
+        (
+            "domains/desk/actions/ready.jadpo",
+            "use desk/types { HealthStatus }\naction ready() -> HealthStatus { return HealthStatus { okay: true } }\n",
+        ),
+        (
+            "domains/desk/routes/health.jadpo",
+            "use desk/actions { ready }\nuse desk/types { HealthStatus }\nroutes Health { prefix: /health\n POST / { authentication: RouteAuthentication.none output: HealthStatus run: ready() } }\n",
+        ),
+        (
+            "domains/desk/types/item_page.jadpo",
+            "type ItemPage = Input { after: PageCursor { optional: true } }\n",
+        ),
+        (
+            "domains/desk/queries/items.jadpo",
+            "use desk/entities { Item }\nuse desk/types { ItemPage }\nquery items(page: ItemPage) -> Page<Item> { from: Item order: [Item.id asc] page: { size: 10 after: page.after } }\n",
+        ),
+        (
+            "domains/desk/actions/check_item.jadpo",
+            "use desk/entities { Item }\naction check_item(item: Item) -> Unit { assert item.id == item.id }\n",
+        ),
+        (
+            "domains/desk/actions/checked.jadpo",
+            "action checked(summary: ImportSummary) -> Unit { assert summary.items >= 0 }\n",
+        ),
+        (
+            "domains/desk/actions/sweep.jadpo",
+            "use desk/queries { items }\nuse desk/types { ItemPage }\nuse desk/actions { check_item, checked }\naction sweep() -> Unit { var run: BatchRun = batches.each(from: items(ItemPage {}), each: item -> check_item(item), finished: summary -> checked(summary))\n    assert run == run\n}\n",
+        ),
+        (
+            "domains/desk/schedules/nightly.jadpo",
+            "use desk/actions { sweep }\nschedule nightly { every: 1d run: sweep() }\n",
+        ),
+    ];
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        fs::write(path, text).expect("source");
+    }
+    if !root.join("database/migrations").exists() {
+        jadpo(&root, &["migrate", "new", "initial"]);
+    }
+    jadpo(&root, &["api", "update"]);
+    let loaded = jadpo_db::load(&root);
+    let deployables = jadpo_check::deployables::deployables(&loaded.db, loaded.project);
+    let web = jadpo_plan::Plan::for_deployable(
+        &loaded.db,
+        loaded.project,
+        deployables.get("web").expect("web"),
+    )
+    .expect("web plan");
+    assert!(!web.runtime().runs.schedules && !web.runtime().runs.subscribers);
+    assert!(web.runtime().schedules.schedules.is_empty());
+    assert!(web.runtime().schedules.store.is_none());
+    assert!(web.runtime().batches.is_empty());
+    assert_eq!(web.runtime().schedules.cleanup_schedules, ["state"]);
+    assert_eq!(web.runtime().schedules.cleanup_batches, ["main"]);
+    assert!(
+        !web.callables()
+            .iter()
+            .any(|body| body.key.as_str() == "action sweep")
+    );
+    assert_eq!(
+        web.runtime()
+            .connections
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["main", "state"]
+    );
+    assert_eq!(
+        web.runtime()
+            .config
+            .fields
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["main_url", "state_url"]
+    );
+    let bytes = web.runtime().encode_deployable().expect("encoded");
+    let decoded = jadpo_std::RuntimePlan::decode(&bytes).expect("decoded");
+    assert_eq!(decoded.schedules, web.runtime().schedules);
+    jadpo(&root, &["build", "--json"]);
+    let server = jadpo_test::postgres::Server::start().expect("server");
+    let main = server.create_database("cleanup_main").expect("main");
+    let state = server.create_database("cleanup_state").expect("state");
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    apply(&main, &steps["main"]);
+    apply(&state, &steps["state"]);
+    let (main_url, state_url) = (as_url(&main), as_url(&state));
+    let settings = [
+        ("MAIN_URL", main_url.as_str()),
+        ("STATE_URL", state_url.as_str()),
+    ];
+    rows(
+        &state,
+        "INSERT INTO jadpo_schedule_runs (id, schedule, due_slot, started_at, ended_at, outcome) VALUES ('00000000-0000-0000-0000-000000000001', 'old', now()-interval '31 days', now()-interval '31 days', now()-interval '31 days', 'succeeded')",
+    );
+    rows(
+        &state,
+        "INSERT INTO jadpo_operator_actions (id, kind, item, action, acted_at, target, was, operator, role) VALUES ('00000000-0000-0000-0000-000000000002', 'schedule_run', '00000000-0000-0000-0000-000000000001', 'dismiss', now()-interval '31 days', 'old', 'succeeded', 'test', 'operator')",
+    );
+    rows(
+        &main,
+        "INSERT INTO jadpo_batch_runs (id, batch, shape, captured, state, read_all, items_done, problems, started_at, stepped_at, finished_at) VALUES ('00000000-0000-0000-0000-000000000003', 'old', '', '{}', 'finished', true, 0, 0, now()-interval '31 days', now()-interval '31 days', now()-interval '31 days')",
+    );
+    rows(
+        &main,
+        "INSERT INTO jadpo_batch_problems (run_id, \"row\", \"column\", rule) VALUES ('00000000-0000-0000-0000-000000000003', 1, '', 'old')",
+    );
+    rows(
+        &main,
+        "INSERT INTO jadpo_batch_cancels (run_id, requested_at) VALUES ('00000000-0000-0000-0000-000000000003', now()-interval '31 days'), ('00000000-0000-0000-0000-000000000004', now()-interval '31 days')",
+    );
+    let (mut child, lines) = start_with(&root.join("build/target/web/web"), &["tick"], &settings);
+    let line = ticked(&lines, 60, |_| true);
+    assert_eq!(line["problems"], serde_json::json!([]), "{line}");
+    assert_eq!(line["ran"], serde_json::json!([]), "{line}");
+    assert_eq!(ended(&mut child, 30), Some(0));
+    for (connection, table) in [
+        (&state, "jadpo_schedule_runs"),
+        (&state, "jadpo_operator_actions"),
+        (&main, "jadpo_batch_runs"),
+        (&main, "jadpo_batch_problems"),
+        (&main, "jadpo_batch_cancels"),
+    ] {
+        assert_eq!(count(connection, table), 0, "web left {table}");
+    }
+    assert_eq!(
+        count(&state, "jadpo_schedules"),
+        0,
+        "web must not start the schedule"
+    );
+    let completed = rows(
+        &state,
+        "SELECT last_cleaned_at::text FROM jadpo_housekeeping",
+    );
+    assert_eq!(completed.len(), 1, "state-only store was cleaned");
+    let (mut child, lines) = start_with(&root.join("build/target/jobs/jobs"), &["tick"], &settings);
+    let line = ticked(&lines, 60, |_| true);
+    assert_eq!(line["problems"], serde_json::json!([]), "{line}");
+    assert_eq!(ended(&mut child, 30), Some(0));
+    assert_eq!(
+        rows(
+            &state,
+            "SELECT last_cleaned_at::text FROM jadpo_housekeeping"
+        ),
+        completed,
+        "jobs must skip the completed hourly pass"
+    );
+    assert_eq!(
+        count(&state, "jadpo_schedules"),
+        1,
+        "jobs retains its prompt schedule work"
+    );
+}

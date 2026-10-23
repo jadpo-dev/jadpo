@@ -43,30 +43,29 @@ impl Leased for Pass {
 
 /// The union includes stores which hold no outbox (notably AI-only and
 /// schedule-only stores). Never run an outbox statement against those.
-fn stores(executor: &dyn Executor, plan: &SchedulesPlan) -> Vec<String> {
+fn stores(plan: &SchedulesPlan) -> Vec<String> {
     let mut stores = plan.stores.clone();
-    stores.extend(plan.store.iter().cloned());
+    stores.extend(plan.cleanup_schedules.iter().cloned());
+    stores.extend(plan.cleanup_batches.iter().cloned());
     stores.extend(plan.sessions.iter().cloned());
     stores.extend(plan.keys.iter().cloned());
     stores.extend(plan.received.iter().cloned());
     stores.extend(plan.parked.iter().cloned());
     stores.extend(plan.ai_usage.iter().cloned());
     stores.extend(plan.steps.iter().cloned());
-    stores.extend(executor.plan().batches.iter().map(|p| p.store.clone()));
     stores.sort();
     stores.dedup();
     stores
 }
 
 pub(super) async fn run(
-    executor: &dyn Executor,
     host: &dyn Host,
     budget: &Budget<'_>,
     plan: &SchedulesPlan,
     now: i64,
     ticked: &mut Ticked,
 ) {
-    for store in stores(executor, plan) {
+    for store in stores(plan) {
         if budget.spent() {
             break;
         }
@@ -171,7 +170,7 @@ pub(super) async fn run(
         if plan.stores.contains(&store) {
             action_tasks.push(OLD_DELIVERY_ACTIONS);
         }
-        if plan.store.as_ref() == Some(&store) {
+        if plan.cleanup_schedules.contains(&store) {
             tasks.push((OLD_RUNS, kept, runs));
             action_tasks.push(OLD_RUN_ACTIONS);
         }
@@ -241,7 +240,7 @@ pub(super) async fn run(
                 }
             }
         }
-        if executor.plan().batches.iter().any(|p| p.store == store) {
+        if plan.cleanup_batches.contains(&store) {
             for sql in [crate::batches::ENDED, crate::batches::UNKEPT_CANCELS] {
                 if budget.spent() {
                     complete = false;

@@ -503,7 +503,7 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             .deliveries
             .extend(runner::run_within(executor, host, &budget, left).await);
     }
-    housekeeping(executor, host, &budget, plan, now, &mut ticked).await;
+    housekeeping(host, &budget, plan, now, &mut ticked).await;
     ticked
 }
 

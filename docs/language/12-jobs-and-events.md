@@ -175,8 +175,10 @@ Retention cleanup runs after the prompt work (due schedules, delivery sweeps,
 queues, polls, alerts and expired batch leases), at most hourly per store
 once a pass completes (chunk 9.1b2). Each store's `jadpo_housekeeping`
 lease admits one instance; stores holding only schedule state or AI usage
-are included. A failed, capped or interrupted pass stays eligible on the
-next tick. Completion and release are fenced by the owner's identity; a
+are included. Its cleanup holdings come from the whole application schema,
+so a deployable with no schedule or batch runners still cleans their history
+without keeping their executable bodies. A failed, capped or interrupted
+pass stays eligible on the next tick. Completion and release are fenced by the owner's identity; a
 crashed owner's lease expires after the remaining tick budget and the
 usual minute's margin. Every batch checks the budget and shutdown before
 starting. The retention windows and deletion ordering below are unchanged.

@@ -158,7 +158,8 @@ fn cleanup_union_includes_ai_only_and_schedule_only_stores_without_prompt_trigge
     let executor = OnlyState {
         places: crate::Places::default(),
         plan: SchedulesPlan {
-            store: Some("runs".into()),
+            cleanup_schedules: vec!["runs".into()],
+            cleanup_batches: vec!["batches".into()],
             ai_usage: Some("usage".into()),
             ..SchedulesPlan::default()
         },
@@ -172,7 +173,13 @@ fn cleanup_union_includes_ai_only_and_schedule_only_stores_without_prompt_trigge
             .iter()
             .filter(|sql| sql.as_str() == housekeeping::CLAIM)
             .count(),
-        2
+        3
+    );
+    assert!(calls.iter().any(|sql| sql == crate::batches::ENDED));
+    assert!(
+        calls
+            .iter()
+            .any(|sql| sql == crate::batches::UNKEPT_CANCELS)
     );
     assert!(calls.iter().any(|sql| sql == OLD_RUNS));
     assert!(calls.iter().any(|sql| sql == OLD_RUN_ACTIONS));
@@ -194,7 +201,6 @@ fn an_interrupted_pass_releases_without_completing_or_admitting_another_delete()
         let budget = Budget::of(&host, 10_000);
         let mut ticked = Ticked::default();
         crate::block_on(housekeeping::run(
-            &executor,
             &host,
             &budget,
             &executor.plan,
