@@ -4932,8 +4932,38 @@ it), may use them.
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
 | 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, a record created and read back, in the `wasm32` group (built: chunks 8.2b and 8.2d) |
-| 9 | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`), built in chunk 9.1d2b |
+| 9 | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`), built in chunk 9.1d2b; the strong TypeScript implementation has one Node/Bun static, integration and shared-contract pipeline in `tests` (chunk 9.1d3) |
 | 10 | Independent whole-first-build review and agent comparison remain outstanding |
+
+**Strong TypeScript golden verification** (chunk 9.1d3). The full profile's
+`tests` group runs `examples/golden-todo/typescript/adapter/verify.py` once.
+It holds an OS file lock across `npm ci --ignore-scripts --no-audit --no-fund`,
+type-aware lint, typecheck, formatting, verifier controls, Vitest and the shared
+contract. The lock covers execution as well as installation, since a second
+`npm ci` removes the first run's dependencies. The runtime declarations are
+`.node-version` and `.bun-version`; CI installs those exact versions. Vitest
+uses two workers; the cold type-aware ESLint rejection control has a 15-second
+tool-startup allowance, independent of application request and fetch deadlines.
+
+The private runner uses `JADPO_TEST_DATABASE_URL` from the gate, creates
+randomly named databases, applies the Drizzle migrations, and drops only its
+own databases even when migration or testing fails. Standalone runs instead
+own a disposable PostgreSQL16 cluster on `127.0.0.1`. Child shutdown and
+transaction cleanup are awaited. Controls exercise real process lock
+exclusion and release after failure, failed-migration cleanup with an unrelated
+database retained, and continued shared-server availability.
+
+The shared 44-case registry is loaded from this checkout by default. Every
+case crosses raw HTTP through the production Node adapter and `Bun.serve`;
+private controls invoke production authentication, application and jobs code,
+with actual PostgreSQL and injected issuer/mail transports. SQL observation
+records physical statements and transaction boundaries. Missing sources,
+runtimes or controls fail visible obligations. A full successful run using the
+same checkout may report `completeContract: true`; an explicit different
+checkout always reports a preview. Reports identify both revisions, dirty
+states, runtime versions and before/after source, schema, migration, lock and
+contract fingerprints. These results describe the exercised contract, not an
+independent review or comparative performance measurement.
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
 and every test binary once (`cargo test --workspace --no-run`, which also
@@ -5390,3 +5420,58 @@ establish completion. Full gate ownership is split between native in the
 `compiled` CI group and workerd in `wasm32`, with shared compiled-test caches
 under `target/jadpo-compiled/golden-todo`. Independent review, TypeScript
 comparison and comparative timing remain separate roadmap work.
+
+
+**The strong TypeScript golden implementation** (chunk 9.1d3).
+`examples/golden-todo/typescript/` is a separate ordinary application, using
+strict TypeScript, Hono, Zod, Drizzle, CASL, JOSE and a mature UUIDv7 generator.
+Versions are pinned in its manifest and npm lock; framework/library
+infrastructure, generated migrations and locks are distinct from authored
+application source. Node and Bun use their production HTTP bindings. No
+throughput, code-size advantage or equivalence follows from the earlier short
+scaffold or from these implementation facts.
+
+Route registration builds OpenAPI from the same Zod schemas that production
+handlers explicitly parse at input and output boundaries. Decoding rejects
+duplicate JSON members, unknown and unused
+inputs, malformed text and excess body size; NFC scalar bounds apply before
+business validation. Instants have millisecond precision and canonical UTC
+text; input UUIDs accept every unrefined bit pattern while new Todo IDs are
+UUIDv7. CASL and central SQL predicates enforce owner/self access before
+pagination and bounded child queries. Mutation outputs are validated inside
+serializable transactions, with real rollback and retry controls. Central
+transaction context rejects provider IO inside a transaction. Request scopes
+link admission, deadlines, native client disconnects and active SQL
+cancellation, including pool waiters and CPU-only commit checks.
+
+Authentication has a closed user/service principal, exact-one credential
+selection, durable session renewal and bounded five-minute signed authority;
+DELETE uses current authority. External JOSE verification reads current local
+provisioning and never invents a user or permission from provider claims. A
+valid unprovisioned external subject is `sign_in_refused` (403); malformed or
+invalid credentials remain 401. Discovery/JWKS validation bounds documents,
+key counts, fetch duration, cache lifetime and refresh frequency, including
+failed and cancelled refreshes. Algorithm and public-key checks precede cache
+use; matching-key rollover is exercised with locally generated signing keys.
+Request/job errors and structured logs use explicit safe projections.
+
+Optional write idempotency keeps a caller-scoped decoded-input digest and
+stores response bytes/status atomically with the mutation. Replays preserve
+the stored result across a changed output schema/status. Reminder revisions
+use signed64 PostgreSQL `bigint` and JavaScript `bigint` arithmetic, with exact
+canonical decimal JSON strings in queued/prepared work and provider payloads.
+Preparation is immutable; sends recheck authority/revision and fence accepted
+receipts, with stable provider keys, safe-window holds, durable retry budgets
+and connection breaker state. The fixture supplies mail responses, including
+lost acknowledgements; nothing sends real mail or proves inbox delivery.
+
+`npm run inventory` derives routes, schemas, OpenAPI, data columns, foreign
+keys and failures from the registered APIs. It distinguishes static TypeScript
+or lint rejection, runtime guards, and test-supported behavior. Effect labels
+are reviewable declarations, not a proof of arbitrary handler behavior.
+TypeScript supplies no general information-flow or policy proof; the rate
+counter's 16MiB accounting budget is not a proof about JavaScript heap overhead.
+Local fixtures do not establish production public DNS/TLS or edge deployment.
+The own-checkout shared run and full repository gate remain acceptance
+conditions; independent review, dependency merges and comparative measurements
+remain separate obligations.
