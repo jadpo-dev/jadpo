@@ -634,6 +634,10 @@ The runtime always serves `GET /health/live` (the process runs) and
 seconds; integrations are reported as unchecked). There is nothing to write,
 and neither path is part of an API's OpenAPI or record (question 6).
 
+Built in chunk 9.1d2b: the route table carries the checked provider-package
+connection names in sorted order. Readiness reports each as `unchecked`
+without making a provider call, whether stores are ready or unavailable.
+
 ## APIs and versions
 
 Most applications have one API. One with several audiences (public, admin,
