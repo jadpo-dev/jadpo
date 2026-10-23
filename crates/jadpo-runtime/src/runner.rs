@@ -56,7 +56,7 @@ use crate::capability::{Call, Repeat};
 use crate::ctx::System;
 use crate::effects::Unanswered;
 pub use crate::outbox::Delivery;
-use crate::race::{First, race};
+use crate::race::{First, join_all, race};
 use crate::{
     Clock, Ctx, Env, Executor, FaultKind, Frame, Host, Isolation, LocalFuture, MemoryHost, Outcome,
     SqlType, SqlValue, StoreError, Transaction,
@@ -1031,7 +1031,8 @@ fn jitter(host: &dyn Host) -> Option<[u8; 8]> {
 /// every delivery still `pending` past its next attempt, or `running`
 /// past its lease, which a crash between the commit and the delivery, a
 /// host that dropped deferred work, or a worker that died holding a lease
-/// left; at most [`SWEEP_BATCH`] of them, oldest first, each as
+/// left; at most [`SWEEP_BATCH`] of them, selected oldest first and run
+/// in at most four concurrent chains (no completion-order promise), each as
 /// [`run_deferred`] runs one, at the host's time as it starts rather than
 /// `now` (chunk 6.6a), and the work they set off. A payload that no
 /// longer reads as its type is parked with its problem, never dropped.
@@ -1049,6 +1050,13 @@ pub async fn sweep(
     sweep_within(executor, host, &budget, store, now).await
 }
 
+/// A sweep's maximum concurrently driven delivery chains (chunk 9.1b1).
+/// Below Workers' six opening slots; all connections and provider calls
+/// still take their own host guards. No delivery ordering is promised.
+/// Static round-robin lanes bound descendants and batches too; a lane
+/// never runs two batches of one batch run at once.
+const SWEEP_CONCURRENCY: usize = 4;
+
 /// [`sweep`] within `budget`: the tick's own.
 pub(crate) async fn sweep_within(
     executor: &dyn Executor,
@@ -1061,15 +1069,39 @@ pub(crate) async fn sweep_within(
         return Ok(Vec::new());
     };
     let work = due(&events, host, store, now).await?;
-    let worked = drive(
-        executor,
-        host,
-        budget,
-        vec![Deferred::Deliveries(work)],
-        Some(now),
-    )
-    .await;
-    Ok(worked.outcomes)
+    // Four independent lanes share this invocation's host and budget.
+    // Each lane still uses the ordinary driver: its contexts, descendants
+    // and each batch run remain serial; no action context crosses lanes.
+    let mut lanes: Vec<Vec<Delivery>> = (0..SWEEP_CONCURRENCY).map(|_| Vec::new()).collect();
+    let mut due: VecDeque<_> = work.into();
+    while !due.is_empty() {
+        for lane in &mut lanes {
+            if let Some(delivery) = due.pop_front() {
+                lane.push(delivery);
+            }
+        }
+    }
+    let pending: Vec<_> = lanes
+        .into_iter()
+        .filter(|lane| !lane.is_empty())
+        .map(|lane| {
+            drive(
+                executor,
+                host,
+                budget,
+                vec![Deferred::Deliveries(lane)],
+                Some(now),
+            )
+        })
+        .collect();
+    // Drain every admitted lane, including after shutdown or a spent
+    // budget: the ordinary driver settles in-flight work and leaves
+    // unstarted work durable for the next tick.
+    Ok(join_all(pending)
+        .await
+        .into_iter()
+        .flat_map(|worked| worked.outcomes)
+        .collect())
 }
 
 /// The deliveries due in `store`'s outbox at `now`, at most
