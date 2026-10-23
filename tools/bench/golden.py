@@ -187,7 +187,7 @@ def configuration(database_url, key):
     return {'DATABASE_URL': database_url, 'SESSION_SIGNING_KEY': key,
             'BROWSER_ORIGIN': 'https://todo.example.test', 'OIDC_ISSUER': 'https://identity.example/tenant/',
             'OIDC_AUDIENCE': 'golden-todo', 'MAIL_API_KEY': 'local-fixture-unused-secret',
-            'JWT_SIGNING_KEY': 'local-fixture-only-key-0123456789'}
+            'JWT_SIGNING_KEY': secrets.token_urlsafe(24)}
 
 
 def credentials(target, environment, principals):
