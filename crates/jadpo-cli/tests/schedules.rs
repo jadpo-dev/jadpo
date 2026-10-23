@@ -1799,7 +1799,9 @@ fn a_requested_run_no_tick_picks_up_is_withdrawn() {
 #[test]
 fn hourly_housekeeping_contends_retries_and_preserves_retention() {
     let root = project("hourly-housekeeping");
-    if !jadpo_test::live() { return; }
+    if !jadpo_test::live() {
+        return;
+    }
     let loaded = jadpo_db::load(&root);
     let steps = jadpo_check::data::migrations::store_steps(
         jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
@@ -1827,5 +1829,25 @@ fn hourly_housekeeping_contends_retries_and_preserves_retention() {
         assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE completed_at IS NULL AND owner IS NULL").await,1);
         host.rows("ALTER TABLE hidden_keys RENAME TO jadpo_idempotency_keys").await;
         assert!(tick(&program,&other,T0 + 3_600_003).await.problems.is_empty());
+        // Execute the actual registered lease statements: a crashed owner
+        // expires, only one independent connection claims its replacement,
+        // and the stale owner cannot complete or clear the replacement.
+        use jadpo_runtime::Database;
+        let statements=jadpo_runtime::statements::system_statements();
+        let claim=&statements.iter().find(|(name,_)|*name=="schedules::housekeeping::CLAIM").unwrap().1;
+        let release=&statements.iter().find(|(name,_)|*name=="schedules::housekeeping::RELEASE").unwrap().1;
+        host.rows("UPDATE jadpo_housekeeping SET completed_at=NULL,owner='01010101-0101-0101-0101-010101010101',lease_until='2026-10-19T09:00:01Z' RETURNING 1").await;
+        let now=T0+3_600_004;
+        let params=|owner|vec![SqlValue::Uuid([owner;16]),SqlValue::Timestamp((now+60_000)*1000),SqlValue::Timestamp(now*1000),SqlValue::Timestamp((now-3_600_000)*1000)];
+        let a=params(2);let b=params(3);
+        let (a,b)=futures_join(host.store().query_once(claim,&a),other.store().query_once(claim,&b)).await;
+        assert_eq!(a.unwrap().len()+b.unwrap().len(),1);
+        assert!(host.store().query_once(release,&[SqlValue::Uuid([1;16]),SqlValue::Timestamp(now*1000)]).await.unwrap().is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE owner IS NOT NULL AND completed_at IS NULL").await,1);
+        assert!(tick(&program,&host,now+1).await.problems.is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE owner IS NOT NULL AND completed_at IS NULL").await,1);
+        assert!(tick(&program,&host,now+60_000).await.problems.is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE owner IS NULL AND completed_at IS NOT NULL").await,1);
+
     });
 }

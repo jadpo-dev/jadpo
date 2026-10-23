@@ -171,6 +171,16 @@ Then, each step starting only while the tick's budget lasts, the tick:
   an operator's log rows 30 days old whose delivery or run is gone;
 - picks up batch runs whose lease lapsed.
 
+Retention cleanup runs after the prompt work (due schedules, delivery sweeps,
+queues, polls, alerts and expired batch leases), at most hourly per store
+once a pass completes (chunk 9.1b2). Each store's `jadpo_housekeeping`
+lease admits one instance; stores holding only schedule state or AI usage
+are included. A failed, capped or interrupted pass stays eligible on the
+next tick. Completion and release are fenced by the owner's identity; a
+crashed owner's lease expires after the remaining tick budget and the
+usual minute's margin. Every batch checks the budget and shutdown before
+starting. The retention windows and deletion ordering below are unchanged.
+
 A handled record goes only once its delivery can no longer repeat, which
 is once the delivery's own record is gone: with its event deleted,
 nothing redelivers it, whatever an operator does later. In the event's

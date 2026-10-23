@@ -38,7 +38,10 @@ class WarmServices(unittest.TestCase):
         for target in ('bun', 'node'):
             cls.pg.sql('postgres', f'CREATE DATABASE {normalizer.connection_parameters(cls.pg.url(target))["dbname"]}')
             cls.created.append(target)
-            cls.pg.sql(target, next((deliveries.FIXTURE / 'database/migrations').glob('*/postgres.sql')).read_text())
+            for migration in sorted((deliveries.FIXTURE / 'database/migrations').glob('*/postgres.sql')):
+                cls.pg.sql(target, migration.read_text())
+            if cls.pg.query(target, "SELECT to_regclass('jadpo_housekeeping')::text") != 'jadpo_housekeeping':
+                raise AssertionError('delivery service fixture did not apply all generated migrations')
 
     @classmethod
     def cleanup(cls):

@@ -1522,7 +1522,10 @@ runtime
 state decided on 2026-10-16 (multi-step call records and batch runs beside
 the outbox, OAuth grants, poll state, and webhook and queue
 de-duplication) follows the same rules and is always in a database, never
-a cache (area 16). The manifest
+a cache (area 16). Every store holding runtime state also keeps `jadpo_housekeeping`, the
+owner, lease and last completed hourly cleanup pass (area 12; chunk
+9.1b2), including a store holding only AI usage. It is generated and
+migrated with the other system tables. The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 A system table that keeps a value beyond a request, the outbox's payload,
