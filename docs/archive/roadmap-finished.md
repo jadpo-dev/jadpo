@@ -3075,3 +3075,30 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   tree as the gated commit. Exact unmerged prerequisite `64bf4934` is included
   under Richard's stacked-dependency permission; review and merges remain
   pending. No PR was merged or set to auto-merge by Codex.
+
+- [x] **9.1b1a Warm delivery comparison:** `opus · high` after 9.1b1:
+  compare local workerd with persistent Bun and Node services, excluding
+  process startup and warming their pools consistently. The previous Bun/Node
+  fixture launched one process per tick while workerd stayed running, so its
+  cross-target result does not establish a warm-service win. Retain that
+  protocol and its results, add explicit invocation-lifetime metadata, and
+  measure both serial and bounded Jadpo with the same final warm protocol.
+  Preserve the durable effects, UUIDv7, leases, atomic handled writes, failure
+  controls and strict source/artifact guards. Show Workers/workerd versus Bun
+  first; label native's external-tick mode separately if a comparable warm
+  native host is unavailable. Record all results, variation and lessons;
+  full gate and a separate manual-review PR required (Richard's primary
+  comparison clarified 2026-10-23; verifier correction, no language change).
+  Built: persistent Bun/Node HTTP tick services, matched pool warmup, explicit
+  process-lifetime metadata and real service/SQL recovery controls. Both
+  three-round campaigns passed all 24 cells and 40 controls with exact
+  durable-effect, replay and freshness audits. Local workerd improved
+  1,155→2,239 deliveries/s, with tick p95 107.064→55.206 ms; warm Bun
+  remained ahead at 4,017/s and 29.479 ms. The previous startup-asymmetric
+  cross-target interpretation is explicitly corrected, with all old
+  results retained. Method, source identities, variability and lessons
+  are in compiler/runtime §2.11 and `tools/bench/README.md`. The own-checkout
+  full gate passed 93/93; the measured bounded tree exactly equals the
+  gated tree. Exact unmerged prerequisite `0bf65408` is included under
+  Richard's stacked-dependency permission. No PR was merged or set to
+  auto-merge by Codex.

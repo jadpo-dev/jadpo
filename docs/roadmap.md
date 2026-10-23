@@ -243,19 +243,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   outside call checking its version in its own `WHERE`; a delivery's
   breaker read joined into its claim.
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
-- [ ] **9.1b1a Warm delivery comparison:** `opus · high` after 9.1b1:
-  compare local workerd with persistent Bun and Node services, excluding
-  process startup and warming their pools consistently. The previous Bun/Node
-  fixture launched one process per tick while workerd stayed running, so its
-  cross-target result does not establish a warm-service win. Retain that
-  protocol and its results, add explicit invocation-lifetime metadata, and
-  measure both serial and bounded Jadpo with the same final warm protocol.
-  Preserve the durable effects, UUIDv7, leases, atomic handled writes, failure
-  controls and strict source/artifact guards. Show Workers/workerd versus Bun
-  first; label native's external-tick mode separately if a comparable warm
-  native host is unavailable. Record all results, variation and lessons;
-  full gate and a separate manual-review PR required (Richard's primary
-  comparison clarified 2026-10-23; verifier correction, no language change).
+- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
 - [ ] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
   9.1b1a: measure idle-tick statements and latency, separate prompt work from
   an hourly cleanup pass one instance takes under a lease, and batch every
