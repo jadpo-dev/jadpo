@@ -18,8 +18,9 @@ Run the wrapper from this directory:
 python3 adapter/verify.py
 ```
 
-It uses `JADPO_TEST_DATABASE_URL` when the repository gate supplies one, creating
-and dropping only its own randomly named databases. Otherwise it starts and
+It uses `JADPO_TEST_DATABASE_URL` when the repository gate supplies one, accepting
+URI and libpq keyword forms while retaining explicit Unix sockets and connection
+parameters, and creating/dropping only its own randomly named databases. Otherwise it starts and
 stops an isolated PostgreSQL16 cluster on 127.0.0.1. Failed migrations and tests
 still clean up owned databases and await child shutdown.
 
