@@ -333,6 +333,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         Step('focused benchmark fixture', 'docs', [python, 'tools/bench/check_fixture.py'], jadpo=True),
         Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
         Step('golden contract verifier controls', 'lint', [python, 'tools/golden-todo/test_contract.py']),
+        Step('golden shared database connection controls', 'lint', [python, 'tools/golden-todo/test_postgres.py']),
         # The docs renderer finishes every page, and its list parser's
         # cases, each under a time limit (tools/language_docs_test.py).
         Step('docs renderer', 'lint', [python, 'tools/language_docs_test.py']),

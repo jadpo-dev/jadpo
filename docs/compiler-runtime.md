@@ -5364,7 +5364,11 @@ first event commit together; a preparation subscriber snapshots immutable
 mail input, and a sending subscriber rechecks current eligibility and owner
 status before the typed provider call. Only an acknowledged provider
 `accepted_at` is persisted as the receipt; this does not prove inbox delivery.
-There are no compiler branches for the application.
+The route table also carries sorted declared provider-connection names;
+readiness reports them as `unchecked` without a network probe, including on
+a store outage (areas 7 and 11). There are no compiler branches for the application.
+Both targets pass all 44 cases using the integrated checkout’s compiler and
+runtime; no missing control or case is counted as a pass.
 
 `tools/golden-todo/run.py` executes the same 44 IDs on generated native code
 and generated Wasm under workerd. Its private host controls supply clocks,

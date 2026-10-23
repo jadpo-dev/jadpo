@@ -2,7 +2,7 @@
 
 **Active executable contract:** `todo-v0.2`
 
-**Status:** implementation successor; conformance and independent freeze outstanding
+**Status:** implemented and locally validated; independent freeze outstanding
 
 The golden todo is an ordinary Jadpo application whose 44-case contract runs
 on native and compiled workerd. [`acceptance-v0.2.json`](acceptance-v0.2.json)
@@ -78,7 +78,7 @@ obligation:
 | Cases | Decided clause and executable reading |
 |---|---|
 | Application HTTP failures and startup refusal | Area 7, “How failures reach the client”: outer `error`, required `code`, `message`, `request_id`, optional `details`; `x-request-id` repeats that same identifier. No raw SQL, provider body, stack or input values are public. |
-| AUTH-012, PUBLIC-001, CONFIG-003 | Area 7, “Health”, and area 14, “A native deployable” / “A Workers deployable”: probes belong to the runtime, outside application APIs. `/health/live` returns `status: live`; readiness is a deployment probe. Seven authored application routes remain protected. Readiness has its own `ready` / `not_ready` deployment-probe schema, including dependency status. |
+| AUTH-012, PUBLIC-001, CONFIG-003 | Area 7, “Health”, and area 14, “A native deployable” / “A Workers deployable”: probes belong to the runtime, outside application APIs. `/health/live` returns `status: live`; readiness is a deployment probe. Seven authored application routes remain protected. Readiness has its own `ready` / `not_ready` deployment-probe schema, including store status and declared provider connections reported as `unchecked` without network probes. CONFIG-003 asserts `reminder_mail` explicitly. |
 | READ-003, LIST-004 | Area 7, “How failures reach the client”: malformed placeholders and out-of-range query fields are `422 invalid_input`, before business reads. A valid bounded credential keeps authentication queries at zero too. |
 | PATCH-003, PATCH-005 | Area 6, “The operations every entity gets”: an empty patch succeeds without changing values or generated timestamps. Only `patch` observes presence; `when_supplied` clears receipt/queue state and increments the private revision whenever `due_at` is supplied, including explicit `none` and the same date again. |
 | USER-001 | Area 8, “The application and revocation”: expiry of a signed part renews against a still-live durable session and current authority. A disabled user receives `403 user_disabled`, and no renewed credential. Actual durable-session expiry receives `401 invalid_credentials`. Both boundaries and all earlier fresh/refresh follow-ups remain asserted. |
@@ -107,8 +107,8 @@ its queue emission supplies no application delivery receipt.
 The shared contract runner under `tools/golden-todo/` targets generated native
 code and compiled Wasm under workerd, with controlled test clocks, actual
 credential verification, raw HTTP inputs and SQL-level query observation.
-Conformance is incomplete until all 44 cases pass on each target using this
-checkout; partial and prerequisite-preview runs do not establish completion.
+All 44 cases pass on each target using the integrated checkout. Partial
+and prerequisite-preview runs do not establish complete conformance.
 The fixture intercepts only its declared public HTTPS identity/key/mail hosts
 and supplies local responses; it does not prove production DNS or TLS filtering.
 SQL fixture writes and signing helpers are private test controls, and HTTP

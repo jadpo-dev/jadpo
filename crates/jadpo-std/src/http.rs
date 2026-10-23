@@ -1310,6 +1310,10 @@ pub struct RouteTable {
     /// The PostgreSQL stores the application's entities live in, in name
     /// order: what `GET /health/ready` checks.
     pub stores: Vec<String>,
+    /// The declared provider-package connections, in name order. Readiness
+    /// reports each as unchecked without calling its provider (areas 7/11).
+    #[serde(default)]
+    pub integrations: Vec<String>,
     /// Who can sign in and how; `None` when nothing is declared.
     pub identity: Option<IdentityPlan>,
     /// Where the client's address is read; `None` takes the host's default
