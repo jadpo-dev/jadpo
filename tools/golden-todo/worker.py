@@ -11,12 +11,22 @@ import socket
 import subprocess
 import threading
 import time
-from urllib.parse import urlsplit,unquote
+from postgres import connection_parameters
 from contract import MILLIS, iso
 
 def port():
     with socket.socket() as reserve:
         reserve.bind(('127.0.0.1',0));return reserve.getsockname()[1]
+
+def postgres_address(url):
+    parameters=connection_parameters(url)
+    host=parameters.get('hostaddr') or parameters['host']
+    number=parameters.get('port') or '5432'
+    if host.startswith('/'):
+        # workerd's pinned ExternalServer accepts KJ Unix addresses; the
+        # Hyperdrive binding still presents TCP-shaped settings to Wasm.
+        return 'unix:'+str(Path(host)/('.s.PGSQL.'+number))
+    return ('['+host+']' if ':' in host else host)+':'+number
 
 def build(source, compiler, native, project, here, work, cache):
     overlay=work/'worker-project'
@@ -154,8 +164,9 @@ class Worker:
         for name,value in (changes or {}).items():
             if value is None:environment.pop(name,None)
             else:environment[name]=value
-        parsed=urlsplit(self.url)
-        bindings.append(f'(name="DATABASE_URL", hyperdrive=(designator="hyperdrive", database={json.dumps(unquote(parsed.path[1:]))},user={json.dumps(unquote(parsed.username or "jadpo"))},password={json.dumps(unquote(parsed.password or ""))},scheme="postgresql"))')
+        parameters=connection_parameters(self.url)
+        address=postgres_address(self.url)
+        bindings.append(f'(name="DATABASE_URL", hyperdrive=(designator="hyperdrive", database={json.dumps(parameters["dbname"])},user={json.dumps(parameters.get("user","jadpo"))},password={json.dumps(parameters.get("password",""))},scheme="postgresql"))')
         for name in ['SESSION_SIGNING_KEY','BROWSER_ORIGIN','OIDC_ISSUER','OIDC_AUDIENCE','MAIL_API_KEY','MAIL_ENVIRONMENT','SOFT_DELETE_RETENTION']:
             if name in environment:bindings.append(f'(name={json.dumps(name)},text={json.dumps(environment[name])})')
         # A malformed URL deliberately replaces Hyperdrive for startup validation.
@@ -168,7 +179,7 @@ class Worker:
         self.port=port()
         config=f'''using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
- services=[(name="app",worker = .app),(name="machine",network=(allow=["public","private","local"])),(name="hyperdrive",external=(address="{parsed.hostname}:{parsed.port or 5432}",tcp=())),(name="fixture",external=(address="127.0.0.1:{self.fixture.server.server_port}",http=()))],
+ services=[(name="app",worker = .app),(name="machine",network=(allow=["public","private","local"])),(name="hyperdrive",external=(address={json.dumps(address)},tcp=())),(name="fixture",external=(address="127.0.0.1:{self.fixture.server.server_port}",http=()))],
  sockets=[(name="http",address="127.0.0.1:{self.port}",http=(),service="app")],
  extensions=[(modules=[(name="golden:ratelimit",internal=true,esModule=embed "ratelimit-binding.mjs")])]);
 const app :Workerd.Worker=(modules=[{','.join(modules)}],compatibilityDate="2026-10-01",bindings=[{','.join(bindings)}],globalOutbound="machine");

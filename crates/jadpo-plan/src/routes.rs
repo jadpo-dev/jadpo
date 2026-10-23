@@ -134,6 +134,14 @@ pub(crate) fn table(
     stores.sort();
     stores.dedup();
     out.stores = stores;
+    let mut integrations: Vec<String> = jadpo_check::connections::package_connections(db, project)
+        .connections
+        .iter()
+        .map(|connection| connection.name.clone())
+        .collect();
+    integrations.sort();
+    integrations.dedup();
+    out.integrations = integrations;
     for (group, route) in groups.routes() {
         if !serving(&group.api) {
             continue;

@@ -471,3 +471,46 @@ fn a_providers_settings_are_plain_values() {
         "{found:?}"
     );
 }
+
+#[test]
+fn readiness_plan_names_declared_provider_connections_in_order() {
+    let (_dir, root) = app("connections-health");
+    write(
+        &root,
+        "app.jadpo",
+        r#"application {
+    connections: {
+        ledger: {
+            package: Ledger.v1
+            domains: [billing]
+            credential: config.ledger_token
+            host: config.ledger_address
+            account: "shop"
+        }
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+"#,
+    );
+    let loaded = jadpo_db::load(&root);
+    let diagnostics = jadpo_check::check(&loaded.db, loaded.project);
+    assert!(
+        !diagnostics.iter().any(jadpo_check::blocks_running),
+        "{diagnostics:?}"
+    );
+    let plan = jadpo_plan::Plan::build(&loaded.db, loaded.project);
+    let routes = serde_json::to_value(plan.routes()).expect("route metadata");
+    assert_eq!(
+        routes["integrations"],
+        serde_json::json!(["couriers", "ledger"])
+    );
+    assert!(
+        plan.routes().stores.is_empty(),
+        "no entity store was declared"
+    );
+}
