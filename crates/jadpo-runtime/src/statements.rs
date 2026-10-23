@@ -21,6 +21,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("ai_budget::DEBIT", crate::ai_budget::DEBIT.to_string()),
         (
+            "ai_budget::GIVE_BACK",
+            crate::ai_budget::GIVE_BACK.to_string(),
+        ),
+        (
             "ai_budget::OLD_DAYS",
             crate::ai_budget::OLD_DAYS.to_string(),
         ),
