@@ -1,0 +1,30 @@
+use planning/entities { Sample }
+use planning/types { SampleView, TodoView }
+use planning/actions { AddTodo, Register, Registered, add_todo, register }
+use planning/queries { my_todos, sample_for }
+
+routes Api {
+    prefix: /api
+    POST /register {
+        authentication: RouteAuthentication.none
+        input: Register
+        output: Registered
+        status: SuccessStatus.created
+        run: register(input)
+    }
+    GET /todos {
+        output: List<TodoView>
+        run: my_todos(current_principal.user.id)
+    }
+    POST /todos {
+        input: AddTodo
+        output: TodoView
+        status: SuccessStatus.created
+        run: add_todo(input, current_principal.user)
+    }
+    GET /samples/{sample_id: Sample.id} {
+        authentication: RouteAuthentication.none
+        output: SampleView
+        run: sample_for(sample_id)
+    }
+}

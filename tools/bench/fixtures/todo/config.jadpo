@@ -1,0 +1,4 @@
+config {
+    database_url: PostgresUrl
+    signing_key: SigningKey
+}
