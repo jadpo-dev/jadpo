@@ -1,0 +1,17 @@
+authentication {
+    browser_session: {
+        cookie: "todo_session"
+        signing_key: config.session_signing_key
+        origin: config.browser_origin
+    }
+    api_token: {
+        signing_key: config.session_signing_key
+    }
+    external_token: {
+        issuer: config.oidc_issuer
+        audience: config.oidc_audience
+    }
+    service_key: {
+        signing_key: config.session_signing_key
+    }
+}

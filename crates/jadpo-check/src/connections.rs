@@ -2097,12 +2097,24 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             },
         });
     }
+    let identity = crate::identity::identity(db, project);
+    if let Some(external) = &identity.external_token {
+        rows.push(Row {
+            connection: "external_token".into(),
+            host: format!("the issuer in `config.{}` and the public HTTPS keys address its verified discovery document names", external.issuer),
+            address: None, setting: Some(external.issuer.clone()), image: None,
+            when: None, reached_for: "runtime identity discovery and signing keys; public HTTPS, no redirects".into(), domains: Vec::new(),
+        });
+    }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));
     let mut markdown = String::from(
         "# Network\n\n\
          Every host the app can reach, and the connection that reaches it. Jadpo code reaches \
          the network only through connections in `app.jadpo`. Written by `jadpo check`.\n\n",
     );
+    if identity.external_token.is_some() {
+        markdown.push_str("External identity discovery is runtime-owned egress: only the configured issuer and its exactly matched discovery document's public HTTPS keys address, with certificate checks and no redirects. Token headers never choose an address.\n\n");
+    }
     if rows.is_empty() {
         markdown.push_str("The app reaches no host.\n");
     } else {
@@ -2164,5 +2176,17 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
     }
     let mut json = Value::object();
     json.set("hosts", hosts);
+    if let Some(external) = &identity.external_token {
+        let mut rule = Value::object();
+        rule.set("issuer_setting", external.issuer.as_str());
+        rule.set("audience_setting", external.audience.as_str());
+        rule.set("public_https", true);
+        rule.set("redirects", false);
+        rule.set(
+            "keys_authority",
+            "exactly matched configured issuer discovery metadata",
+        );
+        json.set("external_identity", rule);
+    }
     Report { markdown, json }
 }

@@ -13,9 +13,10 @@
 //! `signing_key:` and a browser session's `origin:` read from settings
 //! (area 10), and the generated `POST /auth/exchange`; in chunk 5.5z:
 //! `sign_in:` with `passkey:`, whose routes the runtime answers; in chunk
-//! 7.3b: `magic_link:` and `on_first_sign_in:`. External tokens, sign-in
-//! providers and acting as an OAuth provider come later: each is
-//! `toolchain.not_built_yet` where it is written.
+//! 7.3b: `magic_link:` and `on_first_sign_in:`; in chunk 9.1d1:
+//! `external_token:` for provisioned active subjects. Its first-sign-in
+//! hook, sign-in providers and acting as an OAuth provider come later:
+//! each is `toolchain.not_built_yet` where it is written.
 
 use std::sync::Arc;
 
@@ -124,6 +125,13 @@ pub struct Variant {
     pub store: String,
 }
 
+/// An external identity provider: configuration names, never values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalToken {
+    pub issuer: String,
+    pub audience: String,
+}
+
 /// A sign-in method `authentication { }` declares.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Method {
@@ -202,6 +210,7 @@ pub struct Identity {
     pub written: Vec<PrincipalKind>,
     /// Each declared method, in written order.
     pub methods: Vec<Method>,
+    pub external_token: Option<ExternalToken>,
     /// `application { revocation_delay: }` in milliseconds, when it is a
     /// duration above zero.
     pub revocation_delay: Option<i64>,
@@ -1209,15 +1218,11 @@ impl Reader<'_> {
                         signing_key,
                         origin: None,
                     }),
-                other => {
-                    let why = match other {
-                        AuthenticationMethod::ExternalToken => {
-                            "Tokens from another provider need its issuer and audience from configuration (area 10), and come after the first build"
-                        }
-                        _ => {
-                            "Acting as an OAuth provider comes after the first build (area 8, question 13)"
-                        }
-                    };
+                AuthenticationMethod::ExternalToken => member
+                    .as_ref()
+                    .and_then(|member| self.external_token(&path, &span, member)),
+                _ => {
+                    let why = "Acting as an OAuth provider comes after the first build (area 8, question 13)";
                     self.later(span.clone(), &format!("`{word}:`"), why);
                     Some(Method {
                         method,
@@ -1229,7 +1234,10 @@ impl Reader<'_> {
                 }
             };
             let Some(read) = read else { continue };
-            if read.built && read.signing_key.is_none() {
+            if read.built
+                && method != AuthenticationMethod::ExternalToken
+                && read.signing_key.is_none()
+            {
                 unsigned.push((method, span.clone()));
             }
             let kind = if method == AuthenticationMethod::ServiceKey {
@@ -1243,6 +1251,7 @@ impl Reader<'_> {
                 let what = match method {
                     AuthenticationMethod::BrowserSession => "A browser session",
                     AuthenticationMethod::ApiToken => "An API token",
+                    AuthenticationMethod::ExternalToken => "An external token",
                     _ => "A service key",
                 };
                 self.out.problems.push(
@@ -1327,6 +1336,12 @@ impl Reader<'_> {
                 Some(true) => self.out.passkey = Some(read),
             }
         }
+        if self.out.external_token.is_some()
+            && let Some(hook) = &self.out.first_sign_in
+        {
+            self.later(hook.span.clone(), "`on_first_sign_in:` with `external_token:`",
+                "Creating or linking an external subject through the first-sign-in hook is not built yet; external tokens currently require a provisioned user");
+        }
         // With a revocation delay every method signs what it gives, with a
         // key from secret configuration.
         if self.out.revocation_delay.is_some() {
@@ -1350,6 +1365,112 @@ impl Reader<'_> {
                 );
             }
         }
+    }
+
+    /// External tokens use deployment-owned issuer and audience settings.
+    fn external_token(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<Method> {
+        let mut issuer = None;
+        let mut audience = None;
+        let mut seen = Vec::new();
+        let mut ok = true;
+        if let Some(list) = member.block() {
+            for (key, setting) in tree::members(Some(list)) {
+                let Some(name) = tree::name_text(&key) else {
+                    continue;
+                };
+                let at = node_span(path, key.syntax());
+                if seen.contains(&name) {
+                    ok = false;
+                    self.out.problems.push(
+                        Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                            format!("`external_token:` gives `{name}:` twice"),
+                        )
+                        .at(at, "repeated setting")
+                        .reason("An external token has one issuer and one audience.")
+                        .next(format!("Remove the repeated `{name}:`")),
+                    );
+                    continue;
+                }
+                seen.push(name.clone());
+                let needs = match name.as_str() {
+                    "issuer" => jadpo_std::Builtin::Url,
+                    "audience" => jadpo_std::Builtin::Text,
+                    _ => {
+                        ok = false;
+                        self.out.problems.push(Diagnostic::new(
+                            &rule::SEMANTIC_AUTH_SETTING_UNKNOWN,
+                            format!("`{name}` isn't an `external_token` setting"),
+                        ).at(at, "unknown setting")
+                         .reason("External tokens take `issuer:` and `audience:` from configuration. The runtime owns discovery, keys and validation.")
+                         .next(format!("Remove `{name}:`")));
+                        continue;
+                    }
+                };
+                let value = setting.value();
+                let read = self.setting(path, &at, &name, value.as_ref(), needs);
+                ok &= read.is_some();
+                match name.as_str() {
+                    "issuer" => issuer = read,
+                    _ => audience = read,
+                }
+            }
+        }
+        for name in ["issuer", "audience"] {
+            if !seen.iter().any(|seen| seen == name) {
+                ok = false;
+                self.out.problems.push(Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                    format!("`external_token:` has no `{name}:`"),
+                ).at(span.clone(), format!("no `{name}:`"))
+                 .reason("An external token is checked against its configured issuer and audience before its subject identifies an active user.")
+                 .next(format!("Add `{name}: config.<name>`, reading a `{}` setting", if name == "issuer" { "Url" } else { "Text" })));
+            }
+        }
+        if !ok {
+            return None;
+        }
+        let unsupported_subject = self
+            .out
+            .variants
+            .iter()
+            .find(|variant| variant.kind == PrincipalKind::User)
+            .and_then(|variant| {
+                crate::data::entity_model(
+                    self.db,
+                    self.project,
+                    crate::lookups::Name::new(self.db, variant.entity.clone()),
+                )
+                .as_ref()
+                .and_then(|entity| {
+                    entity
+                        .fields
+                        .iter()
+                        .find(|field| field.name == variant.subject)
+                })
+                .map(|field| {
+                    field.compound.is_some()
+                        || field.json.is_some()
+                        || crate::data::sql_type(field).is_none()
+                })
+            })
+            .unwrap_or(false);
+        if unsupported_subject {
+            self.later(span.clone(), "A compound external-token subject",
+                "External-token subjects currently use a unique field with a scalar stored form; multi-column and structured subject lookups are not built yet");
+            return None;
+        }
+        self.out.external_token = Some(ExternalToken {
+            issuer: issuer?,
+            audience: audience?,
+        });
+        Some(Method {
+            method: AuthenticationMethod::ExternalToken,
+            built: true,
+            cookie: None,
+            signing_key: None,
+            origin: None,
+        })
     }
 
     /// A member that reads a setting of type `needs`: `config.<name>`,
@@ -1379,6 +1500,16 @@ impl Reader<'_> {
             .and_then(|(_, rest)| rest.first().and_then(tree::name_ref_text));
         let Some(name) = read else {
             let literal = matches!(value, Some(Expr::Literal(_)));
+            let external = member == "issuer" || member == "audience";
+            if external {
+                self.out.problems.push(Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    format!("`{member}:` doesn't read a setting"),
+                ).at(at, "not `config.<name>`")
+                 .reason("An external token's issuer and audience come from deployment configuration, never source or the token itself.")
+                 .next(declare));
+                return None;
+            }
             let (message, label, reason) = match (signing, literal) {
                 (true, true) => (
                     "A signing key is written in the source".to_string(),
@@ -1413,7 +1544,9 @@ impl Reader<'_> {
         if let Some(found) = config.setting(&name) {
             let lookup = Lookup::new(self.db, self.project);
             if lookup.base_prim(&found.ty) != Some(needs) {
-                let reason = if signing {
+                let reason = if member == "issuer" || member == "audience" {
+                    "An external token reads its issuer from a `Url` setting and its audience from a `Text` setting."
+                } else if signing {
                     "A signing key is a `SigningKey` setting: secret, at least 32 characters, and rotates by moving the old value to the variable with `_PREVIOUS` after its name (area 10)."
                 } else {
                     "A browser session's origin is a `Url` setting: the scheme, host and port its pages are served from, such as `https://app.example`, which a cookie write's `Origin` must be."

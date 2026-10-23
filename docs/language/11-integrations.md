@@ -3174,6 +3174,15 @@ changing calls in one action").
   its window would pass, or when the package says `replays_failures: true`
   and the provider answered 5xx. Only the package's `new_key_on:` answer
   makes the runtime send again under the next key generation by itself. The window rule holds for single calls too.
+  Since chunk 9.1d2a, a resumable single call with a store already available
+  keeps only its operation, first dispatch time, key generation and runner
+  generation in the step tables, with no request fingerprint or answer and
+  no steps encryption setting. It keeps a fresh code clock and its existing
+  provider key; host time bounds retries. A saved record cannot switch
+  between encrypted replay and dispatch metadata: its saved mode disagrees
+  with the new build's, so it stops as `diverged` before sending anything,
+  with the problem kept for the operator. Storeless routes retain their
+  existing behavior without durable history across independent requests.
 - **One runner per record.** Routes claim the client's key before the action
   runs (area 7). A delivery's lease carries a generation that every record
   write checks, so a runner whose lease lapsed stops before sending another

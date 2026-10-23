@@ -243,6 +243,10 @@ struct Kept {
     key_generation: u32,
     /// When it was first sent, on the host's clock.
     first_sent: i64,
+    /// The current provider contract, checked again before each send.
+    window_ms: Option<u64>,
+    /// This key may already have gone out (also true when loaded).
+    sent: bool,
     answer: Option<Answered>,
     /// Whether its row is in the store.
     written: bool,
@@ -261,8 +265,8 @@ pub(crate) struct Record {
     id: [u8; 16],
     /// The runner's generation, which every write checks.
     generation: i64,
-    answers: KeyRing,
-    fingerprints: KeyRing,
+    answers: Option<KeyRing>,
+    fingerprints: Option<KeyRing>,
     /// When its first run started.
     started_at: i64,
     /// Whether its row is in the store.
@@ -326,7 +330,7 @@ impl Record {
 /// it runs again. Nothing when it doesn't exist or a newer runner holds
 /// it. One an operator abandoned is left as it is, and says so (chunk
 /// 7.5c).
-pub const OPEN: &str = "UPDATE \"jadpo_step_records\" SET \"generation\" = CASE WHEN \"state\" = 'abandoned' THEN \"generation\" ELSE $2 END, \"taken_at\" = CASE WHEN \"state\" = 'abandoned' THEN \"taken_at\" ELSE $3 END, \"problem\" = CASE WHEN \"state\" = 'abandoned' THEN \"problem\" ELSE NULL END, \"state\" = CASE WHEN \"state\" = 'abandoned' THEN \"state\" ELSE 'running' END WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"started_at\", \"state\"";
+pub const OPEN: &str = "UPDATE \"jadpo_step_records\" SET \"generation\" = CASE WHEN \"state\" = 'abandoned' THEN \"generation\" ELSE $2 END, \"taken_at\" = CASE WHEN \"state\" = 'abandoned' THEN \"taken_at\" ELSE $3 END, \"problem\" = CASE WHEN \"state\" = 'abandoned' THEN \"problem\" ELSE NULL END, \"state\" = CASE WHEN \"state\" = 'abandoned' THEN \"state\" ELSE 'running' END WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"started_at\", \"state\", \"shape\"";
 
 /// A record an operator abandoned (chunk 7.5c): it never runs again.
 pub const ABANDONED: &str = "abandoned";
@@ -340,8 +344,9 @@ pub const CREATE: &str = "INSERT INTO \"jadpo_step_records\" (\"id\", \"scope\",
 
 /// Step `$4` of record `$1`, sent at `$3` by generation `$2`: its
 /// operation `$5`, fingerprint `$6` and key generation `$7`. Nothing when
-/// a newer runner holds the record or the step was written meanwhile.
-pub const SEND: &str = "WITH \"holder\" AS (UPDATE \"jadpo_step_records\" SET \"generation\" = $2, \"taken_at\" = $3 WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"id\") INSERT INTO \"jadpo_steps\" (\"record_id\", \"position\", \"operation\", \"fingerprint\", \"key_generation\", \"dispatched_at\") SELECT \"id\", $4, $5, $6::jsonb, $7, $3 FROM \"holder\" ON CONFLICT DO NOTHING RETURNING \"position\"";
+/// a newer runner holds the record or an operator abandoned it. An
+/// already written step is fenced again without changing its dispatch time.
+pub const SEND: &str = "WITH \"holder\" AS (UPDATE \"jadpo_step_records\" SET \"generation\" = $2, \"taken_at\" = $3 WHERE \"id\" = $1 AND \"generation\" <= $2 AND \"state\" <> 'abandoned' RETURNING \"id\") INSERT INTO \"jadpo_steps\" (\"record_id\", \"position\", \"operation\", \"fingerprint\", \"key_generation\", \"dispatched_at\") SELECT \"id\", $4, $5, $6::jsonb, $7, $3 FROM \"holder\" ON CONFLICT (\"record_id\", \"position\") DO UPDATE SET \"record_id\" = EXCLUDED.\"record_id\" RETURNING \"jadpo_steps\".\"position\"";
 
 /// Step `$4` of record `$1` answered at `$3`, by generation `$2`: its
 /// outcome `$5` and its answer, sealed, `$6`.
@@ -397,20 +402,23 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
         return Ok(false);
     };
     let started = ctx.started();
-    let Some(ring) = spec.setting.and_then(|at| started.keys().get(at)) else {
-        return Err(Unanswered::Fault(FaultKind::Defect(
-            "the key `application { steps: { encryption_key: } }` names has no value in this run"
-                .into(),
-        )));
+    let (answers, fingerprints) = if spec.plan.replay {
+        let Some(ring) = spec.setting.and_then(|at| started.keys().get(at)) else {
+            return Err(Unanswered::Fault(FaultKind::Defect(
+                "the key `application { steps: { encryption_key: } }` names has no value in this run".into(),
+            )));
+        };
+        let derive = |label: &str| {
+            ring.derived(label).map_err(|_| {
+                Unanswered::Fault(FaultKind::Defect(
+                    "a steps key that can't be derived".into(),
+                ))
+            })
+        };
+        (Some(derive(ANSWERS)?), Some(derive(FINGERPRINTS)?))
+    } else {
+        (None, None)
     };
-    let derive = |label: &str| {
-        ring.derived(label).map_err(|_| {
-            Unanswered::Fault(FaultKind::Defect(
-                "a steps key that can't be derived".into(),
-            ))
-        })
-    };
-    let (answers, fingerprints) = (derive(ANSWERS)?, derive(FINGERPRINTS)?);
     let Some(call_key) = ctx.call_key() else {
         return Err(Unanswered::Fault(FaultKind::Defect(
             "an action's record with no key to keep it under".into(),
@@ -451,6 +459,48 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
             .query_once(STEPS, &[SqlValue::Uuid(id)])
             .await
             .map_err(|_| unavailable())?;
+        let dispatch = opened
+            .first()
+            .and_then(|row| match row.get(2) {
+                Some(SqlValue::Text(shape)) => {
+                    Some(shape.starts_with(jadpo_std::steps::DISPATCH_SHAPE_PREFIX))
+                }
+                _ => None,
+            })
+            .unwrap_or(false);
+        if dispatch == spec.plan.replay {
+            let operation = rows
+                .first()
+                .and_then(|row| match row.get(1) {
+                    Some(SqlValue::Text(operation)) => Some(operation.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| "outside call".into());
+            let problem = Diverged {
+                position: 1,
+                operation,
+                how: How::RecordMode {
+                    replay: spec.plan.replay,
+                },
+            };
+            let action = spec
+                .action
+                .split_once(' ')
+                .map_or(spec.action, |(_, name)| name);
+            let text = problem.text(action);
+            let _ = database
+                .query_once(
+                    DIVERGE,
+                    &[
+                        SqlValue::Uuid(id),
+                        SqlValue::Int8(generation),
+                        micros(now),
+                        SqlValue::Json(problem.json()),
+                    ],
+                )
+                .await;
+            return Err(Unanswered::Fault(FaultKind::Diverged(text)));
+        }
         for (at, row) in rows.iter().enumerate() {
             let [
                 SqlValue::Int4(position),
@@ -475,8 +525,9 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
             let answer = match answer {
                 SqlValue::Bytes(sealed) => {
                     let context = context(&id, at as u32 + 1);
-                    let opened = jadpo_value::crypto::decrypt(sealed, &answers, &context)
-                        .ok()
+                    let opened = answers
+                        .as_ref()
+                        .and_then(|key| jadpo_value::crypto::decrypt(sealed, key, &context).ok())
                         .and_then(|plain| Answered::from_json(&plain));
                     match opened {
                         Some(answer) => Some(answer),
@@ -497,6 +548,8 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
                 fingerprint,
                 key_generation: u32::try_from(*key_generation).unwrap_or(0),
                 first_sent: first_sent.div_euclid(1000),
+                window_ms: None,
+                sent: true,
                 answer,
                 written: true,
             });
@@ -504,8 +557,8 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
     }
     let clock = ctx.env().clock;
     let started_at = started.unwrap_or_else(|| ctx.now());
-    if started.is_some() {
-        // Once a record exists, `clock.now` is its first run's start for
+    if started.is_some() && spec.plan.replay {
+        // Once a replay record exists, `clock.now` is its first run's start for
         // every rerun (area 11, "Time").
         ctx.set_clock(Clock::fixed(started_at));
     }
@@ -588,7 +641,9 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
     let Some(record) = ctx.steps_record_mut() else {
         return Ok(Stepped::Untracked);
     };
-    if !proposed.changes && record.at == 0 {
+    if (record.answers.is_none() && proposed.repeat != Repeat::Keyed)
+        || (!proposed.changes && record.at == 0)
+    {
         return Ok(Stepped::Untracked);
     }
     record.at = record.at.saturating_add(1);
@@ -601,20 +656,29 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
     let index = position as usize - 1;
     let Some(kept) = record.steps.get(index).cloned() else {
         // A new step: proposed now, written as it goes out.
-        let fingerprint = fields
-            .iter()
-            .map(|(name, bytes)| {
-                let mac = jadpo_value::crypto::hmac(bytes, &record.fingerprints)
-                    .map(|mac| jadpo_value::encoding::to_hex(&mac))
-                    .unwrap_or_default();
-                (name.to_string(), mac)
+        let fingerprint = record
+            .fingerprints
+            .as_ref()
+            .map(|key| {
+                fields
+                    .iter()
+                    .map(|(name, bytes)| {
+                        let mac = jadpo_value::crypto::hmac(bytes, key)
+                            .map(|mac| jadpo_value::encoding::to_hex(&mac))
+                            .unwrap_or_default();
+                        (name.to_string(), mac)
+                    })
+                    .collect()
             })
-            .collect();
+            .unwrap_or_default();
         record.steps.push(Kept {
             operation: proposed.operation.to_string(),
             fingerprint,
             key_generation: 0,
             first_sent: now,
+            window_ms: (proposed.repeat == Repeat::Keyed)
+                .then_some(proposed.window_ms.unwrap_or(0)),
+            sent: false,
             answer: None,
             written: false,
         });
@@ -634,19 +698,21 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
         return Err(diverge(ctx, problem).await);
     }
     let mut differ: Vec<String> = Vec::new();
-    for (name, bytes) in &fields {
-        let same = kept
-            .fingerprint
-            .get(*name)
-            .and_then(|mac| jadpo_value::encoding::from_hex(mac))
-            .is_some_and(|mac| jadpo_value::crypto::verify_hmac(bytes, &mac, &record.fingerprints));
-        if !same {
-            differ.push((*name).to_string());
+    if let Some(key) = &record.fingerprints {
+        for (name, bytes) in &fields {
+            let same = kept
+                .fingerprint
+                .get(*name)
+                .and_then(|mac| jadpo_value::encoding::from_hex(mac))
+                .is_some_and(|mac| jadpo_value::crypto::verify_hmac(bytes, &mac, key));
+            if !same {
+                differ.push((*name).to_string());
+            }
         }
-    }
-    for name in kept.fingerprint.keys() {
-        if !fields.contains_key(name.as_str()) {
-            differ.push(name.clone());
+        for name in kept.fingerprint.keys() {
+            if !fields.contains_key(name.as_str()) {
+                differ.push(name.clone());
+            }
         }
     }
     if !differ.is_empty() {
@@ -658,6 +724,10 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
             how: How::Fields(differ),
         };
         return Err(diverge(ctx, problem).await);
+    }
+    if let Some(step) = record.steps.get_mut(index) {
+        step.window_ms =
+            (proposed.repeat == Repeat::Keyed).then_some(proposed.window_ms.unwrap_or(0));
     }
     let at = StepAt {
         position,
@@ -695,11 +765,16 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
 /// Writes step `at` before it goes out, once: the record itself before
 /// its first step, then the step, each taking the record over for this
 /// runner's generation (called by [`crate::effects::exchange`] before the
-/// driver). A step sent again is written already. `unavailable`, with
+/// driver). A step sent again rechecks its runner without replacing its
+/// first dispatch time. `unavailable`, with
 /// nothing sent, when the store can't be reached or a newer runner holds
 /// the record.
 pub(crate) async fn sending(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
+    check_window(ctx, at)?;
     written(ctx, at).await?;
+    // Metadata persistence is an await: the host clock can cross the
+    // safe horizon while the generation fence is being written.
+    check_window(ctx, at)?;
     going_out(ctx, at);
     // A step reached, which `jadpo test` may crash before (chunk 7.5d).
     #[cfg(feature = "testing")]
@@ -717,6 +792,30 @@ pub(crate) async fn sending(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswe
     Ok(())
 }
 
+/// Checks host time both sides of the durable fence, before the driver.
+fn check_window(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
+    let now = wall(ctx);
+    let expired = ctx.steps_record().and_then(|record| {
+        let kept = record.steps.get(at.position as usize - 1)?;
+        let window = kept.window_ms?;
+        // No declared window permits the first send, but no blind resend.
+        if !kept.written || (window == 0 && !kept.sent) {
+            return None;
+        }
+        let until = kept
+            .first_sent
+            .saturating_add(i64::try_from(window - window_margin_ms(window)).unwrap_or(i64::MAX));
+        (now >= until).then(|| kept.operation.clone())
+    });
+    if let Some(operation) = expired {
+        if let Some(record) = ctx.steps_record_mut() {
+            record.note(at.position, &operation, StepState::OutcomeUnknown);
+        }
+        return Err(Unanswered::Failure(Box::new(crate::outcome_unknown())));
+    }
+    Ok(())
+}
+
 /// [`sending`]'s writes.
 async fn written(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
     let now = wall(ctx);
@@ -727,9 +826,6 @@ async fn written(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
         let Some(kept) = record.steps.get(at.position as usize - 1) else {
             return Ok(());
         };
-        if kept.written {
-            return Ok(());
-        }
         let Some(database) = ctx.capabilities().database(&record.store) else {
             return Err(Unanswered::Failure(Box::new(crate::unavailable())));
         };
@@ -775,8 +871,10 @@ async fn written(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
     if let Some(record) = ctx.steps_record_mut() {
         record.kept = true;
         if let Some(kept) = record.steps.get_mut(at.position as usize - 1) {
+            if !kept.written {
+                kept.first_sent = now;
+            }
             kept.written = true;
-            kept.first_sent = now;
         }
     }
     Ok(())
@@ -785,6 +883,12 @@ async fn written(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
 /// Notes step `at` as going out with no answer kept yet: in doubt until
 /// [`answered`] keeps one (chunk 7.5f).
 fn going_out(ctx: &mut Ctx<'_>, at: StepAt) {
+    if let Some(kept) = ctx
+        .steps_record_mut()
+        .and_then(|record| record.steps.get_mut(at.position as usize - 1))
+    {
+        kept.sent = true;
+    }
     if let Some(record) = ctx.steps_record_mut()
         && let Some(operation) = record
             .steps
@@ -801,6 +905,27 @@ fn going_out(ctx: &mut Ctx<'_>, at: StepAt) {
 /// runner holds the record, which sends the step again under its key.
 pub async fn answered(ctx: &mut Ctx<'_>, at: StepAt, answer: Answered) -> Result<(), Unanswered> {
     let now = wall(ctx);
+    // A single changing call records its dispatch, never its request or
+    // answer. Its provider replays the stable key on a rerun.
+    if let Some(record) = ctx.steps_record_mut()
+        && record.answers.is_none()
+    {
+        if let Some(operation) = record
+            .steps
+            .get(at.position as usize - 1)
+            .map(|kept| kept.operation.clone())
+        {
+            record.note(
+                at.position,
+                &operation,
+                match answer {
+                    Answered::Failed(code) => StepState::Failed(code),
+                    _ => StepState::Answered,
+                },
+            );
+        }
+        return Ok(());
+    }
     let plain = answer.to_json();
     let (database, id, generation, operation) = {
         let Some(record) = ctx.steps_record() else {
@@ -831,7 +956,9 @@ pub async fn answered(ctx: &mut Ctx<'_>, at: StepAt, answer: Answered) -> Result
         let Some(record) = ctx.steps_record() else {
             return Ok(());
         };
-        let answers = record.answers.clone();
+        let Some(answers) = record.answers.clone() else {
+            return Ok(());
+        };
         let context = context(&id, at.position);
         jadpo_value::crypto::encrypt(
             plain.as_bytes(),
@@ -930,6 +1057,7 @@ pub async fn new_key(ctx: &mut Ctx<'_>, at: StepAt) -> Result<StepAt, Unanswered
     {
         kept.key_generation = next.key_generation;
         kept.first_sent = now;
+        kept.sent = false;
     }
     Ok(next)
 }
@@ -963,6 +1091,8 @@ enum How {
     Missed,
     /// The provider says its key came with a different request.
     Reused,
+    /// This build changed between encrypted replay and dispatch metadata.
+    RecordMode { replay: bool },
 }
 
 impl Diverged {
@@ -974,6 +1104,14 @@ impl Diverged {
             How::Operation(now) => format!("{at}, is now `{now}`"),
             How::Missed => format!("{at}, wasn't reached"),
             How::Reused => format!("{at}: the provider says its key came with a different request"),
+            How::RecordMode { replay } => {
+                let (recorded, current) = if *replay {
+                    ("dispatch metadata", "encrypted replay")
+                } else {
+                    ("encrypted replay", "dispatch metadata")
+                };
+                format!("{at}: its record uses {recorded}; this build uses {current}")
+            }
             How::Fields(fields) => format!(
                 "{at}: {} {} from the record",
                 fields
@@ -1004,6 +1142,8 @@ impl Diverged {
                     .filter_map(|field| field.as_str().map(str::to_string))
                     .collect(),
             )
+        } else if let Some(replay) = json.get("replay").and_then(serde_json::Value::as_bool) {
+            How::RecordMode { replay }
         } else if json.get("reused").is_some() {
             How::Reused
         } else {
@@ -1039,6 +1179,9 @@ impl Diverged {
             }
             How::Reused => {
                 object.insert("reused".into(), true.into());
+            }
+            How::RecordMode { replay } => {
+                object.insert("replay".into(), (*replay).into());
             }
         }
         serde_json::Value::Object(object).to_string()
@@ -1124,6 +1267,9 @@ pub(crate) async fn finished(ctx: &mut Ctx<'_>) -> Result<(), FaultKind> {
     let Some(record) = ctx.steps_record() else {
         return Ok(());
     };
+    if record.answers.is_none() {
+        return Ok(());
+    }
     let reached = record.at as usize;
     let Some(missed) = record.steps.get(reached).filter(|kept| kept.written) else {
         return Ok(());
@@ -1194,8 +1340,8 @@ mod tests {
             key: "d1".into(),
             id: record_id("delivery", "d1"),
             generation: 1,
-            answers: ring.clone(),
-            fingerprints: ring,
+            answers: Some(ring.clone()),
+            fingerprints: Some(ring),
             started_at,
             kept: true,
             steps: Vec::new(),

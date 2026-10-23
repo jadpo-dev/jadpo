@@ -1,0 +1,16 @@
+use todo/types { TodoStatus }
+
+type ListTodos = Input {
+    status: TodoStatus {
+        optional: true
+    }
+    due_before: Instant {
+        optional: true
+    }
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

@@ -1179,7 +1179,15 @@ the package cache is; the project's `build/rust/cache/` with neither),
 Jadpo of one version never share one. Its `locales/<digest>/` holds the
 CLDR data a locale set carries, named by a digest of the exported
 files, written under another name and renamed into place, so no build
-reads it half written and identical sets share it. Its
+reads it half written and identical sets share it. Each build verifies the
+expected exported files, not only the directory's name: a restored/pruned
+cache may retain an empty digest directory. Verification and repair hold a
+per-digest filesystem lock (`locales/.<digest>.lock`); incomplete or corrupt
+entries are written under a unique staging name and published whole, while
+complete entries are untouched. Export and cargo run outside that lock.
+This recovers the empty directories left by the pinned CI cache action's
+[recursive target cleanup](https://github.com/Swatinem/rust-cache/blob/6323deb102c322ba6fcbdcafc7e3dddab59af2b6/src/cleanup.ts#L9-L33),
+without clearing valid build artifacts or changing cache keys. Its
 `targets/<host>-<locales>[-<overrides>]/` is a cargo target for each
 host (`native`, `wasm`), locale data and set of cargo's
 `CARGO_PROFILE_RELEASE_*` overrides (the gate builds its test
@@ -2206,7 +2214,8 @@ any write. `jadpo_runtime::purge(host, plan, now, batches)` is purge's
 entry point, outside every action: batch after batch, each its own transaction, one
 `DELETE ... WHERE "id" IN (SELECT ... LIMIT 500 FOR UPDATE SKIP LOCKED)
 RETURNING "id"` of hidden records whose `since:` field is older than `now`
-less `after:`, oldest first, leaving out with `NOT EXISTS` any a
+less `after:` (strict `<`, including literal and configured retention
+boundaries since chunk 9.1d2a), oldest first, leaving out with `NOT EXISTS` any a
 `restricted` reference holds, directly or through a cascade, until a batch
 comes back short (since chunk 3.10 through every chain of cascades, and,
 when one leads back to an entity already on it, such as a folder inside a
@@ -2338,6 +2347,54 @@ wrong kind for the route with `not_permitted`; a service caller is keyed
 (`Ctx::issued`), and its response is never stored for an idempotent
 repeat. A route test's `as:` keeps a real credential of the kind the
 route's API accepts (`http::identity::test_credentials`).
+
+Built in chunk 9.1d1: provisioned external JWT subjects (area 8).
+`Identity::external_token` reads the issuer's `Url` setting and audience's
+`Text` setting into `ExternalTokenPlan`, together with the subject's JSON
+codec, SQL parameter type and current-user lookup. Deployable pruning
+keeps these settings only where a served API accepts the method. The
+runtime's `AuthSettings` owns one resolver cache per application startup;
+`http::external_token` obtains discovery from the configured issuer path,
+requires its exact issuer identity, and obtains keys only from that
+trusted document's HTTPS `jwks_uri`. It uses area 19's duplicate-refusing
+JSON parser, strict public `Jwk` import and shared JWT verification
+(EdDSA, RS256, ES256). Explicit encryption entries are skipped; invalid
+signing entries refuse the provider configuration. Only the verified
+subject reaches the user's typed field decoder and parameterized
+current-user query; every request reads that authority. It never imports
+provider profile fields or permission claims.
+
+Richard's 2026-10-22 network decision requires public HTTPS endpoints,
+including cross-authority keys named by exact trusted metadata, with no
+redirects. Native `Outward` filters DNS answers and connects only to
+public addresses with normal TLS verification. Workers' Rust outbound
+code rejects private literal addresses and local names; its platform
+network filters DNS answers ([workerd Network configuration](https://github.com/cloudflare/workerd/blob/main/src/workerd/server/workerd.capnp)).
+Generated Wrangler configuration enables
+[`global_fetch_strictly_public`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public)
+where the method is reached, avoiding same-zone origin routing.
+The test harness maps exactly two public fixture authorities to a local
+HTTPS server through transports trusted by that test's generated CA;
+its explicitly private/local test network is separate from production
+public-network enforcement. No production TLS or address guard is weakened.
+
+Compiler-owned bounds are 64 KiB discovery, 256 KiB JWKS, 64 keys,
+3 seconds per fetch, a 5-minute key cache and one refresh per 30 seconds.
+A generation-owned refresh lease reserves cooldown before awaiting and
+survives cancellation without clearing a newer owner. Typed retained
+failures preserve configuration (500) versus provider availability (503)
+classification during cooldown; shared strict JWT structural preflight rejects
+unsupported algorithms and malformed/duplicate JSON before provider I/O; known-invalid claims remain 401 without
+refreshing valid cached keys. Outer HTTP deadlines drop native fetches
+and abort Workers fetches through an `AbortController` drop guard.
+Generated API/OpenAPI metadata, redacted failure wording and the network
+inventory expose the method's runtime-owned egress. The external
+first-sign-in hook and multi-column/structured subject fields remain
+compile-time `toolchain.not_built_yet` gates;
+without it an unknown subject is 403 `sign_in_refused`. Scope declarations
+remain unbuilt; area 9 says an external method narrows only when it
+declares the scopes it reads. This slice builds neither provider login
+nor the golden application or its comparison baseline.
 
 Built in chunk 5.1b: signed sessions (area 8). The identity reads
 `revocation_delay:`, each method's `signing_key:` (a `SigningKey`
@@ -4116,6 +4173,41 @@ record write is one statement that takes the record over only from an
 equal or older generation (`steps::SEND`, `ANSWER`, `DIVERGE`,
 `DELETE`). The runner holds a diverged delivery as `outbox::DIVERGED`.
 
+**Single changing calls and safe key windows** (chunk 9.1d2a; areas 11,
+"Keys and windows", and 12, "A step in doubt"). A resumable action reaching
+a keyed changing provider call, with a store already available for its writes
+or events, also has a `RecordPlan`, with `replay: false`. It uses the existing
+step tables only for operation, first dispatch time, key generation and runner
+generation: no request fingerprint or answer is kept, and no steps encryption
+setting is required. Code keeps a fresh `clock.now`; provider keys retain their
+existing derivation. A retry at or beyond the provider window less the smaller
+of 10% and one hour parks as `outcome_unknown` before another send. Every
+physical send checks this horizon on the host clock and fences the runner's
+generation, including retries of a previously written step. Operator retry,
+abandon, visibility and 30-day cleanup use the existing record paths; a
+successful action deletes the metadata in its commit. New metadata-only
+shapes carry a `dispatch-v1:` prefix in `RecordPlan.shape` and in the stored
+shape; legacy untagged shapes remain encrypted replay.
+Opening an incompatible mode persists a `diverged` problem for operators
+before decoding answers or sending anything, including records with no answer
+and an empty request. This mode check does not compare whole shape digests.
+The existing operator build comparison reads the same tagged plan shape, so
+unchanged metadata records remain compatible across builds. Multi-call
+encrypted replay is unchanged. A storeless route still has no durable claim
+or historical window across independent requests; this change adds no configuration
+requirement to those accepted routes.
+
+**Connection URL structure** (chunk 9.1d2a; area 10, "Database and other
+connection URLs").
+`jadpo_std::connection_url` checks PostgreSQL and Redis URI structure without
+network I/O, through the built-in validator shared by literals, startup and
+`config check`. PostgreSQL multi-host and explicit socket forms need their own
+URI handling rather than a web URL parser. Legacy hostless database paths
+retain their type acceptance; this does not add implicit socket or user
+defaults to the host driver. Existing TLS-parameter checks
+still run after structure checks, and configuration reports all invalid
+settings without their values.
+
 **A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
 kept"). The plan marks a `BatchCall` whose action makes outside calls
 (`calls`, from `outside_calls`), and the runner runs each of its items
@@ -4687,7 +4779,7 @@ project and its `test.json`, and `build/` is not committed).
 
 **Teaching examples** (chunk 2.4; decision "Examples teach every feature",
 2026-10-14). Each project in `examples/` (a folder holding `app.jadpo`;
-`golden-todo/` holds only the golden contract) is copied to a temporary
+`golden-todo/` includes its application and authored tests) is copied to a temporary
 folder by `tools/examples.py`, which fails unless `jadpo check --json`
 reports no diagnostics at all, `jadpo fmt --check` passes, and `jadpo test
 --json --seed 1` runs at least one test with every test passing; each
@@ -4839,8 +4931,9 @@ it), may use them.
 | 1 | `cargo fmt --check`, `clippy -D warnings`, `cargo test`, the dependency test, the name ban, docs `check` blocks, format idempotence over every example, wasm32 build of the runtime crates |
 | 2 | `jadpo test` over the spec corpus; a watch-mode latency test with a ceiling of the 1-second target plus a CI allowance (both built: chunks 2.2 and 2.3; tightened in 2.8); the teaching examples checked, formatted and tested, and the coverage test (chunk 2.4); every proved construction in the corpus checked again as it runs (chunk 2.7) |
 | 3 | Live PostgreSQL (`--profile quick` skips it, and starts no server): the driver, the test database and `jadpo migrate apply` and `status` (built: chunk 3.1); queries, `get` and `create` through `jadpo test` (chunk 3.2); writes, conflicts and counters through `jadpo test`, and a concurrent change forced from a second connection (chunk 3.3); lifecycles and their transitions through `jadpo test`, and purge through its entry point (chunk 3.4). A golden SQL file per query and write shape (`crates/jadpo-plan/tests/sql/`) holds the statements for review |
-| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, a record created and read back, in the `wasm32` group (built: chunks 8.2b and 8.2d); the golden todo built for wasm32 and smoke-tested in local workerd |
-| 10 | `--require-golden`: every golden contract case on both targets |
+| 8 | The differential run, the `compiled` group (built: chunks 8.1f to 8.1j); the Workers host's probe under workerd, in the `wasm32` group (built: chunk 8.2a); a teaching example built for Workers by `jadpo build` and served by workerd against the run's PostgreSQL over `connect()`, a record created and read back, in the `wasm32` group (built: chunks 8.2b and 8.2d) |
+| 9 | Every golden contract case on native (`compiled`) and compiled workerd (`wasm32`), plus verifier negative controls (`lint`), built in chunk 9.1d2b |
+| 10 | Independent whole-first-build review and agent comparison remain outstanding |
 
 **How the gate runs** (2026-10-15). `tools/verify.py` builds the workspace
 and every test binary once (`cargo test --workspace --no-run`, which also
@@ -5224,3 +5317,76 @@ the inspector): the socket bridge's `write` and `read` themselves, about
 a third of the samples, `queueMicrotask` 7%, garbage collection 4%,
 Jadpo's compiled code a few percent; no reader's or writer's
 constructor nor `releaseLock`.
+
+
+**Chunk 9.1a instrumentation** (2026-10-22). `tools/bench/todo.py` adds a
+local generic todo-shaped microbenchmark scaffold on native, workerd, Bun
+and Node. It records complete response/state checks, p95 including requests
+that drain past the admission window, finite request deadlines, cold start,
+server CPU/RSS/Wasm memory, load CPU and source/artifact identities. Its fast
+fault-sensitive checks are part of the gate; timed measurements are not.
+The existing repair-café harness above remains reproducible and exercises a
+subscriber path absent from these short routes.
+
+An initial 16-cell smoke (four targets by four routes, one connection,
+one-second admission and 0.2-second warmup) passed its instrumentation
+checks. It was performed while build load was decaying and is not a
+comparative performance result. Later write probes checked UUIDv7 responses,
+owner/title persistence and BEGIN/INSERT RETURNING/COMMIT statement shapes.
+No final comparative data is published for this scaffold. Its generic title
+ordering, bare list, cascade and public sample routes differ from the actual
+golden todo; none of the 44 golden acceptance cases is claimed as passed.
+
+The request-path audit in `tools/bench/README.md` found substantive baseline
+gaps beyond the business SQL: full body/header/input guards, durable session
+renewal/revocation, address canonicalization/refusal headers, deadline and
+rollback safety, idempotency, response identity and complete error/retry
+mapping. In particular the TypeScript scaffold validates returned write data
+after commit, while Jadpo validates before committing. Both do runtime output
+boundary validation: Jadpo validates stored fields and serializes a known
+shape, while the TypeScript route performs one Zod output parse (the Hono
+OpenAPI response schema adds no automatic second parse). Unicode scalar
+boundary tests now prevent JavaScript UTF-16 length from changing text rules.
+
+Roadmap 9.1 remains the original full benchmark requirement: 9.1a supplies
+instruments only; 9.1d must implement and validate the actual golden todo and
+strong TypeScript baseline before local app comparison, then 9.1b measures
+runtime improvements and 9.1c measures real Workers with Richard. The short
+scaffold is no evidence that the full application performance gap has closed.
+
+
+**The golden application and contract** (chunk 9.1d2b). The ordinary source
+in `examples/golden-todo/` implements owner-scoped todos, current provisioned
+user/service authentication, omission-aware patches, keyset lists, bounded
+relationships, soft deletion and generated retention. Private reminder
+revisions distinguish rescheduling, including A→B→A. Queue marking and the
+first event commit together; a preparation subscriber snapshots immutable
+mail input, and a sending subscriber rechecks current eligibility and owner
+status before the typed provider call. Only an acknowledged provider
+`accepted_at` is persisted as the receipt; this does not prove inbox delivery.
+There are no compiler branches for the application.
+
+`tools/golden-todo/run.py` executes the same 44 IDs on generated native code
+and generated Wasm under workerd. Its private host controls supply clocks,
+provisioned signed credentials, SQL fixtures and deterministic provider
+responses; raw malformed inputs still cross the production request decoder.
+`record::Recorded` observes physical SQL calls, with transaction starts
+reported separately, and the harness classifies each statement once as
+principal authority, credential authority, business, runtime or transaction.
+Response assertions include persisted state, request identifiers, privacy,
+order, pagination, credential expiry and background failure correlation.
+Reminder checks include concurrent runners, edits while dispatch is pending,
+immutable lost-ack replay and an unsafe key window; retention runs the actual
+generated schedule. Preflight checks use actual generated deployables and
+successful-start positive controls. The public-host fixture interception is
+not evidence about production DNS or TLS filtering.
+
+The original `acceptance.json` bytes remain unchanged; `acceptance-v0.2.json`
+retains every ID and records the current-area corrections in its README.
+A missing target/control or failed case fails visibly. Completion requires
+all 44 on both targets, no case filter, fresh source-stamped builds and this
+checkout’s compiler/runtime. Explicit prerequisite-checkout previews cannot
+establish completion. Full gate ownership is split between native in the
+`compiled` CI group and workerd in `wasm32`, with shared compiled-test caches
+under `target/jadpo-compiled/golden-todo`. Independent review, TypeScript
+comparison and comparative timing remain separate roadmap work.

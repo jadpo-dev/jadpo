@@ -1,0 +1,12 @@
+use planning/types { Handle }
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}

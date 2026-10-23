@@ -73,6 +73,26 @@ impl Planner<'_> {
             signs_in: identity.signs_in(),
             cookie: identity.cookie().map(str::to_string),
             api_tokens: identity.built(jadpo_std::AuthenticationMethod::ApiToken),
+            external_token: identity.external_token.as_ref().and_then(|external| {
+                let user = user?;
+                let entity = self.model.entity(&user.entity)?;
+                let subject = entity
+                    .fields
+                    .iter()
+                    .find(|field| field.name == user.subject)?;
+                let id = self.types.graph().named(
+                    jadpo_graph::Kind::Field,
+                    &format!("{}.{}", entity.name, subject.name),
+                )?;
+                Some(jadpo_std::http::ExternalTokenPlan {
+                    issuer: external.issuer.clone(),
+                    audience: external.audience.clone(),
+                    lookup: self.user_lookup(user, Some(&user.subject))?,
+                    subject_type: self
+                        .json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))?,
+                    subject_sql: jadpo_check::data::sql_type(subject)?.param(),
+                })
+            }),
             user: user.and_then(|variant| self.principal(variant, sessions)),
             service: service.and_then(|variant| self.principal(variant, keys)),
             gated,

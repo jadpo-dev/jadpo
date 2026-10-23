@@ -79,3 +79,14 @@ adoption, and nobody pays for a copy of something free. Instead
 [TRADEMARKS.md](../TRADEMARKS.md) requires a modified version to use a
 different name. Commercial offerings will be separate code, licensed when
 they exist.
+
+
+### Connection URL structure — 2026-10-23
+
+Richard: validate the structure of typed connection URLs at startup and
+`config check`, alongside the existing scheme and connection-owned TLS
+checks. Keep valid PostgreSQL multi-host, IPv6, encoded credential and
+explicit socket forms; do not resolve hosts or try connections to decide
+whether configuration is valid. Collect every invalid declaration and never
+show credentials. Built in chunk 9.1d2a in the shared built-in text validator;
+[area 10](language/10-configuration-and-time.md#database-and-other-connection-urls) specifies it.

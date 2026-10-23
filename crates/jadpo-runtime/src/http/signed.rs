@@ -84,6 +84,7 @@ pub struct AuthSettings {
     keys: Vec<(AuthenticationMethod, SigningKey)>,
     /// `scheme://host[:port]`, in lower case and without a default port.
     origin: Option<String>,
+    external: Option<super::external_token::Settings>,
 }
 
 impl fmt::Debug for AuthSettings {
@@ -103,6 +104,7 @@ impl AuthSettings {
     pub const NONE: AuthSettings = AuthSettings {
         keys: Vec::new(),
         origin: None,
+        external: None,
     };
 
     /// What `plan`'s `signing_key:` and `origin:` settings hold in
@@ -124,7 +126,20 @@ impl AuthSettings {
             .as_deref()
             .and_then(|setting| values.text(setting))
             .and_then(origin_of);
-        AuthSettings { keys, origin }
+        let external = plan
+            .external_token
+            .as_ref()
+            .and_then(|plan| super::external_token::Settings::read(plan, values));
+        AuthSettings {
+            keys,
+            origin,
+            external,
+        }
+    }
+
+    /// The external issuer and audience bound at startup.
+    pub fn external(&self) -> Option<&super::external_token::Settings> {
+        self.external.as_ref()
     }
 
     /// `method`'s signing key.

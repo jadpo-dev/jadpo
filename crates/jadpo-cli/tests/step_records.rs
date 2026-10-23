@@ -451,9 +451,74 @@ pub(crate) struct Loaded {
 /// The project, checked and migrated, with a test database for it; `None`
 /// when live tests are skipped.
 pub(crate) fn load(name: &str, sandbox: &str, replays: bool) -> Option<Loaded> {
+    load_calls(name, sandbox, replays, false)
+}
+
+fn load_calls(name: &str, sandbox: &str, replays: bool, single: bool) -> Option<Loaded> {
+    load_mode(name, sandbox, replays, single, false)
+}
+
+fn load_mode(
+    name: &str,
+    sandbox: &str,
+    replays: bool,
+    single: bool,
+    empty: bool,
+) -> Option<Loaded> {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("step-records-7.5b-{name}"));
     let _ = fs::remove_dir_all(&root);
-    for (path, text) in files(sandbox, replays) {
+    for (path, mut text) in files(sandbox, replays) {
+        if single {
+            match path {
+                "app.jadpo" => text = text.replace("    steps: {\n        encryption_key: config.step_encryption_key\n    }\n", ""),
+                "domains/billing/actions/add_offer.jadpo" => text = text.replace("subscribers: 0", "subscribers: 0\n            counted_at: none"),
+                "domains/billing/entities/offer.jadpo" => text = text.replace("    subscribers: Int", "    subscribers: Int\n    counted_at: Instant?"),
+                "config.jadpo" => text = text.replace("    step_encryption_key: SigningKey\n", ""),
+                "domains/billing/actions/start.jadpo" => text = r#"use app { pay }
+use billing/entities { Offer, OfferNotFound }
+use billing/failures { PaymentRefused }
+use shared/providers/acme_pay
+
+action start(customer: AcmePay.Reference, offer_id: Offer.id) fails OfferNotFound, PaymentRefused -> AcmePay.Customer {
+    var offer: Offer = attempt Offer.get(offer_id)
+    var opened: AcmePay.Customer = attempt pay.customers.create(AcmePay.CustomerRequest {
+        reference: customer
+    }) {
+        card_declined: PaymentRefused
+    }
+    var counted: Offer = Offer.update(offer) {
+        set: { subscribers: offer.subscribers + 1
+ counted_at: clock.now }
+    }
+    assert counted.subscribers > 0
+    return opened
+}
+"#.into(),
+                "domains/billing/actions/subscribe.jadpo" | "domains/billing/actions/subscribe_now.jadpo" => {
+                    text = text.replace("var account: Account", "var account: AcmePay.Customer")
+                        .replace("account.customer", "account.id")
+                        .replace("Account, ", "")
+                        .replace(", ReceiptNotKept", "");
+                    if !text.contains("use shared/providers/acme_pay") {
+                        text = format!("use shared/providers/acme_pay\n{text}");
+                    }
+                }
+                "domains/billing/subscribers/start_subscription.jadpo" => text = text.replace("within: 3d", "within: 24h"),
+                _ => {}
+            }
+        }
+        if empty {
+            if path == "shared/providers/acme_pay/v1/resources/customers.jadpo" {
+                text = text.replace("        input: CustomerRequest\n", "");
+            }
+            text = text.replace("attempt pay.customers.create(AcmePay.CustomerRequest {\n        reference: customer\n    })", "attempt pay.customers.create()");
+            if path == "domains/billing/actions/start.jadpo" {
+                text = text.replace(
+                    "    var offer: Offer",
+                    "    assert customer != \"\"\n    var offer: Offer",
+                );
+            }
+        }
         write(&root, path, &text);
     }
     for args in [
@@ -1132,4 +1197,418 @@ fn a_rerun_that_ends_before_a_recorded_step_diverges() {
         assert_eq!(harness.count("SELECT count(*) FROM \"account\"").await, 0, "nothing committed");
         assert!(record(&harness).await.is_some());
     });
+}
+
+/// One changing call needs no steps encryption setting, but its durable
+/// first dispatch still bounds every later attempt under the provider key.
+#[test]
+fn a_single_call_in_doubt_obeys_the_safe_key_window_without_a_steps_key() {
+    for (label, elapsed, expected) in [
+        ("inside", 23 * HOUR - 1, "succeeded"),
+        ("boundary", 23 * HOUR, "outcome_unknown"),
+        ("after", 23 * HOUR + 1, "outcome_unknown"),
+    ] {
+        let provider = FakeProvider::start();
+        let Some(loaded) = load_calls(&format!("single-{label}"), &provider.url, false, true)
+        else {
+            return;
+        };
+        let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+        let lost = Rc::new(Fake::answering(jadpo_runtime::capability::Answer::Wire(
+            Rc::from(CUSTOMER),
+        )));
+        for _ in 0..TRIES {
+            lost.script(
+                "customers.create",
+                jadpo_runtime::capability::Scripted::Answer(
+                    jadpo_runtime::capability::Answer::Unknown,
+                ),
+            );
+        }
+        let host = Faked::new(&harness).with("pay", lost.clone() as Rc<dyn Capability>);
+        Runtime::new().expect("runtime").block_on(async {
+            let (_, work) = chosen(&harness, &host, &loaded.program, "gold").await;
+            run_deferred(&loaded.program, &host, work).await;
+            assert_eq!(delivery(&harness).await.0, "pending");
+            let metadata = steps(&harness).await;
+            assert_eq!(metadata.len(), 1);
+            assert_eq!(metadata[0].2, "{}", "no request fingerprint is kept");
+            assert_eq!(
+                metadata[0].4, None,
+                "no answer is kept without an encryption key"
+            );
+            let sent_before = lost.sent();
+            assert!(!sent_before.is_empty());
+            let key = sent_before[0]
+                .key
+                .as_ref()
+                .expect("a provider key")
+                .key
+                .clone();
+            assert!(
+                sent_before
+                    .iter()
+                    .all(|call| call.key.as_ref().unwrap().key == key)
+            );
+            harness.set_now(T0 + elapsed);
+            tick(&loaded.program, &host, T0 + elapsed).await;
+            assert_eq!(delivery(&harness).await.0, expected, "{label}");
+            let sent_after = lost.sent();
+            if expected == "outcome_unknown" {
+                assert_eq!(
+                    sent_after.len(),
+                    sent_before.len(),
+                    "never sent past its safe window"
+                );
+            } else {
+                assert_eq!(sent_after.len(), sent_before.len() + 1);
+                assert_eq!(
+                    harness.rows("SELECT \"counted_at\" FROM \"offer\"").await,
+                    [vec![SqlValue::Timestamp((T0 + elapsed) * 1000)]],
+                    "single-call code keeps a fresh clock"
+                );
+                assert!(
+                    steps(&harness).await.is_empty(),
+                    "dispatch metadata is removed in the commit"
+                );
+                assert_eq!(sent_after.last().unwrap().key.as_ref().unwrap().key, key);
+            }
+        });
+    }
+}
+
+#[test]
+fn a_single_call_rechecks_its_generation_before_a_physical_retry() {
+    struct TakenOver {
+        database: jadpo_host_native::Postgres,
+        sent: std::cell::Cell<u32>,
+    }
+    impl Capability for TakenOver {
+        fn call<'a>(
+            &'a self,
+            _: &'a jadpo_runtime::capability::Call,
+        ) -> jadpo_runtime::LocalFuture<'a, jadpo_runtime::capability::Answer> {
+            Box::pin(async move {
+                self.sent.set(self.sent.get() + 1);
+                self.database
+                    .query_once("UPDATE \"jadpo_step_records\" SET \"generation\" = 99", &[])
+                    .await
+                    .expect("another runner took over");
+                jadpo_runtime::capability::Answer::Unknown
+            })
+        }
+    }
+    let provider = FakeProvider::start();
+    let Some(loaded) = load_calls("single-fenced", &provider.url, false, true) else {
+        return;
+    };
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let driver = Rc::new(TakenOver {
+        database: jadpo_host_native::postgres(&loaded.url).expect("database"),
+        sent: std::cell::Cell::new(0),
+    });
+    let host = Faked::new(&harness).with("pay", driver.clone() as Rc<dyn Capability>);
+    Runtime::new().expect("runtime").block_on(async {
+        let (_, work) = chosen(&harness, &host, &loaded.program, "gold").await;
+        run_deferred(&loaded.program, &host, work).await;
+        assert_eq!(
+            driver.sent.get(),
+            1,
+            "the older runner never sends a second request"
+        );
+        assert_eq!(delivery(&harness).await.0, "pending");
+    });
+}
+
+#[test]
+fn a_single_call_checks_the_window_after_awaiting_its_dispatch_fence() {
+    use jadpo_runtime::{Isolation, LocalFuture, Row, StoreError, Transaction};
+    use std::cell::Cell;
+    struct Delayed<'a> {
+        inner: &'a dyn Database,
+        clock: Rc<Cell<i64>>,
+        jump: Cell<bool>,
+    }
+    impl Database for Delayed<'_> {
+        fn begin_at(
+            &self,
+            isolation: Isolation,
+        ) -> LocalFuture<'_, Result<Box<dyn Transaction>, StoreError>> {
+            self.inner.begin_at(isolation)
+        }
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            params: &'a [SqlValue],
+        ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+            Box::pin(async move {
+                let rows = self.inner.query_once(sql, params).await?;
+                if sql == jadpo_runtime::steps::SEND && self.jump.replace(false) {
+                    self.clock.set(T0 + 23 * HOUR + 1);
+                }
+                Ok(rows)
+            })
+        }
+    }
+    struct Wall<'a> {
+        harness: &'a Harness,
+        database: &'a Delayed<'a>,
+    }
+    impl Host for Wall<'_> {
+        fn database(&self, _: &str) -> Option<&dyn Database> {
+            Some(self.database)
+        }
+        fn random(&self, bytes: &mut [u8]) -> bool {
+            self.harness.random(bytes)
+        }
+        fn now_ms(&self) -> Option<i64> {
+            Some(self.database.clock.get())
+        }
+    }
+    let provider = FakeProvider::start();
+    let Some(loaded) = load_calls("single-fence-delay", &provider.url, false, true) else {
+        return;
+    };
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let database = Delayed {
+        inner: harness.store(),
+        clock: Rc::new(Cell::new(T0)),
+        jump: Cell::new(false),
+    };
+    let wall = Wall {
+        harness: &harness,
+        database: &database,
+    };
+    let driver = Rc::new(Fake::answering(jadpo_runtime::capability::Answer::Wire(
+        Rc::from(CUSTOMER),
+    )));
+    for _ in 0..TRIES {
+        driver.script(
+            "customers.create",
+            jadpo_runtime::capability::Scripted::Answer(jadpo_runtime::capability::Answer::Unknown),
+        );
+    }
+    let host = Faked::new(&wall).with("pay", driver.clone() as Rc<dyn Capability>);
+    Runtime::new().expect("runtime").block_on(async {
+        let (_, work) = chosen(&harness, &host, &loaded.program, "gold").await;
+        run_deferred(&loaded.program, &host, work).await;
+        assert_eq!(delivery(&harness).await.0, "pending");
+        let before = driver.sent().len();
+        database.clock.set(T0 + 23 * HOUR - 1);
+        database.jump.set(true);
+        tick(&loaded.program, &host, database.clock.get()).await;
+        assert_eq!(delivery(&harness).await.0, "outcome_unknown");
+        assert_eq!(
+            driver.sent().len(),
+            before,
+            "a slow fence must not permit a send after its window"
+        );
+    });
+}
+
+async fn only_delivery_id(harness: &Harness) -> String {
+    let rows = harness
+        .rows("SELECT replace(\"id\"::text, '-', '') FROM \"jadpo_deliveries\"")
+        .await;
+    match rows.as_slice() {
+        [row] => match row.as_slice() {
+            [SqlValue::Text(id)] => id.clone(),
+            other => panic!("delivery id: {other:?}"),
+        },
+        other => panic!("one delivery: {other:?}"),
+    }
+}
+
+fn changing_record_mode(name: &str, old_single: bool, answered: bool, empty: bool) {
+    use jadpo_runtime::capability::{Answer, Scripted};
+    let provider = FakeProvider::start();
+    let Some(old) = load_mode(
+        &format!("mode-{name}-old"),
+        &provider.url,
+        false,
+        old_single,
+        empty,
+    ) else {
+        return;
+    };
+    let new = load_mode(
+        &format!("mode-{name}-new"),
+        &provider.url,
+        false,
+        !old_single,
+        empty,
+    )
+    .expect("live");
+    let harness = Harness::postgres(&old.url).at(T0).random_from(0);
+    let driver = Rc::new(Fake::answering(Answer::Wire(Rc::from(CUSTOMER))));
+    for _ in 0..TRIES {
+        driver.script(
+            if answered {
+                "subscriptions.create"
+            } else {
+                "customers.create"
+            },
+            Scripted::Answer(Answer::Unknown),
+        );
+    }
+    let host = Faked::new(&harness)
+        .with("pay", driver.clone() as Rc<dyn Capability>)
+        .with("sheets", Rc::new(Fake::new()));
+    let id = Runtime::new().expect("runtime").block_on(async {
+        let (_, work) = chosen(&harness, &host, &old.program, "gold").await;
+        run_deferred(&old.program, &host, work).await;
+        assert_eq!(delivery(&harness).await.0, "pending");
+        let rows = steps(&harness).await;
+        if answered {
+            assert!(rows[0].4.is_some(), "legacy replay has a sealed answer");
+        } else {
+            assert_eq!(rows.len(), 1);
+            assert!(rows[0].4.is_none());
+            assert_eq!(
+                rows[0].2, "{}",
+                "empty requests cannot identify record mode"
+            );
+        }
+        let before = driver.sent().len();
+        harness.set_now(T0 + HOUR);
+        tick(&new.program, &host, T0 + HOUR).await;
+        assert_eq!(delivery(&harness).await.0, "diverged");
+        assert_eq!(
+            driver.sent().len(),
+            before,
+            "mode changes stop before any provider send"
+        );
+        let (state, problem) = record(&harness).await.expect("kept for the operator");
+        assert_eq!(state, "diverged");
+        let problem: serde_json::Value = serde_json::from_str(&problem).expect("problem");
+        assert_eq!(problem["replay"], old_single);
+        only_delivery_id(&harness).await
+    });
+    let shown = jadpo(
+        &new.root,
+        T0 + HOUR,
+        &["deliveries", "show", &id, "--url", &old.url, "--json"],
+    );
+    assert_eq!(shown.code, 0, "{}{}", shown.stdout, shown.stderr);
+    assert!(
+        shown.stdout.contains("encrypted replay"),
+        "{}",
+        shown.stdout
+    );
+    assert!(
+        shown.stdout.contains("dispatch metadata"),
+        "{}",
+        shown.stdout
+    );
+}
+
+#[test]
+fn changing_record_mode_with_an_encrypted_answer_diverges() {
+    changing_record_mode("encrypted", false, true, false);
+}
+
+#[test]
+fn changing_record_mode_from_legacy_empty_unanswered_replay_diverges() {
+    changing_record_mode("legacy-empty", false, false, true);
+}
+
+#[test]
+fn changing_record_mode_from_empty_dispatch_metadata_diverges() {
+    changing_record_mode("dispatch-empty", true, false, true);
+}
+
+#[test]
+fn dispatch_metadata_keeps_its_mode_through_operator_inspection_retry_and_abandon() {
+    use jadpo_runtime::capability::{Answer, Scripted};
+    for action in ["retry", "abandon"] {
+        let provider = FakeProvider::start();
+        let Some(loaded) = load_calls(
+            &format!("dispatch-operator-{action}"),
+            &provider.url,
+            false,
+            true,
+        ) else {
+            return;
+        };
+        let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+        let driver = Rc::new(Fake::answering(Answer::Wire(Rc::from(CUSTOMER))));
+        for _ in 0..TRIES {
+            driver.script("customers.create", Scripted::Answer(Answer::Unknown));
+        }
+        let host = Faked::new(&harness).with("pay", driver.clone() as Rc<dyn Capability>);
+        let rt = Runtime::new().expect("runtime");
+        let (before, shape, late, id) = rt.block_on(async {
+            let (_, work) = chosen(&harness, &host, &loaded.program, "gold").await;
+            run_deferred(&loaded.program, &host, work).await;
+            let late = T0 + 23 * HOUR + 1;
+            harness.set_now(late);
+            tick(&loaded.program, &host, late).await;
+            assert_eq!(delivery(&harness).await.0, "outcome_unknown");
+            let shape = harness
+                .rows("SELECT \"shape\" FROM \"jadpo_step_records\"")
+                .await[0][0]
+                .clone();
+            assert!(matches!(&shape, SqlValue::Text(shape) if shape.starts_with("dispatch-v1:")));
+            harness
+                .rows("UPDATE \"jadpo_step_records\" SET \"build\" = 'older'")
+                .await;
+            (driver.sent(), shape, late, only_delivery_id(&harness).await)
+        });
+        let build = loaded.program.plan().build_id();
+        let inspection = jadpo(
+            &loaded.root,
+            late,
+            &[
+                "runs",
+                "unfinished",
+                "--build",
+                build,
+                "--url",
+                &loaded.url,
+                "--json",
+            ],
+        );
+        assert_eq!(
+            inspection.code, 0,
+            "{}{}",
+            inspection.stdout, inspection.stderr
+        );
+        let json: serde_json::Value = serde_json::from_str(&inspection.stdout).expect("JSON");
+        assert_eq!(
+            json["data"]["changed"],
+            serde_json::json!([]),
+            "same metadata mode/shape resumes across a build"
+        );
+        let mut args = vec!["deliveries", action, &id, "--url", &loaded.url];
+        if action == "retry" {
+            args.push("--not-done");
+        }
+        let operated = jadpo(&loaded.root, late, &args);
+        assert_eq!(operated.code, 0, "{}{}", operated.stdout, operated.stderr);
+        rt.block_on(async {
+            assert_eq!(
+                harness
+                    .rows("SELECT \"shape\" FROM \"jadpo_step_records\"")
+                    .await[0][0],
+                shape
+            );
+            harness.set_now(late + 60 * SECOND);
+            tick(&loaded.program, &host, late + 60 * SECOND).await;
+            if action == "retry" {
+                assert_eq!(delivery(&harness).await.0, "succeeded");
+                let sent = driver.sent();
+                assert_ne!(
+                    before[0].key.as_ref().unwrap().key,
+                    sent.last().unwrap().key.as_ref().unwrap().key
+                );
+                assert!(steps(&harness).await.is_empty());
+            } else {
+                assert_eq!(driver.sent().len(), before.len());
+                assert_eq!(
+                    record(&harness).await.expect("abandoned record").0,
+                    "abandoned"
+                );
+            }
+        });
+    }
 }

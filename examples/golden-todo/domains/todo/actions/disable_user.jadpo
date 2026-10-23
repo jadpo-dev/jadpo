@@ -1,0 +1,10 @@
+use todo/entities { User, UserNotFound }
+use todo/types { UserStatus }
+
+action disable_user(user_id: User.id) fails UserNotFound -> Unit {
+    attempt User.update(user_id) {
+        set: {
+            status: UserStatus.disabled
+        }
+    }
+}
