@@ -13,7 +13,7 @@ it("rejects egress bypasses and forgotten promises before execution", async () =
   expect(result?.messages.map((message) => message.ruleId)).toContain(
     "@typescript-eslint/no-floating-promises",
   );
-});
+}, 15000); // Cold type-aware ESLint startup; not an application runtime budget.
 it("derives protected OpenAPI operations from actual installed route schemas", () => {
   const document = apiDocument();
   const paths = document.paths ?? {};

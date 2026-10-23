@@ -172,6 +172,13 @@ class SharedPostgres:
     def stop(self):
         for database in self.owned:self.sql('postgres',f'DROP DATABASE {database} WITH (FORCE)')
 
+def complete_contract(targets,reports,case_filter,skip_build,own_compiler):
+    expected={(target,identifier) for target in ['native','workerd'] for identifier in CASES}
+    observed=[(report['target'],report['id']) for report in reports]
+    return (len(targets)==2 and set(targets)=={'native','workerd'} and not case_filter
+            and not skip_build and own_compiler and len(observed)==len(expected)
+            and set(observed)==expected and all(report['status']=='passed' for report in reports))
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--compiler',type=Path,default=Path(os.environ.get('JADPO_BIN',str(ROOT/'target/debug/jadpo'))))
@@ -235,7 +242,7 @@ def main():
         if driver:driver.stop()
         if postgres:postgres.stop()
     failed=[r for r in reports if r['status']!='passed']
-    result={'schemaVersion':1,'contractVersion':contract['contractVersion'],'ok':not failed,'completeContract':not args.skip_build and not args.case and set(targets)=={'native','workerd'} and len(reports)==88 and not failed and own_compiler,'sources':provenance,'counts':{'ran':len(reports),'passed':len(reports)-len(failed),'failed':len(failed)},'cases':reports}
+    result={'schemaVersion':1,'contractVersion':contract['contractVersion'],'ok':not failed,'completeContract':complete_contract(targets,reports,args.case,args.skip_build,own_compiler),'sources':provenance,'counts':{'ran':len(reports),'passed':len(reports)-len(failed),'failed':len(failed)},'cases':reports}
     if args.json:print(json.dumps(result,indent=2))
     else:
         for item in failed:

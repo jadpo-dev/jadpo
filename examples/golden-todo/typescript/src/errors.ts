@@ -2,6 +2,7 @@ export const failures = {
   idempotency_key_reused: [422, "Idempotency key reused."],
   conflict: [409, "Conflict."],
   authentication_required: [401, "Authentication required."],
+  sign_in_refused: [403, "Sign-in refused."],
   invalid_credentials: [401, "Invalid credentials."],
   ambiguous_credentials: [401, "Ambiguous credentials."],
   csrf_rejected: [403, "Request verification failed."],

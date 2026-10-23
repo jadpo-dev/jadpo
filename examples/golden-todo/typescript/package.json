@@ -6,13 +6,13 @@
   "scripts": {
     "check": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --exclude test/postgres.test.ts",
+    "test": "vitest run --maxWorkers=2 --exclude test/postgres.test.ts",
     "build": "tsc --noEmit false --outDir build",
     "start": "node --experimental-strip-types src/server.ts",
     "start:bun": "bun src/server.ts",
     "db:generate": "drizzle-kit generate",
     "inventory": "node --experimental-strip-types src/inventory.ts",
-    "test:all": "vitest run",
+    "test:all": "vitest run --maxWorkers=2",
     "test:integration": "vitest run test/postgres.test.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"adapter/**/*.ts\" \"*.{json,mjs,ts,md}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"adapter/**/*.ts\" \"*.{json,mjs,ts,md}\""
@@ -25,6 +25,7 @@
     "hono": "4.10.0",
     "jose": "6.1.0",
     "postgres": "3.4.7",
+    "uuid": "13.0.0",
     "zod": "4.1.12"
   },
   "devDependencies": {

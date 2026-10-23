@@ -5,26 +5,39 @@ JOSE, with pinned dependencies and a checked-in npm lock. Node uses Hono's Node
 HTTP adapter; Bun uses `Bun.serve`. Both serve the same production application.
 No mail or identity account is needed for local verification.
 
-Install with `npm ci --ignore-scripts --no-audit --no-fund`. Run:
+The full repository gate runs `python3 adapter/verify.py` in its `tests` group.
+The wrapper installs the checked-in npm lock with scripts disabled, runs the
+orchestration controls, typecheck, lint and formatting, then Vitest integration
+negatives and every shared case through the production Node/Bun hosts. CI and
+the wrapper use `.node-version` and `.bun-version`. Installation and execution
+hold one OS lock, so concurrent verification cannot remove active dependencies.
+
+Run the wrapper from this directory:
 
 ```sh
-npm run check
-npm run lint
-npm run format:check
-npm test
-python3 adapter/run.py --contract-source /absolute/path/to/reviewed/jadpo --unit
+python3 adapter/verify.py
 ```
 
-The last command starts an isolated PostgreSQL16 cluster on 127.0.0.1, applies
-the Drizzle migrations, runs Vitest integration negatives on Node and native
-host controls on Node/Bun, and executes every shared
-case through raw HTTP on Node and Bun. Supply a checkout containing
-`tools/golden-todo/contract.py` and `acceptance-v0.2.json`; unavailable cases
-fail. Until reviewed prerequisites and the complete app reach main, the
-runner identifies this as a preview and never claims full conformance.
-The current authoring checkpoint is the unchanged shared contract in
-`chunk-9.1d2` commit `b76debf8dcee0ff5242065ae4427f66b04358232`.
-No compiler/runtime implementation from that checkout is imported or built.
+It uses `JADPO_TEST_DATABASE_URL` when the repository gate supplies one, creating
+and dropping only its own randomly named databases. Otherwise it starts and
+stops an isolated PostgreSQL16 cluster on 127.0.0.1. Failed migrations and tests
+still clean up owned databases and await child shutdown.
+
+The default shared contract comes from the same checkout's
+`tools/golden-todo/contract.py` and `acceptance-v0.2.json`. A successful full
+Node/Bun run against those actual files can report `completeContract: true`;
+missing prerequisites list every unavailable case as failed. An explicit
+checkpoint remains available for independent authoring:
+
+```sh
+python3 adapter/verify.py --contract-source /absolute/path/to/jadpo-checkpoint
+```
+
+A different checkout always reports `preview: true` and cannot establish own-source
+conformance. The private `adapter/run.py --unit` entry performs the same runtime
+checks without reinstalling or repeating static checks; it takes the same lock.
+Both entries emit the machine result on stdout and subprocess output on stderr.
+No compiler/runtime implementation from another checkout is imported or built.
 
 For production startup, supply `DATABASE_URL`, `BROWSER_ORIGIN`, `OIDC_ISSUER`,
 `OIDC_AUDIENCE`, `SESSION_SIGNING_KEY` and `MAIL_API_KEY`, then `npm start` or
@@ -56,6 +69,6 @@ holds pending work after five unavailable deliveries. Optional request keys
 commit their response receipts atomically with writes, fence expired runners
 and replay stored response bytes/status across builds.
 
-The full repository gate, reviewed-main shared conformance, independent review
-and performance comparison remain outstanding. Lockfiles/migrations and framework infrastructure must be
+Shared conformance establishes the exercised contract; independent review and
+performance comparison are separate requirements. Lockfiles/migrations and framework infrastructure must be
 counted separately from application source; no throughput or code-size claim is made.

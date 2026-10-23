@@ -426,7 +426,7 @@ export class AuthenticationService {
     }
     scope.check();
     const row = rows[0];
-    if (!row) throw new AppError("invalid_credentials");
+    if (!row) throw new AppError("sign_in_refused");
     if (row.status !== "active") throw new AppError("user_disabled");
     return { principal: { kind: "user", id: row.id, subject: row.subject } };
   }
