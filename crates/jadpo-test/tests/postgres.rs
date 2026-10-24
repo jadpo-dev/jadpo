@@ -418,6 +418,29 @@ fn a_connection_keeps_no_session_state_between_transactions() {
     });
 }
 
+/// The terminal capability keeps explicit RR and leaves no session state.
+#[test]
+fn a_terminal_read_keeps_repeatable_read_and_reuses_an_unnamed_clean_session() {
+    let Some((runtime, store)) = fresh("terminal_session") else {
+        return;
+    };
+    runtime.block_on(async {
+        let mut transaction = store.begin().await.unwrap();
+        let read = transaction.query_last_read(
+            "SELECT current_setting('transaction_isolation'), $1::int8 + 1, pg_backend_pid()",
+            &[SqlValue::Int8(1)],
+        ).await.unwrap();
+        assert_eq!(read[0][0], SqlValue::Text("repeatable read".into()));
+        assert_eq!(read[0][1], SqlValue::Int8(2));
+        transaction.commit().await.unwrap();
+        let after = store.query_once(
+            "SELECT current_setting('transaction_isolation'), (SELECT count(*) FROM pg_prepared_statements), pg_backend_pid()",
+            &[],
+        ).await.unwrap();
+        assert_eq!(after, vec![vec![SqlValue::Text("read committed".into()), SqlValue::Int8(0), read[0][2].clone()]]);
+    });
+}
+
 #[test]
 fn a_batch_runs_statements_one_after_another() {
     let Some((runtime, store)) = fresh("batch") else {

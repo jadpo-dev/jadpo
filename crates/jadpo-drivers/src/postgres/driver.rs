@@ -664,6 +664,7 @@ impl Database for Postgres {
                 begin: Some(begin_sql(isolation)),
                 failed: None,
                 saved: Vec::new(),
+                read_end: ReadEnd::Ordinary,
             }) as Box<dyn Transaction>)
         })
     }
@@ -710,6 +711,14 @@ impl Database for Postgres {
 /// An open transaction on one connection. Dropped without a commit or a
 /// rollback, it drops its connection, and closing the connection aborts
 /// the transaction on the server.
+enum ReadEnd {
+    Ordinary,
+    /// The future owns the connection: cancelling it drops that connection.
+    Finalizing,
+    /// All three protocol operations finished; consumed by commit/rollback.
+    Completed(Result<(), StoreError>),
+}
+
 struct PgTransaction {
     /// Its connection: `None` only once it was lost finding another.
     conn: Option<Conn>,
@@ -722,6 +731,7 @@ struct PgTransaction {
     /// What `failed` was at each savepoint still open, latest last: going
     /// back to one undoes the error after it.
     saved: Vec<Option<StoreError>>,
+    read_end: ReadEnd,
 }
 
 impl PgTransaction {
@@ -740,6 +750,11 @@ impl PgTransaction {
     /// on another. `BEGIN` fails only when its connection does, and then
     /// the statement after it does too.
     async fn run(&mut self, op: Op<'_>) -> Result<Done, StoreError> {
+        if !matches!(self.read_end, ReadEnd::Ordinary) {
+            return Err(StoreError::Fault(
+                "a statement after a terminal read".into(),
+            ));
+        }
         let Some(begin) = self.begin.take() else {
             let done = match &self.conn {
                 Some(conn) => send(&conn.client, &op)
@@ -774,12 +789,87 @@ impl PgTransaction {
         }
     }
 
+    /// A proven final read: queue the whole transaction in order, await
+    /// every response and keep the ending separate from the read's result.
+    async fn last_read(&mut self, sql: &str, params: &[SqlValue]) -> Result<Vec<Row>, StoreError> {
+        if !matches!(self.read_end, ReadEnd::Ordinary)
+            || self.begin.is_none()
+            || self.failed.is_some()
+            || !self.saved.is_empty()
+            || params
+                .iter()
+                .any(|value| wire::param_oid(value.ty()) == wire::oid::UNSPECIFIED)
+        {
+            return self.query(sql, params).await;
+        }
+        let bound = bind(params)?;
+        let typed = typed(&bound);
+        let Some(begin) = self.begin.take() else {
+            return self.query(sql, params).await;
+        };
+        self.read_end = ReadEnd::Finalizing;
+        let mut connection = self.conn.take();
+        loop {
+            let Some(conn) = connection.take() else {
+                self.read_end = ReadEnd::Completed(Err(StoreError::Unavailable));
+                return self.note(Err(StoreError::Unavailable));
+            };
+            let ((begun, read), ended) = both(
+                both(
+                    conn.client.batch_execute(begin),
+                    conn.client.query_typed(sql, &typed),
+                ),
+                conn.client.batch_execute("COMMIT"),
+            )
+            .await;
+            let begun = begun.map_err(|error| store_error(&error));
+            if begun == Err(StoreError::Unavailable) && conn.reused {
+                // As for an ordinary first statement, a stale idle connection
+                // can be replaced. No retry after a successful BEGIN/read.
+                drop(conn);
+                match self.pool.take().await {
+                    Ok(conn) => {
+                        connection = Some(conn);
+                        continue;
+                    }
+                    Err(error) => {
+                        self.read_end = ReadEnd::Completed(Err(error.clone()));
+                        return self.note(Err(error));
+                    }
+                }
+            }
+            let ended = ended.map_err(|error| store_error(&error));
+            if ended.is_ok() {
+                self.conn = Some(conn);
+            }
+            self.read_end = ReadEnd::Completed(ended);
+            let rows = self.note(begun.and(read.map_err(|error| store_error(&error))))?;
+            // Decoding errors were never statement errors in the ordinary
+            // path; keep the same classification and boundary precedence.
+            return rows.iter().map(read_row).collect();
+        }
+    }
+
     /// Ends the transaction with `sql`, keeping the connection for the next
     /// one if it is still sound. One that never began sends nothing.
     async fn end(self, sql: &str) -> Result<(), StoreError> {
         let PgTransaction {
-            conn, pool, begin, ..
+            conn,
+            pool,
+            begin,
+            read_end,
+            ..
         } = self;
+        match read_end {
+            ReadEnd::Finalizing => return Err(StoreError::Unavailable),
+            ReadEnd::Completed(result) => {
+                result?;
+                let conn = conn.ok_or(StoreError::Unavailable)?;
+                pool.give_back(conn);
+                return Ok(());
+            }
+            ReadEnd::Ordinary => {}
+        }
         let Some(conn) = conn else {
             return Err(StoreError::Unavailable);
         };
@@ -796,6 +886,14 @@ impl PgTransaction {
 }
 
 impl Transaction for PgTransaction {
+    fn query_last_read<'a>(
+        &'a mut self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        Box::pin(async move { self.last_read(sql, params).await })
+    }
+
     fn query<'a>(
         &'a mut self,
         sql: &'a str,
@@ -1651,5 +1749,4 @@ mod tests {
     }
 
     mod terminal;
-
 }

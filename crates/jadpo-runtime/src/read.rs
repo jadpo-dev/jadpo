@@ -87,8 +87,32 @@ pub(crate) async fn read(
     json: JsonCodecs<'_>,
     args: &[Value],
     site: u32,
+    last_read: bool,
 ) -> Result<Found, Interrupt> {
-    read_as(ctx, plan, json, args, site, PageCursor::Next).await
+    read_with_cursor(ctx, plan, json, args, site, PageCursor::Next, last_read).await
+}
+
+/// A terminal read needs no later statement or extension type discovery.
+/// Compound columns can contain extensions; keep their ordinary path too.
+pub(crate) fn can_end(plan: &ReadPlan, json: JsonCodecs<'_>) -> bool {
+    fn known(ty: SqlType) -> bool {
+        match ty {
+            SqlType::Vector | SqlType::Geography => false,
+            SqlType::Array(inner) | SqlType::Range(inner) => known(*inner),
+            _ => true,
+        }
+    }
+    plan.settings.is_empty()
+        && plan.recheck.is_none()
+        && plan.select.includes.is_empty()
+        && json.codecs.coder.is_none()
+        && plan.select.params.iter().all(|param| known(param.ty))
+        && plan.select.columns.iter().all(|column| {
+            !matches!(
+                column,
+                Column::Vector | Column::Geography(_) | Column::Compound { .. } | Column::Part
+            )
+        })
 }
 
 /// The cursor a page gives.
@@ -110,6 +134,18 @@ pub(crate) async fn read_as(
     args: &[Value],
     site: u32,
     gives: PageCursor,
+) -> Result<Found, Interrupt> {
+    read_with_cursor(ctx, plan, json, args, site, gives, false).await
+}
+
+async fn read_with_cursor(
+    ctx: &mut Ctx<'_>,
+    plan: &ReadPlan,
+    json: JsonCodecs<'_>,
+    args: &[Value],
+    site: u32,
+    gives: PageCursor,
+    last_read: bool,
 ) -> Result<Found, Interrupt> {
     let now = ctx.now();
     let loaded = RefCell::new(Vec::new());
@@ -147,7 +183,7 @@ pub(crate) async fn read_as(
             Ok(transaction) => transaction,
             Err(error) => return Err(refused(ctx, error, site)),
         };
-        run_read(transaction, plan, &env).await
+        run_read(transaction, plan, &env, last_read).await
     };
     // The rows it loaded, whose versions an outside call reads before it
     // closes the snapshot they were read in (chunk 7.4).
@@ -454,6 +490,7 @@ async fn run_read(
     transaction: &mut dyn Transaction,
     plan: &ReadPlan,
     env: &Env<'_>,
+    last_read: bool,
 ) -> Result<(Vec<Row>, Vec<Value>, bool), Problem> {
     // A `nearest` query's search settings, for the rest of the
     // transaction (area 21, chunk 5.5v1b).
@@ -462,7 +499,7 @@ async fn run_read(
     }
     let mut rows = match &plan.recheck {
         Some(recheck) => rechecked(transaction, plan, recheck, env).await?,
-        None => run(transaction, &plan.select, env).await?,
+        None => run_select(transaction, &plan.select, env, last_read).await?,
     };
     let mut hidden = false;
     if let Some(at) = plan.select.permitted
@@ -612,6 +649,15 @@ async fn run(
     select: &Select,
     env: &Env<'_>,
 ) -> Result<Vec<Row>, Problem> {
+    run_select(transaction, select, env, false).await
+}
+
+async fn run_select(
+    transaction: &mut dyn Transaction,
+    select: &Select,
+    env: &Env<'_>,
+    last_read: bool,
+) -> Result<Vec<Row>, Problem> {
     let mut params = Vec::with_capacity(select.params.len());
     for param in &select.params {
         params.push(bind(param, env)?);
@@ -620,10 +666,12 @@ async fn run(
         (Some(unpoliced), true) => unpoliced,
         _ => &select.sql,
     };
-    transaction
-        .query(sql, &params)
-        .await
-        .map_err(Problem::Store)
+    if last_read {
+        transaction.query_last_read(sql, &params).await
+    } else {
+        transaction.query(sql, &params).await
+    }
+    .map_err(Problem::Store)
 }
 
 /// The records `rows` of `select` become, with their includes: one more

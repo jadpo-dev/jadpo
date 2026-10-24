@@ -66,9 +66,12 @@ pub async fn store(
     site: u32,
 ) -> Stored {
     if ctx.in_action() {
-        return run(ctx, op, failures, json, args, site).await;
+        return run(ctx, op, failures, json, args, site, false).await;
     }
+    let last_read =
+        ctx.can_end_read() && matches!(op, StoreOp::Read(plan) if crate::read::can_end(plan, json));
     let mut alone = Alone {
+        last_read,
         op,
         failures,
         json,
@@ -94,6 +97,7 @@ pub async fn store(
 
 /// A store operation run outside any action, as its own boundary's body.
 struct Alone<'o> {
+    last_read: bool,
     op: StoreOp<'o>,
     failures: &'o [FailurePlan],
     json: JsonCodecs<'o>,
@@ -111,7 +115,17 @@ impl<'p> ActionBody<'p> for Alone<'_> {
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             self.conflict = None;
-            match run(ctx, self.op, self.failures, self.json, self.args, self.site).await {
+            match run(
+                ctx,
+                self.op,
+                self.failures,
+                self.json,
+                self.args,
+                self.site,
+                self.last_read,
+            )
+            .await
+            {
                 Stored::Value(value) => Outcome::Value(value),
                 Stored::Failed(failure) => Outcome::Failed(failure),
                 // Failed, so the boundary rolls the refused statement back.
@@ -133,12 +147,13 @@ async fn run(
     json: JsonCodecs<'_>,
     args: &[Value],
     site: u32,
+    last_read: bool,
 ) -> Stored {
     let defect = |ctx: &mut Ctx<'_>, what: &str| {
         Stored::Fault(ctx.fault(FaultKind::Defect(what.into()), site))
     };
     match op {
-        StoreOp::Read(plan) => match read(ctx, plan, json, args, site).await {
+        StoreOp::Read(plan) => match read(ctx, plan, json, args, site, last_read).await {
             Ok(Found::Value(value)) => Stored::Value(value),
             // A read for exactly one record found none: the failure its
             // plan names, its fields from the read's arguments.

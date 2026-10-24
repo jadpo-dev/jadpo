@@ -1131,6 +1131,20 @@ impl<'p> Ctx<'p> {
         self.boundary.is_some()
     }
 
+    /// Whether a standalone read's boundary can end at its main statement.
+    /// Check before opening it: `own_boundary` consumes the pending hold.
+    pub(crate) fn can_end_read(&self) -> bool {
+        !self.in_action()
+            && !self.hold
+            && self.held.is_none()
+            && self.background.system().is_none()
+            && self.background.handled().is_none()
+            && self.resumable.is_none()
+            && self.record.is_none()
+            && self.steps == 0
+            && !self.standalone_calls
+    }
+
     /// Whether the running action has a transaction open: it has read or
     /// written since its boundary opened, or since an outside call closed
     /// what it had only read. No outside call goes out then (area 6,
