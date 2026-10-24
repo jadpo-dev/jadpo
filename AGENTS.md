@@ -62,10 +62,10 @@ P19's fixed-32 tail policy is negative/mixed/rejected. Independent
 P01.timer-future's private gate is source-blocked on supported shim/module
 emission before code. P07's slot form is weak/mixed evidence retained without
 a keeper recommendation. P12's simple direct-hex form is weak/mixed evidence
-retained without a keeper recommendation. Next is the independent P61
-host-retained lower-bound prototype, authorized for code/focused controls;
-P59/P60 bridge/I/O census follows before P07.key-id or other small parser tweaks.
-Their upside is unknown; this micro omits full host-sink/HTTP integration.
+retained without a keeper recommendation. P61's host-retained lower bound
+retains ASCII mechanism evidence only, without an HTTP gain or full sink.
+Next is the bounded P59/P60 bridge/I/O census before P07.key-id or other small
+parser tweaks; its upside is unknown and protocol review is pending.
 No baseline prerequisite remains. Keep each control's loader/host/lifetime
 limits explicit.
 Control acceptance uses local checks and agent review under standing

@@ -48,10 +48,10 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    P01's private gate is source-blocked on supported module emission before
    code. P07's slot form is weak/mixed evidence retained without a keeper
    recommendation; P12's direct-hex form is also weak/mixed evidence retained.
-   Next is the independent P61 host-retained lower-bound prototype, authorized
-   for code/focused controls; P59/P60 bridge/I/O census follows before small
-   parser tweaks. Their upside is unknown, without an HTTP projection. No baseline
-   prerequisite remains; then resume the highest-priority eligible experiment
+   P61's host-retained lower bound retains ASCII mechanism evidence only.
+   Next is the bounded P59/P60 bridge/I/O census before small parser tweaks;
+   its upside is unknown, with protocol review pending and no HTTP projection.
+   No baseline prerequisite remains; then resume the highest-priority eligible experiment
    from its frozen baseline; record blockers and continue
    other eligible experiments across sessions until the available queue,
    including new ideas, is exhausted. There is no experiment-count or
@@ -251,11 +251,10 @@ conditional complex integration. P19's fixed-32 policy is rejected as
 negative/mixed. P01's private gate is source-blocked on supported module
 emission before code. P07's slot form is weak/mixed evidence retained without
 a keeper recommendation; P12's direct-hex form is also weak/mixed evidence
-retained. Next is the independent P61 host-retained lower-bound prototype,
-authorized for code/focused controls; P59/P60 bridge/I/O census follows before
-P07.key-id or other small parser tweaks. Their upside is unknown, without an
-HTTP projection. Continue
-eligible work without another baseline prerequisite.
+retained. P61's host-retained lower bound retains ASCII mechanism evidence
+only. Next is the bounded P59/P60 bridge/I/O census before P07.key-id or other
+small parser tweaks; its upside is unknown, with protocol review pending and
+no HTTP projection. Continue eligible work without another baseline prerequisite.
 Acceptance means local compatibility/body/state/security/resource/provenance
 checks plus agent review under standing authorization, not a new Richard
 approval.
