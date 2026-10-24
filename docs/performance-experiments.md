@@ -214,15 +214,19 @@ scratch worktree.
 ## Primary read queue
 
 P02 is measured/mixed and retained as an exploratory prototype, with no
-production promotion or favorable rerun. The next investigation is a current-B
-CPU diagnostic for P59/P60 before re-ranking further implementation work.
+production promotion or favorable rerun. The current-B CPU diagnostic below
+supports P03 as the next cheap independent signed-read experiment; its original
+0.5–2% prediction is unchanged. Next bounded leads are P21's ASCII first-escape
+scan and a transfer-inclusive P61 mixed-text micro before any host integration.
+P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
+before structural implementation. These are priorities, not a batch limit.
 F01 below remains frozen for the initial 54 ideas; later discoveries expand the
 queue without retroactively changing that forecast.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
 | **P02 — Safe SIMD UTF-8 validation** (measured/mixed; prototype retained) | Mixed large / ASCII reads; E | 2–6% mixed; 0–1% ASCII | P/F mixed +6.071%; ASCII −0.586%; signed control +0.103%. Combined P/B +6.550% / −0.968% / −1.554% (mixed/ASCII/signed). [All rounds, predictions and adverse metrics](#p02--simd-utf-8-first-screen-2026-10-24). | Historical mixed self 6.7–7.1%, ASCII ≈0.55%; conditional full-removal ceiling ≈7.2–7.7%, not achievable validation removal. Verify cached safe API and Wasm SIMD support; identical-feature control, no handwritten unsafe validator or download. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [postgres/wire.rs:648](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L648). | Medium; S–M; medium | Depends on F (same-feature control); F/B and combined P/B predictions unknown; overlaps P04 |
-| **P03 — Signed base64url table decoder** (queued; unmeasured) | Signed reads; E | 0.5–2% | Not measured | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%. Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
+| **P03 — Signed base64url table decoder** (queued; unmeasured) | Signed reads; E | 0.5–2% | Not measured | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%; current D signed self 1.5216%, ancestor union 1.9410% of all weighted samples (diagnostic scope, not removable headroom). Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
 | **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
 | **P11 — Skip unneeded scalar count** (queued; unmeasured) | Large text; E | 0–5% | Not measured | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
 | **P05 — Prepare immutable driver configuration** (queued; unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | Not measured | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
@@ -231,7 +235,7 @@ queue without retroactively changing that forecast.
 | **P19 — Cheap response capacity hints** (queued; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
 | **P07 — Direct Claims deserialization** (queued; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
 | **P06 — Batch request-header bridge** (queued; unmeasured) | Ordinary reads; E + header-heavy F | 0–3%; header-heavy unknown | Not measured | JS iterator → pair Array → separate string conversions/lowercase/trim. Preserve order, duplicates, case and trimming; profile bridge cost for header-heavy bound. [fetch.rs:215](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/fetch.rs#L215). | Low; M; medium | Independent; overlaps P10/P28 |
-| **P21 — Vectorize first-escape search only** (queued; unmeasured) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | Not measured | Keep a2 scalar suffix. Safe API/identical SIMD-feature control if relevant. This does not repeat rejected repeated-byte-bulk spans. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
+| **P21 — Vectorize first-escape search only** (queued; unmeasured) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | Not measured | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
 | **P12 — Direct UUID hex formatting** (queued; unmeasured) | Singleton reads; E + UUID-list F | 0–2%; UUID-list impact unknown | Not measured | Sixteen format! allocations then Value::uuid lowercasing. Measure direct hex first; trusted canonical constructor as separate variant. Profile UUID-list share before estimating it. [read.rs:1327](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1327), [read.rs:1103](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1103). | Low-medium; S; low | Independent |
 | **P10 — Batch response-header bridge** (queued; unmeasured) | Small/header-heavy responses; E + header F | 0–2% | Not measured | Reduce header/JS boundary construction. Keep owned Uint8Array, bodyless statuses and rejected-header behavior; no unsafe Wasm memory view. [deployable.rs:417](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L417). | Low; M; medium | Independent; interacts P06/P28 |
 | **P15 — Reuse immutable Logged observer** (queued; unmeasured) | Golden reads; E + many-unbuilt F | 0–1%; many unbuilt connections unknown | Not measured | Per-request Logged construction and reserialization of unchanged unbuilt-driver list. Measure list scaling; cached observer must not retain invocation host. [deployable.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L265), [deployable.rs:158](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/deployable.rs#L158). | Low; S; low | Independent |
@@ -287,8 +291,8 @@ re-ranking. Do not fabricate a number to make the table sortable.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
-| **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
-| **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
+| **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
+| **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
 | **P55 — Safe synchronous Response slice constructor** (queued; unmeasured) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | Not measured | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
 | **P56 — Direct known standard-operation calls** (queued; unmeasured) | Hot pure standard op; F; current singleton reads may gain zero | Unknown; current body attribution/call census first | Not measured | Known Op still enters broad enum/argument-shape dispatcher: [body.rs:1908](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/body.rs#L1908), [compiled.rs:884](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/compiled.rs#L884), [lib.rs:89](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/lib.rs#L89). Arguments already stack slices, return unboxed; preserve Fault→Refused, inline pace/deadlines/recording/stack. LTO may already fold dispatch. Explicit roadmap 9.2 target. | Low; S–M prototype; high semantic risk | Independent of P34; may enable P57 dead-code pruning; measure separately/combined |
 | **P58 — Explicit BLAKE3 wasm32 SIMD backend** (queued; unmeasured) | Short keyed signed tokens; F + actual signed screen | Unknown; old identified crypto budget only about 0.2–0.24%; small lead | Not measured | Cached BLAKE3 1.8.7 wasm32_simd feature is separate from global +simd128; current [Cargo.toml:245](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/Cargo.toml#L245) uses std+pure. Keep keyed format and constant-time Hash equality. Verify boundary-length/current/previous/wrong-key vectors, Wasm SIMD presence and workerd behavior. No substitution of Bun HMAC format. | Low; S–M; medium crypto/target risk | Independent P03; P22 can mask; B/C same flags or separate F/F+C comparison; reuse P02 F only as explicit control |
@@ -485,6 +489,186 @@ checksum-verified and copied into the active Cargo namespace, without
 downloading. Generated app code/plans remain equal
 across B/F/P except lock entry; no source/artifact guard was bypassed. Prototype
 source, prerequisites and all immutable artifacts were retained before reset.
+
+## Current-B CPU diagnostic and compiler audit (2026-10-24)
+
+**Instrumented diagnostic, not a throughput result or a new performance gain.**
+D is `64e6b82d5e6ba65527c0521c9c9a33df1becdd02`, tree
+`bed2294744be52282799608d147f226e6bfe72d8`, retained at
+`refs/experiments/a4-baseline-84e1c00b/current-b-cpu-64e6b82d`.
+Its only changes from H84 are `tools/bench/worker_diagnostic.py` and
+`tools/bench/test_worker_diagnostic.py`. Production B4fda, H84 and shared
+artifacts are unchanged; named JavaScript/non-custom Wasm sections were checked
+against B. D is separate diagnostic tooling, not a P02 stack or a new B.
+
+One capture each of golden signed read, large ASCII and mixed Unicode, c16,
+2 s warmup and 8 s admission, named module/inspector, 2,048 principals,
+PostgreSQL duration logging OFF. All 3/3 captures pass complete-body, unchanged
+state, error/warmup, source/served-artifact, PG-off and Sleep guards. Owned
+services were reaped. No full gate, 176-case qualification, production PR,
+Bun comparison, capacity or p95 claim follows from these captures. The pinned
+Bun binary's probed help did not advertise `--cpu-prof`; no flag or profile
+emission was invented and no Bun HTTP performance capture was made here.
+
+Profile weights are `sum(timeDeltas)`, not frame hit counts. The profiler
+starts before load spawn and includes warmup, measured admission, drain and
+stop-command overhead. Samples are not per-request wall stages or function-call
+counts. Nonidle excludes only leaves literally named `(idle)`; `(program)`,
+GC and unresolved samples remain in that denominator.
+
+| Profile | Weighted total ms | Nonidle weighted ms | Samples |
+|---|---|---|---|
+| G signed | 10064.296 | 9547.906 | 54222 |
+| A ASCII | 10022.366 | 9583.956 | 55387 |
+| U mixed | 10029.083 | 9655.846 | 57092 |
+
+Each cell below is **percent of all weighted samples / percent of nonidle
+weighted samples**. The leaf families are disjoint and exhaustive; total shares
+sum to 100%, and nonidle shares excluding idle sum to 100%, up to rounding.
+An empty URL alone does not establish a native subsystem or removable work.
+
+| Disjoint leaf family | G signed | A ASCII | U mixed |
+|---|---|---|---|
+| Named Wasm + Wasm bridge | 22.6020 / 23.8245 | 25.7569 / 26.9351 | 40.3548 / 41.9147 |
+| Named empty-URL native/API/bridge | 23.9580 / 25.2538 | 28.4137 / 29.7135 | 22.0616 / 22.9144 |
+| JS or builtin, nonempty non-Wasm URL | 20.3777 / 21.4798 | 17.9289 / 18.7491 | 15.0463 / 15.6279 |
+| Unnamed empty-URL | 12.5837 / 13.2642 | 9.9564 / 10.4118 | 8.1731 / 8.4890 |
+| (program) | 8.2165 / 8.6608 | 6.9286 / 7.2456 | 5.7063 / 5.9269 |
+| Garbage collector | 7.1312 / 7.5169 | 6.6411 / 6.9449 | 4.9363 / 5.1271 |
+| Idle | 5.1309 / excluded | 4.3743 / excluded | 3.7215 / excluded |
+
+Selected self samples are subsets of those families, not extra budgets.
+`connect/read/write` below require exact function name and empty URL; the
+Cloudflare socket wrapper is excluded from native/API `connect`. The JS
+queueMicrotask binding excludes the native queueMicrotask leaf cost.
+A dash means not isolated/applicable in this table, not proof of no work.
+
+| Selected leaf-self group | G signed | A ASCII | U mixed |
+|---|---|---|---|
+| Native/API connect | 8.5811 / 9.0452 | 7.0148 / 7.3357 | 4.8016 / 4.9872 |
+| Native/API read | 2.8927 / 3.0492 | 10.4253 / 10.9022 | 9.2576 / 9.6154 |
+| Native/API write | 5.9169 / 6.2369 | 3.9692 / 4.1508 | 2.3204 / 2.4101 |
+| JS queueMicrotask binding | 6.2485 / 6.5864 | 3.7488 / 3.9203 | 2.8612 / 2.9718 |
+| JSON write_string | — (union below) | 7.8301 / 8.1882 | 18.8153 / 19.5426 |
+| UTF-8 from_utf8, all named contexts | — | 0.9202 / 0.9623 | 8.4612 / 8.7882 |
+| Scalar count | — | 2.8162 / 2.9451 | 2.3069 / 2.3961 |
+| Signed base64url decoder | 1.5216 / 1.6039 | — | — |
+| copy_into | No sampled frame | 0.1541 / approximately 0.1611 | 0.0901 / approximately 0.0936 |
+
+Each ancestor-union group counts a sample once if **any** matching ancestor is
+present. These groups overlap one another and the self/family rows; do not add
+them. A union is a calling-context footprint, not removable function cost.
+
+| Ancestor-union group | G signed | A ASCII | U mixed |
+|---|---|---|---|
+| Queue::schedule_task | 6.5202 / 6.8729 | 6.2572 / 6.5435 | 5.0132 / 5.2070 |
+| JsFuture From constructor + completion family | 6.9195 / 7.2938 | 8.4966 / 8.8853 | 7.1360 / 7.4118 |
+| JSON write_string | 0.0504 / 0.0532 | 7.8378 / 8.1963 | 18.9141 / 19.6452 |
+| PostgreSQL wire::decode | 0.0592 / 0.0624 | 1.0050 / 1.0510 | 8.5958 / 8.9281 |
+| copy_into | No sampled frame | 0.2097 / 0.2193 | 0.1125 / 0.1169 |
+| All Uint8Array::from slice-binding ancestry | 0.5775 / 0.6088 | 0.6422 / 0.6715 | 0.6224 / 0.6464 |
+| Signed decoder | 1.9410 / 2.0460 | — | — |
+| Named BLAKE3 | 0.2059 / 0.2170 | — | — |
+
+The Uint8Array union includes PostgreSQL writes and other uses, so it is not
+P55's response-copy budget. Queue and JsFuture groups include shared queue work.
+Queue wrapper/native/schedule leaf samples partition by observed calling
+context as follows (percent of all samples only):
+
+| Queue leaf calling context | G signed | A ASCII | U mixed |
+|---|---|---|---|
+| JsFuture completion stacks | 4.4699 | 5.2512 | 4.3071 |
+| future_to_promise contexts | 1.3557 | 0.6351 | 0.4819 |
+| Other contexts | 0.5677 | 0.4364 | 0.2537 |
+
+Those are sampled contexts, not callback/Promise/I/O counts. P59 cannot remove
+true I/O completion, and P60 cannot claim all queue, GC or native connect cost.
+Invocation-local sockets still require their connection; the existing helper
+already reuses backend PostgreSQL sessions. Unknown/async-lost ancestry and
+native/program samples remain unassigned rather than credited to an idea.
+A constructor-versus-completion and true-I/O census is required before any
+structural P59/P60 implementation or numeric impact promotion.
+
+P03 remains an independent H84/B4fda experiment: its **original 0.5–2% signed
+application-throughput prediction** was frozen before implementation and is
+unchanged. Marginal equals combined P03/B, with no P02 stack. ASCII/Unicode
+have approximately zero direct scope, with unpredicted regression/codegen
+side effects still checked. The signed decoder's 153135 self-weighted µs and
+195351 ancestor-union µs over 10064296 total µs support a bounded lead, not a
+headroom promise or an observed gain. All throughput-actual fields remain
+unmeasured for P03 until its separate matched screen.
+
+P21 is the next bounded ASCII first-escape lead, not a claim to remove the
+writer's entire 7.83% self footprint. Mixed input escapes nearly immediately,
+so its first-scan scope stays near zero; P61 needs a transfer-inclusive text
+micro before capability integration. Current scalar-count samples motivate
+P11/P13 checks while retaining mandatory max-length counting. Named BLAKE3's
+small sampled footprint keeps P58 a small/unknown lead. These findings change
+investigation priority, not original predictions or frozen F01.
+
+`P21.suffix` is a separate conditional dependent variant, with the safe word-
+first-escape helper as its prerequisite. After P21 first-only, compare repeated
+helper/bulk UTF-8 suffix copying against both that prerequisite and B, reporting
+marginal and combined gains. Freeze its additional signed/ASCII prediction at
+approximately zero, mixed gain **unknown with zero/regression possible**;
+the mixed fixture's ordinary gaps are usually shorter than eight bytes. The
+earlier repeated scalar-span writer's approximately −5.6% mixed result remains
+negative evidence; this new repeated word-helper mechanism still needs its own
+measurement. It competes with P61 and does not replace the production suffix
+before measurement. P21's original first-only predictions remain unchanged.
+
+### Compiler audit: bulk memory already present
+
+The audited pinned rustc 1.99.0 b940084d7 / LLVM 23.1.1 target defaults include
+bulk-memory, multivalue, mutable-globals, nontrapping-fptoint, reference-types
+and sign-ext, without default SIMD. Frozen B child flags only remap paths;
+F/P02 add global simd128. All use shipping Os/fat LTO/one codegen unit.
+Actual bound focused disassembly has:
+
+| Bound focused module | memory.copy occurrences | memory.fill occurrences | SIMD instruction occurrences |
+|---|---|---|---|
+| B | 6641 | 185 | 0 |
+| F | 6644 | 185 | 16708 |
+| P02 | 6644 | 186 | 16969 |
+
+These are static counts, not executed counts or hotness. B is not an MVP-only
+module lacking a bulk-memory switch. The B named intermediate writer starts at
+0x130d79, size 0x608; its first-escape scan is 0x130e16–0x130e42 with byte load
+at 0x130e1f and bulk memory.copy at 0x130e7f/0x130f07. F's scan remains scalar
+at 0x12b35f–0x12b38b, byte load 0x12b368; no SIMD occurs in that writer.
+Thus global SIMD alone has not vectorized this particular scan.
+
+The audit used Xcode's `llvm-objdump` (Apple LLVM 21), binary SHA-256
+`792a7ab8593499fabb6316aa915de8833d61949d6329f89a0d6416f8ed99f4c8`,
+with disassemble/demangle and the `jadpo_value::json::write_string` symbol.
+Recorded workerd argv/config has no V8 flags. Cached capnp exposes v8Flags,
+local help exposes Perfetto and binary strings expose Liftoff/TurboFan trace
+machinery, but none proves the effective tier or hot optimized-tier completion.
+Ordinary CPU profile names do not prove a tier restriction. A separate tier
+diagnostic is conditional on remaining ambiguity, not an automatic next step.
+No new production/native/176 build or benchmark was run for this audit.
+
+All paths below are relative to the same durable archive A used for P02.
+The diagnostic build/raw/profile identities are:
+
+| Diagnostic record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Prepared D build | `diagnostics/current-b-cpu-64e6b82d/build.json` | `77dca11e4fead1671285a999385efee670cf7668462497cb1e8eefab3c9b2cd8` |
+| Complete three-capture result | `diagnostics/current-b-cpu-64e6b82d/workers-c16-w2-d8-pg-off/results.json` | `1b6ce3f6a385b6e8d3f6935cfca05b7ef3de5e9685bf26e40b5cdf5ca92c2c02` |
+| G profile | `diagnostics/current-b-cpu-64e6b82d/workers-c16-w2-d8-pg-off/001-golden-read.cpuprofile` | `1933966f33def210e127d55c1202925e2b9b775a668ebf8b380a2c0729190e3d` |
+| A profile | `diagnostics/current-b-cpu-64e6b82d/workers-c16-w2-d8-pg-off/002-ascii-large.cpuprofile` | `1f7fde88b133392e6837eb2dae6a619e65c29f04077ec04d9cf22b3753498cfe` |
+| U profile | `diagnostics/current-b-cpu-64e6b82d/workers-c16-w2-d8-pg-off/003-unicode-large.cpuprofile` | `55d06e221c41c224d751181aceaf5e52d178c05ed9f31fce89ba07100f3fcc18` |
+
+Static-audit artifacts are also retained, distinct from the production/timed
+module paths; the scan addresses refer to the named intermediate artifacts:
+
+| Artifact | Archive-relative path | SHA-256 |
+|---|---|---|
+| B named intermediate | `b/artifacts/13045-jadpo_worker_kiosk.wasm` | `338f5914a3f4d07e6e90ffeb0ee3b696d470ee5872624e532ebdfb481e7fda86` |
+| F intermediate | `variants/f-simd/artifacts/00083-jadpo_worker_kiosk.wasm` | `121e8e4857913331dbbb2338c087b312ec018aa797d3298935365c57aba97ac5` |
+| B bound focused | `b/artifacts/13053-kiosk.wasm` | `5f757dff726b79bec6e11f316cd2a330ff7c4bdb742f2ceaab22ef930d1fd21c` |
+| F bound focused | `variants/f-simd/artifacts/00091-kiosk.wasm` | `7955e36cc4ec08a4325bcd3c328b3abbc7851fb4ef8cfecbb7b48804e715a61f` |
+| P02 bound focused | `variants/p02-simd/artifacts/00091-kiosk.wasm` | `45a69fdce98caa47bff7ef7d6ecf1477fd929854763980e43050bfa8c8cec5ce` |
 
 ## F01 — full-list planning forecast (2026-10-24)
 
