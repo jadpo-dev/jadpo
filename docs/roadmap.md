@@ -241,6 +241,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
   Real edge measurement is required before Phase 9 finishes.
+  Richard’s unattended instruction (2026-10-24) defers account/deployment
+  actions while independent local 9.2 work continues; this acceptance remains.
+
 - [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
@@ -259,6 +262,22 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   cargo features chosen from the plan, as `postgres` and `smtp` are;
   validators' patterns compiled when first used if 9.1 shows cold start
   pays for them.
+- [ ] **9.2a1 Current request-path and large JSON profiling:** `opus · xhigh`
+  after 9.1b, the first concrete slice of 9.2. Codex’s local 9.2 batch uses
+  `gpt-6.1-sol · xhigh`, selected under Richard’s unattended instruction
+  (2026-10-24); it continues without routine model questions.
+  Reuse the golden todo and focused harnesses to profile the production local
+  workerd request path, including small reads and large ASCII, escaped/Unicode
+  and late-escape payloads. Preserve full response/state checks, authentication,
+  policy, validation, quotas and source/artifact identities. Validate inspector
+  identity, timeouts, errors, samples and no-overwrite behaviour with failing
+  controls first. Label diagnostic artifacts and profiler overhead honestly;
+  explain the current JSON/copy boundaries and rank the next optimisation from
+  measured evidence. Record method, exact sources/builds, raw profiles, all
+  attempts and attribution limits in §2.11 and `tools/bench/README.md`; full gate
+  and a separate manual PR. This instrumentation slice does not establish Bun
+  parity or close 9.2. Richard deferred the next complete four-runtime app
+  comparison until further optimisation progress.
 - [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
   checks used by both hosts, `webauthn-rs` kept only as a test reference,
   the test authenticator on `p256`, so no native deployable links
