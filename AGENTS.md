@@ -61,11 +61,11 @@ preserved, actual scaffold is moderate and prospective keeper complex.
 P19's fixed-32 tail policy is negative/mixed/rejected. Independent
 P01.timer-future's private gate is source-blocked on supported shim/module
 emission before code. P07's slot form is weak/mixed evidence retained without
-a keeper recommendation. Independent P12.direct-hex is next: original 0–2%
-singleton hypothesis, unknown actual gain and simple prospective implementation;
-keep UUID lowercasing/Rc copy and other formatters unchanged. After in-flight
-P12, prioritize P61 host-retained lower-bound feasibility and P59/P60 bridge/I/O
-census before P07.key-id or other small parser tweaks; their upside is unknown.
+a keeper recommendation. P12's simple direct-hex form is weak/mixed evidence
+retained without a keeper recommendation. Next is the independent P61
+host-retained lower-bound prototype, authorized for code/focused controls;
+P59/P60 bridge/I/O census follows before P07.key-id or other small parser tweaks.
+Their upside is unknown; this micro omits full host-sink/HTTP integration.
 No baseline prerequisite remains. Keep each control's loader/host/lifetime
 limits explicit.
 Control acceptance uses local checks and agent review under standing
