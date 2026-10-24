@@ -84,6 +84,27 @@ with dependency_lock(Path(sys.argv[1])):
                     child.stdout.close()
 
 
+class TestDiscovery(unittest.TestCase):
+    def test_production_build_artifacts_do_not_duplicate_authored_tests(self):
+        build = PROJECT / 'build'
+        build.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='discovery-', dir=build) as temporary:
+            emitted = Path(temporary) / 'emitted.test.js'
+            emitted.write_text('import { it } from "vitest"; it("emitted build sentinel", () => {});\n')
+            # Listing collects identities without executing hooks or tests. The
+            # deliberately unreachable URL ensures no live database is needed.
+            answer = subprocess.run([str(PROJECT / 'node_modules/.bin/vitest'), 'list',
+                                     '--json', '--maxWorkers=2'], cwd=PROJECT, check=True,
+                                    capture_output=True, text=True,
+                                    env={**os.environ, 'TEST_DATABASE_URL':
+                                         'postgresql://127.0.0.1:1/discovery_only'})
+            tests = json.loads(answer.stdout)
+        expected_files = {str(path) for path in (PROJECT / 'test').glob('*.test.ts')}
+        self.assertEqual({test['file'] for test in tests}, expected_files)
+        self.assertEqual(len(tests), 42)
+        self.assertEqual(len({(test['file'], test['name']) for test in tests}), 42)
+
+
 class SharedPostgres(unittest.TestCase):
     def test_keyword_socket_runs_real_node_bun_requests_and_preserves_parameters(self):
         # Keep the socket path short on both macOS and Linux, including quoting.

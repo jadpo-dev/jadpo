@@ -17,6 +17,8 @@ use tokio::net::TcpStream;
 
 struct Case {
     headers: Vec<String>,
+    owner: Option<String>,
+    path: Option<String>,
     expected_json: Option<serde_json::Value>,
 }
 
@@ -33,6 +35,7 @@ struct Options {
     threads: usize,
     expected_json: Option<serde_json::Value>,
     created_title: Option<String>,
+    created_todo_title: Option<String>,
     cases: Vec<Case>,
     address_pool: u64,
 }
@@ -51,6 +54,7 @@ fn options() -> Options {
         threads: 2,
         expected_json: None,
         created_title: None,
+        created_todo_title: None,
         cases: Vec::new(),
         address_pool: 0,
     };
@@ -91,12 +95,18 @@ fn options() -> Options {
                             .iter()
                             .map(|h| h.as_str().expect("a header").to_string())
                             .collect(),
+                        path: case.get("path").and_then(|v| v.as_str()).map(str::to_owned),
+                        owner: case
+                            .get("owner")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
                         expected_json: case.get("expected_json").cloned(),
                     })
                     .collect();
                 assert!(!o.cases.is_empty(), "at least one case");
             }
             "--expect-created-title" => o.created_title = Some(value()),
+            "--expect-created-todo-title" => o.created_todo_title = Some(value()),
             "--threads" => o.threads = value().parse().expect("a count"),
             "--expect" => {
                 o.expect = value()
@@ -129,6 +139,7 @@ struct Tally {
     warmup_invalid_bodies: u64,
     all_statuses: BTreeMap<u16, u64>,
     last_done: Option<Instant>,
+    created_rows: Vec<serde_json::Value>,
 }
 
 /// One response read off `stream`: its status, and whether the server
@@ -227,6 +238,10 @@ fn valid_body(expected: Option<&serde_json::Value>, title: Option<&str>, body: &
         && object.get("id").and_then(|v| v.as_str()).is_some_and(|id| {
             id.len() == 36
                 && id.as_bytes()[14] == b'7'
+                && matches!(
+                    id.as_bytes()[19].to_ascii_lowercase(),
+                    b'8' | b'9' | b'a' | b'b'
+                )
                 && id.chars().enumerate().all(|(i, c)| {
                     if [8, 13, 18, 23].contains(&i) {
                         c == '-'
@@ -235,6 +250,30 @@ fn valid_body(expected: Option<&serde_json::Value>, title: Option<&str>, body: &
                     }
                 })
         })
+}
+
+// The complete golden response has six public fields. Keep the fixture's old
+// two-field validator independent. Receipts are audited against PostgreSQL after
+// draining, including the owner of the exact credential used for each request.
+fn created_todo(title: &str, body: &[u8], owner: Option<&str>) -> Option<serde_json::Value> {
+    let mut actual: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let object = actual.as_object_mut()?;
+    if object.len() != 6
+        || object.get("title")?.as_str()? != title
+        || object.get("status")?.as_str()? != "open"
+        || !object.get("due_at")?.is_null()
+        || object.get("created_at")?.as_str()? != object.get("updated_at")?.as_str()?
+    {
+        return None;
+    }
+    let small = serde_json::json!({"id": object.get("id")?, "title": title});
+    if !valid_body(None, Some(title), &serde_json::to_vec(&small).ok()?) {
+        return None;
+    }
+    // Real timestamps and exact returned values are checked against persisted
+    // fields outside the timed load. Empty or malformed values fail there too.
+    object.insert("owner_id".into(), serde_json::Value::String(owner?.into()));
+    Some(actual)
 }
 
 fn cpu_seconds() -> f64 {
@@ -316,8 +355,11 @@ fn main() {
                         (address >> 8) & 255,
                         address & 255
                     );
-                    let mut request =
-                        format!("{} {} HTTP/1.1\r\nhost: bench\r\n", o.method, o.path);
+                    let mut request = format!(
+                        "{} {} HTTP/1.1\r\nhost: bench\r\n",
+                        o.method,
+                        case.and_then(|c| c.path.as_deref()).unwrap_or(&o.path)
+                    );
                     for header in o
                         .headers
                         .iter()
@@ -343,12 +385,23 @@ fn main() {
                     match answered {
                         Ok(Ok((status, close, body))) => {
                             *tally.all_statuses.entry(status).or_default() += 1;
-                            let valid = valid_body(
+                            let mut valid = valid_body(
                                 case.and_then(|c| c.expected_json.as_ref())
                                     .or(o.expected_json.as_ref()),
                                 o.created_title.as_deref(),
                                 &body,
                             );
+                            if let Some(title) = &o.created_todo_title {
+                                if let Some(receipt) = created_todo(
+                                    title,
+                                    &body,
+                                    case.and_then(|c| c.owner.as_deref()),
+                                ) {
+                                    tally.created_rows.push(receipt);
+                                } else {
+                                    valid = false;
+                                }
+                            }
                             if sent >= measure_from {
                                 if !valid {
                                     tally.invalid_bodies += 1;
@@ -390,8 +443,10 @@ fn main() {
     let (mut errors, mut warmup_errors, mut invalid_bodies, mut warmup_invalid_bodies) =
         (0, 0, 0, 0);
     let mut last_done = until;
+    let mut created_rows = Vec::new();
     for tally in tallies {
         latencies.extend(tally.latencies);
+        created_rows.extend(tally.created_rows);
         for (status, count) in tally.statuses {
             *statuses.entry(status).or_default() += count;
         }
@@ -426,7 +481,7 @@ fn main() {
     println!(
         "{}",
         serde_json::json!({
-            "schemaVersion": 2, "connections": o.connections,
+            "schemaVersion": 3, "created_rows": created_rows, "connections": o.connections,
             "load_cpu_s": cpu_seconds() - cpu_started, "load_wall_s": started.elapsed().as_secs_f64(), "load_threads": o.threads, "requests": latencies.len(),
             "rps": latencies.len() as f64 / elapsed, "p50_us": pct(50.0),
             "p90_us": pct(90.0), "p95_us": pct(95.0), "p99_us": pct(99.0),
@@ -447,10 +502,14 @@ mod tests {
         let cases = [
             Case {
                 headers: vec!["authorization: Bearer alice".into()],
+                owner: None,
+                path: None,
                 expected_json: Some(serde_json::json!([{"id": "alice-row"}])),
             },
             Case {
                 headers: vec!["authorization: Bearer bob".into()],
+                owner: None,
+                path: None,
                 expected_json: Some(serde_json::json!([{"id": "bob-row"}])),
             },
         ];
@@ -506,6 +565,44 @@ mod tests {
             Some("task"),
             br#"{"id":"11111111-1111-7111-8111-111111111111","title":"other"}"#
         ));
+        assert!(!valid_body(
+            None,
+            Some("task"),
+            br#"{"id":"11111111-1111-7111-1111-111111111111","title":"task"}"#
+        ));
+    }
+    #[test]
+    fn golden_writes_collect_complete_receipts_for_the_credential_owner() {
+        let response = serde_json::json!({
+            "id": "11111111-1111-7111-8111-111111111111", "title": "task",
+            "status": "open", "due_at": null,
+            "created_at": "2026-10-23T12:00:00.000Z", "updated_at": "2026-10-23T12:00:00.000Z"
+        });
+        let body = serde_json::to_vec(&response).unwrap();
+        assert_eq!(
+            created_todo("task", &body, Some("alice")).unwrap()["owner_id"],
+            "alice"
+        );
+        assert!(created_todo("other", &body, Some("alice")).is_none());
+        assert!(created_todo("task", &body, None).is_none());
+        for (key, value) in [
+            ("status", serde_json::json!("done")),
+            ("due_at", serde_json::json!("wrong")),
+            ("id", serde_json::json!("wrong")),
+            ("updated_at", serde_json::json!("different")),
+            ("owner_id", serde_json::json!("leaked")),
+        ] {
+            let mut corrupt = response.clone();
+            corrupt[key] = value;
+            assert!(
+                created_todo(
+                    "task",
+                    &serde_json::to_vec(&corrupt).unwrap(),
+                    Some("alice")
+                )
+                .is_none()
+            );
+        }
     }
     #[tokio::test]
     async fn responses_return_the_whole_content_length_body() {

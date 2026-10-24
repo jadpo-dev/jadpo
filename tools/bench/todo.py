@@ -5,6 +5,7 @@ Builds native and workerd deployables, then probes and exercises four focused ro
 native, workerd, Bun and Node, one server at a time. No account or deployment.
 """
 import argparse
+import datetime as dt
 import hashlib
 import http.client
 import itertools
@@ -23,6 +24,8 @@ from uuid import UUID
 
 import run as spike
 from contracts import validate_list, validate_measurement, validate_sample, validate_write_count, validate_failure
+from golden import fingerprint, source_hashes, host_cpu_ticks, load_output
+from golden_contracts import validate_build
 
 ROOT = spike.ROOT
 BENCH = ROOT / 'tools/bench'
@@ -41,6 +44,7 @@ spike.EXTRA_BINDINGS = ['(name = "SIGNING_KEY", text = "' + KEY + '")']
 
 
 def build():
+    before = fingerprint()
     WORK.mkdir(parents=True, exist_ok=True)
     spike.run(['cargo', 'build', '--locked', '-p', 'jadpo-cli', '--bin', 'jadpo'], cwd=ROOT)
     spike.run(['cargo', 'build', '--locked', '--release'], cwd=BENCH / 'load')
@@ -77,6 +81,17 @@ def build():
     for target in ('native', 'workers'):
         print(f'  Building {target}', file=sys.stderr, flush=True)
         spike.run([str(spike.JADPO), 'build'], cwd=WORK/target)
+    if fingerprint() != before:
+        raise ValueError('Source inputs changed during the focused fixture build')
+    paths = [WORK/'native/build/target/app/app', spike.LOAD, spike.POOL, spike.JADPO,
+             *sorted((WORK/'workers/build/target/kiosk').glob('*.wasm')),
+             *sorted((WORK/'workers/build/target/kiosk').glob('*.js')),
+             *sorted((WORK/'workers/build/target/kiosk').glob('*.mjs')),
+             *sorted((TS/'build').rglob('*.js'))]
+    if not any(path.suffix == '.wasm' for path in paths):
+        raise ValueError('Focused production Wasm artifact is missing')
+    (WORK/'build.json').write_text(json.dumps({'inputs': before, 'sources': source_hashes(), 'artifacts': {
+        str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}}, indent=2)+'\n')
 
 
 class Database(spike.Postgres):
@@ -264,7 +279,7 @@ def prepare(server, pg, principals):
     return alice['id'], token, expected, cases, first_signed_at, {'signed_list_selects': len(statements), 'write_statements': write_statements}
 
 
-def measure(server, pg, route, connections, warmup, duration, principals, address_pool):
+def measure(server, pg, route, connections, warmup, duration, principals, address_pool, row):
     owner, token, expected, cases, signed_at, obligations = prepare(server, pg, principals if route in ('write', 'signed-list') else 1)
     before = int(pg.query(server.target, 'SELECT count(*) FROM todo'))
     if time.monotonic() - signed_at + warmup + duration + 45 > 290:
@@ -303,11 +318,11 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
     try:
         time.sleep(max(0, warmup - (time.monotonic() - load_started)))
         cpu_before = spike.cpu_s(server.process.pid)
-        out, _ = process.communicate(timeout=warmup + duration + 45)
+        host_before = host_cpu_ticks()
+        out = load_output(process, warmup + duration + 45, row)
         cpu_after = spike.cpu_s(server.process.pid)
-        if process.returncode:
-            raise ValueError('Load generator failed; no timing result accepted')
-        row = json.loads(out)
+        host_after = host_cpu_ticks()
+        row.update(json.loads(out))
         validate_measurement(row)
         after = int(pg.query(server.target, 'SELECT count(*) FROM todo'))
         if route == 'write':
@@ -322,6 +337,10 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
         elif before != after:
             raise ValueError('Read workload changed stored rows')
         row.update(target=server.target, route=route, cpu_ms_per_request=(cpu_after - cpu_before) * 1000 / row['requests'], cpu_cores=(cpu_after - cpu_before) / row['elapsed_s'], peak_rss_mb=peak[0], wasm_mb=server.memory_mb(), load1=load1, persisted_delta=after-before, load_cpu_cores=row['load_cpu_s']/row['load_wall_s'], obligations=obligations)
+        row.update(load1_after=os.getloadavg()[0],
+                   host_cpu_percent=100*(host_after[0]-host_before[0])/(host_after[1]-host_before[1])
+                       if host_before and host_after and host_after[1] > host_before[1] else None,
+                   verified=True)
         return row
     finally:
         if process.poll() is None:
@@ -342,6 +361,7 @@ def metadata():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--skip-build', action='store_true')
+    parser.add_argument('--prepare-only', action='store_true', help='build focused production artifacts without timing')
     parser.add_argument('--address-pool', type=int, default=16384, help='bounded client addresses; each keeps the normal120/minute limit')
     parser.add_argument('--principals', type=int, default=256, help='signed principal pool; each keeps the normal 600/minute limit')
     parser.add_argument('--rounds', type=int, default=3)
@@ -350,7 +370,7 @@ def main():
     parser.add_argument('--connections', default='1,16,64')
     parser.add_argument('--targets', default='native,workers,bun,node')
     parser.add_argument('--routes', default=','.join(ROUTES))
-    parser.add_argument('--output', type=Path, default=WORK/'results.json')
+    parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     import math
     targets, routes = args.targets.split(','), args.routes.split(',')
@@ -364,13 +384,25 @@ def main():
             raise ValueError()
     except ValueError:
         parser.error('Use valid targets/routes and positive counts; each cell must fit 240 seconds including its 45-second drain allowance')
+    if args.output is None:
+        args.output = WORK/('results-'+dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S.%f')+'.json')
+    if args.output.exists():
+        parser.error('Output already exists; choose a new path to retain earlier and failed runs')
     WORK.mkdir(parents=True, exist_ok=True)
     logs = WORK/'logs'
     logs.mkdir(exist_ok=True)
     print('Running focused todo benchmarks', file=sys.stderr, flush=True)
     if not args.skip_build:
         build()
-    result = {'method': metadata(), 'options': {**vars(args), 'output': str(args.output)}, 'starts': [], 'rows': [], 'ok': False}
+    stamp = json.loads((WORK/'build.json').read_text())
+    validate_build(stamp, fingerprint())
+    if args.prepare_only:
+        print('passed: focused fixture · production artifacts ready')
+        return
+    result = {'method': {**metadata(), 'build_inputs_sha256': stamp['inputs'],
+                         'build_source_sha256': stamp['sources'], 'build_artifact_sha256': stamp['artifacts'],
+                         'rss': 'sampled every250ms, not lifetime high-water mark'},
+              'options': {**vars(args), 'output': str(args.output)}, 'starts': [], 'rows': [], 'ok': False}
     pg = Database()
     try:
         for target in targets:
@@ -382,13 +414,21 @@ def main():
                 try:
                     for route in routes:
                         for conns in connections:
-                            row = measure(server, pg, route, conns, args.warmup, args.duration, args.principals, args.address_pool)
-                            row['round'] = round_+1
+                            row = {'round': round_+1, 'target': target, 'route': route, 'connections': conns, 'verified': False}
                             result['rows'].append(row)
+                            try:
+                                measure(server, pg, route, conns, args.warmup, args.duration, args.principals, args.address_pool, row)
+                            except Exception as error:
+                                row['failure'] = str(error)
+                                raise
                             print(f'  Round {round_+1}: {target} {route} x{conns} verified', file=sys.stderr, flush=True)
                 finally:
                     server.stop()
+        validate_build(stamp, fingerprint())
         result['ok'] = True
+    except BaseException as error:
+        result['failure'] = str(error)
+        raise
     finally:
         pg.stop()
         args.output.parent.mkdir(parents=True, exist_ok=True)

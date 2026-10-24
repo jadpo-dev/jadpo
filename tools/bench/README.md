@@ -1,5 +1,163 @@
 # Performance harnesses
 
+## Golden application comparison (chunk 9.1d4)
+
+`golden.py` uses the complete `examples/golden-todo` application and its
+strong TypeScript counterpart. Before any timing it runs all 44 current
+`todo-v0.2` cases on each of native, workerd, Bun and Node: 176 passing
+obligations, from this checkout and its compiler. Missing, duplicated,
+unsupported, failed, sliced or preview conformance cannot authorise a run.
+The conformance adapters expose controlled clocks/providers and SQL observation
+for correctness. They stop before measurement. Their debug/testing binaries
+and JSONL controller transport are never timed.
+
+```sh
+# Preparation can compile and run correctness while the machine is busy.
+python3 tools/bench/golden.py --prepare-only
+python3 tools/bench/todo.py --prepare-only
+# Run only with no compiler or other benchmark running.
+python3 tools/bench/golden.py --skip-build
+python3 tools/bench/todo.py --skip-build --routes read,large
+```
+
+Both runners reject missing build identities, changed source/compiler inputs
+and changed production artifacts under `--skip-build`. Preparation records
+the hashes in ignored `work/golden/build.json` or `work/todo/build.json`;
+these are reusable build cache stamps, not a substitute for the repository gate.
+Comparative timing stays outside CI. `tools/verify.py` runs the fast verifier,
+proxy and real-load fault controls, including corrupt success bodies, owner
+leaks, missing persisted writes, unchanged/no-op writes, nonfinite or empty
+cells, unsupported targets and stale builds.
+
+### Timed application work
+
+| Workload | Request | Verified work |
+|---|---|---|
+| `read` | `GET /todos/<id>` | Real bounded signed bearer; the caller's exact six-field todo |
+| `signed-list` | `GET /todos?page_size=100` | Exactly the owner's 50 visible rows, `created_at desc,id desc`, full six-field projection and null next cursor |
+| `write` | `POST /todos` | Real bounded signed bearer; validated title, generated UUIDv7, open status, null due date, creation/update timestamps and a committed row for that exact caller |
+| cold start | `GET /health/ready` | Spawn through the complete first valid database-backed readiness answer |
+
+Every cell starts its server afresh and resets the database outside timing.
+There are 256 active owners by default, a separately signed durable API
+session for each, 50 visible and one hidden todo per owner, and a foreign
+owner's 50 visible and one hidden todo. Each credential stays attached to
+its read path, complete expected response and write-owner identity. Before
+load, every owner's expected response and the missing/forged credential and
+invalid-title failures are checked. Seeded rows are checked unchanged after
+load. For every successful write, including warmup and drained requests,
+the load generator retains the complete six-field output and the exact
+credential's owner; each receipt must match its persisted row. Counts alone
+cannot establish write correctness. Receipts are discarded after this audit;
+results retain the verified count, never credentials.
+
+Credentials use the production signing/verifier codecs and the same real
+persisted identities and authority rows. Fixture signing happens before the
+HTTP process starts; bounded authority lasts four minutes within the app's
+five-minute limit. Setup must leave enough lifetime for measurement and its
+maximum drain. Timed routes retain normal auth, output codecs, owner policies,
+lifecycle visibility, deadlines, transaction safety and the default 600/minute
+caller and 120/minute address limits. Accepted signed requests count against
+the caller; unsigned/refused credentials count against the address. A 429
+invalidates a cell: increase `--principals`, not the limits. The native/TS
+trusted metadata fixture rotates a bounded 16,384-address pool.
+
+Only loopback listeners are opened. For native, the benchmark explicitly
+declares one trusted proxy in the copied application:
+`client_address: { source: ClientAddressSource.forwarded_for hops: 1 }`;
+the small TypeScript transport host trusts one strict IPv4 X-Forwarded-For
+value only when the real TCP peer is 127.0.0.1, ::1 or ::ffff:127.0.0.1.
+Untrusted peers and malformed/multiple forwarded values cannot supply the
+caller address. This declared local transport fixture preserves rate limits;
+it is not a claim that arbitrary forwarded headers are trusted in deployment.
+Workers requires `ClientAddressSource.cloudflare` instead. Its workerd
+incoming socket uses the pinned runtime's `injectRequestHeaders` to remove
+any caller-supplied CF-Connecting-IP and set 127.0.0.1, the actual local peer.
+A real workerd echo control proves missing and forged headers are overwritten.
+This is the local platform metadata fixture, with no additional HTTP forwarder
+or app/controller hop. Authenticated golden traffic still counts against each
+real signed caller, and its declared local rate-limit bindings retain the
+default allowances; unsigned failures retain the normal address allowance.
+
+Native and Wasm are ordinary release deployables from `jadpo build`.
+workerd runs the generated shim and its production request handler unchanged;
+an additional isolated entrypoint reads the actual module's linear memory,
+as in the spike below. Bun uses `Bun.serve` and Node Hono's Node adapter, both
+binding the same emitted strict TypeScript production application. The
+transport host supplies the declared proxy boundary and external scheduling;
+it imports no contract controller, SQL recorder, fake app or test hook.
+The complete contract checks reminder delivery, lifecycle, provider failures
+and authentication timelines before timing. The measured requests above do
+not run a reminder workflow. The Worker declares the required subscriber and
+schedule runners; the local configuration supplies no cron. Scheduling is
+external and no due reminders are
+seeded on any measured target; 9.1b owns idle ticking and the 10,000-delivery
+backlog.
+
+The golden contract bounds a title to 200 Unicode scalars, so its large-row
+comparison remains the distinct 9.1a `read,large` scaffold below: 100-byte
+versus 65,536-byte stored payloads. Those routes use the scaffold's separate
+app and TypeScript baseline; they are not golden conformance or whole-app
+throughput. Both use full-body checks on production deployables.
+
+### Configuration, sampling and limits
+
+All databases share one disposable local PostgreSQL 16 instance, with
+`synchronous_commit=off`, 400 maximum connections and 256MB shared buffers.
+Each app first applies its own real migrations. Then a benchmark-only schema
+fixture gives every `todo` table the same four business indexes from Jadpo's
+generated schema: created/id, owner/created/id and status/created/id partial
+on visible rows, plus owner. Constraint indexes are retained. The exact
+normalisation DDL and its SHA-256 are in results. This controls query/write
+index work; it does not represent natural Drizzle migration output, which
+has a single nonpartial owner/created/id index. Runtime-owned tables and
+their migrations remain each implementation's own.
+
+Primary measurements preserve the apps' actual pool architecture. Jadpo's
+native driver permits 10 open/8 idle connections per driver, with separate
+drivers on native worker threads. TypeScript has five general connections
+and five exclusive transaction clients. The single workerd isolate uses a
+stand-in transaction pool with a cap of 10; unlike the historical repair-café
+spike's cap of 20, this matches the driver's per-pool open cap. The pool
+stands in for Hyperdrive, without edge latency/TLS or query caching; its
+CPU is recorded separately. Native uses multiple server worker threads;
+workerd, Bun and Node serve on one each. Throughput and CPU/request both
+matter when interpreting these different architectures.
+
+Defaults are three rounds in rotating target order, 1/16/64 connections,
+two seconds of warmup and ten seconds measured per cell. Latencies retain
+every request admitted during measurement, including responses after the
+admission window closes. Throughput divides completions by that window plus
+its drain, and server CPU sampling continues through drain. Complete requests
+have a 30-second deadline and connections a 10-second deadline. Any warmup
+or measured error/status/body mismatch refuses the cell. CPU sampling uses
+the operating system's cumulative process counters at the warmup boundary
+and after drain, with their finite sampling granularity. RSS is sampled every
+250ms. Cold start includes first readiness body validation; its first request
+time is also recorded. Fixture/credential preparation and the workerd pool's
+startup are outside cold-start timing.
+
+Ignored `work/golden/results-<run>.json` contains all cells, cold starts, median/
+min/max per metric, p50/p90/p95/p99/max, drain, statuses/error counts, server
+and helper CPU, sampled peak RSS, Wasm linear heap when present, load-generator CPU/
+wall time/thread count, machine/tool versions, source/lockfile and generated
+artifact hashes, exact configuration and conformance case identities. Only
+validated cells can appear in an `ok:true` result, and stale inputs at the end
+refuse the whole run. The load generator and PostgreSQL share the machine;
+reported load-generator CPU, whole-machine CPU utilisation and start/end load expose potential client/host
+saturation. This local workerd result does not establish edge performance.
+Every invocation uses a new result path; failed/error rows and unfavourable
+runs remain available. A supplied existing output path is refused. Summary
+latencies are medians of the per-run percentiles, with their min/max; they
+are not pooled percentiles. The workload is closed loop: each connection
+waits for a response before sending again, so an overloaded server reduces
+offered traffic. These three short rounds are exploratory local comparisons,
+not open-loop latency SLOs, stable p99 qualification or production capacity.
+Worthwhile measurements and their interpretation belong in compiler-runtime
+§2.11, alongside the older experiments below.
+
+## Repair-café performance spike
+
 Roadmap chunk 8.3: one route of a teaching example compiled to native and
 to WebAssembly and measured against the same route hand-written in Bun and
 TypeScript. The results and what they mean are in
@@ -211,7 +369,7 @@ Read cells must leave the stored count unchanged. Corrupted 200 responses,
 owner leaks, wrong ordering, missing writes, empty cells and nonfinite or
 negative metrics fail verification. No timing thresholds run in CI.
 
-`work/todo/results.json` records every cell, p50/p90/p95/p99/max, status/error
+`work/todo/results-<run>.json` records every cell, p50/p90/p95/p99/max, status/error
 counts, drain, CPU, peak RSS and Wasm memory, load-generator CPU/wall time and
 thread count, machine/tool versions, source/lockfile SHA-256s and native/Wasm
 artifact SHA-256s. Credentials remain only in ignored `work/todo` setup files,
@@ -222,13 +380,15 @@ multiple worker threads; workerd, Bun and Node use one server thread. Compare
 server CPU/request as well as throughput; local workerd includes a stand-in
 pool and no real edge/database network.
 
-The load generator's schema 2 adds complete-body checks, p95, bounded requests
+The load generator's schema 2 added complete-body checks, p95, bounded requests
 and retained slow tails. This changes its protocol/client cost, including for
 new `run.py` runs: compare targets using the same generator version and rerun
 old experiments before comparing numbers. The old spike's distinct-IP stream
 also grows the local rate-limit stub's Map; the new bounded address pool
 avoids that confound. This observation does not establish the cause of the
 old resident-memory growth or claim a production fix.
+Schema 3 adds credential-owned read paths and complete golden write receipts;
+its timestamp and owner receipts are checked against PostgreSQL after drain.
 
 Fast fixture format/check, strict TypeScript types, Python verifier contracts,
 and Rust load/protocol tests are part of `tools/verify.py`; timed measurements
