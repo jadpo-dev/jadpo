@@ -3065,16 +3065,8 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   sweep size, connection budgets, leases, retry safety, shutdown and hand-on
   behaviour. Verify responses and durable effects, retain all runs, and
   measure the same local protocol before and after the change.
-  Built: four bounded local delivery lanes over the ordinary driver and a
-  verified 10,000-delivery workload on native, workerd, Bun and Node.
-  Lease fencing, retry safety, sequential descendants, budget/shutdown
-  settlement and durable effects remain checked. Matched three-round
-  before/after results, CPU trade-offs, unchanged controls, superseded runs
-  and exact source identities are in compiler/runtime §2.11. The own-checkout
-  full gate passed 92/92; the measured candidate has the same complete tracked
-  tree as the gated commit. Exact unmerged prerequisite `64bf4934` is included
-  under Richard's stacked-dependency permission; review and merges remain
-  pending. No PR was merged or set to auto-merge by Codex.
+  Built: four bounded local delivery lanes and a verified 10,000-delivery
+  workload; results in compiler/runtime §2.11.
 
 - [x] **9.1b1a Warm delivery comparison:** `opus · high` after 9.1b1:
   compare local workerd with persistent Bun and Node services, excluding
@@ -3089,60 +3081,25 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   native host is unavailable. Record all results, variation and lessons;
   full gate and a separate manual-review PR required (Richard's primary
   comparison clarified 2026-10-23; verifier correction, no language change).
-  Built: persistent Bun/Node HTTP tick services, matched pool warmup, explicit
-  process-lifetime metadata and real service/SQL recovery controls. Both
-  three-round campaigns passed all 24 cells and 40 controls with exact
-  durable-effect, replay and freshness audits. Local workerd improved
-  1,155→2,239 deliveries/s, with tick p95 107.064→55.206 ms; warm Bun
-  remained ahead at 4,017/s and 29.479 ms. The previous startup-asymmetric
-  cross-target interpretation is explicitly corrected, with all old
-  results retained. Method, source identities, variability and lessons
-  are in compiler/runtime §2.11 and `tools/bench/README.md`. The own-checkout
-  full gate passed 93/93; the measured bounded tree exactly equals the
-  gated tree. Exact unmerged prerequisite `0bf65408` is included under
-  Richard's stacked-dependency permission. No PR was merged or set to
-  auto-merge by Codex.
+  Built: persistent Bun/Node HTTP tick services with matched pool warmup,
+  lifetime metadata and real service controls. Local workerd bounded
+  2,239 deliveries/s against warm Bun 4,017/s; results in compiler/runtime
+  §2.11.
 
 - [x] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
   9.1b1a: measure idle-tick statements and latency, separate prompt work from
   an hourly cleanup pass one instance takes under a lease, and batch every
   delete. Preserve retention, handled-record safety, failure recovery and
   multi-instance behaviour; report before/after measurements.
-  Built: prompt work remains on each tick; each store has an hourly, identity-fenced
-  cleanup lease, bounded deletes and immediate retry after incomplete cleanup.
-  Whole-schema cleanup holdings survive deployable pruning, including schedule,
-  batch and AI-only stores. Real races, retention and failure controls pass.
-  Native and local workerd idle ticks fell from eight SQL statements to five;
-  workerd median idle-tick p95 fell from 4.371 to 2.874 ms. The supporting warm
-  delivery comparison measured workerd 2,276/s, p95 53.274 ms, against Bun
-  3,897/s, p95 30.170 ms; ambient variation prevents a causal delivery-gain claim.
-  The final full gate passed 93/93 at `c1d7ab57`; the measured candidate
-  `4cb9e82d` has the identical complete tracked tree. Test subprocess ownership
-  was repaired; historical orphan-affected runs and failed/superseded attempts
-  remain qualified alongside fresh source/artifact identities, all rounds and
-  review constraints in compiler/runtime §2.6 and §2.11 and `tools/bench/README.md`.
-  Exact unmerged prerequisite `cb1b1a79` is included under Richard's stacked
-  dependency permission; Claude's review and merges remain pending. Codex
-  opens the PR without auto-merge and never merges it.
+  Built: prompt work stays on each tick; each store runs retention hourly
+  under an identity-fenced lease (compiler/runtime §2.6). Results are in the
+  pull request.
 
 - [x] **9.1b3 One-statement AI accounting:** `opus · high` after 9.1b2:
   make each reserve and charge one statement, including every applicable
   window. Preserve atomic refusal, concurrent limits, repair/retry top-ups,
   usage accounting and conservative failure handling; measure statements
   and latency before and after, using local fixtures without real accounts.
-  Built: each reserve/top-up and charge is one statement across applicable
-  windows. APP-only uses a simple conditional UPSERT; APP plus CALLER uses
-  an atomic all-window reservation, with unchanged conservative failure handling.
-  Real PostgreSQL races, exact accounting and compiled Workers refusal checks pass.
-  The final own-checkout full gate passed 93/93 in 480 s at `d709394e`;
-  measured candidate `f7a7ce6d` has its identical complete tracked tree.
-  The fresh native-runtime microfixture reduced SQL 3→2 (APP), 5→2 (CALLER)
-  and 7→3 (immediate fake retry). Median p95 was 0.315→0.285 ms,
-  0.516→0.434 ms and 0.650→0.639 ms respectively under varying host load.
-  Workers/Bun AI timing is N/A; this is not whole-application HTTP throughput.
-  The first candidate's APP-only regression, its replacement, every round,
-  failed/superseded checks, exact sources/artifacts and review invariants remain
-  in compiler/runtime §2.11 and `tools/bench/README.md`. Exact unmerged
-  prerequisite `025a38c3` is included under Richard's stacked-dependency
-  permission. Claude reviews and merges; Codex opens the PR without auto-merge
-  and never merges it.
+  Built: each reserve, top-up and charge is one statement across the
+  applicable windows; refusal changes nothing (area 21, compiler/runtime
+  §2.11). Results are in the pull request.
