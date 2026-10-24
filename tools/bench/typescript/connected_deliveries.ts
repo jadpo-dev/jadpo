@@ -16,6 +16,8 @@ const breakerSql = {
   "PROBE_UNUSED": "UPDATE \"jadpo_circuit_breakers\" SET \"state\" = 'open', \"probe_id\" = NULL, \"probe_until\" = NULL WHERE \"connection\" = $1 AND \"state\" = 'probing' AND \"probe_id\" = $2 RETURNING \"connection\"",
   "SUCCEEDED": "WITH \"b\" AS (UPDATE \"jadpo_circuit_breakers\" SET \"state\" = 'closed', \"failures\" = 0, \"opened_at\" = NULL, \"pauses\" = 0, \"probe_at\" = NULL, \"probe_id\" = NULL, \"probe_until\" = NULL, \"alerted_at\" = NULL WHERE \"connection\" = $1 AND (\"state\" <> 'closed' OR \"failures\" > 0) RETURNING \"connection\"), \"d\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = 'pending', \"next_attempt_at\" = $2, \"held_ms\" = COALESCE(\"held_ms\", 0) + GREATEST(0, (extract(epoch FROM ($2::timestamptz - COALESCE(\"held_since\", $2::timestamptz))) * 1000)::bigint), \"held_for\" = NULL, \"held_since\" = NULL WHERE \"status\" = 'held' AND \"held_for\" IN (SELECT \"connection\" FROM \"b\") RETURNING \"id\") SELECT (SELECT count(*) FROM \"b\"), (SELECT count(*) FROM \"d\")"
 } as const;
+// Bun gets the same idiomatic single-statement claim on both revisions.
+const claimSql = "WITH \"claimed\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = 'running', \"attempts\" = \"attempts\" + 1, \"last_tried_at\" = $2, \"next_attempt_at\" = $3, \"last_failure\" = CASE WHEN \"status\" = 'running' THEN $4::jsonb ELSE \"last_failure\" END WHERE \"id\" = $1 AND \"status\" IN ('pending', 'running') AND \"next_attempt_at\" <= $2 RETURNING \"attempts\") SELECT \"c\".\"attempts\", \"b\".\"connection\", \"b\".\"state\", \"b\".\"failures\", \"b\".\"probe_at\", \"b\".\"probe_until\", \"b\".\"pauses\" FROM \"claimed\" AS \"c\" LEFT JOIN \"jadpo_circuit_breakers\" AS \"b\" ON \"b\".\"connection\" = ANY($5::text[]) ORDER BY \"b\".\"connection\"";
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
 // Normalized shared-test socket URIs need postgres-js's explicit host option;
@@ -51,12 +53,8 @@ async function tick() {
     for (;;) {
       const item = readable[cursor++];
       if (!item) break;
-      const claimed = await db`
-        UPDATE jadpo_deliveries SET status='running', attempts=attempts+1,
-          next_attempt_at=${lease},last_tried_at=${now},
-          last_failure=CASE WHEN status='running' THEN ${db.json({code:'lease_expired'})} ELSE last_failure END
-        WHERE id=${item.id} AND status IN ('pending','running') AND next_attempt_at<=${now}
-        RETURNING attempts`;
+      const claimed = await db.unsafe<{attempts:number;state?:string;probe_at?:Date;probe_until?:Date}[]>(claimSql,
+        [item.id,now,lease,JSON.stringify({code:'lease_expired'}),db.array(['checks'])]);
       if (!claimed.length) continue;
       const already = await db`SELECT id FROM jadpo_handled_deliveries WHERE id=${item.id}`;
       if (already.length) {
@@ -70,9 +68,8 @@ async function tick() {
           WHERE id=${item.id} AND status='running' AND attempts=${claimed[0]!.attempts}`;
         continue;
       }
-      const breakers = await db.unsafe(breakerSql.READ, [db.array(['checks'])]);
-      const probe = breakers[0];
-      if (probe && probe.state !== 'closed') {
+      const probe = claimed[0];
+      if (probe?.state && probe.state !== 'closed') {
         let taken = false;
         if ((probe.state === 'open' && (!probe.probe_at || new Date(probe.probe_at).getTime() <= now.getTime())) ||
             (probe.state === 'probing' && (!probe.probe_until || new Date(probe.probe_until).getTime() <= now.getTime()))) {

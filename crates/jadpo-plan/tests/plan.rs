@@ -221,3 +221,42 @@ fn sites_are_decoded_with_anchors_and_slots() {
         .expect("a reject");
     assert_eq!(reject, (vec![Some(0), Some(1)], true));
 }
+
+#[test]
+fn a_connected_delivery_keeps_the_provider_and_receipt_write_plans() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tools/bench/fixtures/connected-deliveries");
+    let loaded = jadpo_db::load(&root);
+    let problems: Vec<_> = jadpo_check::check(&loaded.db, loaded.project)
+        .into_iter()
+        .filter(jadpo_check::blocks_running)
+        .collect();
+    assert!(problems.is_empty(), "{problems:#?}");
+    let model = jadpo_check::data::data_model(&loaded.db, loaded.project);
+    let plan = Plan::build(&loaded.db, loaded.project);
+    let record = plan
+        .callables()
+        .iter()
+        .find(|c| c.key.name() == "record")
+        .unwrap();
+    let writes: Vec<_> = record
+        .sites
+        .iter()
+        .filter_map(|site| match &site.decoded {
+            Decoded::Write { plan, .. } => Some(plan),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0].is_some(),
+        "missing receipt write; model={model:#?}; writes={:?}",
+        plan.writes()
+    );
+    assert!(
+        record
+            .sites
+            .iter()
+            .any(|site| matches!(site.decoded, Decoded::Provider(_)))
+    );
+}

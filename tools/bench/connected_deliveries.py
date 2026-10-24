@@ -19,6 +19,7 @@ import resource
 import shutil
 import subprocess
 import threading
+import traceback
 import time
 
 import ai_accounting as guard
@@ -39,13 +40,17 @@ def command(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
-def context():
+def context(*,ambient=False):
     value = {'time':time.time(),'load':os.getloadavg(),'host_cpu':golden.host_cpu_ticks(),
              'flags':flags.selected_flags(ENV),'platform':os.uname().sysname}
     for name,args in [('memory',['vm_stat']),('swap',['sysctl','vm.swapusage']),
                       ('pressure',['memory_pressure','-Q']),('processes',['ps','-axo','pid=,ppid=,pcpu=,comm='])]:
         answer = command(args,capture_output=True,text=True)
         value[name] = answer.stdout
+    if ambient:
+        first=golden.host_cpu_ticks();began=time.perf_counter();time.sleep(5)
+        last=golden.host_cpu_ticks()
+        value['ambient_cpu']={'before':first,'after':last,'seconds':time.perf_counter()-began}
     return value
 
 
@@ -58,6 +63,7 @@ class Provider:
         owner = self
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
+            disable_nagle_algorithm = True
             def do_GET(self):
                 with owner.lock:
                     owner.calls.append({'method':'GET','path':self.path,'authorization':self.headers.get('authorization')})
@@ -133,16 +139,33 @@ def validate_census(census,connected):
         raise ValueError('breaker census aggregation differs')
 
 
+CARGO_WRAPPER = r'''#!/usr/bin/env python3
+import json,os,sys
+names={'CARGO','CARGO_INCREMENTAL','CARGO_BUILD_JOBS','CARGO_TARGET_DIR','CARGO_ENCODED_RUSTFLAGS','RUSTFLAGS','RUSTUP_TOOLCHAIN','SOURCE_DATE_EPOCH','ICU4X_DATA_DIR'}
+names.update(k for k in os.environ if k.startswith('CARGO_PROFILE_'))
+real=os.environ['JADPO_BENCH_CARGO_REAL']
+record={'tool':real,'argv':sys.argv[1:],'cwd':os.getcwd(),'effective_flags':{k:os.environ.get(k) for k in sorted(names)}}
+fd=os.open(os.environ['JADPO_BENCH_CARGO_LOG'],os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
+try:os.write(fd,(json.dumps(record)+'\n').encode())
+finally:os.close(fd)
+os.execv(real,[real,*sys.argv[1:]])
+'''
+
+
 def build(label):
     before=guard.source();directory=WORK/label;directory.mkdir(parents=True,exist_ok=False)
-    stamp={'source':before,'start':context(),'inherited_flags':flags.INHERITED_FLAGS,'artifacts':{},'complete':False}
+    stamp={'source':before,'start':context(ambient=True),'inherited_flags':flags.INHERITED_FLAGS,'artifacts':{},'complete':False}
     (directory/'build.json').write_text(json.dumps(stamp,indent=2)+'\n')
     command(['cargo','build','--locked','-p','jadpo-cli','--bin','jadpo'],env=ENV)
     command(['npm','ci','--offline','--ignore-scripts','--no-audit','--no-fund'],cwd=HERE/'typescript')
     command(['npm','run','build'],cwd=HERE/'typescript')
     command(['npm','ci','--offline','--ignore-scripts','--no-audit','--no-fund'],cwd=ROOT/'tools/workers')
     command(['cargo','build','--locked','--release','--manifest-path',str(HERE/'load/Cargo.toml'),'--bin','pool'],env=ENV)
-    paths=[base.spike.JADPO,base.spike.POOL]
+    real_cargo=command(['rustup','which','cargo'],capture_output=True,text=True).stdout.strip()
+    wrapper=directory/'capture-cargo';wrapper.write_text(CARGO_WRAPPER);wrapper.chmod(0o755)
+    provenance=directory/'cargo-provenance.jsonl'
+    inner_env={**ENV,'CARGO':str(wrapper),'JADPO_BENCH_CARGO_REAL':real_cargo,'JADPO_BENCH_CARGO_LOG':str(provenance)}
+    paths=[base.spike.JADPO,base.spike.POOL,wrapper]
     for workload in ('connected','backlog'):
         fixture=HERE/'fixtures'/('connected-deliveries' if workload=='connected' else 'deliveries')
         for target in ('native','workers'):
@@ -155,9 +178,11 @@ def build(label):
                 app=app.replace('    connections: {','    connections: {\n        limits: { driver: Driver.cloudflare_rate_limits namespace: 1001 }',1)
             (project/'app.jadpo').write_text(app)
             command([str(base.spike.JADPO),'check'],cwd=project,env=ENV)
-            command([str(base.spike.JADPO),'build'],cwd=project,env=ENV)
+            command([str(base.spike.JADPO),'build'],cwd=project,env=inner_env)
             out=project/'build/target'/('app' if target=='native' else 'kiosk')
             paths.extend(p for p in out.iterdir() if p.is_file())
+            paths.extend(p for p in (project/'build/rust').rglob('*') if p.is_file())
+            paths.append(project/'build/manifest.json')
     stamp['runtimes']={}
     for name in ('workerd','bun','node','psql','rustc','cargo'):
         location = (command(['rustup','which',name],capture_output=True,text=True).stdout.strip()
@@ -167,6 +192,9 @@ def build(label):
         paths.append(path)
     paths.extend((HERE/'typescript/build').glob('*.js'))
     paths.extend(p for p in (HERE/'typescript/node_modules').rglob('*') if p.is_file() and not p.is_symlink())
+    stamp['inner_cargo']=[json.loads(line) for line in provenance.read_text().splitlines()]
+    if not stamp['inner_cargo']:raise ValueError('inner cargo provenance missing')
+    paths.append(provenance)
     saved=directory/'artifacts';saved.mkdir()
     for index,path in enumerate(dict.fromkeys(paths)):
         copy=saved/f'{index:05d}-{path.name}';shutil.copy2(path,copy)
@@ -224,32 +252,84 @@ def parse_log(path,offset,target):
     for line in text.splitlines():
         if line.startswith('BENCH|'):
             active=False
-            if not line.startswith(prefix):continue
+            if not line.startswith(prefix) or line.split('|',4)[2]=='psql':continue
             match=re.search(r'LOG:  (?:execute [^:]*:|statement:) (.*)',line)
             if match:
                 entries.append(match.group(1));active=True
         elif active:
             entries[-1]+='\n'+line.lstrip('\t')
-    return text,entries
+    return text,[entry.strip() for entry in entries]
+
+
+def runtime_pids(pg,target):
+    return set(json.loads(pg.query('postgres',f"SELECT coalesce(json_agg(pid),'[]') FROM pg_stat_activity WHERE datname='{target}' AND backend_type='client backend' AND application_name<>'psql'")))
+
+
+def logged_pids(text,target):
+    found=set()
+    for line in text.splitlines():
+        parts=line.split('|',4)
+        if len(parts)==5 and parts[0]=='BENCH' and parts[1]==target and parts[2]!='psql' and 'LOG:  ' in parts[4]:
+            if re.search(r'LOG:  (?:execute [^:]*:|statement:)',parts[4]):found.add(int(parts[3]))
+    return found
+
+
+def settled(sql):
+    return any(re.match(r'^UPDATE (?:"jadpo_deliveries"|jadpo_deliveries) SET (?:"status"|status)',s) and
+               ('last_failure' in s) and 'attempts=attempts+1' not in s and '"attempts" + 1' not in s for s in sql)
 
 
 def census(target,folder,pg,port,provider,template,connected):
+    pg.sql('postgres',"ALTER SYSTEM SET log_statement='all'")
+    pg.query('postgres','SELECT pg_reload_conf()')
+    deadline=time.monotonic()+20
+    while pg.query('postgres','SHOW log_statement')!='all':
+        if time.monotonic()>deadline:raise ValueError('global log_statement never became all')
+    config={k:pg.query('postgres','SHOW '+k) for k in ('logging_collector','log_destination','log_line_prefix')}
+    if config['logging_collector']!='off' or config['log_destination']!='stderr':raise ValueError('census requires owned synchronous stderr log')
+    log=Path(base.spike.WORK)/'pg.log';ready_offset=log.stat().st_size
+    # Existing pool connections must actually log after reloading, before the
+    # accepted offset. A future native child inherits the confirmed global GUC.
+    while True:
+        pg.reset(target,template,100);provider.reset()
+        base.tick(target,folder,pg,port)
+        base.validate_backlog(pg.state(target),100)
+        if connected:validate_provider(provider.snapshot(),100)
+        active=runtime_pids(pg,target)
+        ready_text=log.read_bytes()[ready_offset:].decode()
+        observed=logged_pids(ready_text,target)
+        if active<=observed:break
+        if time.monotonic()>deadline:raise ValueError(f'pool logging never became ready: {active-observed}')
+    readiness={'global_log_statement':'all','configuration':config,'backend_pids':sorted(active),
+               'observed_logged_pids':sorted(observed),'postgres_log':ready_text,
+               'external_native_new_backends_inherit_global':target=='native'}
     pg.reset(target,template,1);provider.reset()
     if connected:pg.closed(target)
-    pg.sql('postgres',"ALTER SYSTEM SET log_statement='all'")
-    pg.query('postgres','SELECT pg_reload_conf(); SELECT pg_sleep(0.1)')
-    log=Path(base.spike.WORK)/'pg.log';offset=log.stat().st_size
+    offset=log.stat().st_size
     response=base.tick(target,folder,pg,port)
-    # Reading the local log is independent of the driver's statement wrappers.
-    time.sleep(.05)
-    text,sql=parse_log(log,offset,target)
-    pg.sql('postgres',"ALTER SYSTEM SET log_statement='none'")
-    pg.query('postgres','SELECT pg_reload_conf(); SELECT pg_sleep(0.1)')
+    # A bounded observation of actual final statements, followed by persisted
+    # state validation; log-before-execution alone is not a commit proof.
+    deadline=time.monotonic()+20
+    while True:
+        text,sql=parse_log(log,offset,target)
+        if settled(sql) and any(s.strip().upper()=='COMMIT' for s in sql):break
+        if time.monotonic()>deadline:raise ValueError(f'incomplete actual SQL census: {sql}')
+        time.sleep(.005)
     base.validate_backlog(pg.state(target),1)
     if connected:validate_provider(provider.snapshot(),1)
     elif provider.snapshot():raise ValueError('connectionless census called provider')
+    pg.sql('postgres',"ALTER SYSTEM SET log_statement='none'")
+    pg.query('postgres','SELECT pg_reload_conf()')
+    while pg.query('postgres','SHOW log_statement')!='none':
+        if time.monotonic()>deadline:raise ValueError('logging did not turn off before timed work')
+    # Every backend processes the reload before its next command. Exercise
+    # the pool again, then independently refuse any SQL logged in the later
+    # timed window. No log-toggle delay is treated as proof of readiness.
+    pg.reset(target,template,100);provider.reset()
+    base.tick(target,folder,pg,port)
+    base.validate_backlog(pg.state(target),100)
     data=[s for s in sql if not re.match(r'^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)(\s|$)',s,re.I)]
-    result={'response':response,'postgres_log':text,'sql':sql,'provider_control_queries':0,
+    result={'response':response,'readiness':readiness,'postgres_log':text,'sql':sql,'provider_control_queries':0,
         'data_statements':len(data),'transaction_statements':len(sql)-len(data),
         'independent_breaker_reads':sum(s.startswith('SELECT "connection", "state", "failures"') or ('FROM "jadpo_circuit_breakers" WHERE "connection" = ANY' in s and not s.startswith('WITH')) for s in sql),
         'joined_claims':sum(s.startswith('WITH "claimed" AS') for s in sql)}
@@ -316,7 +396,7 @@ def measure(label,count,rounds,targets):
     if stamp.get('complete') is not True:raise ValueError('incomplete build')
     guard.validate(stamp,guard.source())
     output=directory/f'runs-{time.time_ns()}.json'
-    result={'protocol':1,'build':stamp,'start_source':guard.source(),'start':context(),'count':count,'rounds':rounds,
+    result={'protocol':1,'build':stamp,'start_source':guard.source(),'start':context(ambient=True),'count':count,'rounds':rounds,
             'targets':targets,'runs':[],'controls':{},'complete':False}
     def save():output.write_text(json.dumps(result,indent=2)+'\n')
     save();previous=dict(os.environ);os.environ.update(ENV)
@@ -355,19 +435,25 @@ def measure(label,count,rounds,targets):
                         row['process_pid']=process.pid if process else None
                         row['host_before']=context();cpu=base.spike.cpu_s(process.pid) if process else None
                         helper_cpu=base.spike.cpu_s(helper.pid) if helper else None
+                        timing_log=Path(base.spike.WORK)/'pg.log';timing_log_offset=timing_log.stat().st_size
                         controller_cpu=time.process_time();child_before=resource.getrusage(resource.RUSAGE_CHILDREN)
                         started=time.time();began=time.perf_counter();ticks=[];responses=[]
                         for _ in range(math.ceil(count/100)):
                             tick_start=time.perf_counter();responses.append(base.tick(target,folder,pg,port));ticks.append((time.perf_counter()-tick_start)*1000)
                         seconds=time.perf_counter()-began;ended=time.time()
+                        child_after=resource.getrusage(resource.RUSAGE_CHILDREN)
+                        controller_after=time.process_time()
+                        timing_log_text,timing_sql=parse_log(timing_log,timing_log_offset,target)
+                        if timing_sql:raise ValueError('SQL logging remained enabled during timed work')
+                        row['timed_sql_logging_disabled']=True
+                        row['timed_postgres_log']=timing_log_text
                         row.update(seconds=seconds,deliveries_per_second=count/seconds,tick_ms=ticks,
                             tick_p95_ms=sorted(ticks)[math.ceil(len(ticks)*.95)-1],responses=responses,
                             service_cpu_seconds=base.spike.cpu_s(process.pid)-cpu if process else None,
                             helper_cpu_seconds=base.spike.cpu_s(helper.pid)-helper_cpu if helper else None,
-                            controller_provider_cpu_seconds=time.process_time()-controller_cpu,
+                            controller_provider_cpu_seconds=controller_after-controller_cpu,
                             rss_mb_at_end=base.spike.rss_mb(process.pid) if process else None,host_after=context(),
                             timing_started=started,timing_ended=ended)
-                        child_after=resource.getrusage(resource.RUSAGE_CHILDREN)
                         row['reaped_child_cpu_seconds']=child_after.ru_utime+child_after.ru_stime-child_before.ru_utime-child_before.ru_stime
                         row['cpu_scope']='service and workerd pool separately; Python controller/local provider separate; PostgreSQL excluded; native child includes startup'
                         row['state']=pg.state(target);base.validate_backlog(row['state'],count)
@@ -384,9 +470,13 @@ def measure(label,count,rounds,targets):
                         if process is not None and process.poll() is not None:raise ValueError('service died or restarted')
                         row['ok']=True
                         print(json.dumps({k:row[k] for k in ('workload','round','target','deliveries_per_second','tick_p95_ms','ok')}),flush=True)
+                    except BaseException as error:
+                        row['error']=repr(error);row['traceback']=traceback.format_exc();raise
                     finally:
                         for child in reversed(owned):base.spike.stop(child)
                         owned.clear();save()
+    except BaseException as error:
+        result['error']=repr(error);result['traceback']=traceback.format_exc();raise
     finally:
         for child in reversed(owned):base.spike.stop(child)
         if provider is not None:provider.close()

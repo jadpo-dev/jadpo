@@ -2,6 +2,10 @@
 import copy
 from pathlib import Path
 import tempfile
+import os
+import subprocess
+import sys
+import json
 import unittest
 import connected_deliveries as c
 
@@ -15,6 +19,23 @@ class Controls(unittest.TestCase):
         self.after[0].update(status='succeeded',attempts=1,next_attempt_at=None,last_tried_at='2026-10-24T01:00:00Z')
         self.start=c.flags.instant('2026-10-24T01:00:00Z')
         self.calls=[{'method':'GET','path':'/tickets/ticket-00001','authorization':'Bearer benchmark-key'}]
+
+    def test_cargo_observer_preserves_arguments_environment_and_exit_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);real=folder/'real';wrapper=folder/'wrapper';log=folder/'provenance.jsonl'
+            real.write_text('#!'+sys.executable+"\nimport json,os,sys\nprint(json.dumps({'argv':sys.argv[1:],'flags':{k:os.environ.get(k) for k in ('RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','CARGO_TARGET_DIR')}}))\nsys.exit(47)\n")
+            real.chmod(0o755);wrapper.write_text(c.CARGO_WRAPPER);wrapper.chmod(0o755)
+            environment={**os.environ,'JADPO_BENCH_CARGO_REAL':str(real),'JADPO_BENCH_CARGO_LOG':str(log),
+                         'RUSTFLAGS':'literal $value','CARGO_ENCODED_RUSTFLAGS':'one\x1ftwo words','CARGO_TARGET_DIR':'target with spaces'}
+            args=['build','argument with spaces','literal;$(false)']
+            baseline=subprocess.run([str(real),*args],env=environment,capture_output=True,text=True)
+            observed=subprocess.run([str(wrapper),*args],env=environment,capture_output=True,text=True)
+            self.assertEqual((observed.returncode,observed.stdout,observed.stderr),(baseline.returncode,baseline.stdout,baseline.stderr))
+            entry=json.loads(log.read_text());self.assertEqual(entry['argv'],args)
+            for name in ('RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','CARGO_TARGET_DIR'):
+                self.assertEqual(entry['effective_flags'][name],environment[name])
+            self.assertNotIn('PATH',entry['effective_flags'])
+            self.assertEqual(wrapper.stat().st_mode&0o777,0o755)
 
     def test_exact_delivery_columns_and_time(self):
         c.validate_rows(self.before,self.after,1,self.start,self.start+1)
