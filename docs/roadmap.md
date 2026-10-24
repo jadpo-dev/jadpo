@@ -265,31 +265,25 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.2a1 Current request-path and large JSON profiling**: compiler/runtime §2.11, "Whole-request CPU attribution"; `tools/bench/README.md`.
 - [x] **9.2a2 JSON string writing and bounded Wasm screens**: compiler/runtime §2.11, "JSON string writing and bounded Wasm screens"; `tools/bench/README.md`.
 
-- [ ] **9.2a3 Standalone repeatable-read handoffs:** `gpt-6.1-sol · xhigh`
-  after 9.2a2, continuing the same unattended local 9.2 model batch.
-  Test a generic terminal-read capability that queues BEGIN, the unnamed typed
-  read and COMMIT together for a fresh, eligible standalone read. Preserve
-  explicit repeatable read, policy-before-decoding, missing/invalid-value and
-  terminal-error precedence, existing retry classification/budgets and invocation
-  connection ownership. Keep ordinary fallback for actions, includes/settings/
-  rechecks, held/handled/background/resumable contexts, extension/compound or
-  provider-coded values not proved safe, and recorded transactions whose physical
-  commit/rollback effects must remain truthful. No application-specific shortcut,
-  autocommit substitution or language/configuration change.
-  Start with failing scripted protocol controls that withhold responses until all
-  three groups arrive; test deferred end errors, aborted-query rollback tags,
-  cancellation and pool discard, no post-terminal SQL, hidden/invalid precedence,
-  retries, actual negative-eligibility SQL and recorded rollback. Exercise explicit
-  isolation, clean unnamed session reuse and the optimized production host path;
-  recorded differential tests alone only establish the fallback.
-  Use focused checks and short, guarded Workers/Bun screens between experiments,
-  with inspector and PostgreSQL duration logging off. Retain every round, rejected
-  attempt, actual operation-count evidence and source/artifact identity in §2.11
-  and the bench README. Keep only a worthwhile measured improvement; if rejected,
-  restore the production path and record the result before selecting the next
-  profile-driven candidate. Qualify the selected result and pass one final full
-  gate before a separate manual PR; never merge or enable auto-merge. The complete
-  four-runtime application comparison remains deferred until further progress.
+- [x] **9.2a3 Standalone repeatable-read handoffs**: compiler/runtime §2.11, "Standalone repeatable-read handoffs"; `tools/bench/README.md`.
+
+- [ ] **9.2a4 Performance exploration:** `gpt-6.1-sol · xhigh`
+  continue Richard's uncapped experiment workflow in the
+  [persistent catalogue](https://github.com/richardwillars/jadpo/blob/main/docs/performance-experiments.md).
+  Freeze the qualified 9.2a3 source, production artifacts and harness separately
+  from main. Explore all eligible hypotheses and emerging ideas to exhaustion
+  before proper keeper implementation; no experiment-count, batch or time quota
+  ends exploration. Use cheap focused checks and matched workerd/Bun screens,
+  resetting independent variants to the frozen baseline and explicitly stacking
+  dependencies with marginal and combined measurements. Retain each variant's
+  immutable Git ref, raw results, losses and artifact identities before reset.
+  Maintain evidence-informed impact order through documentation-only main-based
+  catalogue PRs that auto-merge after required CI. Compiler/runtime keeper PRs
+  remain manual and never merge here. Record blockers and continue eligible
+  work; an all-blocked queue is not exhausted. Full qualification, interaction
+  checks, longer confirmation and the full gate belong to production delivery
+  after exploration. The complete four-runtime comparison remains deferred
+  until substantial progress.
 
 - [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
   checks used by both hosts, `webauthn-rs` kept only as a test reference,

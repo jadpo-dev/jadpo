@@ -8176,6 +8176,18 @@ No performance or 176 qualification rerun substitutes for that required gate.
 Inactive checkout retirement preserves every ignored benchmark record and
 protected artifact under `/Users/richardwillars/Documents/Codex/jadpo-benchmark-archive/`;
 original roots remain compatible aliases, so recorded historical paths still
-resolve. The active a3 source/cache is untouched. The corrected full
-`python3 tools/verify.py` gate remains pending; result/completion metadata will
-follow. No merge or auto-merge is authorized.
+resolve. The active a3 source/cache is untouched.
+
+The final normal `python3 tools/verify.py` gate passed **93/93 steps in 360 s**
+at `0fceca62204cdc74a813871b3cf4298ea74c1c5c`, tree
+`bdbec09f4b1ba6f2732d8722e6f2c68ffad46e13`, exit 0/reaped. It includes the
+unchanged native HTTPS test, all 264 corpus projects / 526 tests / 5,832 typed
+comparisons, 44 native and 44 workerd contracts, TypeScript conformance,
+Workers deployments/routes and watch checks. Kiosk memory stayed 12,058,624
+bytes after both 100 and 500 bookings. No test skip, budget relaxation or
+production/test implementation change intervened between the second failure
+and this successful retry; only failure facts were added. Its earlier timeout
+remains unexplained. All owned services, temporary PostgreSQL instances and
+build/helper sessions were reaped; the pre-existing user caffeinate and app
+processes were untouched. Subsequent edits record completion metadata only.
+The code PR is manual; no merge or auto-merge is authorized.

@@ -1281,7 +1281,12 @@ corrected full gate at 6f55028e then passed 92/93 in 706 seconds; its only
 failure was an unchanged native HTTPS reuse fixture returning a five-second
 connect-or-ready timeout. Five isolated runs plus its complete 15-test suite
 pass on both package-only and preserved workspace artifacts, with no code or
-budget relaxation. The cause remains unlocalized, and a further full gate is
-required. Both failed attempts remain in §2.11. Inactive checkout ignored records
+budget relaxation. The cause remains unlocalized. The final unchanged-code
+full gate passed all 93 steps in 360 seconds at
+`0fceca62204cdc74a813871b3cf4298ea74c1c5c`, tree
+`bdbec09f4b1ba6f2732d8722e6f2c68ffad46e13`, exit 0/reaped; all owned services
+and temporary PostgreSQL instances were closed and reaped. Both failed attempts
+remain in §2.11; passing the retry does not explain the timeout. Subsequent
+edits record completion metadata only. Inactive checkout ignored records
 and protected artifacts are retained under `jadpo-benchmark-archive`, with the
 original roots kept as compatible aliases; recorded historical paths still work.

@@ -3285,3 +3285,53 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   metadata only. Exact unmerged prerequisite `656795ce` is included under
   Richard's stacked-dependency permission. Claude reviews and merges; Codex opens
   the PR without auto-merge and never merges it.
+
+- [x] **9.2a3 Standalone repeatable-read handoffs:** `gpt-6.1-sol · xhigh`
+  after 9.2a2, continuing the same unattended local 9.2 model batch.
+  Test a generic terminal-read capability that queues BEGIN, the unnamed typed
+  read and COMMIT together for a fresh, eligible standalone read. Preserve
+  explicit repeatable read, policy-before-decoding, missing/invalid-value and
+  terminal-error precedence, existing retry classification/budgets and invocation
+  connection ownership. Keep ordinary fallback for actions, includes/settings/
+  rechecks, held/handled/background/resumable contexts, extension/compound or
+  provider-coded values not proved safe, and recorded transactions whose physical
+  commit/rollback effects must remain truthful. No application-specific shortcut,
+  autocommit substitution or language/configuration change.
+  Start with failing scripted protocol controls that withhold responses until all
+  three groups arrive; test deferred end errors, aborted-query rollback tags,
+  cancellation and pool discard, no post-terminal SQL, hidden/invalid precedence,
+  retries, actual negative-eligibility SQL and recorded rollback. Exercise explicit
+  isolation, clean unnamed session reuse and the optimized production host path;
+  recorded differential tests alone only establish the fallback.
+  Use focused checks and short, guarded Workers/Bun screens between experiments,
+  with inspector and PostgreSQL duration logging off. Retain every round, rejected
+  attempt, actual operation-count evidence and source/artifact identity in §2.11
+  and the bench README. Keep only a worthwhile measured improvement; if rejected,
+  restore the production path and record the result before selecting the next
+  profile-driven candidate. Qualify the selected result and pass one final full
+  gate before a separate manual PR; never merge or enable auto-merge. The complete
+  four-runtime application comparison remains deferred until further progress.
+
+  Built: a generic terminal-read capability queues explicit repeatable-read
+  BEGIN, the unnamed typed query and COMMIT before awaiting their responses.
+  The existing standalone boundary consumes the saved end result, preserving
+  policy, decoding and terminal-error precedence, retry budgets and invocation
+  ownership. Negative eligibility, recording, cancellation, pool discard and
+  same-session reuse controls cover the ordinary fallback and optimized path.
+  Exact timed-production acceptance passes separately from the 176 differential
+  contracts, whose recording wrappers deliberately exercise ordinary fallback.
+  The matched 27-cell local workerd/Bun confirmation measured golden signed
+  reads 2,075→2,296 requests/s (+10.7%; Bun 6,466), large ASCII 1,225→1,301
+  (+6.3%; Bun 6,170), and mixed Unicode 756→796 (+5.3%; Bun 1,636).
+  Median p95 improved on all three; adverse individual rounds, signed-read RSS
+  growth, reference drift and the ambient PostgreSQL limitation remain in §2.11
+  and the bench README, alongside every attempt and exact source/build hashes.
+  This is neither Bun parity nor a memory-neutrality or real Workers claim.
+  The final own-worktree full gate passed 93/93 in 360 s at
+  `0fceca62204cdc74a813871b3cf4298ea74c1c5c`, tree
+  `bdbec09f4b1ba6f2732d8722e6f2c68ffad46e13`; all owned processes were reaped.
+  Both earlier failed gates remain recorded, including the unlocalized native
+  HTTPS timeout; the successful unchanged retry does not explain that failure.
+  Subsequent edits record completion metadata only. Exact unmerged prerequisite
+  `7cdd69ae` is included under Richard's stacked-dependency permission. Claude
+  reviews and merges; Codex opens the PR without auto-merge and never merges it.
