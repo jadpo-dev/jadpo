@@ -52,8 +52,10 @@ Follow [the experiment catalogue](docs/performance-experiments.md) across
 sessions. Primary comparisons are TypeScript/Bun versus Jadpo native Rust,
 and TypeScript/workerd versus Jadpo Wasm/workerd; cross-deployment Bun versus
 Workers is secondary. Both primary pairs now have provisional locally guarded,
-agent-reviewed results. Resume paused P61/eligible exploration; no baseline
-prerequisite remains. Keep each control's loader/host/lifetime limits explicit.
+agent-reviewed results. P61 roundtrip is measured/rejected, its host-sink
+alternative remains unmeasured, and P55 is measured/promising with higher
+mixed RSS. Next is P21.suffix-bitmap on retained First, with unknown gain;
+no baseline prerequisite remains. Keep each control's loader/host/lifetime limits explicit.
 Control acceptance uses local checks and agent review under standing
 authorization, not a new Richard approval. Preserve prior results and historical
 forecasts.

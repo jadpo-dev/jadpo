@@ -20,8 +20,10 @@ Richard corrected the primary comparison method after the screens below:
 controls:** the faithful and explicit-option TypeScript/workerd pairs and the
 current native/Bun standalone pair recorded below. These are provisional
 references with the stated loader/host/lifetime limits, not universal
-language/engine evidence. **Resume paused P61/eligible exploration now; there
-is no remaining baseline prerequisite.** Acceptance uses local checks and
+language/engine evidence. **P61 roundtrip is measured/rejected; P55's safe
+Response-constructor prototype is measured/promising with adverse RSS; next is
+P21.suffix-bitmap on retained First, with unknown gain. Continue eligible
+exploration without another baseline prerequisite.** Acceptance uses local checks and
 agent review under standing unattended authorization, not a new Richard
 approval. Optional three-TypeScript lifetime arms are secondary diagnostics;
 the strong direct-PG Bun application remains unchanged.
@@ -218,7 +220,8 @@ labelled separately from Jadpo optimizations; unbuilt ideas stay prospective.
 
 The tables are separate impact queues: primary reads, other warm workloads,
 then cold start/module work. Both primary-pair controls are now established;
-resume the paused P61 prototype and eligible queue. A future control blocker
+P61 roundtrip is rejected and P55 is measured/promising; next is the dependent
+P21.suffix-bitmap with unknown gain. A future control blocker
 must be explicit; do not keep an obsolete baseline prerequisite. Continue an
 already-running prototype before resuming the sorted queue. Within each
 workload queue, prioritize applicable
@@ -572,16 +575,16 @@ Archive-relative identities use the same durable A as the first control:
 
 The current native/Bun production pair follows below, completing the local
 primary controls. The earlier 288a6778 binaries remain historical; the fresh
-producer/source chain below is explicit. Resume paused P61/eligible queue work
-under standing authorization. No original forecast, F01 or prior result is
+producer/source chain below is explicit. P61 roundtrip's later result is retained
+below; continue the eligible queue under standing authorization. No original forecast, F01 or prior result is
 rewritten, and exploration is neither exhausted nor promoted.
 
 ## Standalone primary control — current native/Bun (2026-10-24)
 
 **Provisional matched standalone control, not an optimization result, capacity
 claim or intrinsic language/engine win.** Both primary deployment pairs now
-have guarded local results. Resume the paused P61 roundtrip/eligible queue
-under its frozen protocol and standing authorization; no additional baseline
+have guarded local results. P61 roundtrip's subsequent result is retained below;
+continue eligible exploration under standing authorization, with no additional baseline
 prerequisite or Richard permission is introduced. Exploration remains uncapped,
 with no production promotion from these control results.
 
@@ -713,11 +716,11 @@ P21 first-only is now a promising measured ASCII prototype; the current
 P21.suffix form is negative/rejected. Neither is a production promotion.
 Richard's later comparison-method correction supersedes the earlier P61-next
 priority: locally reviewed primary controls now have two provisional screens,
-and the current native/Bun pair is recorded above. Resume P61/eligible
-exploration now, without a remaining baseline prerequisite. Its source-only
-preparation is retained below, with no build or timing. Its roundtrip and
-host-sink alternatives keep their original unknown forecasts; neither P61 nor
-P21 bitmap work resumes merely because it heads an optimization queue.
+and the current native/Bun pair is recorded above. P61 roundtrip is now
+measured/rejected; its independent host-sink alternative stays unmeasured.
+P55 is now measured/promising with adverse RSS; next is P21.suffix-bitmap on
+retained First, with unknown gain and no baseline prerequisite. Keep all original forecasts/results; assess P21
+bitmap and other eligible ideas without an arbitrary promotion boundary.
 P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
 F01 below remains frozen for the initial 54 ideas; later discoveries expand the
@@ -791,10 +794,10 @@ re-ranking. Do not fabricate a number to make the table sortable.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
-| **P61 — Conditional host long-text JSON escaping** (source-only; eligible to resume; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. See [frozen micro and independent host-sink alternative](#p61--frozen-roundtrip-micro-and-conditional-host-sink). | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
+| **P61 — Conditional host long-text JSON escaping** (roundtrip rejected; host sink unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | HTTP throughput not measured. Roundtrip micro rejected: host median time +110–385% for large/Unicode cases; host sink unmeasured. [All60 cells and assessment](#roundtrip-result-and-implementation-assessment-2026-10-24). | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. See [frozen micro and independent host-sink alternative](#p61--frozen-roundtrip-micro-and-conditional-host-sink). | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
 | **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
 | **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
-| **P55 — Safe synchronous Response slice constructor** (queued; unmeasured) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | Not measured | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
+| **P55 — Safe synchronous Response slice constructor** (measured mixed/promising; prototype retained) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | P55/B signed +3.3368%, ASCII +0.1139%, mixed +4.9831%; mixed RSS higher both rounds. [All18 rows and implementation assessment](#p55--safe-response-constructor-first-screen-2026-10-24). | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
 | **P56 — Direct known standard-operation calls** (queued; unmeasured) | Hot pure standard op; F; current singleton reads may gain zero | Unknown; current body attribution/call census first | Not measured | Known Op still enters broad enum/argument-shape dispatcher: [body.rs:1908](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/body.rs#L1908), [compiled.rs:884](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/compiled.rs#L884), [lib.rs:89](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/lib.rs#L89). Arguments already stack slices, return unboxed; preserve Fault→Refused, inline pace/deadlines/recording/stack. LTO may already fold dispatch. Explicit roadmap 9.2 target. | Low; S–M prototype; high semantic risk | Independent of P34; may enable P57 dead-code pruning; measure separately/combined |
 | **P58 — Explicit BLAKE3 wasm32 SIMD backend** (queued; unmeasured) | Short keyed signed tokens; F + actual signed screen | Unknown; old identified crypto budget only about 0.2–0.24%; small lead | Not measured | Cached BLAKE3 1.8.7 wasm32_simd feature is separate from global +simd128; current [Cargo.toml:245](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/Cargo.toml#L245) uses std+pure. Keep keyed format and constant-time Hash equality. Verify boundary-length/current/previous/wrong-key vectors, Wasm SIMD presence and workerd behavior. No substitution of Bun HMAC format. | Low; S–M; medium crypto/target risk | Independent P03; P22 can mask; B/C same flags or separate F/F+C comparison; reuse P02 F only as explicit control |
 | **P22 — Bounded authenticated Claims cache** (queued; unmeasured) | Repeated credentials; E + hit/churn/rotation F | Unknown impact; 0–8% uncalibrated sizing only, not a ranking bound; churn can regress | Not measured | Repeated crypto/decode/parse. First measure current exclusive crypto/decode/parse cost and representative hit/churn behavior. Key by exact token and scope to the immutable current/previous signing-key set; every request retains expiry, method, constant-time secret verifier, fresh-route behavior and CSRF. Bound entries AND bytes; no benchmark-tuned 2,048-owner capacity. [http/identity.rs:449](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/identity.rs#L449). | Low; M; high security/lifecycle risk | Independent; masks P03/P07/P23 |
@@ -860,8 +863,9 @@ claiming a large gain. The inspected production source is 4fda above.
   Preserve non-ASCII literals, non-NFC, astral scalars, U+2028/U+2029, other
   controls, quotes, backslashes, empty/huge/prefixed outputs and failure atomicity.
   An explicit optional Workers capability supplies the host writer; value stays
-  pure and native defaults unchanged. This remains conditional on a successful
-  transfer-inclusive micro, not a new language serialization choice.
+  pure and native defaults unchanged. The transfer-inclusive roundtrip below is
+  now rejected; the independent host-sink alternative remains unmeasured and
+  makes no new language serialization choice.
 
 ## P02 — SIMD UTF-8 first screen (2026-10-24)
 
@@ -1274,8 +1278,14 @@ as a performance capture.
 
 ### P21.suffix-bitmap — catalogue-only emerging alternative
 
-Both primary controls are now established; resume P61 before this optional
-bitmap work. There is no bitmap implementation or measured result yet.
+Both primary controls are established; P61 roundtrip is rejected and P55 is
+measured/promising. This dependent bitmap variant is next, with unknown gain;
+candidate code/preflight and measurement remain pending. There is no bitmap implementation or measured result yet.
+Root and independent plan review accepted the dependent design. A tiny
+independent reference checked all 256 byte values and 3420 selected words; this
+is a mathematical/source check, not candidate app correctness or performance
+results. Keep First's early scan, reserve and unescaped-ASCII path unchanged;
+candidate code/preflight is next, before the fixed 24 screen described above.
 This explicit dependent variant uses P21 First's checked 8-byte reads and
 little-endian lane order, rather than depending on the rejected repeated-
 earliest Suffix. An exact 8-lane mask could enumerate every escape in one word
@@ -1300,47 +1310,299 @@ scalar boundaries, but String appends must start/end at discovered ASCII
 escape positions or known string boundaries, never arbitrary word ends.
 Canonical escape spelling and existing-prefix/append behavior remain required.
 
+## P55 — safe Response constructor first screen (2026-10-24)
+
+**Measured mixed/promising, prototype retained; no promotion or favorable rerun.**
+The frozen prediction is **unknown gain or loss on all HTTP read workloads**;
+no new numeric forecast or GC-causality claim is inferred after measurement.
+This is independent H84/B4fda without P61/P21/P03/P02 or TS/native-control
+stacks. Marginal and combined P55/B are the same comparison. Actual source
+`12e6ae80fff373b2652845f1c982c5ce2dba894c`, tree
+`5cab04bbc85178d20e3af6a7e87dff0ce116b1e1`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/p55-response`; the diagnostic ref ends
+`p55-response-12e6ae80`. Source/artifacts/results are retained; verify those
+records before any reset.
+
+**Actual production-change assessment — simple; ownership validation moderate.**
+The host writer substitutes the cached safe web_sys optional mutable-slice
+Response constructor for an explicit owned Uint8Array copy and drops an unused
+import. It adds no dependency, unsafe code, custom binding or public runtime
+interface; headers/status/bodyless handling and the separate stream path stay
+intact. This matches the prior simple estimate. A proper keeper still needs
+moderate platform/ownership test maintenance: synchronous host snapshotting
+must remain true after Rust memory overwrite/free/reuse/growth, rather than
+being assumed from safe Rust types. Diagnostic example/IR/harness scaffolding
+is separate from the production change. **Tradeoff / advice:** retain for later
+human selection as a simple promising mixed-text candidate, while keeping
+higher mixed RSS, flat ASCII and variable signed results visible; no keeper
+promotion or no-regression/leak claim.
+
+The hardened actual-workerd preflight has 40 ownership/constructor cases
+(16 ownership plus 24 status/error), 16 proved memory grows, two negative
+controls and HEAD/GET/stream checks. LLVM IR preserves
+constructor→physical A5/5A overwrites→black-box barrier→drop ordering; the
+Response body is read later and remains exact. Actual production OptionView
+glue confirms the intended intermediate-copy removal. Earlier 3e6f841a
+preflight also passed but lacked the anti-optimization barrier: retain it as a
+weaker passing test, **not a failure or performance screen**. Final diagnostics
+and production builds use current source and checked generated artifacts.
+
+The fixed 18 cells are B/P55/Bun × three workloads × two full-order reversed
+rounds, c16, 2s admission + 1s warmup, 2048 principals, shipping Os, inspector
+NONE and PostgreSQL duration logging OFF. All 18 rows complete with zero load/
+warmup errors, invalid bodies and state changes. Full expected body identities,
+96 saved served copies, source/artifact guards and Sleep checks pass; clocks
+are 5.024–10.206ms and all owned processes/PostgreSQL are reaped. Bun in this
+screen is **secondary cross-deployment context only**; the earlier TypeScript/
+workerd control is a separate campaign, not a fresh matched arm here. No
+176-case qualification, full gate, long confirmation or production PR follows.
+
+Actual gain is `100 × (median P55 req/s / median B req/s − 1)`, within this
+campaign, with each round retained. It is not a historical-day raw-rate
+comparison or a percentage of Bun.
+
+| Workload | Frozen prediction | Actual P55/B gain (marginal = combined) | Round1 / round2 gains | Median B / P55 / secondary Bun req/s |
+|---|---|---|---|---|
+| Signed golden | Unknown, including loss | +3.3368% | +0.5128% / +6.1563% | 2323.760 / 2401.300 / 6378.137 |
+| Large ASCII | Unknown, including loss | +0.1139% | +0.4272% / -0.1947% | 1287.202 / 1288.669 / 5927.545 |
+| Mixed Unicode | Unknown, including loss | +4.9831% | +3.1294% / +6.9298% | 766.374 / 804.564 / 1627.268 |
+
+Signed variation is substantial: +0.5128/+6.1563%; ASCII is effectively flat
+(+0.4272/−0.1947%). Mixed improves in both rounds (+3.1294/+6.9298%), with
+p95 −25.2453/−12.2047% and service CPU −2.1134/−6.0008%. Its sampled peak RSS
+is **higher in both rounds**, B 302.1→ P 311.8 and B 311.0→ P 316.3MB (median
+306.55→314.05MB). ASCII round1 p95 worsens +1.3255%. These short observations
+support retention, not a blanket no-regression, leak or causal-GC conclusion.
+
+Each following cell is **req/s / p95 ms / service CPU ms/request / separate
+helper CPU ms/request / sampled peak RSS MB**, with existing process-sampling
+limits. PG and load-generator CPU remain distinct.
+
+| Workload / round | B | P55 | Secondary Bun |
+|---|---|---|---|
+| Signed golden / 1 | 2321.879 / 8.831 / 0.438804 / 0.120456 / 318.3 | 2333.786 / 8.758 / 0.436270 / 0.124038 / 317.0 | 6384.980 / 3.571 / 0.191721 / 0.000000 / 207.5 |
+| Signed golden / 2 | 2325.641 / 8.708 / 0.433476 / 0.120172 / 298.1 | 2468.815 / 8.249 / 0.412121 / 0.115152 / 297.0 | 6371.294 / 3.588 / 0.192926 / 0.000000 / 206.8 |
+| Large ASCII / 1 | 1277.457 / 19.012 / 0.802181 / 0.167445 / 356.5 | 1282.915 / 19.264 / 0.792233 / 0.166990 / 349.1 | 5912.177 / 4.190 / 0.219687 / 0.000000 / 192.7 |
+| Large ASCII / 2 | 1296.947 / 18.909 / 0.796020 / 0.168389 / 358.5 | 1294.422 / 18.223 / 0.792308 / 0.165385 / 348.5 | 5942.913 / 4.273 / 0.216898 / 0.000000 / 188.6 |
+| Mixed Unicode / 1 | 785.116 / 34.339 / 1.289507 / 0.208597 / 302.1 | 809.685 / 25.670 / 1.262255 / 0.208333 / 311.8 | 1635.144 / 12.172 / 0.729927 / 0.000000 / 176.7 |
+| Mixed Unicode / 2 | 747.633 / 30.054 / 1.347047 / 0.218978 / 311.0 | 799.442 / 26.386 / 1.266214 / 0.210006 / 316.3 | 1619.393 / 12.454 / 0.732082 / 0.000000 / 175.2 |
+
+Harness cold/first fields are not a dedicated cold-start benchmark. Each cell
+is cold ms / first ms / idle RSS MB.
+
+| Workload / round | B | P55 | Secondary Bun |
+|---|---|---|---|
+| Signed golden / 1 | 126.604 / 78.044 / 97.7 | 63.114 / 31.794 / 97.4 | 186.202 / 18.032 / 92.6 |
+| Signed golden / 2 | 61.738 / 27.350 / 97.4 | 60.042 / 25.751 / 97.6 | 92.212 / 12.102 / 92.0 |
+| Large ASCII / 1 | 60.953 / 35.081 / 93.8 | 57.919 / 34.926 / 93.8 | 87.810 / 4.019 / 90.8 |
+| Large ASCII / 2 | 57.647 / 34.919 / 94.0 | 57.707 / 34.985 / 93.8 | 84.515 / 4.790 / 89.0 |
+| Mixed Unicode / 1 | 57.495 / 34.860 / 93.8 | 58.003 / 35.359 / 93.7 | 84.465 / 4.426 / 91.2 |
+| Mixed Unicode / 2 | 57.154 / 34.503 / 93.7 | 57.565 / 32.581 / 93.8 | 89.705 / 5.485 / 89.2 |
+
+Whole-host/load-generator CPU, load drift, elapsed/drain windows and all status/
+body data stay in raw; load1 endpoints range roughly 4.04–15.25. Module sizes
+shrink 56 bytes in each app: golden 7325897→7325841 raw / 2690117→2690084 gzip6;
+focused 7364454→7364398 raw / 2662029→2661990 gzip6. gzip6 remains a compression
+proxy, not upload size. Shipping flags and application input maps stay unchanged
+apart from the host-constructor source; do not attribute the observed workload
+changes to an unmeasured GC mechanism.
+
+Archive-relative retained identities use the same durable A:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Candidate production build | `variants/p55-response/build.json` | `2cf97b0401029361f6b0dbbf585fd85bb58aa833a379dc148eddbc53542e5f00` |
+| Four-host no-load smoke | `screens/p55-response/setup-smoke/results.json` | `f01654b5f57f457f52543ad7a3bf322ee6f9e23f3e8cd29ba7bb3be7260aaeec` |
+| Complete fixed 18 result | `screens/p55-response/screen18-none-pg-off-c16-r2/results.json` | `c6c3b3ea7f45c9d5b1dd44eb390bdc728c9cf9a2ac6086cfa74faab56cd2e50b` |
+| Complete screen console | `screens/p55-response-screen18-console.log` | `db8b96a621ab558cd6708fca8da3186a350cd32eba0124f86ee6e38fc33f3475` |
+| Hardened ownership diagnostic | `diagnostics/p55-response-12e6ae80/build.json` | `22098603becee5ab50993cfcd8625dab9c6f3b34cdc7594233088198e78c5aed` |
+| Actual ownership preflight | `diagnostics/p55-response-12e6ae80/preflight.json` | `cc82707110acbd6f1e43a3c601a8b59a777d9485ad9d23c8930fe474720fa640` |
+| Constructor/overwrite/barrier/drop IR | `diagnostics/p55-response-12e6ae80/response_body.ll` | `b091448721c7a643cd67b37ba3fe4645ae66f7453e06cce19fb194aab94d9ad5` |
+| Earlier weaker passing diagnostic | `diagnostics/p55-response-3e6f841a/build.json` | `5c36f728650a6724a22c129fa7a845f3ecdb9356388bfa4f1e7c5acf6af72c6d` |
+| Earlier weaker passing preflight | `diagnostics/p55-response-3e6f841a/preflight.json` | `0e2c086249771df23bc7c0a145d264b2c268656b8bb76e19d4507c50ea715944` |
+
+Next is the already-catalogued **P21.suffix-bitmap** alternative, explicitly
+dependent on retained First 914367c6, not the rejected repeated-helper Suffix.
+Its marginal and combined gains stay **unknown**, with prospective moderate
+localized exact-mask/UTF-8 proof maintenance and no new dependency, unsafe code
+or platform API. It has no P55/P61 stack. Compare B/First/First+bitmap with
+marginal against First and combined against B; the proposed fixed 24 B/First/bitmap/Bun screen keeps Bun
+secondary. Reuse the exact First artifact/prerequisite and freeze the protocol
+before measurement. This is continued exploration, not promotion or exhaustion.
+
 ## P61 — frozen roundtrip micro and conditional host sink
 
-**Both primary controls are established; resume P61/eligible queue work under
-standing authorization, without another baseline prerequisite.**
-The source-only roundtrip preparation is retained at
-`fa2040748bee8df7537c51c7c641360a1be55e79`, tree
-`73d81efb1e84bc1ead21c9eda100e5e3fcc72f50`, under immutable Git ref
-`refs/experiments/a4-baseline-84e1c00b/p61-roundtrip-fa204074-source-paused`.
-Only eight Python adapter controls ran; there was no Cargo/example build,
-actual Wasm/workerd preflight or timing, and no P61 build manifest or raw
-performance result exists. The intervening primary-control pause is complete;
-the retained ref's paused suffix records its historical preparation state.
+**P61.roundtrip is measured/rejected; P61.host-sink remains a distinct,
+unmeasured alternative.** Both primary-pair controls remain established. Next
+is the dependent P21.suffix-bitmap alternative on retained First, with unknown
+gain; P55's measured result and ownership assessment are retained above.
+Continue eligible exploration without another baseline prerequisite.
 
-The frozen **P61.roundtrip** protocol remains independent H84/B4fda without
-P02/P03/P21. Its prediction is **unknown, including loss**, with no micro-to-
-application-throughput projection. The frozen protocol compares B's Rust
-writer with primitive-string `JSON.stringify`, charging eligibility scanning,
-Rust↔JS transfers, allocation, append and drop. Use the six existing
-string_screen shapes, owned Rust input prepared outside each timed group,
-fresh output for every write, fixed N per shape committed before timing,
-and five rotated/reversed rounds. A host monotonic clock brackets the fixed-N
-HTTP batch; disclose binding/request overhead. Preserve exact canonical output
-and control-8/12 fallback. No production host/value-JS integration is part of
-this probe, and no result is claimed here.
+The original source-only preparation fa204074/ref ending
+`p61-roundtrip-fa204074-source-paused` remains retained as its historical state.
+After exact H84 reset it was restored and completed independently of P02/P03/
+P21 and the TS/native controls. Actual source is
+`2f772a88421b5f1c2ed68332cbbb18e11dd46f15`, tree
+`74898b7e6a36643a43ac6beec6787e03a009a05d`, immutable ref
+`refs/experiments/a4-baseline-84e1c00b/p61-roundtrip-builtin-import`.
+The frozen forecast remains **unknown, including loss; no application RPS
+projection**. No production runtime API was integrated.
 
-| P61 variant | Frozen prediction | Measured throughput gain | Scope / dependency |
+The frozen protocol uses the six string_screen shapes and five rotated/
+reversed rounds. Rust-owned input is prepared before each timed group. Each
+writer call allocates fresh output, writes/appends, drops output and consumes
+a checksum. The baseline is the pure B Rust writer; the host variant additionally
+scans canonical backspace/form-feed eligibility and performs Rust→JS conversion,
+primitive JSON.stringify and JS→owned Rust String conversion/append, or falls
+back to Rust. Dense
+ASCII contains early control8/12 and takes the unchanged Rust fallback. The
+primary clock is external host monotonic elapsed time around one fixed-N HTTP
+batch, including request/binding/checksum-response overhead; it is **time per
+write, lower is better**, not application throughput or tail latency.
+
+| P61 variant | Frozen prediction | Observed result / metric | Scope / dependency |
 |---|---|---|---|
-| P61.roundtrip | Unknown, including loss; micro metric only | Not measured | Source-only transfer-inclusive probe from B, eligible to resume |
+| P61.roundtrip | Unknown, including loss; micro metric only | Rejected: clear time regressions in five non-fallback shapes; dense fallback effectively unchanged; no HTTP RPS measured | Independent H84/B4fda; full transfer-inclusive micro |
 | P61.host-sink | Unknown, including loss; no claimed application gain | Not measured | Conditional alternative; does not depend on roundtrip winning |
 
-**Prospective implementation assessment only — roundtrip moderate; host sink
-complex.** Neither has a completed build/measurement result. Roundtrip's likely
-burden is a bounded host binding, canonical fallback and transfer-inclusive
-controls. A proper host sink would retain the new request-owned body/capability
-interfaces across codegen/runtime/host plus cancellation, byte-fallback and
-custom-codec maintenance described below. This is a source/design estimate,
-not evidence that either implementation is clean or successful; assess again
-after an actual prototype and keep the unknown performance forecasts frozen.
+### Roundtrip result and implementation assessment (2026-10-24)
 
-**P61.host-sink remains eligible even if JS→Rust transfer makes the roundtrip
-micro lose.** It would retain escaped JS string tokens/chunks through Response
+**Reject roundtrip integration.** Medians use all five rounds, with time change
+`100 × (median host ns/write / median Rust ns/write − 1)`; positive means slower.
+No gain was forecast numerically, so do not turn these costs into a revised
+throughput prediction. Five non-fallback shapes clearly regress; dense fallback's
++0.225% median time is effectively unchanged within its round variation, not a
+separate meaningful regression. Rust is B's writer, not the P21 first-only helper.
+
+| Shape | Iterations/group | Frozen prediction | Rust / host median µs/write | Host time change vs Rust | Rust / host process CPU median ns/write |
+|---|---|---|---|---|---|
+| small-ascii | 200000 | Unknown, including loss | 0.109073 / 0.570899 | +423.410% | 150.0 / 550.0 |
+| large-ascii | 1024 | Unknown, including loss | 55.448730 / 116.506226 | +110.115% | 58593.7 / 117187.5 |
+| late-escape | 1024 | Unknown, including loss | 55.376424 / 116.441609 | +110.273% | 58593.7 / 117187.5 |
+| ordinary-unicode | 256 | Unknown, including loss | 167.336590 / 800.043946 | +378.105% | 156250.0 / 820312.5 |
+| mixed-unicode | 256 | Unknown, including loss | 235.551270 / 1142.159508 | +384.888% | 234375.0 / 1132812.5 |
+| dense-ascii | 128 | Unknown, including loss | 831.113281 / 832.983078 | +0.225% | 781250.0 / 859375.0 |
+
+All 60 unique case/writer/round cells complete with expected checksums and
+elapsed/iteration arithmetic. The preflight passes 44 actual canonical-byte
+checks plus 4 throw/undefined/fallback-prefix fault checks; four saved served
+copies and original served files match. All source/shared B/dependency,
+316-artifact/current ICU/end-flag, Sleep and cleanup guards pass. The primary
+clock gaps are 0.000204–0.004630ms, and all owned services were reaped. This is
+not an application HTTP screen, production gate or 176-case qualification;
+app RPS/p95/cold-start changes remain unmeasured.
+
+Each cell below is **external ns/write / process CPU ns/write / point RSS MB**.
+CPU derives from coarse/quantized process accounting and is supporting evidence,
+not cycle-accurate timing. RSS 56.2–58.3MB is a point observation, not sampled
+peak, lifetime maximum or leak proof. Complete elapsed times/checksums,
+start/end windows, per-case ranges and all five rounds stay in raw.
+
+| Shape / round | B Rust writer | Host roundtrip |
+|---|---|---|
+| small-ascii / 1 | 119.8446 / 150.0 / 56.2 | 580.8563 / 600.0 / 57.2 |
+| small-ascii / 2 | 108.7337 / 100.0 / 58.1 | 570.8987 / 550.0 / 58.1 |
+| small-ascii / 3 | 112.7194 / 150.0 / 58.1 | 579.1179 / 550.0 / 58.1 |
+| small-ascii / 4 | 108.6442 / 150.0 / 58.1 | 561.2615 / 550.0 / 58.0 |
+| small-ascii / 5 | 109.0729 / 100.0 / 58.1 | 560.6679 / 550.0 / 58.1 |
+| large-ascii / 1 | 55495.6455 / 58593.8 / 57.3 | 116749.0645 / 117187.5 / 57.2 |
+| large-ascii / 2 | 55307.3320 / 58593.7 / 58.1 | 116738.4844 / 117187.5 / 58.1 |
+| large-ascii / 3 | 55448.7304 / 58593.8 / 58.2 | 116356.3232 / 117187.5 / 58.2 |
+| large-ascii / 4 | 55506.4287 / 48828.1 / 58.0 | 116431.8847 / 117187.5 / 58.0 |
+| large-ascii / 5 | 55298.0147 / 48828.1 / 58.1 | 116506.2256 / 117187.5 / 58.1 |
+| late-escape / 1 | 55783.9355 / 48828.1 / 57.3 | 116441.6094 / 117187.5 / 57.3 |
+| late-escape / 2 | 55279.2968 / 58593.8 / 58.1 | 116211.7109 / 107421.9 / 58.1 |
+| late-escape / 3 | 55376.4238 / 48828.1 / 58.2 | 116271.1582 / 117187.5 / 58.2 |
+| late-escape / 4 | 55434.5294 / 58593.8 / 58.0 | 116753.1328 / 117187.5 / 58.0 |
+| late-escape / 5 | 55334.4727 / 58593.7 / 58.1 | 116529.9473 / 117187.5 / 58.1 |
+| ordinary-unicode / 1 | 168203.2894 / 156250.0 / 57.3 | 801151.6916 / 820312.5 / 57.3 |
+| ordinary-unicode / 2 | 167094.2383 / 156250.0 / 58.0 | 800043.9457 / 781250.0 / 58.0 |
+| ordinary-unicode / 3 | 167336.5900 / 156250.0 / 58.2 | 799572.5896 / 820312.5 / 58.2 |
+| ordinary-unicode / 4 | 167474.2853 / 195312.5 / 57.4 | 799785.8047 / 781250.0 / 58.0 |
+| ordinary-unicode / 5 | 167116.2113 / 156250.0 / 58.2 | 802585.9374 / 820312.5 / 58.2 |
+| mixed-unicode / 1 | 235546.0583 / 234375.0 / 57.3 | 1140809.5706 / 1132812.5 / 57.4 |
+| mixed-unicode / 2 | 235430.5002 / 234375.0 / 58.0 | 1147546.5471 / 1171875.0 / 58.0 |
+| mixed-unicode / 3 | 243089.8435 / 234375.0 / 58.2 | 1140477.2113 / 1132812.5 / 58.2 |
+| mixed-unicode / 4 | 235551.2697 / 234375.0 / 57.4 | 1142159.5082 / 1132812.5 / 57.4 |
+| mixed-unicode / 5 | 236074.8713 / 234375.0 / 58.3 | 1143559.2419 / 1132812.5 / 58.3 |
+| dense-ascii / 1 | 834366.2103 / 859375.0 / 57.4 | 832983.0780 / 859375.0 / 57.4 |
+| dense-ascii / 2 | 831113.2815 / 781250.0 / 57.8 | 841806.6409 / 859375.0 / 57.8 |
+| dense-ascii / 3 | 830654.6251 / 859375.0 / 58.3 | 831306.9693 / 781250.0 / 58.3 |
+| dense-ascii / 4 | 829134.7658 / 781250.0 / 58.3 | 829954.1014 / 859375.0 / 58.3 |
+| dense-ascii / 5 | 831324.8672 / 781250.0 / 58.3 | 833820.3124 / 859375.0 / 58.3 |
+
+**Actual prototype implementation assessment — moderate, isolated diagnostic.**
+The retained example adds one fallible host writer with a canonical control-byte
+scan, atomic append/fallback, probe-owned input preparation and opaque writer/
+checksum controls. Existing js_sys bindings suffice, with no new dependency or
+production runtime interface. The builtin schema-import repair and probe/IR
+scaffolding are prototype setup work. **Proper keeper assessment — moderate,
+still prospective:** a real integration would need a target-neutral host seam,
+pure-Rust default, error/fault fallback and portable exact-byte tests. None of
+that production API was delivered, and the estimate is not a completed keeper
+implementation. This is consistent with the prior moderate roundtrip estimate.
+**Tradeoff / advice:** do not carry this roundtrip integration forward: it adds
+platform/fallback maintenance while measured transfer-inclusive time loses.
+Keep its complete negative result; the larger independent host sink is not
+rejected and the JS-escaping frontier is not exhausted.
+
+Only the cached offline example was compiled/bound, with Rust 1.99 and exact B
+child Os/fat LTO/one-CGU flags, remaps, proxy selectors and owned cache/ICU
+paths; no new dependency, native build or application integration occurred.
+Current 303 ICU files (10,160,786 bytes) were hashed before/after. This proves
+current input identity, **not historical ICU byte equivalence**. LLVM IR retains
+opaque indirect calls and black-box barriers; work was not replaced with a
+constant output. The successful warm setup build took 4.40s.
+
+The prior e023295d setup compiled offline in 25.25s and emitted bound/unbound
+Wasm plus IR, but workerd failed its physical schema import before preflight.
+Its complete:false build, exact host stderr and explicitly **partial observed
+build tail** remain retained under its immutable source/ref. The corrected
+source changes the import to binary builtin `/workerd/workerd.capnp`; the
+cached package schema is only a hashed reference, not the server's import.
+No micro timing is invented for that failed setup.
+
+Archive-relative paths use durable A. All retained raw/log/proof identities are:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Successful example build | `diagnostics/p61-roundtrip-builtin-import/build.json` | `0b46d479d7c6fc88a8562f335a123c1df713e05278a0780877d056292c9dc564` |
+| Actual 44 canonical checks / four fault checks | `diagnostics/p61-roundtrip-builtin-import/preflight.json` | `27f8697ace5c8a197d0d04f6a40fa044c19ec73bcaafe68da8e5933f19b1b07b` |
+| Complete fixed 60 five-round raw | `diagnostics/p61-roundtrip-builtin-import/fixed60-five-rounds/results.json` | `171a004fb35d5b3000a7438bfac2eb39dfa8111b1c6916fc9f3084a17f3cf844` |
+| Complete successful setup stdout/stderr | `diagnostics/p61-roundtrip-builtin-import-setup.log` | `b46b8abdcce4e5e89818c0d6abb75d848018db2da6db338802b2219385343e1a` |
+| Complete five-round console | `diagnostics/p61-roundtrip-builtin-import/fixed60-five-rounds-console.log` | `e8336e67b5e8feed40af701ed8f12c189ac151bd7104959af5a9f8a332635541` |
+| Unbound example Wasm | `diagnostics/p61-roundtrip-builtin-import/unbound.wasm` | `7c00e8324e7d47b8165af2dfaca72f31892e8d2db3d5846523bb4ab8c431debb` |
+| Opaque-call/black-box IR | `diagnostics/p61-roundtrip-builtin-import/driver.ll` | `28a6bbc9002c873d784e9b6531882e7b52835645b0a73681477e9ee8178ef6d9` |
+| Failed schema-import setup | `diagnostics/p61-roundtrip-e023295d/build.json` | `79d2941a75be4bc0dc936ee92bf3fee2bbe22b0cef1aaad6b50b50b2fae51fb0` |
+| Failed setup exact host stderr | `diagnostics/p61-roundtrip-e023295d/preflight-host.log` | `6407c9b3d5e6f44c876cd89438e4139ba630e82e4fe8c82a278b39624d6bcbb2` |
+| Failed setup partial observed build tail | `diagnostics/p61-roundtrip-e023295d/build-tail-observed.txt` | `afe3fab31397025b16a89cca775568a0e59657aa5b376fc526906330da57909f` |
+
+The bound example Wasm SHA-256 is
+`f494128e4a59a5419ce97a627ddc6f98186db7623a2ba0226fdda798be88428d`;
+its exact served/original map stays in the build/raw records. Failed source is
+`e023295dbb096c51bbb4418e583d435d10f0f4f8`, tree
+`c5e8a2fc118535d220c386274454d8e041e7a09e`, ref
+`refs/experiments/a4-baseline-84e1c00b/p61-roundtrip-e023295d`.
+
+### Host-sink alternative remains unmeasured
+
+**Prospective implementation assessment only — complex.** A proper host sink
+would retain new request-owned body/capability interfaces across codegen,
+runtime and host, plus cancellation, byte fallback and custom-codec maintenance.
+It is not implemented or measured. Its original unknown performance forecast
+stays frozen; roundtrip losses do not determine its outcome.
+
+Before full sink integration, consider a separately frozen **host-retained-
+result lower-bound diagnostic**: retain input transfer, canonical scan,
+JSON.stringify and scoped ownership while removing JS→Rust string return and
+Rust append. Gain is unknown; current aggregate costs cannot be subtracted to
+predict it. If final Response encoding is omitted, label that lower bound and
+exclude any application-gain claim. Even a promising probe still needs full
+HTTP ownership/byte validation. This is a conditional cheap check, not an
+implementation or host-sink rejection; P21.suffix-bitmap is next after the
+measured P55 result.
+
+**P61.host-sink remains eligible despite the measured roundtrip loss.** It would retain escaped JS string tokens/chunks through Response
 construction. This is a substantive source-backed alternative, not an expansion
 of the current probe; cost **L**, confidence low, ownership/semantics risk high.
 
@@ -1378,8 +1640,8 @@ can erase savings and must stay inside the measured accounting.
 Host-sink overlaps P55 by bypassing the same intermediate body-copy opportunity;
 do not add their gains. P55 still applies to byte-fallback paths. There is no
 claimed Value/SQL clone elimination, and the current writer's 18.8% sampled
-self footprint is context, not removable headroom. This entry adds no
-implementation, test, build, capture or framework document.
+self footprint is context, not removable headroom. The host-sink alternative
+itself has no implementation, test, build or capture.
 
 ## Current-B CPU diagnostic and compiler audit (2026-10-24)
 

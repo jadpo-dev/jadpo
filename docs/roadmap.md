@@ -40,8 +40,10 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    unattended. For performance exploration, first follow the catalogue's
    primary-comparison/control prerequisite; optimization measurements are
    coordinated through locally checked, agent-reviewed controls. Both primary
-   pairs now have provisional results; resume paused P61/eligible exploration
-   without another baseline prerequisite, then the highest-priority
+   pairs now have provisional results. P61 roundtrip is measured/rejected;
+   P55 is measured/promising with adverse RSS, and dependent P21.suffix-bitmap
+   on retained First is next with unknown gain and no baseline prerequisite,
+   then the highest-priority
    eligible experiment from its frozen baseline; record blockers and continue
    other eligible experiments across sessions until the available queue,
    including new ideas, is exhausted. There is no experiment-count or
@@ -233,7 +235,10 @@ Richard's later 2026-10-24 method correction makes the primary pairs standalone
 TypeScript/Bun versus Jadpo native Rust, and TypeScript/workerd versus Jadpo
 Wasm/workerd. The two local TypeScript/workerd controls and current native/Bun
 pair pass guards and agent review, with provisional loader/host/lifetime limits.
-Resume paused P61/eligible queue work without another baseline prerequisite.
+P61 roundtrip is measured/rejected; its host-sink alternative stays unmeasured.
+P55 is measured/promising with higher mixed RSS; P21.suffix-bitmap on retained
+First is next with unknown gain. Continue eligible work without another baseline
+prerequisite.
 Acceptance means local compatibility/body/state/security/resource/provenance
 checks plus agent review under standing authorization, not a new Richard
 approval.
