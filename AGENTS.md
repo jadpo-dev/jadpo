@@ -60,12 +60,14 @@ evidence only: HTTP remains unmeasured, original simple diagnostic estimate is
 preserved, actual scaffold is moderate and prospective keeper complex.
 P19's fixed-32 tail policy is negative/mixed/rejected. Independent
 P01.timer-future's private gate is source-blocked on supported shim/module
-emission before code. Independent P07 bounded Claims prototype is next:
-original 0–3% hypothesis, unknown actual gain and moderate prospective
-compatibility/parser-test burden; preserve
-existing duplicate/unknown JSON and numeric/type/error acceptance. No baseline
-prerequisite remains. Keep each control's
-loader/host/lifetime limits explicit.
+emission before code. P07's slot form is weak/mixed evidence retained without
+a keeper recommendation. Independent P12.direct-hex is next: original 0–2%
+singleton hypothesis, unknown actual gain and simple prospective implementation;
+keep UUID lowercasing/Rc copy and other formatters unchanged. After in-flight
+P12, prioritize P61 host-retained lower-bound feasibility and P59/P60 bridge/I/O
+census before P07.key-id or other small parser tweaks; their upside is unknown.
+No baseline prerequisite remains. Keep each control's loader/host/lifetime
+limits explicit.
 Control acceptance uses local checks and agent review under standing
 authorization, not a new Richard approval. Preserve prior results and historical
 forecasts.
