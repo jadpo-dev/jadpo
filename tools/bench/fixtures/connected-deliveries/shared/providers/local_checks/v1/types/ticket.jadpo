@@ -1,2 +1,0 @@
-/// A ticket reference.
-public type Ticket = Text { min_length: 1 max_length: 80 }

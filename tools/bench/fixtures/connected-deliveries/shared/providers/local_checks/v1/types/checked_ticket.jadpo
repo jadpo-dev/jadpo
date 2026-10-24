@@ -1,0 +1,2 @@
+/// A ticket reference.
+public type CheckedTicket = Text { min_length: 1 max_length: 80 }

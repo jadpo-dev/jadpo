@@ -5,7 +5,7 @@ use backlog/types { Ticket }
 use backlog/failures { AlreadyRecorded }
 
 action record(ticket: Ticket) fails AlreadyRecorded -> Unit {
-    var checked: LocalChecks.TicketAnswer = attempt checks.tickets.get(LocalChecks.TicketLookup { ticket: LocalChecks.Ticket(ticket) }) {
+    var checked: LocalChecks.TicketAnswer = attempt checks.tickets.get(LocalChecks.TicketLookup { ticket: LocalChecks.CheckedTicket(ticket) }) {
         ticket_unknown: AlreadyRecorded
     }
     assert Ticket(checked.ticket) == ticket

@@ -299,17 +299,23 @@ public action check_card(input: PayRequest) fails DeclinedCard -> PayReply {
 "#,
     ),
     (
+        "domains/billing/types/reference.jadpo",
+        // This domain's name is valid beside AcmePay.Reference. Both its
+        // create and its post-provider update must retain their SQL plans.
+        "type Reference = Text { max_length: 40 }\n",
+    ),
+    (
         "domains/billing/types/card_state.jadpo",
         "/// What the card on a plan did.\ntype CardState = Enum {\n    unchecked\n    accepted\n    declined\n}\n",
     ),
     (
         "domains/billing/entities/plan.jadpo",
-        r#"use billing/types { CardState }
+        r#"use billing/types { CardState, Reference }
 use shared/providers/acme_pay
 
 entity Plan {
     id: Uuid
-    tier: AcmePay.Reference
+    tier: Reference
     card: CardState
 
     policy: {
@@ -323,11 +329,11 @@ entity Plan {
     (
         "domains/billing/actions/add_plan.jadpo",
         r#"use billing/entities { Plan }
-use billing/types { CardState }
+use billing/types { CardState, Reference }
 use shared/providers/acme_pay
 
 /// Adds a plan whose card isn't checked yet.
-action add_plan(tier: AcmePay.Reference) -> Plan {
+action add_plan(tier: Reference) -> Plan {
     return Plan.create {
         set: {
             tier: tier
@@ -341,7 +347,7 @@ action add_plan(tier: AcmePay.Reference) -> Plan {
         "domains/billing/actions/check_plan.jadpo",
         r#"use app { pay }
 use billing/entities { Plan, PlanNotFound }
-use billing/types { CardState }
+use billing/types { CardState, Reference }
 use shared/providers/acme_pay
 
 /// Checks a plan's card, keeping whether it went through: a declined card
@@ -350,7 +356,7 @@ action check_plan(plan_id: Plan.id) fails PlanNotFound -> Plan {
     var plan: Plan = attempt Plan.get(plan_id)
     var state: CardState = match pay.check_card(
         AcmePay.PayRequest {
-            reference: plan.tier
+            reference: AcmePay.Reference(plan.tier)
         }
     ) {
         success -> CardState.accepted
@@ -368,7 +374,7 @@ action check_plan(plan_id: Plan.id) fails PlanNotFound -> Plan {
         "domains/billing/actions/check_plan.test.jadpo",
         r#"use app { pay }
 use billing/entities { Plan }
-use billing/types { CardState }
+use billing/types { CardState, Reference }
 use billing/actions { add_plan }
 
 test "a declined card is kept on the plan" {
