@@ -332,7 +332,8 @@ def build(label, tools_from, levels=LEVELS, reference_build=None, reference_resu
         cached_workerd = next((entry/'bin/workerd' for entry in sorted(spike.WORKERD.glob('workerd-*')) if (entry/'bin/workerd').is_file()), Path('/missing-workerd'))
         if not cached_workerd.is_file():
             raise ValueError('Cached pinned workerd is missing; no installation is attempted')
-        binaries = [spike.LOAD, spike.POOL, cached_workerd,
+        signing_helper = ROOT/'target/jadpo-compiled/golden-todo/native/debug/golden-native-contract'
+        binaries = [spike.LOAD, spike.POOL, cached_workerd, signing_helper,
                     *[Path(spike.tool(name)).resolve() for name in ('bun', 'node', 'psql')]]
         reference_root = reference_path.parents[5]
         stamp['reused_tools'] = {}
