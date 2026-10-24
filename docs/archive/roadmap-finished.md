@@ -3215,3 +3215,38 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   review pull requests. The original acceptance above is unchanged. Real
   Workers measurement remains 9.1c, and WebAssembly/Bun parity remains 9.2;
   this closes neither the 9.1 benchmark umbrella nor Phase 9.
+
+- [x] **9.2a1 Current request-path and large JSON profiling:** `opus · xhigh`
+  after 9.1b, the first concrete slice of 9.2. Codex’s local 9.2 batch uses
+  `gpt-6.1-sol · xhigh`, selected under Richard’s unattended instruction
+  (2026-10-24); it continues without routine model questions.
+  Reuse the golden todo and focused harnesses to profile the production local
+  workerd request path, including small reads and large ASCII, escaped/Unicode
+  and late-escape payloads. Preserve full response/state checks, authentication,
+  policy, validation, quotas and source/artifact identities. Validate inspector
+  identity, timeouts, errors, samples and no-overwrite behaviour with failing
+  controls first. Label diagnostic artifacts and profiler overhead honestly;
+  explain the current JSON/copy boundaries and rank the next optimisation from
+  measured evidence. Record method, exact sources/builds, raw profiles, all
+  attempts and attribution limits in §2.11 and `tools/bench/README.md`; full gate
+  and a separate manual PR. This instrumentation slice does not establish Bun
+  parity or close 9.2. Richard deferred the next complete four-runtime app
+  comparison until further optimisation progress.
+  Built: bounded actual-HTTP workerd profiling with guarded inspector identity,
+  protocol fault controls, full response/state checks and optional names-kept
+  modules whose executable Wasm sections and JavaScript match production.
+  Four complete diagnostic campaigns retain 48 accepted cells and 30 profiles;
+  the incomplete serial campaign's 504 and all four profiles remain excluded
+  from accepted medians. Raw trees preserve every function context and sample.
+  The generic JSON writer accounts for 17.7–20.3% self sampled time across large
+  response contexts; small signed reads instead show socket/callback/GC costs.
+  No production optimization or Bun parity is claimed. PostgreSQL duration
+  logging adds overhead even without inspector; service, pool-helper and sampled
+  CPU scopes remain distinct. An independent weighted-tree regression fixes
+  inclusive summary counts while preserving the original raw captures.
+  The final own-worktree full gate passed 93/93 in 493 s at `07221901`.
+  Exact sources/builds, every round, failed preparations, the unknown 504 cause,
+  granular examples and interpretation limits are in compiler/runtime §2.11
+  and `tools/bench/README.md`. Exact unmerged prerequisite `a847d511` is included
+  under Richard's stacked-dependency permission. Claude reviews and merges;
+  Codex opens the PR without auto-merge and never merges it.

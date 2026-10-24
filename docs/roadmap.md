@@ -262,22 +262,22 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   cargo features chosen from the plan, as `postgres` and `smtp` are;
   validators' patterns compiled when first used if 9.1 shows cold start
   pays for them.
-- [ ] **9.2a1 Current request-path and large JSON profiling:** `opus · xhigh`
-  after 9.1b, the first concrete slice of 9.2. Codex’s local 9.2 batch uses
-  `gpt-6.1-sol · xhigh`, selected under Richard’s unattended instruction
-  (2026-10-24); it continues without routine model questions.
-  Reuse the golden todo and focused harnesses to profile the production local
-  workerd request path, including small reads and large ASCII, escaped/Unicode
-  and late-escape payloads. Preserve full response/state checks, authentication,
-  policy, validation, quotas and source/artifact identities. Validate inspector
-  identity, timeouts, errors, samples and no-overwrite behaviour with failing
-  controls first. Label diagnostic artifacts and profiler overhead honestly;
-  explain the current JSON/copy boundaries and rank the next optimisation from
-  measured evidence. Record method, exact sources/builds, raw profiles, all
-  attempts and attribution limits in §2.11 and `tools/bench/README.md`; full gate
-  and a separate manual PR. This instrumentation slice does not establish Bun
-  parity or close 9.2. Richard deferred the next complete four-runtime app
-  comparison until further optimisation progress.
+- [x] **9.2a1 Current request-path and large JSON profiling**: compiler/runtime §2.11, "Whole-request CPU attribution"; `tools/bench/README.md`.
+- [ ] **9.2a2 Bulk JSON string writing:** `gpt-6.1-sol · xhigh`
+  after 9.2a1, continuing the same unattended local 9.2 model batch.
+  Optimise the measured generic JSON string writer using safe bulk UTF-8 spans
+  and fewer output-buffer allocations. Preserve area 19's byte-identical compact
+  JSON, existing escape spelling, Unicode and appended-output behaviour; leave
+  authentication, policy, quotas, boundary normalisation and validation intact.
+  Start with independent canonical/round-trip and deterministic allocation
+  controls, including dense and late escapes. Compare fresh baseline/candidate
+  builds with the same final harness, Workers against strong Bun first, retaining
+  complete body/state checks and a small signed-read regression guard. Throughput
+  and p95 runs omit inspector and PostgreSQL duration logging on both sides;
+  keep diagnostic profiles separate. Record exact sources/artifacts, every round,
+  failed/adverse attempts, CPU scopes and remaining limits in §2.11 and the bench
+  README. Pass the full gate and open a separate manual PR without merging.
+  The complete four-runtime app comparison remains deferred until more progress.
 - [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
   checks used by both hosts, `webauthn-rs` kept only as a test reference,
   the test authenticator on `p256`, so no native deployable links
