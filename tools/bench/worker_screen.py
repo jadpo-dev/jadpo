@@ -279,7 +279,7 @@ def build(label, tools_from, levels=LEVELS, reference_build=None):
         environment = {**os.environ, **FLAGS, 'SOURCE_DATE_EPOCH': '0'}
         subprocess.run(['cargo', 'build', '--locked', '-p', 'jadpo-cli', '--bin', 'jadpo'],
                        cwd=ROOT, env=environment, check=True)
-        cached_workerd = Path(reference['runtimes']['workerd']['path'])
+        cached_workerd = next((entry/'bin/workerd' for entry in sorted(spike.WORKERD.glob('workerd-*')) if (entry/'bin/workerd').is_file()), Path('/missing-workerd'))
         if not cached_workerd.is_file():
             raise ValueError('Cached pinned workerd is missing; no installation is attempted')
         binaries = [spike.LOAD, spike.POOL, cached_workerd,
@@ -316,7 +316,8 @@ def build(label, tools_from, levels=LEVELS, reference_build=None):
                     raise ValueError('Reused TypeScript output differs from its immutable reference')
                 snapshot(script, directory, stamp)
         stamp['database_prepare_compiler'] = {'path': str(spike.JADPO), 'sha256': golden.sha(spike.JADPO), 'source': before, 'scope': 'Current compiler applies unchanged schema; reference Worker remains historical'}
-        stamp['runtimes'] = reference['runtimes']
+        stamp['runtimes'] = {name: dict(metadata) for name, metadata in reference['runtimes'].items()}
+        stamp['runtimes']['workerd']['path'] = str(cached_workerd)
         for binary in dict.fromkeys([*binaries, spike.JADPO, *map(Path, selected.values()),
                 *[Path(environment[k]) for k in ('RUSTC', 'RUSTDOC') if environment.get(k)]]):
             snapshot(binary, directory, stamp)
