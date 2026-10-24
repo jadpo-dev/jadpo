@@ -90,3 +90,14 @@ explicit socket forms; do not resolve hosts or try connections to decide
 whether configuration is valid. Collect every invalid declaration and never
 show credentials. Built in chunk 9.1d2a in the shared built-in text validator;
 [area 10](language/10-configuration-and-time.md#database-and-other-connection-urls) specifies it.
+
+
+### Performance comparisons pair like with like — 2026-10-24
+
+Richard: compare each Jadpo deployable with what it would replace on the
+same kind of host. Jadpo native competes with TypeScript on Bun and Node,
+since all three run as standalone servers (a box, a container, AWS Lambda).
+Jadpo's WebAssembly build on Workers competes with TypeScript running on
+Workers' own V8 under workerd. Comparing Wasm on workerd with Bun or Node
+mixes the runtime with the host, so it is context, never the headline.
+Roadmap 9.1d5 adds the missing TypeScript-on-workerd baseline.

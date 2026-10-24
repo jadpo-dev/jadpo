@@ -228,6 +228,13 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
 - [x] **9.1d4 Local application comparison**: compiler/runtime §2.11, "Complete local application comparison"; `tools/bench/README.md`.
+- [ ] **9.1d5 TypeScript on workerd baseline:** `opus · high` after 9.1d4:
+  run the strong TypeScript golden todo on workerd (Hono's Workers entry,
+  the same local connection stand-in Jadpo's Workers build uses) with all
+  44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
+  method. The headline pairs are native against Bun and Node, and Wasm
+  against TypeScript on workerd
+  ([decision](decision-register.md#performance-comparisons-pair-like-with-like--2026-10-24)).
 - [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
   Delivered through 9.1b1–9.1b5 below, in order. This split changes sizing,
