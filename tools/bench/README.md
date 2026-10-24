@@ -983,8 +983,8 @@ overhead even for `--profile none`. `server_phase_duration_ms` records
 PostgreSQL protocol phases (possibly separate Parse/Bind/Execute), not correlated
 SQL-statement/request wall times; raw prefixes omit SQL and parameter text.
 Never add/subtract them into HTTP p95 or sampled CPU. Service CPU excludes
-PostgreSQL; golden records pool-helper CPU separately, focused currently does
-not. No clean production throughput or isolated profiler-overhead claim follows
+PostgreSQL; golden records pool-helper CPU separately; the 9.2a1 focused captures do
+not (9.2a2 adds it for new captures). No clean production throughput or isolated profiler-overhead claim follows
 from the ordered contexts.
 
 Raw `.cpuprofile` files contain every callFrame/tree edge/sample/timeDelta,
@@ -1023,3 +1023,155 @@ The corrected-summary final harness is gated at
 remain exact earlier `16d24dc48a4ed734f3a4ad3faf65403f790ead27`. The count
 correction has no production effect and needs no benchmark rerun. Subsequent
 changes record facts/method prose only.
+
+
+### JSON string writing and fast Wasm screens (9.2a2)
+
+The kept writer copies ordinary UTF-8 up to its first ASCII escape, then keeps
+the original scalar suffix. This preserves canonical bytes and avoids the
+mixed/dense escape regression of repeated bulk spans. The original allocation
+budget failed with one allocation plus 14 reallocations; the kept writer passes
+the unchanged at-most-one ordinary-output allocation check. Canonical fixtures,
+serde round trips and a deterministic scalar corpus cover the semantic boundary.
+
+Compiler-runtime §2.11 “JSON string writing and bounded Wasm screens” contains
+**every round**, retained raw/build hashes, source identities, size/cold/RSS
+observations, rejected variants and failure lessons. Kept source is
+`288a677879092449b25b182ea72969e046c41ab8`, tree
+`62f889aad1b25ea77c09fe5fd515b5319fcf70da`; later source comments/facts do
+not change its executable behavior. Against the saved awake original 190,
+Worker median throughput changes are signed **−1.33%**, small **−0.15%**,
+large ASCII **+15.54%**, mixed Unicode **−1.45%**, late escape **+16.58%**.
+Signed/small/mixed p95s also worsen. The selected tradeoff is explicit, with
+no universal/no-regression claim. Baseline/current time and host/control drift
+limit causal attribution; preserve Bun controls and all adverse rounds.
+
+Full qualification and capacity use `request_profile.py`. Its finalized
+qualification files stay byte-identical from the committed pre-edit baseline
+through the kept executable source:
+
+| File | SHA-256 |
+|---|---|
+| request_profile.py | b684b274afb0c27862a40f7c3f545951cfc9e3563ceb53a91fea49ea9e148901 |
+| test_request_profile.py | eb5160274ee3fc3880d624b9d429859df175860b1da48fbf9f6dd6a22f82ed16 |
+| todo.py | 5425aaff6b2200c3b7ab3ab06eaa7bcafa4bf24ea65055db173efe793f9ba352 |
+
+The new `--postgres-durations on|off` preserves old default **on**; NONE
+inspector alone still leaves database diagnostic overhead on by default.
+Use **NONE + duration OFF on both Workers and Bun** for capacity. The actual
+server setting and unexpected duration-log faults are checked. Focused
+pool-helper CPU is now measured separately over the same post-warmup window;
+service CPU excludes the pool and PostgreSQL. Read the saved per-cell served
+snapshots after later cells reuse live host paths.
+
+Commit the complete source before any build. The source guard includes HEAD,
+tree, modes, symlink payloads and all tracked bytes. Existing labels cannot be
+reused from a later source/comment/facts commit; check out their recorded
+producer source or create a fresh label. Never bypass guards or rewrite old
+manifests/results. Use pinned Rustup proxy paths (resolving the rustc proxy
+symlink would invoke rustup under the wrong argv0), offline pinned npm with
+scripts disabled, and the supported scoped cache when avoiding the observed
+invalid globally cached dependency metadata:
+
+```sh
+bench_env() {
+  env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_TARGET_DIR \
+    RUSTUP_TOOLCHAIN=1.99.0 RUSTC="$HOME/.cargo/bin/rustc" \
+    RUSTDOC="$HOME/.cargo/bin/rustdoc" SOURCE_DATE_EPOCH=0 \
+    CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4 \
+    PYTHONUNBUFFERED=1 \
+    XDG_CACHE_HOME="$PWD/target/jadpo-compiled/gate-cache-1db7e872" "$@"
+}
+bench_env caffeinate -i python3 -B tools/bench/request_profile.py build \
+  --label <fresh-label>
+bench_env caffeinate -i python3 -B tools/bench/request_profile.py run \
+  --label <fresh-label> --output capacity-awake-none-pg-off-c16-r3 \
+  --profile none --postgres-durations off --targets workers,bun \
+  --workloads golden-read,ascii-small,ascii-large,unicode-large,late-escape \
+  --rounds 3 --connections 16 --duration 8 --warmup 2 --principals 2048
+```
+
+The full build passes all 176 contracts and saves production, named diagnostic
+and original/snapshot artifact guards. The kept label is
+`work/request-profile/json-first-288a6778`; original 190 and rejected 1db
+labels/raws remain intact. This final qualification is done once for the chosen
+source, not per speculative writer. The outer pinned proxies/Rustup resolution
+and actual inner Cargo argv/flags are retained; they do not independently trace
+child rustc/linker selection. Scoped XDG/EPOCH0 is a disclosed build-environment
+difference from the original; no global cache was deleted.
+
+`worker_screen.py` is a separate **experimental Worker-only** path. It reuses
+guarded load/pool/workerd/Bun/real TS dependencies, builds one identical generated
+source with release opt-level s/2/3 and fatLTO/CGU1, and does no npm/native/named/
+176-case build per screen. Its manifest cannot claim full qualification.
+Complete dependency/source/artifact guards run once before and once after the
+campaign; per-cell actual served/full-body/state/security guards remain.
+Postguard faults invalidate the whole attempt. Default gzip6 sizes and optional
+gzip9 proxies are labelled separately from provider upload sizes.
+
+```sh
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py build \
+  --label <fresh-screen-label> --tools-from <qualified-reference-label>
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py run \
+  --label <fresh-screen-label> --output screen24-none-pg-off-c16 \
+  --duration 2 --warmup 1 --principals 2048
+```
+
+The recorded `reserve-profiles-7a7c9347` screen uses a reserve-only original
+character loop. Its fixed 24-cell order is golden/ASCII/mixed × s/Bun/2/3,
+then the complete reverse, c16/NONE/PGoff. Levels 2/3 offered no convincing
+broad gain: golden adverse rounds and roughly 23–26% gzip growth were retained.
+Shipping Os is unchanged; no favorable retry or longer rejected-profile
+confirmation followed.
+
+`string_screen.py` is **Node-hosted standalone Wasm diagnostic evidence,
+not workerd/HTTP/Bun capacity**. It compiles exact original/reserve/byte-bulk/
+char_indices/skip-empty/first-escape writers into one Os/fatLTO/CGU1 module.
+Five rotated rounds cover small/large ASCII, late LF, pure Unicode, the exact
+qualified dense mixed-Unicode fixture and dense ASCII. Input preparation is
+outside timing, output allocation is fresh per write, retained LLVM shows an
+opaque writer call/barriers inside the loop, and an O(1) observation checksum
+avoids a full-byte checksum in the timed path. Independent full byte equality,
+prefix/control/Unicode fixtures and deliberately wrong escape/truncation
+writers run before timing. Expected variants, counts and codegen guards have
+negative controls. There are no CI timing thresholds.
+
+```sh
+bench_env caffeinate -i python3 -B tools/bench/string_screen.py build \
+  --label <fresh-writer-label>
+bench_env caffeinate -i python3 -B tools/bench/string_screen.py run \
+  --label <fresh-writer-label>
+```
+
+Keep the first five-variant schema 1 `writers-548d4a2c` attempt
+(150 rows, 110 byte checks+2 negatives) separate from final schema 2
+`writers-first-58c0b447` (180 rows, 132+2). Reproduce an old schema with its
+recorded producer commit/snapshots, not a rewritten current manifest.
+Repeated spans regressed mixed/dense inputs; first-escape's mixed case remains
+3.37–6.64% slower than reserve-only in all five micro rounds, while roughly
+matching original. Only the subsequent fully qualified HTTP confirmation
+supports the kept application tradeoff.
+
+Request a parent quiet window only after builds/checks are complete and reaped.
+Run the whole declared matrix without unrelated host work, preserve every
+failure/adverse round, and release quiet explicitly only after services/DB/
+helpers are stopped/reaped and source/artifact/state/clock guards pass.
+Transient `caffeinate -i` must cover builds, captures and handoff gaps; never
+change permanent/display settings. Require absolute UTC load-span minus Rust
+load-wall span below 1 s per cell and no Sleep/DarkWake in the narrow interval.
+An earlier unprotected candidate failed with 16 measured 504/invalid bodies after
+host idle sleep; the entire original/candidate pair was replayed awake,
+retaining both original attempts. No selective favorable-cell retry occurred.
+
+The earlier three full gates failed with lint+ENOSPC, then unresolved/ENOSPC
+diagnostics, then a 92/93 E0786 native-preparation failure with invalid metadata in globally
+cached thiserror_impl (underlying cause unestablished). A scoped-cache native check passed 44/44; it is not a full-gate claim.
+Approved inactive-cache cleanup preserved every recorded artifact; a flawed .d
+staleness filter removed some reusable own dependencies, honestly recorded in
+§2.11, with no protected loss. Do not infer physical APFS reclamation or a
+specific cause for untraced disk drift. After final chosen source/facts review,
+run the required full gate directly to stdout, with the same scoped environment:
+
+```sh
+bench_env caffeinate -i python3 tools/verify.py
+```

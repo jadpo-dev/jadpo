@@ -7332,7 +7332,7 @@ Golden is only 0.0793 / 0.0688 / 0.0995% and small public samples
 first bounded large-response candidate, with small-request regressions still
 required to be checked. It does not predict a particular throughput/p95 gain.
 
-Current `jadpo_value::json::write_string` iterates Unicode chars and pushes each
+At the 9.2a1 source, `jadpo_value::json::write_string` iterates Unicode chars and pushes each
 character/escape. The HTTP runtime serializes generic `Value` into a `String`,
 `into_bytes` moves that buffer, and Workers `deployable::write` creates an
 **owned** `Uint8Array::from(response.body.as_slice())` before `Response`. There
@@ -7408,3 +7408,407 @@ bookings. Only the established pgvector 0.7-versus-0.8 skips remain. The earlier
 accepted profiles remain the original 16d24dc4 captures; correcting derived
 inclusive counts and recording these facts requires no timing rerun. Only
 facts/method prose follows the final corrected-code gate.
+
+
+#### JSON string writing and bounded Wasm screens (chunk 9.2a2, 2026-10-24 London)
+
+The kept generic writer reserves the ordinary UTF-8 length, scans to the first
+ASCII escape byte, copies the preceding ordinary span once, then uses the
+original scalar loop for the suffix. A string without escapes is copied in one
+span. Every escape byte is an ASCII UTF-8 boundary; no unsafe view, validation
+shortcut, application special case, typed-body or transport rewrite is involved.
+Quotes, backslashes and U+0000–001F retain their existing spellings: LF/CR/TAB
+use short escapes; backspace/form-feed remain lower-case `\u0008`/`\u000c`.
+Non-ASCII, decomposed text, DEL, U+2028/U+2029 and an existing output prefix
+remain byte-preserving. The scalar suffix is deliberate: repeatedly checking and
+copying spans regressed escape-dense inputs in the experiments below.
+
+Independent fixed canonical-byte fixtures and serde semantic round trips cover
+empty/prefixed output, all controls/DEL, quotes/backslashes, combining/emoji,
+dense/alternating/late escapes and a deterministic seeded scalar corpus. The
+separate harness=false stats_alloc resource check measures only output writes:
+the original writer was **RED**, one allocation plus 14 reallocations
+(131,072 allocated and 131,064 reallocated bytes); reserve-only and the kept
+writer are **GREEN**, at most one allocation/reallocation for a large ordinary
+string. This is a deterministic resource improvement, not a semantic bug or a
+CI timing threshold. The selected writer passed all 12 JSON checks, that
+allocation check and value all-target Clippy with warnings denied.
+
+**Protocol and attribution.** The final qualification harness was committed at
+`190df01270b52ce4b3a7190e933091239647ea41` before the first production edit,
+and its request-profile/test/todo bytes stayed identical through the measured
+kept candidate `288a677879092449b25b182ea72969e046c41ab8`, tree
+`62f889aad1b25ea77c09fe5fd515b5319fcf70da`. Candidate build preparation took
+441.568 s, passed all **176** contracts and saved 273 original/snapshot pairs
+(546 guarded paths). All seven runtime executable hashes match the original
+baseline. The later source comment pointing here and this facts/method prose
+do not change measured executable behavior; the final gate uses those comments
+and documentation too.
+
+The harness now accepts `--postgres-durations on|off`, preserving default
+`on`. It checks the actual owned server setting and refuses duration records
+when off; argument/setting/logging faults are tested. All capacity cells below
+use **inspector NONE and PostgreSQL duration logging OFF on both targets**.
+The older 9.2a1 NONE contexts still had PostgreSQL diagnostic logging and are
+not substituted as a clean capacity baseline. Focused Worker pool-helper CPU
+is now recorded over the same post-warmup measurement window, separately from
+service-process CPU. Neither includes PostgreSQL CPU. These are process
+counters, not sampled function call counts or p95 component times.
+
+Original and kept production builds use shipping Os/fat LTO/one codegen unit,
+with the same finalized full-body/state/auth/quota controls. Three ordered
+rounds run five workloads, Workers then strong Bun, c16, 8 s admission plus 2 s
+warmup, 2,048 signed principals. Genuine signatures, owner isolation,
+expiry/forgery refusal, address/caller quotas, full expected bodies and persisted
+read state remain checked. No native/Node full-application throughput matrix was
+added. Baseline and candidate are separated in time; round indices are repeated
+observations, not naturally paired simultaneous trials.
+
+After a host-sleep failure, complete original/candidate campaigns were replayed
+under transient `caffeinate -i`, with bounded handoff assertions covering
+postguards/source transitions, and no permanent/display setting change. Awake replay checked out
+the exact recorded source and restored only two overwritten own generated
+executables from verified snapshots, then rechecked all 546 artifact paths. Parent
+and child performed no unrelated host work during accepted captures. Every
+cell must satisfy absolute UTC load span minus the Rust load-generator wall
+span below 1 s, and the narrow campaign interval has no Sleep/DarkWake event.
+Awake original gaps were 4.38–8.79 ms; rejected byte candidate 4.39–10.63 ms;
+kept first-escape gaps 4.36–178.43 ms. The latter maximum is golden Worker
+round 1, retained. All accepted 90 cells have zero response/warmup errors or
+invalid bodies, unchanged read state and PG duration records zero; response
+byte/hash sets match across the sources. Per-cell actual served bundles were
+checked before/after use; each campaign retains 120 immutable served-file
+snapshots. Later cells reuse live host paths: review their saved copies,
+not an earlier cell's now-superseded live path.
+
+**Selected result and its limits.** Relative to the accepted awake original,
+large ASCII and late-escape median Worker throughput improve **15.54% and
+16.58%**, with service CPU/request down. Signed reads are **−1.33%**, small
+ASCII **−0.15%**, mixed Unicode **−1.45%** in absolute Worker throughput.
+Their median p95s worsen from 9.315→9.367, 8.555→8.661 and
+28.957→29.552 ms. This is an explicitly selected tradeoff, not a universal
+or no-regression win. Small signed reads remain the dominant next optimization
+target.
+
+For each campaign C, define R(C) = median over its three rounds of
+Worker req/s divided by Bun req/s; report 100 × (R(candidate)/R(original) − 1).
+The resulting ratios are −1.85%, −0.20%, **+16.98%**, −0.08%, **+17.59%**
+for signed/small/ASCII/mixed/late respectively. This is a ratio of campaign
+medians of within-round target ratios, not a median of ratios between historical
+and current round indices. The analogous service-CPU/request ratios change
++2.32%, +0.23%, −14.15%, +0.41%, −14.62%. Bun absolute medians move
++0.83%, −0.65%, −1.72%, −1.02%, −1.11%; host busy CPU ranges from
+28.77–49.56% original to 19.86–33.19% kept, load-generator peaks .6983/.6927
+core. These control/host/time-gap differences limit causal attribution even
+though all adverse rounds are retained. As a supporting inference only, ASCII
+service CPU saves .129863 ms/request, close to the Node-hosted writer micro
+saving .139449 ms/write; different V8 hosts/windows prevent treating that
+agreement as proof.
+
+Kept golden/focused production Wasm sizes are 7,317,350/7,355,942 bytes;
+default-level-6 gzip is 2,683,087/2,656,047 bytes. Sums of individually gzip6
+compressed Wasm/JS modules are 2,690,814/2,663,774 bytes, a local proxy rather
+than a provider upload measurement. Worker sampled peak RSS medians original→kept
+are golden 292.0→293.7 MiB, small 286.0→288.2, ASCII 374.6→372.7,
+mixed 330.2→330.0 and late 378.7→373.3. Cold-ready medians are
+67.230→61.785, 59.931→59.689, 68.263→59.578, 70.002→59.555 and
+67.402→59.711 ms; first-request medians 34.915→28.359, 33.214→33.793,
+37.795→33.665, 39.271→33.501 and 37.843→34.780 ms. These sparse local
+cold/RSS observations are not lifetime maxima or deployment cold-start claims.
+
+| Artifact source | HEAD | Tree |
+|---|---|---|
+| original qualification | `190df01270b52ce4b3a7190e933091239647ea41` | `524568289db127d479784a1775aa35aad39684cc` |
+| rejected byte writer | `1db7e87261685eda3de3c7efcc7a2a0b16cc12bc` | `ec7d75969f793270aff12f3b3b62341fa1f3f8a7` |
+| kept first escape | `288a677879092449b25b182ea72969e046c41ab8` | `62f889aad1b25ea77c09fe5fd515b5319fcf70da` |
+| profile screen | `7a7c934723f27e4d0cdb528f38441ec05955ffe5` | `369d2d1d76981ca35b7afc6f00668213c608a827` |
+| five-variant micro | `548d4a2c665b65241258a8b3cbed32efc13d833d` | `db17e1fcd032e999de8186fba9fae5f08019cb73` |
+| six-variant micro | `58c0b4470ca620d8a7e15197bb495dade82409ea` | `8d3800a16fb55c534700c7b4d46909e8cb3af9cd` |
+
+**Every complete HTTP round.** Each cell below contains rounds 1 / 2 / 3.
+Service and pool-helper CPU are separate ms/request; p95 is milliseconds.
+The non-awake original campaign is retained as superseded context, not mixed
+into the awake reference. The rejected byte writer had ASCII/late wins but
+a −5.63% Worker/Bun throughput-ratio change on mixed Unicode, with +6.07%
+service-CPU ratio; it was discarded rather than shipped.
+
+| Source / workload / target | req/s r1 / r2 / r3 | p95 ms | service CPU ms/request | helper CPU ms/request |
+| --- | --- | --- | --- | --- |
+| original awake / golden-read / workers | 2094.822 / 2083.146 / 2097.712 | 9.332 / 9.315 / 9.274 | 0.480 / 0.480 / 0.478 | 0.125 / 0.127 / 0.124 |
+| original awake / golden-read / bun | 6210.168 / 6439.567 / 6532.592 | 3.632 / 3.523 / 3.443 | 0.162 / 0.158 / 0.156 | 0.000 / 0.000 / 0.000 |
+| original awake / ascii-small / workers | 2267.641 / 2248.958 / 2429.878 | 8.555 / 8.733 / 8.117 | 0.442 / 0.446 / 0.414 | 0.126 / 0.125 / 0.118 |
+| original awake / ascii-small / bun | 13499.483 / 13472.255 / 13557.939 | 1.786 / 1.813 / 1.753 | 0.076 / 0.077 / 0.076 | 0.000 / 0.000 / 0.000 |
+| original awake / ascii-large / workers | 1023.553 / 1038.369 / 1044.932 | 25.076 / 24.631 / 22.936 | 0.983 / 0.973 / 0.970 | 0.193 / 0.190 / 0.188 |
+| original awake / ascii-large / bun | 6231.895 / 6164.807 / 6240.149 | 3.601 / 3.674 / 3.535 | 0.180 / 0.181 / 0.179 | 0.000 / 0.000 / 0.000 |
+| original awake / unicode-large / workers | 774.995 / 774.055 / 769.645 | 28.208 / 28.957 / 29.575 | 1.306 / 1.304 / 1.302 | 0.216 / 0.216 / 0.224 |
+| original awake / unicode-large / bun | 1655.140 / 1652.873 / 1653.020 | 12.025 / 12.088 / 12.059 | 0.710 / 0.709 / 0.707 | 0.000 / 0.000 / 0.000 |
+| original awake / late-escape / workers | 1039.472 / 1044.931 / 1032.997 | 23.594 / 23.226 / 22.980 | 0.974 / 0.969 / 0.979 | 0.191 / 0.189 / 0.192 |
+| original awake / late-escape / bun | 5052.890 / 5198.229 / 5213.541 | 4.556 / 4.323 / 4.331 | 0.218 / 0.216 / 0.215 | 0.000 / 0.000 / 0.000 |
+| byte rejected awake / golden-read / workers | 2069.421 / 2020.204 / 1990.012 | 9.477 / 9.775 / 9.824 | 0.485 / 0.496 / 0.504 | 0.129 / 0.138 / 0.137 |
+| byte rejected awake / golden-read / bun | 6444.065 / 5918.445 / 5988.251 | 3.520 / 3.913 / 3.881 | 0.158 / 0.177 / 0.172 | 0.000 / 0.000 / 0.000 |
+| byte rejected awake / ascii-small / workers | 2268.770 / 2165.866 / 2164.140 | 8.611 / 9.127 / 9.166 | 0.441 / 0.463 / 0.463 | 0.125 / 0.137 / 0.136 |
+| byte rejected awake / ascii-small / bun | 13495.084 / 12683.341 / 12564.978 | 1.737 / 2.061 / 2.076 | 0.076 / 0.082 / 0.083 | 0.000 / 0.000 / 0.000 |
+| byte rejected awake / ascii-large / workers | 1205.280 / 1118.578 / 1125.282 | 20.987 / 22.898 / 21.830 | 0.839 / 0.904 / 0.902 | 0.191 / 0.203 / 0.202 |
+| byte rejected awake / ascii-large / bun | 6208.223 / 5765.596 / 5902.359 | 3.654 / 4.247 / 3.910 | 0.180 / 0.195 / 0.191 | 0.000 / 0.000 / 0.000 |
+| byte rejected awake / unicode-large / workers | 734.757 / 681.460 / 678.652 | 29.996 / 32.271 / 32.692 | 1.376 / 1.481 / 1.487 | 0.214 / 0.242 / 0.248 |
+| byte rejected awake / unicode-large / bun | 1523.719 / 1589.715 / 1535.884 | 13.723 / 12.704 / 13.039 | 0.755 / 0.748 / 0.762 | 0.000 / 0.000 / 0.000 |
+| byte rejected awake / late-escape / workers | 1137.439 / 1123.617 / 997.604 | 22.087 / 23.213 / 28.728 | 0.889 / 0.901 / 0.977 | 0.196 / 0.206 / 0.223 |
+| byte rejected awake / late-escape / bun | 4709.700 / 4876.837 / 4758.205 | 5.225 / 4.728 / 5.041 | 0.237 / 0.231 / 0.232 | 0.000 / 0.000 / 0.000 |
+| first kept awake / golden-read / workers | 2089.689 / 2066.903 / 2042.447 | 9.363 / 9.367 / 9.570 | 0.491 / 0.484 / 0.489 | 0.132 / 0.128 / 0.128 |
+| first kept awake / golden-read / bun | 6461.942 / 6510.066 / 6493.041 | 3.508 / 3.468 / 3.511 | 0.157 / 0.156 / 0.157 | 0.000 / 0.000 / 0.000 |
+| first kept awake / ascii-small / workers | 2431.860 / 2264.321 / 2233.471 | 8.050 / 8.661 / 8.698 | 0.414 / 0.443 / 0.448 | 0.118 / 0.127 / 0.126 |
+| first kept awake / ascii-small / bun | 13411.743 / 13507.167 / 13403.774 | 1.761 / 1.761 / 1.795 | 0.077 / 0.076 / 0.077 | 0.000 / 0.000 / 0.000 |
+| first kept awake / ascii-large / workers | 1191.942 / 1199.744 / 1211.021 | 20.914 / 21.851 / 20.722 | 0.848 / 0.843 / 0.836 | 0.192 / 0.189 / 0.188 |
+| first kept awake / ascii-large / bun | 6168.161 / 6124.725 / 6075.260 | 3.627 / 3.760 / 3.756 | 0.180 / 0.181 / 0.182 | 0.000 / 0.000 / 0.000 |
+| first kept awake / unicode-large / workers | 772.154 / 760.010 / 762.851 | 29.240 / 29.823 / 29.552 | 1.311 / 1.327 / 1.325 | 0.212 / 0.215 / 0.214 |
+| first kept awake / unicode-large / bun | 1638.669 / 1636.192 / 1630.515 | 12.138 / 12.182 / 12.204 | 0.715 / 0.714 / 0.717 | 0.000 / 0.000 / 0.000 |
+| first kept awake / late-escape / workers | 1211.859 / 1238.412 / 1211.480 | 20.949 / 20.959 / 20.293 | 0.837 / 0.820 / 0.837 | 0.190 / 0.185 / 0.190 |
+| first kept awake / late-escape / bun | 5126.642 / 5140.767 / 5181.944 | 4.334 / 4.385 / 4.322 | 0.218 / 0.218 / 0.216 | 0.000 / 0.000 / 0.000 |
+| original superseded non-awake / golden-read / workers | 1960.084 / 2016.799 / 1990.855 | 10.027 / 9.679 / 9.856 | 0.517 / 0.497 / 0.502 | 0.143 / 0.141 / 0.139 |
+| original superseded non-awake / golden-read / bun | 5929.311 / 5627.546 / 5575.394 | 3.919 / 4.032 / 4.180 | 0.175 / 0.179 / 0.187 | 0.000 / 0.000 / 0.000 |
+| original superseded non-awake / ascii-small / workers | 2144.387 / 2163.557 / 1831.415 | 9.337 / 9.153 / 13.937 | 0.463 / 0.464 / 0.526 | 0.136 / 0.137 / 0.162 |
+| original superseded non-awake / ascii-small / bun | 12795.896 / 12177.756 / 11916.046 | 2.042 / 2.134 / 2.176 | 0.081 / 0.085 / 0.087 | 0.000 / 0.000 / 0.000 |
+| original superseded non-awake / ascii-large / workers | 975.412 / 958.049 / 904.619 | 25.594 / 27.787 / 29.262 | 1.034 / 1.041 / 1.063 | 0.205 / 0.206 / 0.215 |
+| original superseded non-awake / ascii-large / bun | 5833.778 / 5211.104 / 5428.152 | 3.966 / 4.916 / 4.443 | 0.193 / 0.210 / 0.208 | 0.000 / 0.000 / 0.000 |
+| original superseded non-awake / unicode-large / workers | 721.070 / 744.955 / 721.696 | 31.354 / 34.946 / 30.000 | 1.398 / 1.326 / 1.399 | 0.239 / 0.248 / 0.240 |
+| original superseded non-awake / unicode-large / bun | 1609.389 / 1601.345 / 1600.956 | 12.503 / 12.619 / 12.627 | 0.737 / 0.742 / 0.741 | 0.000 / 0.000 / 0.000 |
+| original superseded non-awake / late-escape / workers | 902.708 / 947.908 / 983.259 | 29.776 / 27.176 / 22.029 | 1.072 / 1.051 / 1.026 | 0.211 / 0.209 / 0.202 |
+| original superseded non-awake / late-escape / bun | 4515.658 / 4835.464 / 4872.789 | 5.508 / 4.862 / 4.925 | 0.241 / 0.232 / 0.228 | 0.000 / 0.000 / 0.000 |
+
+**Compile-profile screen: no default change selected.** Before further writer
+work, `worker_screen.py` built three Worker artifacts from one frozen
+**reserve-only original character loop**, not the shipping original or rejected
+byte loop. Only release opt-level s/2/3 changes; fat LTO/CGU1 and generated
+source remain fixed. Explicit experimental manifests do not claim 176 contracts.
+They capture the full source/mode/HEAD/tree, effective inner Cargo commands,
+CLI/toolchain/dependency bytes and immutable production/served bundles.
+Unaffected cached load/pool/workerd/Bun and real TypeScript dependencies were
+reused without npm/native/named/full-contract rebuilds per screen. Complete
+expensive source/artifact/dependency guards run before and after the campaign;
+per-cell actual served/body/state/auth/clock guards remain. Negative controls
+reject changed flags, mixed generated source, false qualification, artifact,
+dependency and post-campaign served-file drift.
+
+The predeclared 24-cell screen uses two rounds of golden/large ASCII/mixed
+Unicode, c16, 2 s admission + 1 s warmup. Round 1 groups each workload in
+s/Bun/2/3 order; round 2 reverses that complete schedule. All 24 pass, including
+144 served guard entries; clock gaps 4.68–10.62 ms, no Sleep/DarkWake.
+Median req/s s/2/3/Bun are golden 2107.7/2023.6/2033.8/6376.3,
+ASCII 1039.7/1068.1/1041.4/5936.5, mixed 746.9/762.7/750.5/1597.7.
+Golden level 2/3 round 2 worsens 8.21%/6.57%; level 3 ASCII round 1 p95 worsens
+21.4%. The small large-body screen gains and mixed p95/CPU do not justify
+roughly 23–26% gzip growth. Shipping Os remains unchanged; no longer confirmation
+of levels 2/3 was selected. All rounds follow, including cold and sampled RSS.
+
+| Workload / variant | req/s r1 / r2 | p95 ms | service CPU ms/request | sampled peak RSS MiB | cold-ready ms |
+| --- | --- | --- | --- | --- | --- |
+| golden-read / s | 2032.040 / 2183.312 | 9.516 / 8.812 | 0.499 / 0.460 | 292.6 / 291.1 | 231.624 / 117.020 |
+| golden-read / 2 | 2043.088 / 2004.089 | 9.431 / 10.101 | 0.493 / 0.500 | 353.2 / 351.4 | 75.867 / 75.489 |
+| golden-read / 3 | 2027.645 / 2039.908 | 9.400 / 9.347 | 0.500 / 0.494 | 363.2 / 360.3 | 76.520 / 78.198 |
+| golden-read / bun | 6400.576 / 6352.047 | 3.570 / 3.593 | 0.192 / 0.190 | 207.0 / 207.1 | 1068.319 / 90.778 |
+| ascii-large / s | 1031.818 / 1047.656 | 21.544 / 21.790 | 0.988 / 0.970 | 325.2 / 324.9 | 59.171 / 57.926 |
+| ascii-large / 2 | 1048.600 / 1087.656 | 22.107 / 22.113 | 0.976 / 0.951 | 358.0 / 393.9 | 71.069 / 68.769 |
+| ascii-large / 3 | 1002.090 / 1080.660 | 26.154 / 22.446 | 1.014 / 0.958 | 357.2 / 385.8 | 70.164 / 70.198 |
+| ascii-large / bun | 5880.576 / 5992.378 | 4.288 / 4.193 | 0.220 / 0.216 | 191.0 / 196.0 | 112.539 / 82.530 |
+| unicode-large / s | 734.388 / 759.466 | 29.623 / 27.565 | 1.386 / 1.349 | 306.0 / 297.5 | 59.890 / 59.750 |
+| unicode-large / 2 | 766.563 / 758.800 | 29.689 / 28.897 | 1.347 / 1.361 | 381.0 / 367.8 | 69.786 / 68.896 |
+| unicode-large / 3 | 753.019 / 747.968 | 27.570 / 28.656 | 1.384 / 1.380 | 349.9 / 325.2 | 69.981 / 70.556 |
+| unicode-large / bun | 1610.445 / 1584.980 | 12.485 / 12.726 | 0.727 / 0.738 | 178.7 / 181.9 | 83.724 / 82.415 |
+
+| Profile | Golden Wasm / gzip6 bytes | Focused Wasm / gzip6 bytes | Module gzip6 sums, golden / focused |
+|---|---:|---:|---:|
+| s | 7,316,932 / 2,683,278 | 7,355,524 / 2,655,778 | 2,691,005 / 2,663,505 |
+| 2 | 9,542,363 / 3,295,646 | 9,762,810 / 3,302,708 | 3,303,371 / 3,310,433 |
+| 3 | 9,820,047 / 3,338,959 | 10,040,071 / 3,339,238 | 3,346,684 / 3,346,964 |
+
+**Bounded writer diagnostics.** `string_screen.py` compiles all compared
+writers into one optimized standalone Wasm module, Node 24.18.1 /
+V8 13.6.233.17-node.50, Rust 1.99.0 b940084d7 / LLVM23.1.1, Os/fatLTO/CGU1.
+This is explicitly **Node-hosted diagnostic evidence, not workerd/HTTP/Bun
+capacity evidence**. Exact original and byte-loop functions are extracted from
+190df012/1db7e872. Reserve-only, char_indices spans and skip-empty byte spans
+are independent variants. A final sixth variant scans only to the first escape
+and then runs the exact original scalar suffix. Its generated source SHA-256
+`1b633685eb70329b4b44ce919ff2c1f47f51cd1bbae722455e1aa006590e04ea`
+matches the kept production tokens apart from function name/comments/formatting.
+
+Six fixed cases use these iterations per timed row: small ASCII 100 scalars /
+200,000 writes; ordinary ASCII 65,536 / 1,024; final-LF ASCII 65,536 / 1,024;
+pure Unicode 65,536 scalars, 196,608 UTF-8 bytes / 256; mixed Unicode 65,536
+scalars, 109,228 UTF-8 bytes / 256; dense ASCII 65,536 / 128. The mixed case
+exactly reproduces the qualified HTTP fixture
+`('é🙂"\\\n\t' * 10923)[:65536]`, with four of six scalars escaped;
+pure ordinary Unicode is a separate control. Dense ASCII repeats quote,
+backslash, LF, TAB, CR, NUL, backspace and form-feed. Small/large warmups are
+2,000/16 writes. Inputs are prepared outside timing; each iteration creates a
+fresh output String. The opaque writer call and black_box barriers survive
+inside the retained LLVM output loop, preventing write hoisting. An O(1)
+length/three-byte checksum keeps results observable without charging a full-byte
+checksum to every timed write.
+
+Before timing, independent Python JSON expectations (normalizing only genuine
+backspace/form-feed escape pairs), fixed byte fixtures and both empty/prefixed
+outputs are compared in full. Deliberately wrong escape and truncated writers
+must fail. The first five-variant schema 1 run makes 110 full byte checks plus
+two negatives; the final six-variant schema 2 makes 132 plus two. The schema 2
+validator requires exact variants, verification/byte counts and both codegen
+barriers; cheap negative controls fault those fields. Old schema 1 manifests,
+producer sources and artifacts are preserved and are not reinterpreted by the
+expanded validator.
+
+Both attempts use five fixed rotated rounds; case order alternates forward /
+reverse and writer order rotates by round+case. No performance retries or
+additional variants followed the final run. The first **150 rows** take
+13.028 s, UTC/monotonic gaps −.878…+.845 ms; final **180 rows** take
+14.724 s, gaps −.882…+.750 ms; both have all checksums/postguards pass and no
+Sleep/DarkWake. Original/reserve/first median ns/write on the final run:
+small 357/268/86, ASCII 183872/163278/44423, late 185289/164520/45727,
+pure Unicode 307970/284904/133410, mixed 221153/210398/218862,
+dense 1010757/1013196/1016316. Repeated span variants regress mixed/dense
+inputs. First-escape mixed is still **3.37–6.64% slower than reserve-only** in
+all five rounds, but −1.38…+0.44% versus original; dense is −.36…+.55%
+versus original. These adverse observations remain, and the real HTTP check
+above determines the kept tradeoff.
+
+Original five-variant run: all 150 rows. Approximate ns/write, rounds 1 / 2 / 3 / 4 / 5; raw precision retained.
+
+| Case / variant | ns/write r1 / r2 / r3 / r4 / r5 |
+| --- | --- |
+| small-ascii / old | 353 / 346 / 363 / 350 / 362 |
+| small-ascii / reserve | 269 / 268 / 268 / 268 / 268 |
+| small-ascii / byte_bulk | 85 / 86 / 88 / 87 / 86 |
+| small-ascii / char_bulk | 126 / 126 / 128 / 126 / 127 |
+| small-ascii / skip_empty | 113 / 114 / 119 / 118 / 118 |
+| large-ascii / old | 184397 / 183262 / 184328 / 183335 / 205362 |
+| large-ascii / reserve | 162940 / 162781 / 162978 / 164479 / 164865 |
+| large-ascii / byte_bulk | 44145 / 44142 / 44012 / 44123 / 44426 |
+| large-ascii / char_bulk | 67024 / 67336 / 69154 / 67464 / 67487 |
+| large-ascii / skip_empty | 59950 / 60140 / 61510 / 59554 / 59524 |
+| late-escape / old | 184999 / 183308 / 184824 / 191822 / 185699 |
+| late-escape / reserve | 164325 / 163079 / 164442 / 173123 / 164766 |
+| late-escape / byte_bulk | 45283 / 44121 / 46031 / 44056 / 45491 |
+| late-escape / char_bulk | 68197 / 67068 / 68630 / 66940 / 68551 |
+| late-escape / skip_empty | 60621 / 59810 / 60928 / 59744 / 60998 |
+| ordinary-unicode / old | 308167 / 305172 / 309882 / 314441 / 308343 |
+| ordinary-unicode / reserve | 285434 / 284838 / 284812 / 293281 / 285902 |
+| ordinary-unicode / byte_bulk | 133419 / 133278 / 133373 / 137359 / 133801 |
+| ordinary-unicode / char_bulk | 106354 / 105486 / 105831 / 108646 / 106213 |
+| ordinary-unicode / skip_empty | 179793 / 179082 / 180195 / 184594 / 180426 |
+| mixed-unicode / old | 220347 / 224585 / 220512 / 230420 / 220560 |
+| mixed-unicode / reserve | 210301 / 216969 / 211581 / 218797 / 210401 |
+| mixed-unicode / byte_bulk | 262345 / 265578 / 262414 / 271557 / 262348 |
+| mixed-unicode / char_bulk | 296962 / 300627 / 297051 / 307877 / 297062 |
+| mixed-unicode / skip_empty | 278138 / 281101 / 276501 / 287469 / 277187 |
+| dense-ascii / old | 1006845 / 1008777 / 1008536 / 1009923 / 1007128 |
+| dense-ascii / reserve | 1011090 / 1012189 / 1033478 / 1014226 / 1009404 |
+| dense-ascii / byte_bulk | 1096056 / 1099420 / 1095055 / 1122673 / 1098891 |
+| dense-ascii / char_bulk | 1129846 / 1104802 / 1102787 / 1106876 / 1103975 |
+| dense-ascii / skip_empty | 1057332 / 1062462 / 1061822 / 1059603 / 1056942 |
+
+Final six-variant run: all 180 rows. Approximate ns/write, rounds 1 / 2 / 3 / 4 / 5; raw precision retained.
+
+| Case / variant | ns/write r1 / r2 / r3 / r4 / r5 |
+| --- | --- |
+| small-ascii / old | 357 / 354 / 373 / 344 / 364 |
+| small-ascii / reserve | 268 / 277 / 276 / 268 / 268 |
+| small-ascii / byte_bulk | 85 / 88 / 87 / 86 / 86 |
+| small-ascii / char_bulk | 132 / 133 / 133 / 129 / 129 |
+| small-ascii / skip_empty | 120 / 117 / 118 / 114 / 114 |
+| small-ascii / first_escape | 86 / 87 / 88 / 85 / 85 |
+| large-ascii / old | 183285 / 184557 / 201760 / 183681 / 183872 |
+| large-ascii / reserve | 163278 / 167880 / 162739 / 162881 / 163409 |
+| large-ascii / byte_bulk | 44038 / 44245 / 43971 / 44143 / 44091 |
+| large-ascii / char_bulk | 67117 / 66911 / 69134 / 66965 / 67095 |
+| large-ascii / skip_empty | 59714 / 59540 / 61064 / 59517 / 59664 |
+| large-ascii / first_escape | 44797 / 44423 / 45823 / 44068 / 44226 |
+| late-escape / old | 185289 / 183264 / 185471 / 183613 / 185306 |
+| late-escape / reserve | 164628 / 162781 / 164520 / 162719 / 165165 |
+| late-escape / byte_bulk | 45159 / 44053 / 45647 / 44011 / 45673 |
+| late-escape / char_bulk | 69185 / 67432 / 68553 / 67072 / 68604 |
+| late-escape / skip_empty | 60954 / 59860 / 60901 / 59631 / 61388 |
+| late-escape / first_escape | 46119 / 44486 / 45733 / 44222 / 45727 |
+| ordinary-unicode / old | 307970 / 304948 / 308947 / 305478 / 308401 |
+| ordinary-unicode / reserve | 284904 / 296461 / 285937 / 284697 / 284656 |
+| ordinary-unicode / byte_bulk | 133434 / 135631 / 134380 / 133345 / 133325 |
+| ordinary-unicode / char_bulk | 105674 / 106123 / 106755 / 105813 / 105619 |
+| ordinary-unicode / skip_empty | 179109 / 178862 / 179198 / 179781 / 179153 |
+| ordinary-unicode / first_escape | 133503 / 133410 / 133534 / 133387 / 133359 |
+| mixed-unicode / old | 221153 / 224192 / 220762 / 225350 / 219503 |
+| mixed-unicode / reserve | 210398 / 213890 / 210270 / 212265 / 210267 |
+| mixed-unicode / byte_bulk | 261675 / 264111 / 262686 / 265170 / 261179 |
+| mixed-unicode / char_bulk | 296619 / 300169 / 296706 / 299974 / 298314 |
+| mixed-unicode / skip_empty | 277976 / 280909 / 276878 / 281229 / 276803 |
+| mixed-unicode / first_escape | 218862 / 221088 / 218607 / 226351 / 218767 |
+| dense-ascii / old | 1010494 / 1020761 / 1009170 / 1011738 / 1010757 |
+| dense-ascii / reserve | 1013266 / 1013585 / 1011423 / 1012675 / 1013196 |
+| dense-ascii / byte_bulk | 1097119 / 1097038 / 1093999 / 1102422 / 1095449 |
+| dense-ascii / char_bulk | 1102079 / 1122329 / 1111182 / 1103758 / 1101485 |
+| dense-ascii / skip_empty | 1055317 / 1058819 / 1056129 / 1059126 / 1055488 |
+| dense-ascii / first_escape | 1013720 / 1017121 / 1012491 / 1017221 / 1016316 |
+
+**Failures, environment repairs and storage.** No failed or adverse attempt
+was replaced by selected favorable cells.
+
+| Attempt | Observed outcome |
+|---|---|
+| Original non-awake `capacity-none-pg-off-c16-r3` | 30 verified; retained separately. Cell clock gaps 4.1–158.7 ms. Superseded by complete awake protocol replay. |
+| Byte candidate non-awake attempt | Four verified cells, then ASCII Worker round 1 had 9,033 measured 200s and 16 measured 504/invalid bodies; 13 warmup invalid bodies. Raw campaign remains incomplete. |
+| Host forensics and repair | Narrow pmset timestamps prove idle sleep at 09:56:33 BST for 360 s, then maintenance Sleep 10:03:03/10:03:32 within the failed fifth cell. UTC 69.775 s versus load wall 10.010 s. This supports an environment failure, not a writer diagnosis. Both whole original/candidate campaigns were then replayed under the same awake protocol; all original data retained. |
+| Full gate on 5462fe40 | 42 pass / 51 fail, 370 s. Denied HEX-index Clippy lint and explicit ENOSPC were both observed; do not assign every failure solely to disk. |
+| First corrected 1db7e872 gate | 80 pass / 13 fail, 385 s; ENOSPC observed, truncated individual diagnostics. Missing diagnoses were not waived or individually assumed to be disk. |
+| Second corrected 1db7e872 gate | 92 pass / 1 fail, 583 s. Golden native 44 preparation failed E0786: invalid metadata in globally cached thiserror_impl; underlying cause unestablished, zero native cases ran. Other 92 checks passed. |
+| Scoped-cache native proof | Unchanged native check with supported local XDG cache passes all 44 cases; 116.2 s native / 119 s wrapper. This is an environment repair, not a JSON product fix or full-gate pass. The actual small native build failure is retained with source/hash. |
+| Post-campaign ad-hoc review scripts | Historical live served paths were already reused by later cells; immutable 120 saved copies pass. A sandbox denied ps; the scoped escalated exact-owned-PID check passed. Neither script rewrote raw results or changed campaign validity. |
+
+The supported cache selector is XDG_CACHE_HOME (otherwise ~/.cache). Candidate
+builds use the scoped own
+`target/jadpo-compiled/gate-cache-1db7e872`, with SOURCE_DATE_EPOCH=0;
+the original used its existing cache. Compiler/toolchain/profile/method and
+all runtime hashes remain pinned, but the build-environment difference is
+disclosed. No global cache was removed. Parent/child compiler selection records
+outer requested Rustup proxies and actual inner Cargo commands, not an
+independent trace of child rustc/linker selection. Preserve the earlier
+--check-cfg/libLLVM failures rather than claiming these selectors prove their
+exact cause.
+
+Generated gate caches and retained artifacts constrained disk headroom. Approved
+cleanup was limited to unrecorded, inactive a1/b4/b5/b3 metadata or gate caches,
+with all mapped executables/raw/snapshots and the own warm cache protected.
+The initial a1 cache was CoW-cloned into a separate writable target. A real
+cleanup mistake matched own .d output targets instead of only prerequisites:
+a1 removed 2,293 files / 2,749,474,741 logical bytes, own 2,204 /
+1,933,491,002. Not all own dependencies were proven stale; no protected artifact
+was lost, and dependencies rebuilt in 26.62 s. Later cleanup used explicit
+completed-cache scope plus retained-map/active-use/identity checks. Before the
+kept build free space was 18.013 GB, after capture 16.756 GB. Logical totals
+are not physical reclaimed-byte claims. Other disk drift remains untraced;
+no unrelated checkout/global cache or user/system process was altered.
+
+**Retained identities.** All paths below are relative to ignored
+`tools/bench/work/`. The build manifests retain complete source HEAD/tree/file
+maps, exact commands, tool versions and original/saved artifact maps. Per-cell
+raw files retain bodies' expected byte/hash identities, state guards, CPU and
+host observations, cold/RSS and all rounds. The separate screen manifests are
+explicitly experimental and never forge full-contract qualification.
+
+| Path | SHA-256 |
+| --- | --- |
+| `request-profile/json-baseline-190df012/build.json` | `b6798893d914d2857259cc0b004f7d04b198ed14758d8609b351a4dd5e938d6d` |
+| `request-profile/json-candidate-1db7e872/build.json` | `58fc0918df8980308248977541c47c5dfb0cc946ef01a53f5ec7e43e62b0e9cd` |
+| `request-profile/json-first-288a6778/build.json` | `b1652f731c9ec1a097d63e09359ee70703d0e2b5aa5b5f84a2256d8f12772228` |
+| `request-profile/json-baseline-190df012/capacity-none-pg-off-c16-r3/results.json` | `80565fdc1f62b65e0d74de7b152ed92d60a09a36f8e1c9959878b9d43ebf23ee` |
+| `request-profile/json-candidate-1db7e872/capacity-none-pg-off-c16-r3/results.json` | `6fbb72adc93abaa04d17ee50a612c60abf8c1e17d30a8b199406a0bd9a67f370` |
+| `request-profile/json-baseline-190df012/capacity-awake-none-pg-off-c16-r3/results.json` | `51571cd1ea0a6a1fdba13f5087b96b7bb65571253163f51f72cdaec7bda57ffc` |
+| `request-profile/json-candidate-1db7e872/capacity-awake-none-pg-off-c16-r3/results.json` | `1492766c5d4badc81f0412fe5cf97a7b758614742c4d3327047f5060ab06a65d` |
+| `request-profile/json-first-288a6778/capacity-awake-none-pg-off-c16-r3/results.json` | `c360d47969bed02165943d6479e7a6f8823e32ab8d651fda607d9c992456225d` |
+| `request-profile/json-baseline-190df012/failed-builds/1db7e872-native-build-E0786.json` | `a4c1afa61f786c524cf67cf7829b5c577ac1eef478c07a03f670e9b5b4c79dc5` |
+| `worker-screen/reserve-profiles-7a7c9347/build.json` | `feca840cccfead239ff256695d443ad0320e07d81a8b5b4675dd3bf465f9e1ef` |
+| `worker-screen/reserve-profiles-7a7c9347/screen24-none-pg-off-c16/results.json` | `7db2fa31e57ecbb840535264f5e694ff3e626126e4c334cbdc16702017cd8479` |
+| `string-screen/writers-548d4a2c/build.json` | `ac541a2091524f73ea9815f8bfd009a01ea697c081757e00c24ed27c5ee7ad50` |
+| `string-screen/writers-548d4a2c/results.json` | `c83883c91375e3568979618a00a96817fd0ef3381e97b9cc37196a35d3bc7980` |
+| `string-screen/writers-first-58c0b447/build.json` | `95078f10df70747ab83997403afdb05285cb8e6440ec87abf03df6408d700cc4` |
+| `string-screen/writers-first-58c0b447/results.json` | `90e94a82eced9da8ed6a5ac75bc26e524de4257cc0351e58ac7d7c63b170ea49` |
+
+Full reproduction commands and guard scopes are in the bench README. Shipping
+compiler defaults remain unchanged. The next separate chunk targets the
+dominant signed-read path; no PostgreSQL protocol pipelining is implemented here.

@@ -1627,6 +1627,8 @@ pub fn write_string(text: &str, out: &mut String) {
     {
         // An ASCII escape byte is always a UTF-8 boundary.
         out.push_str(&text[..index]);
+        // Repeated spans regressed escape-dense strings; keep the scalar suffix.
+        // See docs/compiler-runtime.md §2.11 for the measured tradeoffs.
         for c in text[index..].chars() {
             match c {
                 '"' => out.push_str("\\\""),
