@@ -1,0 +1,1 @@
+{"compilerOptions":{"strict":true,"target":"ES2022","lib":["ES2024","DOM"],"module":"NodeNext","moduleResolution":"NodeNext","noEmit":true,"skipLibCheck":true},"include":["*.ts"]}

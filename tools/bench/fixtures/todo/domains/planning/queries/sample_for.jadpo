@@ -1,0 +1,8 @@
+use planning/entities { Sample, SampleNotFound }
+use planning/types { SampleView }
+
+query sample_for(sample_id: Sample.id) fails SampleNotFound -> SampleView {
+    from: Sample
+    where: Sample.id == sample_id
+    missing: SampleNotFound
+}

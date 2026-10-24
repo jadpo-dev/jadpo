@@ -1229,6 +1229,16 @@ fn a_deployable_carries_its_supported_locales_and_answers_what_dev_answers() {
         })
         .collect();
     assert_eq!(carried.len(), 1, "{carried:?}");
+    // A cargo cache restore can leave the digest folder but prune mod.rs.
+    // Build again against the same cargo target: repair must happen before
+    // ICU4X's include! reads its generated data, not merely before export.
+    fs::remove_file(carried[0].join("mod.rs")).expect("pruned locale module");
+    let rebuilt = run(
+        &["build".to_string(), "--json".to_string()],
+        &at(&root, &cache),
+    );
+    assert_eq!(rebuilt.code, 0, "{}{}", rebuilt.stdout, rebuilt.stderr);
+    assert!(carried[0].join("mod.rs").is_file());
     let months = fs::read_to_string(carried[0].join("datetime_names_month_gregorian_v1.rs.data"))
         .expect("the carried month names");
     for word in ["September", "septembre"] {

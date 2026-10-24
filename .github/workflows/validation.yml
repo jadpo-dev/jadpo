@@ -42,7 +42,11 @@ jobs:
           channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
           rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: Formatting, clippy, the example-name ban and the editor grammar
+      - name: Install Node for the pinned benchmark baseline type check
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Formatting, clippy, benchmark correctness and baseline types
         run: python3 tools/verify.py --group lint
 
   docs:

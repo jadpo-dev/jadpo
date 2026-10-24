@@ -1,0 +1,5 @@
+use planning/entities { Sample }
+
+type SampleView = Output {
+    pick: [Sample.id, Sample.title, Sample.payload]
+}

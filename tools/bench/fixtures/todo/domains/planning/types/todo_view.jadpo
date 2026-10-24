@@ -1,0 +1,5 @@
+use planning/entities { Todo }
+
+type TodoView = Output {
+    pick: [Todo.id, Todo.title]
+}
