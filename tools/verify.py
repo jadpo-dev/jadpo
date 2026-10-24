@@ -394,6 +394,10 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # a tag of its own, and templates are built under a name of their own
     # and renamed.
     if full:
+        # One wrapper owns npm installation and the whole TS pipeline under an
+        # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
+        checks.append(Step('TypeScript golden todo: static, integration and shared conformance', 'tests',
+                           [python, 'examples/golden-todo/typescript/adapter/verify.py'], postgres=True))
         # Each prints its `skipped:` lines (a server too old for a test, on
         # a developer's machine), which libtest otherwise keeps to itself.
         checks += [Step(name, 'tests', tests=modules(tests),

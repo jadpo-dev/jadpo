@@ -1,0 +1,40 @@
+{
+  "name": "golden-todo-typescript",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --maxWorkers=2 --exclude test/postgres.test.ts",
+    "build": "tsc --noEmit false --outDir build",
+    "start": "node --experimental-strip-types src/server.ts",
+    "start:bun": "bun src/server.ts",
+    "db:generate": "drizzle-kit generate",
+    "inventory": "node --experimental-strip-types src/inventory.ts",
+    "test:all": "vitest run --maxWorkers=2",
+    "test:integration": "vitest run test/postgres.test.ts",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"adapter/**/*.ts\" \"*.{json,mjs,ts,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"adapter/**/*.ts\" \"*.{json,mjs,ts,md}\""
+  },
+  "dependencies": {
+    "@casl/ability": "6.7.3",
+    "@hono/node-server": "1.19.5",
+    "@hono/zod-openapi": "1.1.0",
+    "drizzle-orm": "0.44.7",
+    "hono": "4.10.0",
+    "jose": "6.1.0",
+    "postgres": "3.4.7",
+    "uuid": "13.0.0",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.2",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.0.17"
+  }
+}
