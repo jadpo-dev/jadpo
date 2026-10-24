@@ -1618,20 +1618,33 @@ pub fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
 
 /// `text` as a JSON string.
 pub fn write_string(text: &str, out: &mut String) {
+    // Ordinary text plus the quotes fits without repeated buffer growth.
+    out.reserve(text.len() + 2);
     out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
+    let mut start = 0;
+    for (index, byte) in text.bytes().enumerate() {
+        if byte >= 0x20 && byte != b'"' && byte != b'\\' {
+            continue;
         }
+        // An escape is ASCII, so both sides are UTF-8 boundaries. Copy the
+        // intervening text unchanged, including all non-ASCII scalars.
+        out.push_str(&text[start..index]);
+        match byte {
+            b'"' => out.push_str("\\\""),
+            b'\\' => out.push_str("\\\\"),
+            b'\n' => out.push_str("\\n"),
+            b'\r' => out.push_str("\\r"),
+            b'\t' => out.push_str("\\t"),
+            control => {
+                const HEX: &[u8; 16] = b"0123456789abcdef";
+                out.push_str("\\u00");
+                out.push(char::from(HEX[usize::from(control >> 4)]));
+                out.push(char::from(HEX[usize::from(control & 0xf)]));
+            }
+        }
+        start = index + 1;
     }
+    out.push_str(&text[start..]);
     out.push('"');
 }
 
