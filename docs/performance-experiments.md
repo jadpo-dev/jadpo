@@ -474,10 +474,15 @@ valid/invalid UTF-8, source errors and JSONB marker behavior; no speed claim
 comes from invalid-input allocation changes. Control Wasm hashes F/P are
 `aaaa36e8f40e0ba00fa016b3894cecfcea6fc0e97fd2690f1e4cea8da11af37b` /
 `bfee1086ec828fb816201e1421ef70c5b53bbbe9cb3d656759dd6877b0d5afcb`.
-The initial offline resolver failure source `0336a026` remains under
-`f-offline-resolution-attempt`; no load ran on that failed setup. Two exact
-cached index/archive records were checksum-verified and copied into the active
-Cargo namespace, without downloading. Generated app code/plans remain equal
+The recorded initial offline resolver setup failure occurred before any load
+or build-manifest capture. Its source
+`0336a0261e787eabc69d620f5793f16b99682d60` is retained by the Git ref
+`refs/experiments/a4-baseline-84e1c00b/f-offline-resolution-attempt`, not an
+archive folder. Exact resolver stderr remains in task tool/session 31169 output,
+not a durable local archive file; that setup attempt has no build manifest,
+benchmark raw or timing. Two exact cached index/archive records were
+checksum-verified and copied into the active Cargo namespace, without
+downloading. Generated app code/plans remain equal
 across B/F/P except lock entry; no source/artifact guard was bypassed. Prototype
 source, prerequisites and all immutable artifacts were retained before reset.
 
