@@ -291,6 +291,25 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   numbered and the paths each run took compared, and fuzzed function
   bodies run both ways, as §2.5 once promised.
 
+- [ ] **9.4 Native parallelism and worker sizing:** `opus · xhigh`
+  **queued; needs planning; unestimated** (Richard, 2026-10-24). Separate
+  follow-up to the native baseline in 9.1d4; adding it does not expand the
+  current 9.2 optimisation batch. Explain how compiled native and `jadpo dev`
+  distribute connections, requests and background work, and how worker counts
+  are chosen; distinguish concurrent requests from parallel work within one.
+  Assess reported logical CPUs, affinity/container CPU quotas, mixed CPU/I/O
+  workloads, memory and database pressure, and whether fixed limits, fractions
+  or adaptive sizing would help. Compare throughput, p95 and CPU/request under
+  equal CPU budgets, including bursty/mixed workloads, before recommending
+  defaults or an operator override. Done when current behaviour and limits,
+  measured alternatives and whether configuration is warranted are documented
+  in compiler/runtime §2.6/§2.11, with the recommendation and remaining choices
+  explicit. Area 14 currently specifies one worker per core; any change to that
+  rule or new public configuration needs Richard's decision before building.
+  First planning step: inspect the hosts/scheduler and area pages, select a
+  bounded local matrix and then estimate; no parallelism change is authorised
+  by this roadmap capture.
+
 ## Phase 10 — Golden todo
 
 - [ ] **10.1 The golden todo end to end** `opus · high` on both targets, rewritten in the
