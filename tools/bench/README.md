@@ -1015,3 +1015,11 @@ and limits. Across large named captures the generic `json::write_string` has
 reads show socket/scheduling/GC costs. This selects a bounded next optimisation
 candidate; this chunk implements no production optimisation. The broad
 four-runtime application throughput matrix remains deferred.
+
+
+The corrected-summary final harness is gated at
+`0722190157965defdbf16063afbeba5557a12c00` (tree
+`82c59069450ca05e5cf7dd7bbae3573c03f87084`), 93/93 steps in 493 s; captures
+remain exact earlier `16d24dc48a4ed734f3a4ad3faf65403f790ead27`. The count
+correction has no production effect and needs no benchmark rerun. Subsequent
+changes record facts/method prose only.

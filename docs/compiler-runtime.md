@@ -7394,3 +7394,17 @@ Canonical sorted compact JSON source-file-map SHA-256 is
 artifact-map SHA-256 is
 `34fd47ea958b343c0118ebb00acda710e133ee294d62c3e76ab91f68a75617d8`.
 Reproduction commands and interpretation boundaries are in the bench README.
+
+
+The final corrected-summary harness passed the full gate separately at
+`0722190157965defdbf16063afbeba5557a12c00`, tree
+`82c59069450ca05e5cf7dd7bbae3573c03f87084`: **93/93 steps in 493 s**, direct
+stdout, all owned processes reaped. This includes the six profiler controls,
+both 44-case golden targets, 264 compiled corpus projects / 526 tests / 5,832
+typed-entry comparisons, workerd's eight route tests across three projects,
+and kiosk linear memory unchanged at 12,058,624 bytes after 100 and 500
+bookings. Only the established pgvector 0.7-versus-0.8 skips remain. The earlier
+1,147 s gate and this gate are not controlled build-speed comparisons. The
+accepted profiles remain the original 16d24dc4 captures; correcting derived
+inclusive counts and recording these facts requires no timing rerun. Only
+facts/method prose follows the final corrected-code gate.
