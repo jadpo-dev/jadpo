@@ -1,7 +1,8 @@
 # Jadpo documentation
 
-**Jadpo — one language for the whole web.** A programming language for
-software written mainly by LLMs and reviewed by people.
+Jadpo is an experimental programming language for web backends written mainly
+by LLMs and reviewed by people. Start with the [project introduction](../README.md),
+[teaching examples](../examples/README.md) or the [language map](language/README.md).
 
 ## What is current
 
