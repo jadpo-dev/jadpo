@@ -158,7 +158,7 @@ class Postgres:
     """A disposable server: trusted on 127.0.0.1, no Unix socket,
     `synchronous_commit` off so commits don't wait for the disk."""
 
-    def __init__(self):
+    def __init__(self, diagnostics=False):
         self.data = WORK / 'pg'
         shutil.rmtree(self.data, ignore_errors=True)
         run([tool('initdb'), '-D', str(self.data), '-U', 'jadpo', '--auth=trust', '-E', 'UTF8'],
@@ -166,6 +166,9 @@ class Postgres:
         self.port = free_port()
         options = (f'-p {self.port} -c unix_socket_directories= -c listen_addresses=127.0.0.1 '
                    '-c max_connections=400 -c synchronous_commit=off -c shared_buffers=256MB')
+        if diagnostics:
+            # Process-lifetime diagnostics only; never persist server settings.
+            options += ' -c log_duration=on -c log_parameter_max_length=0 -c log_parameter_max_length_on_error=0'
         run([tool('pg_ctl'), '-D', str(self.data), '-l', str(WORK / 'pg.log'), '-o', options, '-w', 'start'],
             stdout=subprocess.DEVNULL)
 

@@ -95,8 +95,8 @@ def build():
 
 
 class Database(spike.Postgres):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, diagnostics=False):
+        super().__init__(diagnostics=diagnostics)
         try:
             self.sql('postgres', "ALTER SYSTEM SET log_statement = 'all'")
             self.sql('postgres', 'SELECT pg_reload_conf()')
@@ -124,10 +124,10 @@ class Database(spike.Postgres):
 
 
 class Server(spike.Server):
-    def __init__(self, target, pg, logs):
+    def __init__(self, target, pg, logs, inspector=None):
         if target in ('native', 'workers'):
             try:
-                super().__init__(target, pg, logs)
+                super().__init__(target, pg, logs, inspector)
             except BaseException:
                 if hasattr(self, 'process'):
                     spike.stop(self.process)
@@ -184,7 +184,7 @@ def registered(server, handle):
     return data
 
 
-def prepare(server, pg, principals):
+def prepare(server, pg, principals, sample_payloads=None):
     """Same immutable seed before every cell; setup is outside all timings."""
     database = server.target
     pg.logging(True)
@@ -217,7 +217,10 @@ def prepare(server, pg, principals):
     expected = cases[0]['expected_json']
     seeded.extend(f"('20000000-0000-4000-8000-{i:012d}', '{bob['id']}', 'other-{i:03d}')" for i in range(50))
     pg.sql(database, 'INSERT INTO todo (id, owner_id, title) VALUES ' + ','.join(seeded))
-    pg.sql(database, f"INSERT INTO sample (id,title,payload) VALUES ('{SMALL}','small',repeat('x',100)),('{LARGE}','large',repeat('x',65536))")
+    sample_payloads = sample_payloads or {SMALL: 'x'*100, LARGE: 'x'*65536}
+    for identity, title in ((SMALL, 'small'), (LARGE, 'large')):
+        payload = sample_payloads[identity].replace("'", "''")
+        pg.sql(database, f"INSERT INTO sample (id,title,payload) VALUES ('{identity}','{title}','{payload}')")
     for credential, code in ((None, 'authentication_required'), ('forged.invalid.credential', 'invalid_credentials')):
         status, data, _ = request(server, 'GET', '/api/todos', token=credential)
         validate_failure(status, data, 401, code)
@@ -266,7 +269,7 @@ def prepare(server, pg, principals):
     if saved != alice['id'] + ':probe-write':
         raise ValueError('A write did not persist to its signed owner')
     pg.sql(database, f"DELETE FROM todo WHERE id='{created['id']}'")
-    for identity, title, payload in ((SMALL, 'small', 'x' * 100), (LARGE, 'large', 'x' * 65536)):
+    for identity, title, payload in ((SMALL, 'small', sample_payloads[SMALL]), (LARGE, 'large', sample_payloads[LARGE])):
         status, data, _ = request(server, 'GET', '/api/samples/' + identity)
         if status != 200:
             raise ValueError('Sample read failed')
@@ -279,8 +282,11 @@ def prepare(server, pg, principals):
     return alice['id'], token, expected, cases, first_signed_at, {'signed_list_selects': len(statements), 'write_statements': write_statements}
 
 
-def measure(server, pg, route, connections, warmup, duration, principals, address_pool, row):
-    owner, token, expected, cases, signed_at, obligations = prepare(server, pg, principals if route in ('write', 'signed-list') else 1)
+def measure(server, pg, route, connections, warmup, duration, principals, address_pool, row, observer=None, payload=None):
+    samples = {SMALL: payload if payload is not None and route == 'read' else 'x'*100,
+               LARGE: payload if payload is not None and route == 'large' else 'x'*65536}
+    owner, token, expected, cases, signed_at, obligations = prepare(server, pg, principals if route in ('write', 'signed-list') else 1, samples)
+    sample_before = pg.query(server.target, 'SELECT json_agg(s ORDER BY id) FROM sample s')
     before = int(pg.query(server.target, 'SELECT count(*) FROM todo'))
     if time.monotonic() - signed_at + warmup + duration + 45 > 290:
         raise ValueError('Credential setup took too long for the signed measurement window')
@@ -292,7 +298,7 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
             body, path = expected, '/api/todos'
         else:
             large = route == 'large'
-            identity, title, payload = (LARGE, 'large', 'x' * 65536) if large else (SMALL, 'small', 'x' * 100)
+            identity, title, payload = (LARGE, 'large', samples[LARGE]) if large else (SMALL, 'small', samples[SMALL])
             body, path = {'id': identity, 'title': title, 'payload': payload}, '/api/samples/' + identity
         expected_file = WORK / 'expected.json'
         expected_file.write_text(json.dumps(body))
@@ -311,19 +317,32 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
         while not done.wait(0.25):
             peak[0] = max(peak[0], spike.rss_mb(server.process.pid))
     sampler = threading.Thread(target=sample)
+    if observer:
+        observer.start()
     load1 = os.getloadavg()[0]
     load_started = time.monotonic()
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    row['load_started_unix'] = time.time()
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except BaseException:
+        if observer:
+            observer.close()
+        raise
     sampler.start()
     try:
         time.sleep(max(0, warmup - (time.monotonic() - load_started)))
         cpu_before = spike.cpu_s(server.process.pid)
         host_before = host_cpu_ticks()
         out = load_output(process, warmup + duration + 45, row)
+        row['load_completed_unix'] = time.time()
         cpu_after = spike.cpu_s(server.process.pid)
         host_after = host_cpu_ticks()
+        if observer:
+            observer.stop()
         row.update(json.loads(out))
         validate_measurement(row)
+        if pg.query(server.target, 'SELECT json_agg(s ORDER BY id) FROM sample s') != sample_before:
+            raise ValueError('Read workload changed persisted sample fields')
         after = int(pg.query(server.target, 'SELECT count(*) FROM todo'))
         if route == 'write':
             successes = row['all_statuses'].get('201', 0)
@@ -345,6 +364,8 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
     finally:
         if process.poll() is None:
             spike.stop(process)
+        if observer:
+            observer.close()
         done.set()
         sampler.join()
 

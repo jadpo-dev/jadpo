@@ -258,7 +258,7 @@ def seed(pg, target, owners):
 
 
 class Server(spike.Server):
-    def __init__(self, target, pg, environment):
+    def __init__(self, target, pg, environment, inspector=None):
         self.target, self.port = target, spike.free_port()
         self.helpers, self.memory_port = [], None
         self.header = 'x-forwarded-for: {ip}'
@@ -283,6 +283,8 @@ class Server(spike.Server):
                 cwd = spike.workerd_config(WORK / 'workerd', self.port, f'127.0.0.1:{pool_port}',
                                            target, self.memory_port, trusted_loopback=True)
                 command = [str(spike.workerd()), 'serve', 'config.capnp']
+                if inspector:
+                    command.append(f'--inspector-addr=127.0.0.1:{inspector}')
             self.spawned = time.monotonic()
             self.process = subprocess.Popen(command, cwd=cwd,
                 env={**os.environ, **environment, 'PORT': str(self.port), 'HOST': '127.0.0.1'},
@@ -403,7 +405,7 @@ def load_output(process, timeout, row):
     return out
 
 
-def measure(server, pg, owners, cases, route, connections, warmup, duration, row):
+def measure(server, pg, owners, cases, route, connections, warmup, duration, row, observer=None):
     before = pg.state(server.target)
     filename = WORK / 'credential-cases.json'
     filename.write_text(json.dumps(cases)); filename.chmod(0o600)
@@ -421,9 +423,17 @@ def measure(server, pg, owners, cases, route, connections, warmup, duration, row
         while not done.wait(0.25):
             peak[0] = max(peak[0], spike.rss_mb(server.process.pid))
     sampler = threading.Thread(target=sample)
+    if observer:
+        observer.start()
     start = time.monotonic()
     load_average = os.getloadavg()[0]
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    row['load_started_unix'] = time.time()
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except BaseException:
+        if observer:
+            observer.close()
+        raise
     sampler.start()
     try:
         # CPU spans measurement through completed slow tails. Warmup is excluded.
@@ -432,9 +442,12 @@ def measure(server, pg, owners, cases, route, connections, warmup, duration, row
         helper_before = sum(spike.cpu_s(helper.pid) for helper in server.helpers)
         host_before = host_cpu_ticks()
         out = load_output(process, warmup + duration + 45, row)
+        row['load_completed_unix'] = time.time()
         cpu_after = spike.cpu_s(server.process.pid)
         helper_after = sum(spike.cpu_s(helper.pid) for helper in server.helpers)
         host_after = host_cpu_ticks()
+        if observer:
+            observer.stop()
         row.update(json.loads(out))
         validate_measurement(row)
         after = pg.state(server.target)
@@ -458,6 +471,8 @@ def measure(server, pg, owners, cases, route, connections, warmup, duration, row
     finally:
         if process.poll() is None:
             spike.stop(process)
+        if observer:
+            observer.close()
         done.set(); sampler.join()
         filename.unlink(missing_ok=True)
 

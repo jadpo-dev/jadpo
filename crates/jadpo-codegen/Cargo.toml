@@ -39,3 +39,8 @@ workspace = true
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+# Diagnostic rebinding only; production `jadpo build` still removes names.
+[[example]]
+name = "jadpo-profile-worker"
+path = "../../tools/bench/profile_bind.rs"
