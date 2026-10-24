@@ -1,0 +1,10 @@
+use planning/types { Payload, Title }
+
+entity Sample {
+    id: Uuid
+    title: Title
+    payload: Payload
+    policy: {
+        read: [Access.public]
+    }
+}

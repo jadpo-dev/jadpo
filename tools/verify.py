@@ -325,6 +325,11 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         Step('teaching examples: check, format and jadpo test', 'docs',
              [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
+        Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'tools/bench/check_typescript.py']),
+        Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'tools/bench', '-p', 'test_contracts.py']),
+        Step('benchmark load correctness', 'lint', ['cargo', 'test', '--locked', '--manifest-path', 'tools/bench/load/Cargo.toml', '--bin', 'load', '--test', 'protocol'], lane='cargo'),
+        Step('benchmark load formatting', 'lint', ['rustfmt', '--edition', '2024', '--check', 'tools/bench/load/src/bin/load.rs', 'tools/bench/load/tests/protocol.rs'], lane='cargo'),
+        Step('focused benchmark fixture', 'docs', [python, 'tools/bench/check_fixture.py'], jadpo=True),
         Step('example names', 'lint', [python, 'tools/example_names.py', '--check']),
         # The docs renderer finishes every page, and its list parser's
         # cases, each under a time limit (tools/language_docs_test.py).
