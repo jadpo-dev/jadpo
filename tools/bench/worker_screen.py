@@ -549,6 +549,127 @@ def smoke(label, output):
     print(f'passed: no-load reference setup smoke · {destination}')
 
 
+
+def qualification_source(producer, current):
+    """Only the qualifier and its tests may differ from the timed producer."""
+    allowed = {'tools/bench/worker_screen.py', 'tools/bench/test_worker_screen.py'}
+    if not all(source.get('head') and source.get('tree') and source.get('files')
+               for source in (producer, current)):
+        raise ValueError('Qualification source identity missing')
+    changed = {name for name in producer['files'].keys() | current['files'].keys()
+               if producer['files'].get(name) != current['files'].get(name)}
+    if changed-allowed:
+        raise ValueError('Timed production source differs from qualification source')
+    return sorted(changed)
+
+
+def qualify(label, output):
+    """Current-source 176 fallback cases plus exact timed production acceptance."""
+    directory = WORK/label
+    manifest = directory/'build.json'
+    stamp = json.loads(manifest.read_text())
+    current = guard.source()
+    changed = qualification_source(stamp['source'], current)
+    validate_manifest(stamp, stamp['source'])
+    if stamp.get('profile_levels') != ['s']:
+        raise ValueError('Selected qualification requires the shipping s profile')
+    destination = directory/output
+    destination.mkdir(exist_ok=False)
+    result = {'kind': 'worker-selected-qualification', 'complete': False,
+              'source': current, 'timed_producer': stamp['source'],
+              'compatible_harness_changes': changed, 'build': str(manifest),
+              'build_sha256': golden.sha(manifest), 'start': qualified.context(), 'rows': [],
+              'scope': '176 current-source contract cases use test controls and ordinary recorded fallback; separate production acceptance consumes exact timed Worker modules, without test hooks or operation counts.'}
+    try:
+        for app in ('golden', 'focused'):
+            harness = configure(directory/'s', app == 'focused')
+            database = harness.Database(diagnostics=False)
+            server = None
+            original = spike.workerd_config
+            row = {'application': app, 'verified': False}
+            result['rows'].append(row)
+            try:
+                qualified.check_duration_setting(database, False)
+                database.prepare('workers')
+                def configuration(*args, **kwargs):
+                    path = original(*args, **kwargs)
+                    row['consumed_host'] = qualified.capture_host(path,
+                        directory/'s'/app/'workers/build/target/kiosk', destination/f'{app}-host', stamp)
+                    return path
+                spike.workerd_config = configuration
+                if app == 'golden':
+                    environment = golden.configuration(database.url('workers'), secrets.token_urlsafe(32))
+                    owners, _ = golden.credentials('workers', environment, 2)
+                    golden.seed(database, 'workers', owners)
+                    before = database.state('workers')
+                    server = golden.Server('workers', database, environment)
+                    cases = golden.cases_for(server, owners, 'read')
+                    listed = golden.cases_for(server, owners, 'signed-list')
+                    row['owner_reads'] = [qualified.wire_probe(server, case['path'], case['expected_json'], owner['token'])
+                                          for case, owner in zip(cases, owners)]
+                    row['list'] = qualified.wire_probe(server, listed[0]['path'], listed[0]['expected_json'], owners[0]['token'])
+                    expected = {'id': owners[0]['id'], 'todos': sorted(listed[0]['expected_json']['items'], key=lambda item: item['id'])}
+                    row['include'] = qualified.wire_probe(server, '/users/'+owners[0]['id']+'/todos', expected, owners[0]['token'])
+                    for path in (cases[1]['path'], '/todos/ffffffff-ffff-4fff-8fff-ffffffffffff'):
+                        status, body = golden.request(server, 'GET', path, owners[0]['token'])
+                        golden.validate_failure(status, body, 404, 'todo_not_found')
+                    for token, code in ((None, 'authentication_required'), ('jadpo_token_'+'0'*64+'.invalid', 'invalid_credentials')):
+                        status, body = golden.request(server, 'GET', cases[0]['path'], token)
+                        golden.validate_failure(status, body, 401, code)
+                    if before != database.state('workers'):
+                        raise ValueError('Production read acceptance changed golden rows')
+                    row['controls'] = ['owner bodies', 'foreign and missing concealed', 'absent and forged credentials', 'ordinary list and includes', 'unchanged rows']
+                else:
+                    logs = harness.WORK/'logs'; logs.mkdir(exist_ok=True)
+                    server = harness.Server('workers', database, logs)
+                    payload = qualified.payloads()['unicode-large']
+                    harness.prepare(server, database, 1, {harness.SMALL: 'x'*100, harness.LARGE: payload})
+                    before = database.query('workers', 'SELECT json_agg(s ORDER BY id) FROM sample s')
+                    row.update(qualified.wire_probe(server, '/api/samples/'+harness.LARGE,
+                               {'id': harness.LARGE, 'title': 'large', 'payload': payload}))
+                    if before != database.query('workers', 'SELECT json_agg(s ORDER BY id) FROM sample s'):
+                        raise ValueError('Production read acceptance changed sample rows')
+                    row['controls'] = ['large canonical body', 'existing absent/forged/expired opaque credentials', 'signed owner isolation', 'persisted write and unchanged samples']
+                qualified.validate_host(row['consumed_host'])
+                qualified.check_duration_setting(database, False)
+                row['verified'] = True
+            finally:
+                spike.workerd_config = original
+                if server: server.stop()
+                database.stop()
+        # This checks the timed signing helper BEFORE conformance rebuilds it.
+        qualification_source(stamp['source'], guard.source())
+        post_guard(stamp, stamp['source'], result['rows'])
+        result['timed_build_postguard_before_conformance'] = True
+        result['conformance'] = golden.conformance()
+        result['conformance_artifacts'] = {'artifacts': {}, 'saved': {}}
+        artifacts = result['conformance_artifacts']
+        for path in [ROOT/'target/jadpo-compiled/golden-todo/native/debug/golden-native-contract',
+                     spike.JADPO, *sorted((ROOT/'tools/golden-todo/work/workers/bound').glob('*'))]:
+            if path.is_file(): snapshot(path, destination, artifacts)
+        # The conformance helper has its own identity; saved timed inputs and
+        # actual served files remain guarded after its live path is rebuilt.
+        for saved in stamp['saved'].values():
+            if golden.sha(saved) != stamp['artifacts'][saved]:
+                raise ValueError('Immutable timed input changed during conformance')
+        for row in result['rows']: qualified.validate_host(row['consumed_host'])
+        for profile in stamp['profiles'].values():
+            for app in profile['apps'].values():
+                for path in Path(app['production']).iterdir():
+                    if path.is_file() and golden.sha(path) != stamp['artifacts'].get(str(path)):
+                        raise ValueError('Timed production module changed during conformance')
+        if guard.source() != current or golden.sha(manifest) != result['build_sha256']:
+            raise ValueError('Qualification source or timed manifest changed')
+        result['complete'] = True
+    except BaseException as error:
+        result['failure'] = str(error)
+        raise
+    finally:
+        result['end'] = qualified.context()
+        (destination/'results.json').write_text(json.dumps(result, indent=2)+'\n')
+    print(f'passed: selected qualification · 176 fallback cases + exact timed production acceptance · {destination}')
+
+
 def run(label, output, duration, warmup, principals, workloads=WORKLOADS, rounds=2):
     directory = WORK/label
     manifest = directory/'build.json'
@@ -661,6 +782,9 @@ def main():
     smoke_parser = commands.add_parser('smoke')
     smoke_parser.add_argument('--label', required=True)
     smoke_parser.add_argument('--output', required=True)
+    qualify_parser = commands.add_parser('qualify')
+    qualify_parser.add_argument('--label', required=True)
+    qualify_parser.add_argument('--output', required=True)
     run_parser = commands.add_parser('run')
     run_parser.add_argument('--label', required=True)
     run_parser.add_argument('--output', required=True)
@@ -677,7 +801,7 @@ def main():
                                   or args.principals < 2048
                                   or not re.fullmatch('[a-z0-9][a-z0-9-]*', args.output)):
         parser.error('invalid load window, credential pool or output name')
-    if args.command == 'smoke' and not re.fullmatch('[a-z0-9][a-z0-9-]*', args.output):
+    if args.command in ('smoke', 'qualify') and not re.fullmatch('[a-z0-9][a-z0-9-]*', args.output):
         parser.error('invalid setup output name')
     if args.command == 'build' and args.reference_results and not args.reference_build:
         parser.error('reference results require a reference build')
@@ -686,6 +810,8 @@ def main():
         build(args.label, args.tools_from, args.profiles, args.reference_build, args.reference_results)
     elif args.command == 'smoke':
         smoke(args.label, args.output)
+    elif args.command == 'qualify':
+        qualify(args.label, args.output)
     else:
         run(args.label, args.output, args.duration, args.warmup, args.principals, args.workloads, args.rounds)
 

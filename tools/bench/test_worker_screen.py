@@ -39,6 +39,23 @@ class WorkerScreenControls(unittest.TestCase):
                 for record in apps.values()]}
         return stamp
 
+    def test_selected_qualification_allows_only_explicit_harness_changes(self):
+        from worker_screen import qualification_source
+        source = {'head': 'timed', 'tree': 'tree', 'files': {
+            'crates/jadpo-runtime/src/store.rs': {'mode': '100644', 'sha256': 'a'},
+            'tools/bench/worker_screen.py': {'mode': '100644', 'sha256': 'b'}}}
+        current = copy.deepcopy(source)
+        current.update(head='qualifier', tree='newtree')
+        current['files']['tools/bench/worker_screen.py']['sha256'] = 'qualifier'
+        self.assertEqual(qualification_source(source, current), ['tools/bench/worker_screen.py'])
+        for change in (lambda s: s['files']['crates/jadpo-runtime/src/store.rs'].update(sha256='drift'),
+                       lambda s: s['files']['crates/jadpo-runtime/src/store.rs'].update(mode='100755'),
+                       lambda s: s['files'].update({'new.rs': {'mode': '100644', 'sha256': 'new'}}),
+                       lambda s: s['files'].pop('crates/jadpo-runtime/src/store.rs'),
+                       lambda s: s.update(tree='')):
+            bad = copy.deepcopy(current); change(bad)
+            with self.assertRaises(ValueError): qualification_source(source, bad)
+
     def test_profile_matrix_and_source_artifacts_fail_closed(self):
         with tempfile.TemporaryDirectory() as raw:
             stamp = self.manifest(Path(raw))
