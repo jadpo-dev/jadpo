@@ -3,17 +3,27 @@
 //! data the plan decides and the runtime keeps, so both executors record
 //! and replay steps the same way.
 
-/// What the runtime keeps for an action whose longest way makes several
-/// changing calls, when it is run where its key survives a retry: by a
+/// The storage tag for a metadata-only record's shape. Legacy untagged
+/// shapes belong to encrypted replay records. It is part of the plan's
+/// shape too, so operator build comparisons use the same representation.
+pub const DISPATCH_SHAPE_PREFIX: &str = "dispatch-v1:";
+
+/// What the runtime keeps for several changing calls or a single keyed
+/// change, when it is run where its key survives a retry: by a
 /// subscriber, or by a route whose API requires `Idempotency-Key`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RecordPlan {
     /// The store its record is kept in: the one it writes, or the one
     /// `events: { store: }` names, beside its outbox.
     pub store: String,
-    /// A digest of its step shape: the outside calls on each way through
+    /// Its step-shape digest, prefixed with `DISPATCH_SHAPE_PREFIX` only
+    /// for dispatch metadata: the outside calls on each way through
     /// it, those of the actions it calls included (area 11, "Deploys").
     pub shape: String,
+    /// Several changing calls keep encrypted answers and fingerprints for
+    /// replay. A single keyed call keeps only dispatch metadata to bound
+    /// retries; it needs no encryption setting and leaves code time fresh.
+    pub replay: bool,
 }
 
 /// The largest answer a step keeps, in bytes: a larger one is a fault

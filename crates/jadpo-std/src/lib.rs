@@ -62,6 +62,7 @@ mod builtin;
 pub mod canonical;
 pub mod compiled;
 pub mod config;
+mod connection_url;
 pub mod connections;
 pub mod constant;
 pub mod database_tls;

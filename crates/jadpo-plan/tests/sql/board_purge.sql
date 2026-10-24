@@ -4,7 +4,7 @@ WHERE "id" IN (
   SELECT "id"
   FROM "board"
   WHERE "deleted_at" IS NOT NULL
-    AND "deleted_at" <= $1
+    AND "deleted_at" < $1
     AND NOT EXISTS (
       SELECT 1
       FROM "banner" AS "held1"

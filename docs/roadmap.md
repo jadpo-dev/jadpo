@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-22. This page is the only list of outstanding work: the
+**Updated:** 2026-10-23. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here. Finished phases,
@@ -225,7 +225,41 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   end to end on both targets, its contract cases passing, and independent
   review of the whole first build remain required, as does Phase 10.2's
   agent comparison. Do not substitute generic fixtures for this benchmark.
-  Needed before runtime performance changes.
+  Needed before runtime performance changes. Delivered through 9.1d1–9.1d4
+  below; sessions take their first unticked concrete subchunk. The split
+  changes sizing, not the application or comparison scope.
+- [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
+- [ ] **9.1d2 Golden todo and executable contract:** `opus · high` after
+  9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
+  the split isolates generic defects exposed by the executable contract
+  (2026-10-23), without reducing its 44-case scope.
+- [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
+- [ ] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
+  and 9.1d2a: implement the actual application from `examples/golden-todo`
+  using the current area pages, with all 44 case IDs executable on native
+  and workerd. Preserve the original candidate and make any correction
+  required by a decided area an explicit versioned successor, retaining the
+  case and its policy obligation. Include authentication timelines, physical
+  query accounting, omission-aware patches, pagination, relationships,
+  lifecycle, reminder delivery, preflight and dependency failures.
+  Unsupported cases remain visible and block completion; generic fixtures
+  do not count. Independent application and harness authoring may proceed
+  against an explicitly identified verified prerequisite checkout; final
+  own-worktree validation and completion await reviewed prerequisites on main.
+- [ ] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
+  implement the same versioned application contract and all 44 cases with
+  the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
+  on Bun and Node. Audit the reached request path against Jadpo's required
+  guarantees, including durable authentication, admission, cancellation,
+  transaction retries, idempotency and output validation before commit.
+  Declared schemas alone do not establish runtime response validation.
+- [ ] **9.1d4 Local application comparison:** `opus · high` after 9.1a,
+  9.1d2 and 9.1d3: run the complete golden todo plus focused reads, writes,
+  signed-in lists, large rows and cold start on native, workerd, Bun and
+  Node. Use the same validated contracts, authentication and fixtures;
+  check responses and persisted state, and record throughput, p95, cold
+  start, memory, exact sources and repeatable method with honest variability.
+  Tick 9.1d only after all four subchunks meet its original acceptance.
 - [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
   From the Phase 6 review: deliveries swept concurrently within each
