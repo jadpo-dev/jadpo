@@ -548,13 +548,15 @@ async fn attempt(
         id: delivery.id,
         attempt: 0,
     };
-    let claimed = crate::lease::claim(database, budget, &lease, now)
+    // Resolve only static connection names before claiming. Missing
+    // subscribers, depth, handled work, retry budgets and slots still settle
+    // in their original order below, before the breaker snapshot is used.
+    let subscriber = events.plan.subscriber(&delivery.subscriber);
+    let through = subscriber.map(|s| s.calls_through()).unwrap_or_default();
+    let claimed = outbox::claim(database, budget, &lease, &through, now)
         .await
         .ok()??;
-    let attempt = match claimed.first() {
-        Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(u32::MAX),
-        _ => return None,
-    };
+    let attempt = claimed.attempt;
     lease.attempt = attempt;
     let counted = SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX));
     let settle = |status: &'static str, next: Option<i64>, failure: Option<SqlValue>| {
@@ -569,7 +571,7 @@ async fn attempt(
             let _ = database.query_once(outbox::SETTLE, &params).await;
         }
     };
-    let Some(subscriber) = events.plan.subscriber(&delivery.subscriber) else {
+    let Some(subscriber) = subscriber else {
         settle(FAILED, None, Some(failure_json("subscriber_removed", None))).await;
         return Some((
             Outcome::Fault(ctx.fault(
@@ -654,7 +656,6 @@ async fn attempt(
     // Given back to run later, its attempt not counted, while a connection
     // it calls out through has every slot out (area 11, `max_concurrent:`;
     // chunk 7.6c): it waits in the outbox rather than in the worker.
-    let through = subscriber.calls_through();
     if through
         .iter()
         .any(|connection| host.slots().full(connection))
@@ -665,11 +666,19 @@ async fn attempt(
     }
     // Held, its attempt given back, while a provider it calls out to is
     // unavailable and isn't due a probe (chunk 7.2b).
-    let watch =
-        match crate::breaker::gate(database, &through, delivery.id, attempt, budget, now).await {
-            crate::breaker::Gate::Held => return None,
-            crate::breaker::Gate::Run(watch) => watch,
-        };
+    let watch = match crate::breaker::gate_snapshot(
+        database,
+        &claimed.breakers,
+        delivery.id,
+        attempt,
+        budget,
+        now,
+    )
+    .await
+    {
+        crate::breaker::Gate::Held => return None,
+        crate::breaker::Gate::Run(watch) => watch,
+    };
     // What the run sends outside is logged from here (chunk 7.0c).
     let mark = ctx.capabilities().calls().len();
     // A provider call's key is derived from the delivery's id, which every

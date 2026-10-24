@@ -258,6 +258,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::http::passkeys::USED.to_string(),
         ),
         ("outbox::CLAIM", crate::outbox::CLAIM.to_string()),
+        (
+            "outbox::claim_breakers_sql",
+            crate::outbox::claim_breakers_sql(),
+        ),
         ("outbox::DUE", crate::outbox::DUE.to_string()),
         (
             "outbox::FIND_HANDLED",
