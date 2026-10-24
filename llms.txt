@@ -1,0 +1,57 @@
+# Jadpo
+
+> An experimental, statically typed programming language for web backends written mainly by LLMs and reviewed by people. The compiler and runtime are written in Rust, with interpreted development and compiled native and WebAssembly deployables.
+
+This is a reading index, not the language specification or a guarantee of automatic retrieval. Follow the linked area pages for rules, current decisions, amendments and implementation status. Decided does not mean built. Earlier alternatives and archived examples remain on some pages for context. Do not infer the language from the README or a small example alone.
+
+The public project home is https://github.com/richardwillars/jadpo. Links below track main; use a single checkout or replace main with one commit SHA throughout when a consistent snapshot matters. A URL tool may require every relevant link explicitly. GitHub and the assistant's tools determine access; this file changes no crawler permissions.
+
+## Start here
+
+- [Project README](https://raw.githubusercontent.com/richardwillars/jadpo/main/README.md): Purpose, capabilities, maturity, setup and agent access.
+- [Language map](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/README.md): Task-based reading paths and all 21 specification areas.
+- [Examples](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/README.md): 28 complete teaching projects with comments and tests.
+- [Vision](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/vision.md): Why Jadpo exists and how responsibility is divided.
+- [Roadmap](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/roadmap.md): The only implementation tracker; separates outstanding work from completion.
+- [Compiler and runtime](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/compiler-runtime.md): The graph, interpreter, compiled targets and verification architecture.
+
+## Language specification
+
+Start with areas 1–4. For a data-backed authenticated API, add 5–9 and 13. For integrations and background work, add 10–12. For AI features, read 21 and its linked rules. For design review, read 9 and 15–18, keeping their planned features distinct from implemented checks.
+
+- [1. Project layout and modules](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/01-project-layout-and-modules.md): Domains, paths, visibility, imports and naming.
+- [2. Values and types](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/02-values-and-types.md): Named types, validation, refinements, objects, enums and collections.
+- [3. Logic](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/03-logic.md): Functions, actions, expressions, control flow and effects.
+- [4. Failures](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/04-failures.md): Declared failures, handling, propagation and runtime faults.
+- [5. Data](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/05-data.md): Entities, relationships, storage and migrations.
+- [6. Reads and writes](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/06-reads-and-writes.md): Queries, pagination, aggregates, transactions and concurrency.
+- [7. HTTP](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/07-http.md): Routes, contracts, API records and OpenAPI.
+- [8. Identity](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/08-identity.md): Principals, sessions, tokens, keys, magic links and passkeys.
+- [9. Policy](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/09-policy.md): Ownership, grants, roles, tenancy and field access.
+- [10. Configuration and time](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/10-configuration-and-time.md): Settings, secrets, connections, time and translations.
+- [11. Integrations](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/11-integrations.md): Provider packages, connections, capabilities, webhooks and recordings.
+- [12. Jobs and events](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/12-jobs-and-events.md): Events, outbox delivery, subscribers, schedules and batches.
+- [13. Testing](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/13-testing.md): Test kinds, fixtures, databases, fakes and controlled clocks.
+- [14. Tooling](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/14-tooling.md): CLI commands and implementation status, formatting, editor support and deployables.
+- [15. Personal data](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/15-personal-data.md): Export, erasure, retention and privacy reporting; largely planned.
+- [16. Built-in services](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/16-built-in-services.md): Email, files, rate limits, search, audit and telemetry; status varies.
+- [17. Debugging and review](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/17-debugging-and-review.md): Source-level evidence, request explanations and behaviour review; planned.
+- [18. Records and manifest](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/18-records-and-manifest.md): Committed contracts, generated manifests and planned approvals.
+- [19. Standard library](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/19-standard-library.md): Vocabulary types and operations, money, units, text and formats.
+- [20. Geospatial](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/20-geospatial.md): Geometry, geodesic operations, PostGIS and map layers.
+- [21. AI](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/language/21-ai.md): Prompts, typed model calls, streaming, embeddings, budgets and personal-data flow.
+
+## Complete application examples
+
+- [First project](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/01-first-project/README.md): Setup, layout, named types, imports, functions, actions and tests. Read the source files and tests listed there too.
+- [Bakery orders](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/09-bakery-orders/README.md): Business logic, shared types and explicit failure recovery. Read the source files and tests listed there too.
+- [Recipe book](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/12-recipe-book/README.md): Tenancy, roles, ownership, field permissions and the permissions report. Read the source files and tests listed there too.
+- [Repair cafe](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/23-repair-cafe/README.md): Events, subscribers, retries and the outbox. Read the source files and tests listed there too.
+- [Delivery desk](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/26-delivery-desk/README.md): Packages, provider connections, webhooks, recordings and multi-step calls. Read the source files and tests listed there too.
+- [Lost property](https://raw.githubusercontent.com/richardwillars/jadpo/main/examples/28-lost-property/README.md): Typed AI calls, streaming, budgets, embeddings and vector search. Read the source files and tests listed there too.
+
+## Contributing to the compiler
+
+- [Contributor guide](https://raw.githubusercontent.com/richardwillars/jadpo/main/CONTRIBUTING.md): Build prerequisites, verification and contribution workflow.
+- [Repository instructions](https://raw.githubusercontent.com/richardwillars/jadpo/main/AGENTS.md): Working rules for changes to this compiler repository.
+- [Documentation index](https://raw.githubusercontent.com/richardwillars/jadpo/main/docs/README.md): Architecture, decisions and design context.
