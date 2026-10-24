@@ -32,7 +32,7 @@ async function tick() {
     if (!body || typeof body !== 'object' || Object.keys(body).length !== 1 ||
         typeof body.ticket !== 'string' || [...body.ticket].length < 1 || [...body.ticket].length > 80) {
       await db`UPDATE jadpo_deliveries SET status='failed',next_attempt_at=NULL,
-        last_failure=${db.json({code:'payload_unreadable'})} WHERE id=${item.id} AND status IN ('pending','running')`;
+        last_failure=${db.json({code:'payload_unreadable',problem:'ticket must be text of 1..80 characters in a one-field object'})} WHERE id=${item.id} AND status IN ('pending','running')`;
     } else { readable.push({...item, ticket: body.ticket}); }
   }
   let cursor = 0;
@@ -70,7 +70,7 @@ async function tick() {
         const terminal = !writingHandled && (code?.startsWith('23') || code?.startsWith('22') || code?.startsWith('42'));
         await db`UPDATE jadpo_deliveries SET status=${terminal ? 'failed' : 'pending'},
           next_attempt_at=${terminal ? null : new Date(now.getTime()+1000)},
-          last_failure=${db.json({code:terminal ? 'internal_fault' : 'unavailable'})}
+          last_failure=${db.json({code:terminal ? 'internal_fault' : 'unavailable', ...(terminal ? {} : {kind:'unavailable'})})}
           WHERE id=${item.id} AND status='running' AND attempts=${claimed[0]!.attempts}`;
       }
     }

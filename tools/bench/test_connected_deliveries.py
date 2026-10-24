@@ -20,6 +20,16 @@ class Controls(unittest.TestCase):
         self.start=c.flags.instant('2026-10-24T01:00:00Z')
         self.calls=[{'method':'GET','path':'/tickets/ticket-00001','authorization':'Bearer benchmark-key'}]
 
+    def test_calibration_rejects_leftover_housekeeping_or_other_runtime_rows(self):
+        before={'receipt':10000,'jadpo_housekeeping':1,'jadpo_step_runs':2}
+        empty={table:0 for table in before};metadata={'jadpo_migrations':[{'digest':'fixed'}]}
+        c.validate_calibration_reset(before,empty,metadata,metadata)
+        for table in before:
+            with self.assertRaises(ValueError,msg=table):
+                c.validate_calibration_reset(before,{**empty,table:1},metadata,metadata)
+        with self.assertRaises(ValueError):c.validate_calibration_reset(before,{},metadata,metadata)
+        with self.assertRaises(ValueError):c.validate_calibration_reset(before,empty,metadata,{})
+
     def test_cargo_observer_preserves_arguments_environment_and_exit_status(self):
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory);real=folder/'real';wrapper=folder/'wrapper';log=folder/'provenance.jsonl'

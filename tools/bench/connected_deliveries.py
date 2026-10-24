@@ -134,6 +134,13 @@ def validate_running_claim(row):
         raise ValueError(f'expired claim must keep a structured lease failure before provider returns: {row}')
 
 
+def validate_calibration_reset(before,after,metadata_before,metadata_after):
+    if not before or set(before)!=set(after) or any(n!=0 for n in after.values()):
+        raise ValueError('calibration retained application/runtime rows or lost a table')
+    if metadata_before!=metadata_after:
+        raise ValueError('calibration changed migration metadata or extension rows')
+
+
 def validate_census(census,connected):
     sql=census.get('sql',[])
     if not sql or not census.get('postgres_log'):raise ValueError('missing actual PostgreSQL SQL evidence')
@@ -222,6 +229,37 @@ def build(label):
 
 
 class Database(base.Database):
+    def reset_for_calibration(self):
+        # The runtime's test-state policy: owned public tables, excluding
+        # extension tables and migration metadata. Include housekeeping and
+        # any action/step/schedule/batch tables, not just delivery rows.
+        tables=json.loads(self.query('native',"""SELECT coalesce(json_agg(format('%I.%I',n.nspname,c.relname) ORDER BY c.relname),'[]')
+            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+              AND c.relname NOT IN ('jadpo_migrations','jadpo_migration_steps')
+              AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass
+                  AND d.objid=c.oid AND d.deptype='e')"""))
+        def counts():return {table:int(self.query('native',f'SELECT count(*) FROM {table}')) for table in tables}
+        def metadata():
+            answer={'migrations':{},'extensions':{}}
+            for table in ('jadpo_migrations','jadpo_migration_steps'):
+                if self.query('native',f"SELECT to_regclass('{table}') IS NOT NULL")=='t':
+                    answer['migrations'][table]=json.loads(self.query('native',f"SELECT coalesce(json_agg(t ORDER BY row_to_json(t)::text),'[]') FROM {table} t"))
+            extensions=json.loads(self.query('native',"""SELECT coalesce(json_agg(format('%I.%I',n.nspname,c.relname) ORDER BY c.relname),'[]')
+                FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+                  AND EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass
+                    AND d.objid=c.oid AND d.deptype='e')"""))
+            for table in extensions:
+                answer['extensions'][table]=json.loads(self.query('native',f"SELECT coalesce(json_agg(t ORDER BY row_to_json(t)::text),'[]') FROM {table} t"))
+            return answer
+        before=counts();metadata_before=metadata()
+        if not tables:raise ValueError('calibration has no owned tables')
+        self.sql('native','TRUNCATE '+','.join(tables)+' RESTART IDENTITY CASCADE')
+        after=counts();metadata_after=metadata()
+        validate_calibration_reset(before,after,metadata_before,metadata_after)
+        return {'tables':tables,'before':before,'after':after,'preserved_metadata_before':metadata_before,'preserved_metadata_after':metadata_after}
+
     def rows(self,target):
         return json.loads(self.query(target,'SELECT coalesce(json_agg(row_to_json(d) ORDER BY id),\'[]\') FROM jadpo_deliveries d'))
     def handled(self,target):
@@ -436,7 +474,9 @@ def measure(label,count,rounds,targets):
         for workload in ('connected','backlog'):
             folder=directory/workload;connected=workload=='connected'
             pg.project=folder/'native'
+            reset=pg.reset_for_calibration()
             template=base.calibrate(folder,pg)
+            result.setdefault('calibrations',{})[workload]={'reset':reset,'template':template};save()
             for round_index in range(rounds):
                 order=targets[round_index%len(targets):]+targets[:round_index%len(targets)]
                 for target in order:
