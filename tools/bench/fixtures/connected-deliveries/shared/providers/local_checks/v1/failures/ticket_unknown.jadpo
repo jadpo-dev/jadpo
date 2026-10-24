@@ -1,0 +1,2 @@
+/// The provider does not know this ticket.
+public type TicketUnknown = Failure { kind: FailureKind.conflict message: "Unknown ticket." }

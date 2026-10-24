@@ -1,0 +1,19 @@
+use backlog/types { Ticket }
+use backlog/events { Queued }
+
+type QueueInput = Input {
+    ticket: Ticket
+}
+
+type QueueAccepted = Output {
+    ticket: Ticket
+}
+
+action queue(input: QueueInput) -> QueueAccepted {
+    emit Queued {
+        ticket: input.ticket
+    }
+    return QueueAccepted {
+        ticket: input.ticket
+    }
+}

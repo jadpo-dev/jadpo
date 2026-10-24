@@ -1,0 +1,7 @@
+/// The benchmark's local provider, reached through the real package driver.
+provider {
+    protocol: Protocol.json_http
+    hosts: { live: "https://checks.example.invalid" sandbox: "http://127.0.0.1:18765" }
+    credential: CredentialScheme.bearer
+    error_code: "error.code"
+}

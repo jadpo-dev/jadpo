@@ -663,7 +663,7 @@ fn a_connected_production_delivery_reads_breakers_only_in_its_claim() {
             statements: std::rc::Rc::clone(&statements),
             refuse_claim,
         })
-        .at(T0)
+        .at(T0 + i64::from(refuse_claim))
         .random_from(if refuse_claim { 100 } else { 0 });
         let host = faked(&harness);
         provider.answer(200, FOUND);
@@ -784,9 +784,9 @@ fn joined_claims_and_probe_leases_have_one_winner_under_observed_contention() {
     );
     let params = vec![
         id.clone(),
-        jadpo_runtime::outbox::micros(T0),
-        jadpo_runtime::outbox::micros(T0 + 60000),
-        jadpo_runtime::outbox::failure_json("lease_expired", None),
+        SqlValue::Timestamp(T0 * 1000),
+        SqlValue::Timestamp((T0 + 60000) * 1000),
+        SqlValue::Json(r#"{"code":"lease_expired"}"#.into()),
         names,
     ];
     let rows = competing_statements(
@@ -806,8 +806,8 @@ fn joined_claims_and_probe_leases_have_one_winner_under_observed_contention() {
         vec![
             SqlValue::Text("b".into()),
             SqlValue::Uuid(id),
-            jadpo_runtime::outbox::micros(T0 + 60000),
-            jadpo_runtime::outbox::micros(T0),
+            SqlValue::Timestamp((T0 + 60000) * 1000),
+            SqlValue::Timestamp(T0 * 1000),
         ]
     };
     let rows = competing_statements(
@@ -832,4 +832,48 @@ fn joined_claims_and_probe_leases_have_one_winner_under_observed_contention() {
             .unwrap(),
         vec![vec![SqlValue::Text("running".into()), SqlValue::Int4(1)]]
     );
+}
+
+#[test]
+fn a_release_racing_a_waiting_hold_is_recovered_without_spending_an_attempt() {
+    use jadpo_runtime::Database;
+    let provider = FakeProvider::start();
+    let Some(loaded) = load("hold-release", &provider.url) else {
+        return;
+    };
+    let runtime = Runtime::new().unwrap();
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let host = faked(&harness);
+    runtime.block_on(async {
+        drop(ship(&harness, &host, &loaded.program, "held").await);
+        harness.rows("UPDATE jadpo_deliveries SET status='running',attempts=1 RETURNING id").await;
+        harness.rows("INSERT INTO jadpo_circuit_breakers(connection,state,failures,pauses,probe_at) VALUES('couriers','open',5,1,'2026-10-19T09:01:00Z') RETURNING connection").await;
+        let id = harness.rows("SELECT id FROM jadpo_deliveries").await[0][0].clone();
+        let mut holder = harness.store().begin_at(jadpo_runtime::Isolation::ReadCommitted).await.unwrap();
+        holder.execute("UPDATE jadpo_deliveries SET attempts=attempts",&[]).await.unwrap();
+        let url = loaded.url.clone();
+        let child = std::thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+            let store = jadpo_host_native::postgres(&url).unwrap();
+            rt.block_on(store.query_once(jadpo_runtime::breaker::HOLD,&[id,SqlValue::Int4(1),SqlValue::Text("couriers".into()),SqlValue::Timestamp(T0*1000)])).unwrap()
+        });
+        let deadline = std::time::Instant::now()+std::time::Duration::from_secs(20);
+        let mut observed = false;
+        while std::time::Instant::now()<deadline {
+            let rows = harness.rows("SELECT count(*)::int4 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'UPDATE \"jadpo_deliveries\" SET \"status\" = ''held''%'").await;
+            if rows == vec![vec![SqlValue::Int4(1)]] { observed = true; break; }
+            std::thread::yield_now();
+        }
+        let release = harness.store().query_once(&jadpo_runtime::breaker::succeeded_sql(),&[SqlValue::Text("couriers".into()),SqlValue::Timestamp((T0+1000)*1000)]).await.unwrap();
+        holder.commit().await.unwrap();
+        let held = child.join().unwrap();
+        assert!(observed,"waiting HOLD was never observed");
+        assert!(!held.is_empty(),"the old snapshot leaves this delivery for the wake sweep");
+        assert_eq!(release,vec![vec![SqlValue::Int8(1),SqlValue::Int8(0)]]);
+        assert_eq!(harness.rows("SELECT status,attempts,held_for FROM jadpo_deliveries").await,vec![vec![SqlValue::Text("held".into()),SqlValue::Int4(0),SqlValue::Text("couriers".into())]]);
+        let wake = jadpo_runtime::breaker::wake_sql();
+        harness.store().query_once(&wake,&[SqlValue::Timestamp((T0+5000)*1000)]).await.unwrap();
+        assert_eq!(harness.rows("SELECT status,attempts,held_ms,held_for,held_since FROM jadpo_deliveries").await,
+            vec![vec![SqlValue::Text("pending".into()),SqlValue::Int4(0),SqlValue::Int8(5000),SqlValue::Null(jadpo_runtime::SqlType::Text),SqlValue::Null(jadpo_runtime::SqlType::Timestamp)]]);
+    });
 }

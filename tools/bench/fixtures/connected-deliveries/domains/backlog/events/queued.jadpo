@@ -1,0 +1,6 @@
+use backlog/types { Ticket }
+
+/// One database-only delivery to record.
+type Queued = Event {
+    ticket: Ticket
+}

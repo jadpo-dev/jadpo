@@ -1,0 +1,4 @@
+type AlreadyRecorded = Failure {
+    kind: FailureKind.conflict
+    message: "That ticket is already recorded."
+}

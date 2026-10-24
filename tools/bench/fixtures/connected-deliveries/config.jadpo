@@ -1,0 +1,5 @@
+config {
+    checks_api_key: Text { secret: true }
+    checks_environment: ProviderEnvironment
+    database_url: PostgresUrl
+}

@@ -1,0 +1,12 @@
+use backlog/types { Ticket }
+
+entity Receipt {
+    id: Uuid
+    ticket: Ticket {
+        unique: true
+    }
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+    }
+}

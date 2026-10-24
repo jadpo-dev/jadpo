@@ -1,0 +1,8 @@
+use backlog/actions { record }
+use backlog/events { Queued }
+
+/// Records exactly one receipt with the delivery's handled marker.
+subscriber record_ticket {
+    on: Queued
+    run: record(event.ticket)
+}
