@@ -1,5 +1,11 @@
 # Jadpo roadmap
 
+**PAUSED by Richard after the P59/P60 census (2026-10-24).** Start no new
+performance experiment or combination; the overnight automation is paused.
+Only on explicit resume, next is the queued P21 First+P55 combined prototype:
+freeze its 30-cell protocol before code; total gain remains unknown and nothing
+has started. This pause checkpoint supersedes earlier next-item text below.
+
 **Updated:** 2026-10-24. This page is the only delivery tracker: the
 plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)

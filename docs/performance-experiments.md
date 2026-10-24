@@ -1,5 +1,11 @@
 # Performance experiments
 
+**PAUSED by Richard after the P59/P60 census (2026-10-24).** Start no new
+performance experiment or combination; the overnight automation is paused.
+Only on explicit resume, next is the queued P21 First+P55 combined prototype:
+freeze its 30-cell protocol before code; total gain remains unknown and nothing
+has started. This pause checkpoint supersedes earlier next-item text below.
+
 Updated 2026-10-24. This is the canonical catalogue of performance hypotheses,
 experiment dependencies and retained results. The [roadmap](roadmap.md) remains
 the only delivery tracker. This catalogue is Richard's explicit exception to
@@ -2968,6 +2974,62 @@ module paths; the scan addresses refer to the named intermediate artifacts:
 The following F01 section is preserved unchanged. Under Richard's later
 method correction it is a **historical cross-deployment planning model**;
 its Bun-relative gap is secondary to the target-matched primary pairs above.
+
+## P59/P60 census — offline-verified diagnostic; paused (2026-10-24)
+
+This is a **moderate diagnostic**, with production unchanged and optimization
+impact still **unknown**. It is not a measured optimization variant: the count
+stays **14 optimization forms / 11 IDs / 50 unmeasured IDs**. No CPU, RPS, GC,
+removable-cost or gain claim follows from operation counts.
+
+The three captured signed/ASCII/Unicode rows pass HTTP/body/state guards with
+request denominators 5058/2654/1724. Per-request observations are:
+
+| Count | Signed | ASCII | Unicode |
+|---|---|---|---|
+| Connect / reader / writer objects | 1 / 1 / 1 | 1 / 1 / 1 | 1 / 1 / 1 |
+| Socket reads | 3.0352 | 19.0723 | 29.0215 |
+| Writes | 3 | 3 | 3 |
+| then registrations | 12.0352 | 28.0723 | 38.0215 |
+| Owned closures created | 24.0704 | 56.1447 | 76.0429 |
+| Queue schedules | 16.0704 | 33.1153 | 43.0319 |
+| Timer create / cancel / fire | 3 / 3 / 0 | 3 / 3 / 0 | 3 / 3 / 0 |
+| Discarded socket.close / awaited writer.close calls | 2 / 1 | 2 / 1 | 2 / 1 |
+| Observed read-Promise rejections | 1 | 1 | 1 |
+
+Discarded socket.close settlements are **unobserved**, not pending or zero;
+no extra then was added. Per-registration callbacks and distinct observed
+Promise completions remain separate. The read rejection accompanies successful
+HTTP responses; no business-failure or cleanup cause is assigned. Load unknown
+operations are zero; setup unknown reads remain recorded. All one-second late
+deltas are zero. Twenty-four immutable served snapshots, eleven focused plus
+three reader controls, body/state guards and empty Sleep observations pass;
+all owned processes are reaped.
+
+Producer `9dc64e91`, retained at ref ending `p59-p60-census`, captured all three
+rows. Its original raw remains **complete:false**, SHA-256
+`0933f67a54b3f721e602dee4ab8d117b7be39efa7bdaa44ec88ced3091c66577`:
+final live validation found the earlier ASCII config overwritten by later
+Unicode. The immutable snapshots and later-live identity were independently
+verified. A separate versioned offline reader
+`16f8976b693765d73e31a2a6702461c4b95825f4`, tree
+`985878d4d3b4ce49d065c6ee5cce2669578b3f64`, ref ending
+`p59-p60-census-offline-reader`, validates those captured rows without replay,
+new measurement, build or services. It does not rewrite the failed producer.
+
+Durable A archive identities:
+
+| Record | Path / SHA-256 |
+|---|---|
+| Offline verified counts | `diagnostics/p59-p60-census/offline-verified-v1/results.json` — `caee963305a95d79ace341201897a5abf3a32675fe2c4839b739904d9cf81ae0` |
+| Producer build | `055a5772338a5f1d7fc8927dbf8a3392e71abf536171ee3803f3651b883c55ea` |
+| Producer smoke | `c51e7eb472553f6f35f2f5f9c8ec409e3bda60712a967f3346fb6f7bf9bfbcf0` |
+
+**Paused by Richard; no next task or experiment starts.** Overnight automation
+is paused. On explicit resume, next is queued P21 First+P55 combined **30-cell
+protocol checkpoint before code**; the combination is unstarted and total gain
+unknown. There is no production tick, keeper promotion, full gate or exploration
+completion claim. Original P59/P60 forecasts and F01 remain unchanged.
 
 ## F01 — full-list planning forecast (2026-10-24)
 
