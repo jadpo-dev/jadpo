@@ -1,11 +1,14 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-22. This page is the only list of outstanding work: the
-delivery plan for building Jadpo from the decided language, one chunk per
+**Updated:** 2026-10-24. This page is the only delivery tracker: the
+plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here. Finished phases,
 and the full entries of finished chunks, are in the
-[archive of finished chunks](archive/roadmap-finished.md).
+[archive of finished chunks](archive/roadmap-finished.md). Performance
+hypotheses, experiment dependencies/results and the cross-session exploration
+routine live in the [performance catalogue](performance-experiments.md); they
+are not delivery completion ticks.
 
 ## The direction (decided 2026-10-13)
 
@@ -30,10 +33,15 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    is the model and effort it needs. Say in one line which chunk is next and
    its tag, then carry on without waiting. The building is done by a
    subagent started with exactly that model and effort, so the tag applies
-   whatever the session itself runs on; the session plans, reviews the
-   result, runs the gate and merges. Chunks marked **needs
-   Richard** stop for him at the point named; every other chunk runs
-   unattended.
+   whatever the session itself runs on; the session plans and reviews the
+   result, and follows AGENTS.md's builder-specific gate/PR rule. Codex opens
+   compiler/runtime/keeper PRs for Claude without auto-merge and never merges.
+   Chunks marked **needs Richard** stop for him at the point named; every other chunk runs
+   unattended. For performance exploration, resume the catalogue's highest-
+   priority eligible experiment from its frozen baseline; record blockers and
+   continue other eligible experiments across sessions until the available
+   queue, including new ideas, is exhausted. There is no experiment-count or
+   batch/task/time quota that permits early production implementation.
 2. Plan it in the session, not in a document: read its area pages, list the
    examples and errors it must make pass, and write those as failing tests
    first.
@@ -44,9 +52,10 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    Every chunk keeps the examples in `examples/` passing; each phase ends
    with an examples chunk that brings them up to date with everything the
    phase built (Richard, 2026-10-15).
-4. Open a pull request from a branch named `chunk-<number>`, merge it when CI
-   passes, and tick it here in the same pull request. A ticked chunk is
-   one line naming the sections where what it built is written
+4. Open a pull request from a branch named `chunk-<number>`, follow the
+   builder-specific merge rule in AGENTS.md, and tick it here in the same
+   pull request only when its delivery work and gate are complete. A ticked
+   chunk is one line naming the sections where what it built is written
    ([compiler-runtime](compiler-runtime.md) and the area pages, which
    hold every fact, decision and measurement worth keeping); a long entry
    goes whole to the [archive](archive/roadmap-finished.md), and so does a
@@ -205,6 +214,16 @@ once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
 ## Phase 9 — Performance
 
 Richard, 2026-10-13: developers won't touch this if it's slower.
+
+Richard, 2026-10-24: [the performance catalogue](performance-experiments.md)
+is the persistent exploration queue. Explore all available independent and
+dependent hypotheses, saving code/results before reset and adding/re-ranking
+emerging ideas, before proper keeper implementation. No arbitrary experiment
+limit ends exploration. Blocked accounts, deployment or language decisions
+remain visible while eligible local work continues. Documentation-only
+catalogue/workflow updates branch from main and auto-merge after required CI;
+code delivery still follows Codex's manual, never-merge PR rule in AGENTS.md.
+This adds no completion ticks for the unmerged Phase 9 source stack.
 
 - [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
   writes, signed-in lists, large rows, cold start) on native, Wasm under

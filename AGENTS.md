@@ -8,8 +8,11 @@ compiled native and WebAssembly deployables.
 ## Where things are
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
-  only tracker; each session takes the first unticked chunk. Finished
+  only delivery tracker; each session takes the first unticked chunk. Finished
   chunks' full entries: [docs/archive/roadmap-finished.md](docs/archive/roadmap-finished.md).
+- Performance exploration: [docs/performance-experiments.md](docs/performance-experiments.md)
+  is the canonical hypothesis queue, dependencies, retained results and
+  cross-session routine. It does not tick delivery chunks.
 - What the language means: [docs/language](docs/language/README.md), twenty-one
   decided areas. Where anything else disagrees, the area page wins.
 - How it is built: [docs/compiler-runtime.md](docs/compiler-runtime.md).
@@ -25,9 +28,9 @@ Name the next chunk and its model and effort tag in one line, then carry on
 without waiting for a reply. Do each chunk's building in a subagent started
 with the chunk's tagged model and effort; Richard asks for this explicitly,
 so setting the subagent's `model` and `effort` from the tag is authorised.
-Keep going chunk after chunk, merging each through its own pull request,
-and stop only at the points the roadmap lists. Report at the end what was
-merged and anything that needs Richard.
+Keep going chunk after chunk, following the builder-specific pull request
+rule below, and stop only at the points the roadmap lists. Report what was
+opened or merged and anything that needs Richard.
 
 ## Who builds what (Richard, 2026-10-22)
 
@@ -43,6 +46,41 @@ was built, what the gate showed and any decision it recorded. It never
 merges. Claude reviews the pull request against the area pages, fixes
 what it finds on the same branch, and merges it.
 
+## Performance exploration (Richard, 2026-10-24)
+
+Follow [the experiment catalogue](docs/performance-experiments.md) across
+sessions. A dedicated discovery agent maintains credible hypotheses, potential
+savings calculations and impact order. Run cheap independent prototypes from
+one exact frozen baseline in a reusable sibling scratch worktree; explicitly
+stack dependent experiments on retained prerequisite commits and measure both
+marginal and combined gains. Save every source/harness commit under a durable
+Git ref and retain raw results/artifacts, including losses and adverse metrics,
+before resetting the working branch. Stop owned builds/services, including
+PostgreSQL, and coordinate a quiet host during measurements.
+
+Explore the available queue, including emerging ideas, to exhaustion before
+proper production implementation. There is no maximum experiment count or
+batch/task/time quota and no early promotion after a working window. Record
+blocked prerequisites, accounts/keys/deployments or language choices and
+continue eligible items; a blocked queue is not empty. The already-built 9.2a3
+keeper may finish its existing qualification and manual review.
+
+The catalogue is an explicit exception to the no-plan-document rule below.
+New ideas/results update it with evidence, dependencies and maintained order.
+Catalogue/workflow-only PRs branch from current main and use
+`gh pr merge --merge --auto` with required CI, without admin/bypass; never
+include compiler/runtime/keeper code or CI changes. This is the only Codex
+auto-merge exception. Experiment baseline B is separately frozen and may be an
+explicitly authorized unmerged source PR stack; do not assume main contains
+its harness or copy its completion ticks. Cheap prototypes need focused checks
+and short matched measurements, not full qualification/gate/PR per experiment.
+After exploration, production keepers still need proper implementation,
+interaction tests, longer confirmation, exact production checks, qualification
+and the full gate per delivery chunk; Codex opens them without auto-merge and
+never merges. Pure catalogue maintenance uses appropriate documentation and
+consistency checks plus required CI; it is not a code delivery chunk and does
+not force a full local Rust/native gate.
+
 ## Working rules
 
 - `python3 tools/verify.py` is the gate. It must pass before a chunk merges.
@@ -54,7 +92,8 @@ what it finds on the same branch, and merges it.
   request when CI passes. Never create worktrees under `/private/tmp`.
 - Plan each chunk in the session from its area pages; write their examples
   and errors as failing tests first. No plan documents, evidence packets,
-  review records, timing logs or progress reports.
+  review records, timing logs or progress reports, except the single
+  performance catalogue and linked retained raw results authorized above.
 - Never special-case the compiler for an example application. If a chunk
   needs a language choice the pages do not make, stop and ask Richard with a
   recommendation.
@@ -63,8 +102,9 @@ what it finds on the same branch, and merges it.
   is designed with the design skills in `.agents/skills/` before it is built.
 - Update the roadmap only when a chunk finishes or the order changes.
 - Keep the process lean (Richard, 2026-10-15):
-  - Open each chunk's pull request with `gh pr merge --merge --auto`, so it
-    merges itself when CI passes.
+  - Claude's delivery PRs may use `gh pr merge --merge --auto`. Codex code
+    PRs follow "Who builds what" above: open for Claude, never auto-merge.
+    Only the catalogue/workflow documentation exception above auto-merges.
   - Run chunks that touch different crates and pages at the same time, each
     in its own worktree beside the repository; otherwise take them in order.
   - Teaching examples are brought up to date once per phase, in the phase's
