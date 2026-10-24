@@ -5677,26 +5677,13 @@ ordered visible list with full six-field projections and null next cursor.
 | Node write | 1,278 / 1.211 | 2,039 / 13.130 | 2,312 / 39.325 |
 | Node signed-list | 211 / 9.534 | 263 / 77.579 | 261 / 284.918 |
 
-The 64-connection spreads below retain all three runs, including unfavourable
-ones. CPU/request, process cores and sampled RSS are three-run medians at
-64 connections. RSS and Wasm linear memory use MiB (the raw keys say `mb`);
-RSS is sampled every 250 ms, not a lifetime high-water measurement. End-of-cell
-linear memory is not JavaScript heap or total workerd RSS.
-
-| Golden target / work | req/s min–max | p95 ms min–max | CPU ms/req | Process cores | Sampled RSS MiB | Wasm MiB |
-|---|---:|---:|---:|---:|---:|---:|
-| Native read | 23,064–24,457 | 6.529–7.131 | 0.108 | 2.53 | 18.5 | — |
-| Native write | 17,852–18,831 | 8.918–10.152 | 0.126 | 2.33 | 16.9 | — |
-| Native signed-list | 9,885–11,200 | 14.069–16.434 | 0.343 | 3.66 | 19.2 | — |
-| workerd read | 1,454–1,634 | 59.623–78.592 | 0.630 | 0.98 | 234.5 | 13.8 |
-| workerd write | 1,362–1,567 | 63.734–91.295 | 0.682 | 0.97 | 257.2 | 14.1 |
-| workerd signed-list | 867–1,011 | 111.391–126.570 | 1.013 | 0.93 | 258.9 | 14.2 |
-| Bun read | 4,183–4,573 | 19.184–22.197 | 0.249 | 1.09 | 170.3 | — |
-| Bun write | 1,820–2,135 | 39.492–52.194 | 0.625 | 1.20 | 155.6 | — |
-| Bun signed-list | 458–459 | 149.702–175.030 | 2.355 | 1.08 | 143.5 | — |
-| Node read | 3,538–4,461 | 20.520–33.275 | 0.318 | 1.23 | 277.4 | — |
-| Node write | 2,280–2,332 | 37.312–39.358 | 0.524 | 1.21 | 282.4 | — |
-| Node signed-list | 251–262 | 264.869–336.754 | 6.665 | 1.73 | 367.8 | — |
+Spread, CPU, memory, cold-start and large-row (100 B / 64 KiB) figures for
+every run stay in the raw result files named below, not in this page. At
+64 connections the golden medians put native at roughly 6x (reads) and 8x
+(writes) the best TypeScript host and 24x on signed lists (Bun); the
+focused 64 KiB read put native at roughly 2.2x Bun/Node and 13x workerd.
+Cold start to first valid response (median): native about 22 ms, workerd
+71 ms, Bun 114 ms, Node 464 ms.
 
 The golden workerd stand-in pool adds median 0.180/0.185/0.322 CPU ms per
 read/write/list request at 64 connections, outside the workerd process figures.
@@ -5709,18 +5696,6 @@ and 0.624 for focused reads. These CPU observations do not prove client or
 host capacity headroom; the machine was not isolated, and whole-host
 saturation limits attribution of throughput differences.
 
-Golden cold start is spawn through the first fully valid database-backed
-readiness response, with fixture signing and the external pool startup
-excluded. There are 27 starts per target. Values below are median [min–max];
-large outliers remain included, and this is not a controlled OS cold-cache test.
-
-| Golden target | Ready ms | First request ms | Idle RSS MiB |
-|---|---:|---:|---:|
-| Native | 21.73 [18.38–385.34] | 3.16 [2.59–4.72] | 11.9 |
-| workerd | 71.10 [69.45–350.50] | 39.44 [33.13–268.68] | 97.5 |
-| Bun | 113.61 [102.19–432.03] | 16.06 [14.38–31.80] | 92.0 |
-| Node | 463.56 [422.75–1364.96] | 33.05 [24.48–128.79] | 257.5 |
-
 **Distinct large-row scaffold.** The golden title bound is 200 Unicode
 scalars. The separate 9.1a scaffold measures public sample reads with stored
 payloads of 100 and 65,536 bytes (64 KiB), plus their JSON envelope; it is not
@@ -5732,26 +5707,6 @@ sample bodies are checked. The TypeScript scaffold's pool and the local
 workerd stand-in are each capped at 20, as in 9.1a; these are separate from
 the golden pool configuration above. It completed 4,872,023 measured requests.
 The same median req/s / median per-run p95 ms notation applies.
-
-| Focused target / stored payload | 1 connection | 16 connections | 64 connections |
-|---|---:|---:|---:|
-| Native 100 B | 6,125 / 0.256 | 25,856 / 1.150 | 30,718 / 5.512 |
-| Native 64 KiB | 2,304 / 0.579 | 10,506 / 3.239 | 10,637 / 18.446 |
-| workerd 100 B | 882 / 1.625 | 1,637 / 13.298 | 1,624 / 70.488 |
-| workerd 64 KiB | 421 / 2.986 | 819 / 33.742 | 822 / 122.786 |
-| Bun 100 B | 4,638 / 0.338 | 10,772 / 2.463 | 9,712 / 9.809 |
-| Bun 64 KiB | 2,235 / 0.716 | 4,449 / 5.899 | 4,750 / 17.854 |
-| Node 100 B | 4,038 / 0.393 | 9,537 / 2.598 | 9,210 / 10.021 |
-| Node 64 KiB | 2,023 / 0.737 | 4,625 / 4.943 | 4,687 / 18.805 |
-
-For the focused 64-KiB route at 64 connections, req/s ranges were native
-10,636–11,444, workerd 713–823, Bun 4,708–4,880 and Node 4,666–5,107;
-p95 ranges were respectively 15.973–19.105, 116.279–159.705,
-17.215–18.590 and 17.159–20.518 ms. Median CPU/request was
-0.308/1.181/0.245/0.208 ms; median sampled RSS was
-42.4/370.7/127.9/291.4 MiB, in that same order. Workerd's final linear memory
-was 18.1–18.2 MiB. The complete smaller-read spreads and all other metrics
-remain in the raw result, without choosing favourable rounds.
 
 In these observations workerd was behind Bun on golden reads and writes,
 but ahead on golden signed lists. There is no single overall performance-gap
@@ -5775,29 +5730,10 @@ and `tools/bench/work/todo/matrix-busy-host-ead8d2c8.json`, SHA-256 respectively
 `2dbfaa2e830bbbda05b479ef783360c4775691fa4a50428eb0a31d26f356ace8` and
 `25aa350f613547b84947a10d6da1de6bc5c3ba7084f9d9fbf523f2002cac6205`.
 The failed setup-only functional smoke is retained separately and supplies
-no comparison cell. Each result includes full source and artifact maps;
-selected exact SHA-256 identities are below.
+no comparison cell. Each result includes full source and artifact maps.
 
-| Input or artifact | SHA-256 |
-|---|---|
-| `Cargo.lock` | `215fd087c4bf5cd03f21311e67f388883a7aba013af53a3445fa99aca01f4950` |
-| `examples/golden-todo/typescript/package-lock.json` | `73933caaffe00f1ebabe4bbc05630e91eaa596e40ea8113228849aed0857d82c` |
-| `tools/bench/load/Cargo.lock` | `cbe692030d0854b6e2927dd5b71641aed5e8b5771541a197b92c8a2e109dad38` |
-| `tools/bench/typescript/package-lock.json` | `cf6506f6515e0029255285d0a94ae47cab4fd7213902f6c1c09347590df66316` |
-| `tools/workers/package-lock.json` | `7649655efb232dcc01dc327a9b2830b4e9fabfffd47a16cb3e59b9e93bfa9453` |
-| Compiler (not timed) | `ae662ebca57b28e314ed702782b8d48ac43455691a906faa06b1d42c765bb5c1` |
-| Golden native (14,196,128 bytes) | `53904c09887ce6f7b19ef6a7319b76f17259099bcb2e37e1be739b2db23e5634` |
-| Golden Wasm (7,302,702 bytes) | `9c04cf6aecbf3b519812e502d3d0e97275e17ccb0df0d87eb3120917c9573254` |
-| Release load generator | `6a7cc932bcf970d7e59a8f44b8b8c8da3e0ea0351508dd8e17a4ef5b86811545` |
-| Release pool stand-in | `b56ab11147b2bcf68cb05adee3e7f652629d2c3340a085ec2e129ac65df4646f` |
-| Golden emitted TypeScript: 20-file relative-path/digest manifest | `36712c181369da46ad502a201a6426fdb13dd7900f4378b25ddefb889f1a542b` |
-| Focused native | `6fcf5636e1d178ca7ff94815c116225388013631ca833e6108b969abcdb56a82` |
-| Focused Wasm | `9e25734534b67b9eac4c79a34e19463ab6ae36c4b391670664229c47c29db7c3` |
-
-The TypeScript manifest digest hashes sorted JSON of relative emitted `src/`
-paths to their SHA-256 strings, identically for Bun and Node. Full maps also
-retain the production shim/glue, fixture signer and configuration inputs.
-
+The pinned lockfile, compiler, artifact and result hashes are in the raw
+result files, which carry full source and artifact maps.
 
 **Bounded durable delivery sweeps** (chunk 9.1b1, 2026-10-23).
 The hypothesis was that awaiting each due delivery serially left database I/O
@@ -5870,125 +5806,16 @@ Native elapsed fell 21.7% and workerd 43.9%; unchanged Bun rose 10.2% and Node
 rose about 19% despite lower elapsed; workerd process CPU fell about 23%, with
 a separate pool cost. Four lanes trade extra active work/connections and CPU
 for I/O overlap; they are not a claim of an inherent language or edge win.
-Every round is retained below (rounds 1, 2, 3, without selecting the fastest).
-CPU seconds count the 100 tick children for native/Bun/Node, persistent workerd
-for Workers, and its helper separately; PostgreSQL and Python CPU are excluded.
-The scopes differ and must not be presented as total system CPU.
-
-| Target / variant | 10k seconds, rounds 1/2/3 | Process CPU seconds, rounds 1/2/3 | Tick p95 ms, rounds 1/2/3 |
-|---|---|---|---|
-| Native serial | 4.7996 / 4.7549 / 4.7515 | 1.589 / 1.568 / 1.569 | 52.414 / 52.326 / 52.134 |
-| Native bounded | 3.6303 / 3.7219 / 3.9476 | 1.810 / 1.859 / 1.917 | 41.209 / 41.436 / 45.363 |
-| workerd serial | 7.7943 / 7.7673 / 8.0264 | 5.110 / 5.290 / 5.380 | 91.737 / 91.536 / 95.134 |
-| workerd bounded | 4.3206 / 4.3710 / 4.6490 | 3.850 / 4.080 / 4.350 | 52.968 / 52.901 / 54.063 |
-| Bun serial | 7.6566 / 7.7465 / 7.6728 | 10.612 / 10.735 / 10.628 | 81.407 / 81.457 / 81.663 |
-| Bun bounded | 7.8349 / 9.4821 / 8.4539 | 10.828 / 12.096 / 11.576 | 84.588 / 103.950 / 90.673 |
-| Node serial | 10.1988 / 10.2632 / 10.2185 | 11.642 / 11.678 / 11.603 | 105.908 / 106.094 / 105.835 |
-| Node bounded | 10.2872 / 10.8426 / 10.8866 | 11.697 / 12.691 / 12.467 | 106.971 / 116.927 / 115.273 |
-
-Pool CPU seconds were serial 2.06/2.06/2.07 and bounded 2.14/2.13/2.39.
-Workerd RSS at cell end (not peak) was serial 225.9/240.5/237.9 MiB and bounded
-232.4/242.2/239.8 MiB. All responses, per-tick samples, host CPU counters,
-loads, state audits, controls and unfavorable rounds remain in raw JSON.
-
-**Source and verification.** Full gate `python3 tools/verify.py` passed 92/92
-in 486 s at `49760cc73f4d59715151e0a3b71ad4544a06762f`. This includes production
-native/workerd behavior, strong TypeScript 42 tests plus shared conformance,
-and the real PostgreSQL overlap/duplicate-claim and controlled budget/shutdown
-regressions. The latter advance expiry/shutdown after four claims, without a
-host-speed assertion, and prove no lost or double effects and later recovery.
-The preexisting optional pgvector 0.7.0 versus required 0.8.0 example skip
-remains a skip; no extension was upgraded. The preceding `6315c732` full gate
-passed 91/92 but caught forbidden indexing in lane distribution. The scoped
-move-only VecDeque fix passed targeted checks, Clippy and the final full gate.
-Closed raw gate outputs are retained under `work/deliveries/diagnostics/`:
-`gate-6315c732.log` SHA-256
-`dac204b50e53c011c7eabea7cd5b0e0480b3d1d5f890fe4e22564066a1525a32`, and
-`gate-49760cc7.log`
-`1e0cb4279a287610e1610189695bcc0d67116fb66208f490142de56244fe073f`.
-
-For the post-app-close reference, commit
-`fbf98ad151a15b4fa884b1084206b733cc083f47` restored only `runner.rs`, `race.rs`
-and `schedules.rs` from serial `67c3b4e049408f050e9c25f831d3d3bfd0185b9d`,
-retaining the final UUIDv7 harness. Candidate
-`59d9a853ec0d683815c539d4bc95657fd1e1c6b5` restored those files exactly from the
-gated source. Its complete tracked Git tree (including modes/symlinks) equals
-the gated tree: `2991c67691019972fde486c8f9c0674c6437d062`. The two timed source
-maps differ only in those three production files. Each source was clean and
-built its own compiler in this worktree before its campaign, with
-`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`. Production
-native/Wasm used ordinary release `jadpo build`, without wasm-opt; compiler
-build CPU was excluded. Rust was 1.99.0, Node 24.18.1, Bun 1.2.20, local workerd
-2026-10-07. Exact versions and complete source/artifact SHA-256 maps are in
-each raw's embedded `build` and its label's `build.json`.
-
-Both compiler binaries were preserved as their label's `compiler-jadpo`
-before the next build overwrote `target/debug/jadpo`; `compiler-snapshot.json`
-records original absolute path, source, snapshot digest and build-stamp digest.
-All preserved artifact hashes were rechecked after timing. This historical
-snapshot check does not bypass the current-HEAD/original-compiler guard or
-claim the old stamp is reusable at a different HEAD.
-
-| Artifact | Serial SHA-256 | Bounded SHA-256 |
-|---|---|---|
-| Own compiler, snapshot retained | `45d373372eab44099b46660fabcd460c335dcef4d0c7123d75e7018e50244ef0` | `3794afbd8c3181e9359b4bc71260cdeff71b97c0c406be91997ce0f4fccc2486` |
-| Production native | `019ab612775e11aa6d5a0139ecf95708c1e23addcda2baa44d10383439f4ea71` | `2df19e67c7a2bbd20fbbba1abbc99ccca1264cbe1de3acc3c91b2da87ca55422` |
-| Production Wasm | `2f171bb19a5f0ea76c30786162b9a4f5c20f28d692c35936ee602094f4c4ce4d` | `e68c01952609bbb19352e8a84fad07d242d7e9531dda908732fd8f643ea32287` |
-
-The identical emitted Bun/Node fixture SHA-256 was
-`2e63c203e79aac2a81cca3ad6ba7bf34f96c31e782c667b94a9f0f00edbc2e63`;
-the identical final `deliveries.py` source was
-`b1bcc61fbf2e6ce8fdc2033712ed6b3b220ac9a2fd36f676932a0ef16d2918ae`.
-
-**Retained attempts and learnings.** Paths below are relative to ignored
-`tools/bench/work/deliveries/`; the exact source is embedded in every raw.
-The initial ledger-refusal control was corrected against existing atomicity/
-infrastructure-retry semantics, then the local scheduled-binding configuration
-was fixed. No failing setup row became an accepted comparison cell. The first
-complete `before` protocol used TypeScript UUIDv4 receipts, unlike ordinary
-Jadpo UUIDv7 creation (area5), so it is superseded, not a matched baseline.
-`before-v7` corrected this with the already pinned uuid13 dependency. Its busy
-host preceded Richard closing apps, so both serial and candidate were rebuilt
-and measured again under the final unchanged protocol; old busy results must
-not be used as the denominator for the later candidate. All attempts remain:
-
-| Raw path | Source | Outcome | SHA-256 |
-|---|---|---|---|
-| `before/runs-1792762333743171000.json` | `46e4530c` | Refusal-control assertion failed; no accepted timing | `597a1c449ed2ee3ac1448b7ac2b75cb7f7ea2eaa94d697eb91fdaede0411f6d9` |
-| `before/runs-1792762400986069000.json` | `9334c6af` | workerd Capnp startup failed; partial smoke only | `f26e1165e04596b70c4f939091bc7d747b62d7c3faeedb5ed89202fb2824f842` |
-| `before/runs-1792762479356673000.json` | `ae5c3cc5` | Scheduled binding flag absent; partial smoke only | `73efd1a0dd21b6615b77cb6ce5ad919a68224ebc192b8bb47ea39149e393448c` |
-| `before/runs-1792762518123744000.json` | `91ab7ba2` | 100-delivery smoke passed, superseded v4 | `571353cf3e6cbd166378c92f705fcc36965b47f5d9c280abb2ece56564152fd6` |
-| `before/runs-1792762535431910000.json` | `91ab7ba2` | 12×10k passed, superseded v4 | `4e4d759ab789a8da2e213cf0dd24e64b9dbde750e3aa6e54d8afdb34697133b1` |
-| `before-v7/runs-1792763080662053000.json` | `67c3b4e0` | 100-delivery smoke passed, v7 | `9ad597ff62f8656425e9f71a76082251bd64ac1e5661a10fdc6f9cb2b655dfa8` |
-| `before-v7/runs-1792763090386670000.json` | `67c3b4e0` | 12×10k passed, earlier busy host | `46f40e333f6a8751629e720213c57b8a2073c8f017a7d5cf7d1034b9ee4d69fb` |
-| `after-app-close-serial/runs-1792767570261986000.json` | `fbf98ad1` | 12×10k passed, matched serial | `e23c33f8ff0489286fb84b0ecae9a2beac5e92264a8ad9fa1314baa1868f7f6e` |
-| `after-app-close-bounded/runs-1792768280720347000.json` | `59d9a853` | 12×10k passed, matched bounded | `65bc3f8a303aa9804a9932ebbcce78502bbbf78599705e66e6d73998a30fc8d4` |
-
-Historical median 10k seconds, native/workerd/Bun/Node respectively, were
-6.7696/12.5620/10.9516/13.7936 for superseded v4 and
-7.9817/13.8136/12.5133/15.6958 for the earlier busy v7 campaign. Their complete
-per-round CPU/spreads and failures stay in those raws; neither supports a
-percentage claim against the post-app-close candidate.
-
-To reproduce, check out the exact serial or candidate revision in this same
-worktree, ensure it is clean, then run `python3 tools/bench/deliveries.py build
---label <fresh-label>` and `python3 tools/bench/deliveries.py measure --label
-<fresh-label>` (default three rounds, 10,000 deliveries, all four targets).
-Finish and stop all builds/tests before measuring; preserve that compiler and
-label artifacts before preparing the next revision. Never reuse a stale stamp
-across HEAD/source/compiler changes. `-O`/`PYTHONOPTIMIZE` is rejected at entry,
-with a subprocess negative check, so disabled assertions cannot authorize data.
-All owned tick children, workerd, pool stand-ins and disposable PostgreSQL
-servers used by the benchmark harness were stopped; no shared server/database
-or unrelated app was changed. The broader test-descendant assurance is
-qualified: completed test helpers had leaked workerd children (since fixed),
-so the historic host condition is unknown.
-Review must retain the four-lane bound, separate contexts, serial batch work,
-drain/hand-on behavior and exact handled atomicity, and version any altered
-workload/ID/provenance protocol. These measurements support continuing the
-remaining generic runtime work; they do not establish the cause of the wider
-Wasm gap or replace profiling of the separate typed-execution work in 9.2.
-
+Raw per-round results stay in the ignored `tools/bench/work/deliveries/`
+raws. Superseded: the first protocol used UUIDv4 receipts (unlike Jadpo's
+UUIDv7), and a campaign on a busier host; neither is a baseline for the
+percentages above. Each side was built from a clean checkout that differs only
+in `runner.rs`, `race.rs` and `schedules.rs`; reproduce with
+`python3 tools/bench/deliveries.py build --label <label>` then `measure
+--label <label>` (three rounds, 10,000 deliveries, four targets), with no
+builds or tests running. Review must retain the four-lane bound, separate
+contexts, serial batch work, drain/hand-on behaviour and handled atomicity.
+These results do not establish the cause of the wider Wasm gap.
 
 **Warm durable delivery comparison** (chunk 9.1b1a, 2026-10-23).
 Local workerd's four-lane runtime delivers 2,239/s against warm Bun's 4,017/s on
@@ -6075,86 +5902,16 @@ while median pool CPU rose 2.22→2.28 s. Native tick-child CPU rose 1.686→1.9
 are server-process costs, not total system costs. Workerd RSS at cell end
 was 229.3/240.0/241.2 MiB serial, 234.7/245.3/243.0 MiB bounded (not peak).
 
-| Target / variant | 10k seconds | Deliveries/s | Tick p95 ms | Process CPU seconds | Separate pool CPU seconds |
-|---|---|---|---|---|---|
-| workerd serial | 9.0474 / 8.6557 / 8.3320 | 1,105 / 1,155 / 1,200 | 107.064 / 109.694 / 94.337 | 5.44 / 5.59 / 5.44 | 2.23 / 2.22 / 2.16 |
-| workerd bounded | 4.4212 / 4.4663 / 4.6057 | 2,262 / 2,239 / 2,171 | 53.525 / 55.206 / 60.498 | 3.89 / 4.02 / 4.13 | 2.28 / 2.24 / 2.36 |
-| Bun serial | 2.4125 / 2.5130 / 2.4864 | 4,145 / 3,979 / 4,022 | 28.555 / 30.689 / 29.096 | 2.29 / 2.37 / 2.36 | — |
-| Bun bounded | 2.4671 / 2.4893 / 2.6585 | 4,053 / 4,017 / 3,762 | 28.676 / 29.479 / 30.942 | 2.34 / 2.35 / 2.48 | — |
-| Node serial | 3.7901 / 2.6544 / 2.6868 | 2,638 / 3,767 / 3,722 | 50.443 / 33.390 / 30.197 | 3.01 / 2.52 / 2.52 | — |
-| Node bounded | 2.6816 / 2.7676 / 2.9654 | 3,729 / 3,613 / 3,372 | 32.743 / 33.479 / 34.285 | 2.52 / 2.59 / 2.76 | — |
-| Native external serial | 5.0771 / 5.1046 / 5.1303 | 1,970 / 1,959 / 1,949 | 55.700 / 56.309 / 56.850 | 1.674 / 1.686 / 1.692 | — |
-| Native external bounded | 3.8295 / 3.9550 / 3.8144 | 2,611 / 2,528 / 2,622 | 45.841 / 47.899 / 44.089 | 1.915 / 1.944 / 1.905 | — |
-
-**Source, verification and reproduction.** Full gate passed 93/93 in 982 s at
-`f1e1e045ccd0d0be7c0795ddf83291ae325dbaf6`. Serial
-`cc4563ce1b39ab0b65e1dc65b165a0c65c14c762` restored **only**
-`crates/jadpo-runtime/src/{runner,race,schedules}.rs` from
-`67c3b4e049408f050e9c25f831d3d3bfd0185b9d`, retaining the final harness/tests.
-Bounded `cf9c443b026f7cd9155c224e153430c13d6e8b1f` restored those files from the
-gated candidate. Its **entire** tracked Git tree, including modes/symlinks,
-equals gated tree `cf3fc3b115bd2a45d949fac939394219b09691a5`; `git write-tree`
-and a complete `git diff` proved equality before building. The two timed source
-maps differ only in those three runtime files. TypeScript's generated artifact
-is identical, SHA-256
-`66977add90729e3a8ea7535bd1ed8becd3f6dcfbc9bfc8df79e900ce8f325d91`.
-
-Each label built its own compiler and retains `compiler-jadpo` beside its
-`build.json`, which names the original `target/debug/jadpo` path, source,
-flags and complete source/artifact hashes. Serial compiler SHA-256 is
-`ae82452b7505dc916713002556b95d949e0988d840e0ca216c3e061a764bc960`;
-bounded is `28c630307d1f035d5f5c7a7fc218bea891a6b35b3d4cd9a39c618635edf22ac7`.
-Their build-stamp SHA-256s are respectively
-`c3cb695e5cba661dbc711e0aff009b5124e666b41f142501703a71ef872a38f5` and
-`fcc9903da5692ce7b027086e050bcad27a0c92827887e003c17a6bb341eb0a09`.
-All paths below are under
-`/Users/richardwillars/Documents/Codex/LLM-coding-chunk-9.1b1a/tools/bench/work/deliveries/`.
-
-| Raw path | Outcome | SHA-256 |
-|---|---|---|
-| `warm-serial/runs-1792776205096359000.json` | 4×100 smoke and 20 controls passed | `9e486278ae1f7b74a676170e00b561a93fc0f3368c87b34ca6e8c03a664f4aec` |
-| `warm-serial/runs-1792776228246358000.json` | 12×10k serial, matched warm protocol | `64c5f376fe0252cbd98151bfd0c74463d4bb75e1763660b6a63d6de7712beff3` |
-| `warm-bounded/runs-1792776755285015000.json` | 12×10k bounded, matched warm protocol | `e56731cf87d59760ac4faf8549c33693461bdc2847e7af9b2f8b0712de5fa417` |
-
-No timed campaign failed or was replaced. An initial gate at `cda60ea6` was
-interrupted after review found that new test orchestration assumed URI DSNs
-and ran live checks in lint. The correction reuses the shared normalizer for
-keyword/socket DSNs, maps explicit socket hosts into postgres-js options,
-preserves quoted endpoint/startup parameters, and places real service checks
-in an isolated full-profile tests step. Direct TCP and actual gate keyword/
-socket controls passed before the final gate; no failed preparation authorized
-timing. `gate-interrupted-cda60ea6.log` SHA-256 is
-`87a6991cf4ef31ff4ac024d88f3410ab8fb87f812b1e904f597d9372b7822a6c`;
-`gate-final.log` is
-`e3f93a127c61bc266b3873195e6213d3c79d22a9a5e4d632c7016aaa3e1949db`.
-The existing optional pgvector 0.7.0 versus required 0.8.0 skips remain explicit;
-no extension was upgraded. The benchmark harness reaped its services,
-helpers, tick children and PostgreSQL servers; retained artifacts/raws remain
-available. This did not establish that every golden-test descendant had
-stopped: leaked workerd orphans were found later. The historic paired result
-remains exploratory with that unknown host-load condition.
-
-To reproduce, use each exact clean timed revision above in its worktree, run
-`python3 tools/bench/deliveries.py build --label <fresh-label>`, finish every
-build/test, then `python3 tools/bench/deliveries.py measure --label <fresh-label>
---mode warm` (default three rounds, 10,000 deliveries). Preserve the compiler
-snapshot/stamp/raws before changing source. Method/fact edits followed both
-campaigns and their end-freshness checks; these old stamps must reject the new
-documentation HEAD. No historical override weakens the guards. Review must keep
-process lifetime/warmup explicit alongside Workers-versus-Bun results, retain
-all adverse rounds, and rerun an affected matched comparison if measured paths
-change. The lesson is to match the service boundary and pool lifetime before
-claiming a cross-target win; the measured remaining workerd gap still needs work.
-
-
-**Fast ticks and hourly housekeeping: result** (chunk 9.1b2, local). Full
-before/after numbers, variation and caveats are in the pull request.
-
-| Idle tick, empty store | Reference | Candidate |
-|---|---:|---:|
-| Runtime SQL statements per completed-hour tick (native and workerd) | 8 | 5 |
-| Workerd idle tick p95, median of three rounds | 4.371 ms | 2.874 ms |
-
-The four prompt operations stay; the four retention statements became one
-declining lease claim. Warm delivery throughput moved within ambient variation
-and is not claimed as a gain. Method: `tools/bench/README.md`.
+**Method and reproduction.** Serial and bounded builds differ only in
+`runner.rs`, `race.rs` and `schedules.rs` (serial restored from the pre-9.1b1
+revision), each built from a clean checkout. Raw per-round results stay in
+the ignored `tools/bench/work/deliveries/` raws; no timed campaign failed or
+was replaced. Reproduce with `python3 tools/bench/deliveries.py build --label
+<label>`, finish every build and test, then `measure --label <label> --mode
+warm` (three rounds, 10,000 deliveries). Review must keep process lifetime and
+warmup explicit beside Workers-versus-Bun results and rerun an affected matched
+comparison if measured paths change. Lesson: match the service boundary and
+pool lifetime before claiming a cross-target win; the workerd gap remains.
+Comparator caveat: the TypeScript fixture only drains deliveries, while Jadpo
+also runs housekeeping and workerd goes through a pool stand-in, so the gap
+includes costs a Bun service would not pay.
