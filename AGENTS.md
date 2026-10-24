@@ -67,7 +67,9 @@ keeper may finish its existing qualification and manual review.
 
 The catalogue is an explicit exception to the no-plan-document rule below.
 New ideas/results update it with evidence, dependencies and maintained order.
-Catalogue/workflow-only PRs branch from current main and use
+Coordinate open catalogue PRs and ID allocation first: update a pending PR for
+the same scope or serialize edits; batch related results/ideas when useful.
+Do not create concurrent conflicting catalogue branches. Catalogue/workflow-only PRs branch from current main and use
 `gh pr merge --merge --auto` with required CI, without admin/bypass; never
 include compiler/runtime/keeper code or CI changes. This is the only Codex
 auto-merge exception. Experiment baseline B is separately frozen and may be an

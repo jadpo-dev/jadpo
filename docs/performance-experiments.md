@@ -19,7 +19,11 @@ qualification and manual review separately.
 
 1. Read this catalogue, AGENTS.md, the roadmap and the relevant language area
    pages. Check open PRs/branches and retained experiment refs before duplicating
-   work. Refresh stale source evidence and the queue's impact ordering.
+   work. Before allocating IDs or editing the catalogue, coordinate any open
+   catalogue PR: update the pending PR for the same scope or serialize updates
+   instead of making conflicting main-based branches. Related results and ideas
+   may be batched into one documentation-only PR. Refresh stale source evidence
+   and the queue's impact ordering.
 2. Have a dedicated discovery agent inspect for further performance problems,
    record credible ideas with the fields below, calculate their potential
    savings or state what measurement is missing, and maintain impact order.
@@ -126,16 +130,22 @@ production implementation `e4dc2d39` and test refinement
 [`c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0`][source]. Later HEAD
 `6f55028e` contains test-only corrections. Source links below are pinned to
 c9d5 for production code; line numbers are inspection leads, to be checked at
-B before editing. **This branch is unmerged; its corrected final full gate was
-pending when this catalogue was written.** Do not infer a main completion tick,
-a passing gate or current production deployment from these observations.
+B before editing. **This branch is unmerged and its full gate is unresolved.**
+Latest a3 source `0fceca62204cdc74a813871b3cf4298ea74c1c5c` records the
+corrected 6f55028e gate passing 92/93 checks in 706 seconds, with an unchanged
+native HTTPS reuse fixture's five-second connect-or-ready timeout. Five bounded
+isolated runs and the full 15-test suite passed on both the package-only and
+exact preserved workspace artifacts, without edits or budget relaxation. The
+cause remains unlocalized; a further full-gate retry is underway, not complete.
+Do not infer a main completion tick, a passing gate or current production
+deployment from these observations.
 
 The proposed exploration baseline B is this a3 production behavior, provisional
 until a3 finishes and its exact source/build/harness identities and dependency
 PRs are frozen. **The documentation PR starts from current main; experiments
 start from B, which can be an explicitly authorized unmerged PR stack.** Main
-does not yet contain this Phase 9 harness or the source PR stack (PRs #361–375
-were open at inventory time). Do not copy its unmerged completion ticks or try
+does not yet contain this Phase 9 harness or the source PR stack (the Phase 9
+source PRs through #375 were open at inventory time). Do not copy its unmerged completion ticks or try
 to reproduce a3 by silently substituting main.
 
 The existing confirmation medians provide context, not a substitute for a
@@ -255,8 +265,8 @@ re-ranking. Do not fabricate a number to make the table sortable.
 | **P20 — Direct JSON control escape hex** (queued; unmeasured) | Control-heavy strings; F | Unknown; current mixed fixture little/none expected | Generic formatting for \u00XX. Measure control frequency and writer share; LF/TAB already dedicated cases. Exact canonical bytes required. [json.rs:1639](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1639). | Low; S; low | Independent |
 
 [source]: https://github.com/richardwillars/jadpo/commit/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0
-[a3-finding]: https://github.com/richardwillars/jadpo/blob/6f55028e/docs/compiler-runtime.md#standalone-repeatable-read-handoffs-chunk-92a3-2026-10-24-london
-[a3-method]: https://github.com/richardwillars/jadpo/blob/6f55028e/tools/bench/README.md#terminal-standalone-reads-92a3
+[a3-finding]: https://github.com/richardwillars/jadpo/blob/0fceca62204cdc74a813871b3cf4298ea74c1c5c/docs/compiler-runtime.md#standalone-repeatable-read-handoffs-chunk-92a3-2026-10-24-london
+[a3-method]: https://github.com/richardwillars/jadpo/blob/0fceca62204cdc74a813871b3cf4298ea74c1c5c/tools/bench/README.md#terminal-standalone-reads-92a3
 [a2-pr]: https://github.com/richardwillars/jadpo/pull/375
-[a2-finding]: https://github.com/richardwillars/jadpo/blob/6f55028e/docs/compiler-runtime.md#json-string-writing-and-bounded-wasm-screens-chunk-92a2-2026-10-24-london
-[a2-method]: https://github.com/richardwillars/jadpo/blob/6f55028e/tools/bench/README.md#json-string-writing-and-fast-wasm-screens-92a2
+[a2-finding]: https://github.com/richardwillars/jadpo/blob/0fceca62204cdc74a813871b3cf4298ea74c1c5c/docs/compiler-runtime.md#json-string-writing-and-bounded-wasm-screens-chunk-92a2-2026-10-24-london
+[a2-method]: https://github.com/richardwillars/jadpo/blob/0fceca62204cdc74a813871b3cf4298ea74c1c5c/tools/bench/README.md#json-string-writing-and-fast-wasm-screens-92a2
