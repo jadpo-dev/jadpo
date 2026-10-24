@@ -3146,3 +3146,27 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   prerequisite `025a38c3` is included under Richard's stacked-dependency
   permission. Claude reviews and merges; Codex opens the PR without auto-merge
   and never merges it.
+
+- [x] **9.1b4 Version checks in writes:** `opus · high` after 9.1b3:
+  check a row loaded before an outside call in the write's own WHERE.
+  Preserve first-loaded versions, row/policy refusals, repeated writes,
+  transaction retries and keyed/unkeyed-call safety; exercise real races
+  and measure the same protocol before and after.
+  Built: mutations check first-loaded xmin in their own WHERE, with a separate
+  nullable parameter and a failure-only locked probe preserving refusal priority.
+  Repeated mutations, savepoint/whole-transaction rollback, keyed reruns and
+  unkeyed ambiguity remain protected by real PostgreSQL races and boundary tests;
+  an actual compiled Worker route exercises the non-NULL parameter.
+  The final own-checkout gate passed 93/93 in 652 s at `404ad02e`; measured
+  candidate `050aa8fd` has the identical complete tracked tree. The release
+  Rust runtime fixture reduced data SQL 4→3 (runtime roundtrips 8→7), but median
+  p95 worsened 4.45%; no latency gain is established. Ordinary warm PATCH at
+  eight clients measured local workerd 1,566 requests/s and 6.228 ms p95 versus
+  Bun 1,983/s and 7.110 ms, about 79% of Bun throughput and broadly unchanged.
+  This PATCH control has no outside call; it checks ordinary-write overhead.
+  All rounds, adverse timing, higher host load, missing matched pressure samples,
+  the quota-preserving harness correction, rejected/superseded runs, source and
+  artifact identities and review constraints are retained in compiler/runtime
+  §2.6/§2.11 and `tools/bench/README.md`. Exact unmerged prerequisite `e7647abb`
+  is included under Richard's stacked-dependency permission. Claude reviews and
+  merges; Codex opens the PR without auto-merge and never merges it.
