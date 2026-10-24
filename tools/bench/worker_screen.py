@@ -7,6 +7,7 @@ complete contract qualification. No native build, npm install or named diagnosti
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import gzip
 import hashlib
 import json
@@ -33,6 +34,85 @@ WORK = ROOT/'tools/bench/work/worker-screen'
 LEVELS = ('s', '2', '3')
 WORKLOADS = ('golden-read', 'ascii-large', 'unicode-large')
 QUALIFICATION = 'exploratory; no full contract qualification'
+# Reused artifacts must run the same application/schema/security/load contract.
+REFERENCE_PREFIXES = ('Cargo.toml', 'Cargo.lock', 'tools/bench/request_profile.py',
+    'tools/bench/golden.py', 'tools/bench/golden_host.mjs', 'tools/bench/todo.py',
+    'tools/bench/run.py', 'tools/bench/contracts.py', 'tools/bench/golden_contracts.py',
+    'tools/bench/ai_accounting.py', 'tools/bench/version_writes.py',
+    'tools/bench/connected_deliveries.py', 'tools/bench/fixtures/',
+    'tools/bench/load/', 'tools/bench/typescript/', 'tools/golden-todo/',
+    'examples/golden-todo/', 'tools/workers/', 'crates/jadpo-check/',
+    'crates/jadpo-plan/', 'crates/jadpo-sql/', 'crates/jadpo-codegen/', 'crates/jadpo-cli/')
+
+
+def selected_levels(levels):
+    if not levels or len(set(levels)) != len(levels) or set(levels)-set(LEVELS):
+        raise ValueError('Unknown or duplicate optimization levels')
+    return tuple(levels)
+
+
+def reference_inputs(reference, current):
+    if reference.get('complete') is not True:
+        raise ValueError('Historical reference is incomplete')
+    golden.validate_conformance(reference.get('golden', {}).get('conformance', []), golden.contract_ids())
+    producer = reference.get('source', {})
+    if not producer.get('head') or not producer.get('tree'):
+        raise ValueError('Historical producer identity missing')
+    for prefix in REFERENCE_PREFIXES:
+        old = {k:v for k,v in producer.get('files', {}).items() if k.startswith(prefix)}
+        now = {k:v for k,v in current.get('files', {}).items() if k.startswith(prefix)}
+        if not old or old != now:
+            raise ValueError(f'Reused reference input differs: {prefix}')
+
+
+def reference_files(reference, manifest):
+    files = {}
+    for app in ('golden', 'focused'):
+        for name in ('kiosk.wasm', 'kiosk.js', 'worker.mjs'):
+            original = str(Path(manifest).parent/app/'workers/build/target/kiosk'/name)
+            saved = reference.get('saved', {}).get(original)
+            digest = reference.get('artifacts', {}).get(original)
+            if (not saved or not digest or reference['artifacts'].get(saved) != digest
+                    or golden.sha(saved) != digest):
+                raise ValueError('Historical immutable saved artifact is missing or changed')
+            files[(app, name)] = {'original': original, 'saved': saved, 'sha256': digest}
+    return files
+
+
+def validate_reference(record, current):
+    path = Path(record['manifest'])
+    if golden.sha(path) != record['manifest_sha256']:
+        raise ValueError('Historical manifest changed')
+    reference = json.loads(path.read_text())
+    reference_inputs(reference, current)
+    files = reference_files(reference, path)
+    if record['producer'] != reference['source'] or record['historical_conformance'] != reference['golden']['conformance']:
+        raise ValueError('Historical qualification or producer changed')
+    for (app, name), identity in files.items():
+        copied = record['apps'][app][name]
+        if copied['origin'] != identity or golden.sha(copied['path']) != identity['sha256']:
+            raise ValueError('Imported reference copy changed')
+
+
+
+def sleep_events(raw, start, end):
+    events = []
+    for line in raw.splitlines():
+        if not re.match(r'^\d{4}-\d\d-\d\d .*\b(?:Sleep|DarkWake)\s', line):
+            continue
+        when = datetime.strptime(line[:25], '%Y-%m-%d %H:%M:%S %z').timestamp()
+        if start <= when <= end: events.append(line)
+    return events
+
+
+def check_sleep(start, end):
+    if sys.platform != 'darwin':
+        return {'available': False, 'scope': 'No macOS pmset sleep-event check on this host'}
+    raw = subprocess.check_output(['pmset', '-g', 'log'], text=True)
+    events = sleep_events(raw, start, end)
+    if events: raise ValueError(f'Sleep/DarkWake during screen: {events}')
+    return {'available': True, 'command': ['pmset', '-g', 'log'],
+            'start_utc': start, 'end_utc': end, 'events': events}
 
 
 def profile_flags(level):
@@ -43,14 +123,18 @@ def profile_flags(level):
             'CARGO_PROFILE_RELEASE_CODEGEN_UNITS': '1'}
 
 
-def schedule(workloads=WORKLOADS):
+def schedule(workloads=WORKLOADS, levels=LEVELS, reference=False, rounds=2):
     if not workloads or len(set(workloads)) != len(workloads) or set(workloads)-set(WORKLOADS):
         raise ValueError('Unknown or duplicate screen workload')
+    levels = selected_levels(levels)
+    if rounds not in (1, 2, 3):
+        raise ValueError('Screen rounds must be one, two or three')
+    variants = (*(('reference',) if reference else ()), levels[0], 'bun', *levels[1:])
     first = [{'workload': workload, 'variant': variant}
-             for workload in workloads for variant in ('s', 'bun', '2', '3')]
+             for workload in workloads for variant in variants]
     return [dict(cell, round=round_+1)
-            for round_, cells in enumerate((first, list(reversed(first))))
-            for cell in cells]
+            for round_ in range(rounds)
+            for cell in (list(reversed(first)) if round_ % 2 else first)]
 
 
 def dependencies(folder):
@@ -60,12 +144,15 @@ def dependencies(folder):
 
 
 def validate_manifest(stamp, current):
+    levels = selected_levels(stamp.get('profile_levels', LEVELS))
     if (stamp.get('schemaVersion') != 1 or stamp.get('kind') != 'worker-screen'
             or stamp.get('qualification') != QUALIFICATION
             or stamp.get('complete') is not True or 'completeContract' in stamp
-            or set(stamp.get('profiles', {})) != set(LEVELS)):
+            or set(stamp.get('profiles', {})) != set(levels)):
         raise ValueError('Incomplete or incorrectly qualified experimental manifest')
     guard.validate(stamp, current)
+    if stamp.get('reference'):
+        validate_reference(stamp['reference'], current)
     for root, expected in stamp.get('dependencies', {}).items():
         if dependencies(Path(root)) != expected:
             raise ValueError('Cached TypeScript dependencies changed')
@@ -160,11 +247,12 @@ def copy_project(app, destination, workers):
     (destination/'app.jadpo').write_text(application)
 
 
-def build(label, tools_from):
+def build(label, tools_from, levels=LEVELS, reference_build=None):
+    levels = selected_levels(levels)
     directory = WORK/label
     directory.mkdir(parents=True, exist_ok=False)
     before = guard.source()
-    reference_path = qualified.WORK/tools_from/'build.json'
+    reference_path = Path(tools_from) if Path(tools_from).is_absolute() else qualified.WORK/tools_from/'build.json'
     reference = json.loads(reference_path.read_text())
     if reference.get('complete') is not True:
         raise ValueError('Cached tool reference is incomplete')
@@ -177,7 +265,7 @@ def build(label, tools_from):
     if any(k.startswith('CARGO_PROFILE_RELEASE_') for k in os.environ):
         raise ValueError('Unset inherited release overrides; the screen defines all profiles')
     stamp = {'schemaVersion': 1, 'kind': 'worker-screen', 'qualification': QUALIFICATION,
-             'source': before, 'complete': False, 'profiles': {}, 'artifacts': {}, 'saved': {},
+             'source': before, 'complete': False, 'profiles': {}, 'profile_levels': levels, 'artifacts': {}, 'saved': {},
              'tools_reference': str(reference_path), 'tools_reference_sha256': golden.sha(reference_path),
              'compression': {'default_level': 6, 'optional_level': 9,
                              'zlib_runtime': zlib.ZLIB_RUNTIME_VERSION},
@@ -196,9 +284,13 @@ def build(label, tools_from):
             raise ValueError('Cached pinned workerd is missing; no installation is attempted')
         binaries = [spike.LOAD, spike.POOL, cached_workerd,
                     *[Path(spike.tool(name)).resolve() for name in ('bun', 'node', 'psql')]]
+        reference_root = reference_path.parents[5]
+        stamp['reused_tools'] = {}
         for binary in binaries:
-            if reference['artifacts'].get(str(binary)) != golden.sha(binary):
+            original = reference_root/binary.relative_to(ROOT) if binary.is_relative_to(ROOT) else binary
+            if reference['artifacts'].get(str(original)) != golden.sha(binary):
                 raise ValueError('A reused executable differs from the qualified tool reference')
+            stamp['reused_tools'][str(binary)] = {'original': str(original), 'sha256': golden.sha(binary)}
         selected = {name: subprocess.check_output(['rustup', 'which', name], text=True).strip()
                     for name in ('cargo', 'rustc', 'rustdoc')}
         stamp['compiler_selection'] = {
@@ -211,6 +303,19 @@ def build(label, tools_from):
             if not root.is_dir():
                 raise ValueError('Cached TypeScript dependencies are missing')
             stamp['dependencies'][str(root)] = dependencies(root)
+        # Bun consumes emitted JavaScript, which is distinct from tracked TS.
+        for root in (ROOT/'tools/bench/typescript/build', golden.TS/'build'):
+            scripts = sorted(root.rglob('*.js'))
+            if not scripts: raise ValueError('Cached TypeScript output is missing')
+            for script in scripts:
+                original = str(reference_root/script.relative_to(ROOT))
+                saved = reference.get('saved', {}).get(original)
+                digest = reference['artifacts'].get(original)
+                if (not saved or not digest or reference['artifacts'].get(saved) != digest
+                        or golden.sha(saved) != digest or golden.sha(script) != digest):
+                    raise ValueError('Reused TypeScript output differs from its immutable reference')
+                snapshot(script, directory, stamp)
+        stamp['database_prepare_compiler'] = {'path': str(spike.JADPO), 'sha256': golden.sha(spike.JADPO), 'source': before, 'scope': 'Current compiler applies unchanged schema; reference Worker remains historical'}
         stamp['runtimes'] = reference['runtimes']
         for binary in dict.fromkeys([*binaries, spike.JADPO, *map(Path, selected.values()),
                 *[Path(environment[k]) for k in ('RUSTC', 'RUSTDOC') if environment.get(k)]]):
@@ -220,7 +325,27 @@ def build(label, tools_from):
                 snapshot(Path(root)/relative, directory, stamp)
         for app in ('golden', 'focused'):
             copy_project(app, directory/'projects'/app, True)
-        for level in LEVELS:
+        if reference_build:
+            origin = Path(reference_build)
+            historical = json.loads(origin.read_text())
+            reference_inputs(historical, before)
+            record = {'manifest': str(origin), 'manifest_sha256': golden.sha(origin),
+                      'producer': historical['source'],
+                      'historical_conformance': historical['golden']['conformance'],
+                      'qualification_scope': 'Historical producer only; this screen remains exploratory',
+                      'apps': {'golden': {}, 'focused': {}}}
+            for (app, name), identity in reference_files(historical, origin).items():
+                copied = directory/'reference'/app/'workers/build/target/kiosk'/name
+                copied.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(identity['saved'], copied)
+                snapshot(copied, directory, stamp)
+                record['apps'][app][name] = {'origin': identity, 'path': str(copied)}
+            for app in ('golden', 'focused'):
+                copy_project(app, directory/'reference'/app/'native', False)
+                for path in (directory/'reference'/app/'native').rglob('*'):
+                    if path.is_file(): snapshot(path, directory, stamp)
+            stamp['reference'] = record
+        for level in levels:
             available = shutil.disk_usage(directory).free
             if available < 4*1024**3:
                 raise ValueError('Less than 4 GiB available before the next Worker profile build')
@@ -306,7 +431,7 @@ def configure(variant, focused):
     return golden
 
 
-def run(label, output, duration, warmup, principals):
+def run(label, output, duration, warmup, principals, workloads=WORKLOADS, rounds=2):
     directory = WORK/label
     manifest = directory/'build.json'
     stamp = json.loads(manifest.read_text())
@@ -318,11 +443,11 @@ def run(label, output, duration, warmup, principals):
               'build_sha256': golden.sha(manifest), 'complete': False,
               'protocol': {'connections': 16, 'duration_s': duration, 'warmup_s': warmup,
                            'inspector': 'none', 'postgres_durations': 'off',
-                           'schedule': schedule(), 'rounds': 2},
+                           'schedule': schedule(workloads, stamp.get('profile_levels', LEVELS), bool(stamp.get('reference')), rounds), 'rounds': rounds},
               'start': qualified.context(), 'rows': []}
     try:
         for cell in result['protocol']['schedule']:
-            level = 's' if cell['variant'] == 'bun' else cell['variant']
+            level = stamp.get('profile_levels', LEVELS)[0] if cell['variant'] == 'bun' else cell['variant']
             variant = directory/level
             focused = cell['workload'] != 'golden-read'
             harness = configure(variant, focused)
@@ -395,6 +520,7 @@ def run(label, output, duration, warmup, principals):
         if golden.sha(manifest) != result['build_sha256']:
             raise ValueError('Experimental build manifest changed during the campaign')
         post_guard(stamp, guard.source(), result['rows'])
+        result['sleep_observation'] = check_sleep(result['start']['utc'], time.time())
         result.update(complete=True)
     except BaseException as error:
         result['failure'] = str(error)
@@ -411,15 +537,19 @@ def main():
     build_parser = commands.add_parser('build')
     build_parser.add_argument('--label', required=True)
     build_parser.add_argument('--tools-from', required=True)
+    build_parser.add_argument('--profiles', nargs='+', choices=LEVELS, default=LEVELS)
+    build_parser.add_argument('--reference-build', type=Path)
     run_parser = commands.add_parser('run')
     run_parser.add_argument('--label', required=True)
     run_parser.add_argument('--output', required=True)
     run_parser.add_argument('--duration', type=int, default=2)
     run_parser.add_argument('--warmup', type=int, default=1)
     run_parser.add_argument('--principals', type=int, default=2048)
+    run_parser.add_argument('--workloads', nargs='+', choices=WORKLOADS, default=WORKLOADS)
+    run_parser.add_argument('--rounds', type=int, choices=(1, 2, 3), default=2)
     args = parser.parse_args()
     if (not re.fullmatch('[a-z0-9][a-z0-9-]*', args.label)
-            or args.command == 'build' and not re.fullmatch('[a-z0-9][a-z0-9-]*', args.tools_from)):
+            or args.command == 'build' and not Path(args.tools_from).is_absolute() and not re.fullmatch('[a-z0-9][a-z0-9-]*', args.tools_from)):
         parser.error('label must contain lower-case letters, digits and hyphens')
     if args.command == 'run' and (args.duration <= 0 or args.warmup < 0
                                   or args.principals < 2048
@@ -427,9 +557,9 @@ def main():
         parser.error('invalid load window, credential pool or output name')
     print(f'Worker screen · {args.command} · experimental', file=sys.stderr, flush=True)
     if args.command == 'build':
-        build(args.label, args.tools_from)
+        build(args.label, args.tools_from, args.profiles, args.reference_build)
     else:
-        run(args.label, args.output, args.duration, args.warmup, args.principals)
+        run(args.label, args.output, args.duration, args.warmup, args.principals, args.workloads, args.rounds)
 
 
 if __name__ == '__main__':

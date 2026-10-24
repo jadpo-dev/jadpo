@@ -99,7 +99,20 @@ pub(crate) fn can_end(plan: &ReadPlan, json: JsonCodecs<'_>) -> bool {
         match ty {
             SqlType::Vector | SqlType::Geography => false,
             SqlType::Array(inner) | SqlType::Range(inner) => known(*inner),
-            _ => true,
+            SqlType::Bool
+            | SqlType::Int2
+            | SqlType::Int4
+            | SqlType::Int8
+            | SqlType::Numeric
+            | SqlType::Text
+            | SqlType::Bytes
+            | SqlType::Uuid
+            | SqlType::Timestamp
+            | SqlType::Date
+            | SqlType::Time
+            | SqlType::LocalTimestamp
+            | SqlType::Json
+            | SqlType::Float8 => true,
         }
     }
     plan.settings.is_empty()
@@ -107,11 +120,23 @@ pub(crate) fn can_end(plan: &ReadPlan, json: JsonCodecs<'_>) -> bool {
         && plan.select.includes.is_empty()
         && json.codecs.coder.is_none()
         && plan.select.params.iter().all(|param| known(param.ty))
-        && plan.select.columns.iter().all(|column| {
-            !matches!(
-                column,
-                Column::Vector | Column::Geography(_) | Column::Compound { .. } | Column::Part
-            )
+        && plan.select.columns.iter().all(|column| match column {
+            Column::Vector | Column::Geography(_) | Column::Compound { .. } | Column::Part => false,
+            Column::Bool
+            | Column::Int
+            | Column::Decimal
+            | Column::Text
+            | Column::Bytes
+            | Column::Uuid
+            | Column::Instant
+            | Column::Date
+            | Column::Duration
+            | Column::Quantity(_)
+            | Column::Percentage
+            | Column::Enum { .. }
+            | Column::Json(_)
+            | Column::Distance
+            | Column::Measured => true,
         })
 }
 

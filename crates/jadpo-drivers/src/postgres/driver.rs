@@ -708,9 +708,6 @@ impl Database for Postgres {
     }
 }
 
-/// An open transaction on one connection. Dropped without a commit or a
-/// rollback, it drops its connection, and closing the connection aborts
-/// the transaction on the server.
 enum ReadEnd {
     Ordinary,
     /// The future owns the connection: cancelling it drops that connection.
@@ -719,8 +716,12 @@ enum ReadEnd {
     Completed(Result<(), StoreError>),
 }
 
+/// An open transaction on one connection. Dropped without a commit or a
+/// rollback, it drops its connection, and closing the connection aborts
+/// the transaction on the server.
 struct PgTransaction {
-    /// Its connection: `None` only once it was lost finding another.
+    /// Its connection, except while the terminal-read future owns it or
+    /// after that future was cancelled or the connection was lost.
     conn: Option<Conn>,
     pool: Rc<Pool>,
     /// The `BEGIN` its first statement sends with it, until it is sent.
