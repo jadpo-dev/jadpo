@@ -217,10 +217,12 @@ P02 is measured/mixed and retained as an exploratory prototype, with no
 production promotion or favorable rerun. The current-B CPU diagnostic below
 supported P03's independent signed-read experiment, now measured small positive
 with limited causal attribution; its original 0.5–2% prediction is unchanged.
-P21's independent safe u64 SWAR first-escape preparation is next, with the
-original 0–3% ASCII/late-escape prediction and near-zero direct mixed/signed
-scope. Optional P21.suffix keeps separate marginal/combined comparisons.
-A transfer-inclusive P61 mixed-text micro precedes any host integration.
+P21 first-only is now a promising measured ASCII prototype; the current
+P21.suffix form is negative/rejected. Neither is a production promotion.
+Richard prioritized the larger P61 transfer-inclusive micro next, independently
+from H84/B4fda with no P21 stack and its original unknown forecast, before
+further small tweaks. Host-capability integration follows only if that micro
+warrants it; new P21 bitmap work remains catalogue-only for now.
 P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
 F01 below remains frozen for the initial 54 ideas; later discoveries expand the
@@ -238,7 +240,7 @@ queue without retroactively changing that forecast.
 | **P19 — Cheap response capacity hints** (queued; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
 | **P07 — Direct Claims deserialization** (queued; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
 | **P06 — Batch request-header bridge** (queued; unmeasured) | Ordinary reads; E + header-heavy F | 0–3%; header-heavy unknown | Not measured | JS iterator → pair Array → separate string conversions/lowercase/trim. Preserve order, duplicates, case and trimming; profile bridge cost for header-heavy bound. [fetch.rs:215](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/fetch.rs#L215). | Low; M; medium | Independent; overlaps P10/P28 |
-| **P21 — Vectorize first-escape search only** (queued; unmeasured) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | Not measured | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
+| **P21 — Vectorize first-escape search only** (first measured/retained; suffix rejected) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | First/B ASCII +11.2918%, signed +1.9197%, mixed −0.5716%; suffix/first −0.9633% / −0.9024% / −0.7076% (ASCII/signed/mixed). [All24 rows, separate predictions and limits](#p21--first-escape-and-dependent-suffix-screen-2026-10-24). | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
 | **P12 — Direct UUID hex formatting** (queued; unmeasured) | Singleton reads; E + UUID-list F | 0–2%; UUID-list impact unknown | Not measured | Sixteen format! allocations then Value::uuid lowercasing. Measure direct hex first; trusted canonical constructor as separate variant. Profile UUID-list share before estimating it. [read.rs:1327](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1327), [read.rs:1103](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1103). | Low-medium; S; low | Independent |
 | **P10 — Batch response-header bridge** (queued; unmeasured) | Small/header-heavy responses; E + header F | 0–2% | Not measured | Reduce header/JS boundary construction. Keep owned Uint8Array, bodyless statuses and rejected-header behavior; no unsafe Wasm memory view. [deployable.rs:417](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L417). | Low; M; medium | Independent; interacts P06/P28 |
 | **P15 — Reuse immutable Logged observer** (queued; unmeasured) | Golden reads; E + many-unbuilt F | 0–1%; many unbuilt connections unknown | Not measured | Per-request Logged construction and reserialization of unchanged unbuilt-driver list. Measure list scaling; cached observer must not retain invocation host. [deployable.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L265), [deployable.rs:158](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/deployable.rs#L158). | Low; S; low | Independent |
@@ -294,12 +296,12 @@ re-ranking. Do not fabricate a number to make the table sortable.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
+| **P61 — Conditional host long-text JSON escaping** (queued; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
 | **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
 | **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
 | **P55 — Safe synchronous Response slice constructor** (queued; unmeasured) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | Not measured | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
 | **P56 — Direct known standard-operation calls** (queued; unmeasured) | Hot pure standard op; F; current singleton reads may gain zero | Unknown; current body attribution/call census first | Not measured | Known Op still enters broad enum/argument-shape dispatcher: [body.rs:1908](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/body.rs#L1908), [compiled.rs:884](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/compiled.rs#L884), [lib.rs:89](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/lib.rs#L89). Arguments already stack slices, return unboxed; preserve Fault→Refused, inline pace/deadlines/recording/stack. LTO may already fold dispatch. Explicit roadmap 9.2 target. | Low; S–M prototype; high semantic risk | Independent of P34; may enable P57 dead-code pruning; measure separately/combined |
 | **P58 — Explicit BLAKE3 wasm32 SIMD backend** (queued; unmeasured) | Short keyed signed tokens; F + actual signed screen | Unknown; old identified crypto budget only about 0.2–0.24%; small lead | Not measured | Cached BLAKE3 1.8.7 wasm32_simd feature is separate from global +simd128; current [Cargo.toml:245](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/Cargo.toml#L245) uses std+pure. Keep keyed format and constant-time Hash equality. Verify boundary-length/current/previous/wrong-key vectors, Wasm SIMD presence and workerd behavior. No substitution of Bun HMAC format. | Low; S–M; medium crypto/target risk | Independent P03; P22 can mask; B/C same flags or separate F/F+C comparison; reuse P02 F only as explicit control |
-| **P61 — Conditional host long-text JSON escaping** (queued; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
 | **P22 — Bounded authenticated Claims cache** (queued; unmeasured) | Repeated credentials; E + hit/churn/rotation F | Unknown impact; 0–8% uncalibrated sizing only, not a ranking bound; churn can regress | Not measured | Repeated crypto/decode/parse. First measure current exclusive crypto/decode/parse cost and representative hit/churn behavior. Key by exact token and scope to the immutable current/previous signing-key set; every request retains expiry, method, constant-time secret verifier, fresh-route behavior and CSRF. Bound entries AND bytes; no benchmark-tuned 2,048-owner capacity. [http/identity.rs:449](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/identity.rs#L449). | Low; M; high security/lifecycle risk | Independent; masks P03/P07/P23 |
 | **P29 — Threshold include-key deduplication** (queued; unmeasured) | Large collections; F | Unknown; profile key count and contains cost | Not measured | keys.contains per parent is quadratic. Potentially substantial at scale; measure threshold and small-list regression; preserve required order. [read.rs:713](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L713). | Medium mechanism, unknown app benefit; S–M; medium | Independent; compatible with P31 |
 | **P30 — Pipeline sibling include SELECTs** (queued; unmeasured) | Several includes; F | Unknown; measure sequential handoffs/wait share | Not measured | Use SAME repeatable-read transaction. Preserve snapshot, policy/error ordering, cancellation and drain; no automatic a3 terminal eligibility. [read.rs:712](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L712), [read.rs:737](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L737). | Low; L; high | Independent; overlaps include-work changes P29/P31 |
@@ -595,6 +597,160 @@ sessions 63042/45152, not invented benchmark raw. No earlier screen or
 performance failure occurred for those preparation attempts. Source/artifacts
 were retained and guarded before resetting for the next independent idea.
 
+## P21 — first-escape and dependent suffix screen (2026-10-24)
+
+**First-only: promising measured ASCII prototype retained. Current repeated-
+helper suffix: negative/rejected. No production promotion or favorable rerun.**
+First is independent H84/B4fda, without P02/P03, features or dependency edits;
+Suffix explicitly depends on the exact First manifest. Both change only
+`jadpo-value/src/json.rs`, with unchanged application input maps and ordinary
+Os flags (no added target features).
+
+Original First/B prediction **0–3% ASCII/late-escape throughput** remains
+frozen; early-escape mixed and signed direct scope was approximately zero,
+with regressions possible. Late-escape was not captured in this screen.
+Suffix's additional signed/ASCII prediction was approximately zero; mixed
+marginal gain was unknown including zero/regression, and combined Suffix/B
+was unknown. Those forecasts are not rewritten after results. Preserve a2's
+earlier approximately −5.6% mixed repeated-scalar-span result as separate
+negative history; this measured suffix uses the repeated word helper.
+
+The parent independently accepted all24 fixed B/First/Suffix/Bun × three-
+workload cells, two reversed rounds, c16, 2 s admission plus 1 s warmup,
+2,048 principals, inspector NONE and PostgreSQL durations OFF. All errors,
+warmup errors, invalid bodies and persisted deltas are zero; three complete
+body identities match. All144 immutable served snapshots and source/artifact
+checks pass; clock gaps are 4.982–10.769 ms, Sleep has no events and all owned
+services were reaped. This is a provisional short local screen, not long
+confirmation, full qualification, a gate, edge capacity or a tail-latency promise.
+
+Each actual is **100 × (median candidate req/s / median reference req/s − 1)**
+within this campaign. Round ratios are retained separately; public controls
+and host drift prevent blanket causal attribution. First's signed +1.92% is
+unexplained by its tiny identified writer footprint. Diagnostic sample budgets
+are not guaranteed request-throughput ceilings, so do not force the observed
+numbers into that earlier profile model.
+
+| Comparison / workload | Frozen predicted throughput gain | Actual gain (ratio of medians) | Round1 / round2 gains |
+|---|---|---|---|
+| First/B independent / signed | Approximately 0 direct; regressions possible | +1.9197% | +1.4773% / +2.3669% |
+| First/B independent / ASCII | 0–3% | +11.2918% | +12.8654% / +9.8162% |
+| First/B independent / mixed | Approximately 0 direct; regressions possible | -0.5716% | -0.8443% / -0.2968% |
+| Suffix/First marginal / signed | Approximately 0 additional; regressions possible | -0.9024% | -2.1403% / +0.3380% |
+| Suffix/First marginal / ASCII | Approximately 0 additional; regressions possible | -0.9633% | -0.0064% / -1.8855% |
+| Suffix/First marginal / mixed | Unknown, zero/regression possible | -0.7076% | -1.1590% / -0.2551% |
+| Suffix/B combined / signed | Unknown | +1.0000% | -0.6946% / +2.7129% |
+| Suffix/B combined / ASCII | Unknown | +10.2197% | +12.8582% / +7.7456% |
+| Suffix/B combined / mixed | Unknown | -1.2751% | -1.9935% / -0.5511% |
+
+First's ASCII gain exceeds its forecast, while mixed regresses. Suffix loses
+against First in all three workload medians; its positive combined ASCII
+number does not turn the suffix addition into a win. Retain signed/mixed
+movements without assigning them all to the scan. Same-batch medians are:
+
+| Workload | B req/s | First req/s | Suffix req/s | Bun req/s |
+|---|---|---|---|---|
+| signed | 2281.7467 | 2325.5503 | 2304.5647 | 6238.1592 |
+| ASCII | 1256.0369 | 1397.8656 | 1384.3998 | 5992.0286 |
+| mixed | 801.5571 | 796.9755 | 791.3364 | 1595.2313 |
+
+Adverse observations include mixed First round2 p95 **+1.049%** versus B,
+mixed Suffix round1 p95 **+19.305%** versus B, First ASCII round2 sampled
+peak RSS **363.0→385.2 MB**, and higher mixed CPU/request in both variants.
+Every row is retained below; these are neither universal nor memory-neutral
+improvements. There is no long confirmation or keeper integration at this point.
+
+Each cell is **req/s / p95 ms / service CPU ms per request / separate helper
+CPU ms per request / sampled peak RSS MB**. Service CPU excludes PostgreSQL
+and the pool helper; sampled RSS is not a lifetime maximum.
+
+| Workload / round | B | First | Suffix | Bun control |
+|---|---|---|---|---|
+| signed / 1 | 2293.940 / 8.906 / 0.4458 / 0.1240 / 318.6 | 2327.829 / 8.498 / 0.4333 / 0.1223 / 296.8 | 2278.006 / 8.880 / 0.4470 / 0.1227 / 314.3 | 6197.993 / 3.697 / 0.1967 / 0.0000 / 204.4 |
+| signed / 2 | 2269.554 / 9.010 / 0.4465 / 0.1210 / 310.4 | 2323.272 / 8.910 / 0.4362 / 0.1203 / 315.4 | 2331.123 / 8.746 / 0.4345 / 0.1220 / 296.6 | 6278.326 / 3.663 / 0.1958 / 0.0000 / 203.7 |
+| ASCII / 1 | 1215.653 / 22.438 / 0.8357 / 0.1844 / 353.4 | 1372.052 / 19.016 / 0.7407 / 0.1670 / 355.6 | 1371.964 / 18.388 / 0.7469 / 0.1668 / 362.6 | 5989.727 / 4.166 / 0.2168 / 0.0000 / 189.6 |
+| ASCII / 2 | 1296.421 / 18.830 / 0.7911 / 0.1651 / 363.0 | 1423.679 / 17.221 / 0.7245 / 0.1610 / 385.2 | 1396.836 / 18.134 / 0.7382 / 0.1712 / 365.0 | 5994.330 / 4.105 / 0.2150 / 0.0000 / 195.5 |
+| mixed / 1 | 804.647 / 25.817 / 1.2708 / 0.2097 / 296.8 | 797.854 / 25.815 / 1.2803 / 0.2113 / 302.4 | 788.606 / 30.801 / 1.2838 / 0.2077 / 292.1 | 1609.052 / 12.440 / 0.7333 / 0.0000 / 179.2 |
+| mixed / 2 | 798.467 / 26.025 / 1.2795 / 0.2112 / 301.6 | 796.097 / 26.298 / 1.2851 / 0.2059 / 303.3 | 794.066 / 26.713 / 1.2929 / 0.2061 / 302.1 | 1581.411 / 12.898 / 0.7305 / 0.0000 / 175.2 |
+
+All24 cold-ready / first-answer observations (milliseconds) follow, including
+adverse values. They are sparse local startup data, not deployment forecasts.
+Other latency quantiles, full bodies/hashes, request counts, load-generator/
+helper CPU and process context remain in the complete raw24 records.
+
+| Workload / round | B cold / first | First cold / first | Suffix cold / first | Bun cold / first |
+|---|---|---|---|---|
+| signed / 1 | 155.456 / 90.395 | 62.992 / 31.810 | 82.343 / 32.332 | 956.575 / 19.163 |
+| signed / 2 | 59.990 / 26.521 | 60.075 / 25.299 | 82.192 / 35.052 | 92.218 / 12.182 |
+| ASCII / 1 | 58.776 / 35.734 | 60.015 / 36.928 | 60.001 / 36.950 | 96.924 / 4.249 |
+| ASCII / 2 | 59.420 / 36.304 | 58.904 / 35.927 | 58.110 / 32.953 | 85.765 / 4.684 |
+| mixed / 1 | 59.287 / 36.313 | 59.562 / 33.202 | 59.717 / 34.003 | 88.918 / 5.772 |
+| mixed / 2 | 59.019 / 35.963 | 58.458 / 35.662 | 58.742 / 35.583 | 84.798 / 4.139 |
+
+Whole-host CPU spans **23.869–49.520%**, load-average endpoints
+**2.853–16.059**. All per-row host observations remain in raw; the two
+short reversed rounds and differing controls/host context limit attribution.
+
+| Artifact variant | Golden Wasm / gzip6 bytes | Focused Wasm / gzip6 bytes |
+|---|---|---|
+| B | 7325897 / 2690117 | 7364454 / 2662029 |
+| First | 7326106 / 2690204 | 7364663 / 2662165 |
+| Suffix | 7325992 / 2690291 | 7364549 / 2662129 |
+
+Compression is a deterministic Wasm gzip6 proxy, not provider upload size.
+First source `914367c6ef2cc5f921169d1e7f7970a3087b16e5`, tree
+`a9647782e0c4c7fffa6e1bbd17751a407d2afd0d`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/p21-first`. Suffix source
+`a7a2baf6be0bb7895046c5dc05b8a7906021c875`, tree
+`62f9be011909559361b2842d90fa42f5fea6b2d4`, is retained at the same prefix's
+`p21-suffix` ref and pins First as an exact manifest prerequisite. Shared H84
+and B remain unchanged. All paths below are relative to archive A above:
+
+| P21 record | Archive-relative path | SHA-256 |
+|---|---|---|
+| First build | `variants/p21-first/build.json` | `6414b0a92a29b82376a4138a12136a89900b1f0fb2be167aff42ceb051f476d6` |
+| Dependent Suffix build | `variants/p21-suffix/build.json` | `4f483dd4f4010e3501ab1e7b1dc516d56a957823948a604c525270da692ceb86` |
+| Six-host no-load smoke | `screens/p21-suffix/setup-cohort/results.json` | `a0da45553ef986e715708787d23170c3fabcbec30839258c46c12c647fcb6f0c` |
+| Complete fixed24 result | `screens/p21-suffix/screen24-none-pg-off-c16-r2/results.json` | `c9859343eb377af7bbdc3aa6ba0892afe714c7f5224b82ccfdfad92eae546900` |
+
+Baseline writer controls at `13b8aec8d4e93c7d31e48c07979f111bc0920e29`
+pass 13 JSON tests. Initial First `d70680c1296b4b5cd2a00a7358313cf327d105fb`
+passes 14 JSON tests plus the allocation check, but Clippy requires typed
+`as_chunks::<8>()` views instead of chunks_exact. That setup-only source is
+retained in the final candidate ancestry, with stderr in task 79261 and no
+timed raw. Corrected First 9143 and Suffix a7a2 both pass the 14 JSON tests,
+allocation check and affected Clippy. The root reviewed Suffix's nine-line
+writer delta. Both source/build/artifact sets were retained before resetting
+H84 for the next independent experiment. No earlier failed setup is presented
+as a performance capture.
+
+### P21.suffix-bitmap — catalogue-only emerging alternative
+
+P61 remains next; there is no bitmap implementation or measured result yet.
+This explicit dependent variant uses P21 First's checked 8-byte reads and
+little-endian lane order, rather than depending on the rejected repeated-
+earliest Suffix. An exact 8-lane mask could enumerate every escape in one word
+and preserve valid UTF-8 spans between ASCII escapes. Compare B, First and
+First+bitmap, with marginal over First and combined over B. Its prediction is
+**unknown, including loss**: no intended additional unescaped-ASCII or ordinary
+signed work-path benefit, mixed effect unknown, and codegen/layout effects
+unpredicted. Current mixed writer self 18.8% is a whole-writer sampled context,
+not promised removable headroom. Keep both earlier repeated-scalar and this
+repeated-helper negative evidence intact; do not alter original P21/F01 forecasts.
+
+The assessed algebraic mask design (not a runtime-tested prototype) is:
+`L = repeat(0x7f)`, `H = repeat(0x80)`;
+`zero(x) = ~(((x & L).wrapping_add(L)) | x | L) & H`;
+`control(w) = ~(((w & L).wrapping_add(repeat(0x60))) | w) & H`;
+combine `control(w) | zero(w ^ repeat(0x22)) | zero(w ^ repeat(0x5c))`.
+For each low-seven-bit byte l, l+127 is 127..254 and l+96 is 96..223;
+no lane reaches 256, so no cross-byte carry occurs. OR-ing the original byte
+rejects high bytes. Enumerate set bits only from exact masks, not the earlier
+borrow masks with possible later-lane false positives. Word reads may cross
+scalar boundaries, but String appends must start/end at discovered ASCII
+escape positions or known string boundaries, never arbitrary word ends.
+Canonical escape spelling and existing-prefix/append behavior remain required.
+
 ## Current-B CPU diagnostic and compiler audit (2026-10-24)
 
 **Instrumented diagnostic, not a throughput result or a new performance gain.**
@@ -752,6 +908,10 @@ micro before capability integration. Current scalar-count samples motivate
 P11/P13 checks while retaining mandatory max-length counting. Named BLAKE3's
 small sampled footprint keeps P58 a small/unknown lead. These findings change
 investigation priority, not original predictions or frozen F01.
+
+The following P21.suffix prediction was frozen before its result above;
+the measured current form is now negative/rejected. The original forecast is
+retained verbatim rather than being rewritten from the observation.
 
 `P21.suffix` is a separate conditional dependent variant, with the safe word-
 first-escape helper as its prerequisite. After P21 first-only, compare repeated
