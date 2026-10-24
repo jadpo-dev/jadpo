@@ -3065,13 +3065,5 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   sweep size, connection budgets, leases, retry safety, shutdown and hand-on
   behaviour. Verify responses and durable effects, retain all runs, and
   measure the same local protocol before and after the change.
-  Built: four bounded local delivery lanes over the ordinary driver and a
-  verified 10,000-delivery workload on native, workerd, Bun and Node.
-  Lease fencing, retry safety, sequential descendants, budget/shutdown
-  settlement and durable effects remain checked. Matched three-round
-  before/after results, CPU trade-offs, unchanged controls, superseded runs
-  and exact source identities are in compiler/runtime §2.11. The own-checkout
-  full gate passed 92/92; the measured candidate has the same complete tracked
-  tree as the gated commit. Exact unmerged prerequisite `64bf4934` is included
-  under Richard's stacked-dependency permission; review and merges remain
-  pending. No PR was merged or set to auto-merge by Codex.
+  Built: four bounded local delivery lanes and a verified 10,000-delivery
+  workload; results in compiler/runtime §2.11.
