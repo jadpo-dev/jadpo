@@ -1,4 +1,4 @@
-//! Habits from other languages (decision register, 2026-10-15) as the
+//! Habits from other languages as the
 //! whole check sees them. A habit whose Jadpo form only renames or drops
 //! tokens parses as that form, so checking goes on: the project gives the
 //! habit's one error and exactly the problems it gives with the habit's

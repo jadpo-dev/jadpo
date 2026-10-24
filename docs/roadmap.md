@@ -2,10 +2,10 @@
 
 **Updated:** 2026-10-23. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
-session. Record decisions in the [decision register](decision-register.md)
-and the [language pages](language/README.md), not here. Finished phases,
-and the full entries of finished chunks, are in the
-[archive of finished chunks](archive/roadmap-finished.md).
+session. Record language decisions on the [area pages](language/README.md)
+and process rules in [AGENTS.md](../AGENTS.md), not here. A finished chunk
+becomes one ticked line naming where its work is written; its full text
+lives in git history.
 
 ## The direction (decided 2026-10-13)
 
@@ -14,7 +14,8 @@ and the full entries of finished chunks, are in the
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
-  The first compiler (v0) was archived, not reworked.
+  The first compiler (v0) was not reworked; it stays in git at the tag
+  `archive/compiler-v0`.
 - **Two ways to run the graph:** an interpreter inside `jadpo` for `dev`,
   `test` and `call`, and compiled Rust for deployables, native and
   WebAssembly (Cloudflare Workers), sharing one runtime crate. Every test runs
@@ -55,9 +56,8 @@ dependent chunk can complete its own build and full gate.
    passes, and tick it here in the same pull request. A ticked chunk is
    one line naming the sections where what it built is written
    ([compiler-runtime](compiler-runtime.md) and the area pages, which
-   hold every fact, decision and measurement worth keeping); a long entry
-   goes whole to the [archive](archive/roadmap-finished.md), and so does a
-   phase once all its chunks are ticked (chunk 8.4h, 2026-10-22).
+   hold every fact, decision and measurement worth keeping); the full text
+   of a finished chunk lives in git history.
    If the chunk needs a language decision that is not on the pages, stop and
    ask Richard with a recommendation; never special-case the compiler for an
    example.
@@ -80,8 +80,8 @@ Compiled native code (8.1) and WebAssembly on Cloudflare Workers (8.2),
 every test passing interpreted and compiled. A ticked chunk names where
 what it built is written: § is a section of
 [compiler-runtime.md](compiler-runtime.md), an area a
-[language page](language/README.md); its full entry is in the
-[archive](archive/roadmap-finished.md#phase-8--compiled-deployables-finished-chunks).
+[language page](language/README.md); the full text of a finished chunk is
+in git history.
 
 - [x] **8.1a One runtime plan and its encoding**: §2.5, "The plan compiled
   code holds"; §2.6, "The start-up state and the runtime's plan".
@@ -233,8 +233,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   the same local connection stand-in Jadpo's Workers build uses) with all
   44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
   method. The headline pairs are native against Bun and Node, and Wasm
-  against TypeScript on workerd
-  ([decision](decision-register.md#performance-comparisons-pair-like-with-like--2026-10-24)).
+  against TypeScript on workerd, led by CPU time per request, cold start and
+  p95 (Richard, 2026-10-24).
 - [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
   local protocol before and after each improvement.
   Delivered through 9.1b1–9.1b5 below, in order. This split changes sizing,
@@ -283,7 +283,7 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
-  ([optimisation results](experiments/wasm-optimization-results.md)).
+  (measured on earlier experiments).
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
   type, locals and parameters typed, a `Value` made only at the runtime's
   entry points), if profiling shows a body's own work matters beside the
@@ -351,13 +351,15 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    `publish`, git-tag versions, publisher trust); packages from other Jadpo
    apps and the cross-app break check; choosing a provider when deploying,
    when an app other people run needs it.
-7. Product work: the developer console and MCP (E11), the graph review UI
-   (E06, Revset-inspired), the public package registry, acting as an OAuth
+7. Product work: the developer console and MCP, the graph review UI
+   (Revset-inspired), the public package registry, acting as an OAuth
    provider, D1 and row-level security.
-
-Older epics (E03–E12) are described in the
-[archived roadmap](archive/implementation-roadmap-2026-10-11.md) and are
-replanned against this list when reached.
+8. A versioned application contract for frontend clients: a public contract
+   derived by the compiler, client consumption declarations and generated
+   TypeScript bindings (a React example first); presentation stays in
+   ordinary frontend code.
+9. The public documentation site at jadpo.dev, structured from how
+   developers and agents look things up.
 
 ## How we work
 

@@ -13,7 +13,7 @@ Decides nothing.
 
 The compiler accepts one integration, the golden app's `ReminderMail`, by
 comparing its 29 lines with a fixed list. Behind that sit real guarantees,
-frozen in the [service plan](../../archive/specs-v0/service-plan.md): a pinned contract, a
+frozen in the service plan: a pinned contract, a
 secret that only reaches one header, a fixed host, bounded retries, a stable
 idempotency key, and a split between "the provider surely did nothing" and
 "it may have acted". The declaration that carries them is the least

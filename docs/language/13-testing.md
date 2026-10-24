@@ -2772,7 +2772,7 @@ fixture local {
 
 ### `syntax.assertion_form`
 
-A test checks with `assert condition`: Rust's `assert_eq!`, JUnit's `assertEquals`, Python's `assertEqual`, Jest's `expect(...).toBe(...)` and Node's `assert.equal` are habits from other languages (decision register, 2026-10-15), one error each whose edit writes the `assert`.
+A test checks with `assert condition`: Rust's `assert_eq!`, JUnit's `assertEquals`, Python's `assertEqual`, Jest's `expect(...).toBe(...)` and Node's `assert.equal` are habits from other languages, one error each whose edit writes the `assert`.
 
 ```jadpo check project=e-habit-assertion expect=syntax.assertion_form
 type Count = Int {

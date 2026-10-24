@@ -3268,8 +3268,7 @@ check failed: 1 error, 1 file
 
 ### Habits from other languages
 
-People and agents write constructs from other languages out of habit
-(decision register, 2026-10-15). Each has an error of its own that names
+People and agents write constructs from other languages out of habit. Each has an error of its own that names
 the habit and the Jadpo form, with an edit, and parsing carries on as if
 the Jadpo form had been written. A syntax error never brings a second on
 its line: anything else the line holds is reported once the first is
@@ -3846,8 +3845,7 @@ run, [Constants](#constants) included (chunk 5.3e).
    construction, which area 2 question 1 made fallible; whether the compiler
    may skip `attempt` when the declared ranges prove it safe is carried to
    area 4.
-- **Parentheses are a workaround, not a style.** The decision register limits
-   parentheses to calls, constructors and grouping; conditions need them only
+- **Parentheses are a workaround, not a style.** Parentheses are limited to calls, constructors and grouping; conditions need them only
    because of the parsing bug.
 - **The grammar and the compiler disagree on recursion.** Grammar §16 and
    RM-216 list recursion as unsupported; the compiler accepts it.
