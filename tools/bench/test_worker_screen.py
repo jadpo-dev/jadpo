@@ -156,7 +156,7 @@ class WorkerScreenControls(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw); manifest = root/'build.json'
             for app in ('golden', 'focused'):
-                for name in ('kiosk.wasm', 'kiosk.js', 'worker.mjs'):
+                for name in ('kiosk.wasm', 'kiosk.js', 'worker.mjs', 'wrangler.json'):
                     original = str(root/app/'workers/build/target/kiosk'/name)
                     saved = root/f'{app}-{name}'; saved.write_bytes(b'original immutable bytes')
                     reference['saved'][original] = str(saved)
@@ -182,6 +182,54 @@ class WorkerScreenControls(unittest.TestCase):
             with self.assertRaises(ValueError): validate_reference(record, source)
             manifest.write_text('{}')
             with self.assertRaises(ValueError): validate_reference(record, source)
+
+    def test_served_config_requires_qualified_build_and_every_saved_module_link(self):
+        import json
+        from worker_screen import served_config, runner_config
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw); manifest = root/'build.json'
+            reference = {'source': {'head': 'producer'}, 'artifacts': {}}
+            intended = str(root/'focused/workers/build/target/kiosk')
+            host = {'intended': intended, 'saved': {}, 'files': {}}
+            for name in ('kiosk.wasm', 'kiosk.js', 'worker.mjs', 'wrangler.json'):
+                original = str(root/'live'/name); saved = root/f'saved-{name}'
+                saved.write_text(json.dumps({'name': 'historical', 'main': 'worker.mjs',
+                    'compatibility_date': '2026-10-01', 'rules': [], 'ratelimits': []}) if name == 'wrangler.json' else 'module')
+                digest = hashlib.sha256(saved.read_bytes()).hexdigest()
+                host['saved'][original] = str(saved)
+                host['files'].update({original: digest, str(saved): digest})
+                reference['artifacts'][str(Path(intended)/name)] = digest
+            manifest.write_text(json.dumps(reference))
+            row = {'target': 'workers', 'instrumentation': 'none', 'consumed_host': host,
+                   'requests': 100, 'rps': 50, 'p95_us': 10, 'verified': True,
+                   'errors': 0, 'unexpected': 0, 'invalid_bodies': 0, 'all_unexpected': 0,
+                   'warmup_errors': 0, 'warmup_invalid_bodies': 0, 'persisted_delta': 0,
+                   'load_started_unix': 100, 'load_completed_unix': 103.01,
+                   'load_wall_s': 3, 'response_body_bytes': 9, 'response_body_sha256': 'a'*64,
+                   'database_observation': {'enabled': False, 'server_duration_records': 0}}
+            served = {'complete': True, 'source': reference['source'], 'build': str(manifest),
+                      'build_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(), 'rows': [row]}
+            saved, digest, _ = served_config(reference, manifest, served, 'focused')
+            self.assertEqual(digest, hashlib.sha256(Path(saved).read_bytes()).hexdigest())
+            candidate = root/'candidate-wrangler.json'
+            config = json.loads(Path(saved).read_text()); config['name'] = 'current-folder'
+            candidate.write_text(json.dumps(config))
+            self.assertEqual(runner_config(candidate), runner_config(saved))
+            config['ratelimits'] = [{'name': 'LIMITS', 'simple': {'limit': 1, 'period': 60}}]
+            candidate.write_text(json.dumps(config))
+            self.assertNotEqual(runner_config(candidate), runner_config(saved))
+            faults = [lambda s: s.update(complete=False), lambda s: s.update(source={}),
+                      lambda s: s.update(build_sha256='0'*64),
+                      lambda s: s['rows'][0].update(verified=False),
+                      lambda s: s['rows'][0].update(instrumentation='inspector'),
+                      lambda s: s['rows'][0]['consumed_host'].update(intended='different-app'),
+                      lambda s: s['rows'][0]['consumed_host']['saved'].pop(str(root/'live/worker.mjs')),
+                      lambda s: s['rows'][0]['consumed_host']['files'].update({str(root/'live/kiosk.wasm'): '0'*64})]
+            for fault in faults:
+                bad = copy.deepcopy(served); fault(bad)
+                with self.assertRaises(ValueError): served_config(reference, manifest, bad, 'focused')
+            Path(saved).write_text('drift')
+            with self.assertRaises(ValueError): served_config(reference, manifest, served, 'focused')
 
     def test_sleep_events_reject_in_window_sleep_and_darkwake_only(self):
         from worker_screen import sleep_events

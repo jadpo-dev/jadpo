@@ -65,18 +65,58 @@ def reference_inputs(reference, current):
             raise ValueError(f'Reused reference input differs: {prefix}')
 
 
-def reference_files(reference, manifest):
+def reference_files(reference, manifest, served=None):
     files = {}
     for app in ('golden', 'focused'):
-        for name in ('kiosk.wasm', 'kiosk.js', 'worker.mjs'):
+        for name in ('kiosk.wasm', 'kiosk.js', 'worker.mjs', 'wrangler.json'):
             original = str(Path(manifest).parent/app/'workers/build/target/kiosk'/name)
             saved = reference.get('saved', {}).get(original)
             digest = reference.get('artifacts', {}).get(original)
+            if name == 'wrangler.json' and not saved and served is not None:
+                saved, digest, original = served_config(reference, manifest, served, app)
+                files[(app, name)] = {'original': original, 'saved': saved,
+                                     'sha256': digest, 'origin': 'immutable served snapshot'}
+                continue
             if (not saved or not digest or reference['artifacts'].get(saved) != digest
                     or golden.sha(saved) != digest):
                 raise ValueError('Historical immutable saved artifact is missing or changed')
             files[(app, name)] = {'original': original, 'saved': saved, 'sha256': digest}
     return files
+
+
+def served_config(reference, manifest, served, app):
+    if (served.get('complete') is not True or served.get('source') != reference['source']
+            or served.get('build_sha256') != golden.sha(manifest)
+            or Path(served.get('build', '')).resolve() != Path(manifest).resolve()):
+        raise ValueError('Historical served results do not link to the qualified build')
+    intended = str(Path(manifest).parent/app/'workers/build/target/kiosk')
+    for row in served.get('rows', []):
+        host = row.get('consumed_host', {})
+        if row.get('target') != 'workers' or host.get('intended') != intended:
+            continue
+        validate_row(row)
+        if row.get('instrumentation') != 'none':
+            raise ValueError('Historical served config must come from the capacity protocol')
+        names = {}
+        for original, saved in host.get('saved', {}).items():
+            name = Path(original).name
+            if name not in ('kiosk.wasm', 'kiosk.js', 'worker.mjs', 'wrangler.json'):
+                continue
+            digest = host.get('files', {}).get(original)
+            if not digest or host['files'].get(saved) != digest or golden.sha(saved) != digest:
+                raise ValueError('Historical served snapshot changed')
+            if name != 'wrangler.json' and reference['artifacts'].get(str(Path(intended)/name)) != digest:
+                raise ValueError('Historical served module differs from its producer')
+            names[name] = (saved, digest, original)
+        if set(names) != {'kiosk.wasm', 'kiosk.js', 'worker.mjs', 'wrangler.json'}:
+            raise ValueError('Historical served snapshot is incomplete')
+        return names['wrangler.json']
+    raise ValueError('No historical served configuration for this application')
+
+
+def runner_config(path):
+    config = json.loads(Path(path).read_text())
+    return {key: config[key] for key in ('main', 'compatibility_date', 'rules', 'ratelimits')}
 
 
 def validate_reference(record, current):
@@ -85,7 +125,13 @@ def validate_reference(record, current):
         raise ValueError('Historical manifest changed')
     reference = json.loads(path.read_text())
     reference_inputs(reference, current)
-    files = reference_files(reference, path)
+    served = None
+    if record.get('served_results'):
+        metadata = record['served_results']
+        if golden.sha(metadata['path']) != metadata['sha256']:
+            raise ValueError('Historical served result manifest changed')
+        served = json.loads(Path(metadata['path']).read_text())
+    files = reference_files(reference, path, served)
     if record['producer'] != reference['source'] or record['historical_conformance'] != reference['golden']['conformance']:
         raise ValueError('Historical qualification or producer changed')
     for (app, name), identity in files.items():
@@ -173,6 +219,10 @@ def validate_manifest(stamp, current):
             if not inputs or app in generated and generated[app] != inputs:
                 raise ValueError('Generated source differs between optimization levels')
             generated[app] = inputs
+            if stamp.get('reference'):
+                historical_config = stamp['reference']['apps'][app]['wrangler.json']['path']
+                if runner_config(Path(record['production'])/'wrangler.json') != runner_config(historical_config):
+                    raise ValueError('Historical and candidate runner configuration differs')
             folder = Path(record['production'])
             for name in ('kiosk.wasm', 'kiosk.js'):
                 path = folder/name
@@ -247,7 +297,7 @@ def copy_project(app, destination, workers):
     (destination/'app.jadpo').write_text(application)
 
 
-def build(label, tools_from, levels=LEVELS, reference_build=None):
+def build(label, tools_from, levels=LEVELS, reference_build=None, reference_results=None):
     levels = selected_levels(levels)
     directory = WORK/label
     directory.mkdir(parents=True, exist_ok=False)
@@ -335,7 +385,12 @@ def build(label, tools_from, levels=LEVELS, reference_build=None):
                       'historical_conformance': historical['golden']['conformance'],
                       'qualification_scope': 'Historical producer only; this screen remains exploratory',
                       'apps': {'golden': {}, 'focused': {}}}
-            for (app, name), identity in reference_files(historical, origin).items():
+            served = None
+            if reference_results:
+                served = json.loads(Path(reference_results).read_text())
+                record['served_results'] = {'path': str(reference_results),
+                                            'sha256': golden.sha(reference_results)}
+            for (app, name), identity in reference_files(historical, origin, served).items():
                 copied = directory/'reference'/app/'workers/build/target/kiosk'/name
                 copied.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(identity['saved'], copied)
@@ -430,6 +485,67 @@ def configure(variant, focused):
         spike.EXTRA_BINDINGS = ['(name = "SIGNING_KEY", text = '+json.dumps(todo.KEY)+')']
         return todo
     return golden
+
+
+def smoke(label, output):
+    """No-load setup check of both imported production hosts; never timing."""
+    directory = WORK/label
+    manifest = directory/'build.json'
+    stamp = json.loads(manifest.read_text())
+    validate_manifest(stamp, guard.source())
+    if not stamp.get('reference'): raise ValueError('Setup smoke requires a reference')
+    destination = directory/output
+    destination.mkdir(exist_ok=False)
+    result = {'kind': 'worker-screen-setup', 'qualification': 'setup only; no performance measurement',
+              'source': stamp['source'], 'build': str(manifest),
+              'build_sha256': golden.sha(manifest), 'complete': False, 'rows': []}
+    try:
+        for app in ('golden', 'focused'):
+            harness = configure(directory/'reference', app == 'focused')
+            database = harness.Database(diagnostics=False)
+            server = None
+            original = spike.workerd_config
+            row = {'application': app, 'verified': False}
+            result['rows'].append(row)
+            try:
+                qualified.check_duration_setting(database, False)
+                database.prepare('workers')
+                def configuration(*args, **kwargs):
+                    path = original(*args, **kwargs)
+                    row['consumed_host'] = qualified.capture_host(path,
+                        directory/'reference'/app/'workers/build/target/kiosk',
+                        destination/f'{app}-host', stamp)
+                    return path
+                spike.workerd_config = configuration
+                if app == 'golden':
+                    environment = golden.configuration(database.url('workers'), secrets.token_urlsafe(32))
+                    owners, _ = golden.credentials('workers', environment, 1)
+                    golden.seed(database, 'workers', owners)
+                    server = golden.Server('workers', database, environment)
+                    case = golden.cases_for(server, owners, 'read')[0]
+                    row.update(qualified.wire_probe(server, case['path'], case['expected_json'], owners[0]['token']))
+                else:
+                    logs = harness.WORK/'logs'; logs.mkdir(exist_ok=True)
+                    server = harness.Server('workers', database, logs)
+                    payload = qualified.payloads()['ascii-large']
+                    harness.prepare(server, database, 1, {harness.SMALL: 'x'*100, harness.LARGE: payload})
+                    row.update(qualified.wire_probe(server, '/api/samples/'+harness.LARGE,
+                        {'id': harness.LARGE, 'title': 'large', 'payload': payload}))
+                qualified.validate_host(row['consumed_host'])
+                qualified.check_duration_setting(database, False)
+                row['verified'] = True
+            finally:
+                spike.workerd_config = original
+                if server: server.stop()
+                database.stop()
+        post_guard(stamp, guard.source(), result['rows'])
+        result['complete'] = True
+    except BaseException as error:
+        result['failure'] = str(error)
+        raise
+    finally:
+        (destination/'results.json').write_text(json.dumps(result, indent=2)+'\n')
+    print(f'passed: no-load reference setup smoke · {destination}')
 
 
 def run(label, output, duration, warmup, principals, workloads=WORKLOADS, rounds=2):
@@ -540,6 +656,10 @@ def main():
     build_parser.add_argument('--tools-from', required=True)
     build_parser.add_argument('--profiles', nargs='+', choices=LEVELS, default=LEVELS)
     build_parser.add_argument('--reference-build', type=Path)
+    build_parser.add_argument('--reference-results', type=Path)
+    smoke_parser = commands.add_parser('smoke')
+    smoke_parser.add_argument('--label', required=True)
+    smoke_parser.add_argument('--output', required=True)
     run_parser = commands.add_parser('run')
     run_parser.add_argument('--label', required=True)
     run_parser.add_argument('--output', required=True)
@@ -556,9 +676,15 @@ def main():
                                   or args.principals < 2048
                                   or not re.fullmatch('[a-z0-9][a-z0-9-]*', args.output)):
         parser.error('invalid load window, credential pool or output name')
+    if args.command == 'smoke' and not re.fullmatch('[a-z0-9][a-z0-9-]*', args.output):
+        parser.error('invalid setup output name')
+    if args.command == 'build' and args.reference_results and not args.reference_build:
+        parser.error('reference results require a reference build')
     print(f'Worker screen · {args.command} · experimental', file=sys.stderr, flush=True)
     if args.command == 'build':
-        build(args.label, args.tools_from, args.profiles, args.reference_build)
+        build(args.label, args.tools_from, args.profiles, args.reference_build, args.reference_results)
+    elif args.command == 'smoke':
+        smoke(args.label, args.output)
     else:
         run(args.label, args.output, args.duration, args.warmup, args.principals, args.workloads, args.rounds)
 
