@@ -58,7 +58,7 @@ async fn queued(server: &mut DuplexStream) {
         kinds.push(kind);
         if kind == b'P' {
             assert_eq!(body[0], 0, "unnamed statement");
-            assert!(body.windows(4).any(|part| part == 20u32.to_be_bytes()));
+            assert_eq!(&body[1..], b"SELECT $1::int8\0\0\x01\0\0\0\x14");
         }
         if kind == b'B' {
             assert_eq!(&body[..2], &[0, 0], "unnamed portal and statement");
@@ -79,7 +79,7 @@ fn played<T>(
     let store = Postgres::new("postgres://app@localhost/app", Rc::clone(&host) as Rc<dyn Transport>).unwrap();
     let runtime = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
     tokio::task::LocalSet::new().block_on(&runtime, async {
-        let server = tokio::task::spawn_local(async move {
+        let mut server = tokio::task::spawn_local(async move {
             let mut socket = loop {
                 let next = host.servers.borrow_mut().pop();
                 if let Some(next) = next { break next; }
@@ -90,9 +90,11 @@ fn played<T>(
         });
         let result = tokio::time::timeout(std::time::Duration::from_secs(2), work(&store)).await;
         if result.is_err() { server.abort(); }
-        let served = server.await;
-        assert!(served.is_ok(), "scripted server: {served:?}");
-        result.expect("terminal read did not queue BEGIN/query/COMMIT before replies")
+        let served = tokio::time::timeout(std::time::Duration::from_secs(2), &mut server).await;
+        if served.is_err() { server.abort(); let _ = server.await; }
+        let done = result.expect("terminal read did not queue BEGIN/query/COMMIT before replies");
+        assert!(matches!(served, Ok(Ok(()))), "scripted server: {served:?}");
+        done
     })
 }
 

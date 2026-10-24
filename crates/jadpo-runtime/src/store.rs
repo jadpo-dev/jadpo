@@ -245,3 +245,7 @@ fn missing(
         .collect();
     Failure::of(failures.get(plan.failure.0 as usize)?, &slots, values)
 }
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod tests;
