@@ -46,19 +46,29 @@ class StringScreenControls(unittest.TestCase):
             wasm = Path(raw)/'writers.wasm'
             wasm.write_bytes(b'\0asm\1\0\0\0')
             import hashlib
-            from string_screen import case_metadata
-            stamp = {'schemaVersion': 1, 'kind': 'string-screen', 'complete': True,
+            from string_screen import case_metadata, VARIANTS, verification_count
+            stamp = {'schemaVersion': 2, 'kind': 'string-screen', 'complete': True,
                      'qualification': 'diagnostic Node-hosted Wasm; not HTTP or workerd',
                      'source': {'head': 'frozen'}, 'opt_level': 's',
                      'artifacts': {str(wasm): hashlib.sha256(wasm.read_bytes()).hexdigest()},
-                     'cases': case_metadata(), 'canonical': {'passed': True, 'negative_controls': 2}}
+                     'cases': case_metadata(), 'variants': list(VARIANTS),
+                     'expected_verifications': verification_count(),
+                     'codegen': {'indirect_call': True, 'black_box_barrier': True},
+                     'canonical': {'passed': True, 'negative_controls': 2,
+                                   'byte_checks': verification_count()-2}}
             validate_build(stamp, stamp['source'])
             for fault in (
+                lambda s: s.update(schemaVersion=1),
                 lambda s: s.update(complete=False),
                 lambda s: s.update(opt_level='3'),
                 lambda s: s['cases'].pop(),
                 lambda s: s['canonical'].update(negative_controls=0),
                 lambda s: s.update(qualification='complete HTTP contract'),
+                lambda s: s['variants'].pop(),
+                lambda s: s.update(expected_verifications=1),
+                lambda s: s['canonical'].update(byte_checks=0),
+                lambda s: s['codegen'].update(indirect_call=False),
+                lambda s: s['codegen'].update(black_box_barrier=False),
             ):
                 bad = copy.deepcopy(stamp); fault(bad)
                 with self.subTest(fault=fault), self.assertRaises(ValueError):

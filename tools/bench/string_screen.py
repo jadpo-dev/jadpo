@@ -19,7 +19,7 @@ WORK = ROOT/'tools/bench/work/string-screen'
 QUALIFICATION = 'diagnostic Node-hosted Wasm; not HTTP or workerd'
 OLD = '190df01270b52ce4b3a7190e933091239647ea41'
 BYTE = '1db7e87261685eda3de3c7efcc7a2a0b16cc12bc'
-VARIANTS = ('old', 'reserve', 'byte_bulk', 'char_bulk', 'skip_empty')
+VARIANTS = ('old', 'reserve', 'byte_bulk', 'char_bulk', 'skip_empty', 'first_escape')
 
 
 def canonical(text):
@@ -89,7 +89,21 @@ def writer_sources():
                             'write!(out, "\\\\u{:04x}", control as u32)')
     skip = byte.replace('out.push_str(&text[start..index]);',
                          'if start != index { out.push_str(&text[start..index]); }')
-    sources = dict(zip(VARIANTS, (old, reserve, byte, scalar, skip)))
+    loop = old[old.index('    for c in text.chars()'):old.rindex("    out.push('\"');")]
+    loop = loop.replace('text.chars()', 'text[index..].chars()', 1)
+    loop = ''.join('    '+line if line.strip() else line for line in loop.splitlines(keepends=True))
+    first = marker + '''
+    out.reserve(text.len() + 2);
+    out.push('"');
+    if let Some(index) = text.bytes().position(|byte| byte < 0x20 || byte == b'"' || byte == b'\\\\') {
+        out.push_str(&text[..index]);
+''' + loop + '''
+    } else {
+        out.push_str(text);
+    }
+    out.push('"');
+}'''
+    sources = dict(zip(VARIANTS, (old, reserve, byte, scalar, skip, first)))
     return {name: source.replace('pub fn write_string', 'fn '+name, 1)
             for name, source in sources.items()}
 
@@ -102,7 +116,7 @@ RUST = r'''
 use std::{cell::RefCell, fmt::Write as _, hint::black_box};
 type Writer = fn(&str, &mut String);
 @WRITERS@
-const WRITERS: [Writer; 5] = [old, reserve, byte_bulk, char_bulk, skip_empty];
+const WRITERS: [Writer; @WRITER_COUNT@] = [@WRITER_LIST@];
 struct Case { fragment: &'static [u8], repeats: usize, tail: &'static [u8],
               escaped: &'static [u8], escaped_tail: &'static [u8] }
 @CASES@
@@ -211,7 +225,7 @@ if (process.argv.includes('--verify-only')) {
                               versions: process.versions}));
   process.exit(0);
 }
-const result = {schemaVersion: 1, kind: 'string-screen', qualification: build.qualification,
+const result = {schemaVersion: build.schemaVersion, kind: 'string-screen', qualification: build.qualification,
   source: build.source, build_sha256: sha(buildBytes), node_versions: process.versions,
   canonical: {passed: true, byte_checks: verified - 2, negative_controls: 2},
   protocol: {rounds: 5, case_order: 'forward/reverse alternating', variant_order: 'rotated by round+case',
@@ -267,6 +281,21 @@ try {
 '''
 
 
+def fixed_fixtures():
+    controls = ''.join(map(chr, range(32)))
+    controls_expected = (r'"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n'
+                         r'\u000b\u000c\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014'
+                         r'\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"').encode()
+    return [('', b'""'), (controls, controls_expected),
+             ('"\\\x7f', b'"\\"\\\\\x7f"'),
+             ('\\b\\f', b'"\\\\b\\\\f"'),
+             ('e\u0301🙂\u2028\u2029', '"e\u0301🙂\u2028\u2029"'.encode())]
+
+
+def verification_count():
+    return len(VARIANTS)*2*(len(fixed_fixtures())+len(case_specs()))+2
+
+
 def generated_source():
     cases = []
     for c in case_specs():
@@ -274,28 +303,28 @@ def generated_source():
         cases.append('Case { fragment: '+rust_bytes(fragment)+', repeats: '+str(c['repeats'])
             +', tail: '+rust_bytes(tail)+', escaped: '+rust_bytes(canonical(c['fragment'])[1:-1])
             +', escaped_tail: '+rust_bytes(canonical(c['tail'])[1:-1])+' }')
-    controls = ''.join(map(chr, range(32)))
-    controls_expected = (r'"\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\t\n'
-                         r'\u000b\u000c\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014'
-                         r'\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f"').encode()
-    fixed = [('', b'""'), (controls, controls_expected),
-             ('"\\\x7f', b'"\\"\\\\\x7f"'),
-             ('\\b\\f', b'"\\\\b\\\\f"'),
-             ('e\u0301🙂\u2028\u2029', '"e\u0301🙂\u2028\u2029"'.encode())]
+    fixed = fixed_fixtures()
     rows = ',\n'.join('('+rust_bytes(t.encode())+','+rust_bytes(answer)+')' for t,answer in fixed)
     writers = writer_sources()
     source = RUST.replace('@WRITERS@', '\n'.join(writers.values())).replace(
+        '@WRITER_COUNT@', str(len(VARIANTS))).replace(
+        '@WRITER_LIST@', ', '.join(VARIANTS)).replace(
         '@CASES@', 'const CASES: &[Case] = &[\n'+',\n'.join(cases)+'\n];').replace(
         '@FIXED@', 'const FIXED: &[(&[u8], &[u8])] = &[\n'+rows+'\n];')
-    return source, writers, 5*2*(len(fixed)+6)+2
+    return source, writers, verification_count()
 
 
 def validate_build(stamp, current):
-    if (stamp.get('schemaVersion') != 1 or stamp.get('kind') != 'string-screen'
+    if (stamp.get('schemaVersion') != 2 or stamp.get('kind') != 'string-screen'
             or stamp.get('qualification') != QUALIFICATION or stamp.get('complete') is not True
             or stamp.get('opt_level') != 's' or stamp.get('cases') != case_metadata()
             or stamp.get('canonical', {}).get('passed') is not True
-            or stamp['canonical'].get('negative_controls') != 2):
+            or stamp['canonical'].get('negative_controls') != 2
+            or stamp['canonical'].get('byte_checks') != verification_count()-2
+            or stamp.get('variants') != list(VARIANTS)
+            or stamp.get('expected_verifications') != verification_count()
+            or stamp.get('codegen', {}).get('indirect_call') is not True
+            or stamp.get('codegen', {}).get('black_box_barrier') is not True):
         raise ValueError('Incomplete or mismatched diagnostic writer manifest')
     guard.validate(stamp, current)
 
@@ -314,7 +343,7 @@ def build(label):
                '--target=wasm32-unknown-unknown', '--edition=2021', '-Copt-level=s',
                '-Clto=fat', '-Ccodegen-units=1', '-Cpanic=abort',
                '--emit=link,llvm-ir', '--out-dir', str(directory)]
-    stamp = {'schemaVersion': 1, 'kind': 'string-screen', 'qualification': QUALIFICATION,
+    stamp = {'schemaVersion': 2, 'kind': 'string-screen', 'qualification': QUALIFICATION,
              'source': before, 'opt_level': 's', 'complete': False, 'artifacts': {},
              'variants': list(VARIANTS), 'cases': case_metadata(),
              'expected_verifications': count, 'command': command, 'node': str(node),
@@ -371,7 +400,7 @@ def run(label):
             result.update(complete=False, post_failure=str(error))
             result_path.write_text(json.dumps(result, indent=2)+'\n')
         raise
-    print(f'passed: diagnostic writer screen · 150 rows · {directory}')
+    print(f'passed: diagnostic writer screen · {5*len(case_specs())*len(VARIANTS)} rows · {directory}')
 
 
 def main():
