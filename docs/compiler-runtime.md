@@ -8147,5 +8147,35 @@ with its owned server, both native count groups, unchanged example-name scanner
 and affected four-crate all-target Clippy. No production implementation changed:
 only test enclosure, exact count expectations and focused-server lifetime changed.
 Earlier 176/source and exact timed-production qualification remain separately
-identified above. A corrected full `python3 tools/verify.py` gate is pending;
-result/completion metadata will follow. No merge or auto-merge is authorized.
+identified above.
+
+The second full gate, at `6f55028e14aa472e72228d8eefe8d4074c850495`, tree
+`716b71f3d27716363d3c070bafbab1e4ea28f91b`, passed **92/93 steps in 706
+seconds**. Its sole failure was existing native HTTPS reuse test
+`fetch::an_https_connection_is_kept_and_used_again`, fetch.rs:360:
+`NotSent("no connection in time")` within a five-second request budget.
+NativeFetch can produce that message from connection setup or sender readiness;
+the cause remains unlocalized. This is an observed intermittent timeout,
+not proof of a particular load, DNS or TLS cause. All database groups, both
+44-case Jadpo targets, TypeScript conformance, the 264-project corpus, wasm,
+Workers deployments/routes and watch checks passed.
+
+Without changing the native fetch implementation, fixture or five-second
+budget, five isolated package-artifact invocations pass (0.01 seconds each)
+and its complete 15-test integration suite passes in 0.61 seconds. Because a
+package-only Cargo build has different feature unification, the same bounded
+five-plus-full-suite control was also run directly on the preserved workspace
+artifact `integration-15b4f3b8efc27dd5`, SHA
+`8e2eae8afdf8c262e28c4176a27dcac9fdce4ae582633d50bf6379b37e53daf0`:
+five pass at 0.01 seconds each, all 15 pass in 0.61 seconds. Both diagnostics
+and all owned processes were reaped. These focused passes do not make the
+failed full gate pass or explain its timeout. Production and test code remain
+unchanged for the next full-gate retry; only these failure facts are added.
+No performance or 176 qualification rerun substitutes for that required gate.
+
+Inactive checkout retirement preserves every ignored benchmark record and
+protected artifact under `/Users/richardwillars/Documents/Codex/jadpo-benchmark-archive/`;
+original roots remain compatible aliases, so recorded historical paths still
+resolve. The active a3 source/cache is untouched. The corrected full
+`python3 tools/verify.py` gate remains pending; result/completion metadata will
+follow. No merge or auto-merge is authorized.

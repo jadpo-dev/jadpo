@@ -1277,4 +1277,11 @@ an ENOSPC cascade. It is not a passing gate. Inline cfg(test) enclosure leaves
 the scanner unchanged; precise native counts now assert 2, and focused servers
 are explicitly closed/reaped. These focused tests and affected Clippy pass.
 Protected inactive-target cleanup restored about 45.4 GiB actual headroom. The
-corrected final full gate remains pending; all failed-attempt facts stay in §2.11.
+corrected full gate at 6f55028e then passed 92/93 in 706 seconds; its only
+failure was an unchanged native HTTPS reuse fixture returning a five-second
+connect-or-ready timeout. Five isolated runs plus its complete 15-test suite
+pass on both package-only and preserved workspace artifacts, with no code or
+budget relaxation. The cause remains unlocalized, and a further full gate is
+required. Both failed attempts remain in §2.11. Inactive checkout ignored records
+and protected artifacts are retained under `jadpo-benchmark-archive`, with the
+original roots kept as compatible aliases; recorded historical paths still work.
