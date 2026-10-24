@@ -1,0 +1,150 @@
+//! Protocol controls: replies are withheld until the entire terminal read
+//! has arrived. A sequential COMMIT cannot pass these controls.
+use super::*;
+
+fn packet(kind: u8, body: &[u8], out: &mut Vec<u8>) {
+    out.push(kind);
+    out.extend_from_slice(&(body.len() as u32 + 4).to_be_bytes());
+    out.extend_from_slice(body);
+}
+
+fn command(tag: &str, status: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut body = tag.as_bytes().to_vec();
+    body.push(0);
+    packet(b'C', &body, &mut out);
+    packet(b'Z', &[status], &mut out);
+    out
+}
+
+fn rows(value: i64) -> Vec<u8> {
+    let mut out = Vec::new();
+    packet(b'1', &[], &mut out);
+    packet(b'2', &[], &mut out);
+    let mut description = 1i16.to_be_bytes().to_vec();
+    description.extend_from_slice(b"n\0");
+    description.extend_from_slice(&0i32.to_be_bytes());
+    description.extend_from_slice(&0i16.to_be_bytes());
+    description.extend_from_slice(&20u32.to_be_bytes());
+    description.extend_from_slice(&8i16.to_be_bytes());
+    description.extend_from_slice(&(-1i32).to_be_bytes());
+    description.extend_from_slice(&1i16.to_be_bytes());
+    packet(b'T', &description, &mut out);
+    let mut row = 1i16.to_be_bytes().to_vec();
+    row.extend_from_slice(&8i32.to_be_bytes());
+    row.extend_from_slice(&value.to_be_bytes());
+    packet(b'D', &row, &mut out);
+    out.extend(command("SELECT 1", b'T'));
+    out
+}
+
+fn error(code: &str, status: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    let fields = format!("SERROR\0VERROR\0C{code}\0Mscripted refusal\0\0");
+    packet(b'E', fields.as_bytes(), &mut out);
+    packet(b'Z', &[status], &mut out);
+    out
+}
+
+/// BEGIN, the complete unnamed extended query, then COMMIT, without a
+/// response in between. This asserts protocol ordering, not elapsed speed.
+async fn queued(server: &mut DuplexStream) {
+    let (kind, body) = message(server).await.expect("BEGIN");
+    assert_eq!(kind, b'Q');
+    assert_eq!(body, b"BEGIN ISOLATION LEVEL REPEATABLE READ\0");
+    let mut kinds = Vec::new();
+    loop {
+        let (kind, body) = message(server).await.expect("query group");
+        kinds.push(kind);
+        if kind == b'P' {
+            assert_eq!(body[0], 0, "unnamed statement");
+            assert!(body.windows(4).any(|part| part == 20u32.to_be_bytes()));
+        }
+        if kind == b'B' {
+            assert_eq!(&body[..2], &[0, 0], "unnamed portal and statement");
+        }
+        if kind == b'S' { break; }
+    }
+    assert_eq!(kinds, b"PBDES");
+    let (kind, body) = message(server).await.expect("COMMIT before replies");
+    assert_eq!(kind, b'Q');
+    assert_eq!(body, b"COMMIT\0");
+}
+
+fn played<T>(
+    serve: impl AsyncFnOnce(DuplexStream) + 'static,
+    work: impl AsyncFnOnce(&Postgres) -> T,
+) -> T {
+    let host = Rc::new(Played::default());
+    let store = Postgres::new("postgres://app@localhost/app", Rc::clone(&host) as Rc<dyn Transport>).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let server = tokio::task::spawn_local(async move {
+            let mut socket = loop {
+                let next = host.servers.borrow_mut().pop();
+                if let Some(next) = next { break next; }
+                tokio::task::yield_now().await;
+            };
+            started(&mut socket).await.expect("startup");
+            serve(socket).await;
+        });
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), work(&store)).await;
+        if result.is_err() { server.abort(); }
+        let served = server.await;
+        assert!(served.is_ok(), "scripted server: {served:?}");
+        result.expect("terminal read did not queue BEGIN/query/COMMIT before replies")
+    })
+}
+
+#[test]
+fn terminal_read_queues_all_groups_and_reuses_a_clean_connection() {
+    played(async |mut server| {
+        queued(&mut server).await;
+        server.write_all(&command("BEGIN", b'T')).await.unwrap();
+        server.write_all(&rows(7)).await.unwrap();
+        server.write_all(&command("COMMIT", b'I')).await.unwrap();
+        statement(&mut server).await.expect("ordinary reuse");
+        server.write_all(ANSWERED).await.unwrap();
+    }, async |store: &Postgres| {
+        let mut transaction = store.begin().await.unwrap();
+        assert_eq!(transaction.query_last_read("SELECT $1::int8", &[SqlValue::Int8(7)]).await, Ok(vec![vec![SqlValue::Int8(7)]]));
+        transaction.commit().await.unwrap();
+        assert_eq!(store.pool.idle.borrow().len(), 1);
+        assert_eq!(store.query_once("SELECT 0", &[]).await, Ok(Vec::new()));
+    });
+}
+
+#[test]
+fn terminal_query_error_survives_the_commits_rollback_tag() {
+    played(async |mut server| {
+        queued(&mut server).await;
+        server.write_all(&command("BEGIN", b'T')).await.unwrap();
+        server.write_all(&error("40001", b'E')).await.unwrap();
+        server.write_all(&command("ROLLBACK", b'I')).await.unwrap();
+        statement(&mut server).await.expect("clean reuse");
+        server.write_all(ANSWERED).await.unwrap();
+    }, async |store: &Postgres| {
+        let mut transaction = store.begin().await.unwrap();
+        assert_eq!(transaction.query_last_read("SELECT $1::int8", &[SqlValue::Int8(7)]).await, Err(StoreError::ConcurrentChange));
+        assert_eq!(transaction.commit().await, Err(StoreError::ConcurrentChange));
+        assert_eq!(store.pool.idle.borrow().len(), 1);
+        assert_eq!(store.query_once("SELECT 0", &[]).await, Ok(Vec::new()));
+    });
+}
+
+#[test]
+fn terminal_end_error_is_deferred_and_discards_the_connection() {
+    for disconnect in [false, true] {
+        played(async move |mut server| {
+            queued(&mut server).await;
+            server.write_all(&command("BEGIN", b'T')).await.unwrap();
+            server.write_all(&rows(7)).await.unwrap();
+            if !disconnect { server.write_all(&error("40001", b'I')).await.unwrap(); }
+        }, async move |store: &Postgres| {
+            let mut transaction = store.begin().await.unwrap();
+            assert_eq!(transaction.query_last_read("SELECT $1::int8", &[SqlValue::Int8(7)]).await, Ok(vec![vec![SqlValue::Int8(7)]]));
+            assert_eq!(transaction.commit().await, Err(if disconnect { StoreError::Unavailable } else { StoreError::ConcurrentChange }));
+            assert!(store.pool.idle.borrow().is_empty());
+        });
+    }
+}

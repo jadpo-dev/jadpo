@@ -1649,4 +1649,7 @@ mod tests {
         assert_eq!(statements, 2);
         assert_eq!(host.connects.get(), 2);
     }
+
+    mod terminal;
+
 }

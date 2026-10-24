@@ -42,7 +42,7 @@ tokio-postgres = { workspace = true, optional = true, features = ["js"] }
 [dev-dependencies]
 jadpo-value.workspace = true
 # A runtime and pipes, for a scripted server (chunk 8.1n).
-tokio = { workspace = true, features = ["rt", "io-util"] }
+tokio = { workspace = true, features = ["rt", "io-util", "time"] }
 
 [lints]
 workspace = true

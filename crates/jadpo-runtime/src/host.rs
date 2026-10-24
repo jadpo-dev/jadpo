@@ -80,6 +80,18 @@ pub trait Transaction {
         params: &'a [SqlValue],
     ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>>;
 
+    /// Runs the only application statement of a fresh standalone read
+    /// transaction. Only `commit` or `rollback` may follow. Drivers may
+    /// queue its ending with the read, keeping any end error for that call;
+    /// the ordinary fallback keeps the transaction open until then.
+    fn query_last_read<'a>(
+        &'a mut self,
+        sql: &'a str,
+        params: &'a [SqlValue],
+    ) -> LocalFuture<'a, Result<Vec<Row>, StoreError>> {
+        self.query(sql, params)
+    }
+
     /// Runs one statement with `params`, giving how many rows it changed.
     fn execute<'a>(
         &'a mut self,
