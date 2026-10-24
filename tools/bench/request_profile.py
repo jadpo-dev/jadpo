@@ -374,7 +374,7 @@ def summary(profile):
     nodes = {n['id']: n for n in profile['nodes']}
     parent = {child: n['id'] for n in profile['nodes'] for child in n.get('children', [])}
     self_time, inclusive, kinds = Counter(), Counter(), Counter()
-    samples = Counter(profile['samples'])
+    samples = Counter(profile['samples']); inclusive_samples = Counter()
     for leaf, delta in zip(profile['samples'], profile['timeDeltas']):
         self_time[leaf] += delta
         node = nodes[leaf]; frame = node['callFrame']; name, url = frame['functionName'], frame['url']
@@ -383,16 +383,21 @@ def summary(profile):
         kinds[kind] += delta
         current = leaf
         while current is not None:
-            inclusive[current] += delta; current = parent.get(current)
+            inclusive[current] += delta; inclusive_samples[current] += 1
+            current = parent.get(current)
     total = sum(profile['timeDeltas'])
-    def rows(counter):
-        return [{'function': nodes[n]['callFrame']['functionName'], 'url': nodes[n]['callFrame']['url'],
-                 'sampled_us': us, 'percent': us*100/total, 'samples': samples[n]}
+    def rows(counter, counts):
+        return [{'node_id': n, 'parent_id': parent.get(n),
+                 'function': nodes[n]['callFrame']['functionName'], 'url': nodes[n]['callFrame']['url'],
+                 'script_id': nodes[n]['callFrame']['scriptId'],
+                 'line_number': nodes[n]['callFrame'].get('lineNumber'),
+                 'column_number': nodes[n]['callFrame'].get('columnNumber'),
+                 'sampled_us': us, 'percent': us*100/total, 'samples': counts[n]}
                 for n, us in counter.most_common(50)]
     return {'samples': len(profile['samples']), 'sampled_us': total,
             'profile_window_us': profile['endTime']-profile['startTime'],
             'categories': {k: {'sampled_us': v, 'percent': v*100/total} for k,v in kinds.items()},
-            'self': rows(self_time), 'inclusive': rows(inclusive)}
+            'self': rows(self_time, samples), 'inclusive': rows(inclusive, inclusive_samples)}
 
 
 def wire_probe(server, path, expected, token=None):

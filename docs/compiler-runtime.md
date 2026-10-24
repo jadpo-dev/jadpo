@@ -7121,3 +7121,275 @@ artifact-map SHA-256 is
 Each artifact map contains 9,820 original/saved entries. Exact repro commands and
 boundaries are in the bench README. Subsequent edits record facts/method only;
 production and harness remain those of the gated/measured revision.
+
+
+#### Whole-request CPU attribution (chunk 9.2a1, measured 2026-10-24 London)
+
+`tools/bench/request_profile.py` samples the actual generated production HTTP
+handler, from real request dispatch through signed authentication, policy,
+PostgreSQL and the complete response. This chunk adds diagnostic tooling and
+current attribution; it changes no production request algorithm. `golden-read`
+is the existing golden application's signed, owner-scoped read, with its real
+600/minute caller quota, bounded credentials and 2,048-owner rotation. The four
+focused `/api/samples/:id` cases are the existing **public sample scaffold**,
+with full decoded response and persisted-field checks; they do not exercise the
+golden application's authentication. The strong Bun application is the existing
+comparator where matched below. No four-runtime application throughput matrix,
+new write/list workload, language choice or deployment was added.
+
+**Source, artifacts and preparation.** Accepted captures use gated code/harness
+`16d24dc48a4ed734f3a4ad3faf65403f790ead27`, tree
+`f5a795aa8a11108fab65f1d87cf41eed385c76c8`, based on final unmerged 9.1b5
+`a847d51182a63c2e5f135f93e42be1183570b3f1`. The full gate passed 93/93 in
+1,147 s, including both 44-case golden targets, actual Worker route tests and
+the new protocol controls. Gate stdout was not copied into a new log. A subsequent
+derived-summary correction fixes inclusive counts and retains context identities;
+it leaves every raw capture and production request algorithm unchanged. Every fresh build first requires
+all 44 contract cases on each of four runtimes (176 total); this is a correctness
+prerequisite, not another four-runtime throughput campaign.
+
+The accepted immutable build is `request-current-rustup-16d24dc4` under ignored
+`tools/bench/work/request-profile/`. It retains 270 original/saved pairs (540
+artifact entries), generated Rust/project inputs, the compiler, runtimes, binder,
+source byte/mode/link/HEAD/tree maps and actual inner Cargo provenance. Original
+and saved artifact hashes and the clean source guard passed again after the
+campaigns. Each Worker cell also verifies the **actual served** Wasm/JS/config
+before and after its load and retains a private copy before subsequent cells
+rewrite the live host directory. All 368 saved host files across complete and
+incomplete campaigns were rehashed; historical live config paths may have been
+superseded, so retrospective checks use their saved copies.
+
+Builds set incremental=0, dev debug=0 and jobs=4; production native and Wasm use
+ordinary release deployables. Pinned npm installation is offline with scripts
+disabled. The successful launch explicitly sets `RUSTUP_TOOLCHAIN=1.99.0` and
+`RUSTC`/`RUSTDOC` to the Rustup proxies in `~/.cargo/bin/`. Its separate ordinary
+invocation JSON records those paths, proxy hashes, PATH and selected toolchain
+paths. The existing Cargo observer records 12 actual inner invocations with
+real cargo path/argv/cwd, release target, target/ICU directories, encoded path
+remaps and source epoch. Its selected-variable whitelist does **not** capture
+RUSTC/RUSTDOC: the outer launch record establishes their requested values, not
+an independently traced child executable selection. Runtime versions/paths,
+hashes and saved copies are workerd 2026-10-07, Bun 1.2.20, Node v24.18.1,
+PostgreSQL/psql 16.3, rustc/cargo 1.99.0 and Python 3.14.0.
+
+The optional diagnostic binder, `jadpo-profile-worker`, uses the exact saved
+production compiler input with `Names::Kept`; production continues to remove
+names. JavaScript bytes and every encoded **noncustom** Wasm section must match
+production exactly, preserving function indices and executable bodies. Only
+custom-section metadata differs. This provides names without a compiler
+example special case or a shipping change. Diagnostic sizes remain distinct:
+
+| Module | Production bytes | Names-kept diagnostic bytes | Production / diagnostic Wasm SHA-256 |
+|---|---|---|---|
+| Golden | 7,316,886 | 8,489,032 | `734ef7003a28e540662682a33cd5c055f13a8663bc80c35a2ea31e195f41d2c5` / `2e2f32387522655d6decf63f3572b3ce47f4845c177323abced8f421d6e41fc2` |
+| Focused | 7,355,478 | 8,539,432 | `98a2bd81c69961eac8f7821a99a21bd7518985f4a014124d4a804c0a6c0a2d14` / `81687863f7da10eeb58eca7b74683880f02e0592b3d192b4599f3d761ae36237` |
+
+**Windows and controls.** Each complete campaign has three sequential rounds,
+8 s admission plus 2 s warmup, 16 clients unless marked 1 below, and drains all
+admitted work. Fixtures, real invalid-input/ownership controls and independent
+SQL/state obligations precede sampling. Each cell uses a new owned PostgreSQL
+process/service, full response validation, unchanged persisted read state and
+existing caller/address pools. No other owned build/test/benchmark activity
+ran during accepted loads; unrelated applications remained running.
+
+The loopback inspector must expose exactly the `kiosk` target. Wrong/duplicate/
+remote identities, omitted required results, errors, empty/invalid/truncated
+profiles, slow partial frames, deadlines and overwrites have actual-protocol
+fault controls. Workerd's omitted empty results are accepted only for the three
+start commands; stop requires a profile. Profiles need a connected unique tree,
+valid finite times, nonempty matching samples/deltas and known node identities.
+All owned sockets, load children, services and PostgreSQL processes are closed
+and reaped on success and failure.
+
+CPU profiling starts **before** load spawn, after fixture validation. It covers
+warmup, measured requests, drain and stop-command overhead; CPU sampling asks
+for 100 microseconds, while actual deltas vary. Process CPU counters begin
+after warmup and close before profile transfer/validation. Thus sample-window
+shares and service CPU/request have different explicit denominators. Client
+p50/p95 are complete HTTP durations; CPU profiles expose sampled execution,
+including idle, unresolved native frames, GC and inspector overhead, rather
+than I/O wait or per-request spans. Do not multiply sampled shares by p95 or
+subtract components from tails. `cpu_ms_per_request` is **service process only**,
+excluding PostgreSQL and the local pool helper. Golden separately measures the
+helper; focused currently does not. Load-generator CPU is separate.
+
+PostgreSQL starts with process-lifetime `log_duration=on`, parameter logging
+disabled. Both inspector and `none` campaigns retain this diagnostic overhead.
+The records may separately describe Parse/Bind/Execute: they are **server
+protocol-phase duration records**, not correlated SQL-statement/request times.
+Retained prefixes end at `ms`, excluding SQL text and parameters. Their capture
+window includes warmup and the end of the profiler stop operation. They can
+neither be added to sampled CPU nor subtracted from client latency.
+
+Payloads preserve the language's scalar distinction. `unicode-large` repeats
+six scalars (`é`, `🙂`, double quote, backslash, line feed and tab) 10,923 times,
+then takes the first 65,536 scalars; use `payloads()` and the retained hash for
+exact reproduction. `late-escape` is 65,535 ASCII `x` characters and a line feed.
+
+| Focused workload | Unicode scalars | UTF-8 bytes | Full JSON response bytes | UTF-8 payload SHA-256 |
+|---|---|---|---|---|
+| ASCII small | 100 | 100 | 174 | `09ecb6ebc8bcefc733f6f2ec44f791abeed6a99edf0cc31519637898aebd52d8` |
+| ASCII large | 65,536 | 65,536 | 65,610 | `1f8745f0d2d1387ec1af2211a3cf417b2e9e885e853472649c1d979d0e9370e3` |
+| Dense Unicode/escapes | 65,536 | 109,228 | 152,992 | `24596f5e5acb3fc7ca05fda8042fa731248e376dcfbc47ef0defd7c0c4bb2874` |
+| Late escape | 65,536 | 65,536 | 65,611 | `8f28667b7671f818264b25c386a16560a4596f89abfd9167355e587298e4c7d0` |
+
+**Whole-request observations, every round.** Values within each cell are rounds
+1 / 2 / 3. `production` is stripped production plus CPU inspector; `named` is
+the equivalent diagnostic module plus inspector. `none` omits CPU inspector but
+retains PostgreSQL duration logging. They are diagnostic contexts, not isolated
+causal overhead measurements. The following four complete campaigns pass all
+48 cells (30 accepted profiles); the later incomplete serial-named campaign is
+excluded from these summaries.
+
+| Campaign / clients / target / workload | Requests/s | HTTP p95 ms | Service CPU ms/request |
+|---|---|---|---|
+| production / 16 / workers / golden-read | 1398.728 / 1328.957 / 1623.124 | 13.836 / 14.469 / 12.051 | 0.751094 / 0.790339 / 0.650200 |
+| production / 16 / workers / ascii-small | 2107.297 / 1609.653 / 1788.982 | 9.601 / 12.787 / 10.977 | 0.509339 / 0.654249 / 0.588728 |
+| production / 16 / workers / ascii-large | 881.797 / 886.153 / 880.090 | 28.676 / 28.743 / 28.558 | 1.205774 / 1.197858 / 1.204085 |
+| production / 16 / workers / unicode-large | 646.520 / 655.284 / 644.153 | 36.228 / 35.065 / 34.623 | 1.646718 / 1.625522 / 1.652460 |
+| production / 16 / workers / late-escape | 889.759 / 881.278 / 802.073 | 26.645 / 27.696 / 30.919 | 1.197924 / 1.210146 / 1.294740 |
+| named / 16 / workers / golden-read | 1589.805 / 1909.076 / 1630.884 | 12.271 / 10.334 / 11.833 | 0.664008 / 0.564025 / 0.648028 |
+| named / 16 / workers / ascii-small | 1751.404 / 1779.155 / 2036.045 | 11.458 / 10.913 / 10.157 | 0.601911 / 0.591251 / 0.523409 |
+| named / 16 / workers / ascii-large | 893.434 / 958.315 / 891.810 | 28.691 / 27.173 / 27.311 | 1.191674 / 1.118061 / 1.194176 |
+| named / 16 / workers / unicode-large | 645.694 / 652.162 / 697.468 | 36.677 / 35.244 / 34.665 | 1.646059 / 1.631911 / 1.523878 |
+| named / 16 / workers / late-escape | 891.878 / 951.303 / 891.153 | 26.925 / 27.160 / 26.497 | 1.197262 / 1.128609 / 1.196078 |
+| none / 16 / workers / golden-read | 2022.271 / 1954.133 / 1988.312 | 9.660 / 10.041 / 9.738 | 0.495490 / 0.506232 / 0.503425 |
+| none / 16 / bun / golden-read | 5840.086 / 5959.078 / 5575.389 | 3.965 / 3.880 / 4.112 | 0.176554 / 0.173423 / 0.181790 |
+| none / 16 / workers / ascii-large | 974.206 / 975.229 / 981.071 | 26.054 / 26.430 / 26.230 | 1.031390 / 1.028037 / 1.024303 |
+| none / 16 / bun / ascii-large | 5814.581 / 5792.574 / 5823.374 | 4.216 / 4.189 / 4.166 | 0.196011 / 0.196755 / 0.195485 |
+| none / 1 / workers / golden-read | 985.283 / 1063.481 / 1106.809 | 1.292 / 1.184 / 1.125 | 0.767474 / 0.712187 / 0.678713 |
+| none / 1 / workers / ascii-large | 554.689 / 499.224 / 560.990 | 2.150 / 2.293 / 2.025 | 1.264083 / 1.399599 / 1.263088 |
+
+Without CPU inspector, c16 median golden workerd/Bun throughput is
+1,988.312/5,840.086 requests/s and HTTP p50/p95 is 7.231/9.738 versus
+2.567/3.965 ms. ASCII-large is 975.229/5,814.581 requests/s and
+15.336/26.230 versus 2.528/4.189 ms. The distinct c1 workerd golden p50/p95 is
+0.837/1.184 ms and ASCII-large 1.661/2.150 ms. Concurrent queueing changes
+whole-request observations; these serial measurements do not supply stage
+latency. Golden workerd c16 pool-helper CPU is separately
+0.140862 / 0.141259 / 0.142040 ms/request (Bun 0); include it when discussing
+deployment CPU. Focused pool-helper CPU and PostgreSQL CPU are unavailable.
+
+Named golden median throughput exceeds stripped-production profiling
+1,398.728→1,630.884 requests/s despite equal executable sections. No production
+optimisation occurred: ordered run/JIT/host variation and instrumentation may
+contribute. Across accepted cells whole-host busy CPU ranges 36.447–59.640%
+and load-generator utilisation 0.024–0.348 process cores. This is not a globally
+idle machine, and load-generator saturation is not indicated. Matched thermal,
+memory-pressure and swap measurements were not collected for this slice; no
+causal speedup or exact overhead estimate follows from these campaigns.
+
+PostgreSQL phase-record distributions, pooled across the three c16 `none`
+rounds, are golden workerd p50/p95 0.010/0.039 ms (max 1.514), Bun
+0.014/0.044 (max 2.244); ASCII-large workerd 0.013/0.057 (max 0.909), Bun
+0.022/0.080 (max 1.324). Raw phase counts/durations/prefixes remain available.
+These are neither per-query tails nor evidence that database/network wall wait
+is negligible. Profiled late-escape production includes a 23.792 ms server
+record; named Unicode includes 15.069 ms. These adverse records are retained.
+
+**Granular captures and ranking.** Raw `.cpuprofile` files retain **every**
+node (including zero-self internal frames), callFrame, child edge, sampled leaf
+ID and timeDelta. Compute self time by assigning each delta to its leaf;
+inclusive time assigns the same delta to each ancestor. Inclusive rows overlap
+and must not be summed. Sample counts count observations, not calls. The
+saved 16d24dc4 top-50 JSON summary's `samples` field is the node's **self** count
+even inside its inclusive list; derive those historical inclusive counts from
+the raw tree. The final harness corrects this: each summary row retains node ID,
+parent ID, script ID and source coordinates, and uses the matching self or
+inclusive observation count. An independent hand-worked three-node weighted
+tree first failed with root count 0 instead of 3; the corrected six-test module
+passes. Raw captures and sampled time calculations are unchanged. Wasm names
+identify Rust functions but its line 0/column offset is not a Rust source line. Empty native names and `(program)` remain unresolved rather than being
+assigned to an invented stage.
+
+The following are individual calling-context nodes from round 1 of complete
+`named-c16-r3`, with milliseconds weighted by actual sample deltas across the
+whole capture, **not milliseconds per request**. The full raw trees remain the
+source for complete function tables.
+
+| Capture / node / operation | Self sampled ms | Inclusive sampled ms | Self / inclusive observations |
+|---|---|---|---|
+| Golden / 60 / native socket `connect` | 766.882 | 766.882 | 4,924 / 4,924 |
+| Golden / 1565 / native `write` | 463.494 | 463.494 | 3,055 / 3,055 |
+| Golden / 1472 / separate native `write` context | 217.670 | 217.670 | 1,067 / 1,067 |
+| Golden / 1372 / native `read` | 295.034 | 295.034 | 1,943 / 1,943 |
+| Golden / 54 / `__wbg_queueMicrotask` | 358.400 | 359.451 | 2,215 / 2,221 |
+| Golden / 56 / garbage collector | 626.359 | 626.359 | 4,605 / 4,605 |
+| Golden / 15 / signed `unbase64url` | 153.690 | 210.075 | 1,039 / 1,420 |
+| Golden / 3 / unnamed native frame | 1,235.618 | 7,318.616 | 7,305 / 46,020 |
+| ASCII large / 1815 / `jadpo_value::json::write_string` | 1,760.485 | 1,795.010 | 12,480 / 12,726 |
+| Unicode / 1599 / `jadpo_value::json::write_string` | 1,631.270 | 1,667.742 | 11,341 / 11,591 |
+| Unicode / 1583 / `core::str::converts::from_utf8` under PostgreSQL decode | 619.434 | 619.434 | 4,348 / 4,348 |
+| Late escape / 1608 / `jadpo_value::json::write_string` | 1,809.300 | 1,848.749 | 12,803 / 13,059 |
+
+The sampled denominators for those captures are golden 10,106.494 ms,
+ASCII-large 10,031.120, Unicode 10,028.200 and late-escape 10,037.159.
+Across all calling contexts of `json::write_string`, self shares for rounds
+1 / 2 / 3 are ASCII-large **19.1132 / 20.2704 / 19.5874%**, Unicode
+**17.7180 / 17.7952 / 18.5575%**, late-escape **19.4977 / 20.1193 / 19.3812%**.
+Golden is only 0.0793 / 0.0688 / 0.0995% and small public samples
+0.1691 / 0.1417 / 0.1401%. This ranks the generic JSON string writer as the
+first bounded large-response candidate, with small-request regressions still
+required to be checked. It does not predict a particular throughput/p95 gain.
+
+Current `jadpo_value::json::write_string` iterates Unicode chars and pushes each
+character/escape. The HTTP runtime serializes generic `Value` into a `String`,
+`into_bytes` moves that buffer, and Workers `deployable::write` creates an
+**owned** `Uint8Array::from(response.body.as_slice())` before `Response`. There
+is no outgoing JavaScript JSON.parse/stringify. On input, PostgreSQL text decode
+uses `String::from_utf8(raw.to_vec())`; its validation must remain. All matching
+`from_utf8` contexts cost 6.7564 / 6.7448 / 7.1321% self on Unicode versus
+0.5484 / 0.5741 / 0.5773% on ASCII-large, a separate secondary candidate only if
+validation-preserving work is justified. `transport::copy_into` is visible but
+only 0.1178–0.2022% self across the large named captures; repeated `split_off`
+is a source hypothesis, not the selected hotspot. Small signed reads instead
+show socket bridge, microtask and GC costs; overlapping transport/pool frames
+cannot be added into exact wall stages. Neither whole typed-body lowering nor
+an unsafe borrowed view across awaits/memory growth is justified here. Historical
+v0 SQLite/JS-host percentages do not attribute this Rust/PostgreSQL path.
+
+**Failed and superseded attempts.** All are retained, with no favourable retry
+of a failed performance cell:
+
+| Attempt | Actual outcome / boundary |
+|---|---|
+| `protocol-smoke-1` | Inspector target was not instantiated before the HTTP smoke, so the identity guard refused attachment. No accepted timing. |
+| `protocol-smoke-2` | Actual workerd omitted empty start-command results. Client initially rejected them; final client accepts only those specified empty results. |
+| `protocol-smoke-3` | Passed real echo traffic and nonempty sampling; diagnostic setup only. `smoke-real-1` later proved full ASCII-large fixture/profile/state controls and is also excluded from accepted numbers. |
+| Rejected proposed SQL probe | Automatic approval review rejected an unexecuted combined edit proposing `ALTER SYSTEM log_statement=all` without failure-safe restoration. No rejected edits ran. Chosen safe alternative is parameter-free duration logging scoped to the owned disposable PostgreSQL process lifetime. |
+| `request-current-16d24dc4` | Correctness preparation stopped at Cargo/rustc: `--check-cfg` required `-Zunstable-options`, despite the outer tools reporting 1.99. Exact child-selection cause was not traced. Actual stdout/stderr and incomplete label are retained under `failed-conformance/`. |
+| `request-current-pinned-16d24dc4` | Direct pinned RUSTC/RUSTDOC passed that check but wasm `rust-lld` aborted because dyld could not load `@rpath/libLLVM.dylib`. No contract/timing success claimed. Logs and explicit launch record retained. |
+| `request-current-rustup-16d24dc4` | Explicit Rustup proxies plus pinned toolchain passed all 176 contracts and four production builds. This is the accepted fresh label, not proof of the first failure's exact cause. |
+| `serial-named-c1-r3` | Three verified cells then ASCII-large round 2 returned 3,535 measured 200s plus one 504/invalid body. The guard refused the fourth cell and stopped the campaign. Raw profile was saved before response validation; full campaign remains incomplete and excluded from accepted medians. Failed response body text was not retained, server log has no explanatory failure, and exact 504 cause is unknown. All owned processes reaped; no replacement run selected. |
+
+Gate output caches consumed free disk from 32 to 15 GiB. After the gate reaped,
+only this chunk's unmeasured `target/jadpo-compiled/{corpus,deployable,workerd,workers}`
+were removed with explicit parent authorization; stdout showed 18 GiB free.
+Golden signer/dependency cache, every recorded artifact/raw and other worktrees
+were preserved. This was build preparation, outside accepted timing. Fresh
+successful golden native/Worker builds took 69.2/34.1 s, focused 73.1/35.7 s,
+diagnostic binder 39.04 s; these are preparation durations, not request costs.
+
+**Retained identities.** Paths below are relative to ignored
+`tools/bench/work/request-profile/`. Campaign results contain the exact path and
+SHA-256 for every accepted CPU capture and every consumed host snapshot. The
+incomplete serial directory also retains all four raw profiles, clearly excluded
+from accepted summaries. The 30 accepted plus four incomplete profiles all pass
+the nonempty/tree/timeDelta validation. Subsequent edits are facts/method only.
+
+| Path | SHA-256 |
+|---|---|
+| `request-current-rustup-16d24dc4/build.json` | `6b104b9946e72a65db87a2909635c9b85b4dc4a18dbcdb5e8bc4acf10db7147d` |
+| `request-current-rustup-16d24dc4/cargo-provenance.jsonl` | `73abe3f5cc4bc24019069b14f3c25c41906a01d725f75aea620e4fd47433de81` |
+| `invocation-request-current-rustup-16d24dc4.json` | `efade370acdf927dc7978ff632225cdcad70b5dab6adb86e2114031fe2582aff` |
+| `request-current-rustup-16d24dc4/production-c16-r3/results.json` | `b81cb8b8fe59b8e31a46276cc18bd0e7a90630ae9c38d4f238bc3ca4e1ec8568` |
+| `request-current-rustup-16d24dc4/named-c16-r3/results.json` | `db06e3c5c64ef2d8bb44ff99d31b391d15081ef6c9c0ffa9f14dfb51d7089e6c` |
+| `request-current-rustup-16d24dc4/context-none-c16-r3/results.json` | `6e9f2995d0c15644e1bfbbbee8a2980fcb6cb6fa656a70b28b073eaffeb1be92` |
+| `request-current-rustup-16d24dc4/serial-none-c1-r3/results.json` | `c0eccf51bd13372b2185ec284e3ec19c17881ef7c894ffab89770fbe19dc0518` |
+| `request-current-rustup-16d24dc4/serial-named-c1-r3/results.json` (incomplete) | `5e9a2ed36639e5630b97680e15b6e3ee0e62707950348efc369caaf4baad48af` |
+
+Canonical sorted compact JSON source-file-map SHA-256 is
+`084ef81697a0ab6e2354118f59760650f9ab8549e099558f2efc7e2c7526d385`;
+artifact-map SHA-256 is
+`34fd47ea958b343c0118ebb00acda710e133ee294d62c3e76ab91f68a75617d8`.
+Reproduction commands and interpretation boundaries are in the bench README.

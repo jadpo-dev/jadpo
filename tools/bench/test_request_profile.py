@@ -11,7 +11,7 @@ import tempfile
 import threading
 import unittest
 
-from request_profile import Inspector, validate_profile, payloads, wasm_sections, capture_host, validate_host
+from request_profile import Inspector, validate_profile, payloads, wasm_sections, capture_host, validate_host, summary
 
 GOOD = {'nodes': [{'id': 1, 'callFrame': {'functionName': '(root)', 'url': '', 'scriptId': '0', 'lineNumber': -1, 'columnNumber': -1}, 'children': [2]},
                   {'id': 2, 'callFrame': {'functionName': 'work', 'url': 'wasm://module', 'scriptId': '1', 'lineNumber': 0, 'columnNumber': 1}, 'hitCount': 2}],
@@ -87,6 +87,27 @@ class Peer(http.server.BaseHTTPRequestHandler):
 
 
 class InspectorControls(unittest.TestCase):
+    def test_weighted_summary_keeps_context_identity_and_inclusive_counts(self):
+        # Distinct contexts deliberately share a name. Expected weights/counts
+        # are hand-worked: the middle node is sampled once, the leaf twice.
+        profile = {'nodes': [
+            {'id': 1, 'callFrame': {'functionName': '(root)', 'url': '', 'scriptId': '0', 'lineNumber': -1, 'columnNumber': -1}, 'children': [2]},
+            {'id': 2, 'callFrame': {'functionName': 'work', 'url': 'wasm://module', 'scriptId': '1', 'lineNumber': 0, 'columnNumber': 10}, 'children': [3]},
+            {'id': 3, 'callFrame': {'functionName': 'work', 'url': 'wasm://module', 'scriptId': '1', 'lineNumber': 0, 'columnNumber': 20}}],
+            'samples': [2, 3, 3], 'timeDeltas': [100, 200, 300], 'startTime': 1000, 'endTime': 1700}
+        result = summary(profile)
+        root = next(row for row in result['inclusive'] if row['function'] == '(root)')
+        self.assertEqual(root['samples'], 3)
+        inclusive = {row['node_id']: row for row in result['inclusive']}
+        own = {row['node_id']: row for row in result['self']}
+        self.assertEqual([(inclusive[n]['sampled_us'], inclusive[n]['samples']) for n in (1, 2, 3)],
+                         [(600, 3), (600, 3), (500, 2)])
+        self.assertEqual([(own[n]['sampled_us'], own[n]['samples']) for n in (2, 3)], [(100, 1), (500, 2)])
+        self.assertEqual([(inclusive[n]['parent_id'], inclusive[n]['url'], inclusive[n]['line_number'], inclusive[n]['column_number']) for n in (1, 2, 3)],
+                         [(None, '', -1, -1), (1, 'wasm://module', 0, 10), (2, 'wasm://module', 0, 20)])
+        self.assertEqual(inclusive[1]['percent'], 100)
+        self.assertEqual(result['sampled_us'], 600)
+
     def test_profile_requires_a_consistent_nonempty_sampled_tree(self):
         validate_profile(GOOD)
         changes = [lambda p: p.update(samples=[]), lambda p: p.update(timeDeltas=[100]),

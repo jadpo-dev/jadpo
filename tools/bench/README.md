@@ -911,3 +911,107 @@ plan defect, structured-JSON red, two failed gates (the kiosk 202 cause remains
 unknown), and workload-transition/backlog-metadata corrections. No extra HTTP
 comparison or favourable-latency rerun was selected. Final subsequent changes
 are facts/method prose only.
+
+
+### Whole-request CPU attribution (9.2a1)
+
+`request_profile.py` reuses the real `golden.py` signed read and `todo.py`
+public sample endpoints. It profiles whole generated production requests,
+retaining full-body/state/audit checks and genuine caller/address quotas. The
+four focused payloads vary the full real PostgreSQL response; they are not
+standalone JSON microbenchmarks or equivalent golden authentication workloads.
+Commit source before preparation. The fresh immutable label builds its own
+compiler, passes all 44 golden contract cases on all four runtimes, builds
+production native/workerd fixtures and strong TypeScript dependencies, and
+captures full source/mode/link/HEAD/tree and original/saved artifact maps.
+
+```sh
+env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_TARGET_DIR \
+  RUSTUP_TOOLCHAIN=1.99.0 RUSTC="$HOME/.cargo/bin/rustc" \
+  RUSTDOC="$HOME/.cargo/bin/rustdoc" \
+  python3 -B tools/bench/request_profile.py build --label <fresh-label>
+python3 -B tools/bench/request_profile.py run --label <fresh-label> \
+  --output production-c16-r3 --profile production --rounds 3 \
+  --connections 16 --duration 8 --warmup 2
+python3 -B tools/bench/request_profile.py run --label <fresh-label> \
+  --output named-c16-r3 --profile named --rounds 3 \
+  --connections 16 --duration 8 --warmup 2
+python3 -B tools/bench/request_profile.py run --label <fresh-label> \
+  --output context-none-c16-r3 --profile none --targets workers,bun \
+  --workloads golden-read,ascii-large --rounds 3 \
+  --connections 16 --duration 8 --warmup 2
+python3 -B tools/bench/request_profile.py run --label <fresh-label> \
+  --output serial-none-c1-r3 --profile none --targets workers \
+  --workloads golden-read,ascii-large --rounds 3 \
+  --connections 1 --duration 8 --warmup 2
+```
+
+Use a new label/output on every attempt; existing captures are never replaced.
+Builds use offline pinned npm installs with scripts disabled, incremental=0,
+dev debug=0/jobs=4 and ordinary production release deployables. The Cargo
+observer captures real inner cargo argv/cwd/selected flags, including encoded
+remaps and target/ICU directories; RUSTC/RUSTDOC are outside its selected-variable
+whitelist. Record their explicit launch paths/toolchain separately when used,
+as the accepted invocation JSON does. Actual child executable/loader selection
+was not independently traced. `request-current-16d24dc4` failed correctness
+preparation at rustc `--check-cfg`; direct-toolchain `request-current-pinned-16d24dc4`
+then failed the rust-lld library loader. Neither was accepted. Explicit Rustup
+proxies with the pinned toolchain passed as `request-current-rustup-16d24dc4`.
+
+Production remains stripped. The small `jadpo-profile-worker` Rust example
+rebinds the exact saved production compiler input with names retained solely
+for diagnostics. Its JavaScript and every encoded noncustom Wasm section must
+be byte-identical to production. Custom sections and module sizes differ.
+Each cell guards and saves the actual host JS/Wasm/config it consumes; use
+saved per-cell copies after a later cell supersedes live host files.
+
+The exact loopback `kiosk` inspector target is required; no first-target fallback.
+Absolute command/partial-frame deadlines, errors, truncation, malformed or empty
+profiles, wrong/duplicate/remote identity, overwrite and consumed-artifact drift
+have fault controls in `test_request_profile.py`. Every accepted profile has
+nonempty consistent nodes/samples/timeDeltas and finite valid times. The profile
+starts before load spawn after fixture validation: **warmup + admission + drain
++ stop-command overhead**. Separate service/pool CPU counters start after warmup
+and close before inspector transfer/validation. This avoids counting download
+CPU against the measured request denominator; sample and CPU windows still have
+their own explicit scopes. Services, helpers, load processes, inspector sockets
+and PostgreSQL are closed/reaped on every outcome.
+
+PostgreSQL duration logging is enabled only by startup options on the owned
+disposable process, with parameter logging disabled. This adds diagnostic
+overhead even for `--profile none`. `server_phase_duration_ms` records
+PostgreSQL protocol phases (possibly separate Parse/Bind/Execute), not correlated
+SQL-statement/request wall times; raw prefixes omit SQL and parameter text.
+Never add/subtract them into HTTP p95 or sampled CPU. Service CPU excludes
+PostgreSQL; golden records pool-helper CPU separately, focused currently does
+not. No clean production throughput or isolated profiler-overhead claim follows
+from the ordered contexts.
+
+Raw `.cpuprofile` files contain every callFrame/tree edge/sample/timeDelta,
+including zero-self internal frames. Assign each delta to its sampled leaf for
+self time, and once to each ancestor for inclusive time. Inclusive rows overlap;
+sampling observations are not call counts. Full function tables should use the
+raw tree, not the convenience top-50 summary. Historical 16d24dc4 saved summaries
+used SELF sample counts even inside their inclusive lists; derive inclusive
+counts from those raw captures. The corrected final summary retains node/parent/
+script identity and source coordinates, and computes matching self/inclusive
+observation counts, covered by an independent three-node weighted-tree test.
+The correction does not rewrite old captures or alter production execution.
+Wasm line/column values are module offsets, not Rust source lines; unresolved
+native frames stay unresolved.
+Percentages include idle/program/GC/inspector costs and are not per-request stage
+durations. Do not turn them into p95 component times.
+
+Accepted data is four complete campaigns: 48 verified cells and 30 profiles,
+under ignored `work/request-profile/request-current-rustup-16d24dc4/`. Later
+`serial-named-c1-r3` is incomplete: three verified cells followed by one measured
+504/invalid body in ASCII-large round 2. All four profiles remain retained but
+that campaign is excluded from accepted medians; the exact 504 cause is unknown,
+and no favourable retry was selected. Setup/protocol smokes are also excluded.
+Compiler-runtime §2.11 “Whole-request CPU attribution” records exact identities,
+every throughput/p95/CPU round, granular named-node examples, failed attempts
+and limits. Across large named captures the generic `json::write_string` has
+17.7–20.3% self sampled time across calling contexts, while small signed golden
+reads show socket/scheduling/GC costs. This selects a bounded next optimisation
+candidate; this chunk implements no production optimisation. The broad
+four-runtime application throughput matrix remains deferred.
