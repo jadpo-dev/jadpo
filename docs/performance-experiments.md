@@ -20,10 +20,11 @@ Richard corrected the primary comparison method after the screens below:
 controls:** the faithful and explicit-option TypeScript/workerd pairs and the
 current native/Bun standalone pair recorded below. These are provisional
 references with the stated loader/host/lifetime limits, not universal
-language/engine evidence. **P61 roundtrip is measured/rejected; P55's safe
-Response-constructor prototype is measured/promising with adverse RSS; next is
-P21.suffix-bitmap on retained First, with unknown gain. Continue eligible
-exploration without another baseline prerequisite.** Acceptance uses local checks and
+language/engine evidence. **P61 roundtrip and P21.suffix-bitmap are rejected;
+P55's safe Response constructor remains promising with adverse RSS. Next is
+independent P11, preserving its original 0–5% large-text hypothesis and honest
+unknown actual gain. Continue eligible exploration without another baseline
+prerequisite.** Acceptance uses local checks and
 agent review under standing unattended authorization, not a new Richard
 approval. Optional three-TypeScript lifetime arms are secondary diagnostics;
 the strong direct-PG Bun application remains unchanged.
@@ -219,9 +220,10 @@ or end the uncapped exploration queue. Benchmark/control adapter assessments are
 labelled separately from Jadpo optimizations; unbuilt ideas stay prospective.
 
 The tables are separate impact queues: primary reads, other warm workloads,
-then cold start/module work. Both primary-pair controls are now established;
-P61 roundtrip is rejected and P55 is measured/promising; next is the dependent
-P21.suffix-bitmap with unknown gain. A future control blocker
+then cold start/module work. Both primary-pair controls are established;
+P61 roundtrip and the bitmap form are rejected, while P55 is retained with
+adverse RSS. Independent P11 is next, with unknown actual benefit; P13 is not
+stacked now. A future control blocker
 must be explicit; do not keep an obsolete baseline prerequisite. Continue an
 already-running prototype before resuming the sorted queue. Within each
 workload queue, prioritize applicable
@@ -718,9 +720,10 @@ Richard's later comparison-method correction supersedes the earlier P61-next
 priority: locally reviewed primary controls now have two provisional screens,
 and the current native/Bun pair is recorded above. P61 roundtrip is now
 measured/rejected; its independent host-sink alternative stays unmeasured.
-P55 is now measured/promising with adverse RSS; next is P21.suffix-bitmap on
-retained First, with unknown gain and no baseline prerequisite. Keep all original forecasts/results; assess P21
-bitmap and other eligible ideas without an arbitrary promotion boundary.
+P55 remains measured/promising with adverse RSS; P21.suffix-bitmap is now
+rejected. Independent P11 is next from H84/B4fda, with no stacks or baseline
+prerequisite; P13 follows only if further chain reuse is meaningful. Preserve original forecasts/results and continue
+eligible ideas without an arbitrary promotion boundary.
 P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
 F01 below remains frozen for the initial 54 ideas; later discoveries expand the
@@ -731,14 +734,14 @@ queue without retroactively changing that forecast.
 | **P02 — Safe SIMD UTF-8 validation** (measured/mixed; prototype retained) | Mixed large / ASCII reads; E | 2–6% mixed; 0–1% ASCII | P/F mixed +6.071%; ASCII −0.586%; signed control +0.103%. Combined P/B +6.550% / −0.968% / −1.554% (mixed/ASCII/signed). [All rounds, predictions and adverse metrics](#p02--simd-utf-8-first-screen-2026-10-24). | Historical mixed self 6.7–7.1%, ASCII ≈0.55%; conditional full-removal ceiling ≈7.2–7.7%, not achievable validation removal. Verify cached safe API and Wasm SIMD support; identical-feature control, no handwritten unsafe validator or download. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [postgres/wire.rs:648](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L648). | Medium; S–M; medium | Depends on F (same-feature control); F/B and combined P/B predictions unknown; overlaps P04 |
 | **P03 — Signed base64url table decoder** (measured small positive; prototype retained) | Signed reads; E | 0.5–2% | Signed +2.0625% vs B (marginal=combined); ASCII/mixed controls +1.4274%/+1.3656%, no direct decoder attribution. [All18 rows and limits](#p03--signed-base64url-first-screen-2026-10-24). | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%; current D signed self 1.5216%, ancestor union 1.9410% of all weighted samples (diagnostic scope, not removable headroom). Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
 | **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
-| **P11 — Skip unneeded scalar count** (queued; unmeasured) | Large text; E | 0–5% | Not measured | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
+| **P11 — Skip unneeded scalar count** (selected independent prototype; unmeasured) | Large text; E | 0–5% | Not measured | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
 | **P05 — Prepare immutable driver configuration** (queued; unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | Not measured | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
 | **P04 — SQL text ownership** (queued; unmeasured) | Large text reads; E | 0–5% | Not measured | Verified raw → String → `Rc<str>` copies, cost unisolated. Profile allocation/copy first; moving String into Rc alone does not guarantee zero-copy. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [read.rs:1101](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1101). | Low; M–L; high representation risk | Independent; overlaps P02/P09; representation affects P52 |
 | **P13 — Reuse scalar count across rule chain** (queued; unmeasured) | Deep-chain text; E + chain F | 0–5%; current-fixture relevance uncertain | Not measured | Avoid repeated inherited-rule scans. Profile chain count; preserve first-failure order and exact diagnostic count. [validate.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/validate.rs#L265). | Low; M; medium | Independent, or explicit prerequisite P11 when stacked; overlaps P43 |
 | **P19 — Cheap response capacity hints** (queued; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
 | **P07 — Direct Claims deserialization** (queued; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
 | **P06 — Batch request-header bridge** (queued; unmeasured) | Ordinary reads; E + header-heavy F | 0–3%; header-heavy unknown | Not measured | JS iterator → pair Array → separate string conversions/lowercase/trim. Preserve order, duplicates, case and trimming; profile bridge cost for header-heavy bound. [fetch.rs:215](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/fetch.rs#L215). | Low; M; medium | Independent; overlaps P10/P28 |
-| **P21 — Vectorize first-escape search only** (first measured/retained; suffix rejected) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | First/B ASCII +11.2918%, signed +1.9197%, mixed −0.5716%; suffix/first −0.9633% / −0.9024% / −0.7076% (ASCII/signed/mixed). [All24 rows, separate predictions and limits](#p21--first-escape-and-dependent-suffix-screen-2026-10-24). | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
+| **P21 — Vectorize first-escape search only** (first measured/retained; suffix rejected) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | First/B ASCII +11.2918%, signed +1.9197%, mixed −0.5716%; suffix/first −0.9633% / −0.9024% / −0.7076% (ASCII/signed/mixed). Bitmap/First signed +0.3103%, ASCII −1.6059%, mixed −21.5197%; bitmap rejected. [Bitmap result](#p21suffix-bitmap--measured-result-2026-10-24). [All24 original rows, separate predictions and limits](#p21--first-escape-and-dependent-suffix-screen-2026-10-24). | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
 | **P12 — Direct UUID hex formatting** (queued; unmeasured) | Singleton reads; E + UUID-list F | 0–2%; UUID-list impact unknown | Not measured | Sixteen format! allocations then Value::uuid lowercasing. Measure direct hex first; trusted canonical constructor as separate variant. Profile UUID-list share before estimating it. [read.rs:1327](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1327), [read.rs:1103](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1103). | Low-medium; S; low | Independent |
 | **P10 — Batch response-header bridge** (queued; unmeasured) | Small/header-heavy responses; E + header F | 0–2% | Not measured | Reduce header/JS boundary construction. Keep owned Uint8Array, bodyless statuses and rejected-header behavior; no unsafe Wasm memory view. [deployable.rs:417](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L417). | Low; M; medium | Independent; interacts P06/P28 |
 | **P15 — Reuse immutable Logged observer** (queued; unmeasured) | Golden reads; E + many-unbuilt F | 0–1%; many unbuilt connections unknown | Not measured | Per-request Logged construction and reserialization of unchanged unbuilt-driver list. Measure list scaling; cached observer must not retain invocation host. [deployable.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L265), [deployable.rs:158](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/deployable.rs#L158). | Low; S; low | Independent |
@@ -1276,26 +1279,19 @@ writer delta. Both source/build/artifact sets were retained before resetting
 H84 for the next independent experiment. No earlier failed setup is presented
 as a performance capture.
 
-### P21.suffix-bitmap — catalogue-only emerging alternative
+### P21.suffix-bitmap — original design and forecast
 
-Both primary controls are established; P61 roundtrip is rejected and P55 is
-measured/promising. This dependent bitmap variant is next, with unknown gain;
-candidate code/preflight and measurement remain pending. There is no bitmap implementation or measured result yet.
-Root and independent plan review accepted the dependent design. A tiny
-independent reference checked all 256 byte values and 3420 selected words; this
-is a mathematical/source check, not candidate app correctness or performance
-results. Keep First's early scan, reserve and unescaped-ASCII path unchanged;
-candidate code/preflight is next, before the fixed 24 screen described above.
-This explicit dependent variant uses P21 First's checked 8-byte reads and
-little-endian lane order, rather than depending on the rejected repeated-
-earliest Suffix. An exact 8-lane mask could enumerate every escape in one word
-and preserve valid UTF-8 spans between ASCII escapes. Compare B, First and
-First+bitmap, with marginal over First and combined over B. Its prediction is
-**unknown, including loss**: no intended additional unescaped-ASCII or ordinary
-signed work-path benefit, mixed effect unknown, and codegen/layout effects
-unpredicted. Current mixed writer self 18.8% is a whole-writer sampled context,
-not promised removable headroom. Keep both earlier repeated-scalar and this
-repeated-helper negative evidence intact; do not alter original P21/F01 forecasts.
+This design and its unknown performance forecast were recorded before the
+measured/rejected bitmap form below. It depends on retained P21 First 914367c6,
+not the rejected repeated-helper Suffix. The initial independent reference
+checked all 256 byte values and 3420 selected words as math/source evidence,
+not candidate app/performance results. The actual implementation preserves
+First's checked 8-byte reads, little-endian lane order, reserve and ordinary
+ASCII first-scan path. Original marginal and combined predictions stay
+**unknown, including loss**; no additional unescaped-ASCII or ordinary-signed
+work-path benefit was intended, and codegen/layout effects remained unknown.
+Mixed writer 18.8% self remains sampled context, not promised removable cost.
+Preserve the earlier scalar-span/repeated-helper negatives separately.
 
 The assessed algebraic mask design (not a runtime-tested prototype) is:
 `L = repeat(0x7f)`, `H = repeat(0x80)`;
@@ -1309,6 +1305,139 @@ borrow masks with possible later-lane false positives. Word reads may cross
 scalar boundaries, but String appends must start/end at discovered ASCII
 escape positions or known string boundaries, never arbitrary word ends.
 Canonical escape spelling and existing-prefix/append behavior remain required.
+
+### P21.suffix-bitmap — measured result (2026-10-24)
+
+**Reject this bitmap form; no promotion or favorable rerun.** Original marginal
+and combined forecasts remain **unknown, including loss**. Actual source is
+`b53754454cdbf6b31ec9d568446060d4882b9a1a`, tree
+`03fe7bf6d63c67a6e0b7b1a0c360aa5a21bdcc92`, retained at
+`refs/experiments/a4-baseline-84e1c00b/p21-bitmap`. It changes only json.rs
+on retained First 914367c6, explicitly reusing First's 6414 build prerequisite;
+it does not depend on rejected Suffix a7a2 or stack P55/P61. B4fda/H84 and
+shipping Os flags remain unchanged, with no target feature or dependency edits.
+
+**Actual implementation assessment — moderate.** Exact lane-mask arithmetic,
+bit iteration, separate scalar-escape output and copied-span bookkeeping add
+lasting UTF-8-boundary/canonical-control proof and test maintenance over First.
+The code remains safe/platform-neutral, without a new dependency, unsafe code
+or runtime API. First's early scan/reserve/unescaped-ASCII path is preserved.
+Expected-red controls and a fixed slice-lint attempt are prototype development
+roughness; a proper keeper would still retain the added mask/span invariants.
+This matches the prospective moderate assessment. **Tradeoff / advice:** do not
+carry this current form forward: extra writer complexity accompanies a clear
+mixed loss and adverse ASCII p95/RSS. This rejects the tested form, not every
+possible bitmap implementation or workload. Retain the earlier scalar-span and
+repeated-helper suffix rejections as distinct source/results.
+
+The fixed 24 cells cover B/First/bitmap/Bun × three workloads × two whole-order
+reversed rounds, c16, 2s admission + 1s warmup, 2048 principals, inspector NONE
+and PG durations OFF. All 24 complete with zero load/warmup errors, invalid
+bodies and persisted changes; full-body/source/artifact/dependency guards and
+144 saved served copies pass. Sleep is empty; clocks are 5.156–10.926ms and
+all owned services/PostgreSQL are reaped. Bun is secondary cross-deployment
+context; no fresh TypeScript/workerd arm or capacity/176/gate claim is made.
+
+All gains use ratios of this screen's two-round medians, with both round ratios
+retained. Fresh First/B ASCII is **+6.1243%**, a different campaign from the
+historical +11.2918%; retain both and do not rewrite the original result or
+forecast. The combined bitmap/B ASCII gain includes First's benefit and does
+not turn a losing marginal bitmap into a keeper.
+
+| Workload | B / First / bitmap / secondary Bun median req/s | Fresh First/B gain |
+|---|---|---|
+| Signed golden | 2252.472 / 2296.217 / 2303.342 / 6268.270 | +1.9421% |
+| Large ASCII | 1292.209 / 1371.348 / 1349.325 / 5932.937 | +6.1243% |
+| Mixed Unicode | 803.660 / 802.666 / 629.935 / 1609.245 | -0.1237% |
+
+| Workload / comparison | Frozen prediction | Actual gain | Round1 / round2 actual gains |
+|---|---|---|---|
+| Signed golden / marginal bitmap/First | Unknown, including loss | +0.3103% | -0.1826% / +0.7978% |
+| Signed golden / combined bitmap/B | Unknown, including loss | +2.2584% | +0.1497% / +4.4117% |
+| Large ASCII / marginal bitmap/First | Unknown, including loss | -1.6059% | -3.8002% / +0.5480% |
+| Large ASCII / combined bitmap/B | Unknown, including loss | +4.4200% | +1.4414% / +7.3813% |
+| Mixed Unicode / marginal bitmap/First | Unknown, including loss | -21.5197% | -21.8352% / -21.2018% |
+| Mixed Unicode / combined bitmap/B | Unknown, including loss | -21.6168% | -21.5073% / -21.7258% |
+
+Mixed marginal RPS falls −21.8352/−21.2018% in the two rounds, service CPU rises
++27.6947/+27.2658% and p95 rises +29.9315/+21.0921%. ASCII marginal RPS is
+−3.8002/+0.5480%; p95 and sampled peak RSS are higher in **both** rounds
+(First 362.5→ bitmap 370.4 and 364.4→365.6MB). Signed median +0.3103% has no
+intended ordinary-signed suffix-work benefit; retain its variation without a
+blanket causal claim. No further bitmap rerun is selected.
+
+Each cell below is **req/s / p95 ms / service CPU ms/request / separate helper
+CPU ms/request / sampled peak RSS MB** with the same existing RSS-sampling
+limits; PG and load-generator resources remain distinct.
+
+| Workload / round | B | First | Bitmap | Secondary Bun |
+|---|---|---|---|---|
+| Signed golden / 1 | 2275.973 / 8.794 / 0.447368 / 0.122807 / 318.0 | 2283.551 / 8.901 / 0.447696 / 0.122297 / 314.2 | 2279.380 / 8.979 / 0.444396 / 0.122592 / 315.1 | 6187.699 / 3.622 / 0.198659 / 0.000000 / 202.7 |
+| Signed golden / 2 | 2228.970 / 9.654 / 0.449866 / 0.132050 / 295.2 | 2308.884 / 8.800 / 0.442382 / 0.123004 / 315.5 | 2327.305 / 8.804 / 0.435155 / 0.122186 / 314.8 | 6348.842 / 3.554 / 0.192822 / 0.000000 / 205.6 |
+| Large ASCII / 1 | 1288.445 / 18.784 / 0.795674 / 0.166087 / 359.0 | 1358.648 / 19.840 / 0.751466 / 0.168622 / 362.5 | 1307.017 / 20.121 / 0.777439 / 0.179116 / 370.4 | 5929.858 / 4.118 / 0.218013 / 0.000000 / 193.2 |
+| Large ASCII / 2 | 1295.973 / 18.994 / 0.787553 / 0.165194 / 356.7 | 1384.049 / 18.202 / 0.748201 / 0.165468 / 364.4 | 1391.634 / 18.436 / 0.740343 / 0.168097 / 365.6 | 5936.016 / 4.128 / 0.217977 / 0.000000 / 189.1 |
+| Mixed Unicode / 1 | 802.196 / 25.845 / 1.273964 / 0.204082 / 304.0 | 805.561 / 27.142 / 1.275416 / 0.209489 / 295.3 | 629.665 / 35.266 / 1.628639 / 0.212431 / 300.5 | 1604.303 / 12.329 / 0.734884 / 0.000000 / 174.4 |
+| Mixed Unicode / 2 | 805.124 / 25.877 / 1.270820 / 0.209747 / 297.5 | 799.770 / 26.133 / 1.278709 / 0.211049 / 303.8 | 630.204 / 31.645 / 1.627358 / 0.212264 / 302.6 | 1614.186 / 12.496 / 0.731256 / 0.000000 / 178.6 |
+
+Harness cold/first observations are not a separate cold-start benchmark.
+Every cell is cold ms / first ms / idle RSS MB.
+
+| Workload / round | B | First | Bitmap | Secondary Bun |
+|---|---|---|---|---|
+| Signed golden / 1 | 151.157 / 86.000 / 97.6 | 65.136 / 30.376 / 97.4 | 63.037 / 28.371 / 97.4 | 187.202 / 17.683 / 91.7 |
+| Signed golden / 2 | 63.078 / 28.266 / 97.5 | 63.589 / 31.961 / 97.3 | 63.112 / 28.383 / 97.9 | 94.023 / 12.124 / 91.3 |
+| Large ASCII / 1 | 58.640 / 35.612 / 94.0 | 59.719 / 36.530 / 93.9 | 58.853 / 35.831 / 94.0 | 95.503 / 5.092 / 89.9 |
+| Large ASCII / 2 | 59.709 / 33.381 / 93.8 | 58.640 / 35.533 / 93.9 | 59.295 / 35.970 / 93.9 | 85.821 / 5.285 / 90.0 |
+| Mixed Unicode / 1 | 60.636 / 36.035 / 93.7 | 60.119 / 33.815 / 94.1 | 59.864 / 33.898 / 93.8 | 84.380 / 2.867 / 90.4 |
+| Mixed Unicode / 2 | 59.445 / 36.272 / 93.7 | 61.169 / 34.860 / 93.8 | 58.745 / 35.747 / 93.9 | 87.327 / 4.967 / 87.9 |
+
+All host/load-generator CPU, load drift, elapsed/drain windows and status/body
+fields remain in raw; load1 endpoints span roughly 3.08–16.72. Size comparison
+is retained rather than omitted for a rejected form:
+
+| App | B raw/gzip6 Wasm bytes | First raw/gzip6 bytes | Bitmap raw/gzip6 bytes |
+|---|---|---|---|
+| golden | 7325897 / 2690117 | 7326106 / 2690204 | 7326523 / 2690633 |
+| focused | 7364454 / 2662029 | 7364663 / 2662165 | 7365144 / 2662235 |
+
+gzip6 is a deterministic compression proxy, not provider upload size. Inputs
+and flags are unchanged; the First prerequisite remains the exact retained
+artifact, not a rebuilt replacement with a historical label.
+
+Focused controls retain expected-red source
+`a9ab01defc24f29edd7d51d21be901b4c7e2e081`. Initial candidate
+`20f1a44b7813e7050e6a33b188151c6972974b1f` passed 15 JSON tests/allocation but
+failed Clippy slicing; ref
+`refs/experiments/a4-baseline-84e1c00b/p21-bitmap-clippy-slice-attempt`
+retains that source. The checked split_at correction passes all 15 JSON tests,
+allocation and Clippy before measurement. Setup attempts have no benchmark
+raw or timing result; their logs below are correctness/setup evidence only.
+
+Archive-relative identities use durable A:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Candidate build with explicit First prerequisite | `variants/p21-bitmap/build.json` | `ed2d6a374736ed54786b1b0f576c1eb457b5d9dec3ee6053605b67db1ff2e77c` |
+| Six-host no-load smoke | `screens/p21-bitmap/setup-smoke/results.json` | `d6c9de6ac89fb1e7ae4a535035e69a96d57b6d811c96df0b704aa5cbc9896b3d` |
+| Complete fixed 24 result | `screens/p21-bitmap/screen24-none-pg-off-c16-r2/results.json` | `e66114af6655cda336edf284999ce97bbf5bd0224d523c8b75c1f2b8a46d4eec` |
+| Complete screen console | `screens/p21-bitmap-screen24-console.log` | `a38fb58fde23245ce6de720a6db10d9b754348bcd6929933e454f1450da5eadf` |
+| Expected-red focused controls | `screens/p21-bitmap-focused-red.log` | `e573e9536f805857d03b95265ae812803c19fb85d41f415235b1718cbb7dc624` |
+| Tests/allocation passed, initial slice lint failed | `screens/p21-bitmap-focused-green.log` | `8a0ba8b319b80f868e3c9247131bbf00c7fca610f45002aac7bacbb4db9f65b8` |
+| Checked suffix tests/allocation/Clippy pass | `screens/p21-bitmap-focused-checked-suffix.log` | `cb6aa5a3c7667cca78d6cc170b20ffbabb5a324fab4fb58a7b4f44564ac4f536` |
+
+Next is independent **P11**, from H84/B4fda without prior experiment stacks.
+Its focused prototype skips chars().count/check_length when dimensions,
+min_length and max_length are all absent. Source shows an empty field-rule
+layer plus Payload's mandatory max_length 65536 layer; required bounded counting
+remains, and shipping optimization may already remove redundant empty-rule
+work. Keep pattern/format/version/standard validation order and Unicode scalar
+counts unchanged. The original **0–5% large-text hypothesis** stays frozen;
+actual gain is unmeasured and may be zero/regression. Prospective complexity
+is **simple**, localized with no API/dependency/platform change. The proposed
+fixed 18 B/P11/Bun screen keeps Bun secondary. P13 is not stacked now and follows
+later only if additional chain reuse is meaningful. These are source/design
+facts, not measured execution counts; this negative bitmap result does not
+exhaust the queue.
 
 ## P55 — safe Response constructor first screen (2026-10-24)
 
@@ -1421,21 +1550,17 @@ Archive-relative retained identities use the same durable A:
 | Earlier weaker passing diagnostic | `diagnostics/p55-response-3e6f841a/build.json` | `5c36f728650a6724a22c129fa7a845f3ecdb9356388bfa4f1e7c5acf6af72c6d` |
 | Earlier weaker passing preflight | `diagnostics/p55-response-3e6f841a/preflight.json` | `0e2c086249771df23bc7c0a145d264b2c268656b8bb76e19d4507c50ea715944` |
 
-Next is the already-catalogued **P21.suffix-bitmap** alternative, explicitly
-dependent on retained First 914367c6, not the rejected repeated-helper Suffix.
-Its marginal and combined gains stay **unknown**, with prospective moderate
-localized exact-mask/UTF-8 proof maintenance and no new dependency, unsafe code
-or platform API. It has no P55/P61 stack. Compare B/First/First+bitmap with
-marginal against First and combined against B; the proposed fixed 24 B/First/bitmap/Bun screen keeps Bun
-secondary. Reuse the exact First artifact/prerequisite and freeze the protocol
-before measurement. This is continued exploration, not promotion or exhaustion.
+The dependent P21.suffix-bitmap was subsequently measured and rejected above;
+its unknown forecasts stay intact. Independent P11 is next, with its original
+0–5% large-text hypothesis and unknown actual benefit; P13 is not stacked now. Retain P55's simple code/moderate ownership burden and adverse
+RSS for later human selection; exploration continues without promotion.
 
 ## P61 — frozen roundtrip micro and conditional host sink
 
 **P61.roundtrip is measured/rejected; P61.host-sink remains a distinct,
-unmeasured alternative.** Both primary-pair controls remain established. Next
-is the dependent P21.suffix-bitmap alternative on retained First, with unknown
-gain; P55's measured result and ownership assessment are retained above.
+unmeasured alternative.** Both primary-pair controls remain established.
+Independent P11 is next after rejecting the bitmap form; P55's measured result
+and ownership assessment remain retained above.
 Continue eligible exploration without another baseline prerequisite.
 
 The original source-only preparation fa204074/ref ending
@@ -1599,8 +1724,8 @@ Rust append. Gain is unknown; current aggregate costs cannot be subtracted to
 predict it. If final Response encoding is omitted, label that lower bound and
 exclude any application-gain claim. Even a promising probe still needs full
 HTTP ownership/byte validation. This is a conditional cheap check, not an
-implementation or host-sink rejection; P21.suffix-bitmap is next after the
-measured P55 result.
+implementation or host-sink rejection. The bitmap form is separately rejected;
+independent P11 is next and P13 is not stacked now.
 
 **P61.host-sink remains eligible despite the measured roundtrip loss.** It would retain escaped JS string tokens/chunks through Response
 construction. This is a substantive source-backed alternative, not an expansion

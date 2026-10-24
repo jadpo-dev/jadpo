@@ -54,8 +54,10 @@ and TypeScript/workerd versus Jadpo Wasm/workerd; cross-deployment Bun versus
 Workers is secondary. Both primary pairs now have provisional locally guarded,
 agent-reviewed results. P61 roundtrip is measured/rejected, its host-sink
 alternative remains unmeasured, and P55 is measured/promising with higher
-mixed RSS. Next is P21.suffix-bitmap on retained First, with unknown gain;
-no baseline prerequisite remains. Keep each control's loader/host/lifetime limits explicit.
+mixed RSS. P21.suffix-bitmap is measured/rejected; independent P11 is next,
+with its original 0–5% large-text hypothesis and unknown actual gain. P13 is
+not stacked now. No baseline prerequisite remains. Keep each control's
+loader/host/lifetime limits explicit.
 Control acceptance uses local checks and agent review under standing
 authorization, not a new Richard approval. Preserve prior results and historical
 forecasts.
