@@ -51,6 +51,8 @@ JADPO = ROOT / 'target' / 'debug' / 'jadpo'
 LOAD = BENCH / 'load' / 'target' / 'release' / 'load'
 POOL = BENCH / 'load' / 'target' / 'release' / 'pool'
 WORKERD = ROOT / 'tools' / 'workers' / 'node_modules' / '@cloudflare'
+EXTRA_ENV = {}
+EXTRA_BINDINGS = []
 BOOKING = '{"item":"bike","symptom":"the chain slips on every hill"}'
 
 NATIVE_APP = """application {
@@ -250,6 +252,7 @@ def workerd_config(folder: Path, port: int, database_host: str, database: str, m
     shutil.copy(ROOT / 'tools' / 'workers' / 'ratelimit-binding.mjs', folder / 'ratelimit-binding.mjs')
     bindings = ['(name = "DATABASE_URL", hyperdrive = (designator = "hyperdrive", '
                 f'database = "{database}", user = "jadpo", password = "", scheme = "postgresql"))']
+    bindings.extend(EXTRA_BINDINGS)
     for limit in wrangler.get('ratelimits', []):
         bindings.append(
             f'(name = "{limit["name"]}", wrapped = (moduleName = "bench:ratelimit", innerBindings = ['
@@ -328,6 +331,7 @@ class Server:
                 command.append(f'--inspector-addr=127.0.0.1:{inspector}')
             env = {}
             self.header = 'cf-connecting-ip: {ip}'
+        env.update(EXTRA_ENV)
         self.spawned = time.monotonic()
         self.process = subprocess.Popen(command, cwd=cwd, env=env, stdout=log, stderr=log,
                                         stdin=subprocess.DEVNULL)
@@ -419,14 +423,14 @@ def measure(server: Server, route: str, connections: int, warmup: float, duratio
     time.sleep(max(0.0, warmup - (time.monotonic() - started)))
     cpu_before = cpu_s(server.process.pid)
     time.sleep(max(0.0, warmup + duration - (time.monotonic() - started)))
-    cpu_after = cpu_s(server.process.pid)
     out, _ = process.communicate()
+    cpu_after = cpu_s(server.process.pid)
     finished.set()
     sampler.join()
     result = json.loads(out)
     result.update(target=server.target, route=route, load1=round(load_before, 2),
                   cpu_ms_per_request=round((cpu_after - cpu_before) * 1000 / max(result['requests'], 1), 3),
-                  cpu_cores=round((cpu_after - cpu_before) / duration, 2), peak_rss_mb=peak[0],
+                  cpu_cores=round((cpu_after - cpu_before) / result.get('elapsed_s', duration), 2), peak_rss_mb=peak[0],
                   wasm_mb=server.memory_mb())
     return result
 

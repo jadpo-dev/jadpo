@@ -1,0 +1,24 @@
+use planning/entities { User }
+
+application {
+    schedules: {
+        trigger: ScheduleTrigger.external
+    }
+    client_address: {
+        source: ClientAddressSource.forwarded_for
+        hops: 1
+    }
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    revocation_delay: 5m
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}

@@ -1,0 +1,27 @@
+use planning/entities { User }
+use planning/types { Handle }
+use planning/failures { HandleTaken }
+
+type Register = Input {
+    handle: Handle
+}
+
+type Registered = Output {
+    id: User.id
+    token: ApiToken
+}
+
+action register(input: Register) fails HandleTaken -> Registered {
+    var user: User = attempt User.create {
+        set: {
+            handle: input.handle
+        }
+        conflict: {
+            User.handle: HandleTaken
+        }
+    }
+    return Registered {
+        id: user.id
+        token: sessions.issue_token(user.id)
+    }
+}

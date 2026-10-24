@@ -1,0 +1,19 @@
+use planning/entities { Todo }
+use planning/types { Title, TodoView }
+
+type AddTodo = Input {
+    title: Title
+}
+
+action add_todo(input: AddTodo, caller: Principal.user) -> TodoView {
+    var todo: Todo = Todo.create {
+        set: {
+            owner_id: caller.id
+            title: input.title
+        }
+    }
+    return TodoView {
+        id: todo.id
+        title: todo.title
+    }
+}

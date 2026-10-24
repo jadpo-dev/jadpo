@@ -1,0 +1,5 @@
+authentication {
+    api_token: {
+        signing_key: config.signing_key
+    }
+}
