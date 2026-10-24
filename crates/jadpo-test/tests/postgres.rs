@@ -421,9 +421,15 @@ fn a_connection_keeps_no_session_state_between_transactions() {
 /// The terminal capability keeps explicit RR and leaves no session state.
 #[test]
 fn a_terminal_read_keeps_repeatable_read_and_reuses_an_unnamed_clean_session() {
-    let Some((runtime, store)) = fresh("terminal_session") else {
+    if !jadpo_test::live() {
         return;
-    };
+    }
+    // Own this focused test's disposable server so its Drop runs even when
+    // this test is selected alone; a process-global OnceLock is not dropped.
+    let server = Server::start().unwrap();
+    let url = server.create_database("terminal_session").unwrap();
+    let runtime = Runtime::new().unwrap();
+    let store = postgres(&url).unwrap();
     runtime.block_on(async {
         let mut transaction = store.begin().await.unwrap();
         let read = transaction.query_last_read(

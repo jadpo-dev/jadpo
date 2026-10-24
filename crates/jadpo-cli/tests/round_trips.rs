@@ -440,12 +440,13 @@ fn a_signed_in_write_and_a_hidden_record_take_the_fewest_round_trips() {
     };
     let (own, _) = read(&alice);
     assert_eq!(own.status, 200, "{}", json(&own));
-    // The lookup, the note's read with `BEGIN`, which says whether policy
-    // hid it, and the rollback.
+    // The lookup, then the terminal read's queued BEGIN/read/COMMIT. This
+    // proven read-only scope can already have committed when policy hides
+    // its row; client interpretation must still return the same safe 404.
     let (hidden, trips) = read(&bob);
     assert_eq!(hidden.status, 404, "{}", json(&hidden));
     assert_eq!(json(&hidden)["error"]["code"], "note_not_found");
-    assert_eq!(trips, 3, "a policed 404");
+    assert_eq!(trips, 2, "a policed 404 with a queued terminal read");
     let (ready, trips) = send(&request("GET", "/health/ready", &[], ""));
     assert_eq!((ready.status, trips), (200, 1), "`SELECT 1`, on its own");
     let (_, trips) = send(&request("GET", "/health/ready", &[], ""));

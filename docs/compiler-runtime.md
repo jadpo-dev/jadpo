@@ -7856,8 +7856,9 @@ explicit repeatable read and the ordinary path for every unproved case; no
 route/entity special case, autocommit substitute or language/configuration
 choice is introduced. Three SQL commands remain. The scripted driver proves
 queue order, and source/generated-plan inspection proves the eligible
-production route; neither measures a reduction in SQL operations, executor
-wakeups, socket calls or driver handoff counts. Those counts remain unmeasured.
+production route. Later native wire-exchange diagnostics, recorded below,
+observe 3→2 total exchanges for specific fixtures. Workers exchange/wakeup/socket
+counts and any reduction in SQL-command count remain unmeasured.
 
 Correctness was tested before performance. Commit
 `fd7909541217319567b77d45cce70dd0337a5670` first exposed a sequential ending:
@@ -8039,8 +8040,18 @@ Clock wall gaps are short 4.884–262.217 ms (the maximum is signed reference
 round 1, whose higher CPU also stays in the table), confirmation 4.445–12.215
 ms; all pass the declared 1-second bound. Available `pmset -g log` observations
 have no Sleep/DarkWake events in either campaign. Transient own `caffeinate -i`
-wrappers and all database/server/helper/build processes were reaped before
-releasing quiet; a preexisting user caffeinate was untouched.
+wrappers and campaign database/server/helper/build processes were reaped before
+releasing quiet; a preexisting user caffeinate was untouched. Broader inspection
+after the failed gate found an earlier focused-test PostgreSQL server, PID
+48713, in a temporary path outside the worktree filter. Its only test database
+was `terminal_session`. Both campaigns' start/end inventories retain that same
+PID and five background children at 0.0 snapshot CPU. This is a disclosed ambient
+process limitation: endpoint snapshots do not prove continuous idle state or
+exclude intervening maintenance. Earlier claims that every owned process had
+been reaped were incomplete. The exact server was stopped with pg_ctl fast/wait;
+the new focused test now owns a local Server whose Drop runs, and focused CLI
+diagnostics use an explicitly owned shared server closed/waited in finally.
+The captures are retained with this limit; no automatic favorable rerun occurred.
 
 Shipping Os/fatLTO/CGU1 and runtime versions stay fixed (workerd 2026-10-07,
 Bun 1.2.20, Node 24.18.1, PostgreSQL 16.3, Rust 1.99.0 selected through
@@ -8106,6 +8117,35 @@ maps, dependencies, wrapper flags and saved artifact mappings.
 | `terminal-c9d5c98b-confirm/confirmation27-none-pg-off-c16-r3/results.json` | `512f07b8d83852a7fc3c54a7059b11a3489b21caa697f7a2581072be32fc0d4f` |
 | `terminal-c9d5c98b-confirm/qualification-26b91df0/results.json` | `ebca0b7bbdb36627d8a349ae96268ddac60c1f9d356ae13620e42b71f190b380` |
 
-The selected code/tests, methods and facts await the single final full
-`python3 tools/verify.py` gate. Gate result/completion metadata will be added
-afterward; no merge or auto-merge is authorized.
+The first final full gate at `26e583721df16efbfb5fe086f60686ea6ed914c5`,
+tree `d3a4e3633f8c71891978f18ea67b025d450f7f5f`, failed **27/93 steps in
+285 seconds** (66 passed). Its direct task stdout and final summary are retained;
+large failure output hit terminal truncation, so the early count failures were
+reproduced separately before changing assertions. The example-name checker
+reported nine uses of fixture `packet` plus fixture strings Item/Missing: it
+scans every src file and recognizes only inline cfg(test) modules. Enclosing
+the two actual test implementations in inline cfg(test) modules keeps the
+scanner unchanged and passes all 3,176 names/94 type-name controls.
+
+The unchanged-production focused repro then captured native external_tokens
+and hidden-read assertions **left 2, right 3**, each cargo exit 101. The former
+counter increments the first write after a complete PostgreSQL ReadyForQuery,
+buffering protocol messages independently of TCP fragmentation. The latter is
+a weaker first-write-after-any-received-bytes proxy. The current native /self
+fixture therefore has one authority exchange plus one queued terminal business
+transaction exchange; the hidden 404 fixture also observes two total exchanges.
+Exact expected counts were updated to two with their response/policy assertions
+intact; both focused groups pass, including all external credential algorithms.
+These diagnostics do not count Workers wakeups/calls or imply fewer SQL commands.
+
+The first gate also exhausted storage in PostgreSQL, compiler, npm and workerd
+checks despite roughly 12 GB free beforehand; cascading failures were not
+accepted as a successful gate. After all owned processes were reaped, a protected
+inactive-target cleanup restored about 45.4 GiB actual free space. Focused retry
+then passed all nine runtime/seven driver controls, the live explicit-RR test
+with its owned server, both native count groups, unchanged example-name scanner
+and affected four-crate all-target Clippy. No production implementation changed:
+only test enclosure, exact count expectations and focused-server lifetime changed.
+Earlier 176/source and exact timed-production qualification remain separately
+identified above. A corrected full `python3 tools/verify.py` gate is pending;
+result/completion metadata will follow. No merge or auto-merge is authorized.

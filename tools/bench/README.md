@@ -1194,8 +1194,10 @@ existing precedence and three-attempt retries; cancelling a finalizing future
 drops its owned connection. Compiler-runtime §2.6 describes the contract; §2.11
 “Standalone repeatable-read handoffs” retains every screen/confirmation round,
 all adverse p95/RSS/cold observations, failed setup/build-only attempts, exact
-source/artifact/body hashes and limits. No operation/wakeup reduction was
-measured. The complete four-runtime performance matrix remains deferred.
+source/artifact/body hashes and limits. Specific native fixtures later observe
+3→2 total wire exchanges; Workers wakeup/exchange counts and SQL-command
+reductions remain unmeasured. The complete four-runtime performance matrix
+remains deferred.
 
 Use the existing pinned `bench_env` above, additionally unsetting RUSTFLAGS.
 Commit source before building. Single-profile mode avoids rebuilding s/2/3 per
@@ -1232,8 +1234,13 @@ All loads are c16, inspector NONE and PostgreSQL durations OFF for reference,
 Os and Bun; complete forward/reverse rounds are fixed before loading. Request
 parent host quiet after all builds/setup are reaped; release after final source,
 reference/dependency/artifact/served/body/state/clock/Sleep guards and owned
-process cleanup. No favorable cell retry. `smoke` is setup only (both reference
-servers and one full guarded read), not performance. All experiments use local
+process cleanup. The retained 18/27-cell captures include an earlier focused-test
+PostgreSQL PID 48713 plus five background children at 0.0 CPU in all four endpoint
+snapshots; this does not establish continuous idle state. The later-discovered
+owned server was stopped, earlier all-owned-reaped claims corrected, and the
+focused live test changed to local Server ownership. No favorable cell retry.
+`smoke` is setup only (both reference servers and one full guarded read), not
+performance. All experiments use local
 fixtures, not accounts, provider calls or deployment.
 
 `qualify` links exact timed modules and their producer/build SHA to separate
@@ -1264,4 +1271,10 @@ confirmation raw SHA
 Selected `qualification-26b91df0/results.json` passes 176 plus separate exact
 production acceptance; SHA
 `ebca0b7bbdb36627d8a349ae96268ddac60c1f9d356ae13620e42b71f190b380`.
-The single final full gate is pending; it runs after review of these final facts.
+The first full gate at 26e58372 failed 27/93 in 285 seconds: test-fixture name
+scanning, old native wire-count expectations (focused repro left 2/right 3), and
+an ENOSPC cascade. It is not a passing gate. Inline cfg(test) enclosure leaves
+the scanner unchanged; precise native counts now assert 2, and focused servers
+are explicitly closed/reaped. These focused tests and affected Clippy pass.
+Protected inactive-target cleanup restored about 45.4 GiB actual headroom. The
+corrected final full gate remains pending; all failed-attempt facts stay in §2.11.

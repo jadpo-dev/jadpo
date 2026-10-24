@@ -624,8 +624,8 @@ fn external_subjects_use_current_authority_on_the_native_runtime() {
         let body: Value = serde_json::from_slice(&response.body).expect("JSON");
         assert_eq!(body["email"], "stored@example.test");
         assert_eq!(
-            trips, 3,
-            "one authority read plus two business transaction wire exchanges"
+            trips, 2,
+            "one authority read plus one queued terminal-read transaction exchange"
         );
     }
     for (credential, _) in &asymmetric {
@@ -640,7 +640,10 @@ fn external_subjects_use_current_authority_on_the_native_runtime() {
             response.code,
             String::from_utf8_lossy(&response.body)
         );
-        assert_eq!(trips, 3);
+        assert_eq!(
+            trips, 2,
+            "one authority read plus one queued terminal-read transaction exchange"
+        );
     }
     assert_eq!(
         provider.state.lock().expect("state").paths.len(),
