@@ -1636,10 +1636,7 @@ pub fn write_string(text: &str, out: &mut String) {
             b'\r' => out.push_str("\\r"),
             b'\t' => out.push_str("\\t"),
             control => {
-                const HEX: &[u8; 16] = b"0123456789abcdef";
-                out.push_str("\\u00");
-                out.push(char::from(HEX[usize::from(control >> 4)]));
-                out.push(char::from(HEX[usize::from(control & 0xf)]));
+                let _ = write!(out, "\\u{control:04x}");
             }
         }
         start = index + 1;
