@@ -1182,3 +1182,86 @@ The final reviewed code/tests/facts passed the full gate at
 `a3763713ff2f6e4d99659114231110773337f5ab`), **93/93 in 568 s**, direct
 stdout with all processes reaped. Later gate-result/completion metadata does
 not alter the exact 288a measured artifacts.
+
+
+### Terminal standalone reads (9.2a3)
+
+The kept PostgreSQL capability queues RR BEGIN, the unnamed typed final read
+and COMMIT together only for a proven fresh standalone read. Action/context,
+settings/recheck/includes, unproved type/provider-codec and recorded wrappers
+keep ordinary behavior. Body interpretation and saved terminal errors retain
+existing precedence and three-attempt retries; cancelling a finalizing future
+drops its owned connection. Compiler-runtime §2.6 describes the contract; §2.11
+“Standalone repeatable-read handoffs” retains every screen/confirmation round,
+all adverse p95/RSS/cold observations, failed setup/build-only attempts, exact
+source/artifact/body hashes and limits. No operation/wakeup reduction was
+measured. The complete four-runtime performance matrix remains deferred.
+
+Use the existing pinned `bench_env` above, additionally unsetting RUSTFLAGS.
+Commit source before building. Single-profile mode avoids rebuilding s/2/3 per
+prototype; the defaults retain the earlier 24-cell profile screen. A historical
+reference is imported only from its qualified immutable saved mappings, with
+producer/source/176 linkage and actual-served focused Wrangler provenance;
+never fall back to later overwritten live outputs or named Wasm. Reference
+production modules remain historical, separately identified from the current
+migration CLI and exploratory candidate. Inspect saved served copies after
+live runner directories are reused.
+
+```sh
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py build \
+  --label <fresh-label> --profiles s \
+  --tools-from <absolute-historical-build.json> \
+  --reference-build <absolute-historical-build.json> \
+  --reference-results <absolute-accepted-historical-results.json>
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py smoke \
+  --label <fresh-label> --output setup-smoke
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py run \
+  --label <fresh-label> --output screen18-none-pg-off-c16-r2 \
+  --workloads golden-read ascii-large unicode-large \
+  --rounds 2 --duration 2 --warmup 1 --principals 2048
+# Only a promising complete screen advances to the fixed longer confirmation.
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py run \
+  --label <same-frozen-label> --output confirmation27-none-pg-off-c16-r3 \
+  --workloads golden-read ascii-large unicode-large \
+  --rounds 3 --duration 8 --warmup 2 --principals 2048
+bench_env caffeinate -i python3 -B tools/bench/worker_screen.py qualify \
+  --label <selected-timed-label> --output <fresh-qualification-output>
+```
+
+All loads are c16, inspector NONE and PostgreSQL durations OFF for reference,
+Os and Bun; complete forward/reverse rounds are fixed before loading. Request
+parent host quiet after all builds/setup are reaped; release after final source,
+reference/dependency/artifact/served/body/state/clock/Sleep guards and owned
+process cleanup. No favorable cell retry. `smoke` is setup only (both reference
+servers and one full guarded read), not performance. All experiments use local
+fixtures, not accounts, provider calls or deployment.
+
+`qualify` links exact timed modules and their producer/build SHA to separate
+actual production acceptance, then the existing 176 current-source shared
+contract cases. The latter's recorded test controllers deliberately exercise
+ordinary fallback. They do not establish optimized production coverage.
+The production stage checks owner/hidden/missing reads, absent/forged credentials,
+ordinary list/includes, sample canonical body, existing focused signed-owner/
+expired opaque credential/write controls and unchanged business state. Source
+compatibility allows exactly `worker_screen.py` and its unit test to differ
+from the timed producer; every other tracked mode/hash must match. Docs edits
+wait until qualification completes. The complete timed-helper/dependency guard
+runs before conformance rebuilds the helper; its newly built identity is saved
+separately, while immutable original inputs, served copies and timed modules
+remain guarded afterward. Reproduction requires those exact saved inputs and
+producer/qualifier source revisions; later source or overwritten helper paths
+must never be silently reused or old manifests rewritten.
+
+The retained short label is `terminal-adc32128-screen3` (all 18 cells); selected
+confirmation is `terminal-c9d5c98b-confirm` (all 27). Median confirmation rps
+improves signed **10.65%**, ASCII **6.26%**, Unicode **5.34%**, with lower median
+p95/CPU per request. Preserve signed round-3 p95 +1.06%, Unicode round-3 +0.48%,
+short ASCII round-1 +1.61%, and higher signed peak RSS (290–302→317.8–318 MB).
+No universal speed, memory-neutrality or memory-leak claim follows. Source c9d5,
+build SHA `146a231c0194bb7e57ccbe2002f66b8fedbaca2d67785bd2cfd7656060e63e69`,
+confirmation raw SHA
+`512f07b8d83852a7fc3c54a7059b11a3489b21caa697f7a2581072be32fc0d4f`.
+Selected `qualification-26b91df0/results.json` passes 176 plus separate exact
+production acceptance; SHA
+`ebca0b7bbdb36627d8a349ae96268ddac60c1f9d356ae13620e42b71f190b380`.
+The single final full gate is pending; it runs after review of these final facts.
