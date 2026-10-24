@@ -5915,3 +5915,15 @@ pool lifetime before claiming a cross-target win; the workerd gap remains.
 Comparator caveat: the TypeScript fixture only drains deliveries, while Jadpo
 also runs housekeeping and workerd goes through a pool stand-in, so the gap
 includes costs a Bun service would not pay.
+
+**Fast ticks and hourly housekeeping: result** (chunk 9.1b2, local). Full
+before/after numbers, variation and caveats are in the pull request.
+
+| Idle tick, empty store | Reference | Candidate |
+|---|---:|---:|
+| Runtime SQL statements per completed-hour tick (native and workerd) | 8 | 5 |
+| Workerd idle tick p95, median of three rounds | 4.371 ms | 2.874 ms |
+
+The four prompt operations stay; the four retention statements became one
+declining lease claim. Warm delivery throughput moved within ambient variation
+and is not claimed as a gain. Method: `tools/bench/README.md`.
