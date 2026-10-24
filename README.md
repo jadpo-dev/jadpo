@@ -22,9 +22,9 @@ A local clone gives it access to the full specification and tests.
 
 ```text
 Help me explore Jadpo: https://github.com/richardwillars/jadpo
-Use a local clone, or clone it into a new directory. Read README.md and
-AGENTS.md, then docs/language/README.md and the current decisions and status
-notes in areas 1–4. Explain why Jadpo exists, what it can build, how its
+Use a local clone, or clone it into a new directory. Read README.md, then
+docs/language/README.md and the current decisions and status notes in
+areas 1–4. Explain why Jadpo exists, what it can build, how its
 checks work and what is still planned. Cite the files you actually read.
 Walk me through examples/01-first-project, including its source and tests.
 Check the prerequisites, build the CLI and run check and test on that
