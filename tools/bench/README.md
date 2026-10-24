@@ -156,26 +156,13 @@ wall-clock speed assertions run in CI. Raw `idle-<timestamp>.json` retains
 per-tick replies/logs/durations, control/census evidence, counts, CPU/load,
 empty-state audits, exact source/artifact map and end freshness.
 
-Retain separate timestamped smoke/full attempts; never overwrite a failed
-result. Rebuild/repeat both sides when the measured harness/protocol changes.
-For b2 the fresh reference's production `crates/*/src` and all generated schema
-fixture inputs exactly matched prerequisite cb1, retaining the final measured
-harness; the restored candidate's complete tracked tree/modes matched its
-passing full gate. Sources, trees, compiler/artifact hashes, all rounds/CPU,
-raw paths/digests and every superseded preparation are in compiler/runtime
-§2.11, "Fast ticks and hourly housekeeping: matched measurements".
-
-The earlier b2 reference was repeated after proven test-helper workerd orphans
-were stopped. Those came from an npm wrapper lifetime bug and a native failed-
-readiness child without kill+wait ownership; actual failure-path regressions
-cover the narrow fixes. A clean benchmark shutdown is not proof that every
-other test descendant stopped: record exact owned executable identities after
-the full gate and before/after timing. Preserve unrelated apps/services and
-record ambient CPU/load, memory/swap and control drift. The b1/b1a historical
-results remain exploratory under an unknown orphan-host condition, and the
-separate 8.4e resident-memory question is unchanged. Idle SQL reduction is the
-primary b2 result; observed small warm-delivery changes under varying load do
-not establish a causal throughput win or full TS/Jadpo housekeeping equivalence.
+Rebuild and repeat both sides when the measured harness or protocol changes.
+Finish and reap all builds and tests first, record owned-process and ambient
+CPU/load context, and keep unrelated apps and services running. Test helpers
+must kill and wait for their children (regressions cover the failure paths);
+a clean benchmark shutdown does not prove every test descendant stopped. Idle
+SQL reduction is the primary result; small warm-delivery changes under varying
+load are not a causal throughput claim. Results go in the pull request.
 
 ## AI accounting (chunk 9.1b3)
 
@@ -237,17 +224,12 @@ reject incomplete/corrupt state, false controls, wrong census/quantiles, stale
 source/artifacts, retargeted links and changed modes. There are no speed
 assertions in the gate.
 
-Finish/reap all owned builds/tests/services before timing and record bounded
-exact-path process inventories, five-second ambient CPU/load, memory and swap.
-Whole-fixture child CPU includes setup, warmup, controls, census and reaped
-watchdog/client children; daemonized PostgreSQL backend CPU is excluded and
-unmeasured. It is not per-call or service CPU. Retain every failed/superseded
-attempt and all rounds under ignored `work/ai-accounting/`. The paired sources,
-artifacts, all-round SQL/latency/fixture-throughput, the retained initial
-app-only regression and the final single-window comparison are in
-compiler/runtime §2.11, “One-statement AI accounting”. Host-load drift
+Finish and reap all owned builds, tests and services before timing and record
+ambient CPU/load, memory and swap. Child CPU covers the whole fixture, not
+per-call or service CPU; PostgreSQL backend CPU is excluded. Host-load drift
 prevents a universal speed claim. Changing the measured path or harness
-requires fresh own builds and the affected matched campaign again.
+requires fresh builds and the affected campaign again. Results go in the pull
+request.
 
 ## Golden application comparison (chunk 9.1d4)
 
@@ -718,10 +700,8 @@ python3 tools/bench/version_writes.py patch --label <fresh-label> --warmup 2 --d
 The first command runs the existing golden application's complete 44-case
 contract on all four targets before generating its production HTTP
 artifacts. All pinned npm installs disable lifecycle scripts. Selected
-inherited and effective **outer benchmark environment** Rust build flags are
-recorded separately. Historical 9.1b4 stamps did not observe inner codegen Cargo
-settings; those values are unavailable. The 9.1b5 method below observes them
-separately. Before building a reference, restore all affected production source directories
+inherited and effective Rust build flags are recorded separately. Before
+building a reference, restore all affected production source directories
 from its exact commit and commit that state, retaining the final harness.
 Before building the candidate, restore the entire clean gated tree,
 including modes, and prove `git write-tree` equals its gated tree. Run both
@@ -783,46 +763,7 @@ common-write regression control and the supported Worker/Bun comparison.
 Report every round and its range, including adverse cells. Investigate a
 material common-path slowdown rather than dropping a case or counting a
 short smoke as qualification. Raw files live under the ignored
-`tools/bench/work/version-writes/`; fact sections in `docs/compiler-runtime.md`
-record exact paired identities, results, failures, digests and limitations.
-
-
-The final 9.1b4 comparison used `b4-reference-partition-final` at
-`58933ff74cc9fdac860aea20567acc2e52537253` (production exactly prerequisite
-`e7647abbdfc39e9b4cacd55e12cf7520f999469c`) and
-`b4-candidate-partition-final` at `050aa8fd3c434518deb782ba3f61b0f060d0a143`.
-The entire candidate tree/modes equals gated `404ad02e` tree
-`6f538200443eff32d0c29975b570a5dbe00dd9eb`; each side had its own build.
-Runtime/PATCH outputs are respectively `runtime-1792798879011432000.json` /
-`patch-1792798890696328000.json` reference and
-`runtime-1792803710126051000.json` / `patch-1792803747338864000.json` candidate.
-Both `build.json` files contain all 68 original/saved artifact-map entries per
-side. Exact source/artifact/raw digests, every round, CPU scopes, attempts and
-limits are recorded in compiler-runtime §2.11, “Version checks in writes”.
-
-Observed successful-action census: 4→3 **data** SQL, four transaction commands
-unchanged, hence 8→7 runtime roundtrips; PostgreSQL logs 9→8 including the
-independent provider assertion. The release runtime median cell p95 worsened
-0.580958→0.606792 ms (+4.45%); median fixture throughput rose 3.62%. Ordinary
-PATCH workerd medians were 863.13→865.05 / 1558.32→1566.42 requests/s at 1/8
-clients, with about the same 71.6%/79.0% of Bun throughput. This confirms SQL
-removal, not a latency gain or positive outside-call HTTP performance claim.
-Retain adverse rounds and higher candidate host CPU; matched memory/swap/thermal
-history is unavailable. Preparation also took 532.91→2940.60 s, outside request
-timing; causal attribution is not supported.
-
-The first immutable label `b4-reference-final` remains retained: its runtime
-passed, but fixed-caller PATCH exhausted the genuine 600/min quota and the guard
-rejected 429s. Short smoke success had missed this duration-dependent refusal.
-The final disjoint partitions preserved limits, required every one of 256 cases,
-and passed all 24 cells with at most 54 calls/case including warmup plus bounded
-setup probes. Do not reuse the rejected cell as throughput. Avoid another cold
-full comparison merely to chase favorable latency; inspect controls/source and
-report supported invariants and variation. The first full gate also correctly
-caught SQL-layer ownership and a stale CLI snapshot; final full gate passed all
-93 steps including the final harness, actual Worker route8/3 and both44-case
-golden targets. Subsequent edits are facts/method prose only.
-
+`tools/bench/work/version-writes/`; the pull request carries the results.
 
 ### Breakers in delivery claims (9.1b5)
 
@@ -882,32 +823,5 @@ counts. CPU records service/pool, Python controller/provider and native children
 separately; PostgreSQL daemon CPU is excluded, and child CPU closes before host
 diagnostic subprocesses start.
 
-The accepted reference `b5-reference-final-1` is
-`9f383b263d63a8fce1383598e9a22d354c46926a` (all crates exactly prerequisite
-`97aba24a4afc7bb0ad43a4eac7c62ee420f670ee`); candidate
-`b5-candidate-final-1` is gated `dc5193ac84a77dc9f0d35a45eb531980a8d25ec4`, tree
-`3519f1800e28eddf76a70bd07a5011f9b5a3c1c8`. Gate: 93/93 in 375 s. Each campaign
-passes all 24 cells; raw files are `runs-1792818430938323000.json` reference and
-`runs-1792818956859881000.json` candidate. Compiler-runtime §2.11 “Breakers in
-delivery claims” records exact source/tree/file/artifact/raw digests, every
-performance round, CPU scopes, host/build conditions, all failed attempts and
-limitations; §2.6 records current-state arbitration and the query-error tradeoff.
-All 4,910 saved snapshots and 42 consumed Worker host files per side were
-independently rehashed after the pair. The reference shared compiler original
-was subsequently superseded; its snapshot remains intact.
-
-Observed connected Jadpo one-delivery-tick census is Worker 12→11 / native 14→13
-data statements with unchanged transaction counts; its independent breaker READ
-is replaced by the joined claim. Bun/Node 8 and backlog Worker 10 / native 12 / Bun or Node 6
-remain unchanged; backlog has zero breaker reads/joins throughout. Median
-connected Worker throughput is 1323.240→1435.087 deliveries/s (+8.45%), tick
-p95 88.083→85.166 ms; **unchanged Bun also rises 7.42%**, so relative Worker/Bun
-throughput is only 62.586%→63.187% (+0.601 percentage points). The initial Worker round is adverse,
-Node median p95 worsens, and connectionless Worker/Bun is 60.248%→59.030%.
-Matched host observations retain pressure/swap variation and +1.274pp
-pre-campaign ambient busy CPU; do not claim a causal 8.45% gain. Keep every
-round and all bad/superseded setup data, including the compiler namespace/write
-plan defect, structured-JSON red, two failed gates (the kiosk 202 cause remains
-unknown), and workload-transition/backlog-metadata corrections. No extra HTTP
-comparison or favourable-latency rerun was selected. Final subsequent changes
-are facts/method prose only.
+Raw data stays in the ignored `work/connected-deliveries/`; the pull request
+carries the results.

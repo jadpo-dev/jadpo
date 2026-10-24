@@ -2867,25 +2867,6 @@ item resets the boundary's event allowance (`Boundary::allowance`); and
 hourly housekeeping deletes runs that ended 30 days ago with their problems
 and cancels (chunk 9.1b2).
 
-**Breaker snapshots in delivery claims** (chunk 9.1b5). A subscriber with
-connections uses `outbox::claim_breakers_sql`: the conditional claim is a CTE
-left-joined to all its connection breaker rows. `outbox::claim` consumes every
-joined row, keeps one claim when breaker rows are absent, and distinguishes a
-lost claim from a query error. Connectionless subscribers retain the original
-four-parameter `CLAIM`, with no join or breaker read. Shared schedule/batch lease
-behaviour is unchanged. `runner::attempt` retains missing-subscriber, depth,
-handled-record, retry-budget and slot priorities before `breaker::gate_snapshot`.
-The joined rows replace only the independent snapshot read: conditional `HOLD`,
-`TAKE_PROBE` and `PROBE_UNUSED` still arbitrate current state, preserving multiple
-connection holds, one probe lease, returned unused probes and hold/release races.
-Real PostgreSQL holder/waiter tests observe row-lock contention, one claim/probe
-winner, and a hold after release with an exact attempt refund and 5,000 ms wake
-accounting; scripted controls cover returning earlier probes and closure before
-hold. A combined-query failure leaves work unclaimed for a later retry and never
-executes its provider. This differs from the former independent breaker-read
-error path, which let already-claimed work run; the area page does not promise
-that fail-open availability behaviour.
-
 **Bounded delivery sweeps** (chunk 9.1b1). A sweep still reads at most 100
 oldest due deliveries, waking breakers and parking lost/unreadable work first.
 It partitions that selection round-robin into four static lanes and drains
@@ -2940,8 +2921,7 @@ and native two-role regressions cover a state-only schedule store, batch
 history/problems/cancels in another store, no web runners, and the jobs tick
 skipping completed cleanup while retaining prompt work. Live contention,
 failed/partial/crashed retry, stale-owner fencing, independent stores, retention,
-budget/shutdown and cross-store handled safety run in the gate. Measurement,
-failed preparations and the superseded role-pruning bug are recorded in §2.11.
+budget/shutdown and cross-store handled safety run in the gate. Measurement is in §2.11.
 
 **Schedules and the tick** (chunk 6.2). The checker reads each schedule
 (`jadpo_check::schedules`: `every:` and `run:`, an action of its own
@@ -4176,32 +4156,37 @@ generation `boundary::Undo` compares, so a caught action whose call
 closed the snapshot its savepoint was in has its own transaction rolled
 back whole instead. Every update and delete plan carries a `RowCheck`
 (its table, where its `id` comes from, its expected-version parameter and
-`row_version`'s failure-only `FOR NO KEY UPDATE` statement). Since chunk
-9.1b4 the write's own `WHERE` compares `xmin::text` with that parameter;
-a typed NULL bypasses it for an untracked row or a row this transaction
-already checked and locked. Only a mutation changing no row needs the
-extra probe, before policy, field, lifecycle-condition and missing-row
-classification. Another version, or none, is `StoreError::ConcurrentChange`,
-which reruns the action within `RERUN_ATTEMPTS`. The write transaction opens
-before consulting checked keys, and `Undo` restores the pre-savepoint set
-on rollback (clearing it when the callee's whole transaction ends), so a
-released lock never leaves an obsolete bypass. Successful tracked writes
-mark the row checked, allowing repeated updates or a delete after our own
-update without rejecting our own new `xmin`. The rerun takes the same steps,
-so a keyed call
-repeats under its key. A reference's refusal planned as `Raises::Gone`
-is a concurrent change too once rows were loaded before a call. The SQL
-goldens show the predicate and failure-only probe. The formatter lives in
-`jadpo-sql::statement::holds_row_version`; the planner reserves a separate
-nullable parameter for every update/delete and keeps it in unpoliced SQL too.
-Ordinary writes without pre-call versions bind NULL without building row keys.
-`call_snapshots` exercises the first-loaded version across rereads and another
-snapshot, record/by-id and repeated mutations, deletion, policy/field/guard
-refusals, keyed reruns, unkeyed ambiguity and an observed blocked PostgreSQL
-waiter. Boundary regressions cover both savepoint rollback and a caught callee
-whose snapshot closure changed the transaction generation. A compiled Worker
-route also executes a non-NULL version parameter; the concurrent races run on
-the native runtime, not on that route. See §2.11 for the measured SQL census.
+`row_version`'s failure-only `FOR NO KEY UPDATE` statement). The write's own
+`WHERE` compares `xmin::text` with that parameter
+(`jadpo-sql::statement::holds_row_version`); a typed NULL bypasses it for an
+untracked row or a row this transaction already checked and locked. Only a
+mutation changing no row runs the probe, before policy, field,
+lifecycle-condition and missing-row classification. Another version, or none,
+is `StoreError::ConcurrentChange`, which reruns the action within
+`RERUN_ATTEMPTS`; the rerun takes the same steps, so a keyed call repeats
+under its key. The write transaction opens before checked keys are consulted,
+and `Undo` restores the pre-savepoint set on rollback (clearing it when the
+callee's whole transaction ends), so a released lock never leaves a stale
+bypass. A successful tracked write marks its row checked, so a later update or
+delete in the transaction does not reject our own new `xmin`. A reference's
+refusal planned as `Raises::Gone` is a concurrent change too once rows were
+loaded before a call. The SQL goldens show the predicate and the probe.
+
+**Breaker snapshots in delivery claims.** A subscriber with connections
+uses `outbox::claim_breakers_sql`: the conditional claim is a CTE left-joined
+to all its connection breaker rows. `outbox::claim` consumes every joined row,
+keeps one claim when breaker rows are absent, and distinguishes a lost claim
+from a query error. Connectionless subscribers keep the original four-parameter
+`CLAIM`, with no join. Shared schedule and batch lease behaviour is unchanged.
+`runner::attempt` keeps the missing-subscriber, depth, handled-record,
+retry-budget and slot priorities before `breaker::gate_snapshot`. The joined
+rows replace only the independent read: the snapshot never grants a probe or
+holds a delivery. The conditional `HOLD`, `TAKE_PROBE` and `PROBE_UNUSED`
+still arbitrate the current state, so multiple-connection holds, the one-probe
+lease, returned unused probes and hold/release races are unchanged. A breaker
+that opens after the claim statement is seen by the next delivery's claim, as
+a breaker that opens after the former read was. A failed combined claim leaves
+the delivery unclaimed for a later retry and never runs its provider.
 
 **Calls before writes, checked** (chunk 7.4b; area 6, "Several outside
 calls"). `jadpo_check::types::outside_calls` works out, once per project,
@@ -5715,26 +5700,13 @@ ordered visible list with full six-field projections and null next cursor.
 | Node write | 1,278 / 1.211 | 2,039 / 13.130 | 2,312 / 39.325 |
 | Node signed-list | 211 / 9.534 | 263 / 77.579 | 261 / 284.918 |
 
-The 64-connection spreads below retain all three runs, including unfavourable
-ones. CPU/request, process cores and sampled RSS are three-run medians at
-64 connections. RSS and Wasm linear memory use MiB (the raw keys say `mb`);
-RSS is sampled every 250 ms, not a lifetime high-water measurement. End-of-cell
-linear memory is not JavaScript heap or total workerd RSS.
-
-| Golden target / work | req/s min–max | p95 ms min–max | CPU ms/req | Process cores | Sampled RSS MiB | Wasm MiB |
-|---|---:|---:|---:|---:|---:|---:|
-| Native read | 23,064–24,457 | 6.529–7.131 | 0.108 | 2.53 | 18.5 | — |
-| Native write | 17,852–18,831 | 8.918–10.152 | 0.126 | 2.33 | 16.9 | — |
-| Native signed-list | 9,885–11,200 | 14.069–16.434 | 0.343 | 3.66 | 19.2 | — |
-| workerd read | 1,454–1,634 | 59.623–78.592 | 0.630 | 0.98 | 234.5 | 13.8 |
-| workerd write | 1,362–1,567 | 63.734–91.295 | 0.682 | 0.97 | 257.2 | 14.1 |
-| workerd signed-list | 867–1,011 | 111.391–126.570 | 1.013 | 0.93 | 258.9 | 14.2 |
-| Bun read | 4,183–4,573 | 19.184–22.197 | 0.249 | 1.09 | 170.3 | — |
-| Bun write | 1,820–2,135 | 39.492–52.194 | 0.625 | 1.20 | 155.6 | — |
-| Bun signed-list | 458–459 | 149.702–175.030 | 2.355 | 1.08 | 143.5 | — |
-| Node read | 3,538–4,461 | 20.520–33.275 | 0.318 | 1.23 | 277.4 | — |
-| Node write | 2,280–2,332 | 37.312–39.358 | 0.524 | 1.21 | 282.4 | — |
-| Node signed-list | 251–262 | 264.869–336.754 | 6.665 | 1.73 | 367.8 | — |
+Spread, CPU, memory, cold-start and large-row (100 B / 64 KiB) figures for
+every run stay in the raw result files named below, not in this page. At
+64 connections the golden medians put native at roughly 6x (reads) and 8x
+(writes) the best TypeScript host and 24x on signed lists (Bun); the
+focused 64 KiB read put native at roughly 2.2x Bun/Node and 13x workerd.
+Cold start to first valid response (median): native about 22 ms, workerd
+71 ms, Bun 114 ms, Node 464 ms.
 
 The golden workerd stand-in pool adds median 0.180/0.185/0.322 CPU ms per
 read/write/list request at 64 connections, outside the workerd process figures.
@@ -5747,18 +5719,6 @@ and 0.624 for focused reads. These CPU observations do not prove client or
 host capacity headroom; the machine was not isolated, and whole-host
 saturation limits attribution of throughput differences.
 
-Golden cold start is spawn through the first fully valid database-backed
-readiness response, with fixture signing and the external pool startup
-excluded. There are 27 starts per target. Values below are median [min–max];
-large outliers remain included, and this is not a controlled OS cold-cache test.
-
-| Golden target | Ready ms | First request ms | Idle RSS MiB |
-|---|---:|---:|---:|
-| Native | 21.73 [18.38–385.34] | 3.16 [2.59–4.72] | 11.9 |
-| workerd | 71.10 [69.45–350.50] | 39.44 [33.13–268.68] | 97.5 |
-| Bun | 113.61 [102.19–432.03] | 16.06 [14.38–31.80] | 92.0 |
-| Node | 463.56 [422.75–1364.96] | 33.05 [24.48–128.79] | 257.5 |
-
 **Distinct large-row scaffold.** The golden title bound is 200 Unicode
 scalars. The separate 9.1a scaffold measures public sample reads with stored
 payloads of 100 and 65,536 bytes (64 KiB), plus their JSON envelope; it is not
@@ -5770,26 +5730,6 @@ sample bodies are checked. The TypeScript scaffold's pool and the local
 workerd stand-in are each capped at 20, as in 9.1a; these are separate from
 the golden pool configuration above. It completed 4,872,023 measured requests.
 The same median req/s / median per-run p95 ms notation applies.
-
-| Focused target / stored payload | 1 connection | 16 connections | 64 connections |
-|---|---:|---:|---:|
-| Native 100 B | 6,125 / 0.256 | 25,856 / 1.150 | 30,718 / 5.512 |
-| Native 64 KiB | 2,304 / 0.579 | 10,506 / 3.239 | 10,637 / 18.446 |
-| workerd 100 B | 882 / 1.625 | 1,637 / 13.298 | 1,624 / 70.488 |
-| workerd 64 KiB | 421 / 2.986 | 819 / 33.742 | 822 / 122.786 |
-| Bun 100 B | 4,638 / 0.338 | 10,772 / 2.463 | 9,712 / 9.809 |
-| Bun 64 KiB | 2,235 / 0.716 | 4,449 / 5.899 | 4,750 / 17.854 |
-| Node 100 B | 4,038 / 0.393 | 9,537 / 2.598 | 9,210 / 10.021 |
-| Node 64 KiB | 2,023 / 0.737 | 4,625 / 4.943 | 4,687 / 18.805 |
-
-For the focused 64-KiB route at 64 connections, req/s ranges were native
-10,636–11,444, workerd 713–823, Bun 4,708–4,880 and Node 4,666–5,107;
-p95 ranges were respectively 15.973–19.105, 116.279–159.705,
-17.215–18.590 and 17.159–20.518 ms. Median CPU/request was
-0.308/1.181/0.245/0.208 ms; median sampled RSS was
-42.4/370.7/127.9/291.4 MiB, in that same order. Workerd's final linear memory
-was 18.1–18.2 MiB. The complete smaller-read spreads and all other metrics
-remain in the raw result, without choosing favourable rounds.
 
 In these observations workerd was behind Bun on golden reads and writes,
 but ahead on golden signed lists. There is no single overall performance-gap
@@ -5813,29 +5753,10 @@ and `tools/bench/work/todo/matrix-busy-host-ead8d2c8.json`, SHA-256 respectively
 `2dbfaa2e830bbbda05b479ef783360c4775691fa4a50428eb0a31d26f356ace8` and
 `25aa350f613547b84947a10d6da1de6bc5c3ba7084f9d9fbf523f2002cac6205`.
 The failed setup-only functional smoke is retained separately and supplies
-no comparison cell. Each result includes full source and artifact maps;
-selected exact SHA-256 identities are below.
+no comparison cell. Each result includes full source and artifact maps.
 
-| Input or artifact | SHA-256 |
-|---|---|
-| `Cargo.lock` | `215fd087c4bf5cd03f21311e67f388883a7aba013af53a3445fa99aca01f4950` |
-| `examples/golden-todo/typescript/package-lock.json` | `73933caaffe00f1ebabe4bbc05630e91eaa596e40ea8113228849aed0857d82c` |
-| `tools/bench/load/Cargo.lock` | `cbe692030d0854b6e2927dd5b71641aed5e8b5771541a197b92c8a2e109dad38` |
-| `tools/bench/typescript/package-lock.json` | `cf6506f6515e0029255285d0a94ae47cab4fd7213902f6c1c09347590df66316` |
-| `tools/workers/package-lock.json` | `7649655efb232dcc01dc327a9b2830b4e9fabfffd47a16cb3e59b9e93bfa9453` |
-| Compiler (not timed) | `ae662ebca57b28e314ed702782b8d48ac43455691a906faa06b1d42c765bb5c1` |
-| Golden native (14,196,128 bytes) | `53904c09887ce6f7b19ef6a7319b76f17259099bcb2e37e1be739b2db23e5634` |
-| Golden Wasm (7,302,702 bytes) | `9c04cf6aecbf3b519812e502d3d0e97275e17ccb0df0d87eb3120917c9573254` |
-| Release load generator | `6a7cc932bcf970d7e59a8f44b8b8c8da3e0ea0351508dd8e17a4ef5b86811545` |
-| Release pool stand-in | `b56ab11147b2bcf68cb05adee3e7f652629d2c3340a085ec2e129ac65df4646f` |
-| Golden emitted TypeScript: 20-file relative-path/digest manifest | `36712c181369da46ad502a201a6426fdb13dd7900f4378b25ddefb889f1a542b` |
-| Focused native | `6fcf5636e1d178ca7ff94815c116225388013631ca833e6108b969abcdb56a82` |
-| Focused Wasm | `9e25734534b67b9eac4c79a34e19463ab6ae36c4b391670664229c47c29db7c3` |
-
-The TypeScript manifest digest hashes sorted JSON of relative emitted `src/`
-paths to their SHA-256 strings, identically for Bun and Node. Full maps also
-retain the production shim/glue, fixture signer and configuration inputs.
-
+The pinned lockfile, compiler, artifact and result hashes are in the raw
+result files, which carry full source and artifact maps.
 
 **Bounded durable delivery sweeps** (chunk 9.1b1, 2026-10-23).
 The hypothesis was that awaiting each due delivery serially left database I/O
@@ -5908,125 +5829,16 @@ Native elapsed fell 21.7% and workerd 43.9%; unchanged Bun rose 10.2% and Node
 rose about 19% despite lower elapsed; workerd process CPU fell about 23%, with
 a separate pool cost. Four lanes trade extra active work/connections and CPU
 for I/O overlap; they are not a claim of an inherent language or edge win.
-Every round is retained below (rounds 1, 2, 3, without selecting the fastest).
-CPU seconds count the 100 tick children for native/Bun/Node, persistent workerd
-for Workers, and its helper separately; PostgreSQL and Python CPU are excluded.
-The scopes differ and must not be presented as total system CPU.
-
-| Target / variant | 10k seconds, rounds 1/2/3 | Process CPU seconds, rounds 1/2/3 | Tick p95 ms, rounds 1/2/3 |
-|---|---|---|---|
-| Native serial | 4.7996 / 4.7549 / 4.7515 | 1.589 / 1.568 / 1.569 | 52.414 / 52.326 / 52.134 |
-| Native bounded | 3.6303 / 3.7219 / 3.9476 | 1.810 / 1.859 / 1.917 | 41.209 / 41.436 / 45.363 |
-| workerd serial | 7.7943 / 7.7673 / 8.0264 | 5.110 / 5.290 / 5.380 | 91.737 / 91.536 / 95.134 |
-| workerd bounded | 4.3206 / 4.3710 / 4.6490 | 3.850 / 4.080 / 4.350 | 52.968 / 52.901 / 54.063 |
-| Bun serial | 7.6566 / 7.7465 / 7.6728 | 10.612 / 10.735 / 10.628 | 81.407 / 81.457 / 81.663 |
-| Bun bounded | 7.8349 / 9.4821 / 8.4539 | 10.828 / 12.096 / 11.576 | 84.588 / 103.950 / 90.673 |
-| Node serial | 10.1988 / 10.2632 / 10.2185 | 11.642 / 11.678 / 11.603 | 105.908 / 106.094 / 105.835 |
-| Node bounded | 10.2872 / 10.8426 / 10.8866 | 11.697 / 12.691 / 12.467 | 106.971 / 116.927 / 115.273 |
-
-Pool CPU seconds were serial 2.06/2.06/2.07 and bounded 2.14/2.13/2.39.
-Workerd RSS at cell end (not peak) was serial 225.9/240.5/237.9 MiB and bounded
-232.4/242.2/239.8 MiB. All responses, per-tick samples, host CPU counters,
-loads, state audits, controls and unfavorable rounds remain in raw JSON.
-
-**Source and verification.** Full gate `python3 tools/verify.py` passed 92/92
-in 486 s at `49760cc73f4d59715151e0a3b71ad4544a06762f`. This includes production
-native/workerd behavior, strong TypeScript 42 tests plus shared conformance,
-and the real PostgreSQL overlap/duplicate-claim and controlled budget/shutdown
-regressions. The latter advance expiry/shutdown after four claims, without a
-host-speed assertion, and prove no lost or double effects and later recovery.
-The preexisting optional pgvector 0.7.0 versus required 0.8.0 example skip
-remains a skip; no extension was upgraded. The preceding `6315c732` full gate
-passed 91/92 but caught forbidden indexing in lane distribution. The scoped
-move-only VecDeque fix passed targeted checks, Clippy and the final full gate.
-Closed raw gate outputs are retained under `work/deliveries/diagnostics/`:
-`gate-6315c732.log` SHA-256
-`dac204b50e53c011c7eabea7cd5b0e0480b3d1d5f890fe4e22564066a1525a32`, and
-`gate-49760cc7.log`
-`1e0cb4279a287610e1610189695bcc0d67116fb66208f490142de56244fe073f`.
-
-For the post-app-close reference, commit
-`fbf98ad151a15b4fa884b1084206b733cc083f47` restored only `runner.rs`, `race.rs`
-and `schedules.rs` from serial `67c3b4e049408f050e9c25f831d3d3bfd0185b9d`,
-retaining the final UUIDv7 harness. Candidate
-`59d9a853ec0d683815c539d4bc95657fd1e1c6b5` restored those files exactly from the
-gated source. Its complete tracked Git tree (including modes/symlinks) equals
-the gated tree: `2991c67691019972fde486c8f9c0674c6437d062`. The two timed source
-maps differ only in those three production files. Each source was clean and
-built its own compiler in this worktree before its campaign, with
-`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`. Production
-native/Wasm used ordinary release `jadpo build`, without wasm-opt; compiler
-build CPU was excluded. Rust was 1.99.0, Node 24.18.1, Bun 1.2.20, local workerd
-2026-10-07. Exact versions and complete source/artifact SHA-256 maps are in
-each raw's embedded `build` and its label's `build.json`.
-
-Both compiler binaries were preserved as their label's `compiler-jadpo`
-before the next build overwrote `target/debug/jadpo`; `compiler-snapshot.json`
-records original absolute path, source, snapshot digest and build-stamp digest.
-All preserved artifact hashes were rechecked after timing. This historical
-snapshot check does not bypass the current-HEAD/original-compiler guard or
-claim the old stamp is reusable at a different HEAD.
-
-| Artifact | Serial SHA-256 | Bounded SHA-256 |
-|---|---|---|
-| Own compiler, snapshot retained | `45d373372eab44099b46660fabcd460c335dcef4d0c7123d75e7018e50244ef0` | `3794afbd8c3181e9359b4bc71260cdeff71b97c0c406be91997ce0f4fccc2486` |
-| Production native | `019ab612775e11aa6d5a0139ecf95708c1e23addcda2baa44d10383439f4ea71` | `2df19e67c7a2bbd20fbbba1abbc99ccca1264cbe1de3acc3c91b2da87ca55422` |
-| Production Wasm | `2f171bb19a5f0ea76c30786162b9a4f5c20f28d692c35936ee602094f4c4ce4d` | `e68c01952609bbb19352e8a84fad07d242d7e9531dda908732fd8f643ea32287` |
-
-The identical emitted Bun/Node fixture SHA-256 was
-`2e63c203e79aac2a81cca3ad6ba7bf34f96c31e782c667b94a9f0f00edbc2e63`;
-the identical final `deliveries.py` source was
-`b1bcc61fbf2e6ce8fdc2033712ed6b3b220ac9a2fd36f676932a0ef16d2918ae`.
-
-**Retained attempts and learnings.** Paths below are relative to ignored
-`tools/bench/work/deliveries/`; the exact source is embedded in every raw.
-The initial ledger-refusal control was corrected against existing atomicity/
-infrastructure-retry semantics, then the local scheduled-binding configuration
-was fixed. No failing setup row became an accepted comparison cell. The first
-complete `before` protocol used TypeScript UUIDv4 receipts, unlike ordinary
-Jadpo UUIDv7 creation (area5), so it is superseded, not a matched baseline.
-`before-v7` corrected this with the already pinned uuid13 dependency. Its busy
-host preceded Richard closing apps, so both serial and candidate were rebuilt
-and measured again under the final unchanged protocol; old busy results must
-not be used as the denominator for the later candidate. All attempts remain:
-
-| Raw path | Source | Outcome | SHA-256 |
-|---|---|---|---|
-| `before/runs-1792762333743171000.json` | `46e4530c` | Refusal-control assertion failed; no accepted timing | `597a1c449ed2ee3ac1448b7ac2b75cb7f7ea2eaa94d697eb91fdaede0411f6d9` |
-| `before/runs-1792762400986069000.json` | `9334c6af` | workerd Capnp startup failed; partial smoke only | `f26e1165e04596b70c4f939091bc7d747b62d7c3faeedb5ed89202fb2824f842` |
-| `before/runs-1792762479356673000.json` | `ae5c3cc5` | Scheduled binding flag absent; partial smoke only | `73efd1a0dd21b6615b77cb6ce5ad919a68224ebc192b8bb47ea39149e393448c` |
-| `before/runs-1792762518123744000.json` | `91ab7ba2` | 100-delivery smoke passed, superseded v4 | `571353cf3e6cbd166378c92f705fcc36965b47f5d9c280abb2ece56564152fd6` |
-| `before/runs-1792762535431910000.json` | `91ab7ba2` | 12×10k passed, superseded v4 | `4e4d759ab789a8da2e213cf0dd24e64b9dbde750e3aa6e54d8afdb34697133b1` |
-| `before-v7/runs-1792763080662053000.json` | `67c3b4e0` | 100-delivery smoke passed, v7 | `9ad597ff62f8656425e9f71a76082251bd64ac1e5661a10fdc6f9cb2b655dfa8` |
-| `before-v7/runs-1792763090386670000.json` | `67c3b4e0` | 12×10k passed, earlier busy host | `46f40e333f6a8751629e720213c57b8a2073c8f017a7d5cf7d1034b9ee4d69fb` |
-| `after-app-close-serial/runs-1792767570261986000.json` | `fbf98ad1` | 12×10k passed, matched serial | `e23c33f8ff0489286fb84b0ecae9a2beac5e92264a8ad9fa1314baa1868f7f6e` |
-| `after-app-close-bounded/runs-1792768280720347000.json` | `59d9a853` | 12×10k passed, matched bounded | `65bc3f8a303aa9804a9932ebbcce78502bbbf78599705e66e6d73998a30fc8d4` |
-
-Historical median 10k seconds, native/workerd/Bun/Node respectively, were
-6.7696/12.5620/10.9516/13.7936 for superseded v4 and
-7.9817/13.8136/12.5133/15.6958 for the earlier busy v7 campaign. Their complete
-per-round CPU/spreads and failures stay in those raws; neither supports a
-percentage claim against the post-app-close candidate.
-
-To reproduce, check out the exact serial or candidate revision in this same
-worktree, ensure it is clean, then run `python3 tools/bench/deliveries.py build
---label <fresh-label>` and `python3 tools/bench/deliveries.py measure --label
-<fresh-label>` (default three rounds, 10,000 deliveries, all four targets).
-Finish and stop all builds/tests before measuring; preserve that compiler and
-label artifacts before preparing the next revision. Never reuse a stale stamp
-across HEAD/source/compiler changes. `-O`/`PYTHONOPTIMIZE` is rejected at entry,
-with a subprocess negative check, so disabled assertions cannot authorize data.
-All owned tick children, workerd, pool stand-ins and disposable PostgreSQL
-servers used by the benchmark harness were stopped; no shared server/database
-or unrelated app was changed. The broader test-descendant assurance is
-qualified by the chunk 9.1b2 orphan diagnosis below: completed test helpers
-had leaked workerd children, so the historic host condition is unknown.
-Review must retain the four-lane bound, separate contexts, serial batch work,
-drain/hand-on behavior and exact handled atomicity, and version any altered
-workload/ID/provenance protocol. These measurements support continuing the
-remaining generic runtime work; they do not establish the cause of the wider
-Wasm gap or replace profiling of the separate typed-execution work in 9.2.
-
+Raw per-round results stay in the ignored `tools/bench/work/deliveries/`
+raws. Superseded: the first protocol used UUIDv4 receipts (unlike Jadpo's
+UUIDv7), and a campaign on a busier host; neither is a baseline for the
+percentages above. Each side was built from a clean checkout that differs only
+in `runner.rs`, `race.rs` and `schedules.rs`; reproduce with
+`python3 tools/bench/deliveries.py build --label <label>` then `measure
+--label <label>` (three rounds, 10,000 deliveries, four targets), with no
+builds or tests running. Review must retain the four-lane bound, separate
+contexts, serial batch work, drain/hand-on behaviour and handled atomicity.
+These results do not establish the cause of the wider Wasm gap.
 
 **Warm durable delivery comparison** (chunk 9.1b1a, 2026-10-23).
 Local workerd's four-lane runtime delivers 2,239/s against warm Bun's 4,017/s on
@@ -6113,1011 +5925,67 @@ while median pool CPU rose 2.22→2.28 s. Native tick-child CPU rose 1.686→1.9
 are server-process costs, not total system costs. Workerd RSS at cell end
 was 229.3/240.0/241.2 MiB serial, 234.7/245.3/243.0 MiB bounded (not peak).
 
-| Target / variant | 10k seconds | Deliveries/s | Tick p95 ms | Process CPU seconds | Separate pool CPU seconds |
-|---|---|---|---|---|---|
-| workerd serial | 9.0474 / 8.6557 / 8.3320 | 1,105 / 1,155 / 1,200 | 107.064 / 109.694 / 94.337 | 5.44 / 5.59 / 5.44 | 2.23 / 2.22 / 2.16 |
-| workerd bounded | 4.4212 / 4.4663 / 4.6057 | 2,262 / 2,239 / 2,171 | 53.525 / 55.206 / 60.498 | 3.89 / 4.02 / 4.13 | 2.28 / 2.24 / 2.36 |
-| Bun serial | 2.4125 / 2.5130 / 2.4864 | 4,145 / 3,979 / 4,022 | 28.555 / 30.689 / 29.096 | 2.29 / 2.37 / 2.36 | — |
-| Bun bounded | 2.4671 / 2.4893 / 2.6585 | 4,053 / 4,017 / 3,762 | 28.676 / 29.479 / 30.942 | 2.34 / 2.35 / 2.48 | — |
-| Node serial | 3.7901 / 2.6544 / 2.6868 | 2,638 / 3,767 / 3,722 | 50.443 / 33.390 / 30.197 | 3.01 / 2.52 / 2.52 | — |
-| Node bounded | 2.6816 / 2.7676 / 2.9654 | 3,729 / 3,613 / 3,372 | 32.743 / 33.479 / 34.285 | 2.52 / 2.59 / 2.76 | — |
-| Native external serial | 5.0771 / 5.1046 / 5.1303 | 1,970 / 1,959 / 1,949 | 55.700 / 56.309 / 56.850 | 1.674 / 1.686 / 1.692 | — |
-| Native external bounded | 3.8295 / 3.9550 / 3.8144 | 2,611 / 2,528 / 2,622 | 45.841 / 47.899 / 44.089 | 1.915 / 1.944 / 1.905 | — |
-
-**Source, verification and reproduction.** Full gate passed 93/93 in 982 s at
-`f1e1e045ccd0d0be7c0795ddf83291ae325dbaf6`. Serial
-`cc4563ce1b39ab0b65e1dc65b165a0c65c14c762` restored **only**
-`crates/jadpo-runtime/src/{runner,race,schedules}.rs` from
-`67c3b4e049408f050e9c25f831d3d3bfd0185b9d`, retaining the final harness/tests.
-Bounded `cf9c443b026f7cd9155c224e153430c13d6e8b1f` restored those files from the
-gated candidate. Its **entire** tracked Git tree, including modes/symlinks,
-equals gated tree `cf3fc3b115bd2a45d949fac939394219b09691a5`; `git write-tree`
-and a complete `git diff` proved equality before building. The two timed source
-maps differ only in those three runtime files. TypeScript's generated artifact
-is identical, SHA-256
-`66977add90729e3a8ea7535bd1ed8becd3f6dcfbc9bfc8df79e900ce8f325d91`.
-
-Each label built its own compiler and retains `compiler-jadpo` beside its
-`build.json`, which names the original `target/debug/jadpo` path, source,
-flags and complete source/artifact hashes. Serial compiler SHA-256 is
-`ae82452b7505dc916713002556b95d949e0988d840e0ca216c3e061a764bc960`;
-bounded is `28c630307d1f035d5f5c7a7fc218bea891a6b35b3d4cd9a39c618635edf22ac7`.
-Their build-stamp SHA-256s are respectively
-`c3cb695e5cba661dbc711e0aff009b5124e666b41f142501703a71ef872a38f5` and
-`fcc9903da5692ce7b027086e050bcad27a0c92827887e003c17a6bb341eb0a09`.
-All paths below are under
-`/Users/richardwillars/Documents/Codex/LLM-coding-chunk-9.1b1a/tools/bench/work/deliveries/`.
-
-| Raw path | Outcome | SHA-256 |
-|---|---|---|
-| `warm-serial/runs-1792776205096359000.json` | 4×100 smoke and 20 controls passed | `9e486278ae1f7b74a676170e00b561a93fc0f3368c87b34ca6e8c03a664f4aec` |
-| `warm-serial/runs-1792776228246358000.json` | 12×10k serial, matched warm protocol | `64c5f376fe0252cbd98151bfd0c74463d4bb75e1763660b6a63d6de7712beff3` |
-| `warm-bounded/runs-1792776755285015000.json` | 12×10k bounded, matched warm protocol | `e56731cf87d59760ac4faf8549c33693461bdc2847e7af9b2f8b0712de5fa417` |
-
-No timed campaign failed or was replaced. An initial gate at `cda60ea6` was
-interrupted after review found that new test orchestration assumed URI DSNs
-and ran live checks in lint. The correction reuses the shared normalizer for
-keyword/socket DSNs, maps explicit socket hosts into postgres-js options,
-preserves quoted endpoint/startup parameters, and places real service checks
-in an isolated full-profile tests step. Direct TCP and actual gate keyword/
-socket controls passed before the final gate; no failed preparation authorized
-timing. `gate-interrupted-cda60ea6.log` SHA-256 is
-`87a6991cf4ef31ff4ac024d88f3410ab8fb87f812b1e904f597d9372b7822a6c`;
-`gate-final.log` is
-`e3f93a127c61bc266b3873195e6213d3c79d22a9a5e4d632c7016aaa3e1949db`.
-The existing optional pgvector 0.7.0 versus required 0.8.0 skips remain explicit;
-no extension was upgraded. The benchmark harness reaped its services,
-helpers, tick children and PostgreSQL servers; retained artifacts/raws remain
-available. This did not establish that every golden-test descendant had
-stopped: chunk 9.1b2 found completed-b1-path workerd orphans. The historic
-paired result remains exploratory with that unknown host-load condition;
-the fresh b2 reference below was repeated after their cleanup.
-
-To reproduce, use each exact clean timed revision above in its worktree, run
-`python3 tools/bench/deliveries.py build --label <fresh-label>`, finish every
-build/test, then `python3 tools/bench/deliveries.py measure --label <fresh-label>
---mode warm` (default three rounds, 10,000 deliveries). Preserve the compiler
-snapshot/stamp/raws before changing source. Method/fact edits followed both
-campaigns and their end-freshness checks; these old stamps must reject the new
-documentation HEAD. No historical override weakens the guards. Review must keep
-process lifetime/warmup explicit alongside Workers-versus-Bun results, retain
-all adverse rounds, and rerun an affected matched comparison if measured paths
-change. The lesson is to match the service boundary and pool lifetime before
-claiming a cross-target win; the measured remaining workerd gap still needs work.
-
-
-**Fast ticks and hourly housekeeping: matched measurements** (chunk 9.1b2,
-2026-10-23).
-
-The main warm comparison still leaves local Workers behind Bun: candidate
-median 2,276 deliveries/s and tick p95 53.274 ms versus Bun 3,897/s and
-30.170 ms, about 58.4% of Bun throughput. The fresh reference was 2,183/s and
-56.299 ms versus Bun 3,822/s and 31.464 ms. These small delivery differences
-are supporting controls, not an attributed throughput win: rounds vary,
-reference round one was slower, and background host load fell between runs.
-The unchanged HTTP/golden application matrices were not rerun.
-
-The deterministic b2 result is **8 → 5 runtime SQL statements per completed-hour
-idle tick**, in all three censuses on both native and Workers, 37.5% fewer.
-Both retain four prompt operations: wake held deliveries, mark expired
-`sending` deliveries, select due deliveries, and raise breaker alerts. The
-reference also deletes expired idempotency keys, settles operator-ended
-deliveries, settles old successful events with their local handled rows, and
-removes old delivery operator actions. The candidate replaces those four
-cleanup statements with one conditional housekeeping claim that declines a
-completed-hour pass. This is one empty fixture store, not a universal count:
-a due hourly pass still does its bounded retention work plus claim/release.
-Bun/Node cleanup count and generic idle latency are **N/A**: their specialized
-fixture drains deliveries and does not implement generic Jadpo housekeeping.
-
-Idle rounds use 100 ticks per cell after ten excluded empty ticks, alternating
-Workers/native order, actual generated entry points and ordinary clocks.
-Each cell first proves a renamed delivery table makes the tick audit reject
-failure, restores it and audits a successful tick. Census runs separately
-with PostgreSQL statement logging and an independently audited tick; only
-runtime `jadpo_*` statements are counted, excluding migration/readiness/admin
-startup. It retains the SQL and responses, requires the due-delivery SELECT
-and breaker UPDATE, then disables statement logging before timing. Each
-measured tick must have exactly one successful `runtime.ticked` record with
-no problems, deliveries, deleted rows or ran schedules; empty business state
-is audited before/after. Missing, duplicate and failed tick fault tests are
-in the gate. A platform scheduled `ok` response alone is insufficient.
-
-| Idle target/source | SQL/tick, every census | Ticks/s, rounds 1 / 2 / 3 | Tick p95 ms, rounds 1 / 2 / 3 | CPU s per 100 ticks |
-|---|---:|---|---|---|
-| workerd warm reference | 8 | 298.683 / 298.956 / 298.043 | 4.371 / 4.583 / 4.354 | 0.240 / 0.230 / 0.230 |
-| native external reference | 8 | 64.866 / 68.027 / 66.864 | 16.008 / 16.020 / 16.090 | 0.759 / 0.747 / 0.747 |
-| workerd warm candidate | 5 | 468.629 / 474.888 / 477.791 | 2.833 / 3.317 / 2.874 | 0.180 / 0.180 / 0.170 |
-| native external candidate | 5 | 77.630 / 76.463 / 76.095 | 13.625 / 13.439 / 14.220 | 0.710 / 0.712 / 0.716 |
-
-Observed median idle workerd p95 was 4.371 → 2.874 ms; native external p95 was
-16.020 → 13.625 ms. This local sample has no speed assertions or latency
-promise. Native starts 100 external processes per cell; workerd keeps one
-process and a separate pool helper. Idle CPU brackets exactly the timed loop,
-excluding the state/log audits and their psql children. Workerd CPU sums
-service+helper; native CPU is external children. PostgreSQL/Python are excluded;
-short service-CPU samples are quantized to 0.01 s.
-
-Warm delivery rounds use the unchanged final b1a warm protocol: three rotated
-rounds, 10,000 durable deliveries, a verified 100-delivery cohort before every
-cell, persistent workerd/Bun/Node and external native ticks. All cells passed
-state/fingerprint/UUIDv7/handled/replay and failure/race controls. The following
-retains every round; p95 is nearest-rank over 100 ticks, not delivery latency.
-CPU is workerd+pool or in-process Bun/Node; native is external tick-child CPU.
-All exclude PostgreSQL and Python.
-
-| Warm delivery target/source | Deliveries/s, rounds 1 / 2 / 3 | Tick p95 ms, rounds 1 / 2 / 3 | Server/external-child CPU s |
-|---|---|---|---|
-| workerd warm reference | 1908 / 2183 / 2188 | 68.896 / 55.165 / 56.299 | 6.950 / 6.460 / 6.430 |
-| Bun warm reference | 3378 / 3822 / 3930 | 34.049 / 31.464 / 30.189 | 2.660 / 2.450 / 2.410 |
-| Node warm reference | 3603 / 3625 / 3504 | 34.885 / 34.667 / 34.601 | 2.610 / 2.610 / 2.670 |
-| native external reference | 2405 / 2570 / 2623 | 53.891 / 42.442 / 42.785 | 1.940 / 1.885 / 1.858 |
-| workerd warm candidate | 2276 / 2238 / 2279 | 52.990 / 59.432 / 53.274 | 6.170 / 6.370 / 6.260 |
-| Bun warm candidate | 3930 / 3649 / 3897 | 30.170 / 32.687 / 30.162 | 2.390 / 2.490 / 2.420 |
-| Node warm candidate | 3728 / 3474 / 3655 | 34.274 / 37.023 / 33.957 | 2.520 / 2.720 / 2.610 |
-| native external candidate | 2908 / 2704 / 2657 | 38.646 / 40.931 / 40.521 | 1.778 / 1.901 / 1.896 |
-
-Workerd's reference CPU splits worker 4.39 / 4.12 / 4.10 s plus pool
-2.56 / 2.34 / 2.33 s; candidate 3.91 / 4.06 / 4.00 s plus
-2.26 / 2.31 / 2.26 s. Omitting that helper would understate Workers cost.
-Unchanged Bun median throughput drifted +2.0% and Node +1.4%; Workers +4.3%
-and native +5.2% are not isolated causal estimates of housekeeping's effect.
-Workers p95 ranges overlap (55.165–68.896 → 52.990–59.432 ms), and the remaining
-Bun gap is material. No edge capacity, inherent language win, full guarantee
-equivalence or unrelated memory-creep fix follows from this sample.
-
-Both campaigns used this same 10-core arm64 macOS 27.0.1 host, PostgreSQL 16.3,
-Rust 1.99.0, Bun 1.2.20, Node 24.18.1 and the pinned workerd. Normal release
-native/Wasm builds and compiler flags match the method; no builds/tests or
-parent host work ran during timing, and no unrelated app was stopped. Five-second
-ambient CPU was 26.7% reference versus 16.5% candidate. Before-campaign top
-samples were 73.1% versus 90.6% idle; one-minute load 11.71 versus 3.94.
-Allocated swap was 3,266 → 3,258 MiB around reference and 3,218 → 3,066 MiB
-around candidate; top reported zero interval swap I/O in both before samples.
-The host was not controlled or freshly booted. Per-cell counters/load,
-vm_stat/top/swap context and exact-path empty owned-process inventories are
-retained. SQL count reduction is independent of this latency/throughput drift.
-
-The final gate passed **93 steps in 703 s** at
-`c1d7ab57407f8a8d1726dcb9d33379766f73398f`, complete tree
-`5e9f5b5896743bead4e8fa296e940f61294089bc`; existing pgvector 0.7.0/required
-0.8.0 skips remain explicit. It includes all 44 native and all 44 Workers
-golden cases, 264 compiled corpus projects/526 tests/5,832 request/write
-comparisons and 27 teaching examples/327 tests passing both ways.
-The fresh reference `abc08b2d4aeb16e55e27a71398498dfeb2550277`, tree
-`0c7975aa58da11dfcec72bc794ae78690145e151`, restored all production crate
-`src` and authored/generated schema fixture inputs to exact prerequisite
-`cb1b1a793f214cd9acf5816e533e8501a76ec57e`, while retaining the final measured
-harness. Its production-source diff against that prerequisite is empty.
-Restored candidate `4cb9e82d91fbc5e6de07cc188451332365276b33` has **the complete
-tracked tree identical to the passing gate tree**, including modes, not just
-selected runtime files. Reference/candidate measured harness hashes match;
-source proofs and clean HEAD checks are retained. Own builds, compiler
-snapshots and artifact guards passed at both ends of each campaign before
-these documentation edits. Later documentation HEADs must fail those old
-stamps; no historical bypass exists.
-
-| Artifact | Fresh reference SHA-256 | Gated-tree candidate SHA-256 |
-|---|---|---|
-| Compiler snapshot | `2e52d5040ef0c5850d1f38d4ffae4b569a104f3cf69df3a0a9d27e9f8ffa8044` | `38fc43503219e7e3be88b15dee8fa932ee9eeda3c2db91e0f1544a3f40a6ea96` |
-| Native | `ee141b61ea5eac2403ea36d694f7b9f35f8c6d1047de0ac872880f75096b518a` | `6787c06fa58ef44f814a6bb4b2ba5561fcdec1791fa22d913249db5bba45c90d` |
-| Wasm | `c14e82b9ac4b5c4b057816ceb98dbcff35cfd0c8c856f623e25305ba9c05ded7` | `2ee91add2c52c1cfd01cd333364582a97a389066047ad52ad55ba11a7a83c6a0` |
-
-Identical Bun/Node emitted delivery JS SHA-256 is
-`66977add90729e3a8ea7535bd1ed8becd3f6dcfbc9bfc8df79e900ce8f325d91`.
-Each `build.json` below contains the complete source/artifact/lock/version map
-and original compiler path; its retained `compiler-jadpo` copy preserves that
-compiler when the workspace binary is overwritten by the next build.
-
-All following paths are under
-`/Users/richardwillars/Documents/Codex/LLM-coding-chunk-9.1b2/tools/bench/work/deliveries/`.
-The JSONs retain control results, responses, SQL census/logs, raw durations,
-CPU/load and freshness checks. Every fresh full cell and separate smoke passed;
-no failed cell was discarded. Early reference builds and old timings are
-superseded as described below.
-
-| Retained raw path | Outcome | SHA-256 |
-|---|---|---|
-| `b2-reference/build.json` | build/source/artifact map; superseded harness draft | `86cc8710b55d5da067e3fcc7ace716fd6e8da0388cd9322e0046b6cbac89a7e2` |
-| `b2-reference-audited/build.json` | build/source/artifact map; superseded harness draft | `89f8d4c6738a60cd1c9e7141f2f19f8f1ca892c316423b2e7d4e1e542417ea67` |
-| `b2-reference-final/build.json` | build/source/artifact map; superseded orphan-host condition | `604b8f59c7265b6382aedd4b1da72879db3f999fee9f7388f8ecc289408269c4` |
-| `b2-reference-final/idle-1792778072082072000.json` | separate smoke; all checks passed; superseded orphan-host condition | `7e91bdc398036ece383b80f249fe5f1202a5df14661e776a061ead1e331d292e` |
-| `b2-reference-final/idle-1792778085956445000.json` | idle 3×100; all checks passed; superseded orphan-host condition | `805e9fc60b99b4983e0535326b7ee733e70467aa8cda085a98e4baebb2eed36e` |
-| `b2-reference-final/runs-1792778096916364000.json` | warm 3×10,000; all checks passed; superseded orphan-host condition | `709ae0a8542513d8a5bf12a9efa4824fd29ecb220377a03f071b7d9a6ce632bf` |
-| `b2-clean-reference/build.json` | build/source/artifact map | `d45c03b1f1ee65ac00671116f808ecb3954ae4e82fb224f16baa6142b8f02206` |
-| `b2-clean-reference/idle-1792785990808352000.json` | separate smoke; all checks passed | `a1277cb4e30d81c6a3b67b87065d9c0baa35faf1c82cc9fb0a0355652c811ab2` |
-| `b2-clean-reference/idle-1792786031239858000.json` | idle 3×100; all checks passed | `055228d457f8fc2dda3a0712f6c3e02832bba98b58681b825e980fa28887e587` |
-| `b2-clean-reference/runs-1792786010570180000.json` | separate smoke; all checks passed | `d6d8b9cc07fab5c0eab0450125eed4c95c620e54278cc470700866bf58f48772` |
-| `b2-clean-reference/runs-1792786050175036000.json` | warm 3×10,000; all checks passed | `fc2cafb4384a00240a87184d0126ea2745c6f08a74b9030e96e3aafd42200edc` |
-| `b2-clean-candidate/build.json` | build/source/artifact map | `4c7ade2c6926885088fe7b25ca7e70f6aae5b0af3082bd9384f2e68973fc0422` |
-| `b2-clean-candidate/idle-1792786392986314000.json` | separate smoke; all checks passed | `8544d512e7dde407cab48de3a86300c8fac2923a99bb138ce20456929e508899` |
-| `b2-clean-candidate/idle-1792786429822112000.json` | idle 3×100; all checks passed | `1a5fd79e6f3ffb084c20e42ab5dab91cd476f8a21efaa6c62782666a1e581fda` |
-| `b2-clean-candidate/runs-1792786412971689000.json` | separate smoke; all checks passed | `72865d19aec735fa3bc30673d26595eb42e7b9e39795463e9b294fb19849b54c` |
-| `b2-clean-candidate/runs-1792786453991614000.json` | warm 3×10,000; all checks passed | `ebd163ec66366e0be68e9601537efdaca4a289cc6ddb1309b29dbc37e502595d` |
-
-Preparations and failures remain part of the record. The first real live red
-failed on the absent `jadpo_housekeeping` relation before production edits.
-The initial invalid Cargo target invocation was setup failure; its output
-was overwritten by that first red log and cannot be reconstructed. Later
-commands use distinct log names. Initial idle harness drafts at `05063be9`
-and `a24d4578` were replaced before the first audited measurements: scheduled HTTP
-`ok` did not prove the runtime tick succeeded, and native child-CPU brackets
-included audit subprocesses. `e3a3fcbf` fixed both and produced the old
-`b2-reference-final` results above, but those timings were then superseded
-after the orphan-host diagnosis. No candidate timing used a failed gate.
-
-Gate 1 at `39fb307ecaf52ce1c255fd55d90c9d5835ca6928` failed five steps in
-1,463 s: internal column names (`owner`/`completed_at`), the actual new-table docs expected
-output, test-host random ownership, and two fault probes assuming cleanup on
-every tick. The probes now explicitly make cleanup due before hiding its
-table. During that run a failed native test leaked a process holding captured
-output open; exact-path evidence identified one b2 native and 63 b2 workerd
-orphans. The Python helper had killed npm's wrapper rather than its native
-workerd child. Its narrow fix resolves the already-installed pinned platform
-executable directly, preserving pin checks/cross-platform paths and the
-existing `--ignore-scripts` install fallback. Native test children now have
-kill+wait ownership from spawn through readiness failure/panic; actual
-failure-path regressions prove reaping. Only proven owned identities were
-stopped, not unrelated services.
-
-A later bounded inventory found and stopped another 63 PPID-1 workerd
-processes with exact completed-b1 executable paths. Their precise start times
-were not established. The benchmark harness itself had reaped its own
-services; prior broad assertions that every test descendant stopped were too
-strong and are corrected in the b1/b1a entries above. Those historic pairs
-remain exploratory under an unknown orphan-host condition; this b2 matched
-pair was repeated after cleanup. This test-child fix does not establish a fix
-for the separate single-process resident-memory growth investigated in 8.4e.
-
-Focused follow-ups retained actual old generated initial-migration caches for
-depot/warehouse/newsroom, reset only those owned test caches and regenerated
-through the existing helper/compiler. An empty parent migrations directory
-initially prevented initial generation, producing three failed Workers probes;
-explicit regeneration restored all six probes. Authored migrations, drift
-checks, benchmark inputs and compiler snapshots were preserved. Corpus output
-was blessed only for the actual added system table. Earlier AI schema/Arc,
-clippy, fixture syntax/page cursor/SQL quoting and incorrect test-target setup
-failures remain in distinct raw logs; they were fixed before the final gate.
-
-Gate 2 passed 93 steps in 693 s at `e9c439c80f67f8e945163132064c0eca7735f487`,
-but review found a real role-pruning bug before timing: a web role could win
-shared-store cleanup using selected executable plans, omit schedule/batch
-history, and suppress the jobs role for an hour. A mocked `store: Some` with
-runners disabled missed the actual pruned `store: None` plan. Actual compiled
-two-role and state-only plan regressions then failed on retained history and
-`ticks() == false`. Whole-schema cleanup holdings fixed both; the final full
-gate was repeated. Passing broad tests does not replace testing the actual
-pruned representation at a shared completion boundary.
-
-| Decisive diagnostic path under `b2-diagnostics/` | SHA-256 |
-|---|---|
-| `jadpo-b2-red.log` | `03d832b4fbafee0f2ff3c87b92dd91ff3c0cb253a6d83007cb8dc57ac504a107` |
-| `jadpo-b2-full-gate-1.log` | `b441b0796bf589f83885ca9ed58afd7a4f7a14207f01a915d63d862281ab5576` |
-| `jadpo-b2-full-gate-2.log` | `79bf3add332ecd331e435c5c8c53f101fa5a17ceb19fcdb6177f697b1fcd256b` |
-| `jadpo-b2-full-gate-3.log` | `e128c62b0f35a8349b265901acc2ef6830b573f7390cfb621cb26bcc4d298279` |
-| `jadpo-b2-pruned-plan-red-2.log` | `4062dc9bce4ca07ff912acca6b1f37956c83653348122b703c8e6bdc255b60a7` |
-| `jadpo-b2-pruned-red-7.log` | `500cc850eb48813d9daf3a34f3bce5a83dd4cab3c538097a393e663df8d4f533` |
-| `jadpo-b2-pruned-green-2.log` | `82b6a3158843054c4dcdc987a368cd944235492d03eccad8e942da580c1cc95d` |
-| `jadpo-b2-orphans-1.log` | `4da58a0f3f572d41baf2cf75ea7dc32378f3c49af988f62dd5ad008352eb4841` |
-| `jadpo-completed-worker-orphans-20261023.json` | `8f231478501182523f6f260eb6f65b9b981986d28e3641ad2ed062c8d0e116d5` |
-| `clean-reference-source-proof.json` | `472839abebf09a5ba56d287274cc00c8514914249504eebd9c71ad1591319b5b` |
-| `clean-candidate-source-proof.json` | `ff0d9ec0b2e2a5277973deb31630c6ddb88518f56f1e8c031c5a6c28c5c342f3` |
-| `gate3-after-process-inventory.json` | `5c8e62693ef898e4e9ad962875e212483e0bc98bc13f1bb9030ed1b2cffff071` |
-
-The immutable diagnostic set contains 70 files under `b2-diagnostics/`:
-all closed `jadpo-b2-*.log` attempts, both orphan identity proofs, source/tree
-proofs, before/after host contexts, and raw copies of the three gate1-generated
-initial migration folders. Its canonical path→SHA-256 map digest is
-`c40b999767f01ef903ee61cbc740c297c27ddb3b8335676d9fe09594b6aba945`. Recompute it without an extra evidence document:
-
-```python
-from pathlib import Path
-import hashlib, json
-root = Path("tools/bench/work/deliveries/b2-diagnostics")
-index = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-         for p in sorted(root.rglob("*")) if p.is_file()}
-print(len(index), hashlib.sha256(json.dumps(index, sort_keys=True,
-      separators=(",", ":")).encode()).hexdigest())
-```
-
-Reproduce from the two exact clean measured revisions above, in this worktree,
-building a fresh label with `deliveries.py build`. Finish/reap builds/tests,
-record owned-process and ambient/memory context, then run `idle_ticks.py --label
-<label> --ticks 5 --rounds 1` and warm `deliveries.py measure --label <label>
---count 100 --rounds 1` smokes, followed by `idle_ticks.py --label <label>
---ticks 100 --rounds 3` and `deliveries.py measure --label <label> --mode warm
---count 10000 --rounds 3`. Preserve every JSON/log and compiler snapshot; verify
-strict end freshness and reap owned services before changing source. To compare
-a new harness or protocol, repeat both sides, never reuse an old stamp at a new
-HEAD. The permanent method is also in `tools/bench/README.md`.
-
-
-#### One-statement AI accounting (chunk 9.1b3, measured 2026-10-23)
-
-Reservation and each repair/retry top-up use one conditional statement for
-all applicable windows. With APP alone, the simple `TAKE_APP` UPSERT uses
-its original eight parameters: a skipped row means `over_budget`, malformed
-nonempty results and every actual store error mean `unavailable`. With APP
-and CALLER, the multirow UPSERT orders APP then CALLER. Both statements check
-the locked current row, including held tokens/cost, and precheck the amount
-before a first-ever insert. On the multiwindow path a dependent CTE
-turns a skipped window into an exact private `jadpo_ai_usage_pkey` violation;
-PostgreSQL rolls back the entire statement, including first-ever inserted
-rows and `touched_at`. Only that exact conflict on the multiwindow path means
-`over_budget`; other store faults and empty/malformed multiwindow success
-results mean `unavailable`. No snapshot-only precheck or compensating write
-decides admission. The one
-multirow charge updates APP, optional CALLER and PROMPT/model, releasing only
-APP/CALLER holds; any statement failure retains every hold conservatively.
-Request-spent accounting, UTC day, caller digests, cached-token/currency
-rules, every-send charging and step reruns retain area 21's semantics.
-
-The failing regressions preceded production changes (`b6ab5b03`). Actual
-PostgreSQL tests cover partial refusal on existing and first-ever rows,
-unchanged timestamps/no new APP after caller refusal, exact charge/currency
-counts, injected reserve/debit failures, and six 16-thread cohorts for shared
-APP, same/different callers, token/cost caps and independent days. Two
-controlled races hold an existing or uncommitted first APP row, observe both
-waiters with PostgreSQL blocking-lock data before release, and prove only
-one competing reservation fits. Runtime controls cover top-ups, unchanged
-Taken after errors, exact private-conflict classification, malformed result
-shape, request usage with missing storage, and statement registration. Existing
-generate/repair/retry/embed/stream/fake/rerun suites remain passing. A compiled
-Worker against real local PostgreSQL and a loopback fake separately proves
-that its driver preserves the exact constraint identity, caller refusal rolls
-back tentative APP insertion, reruns do not charge, and no provider request
-is made. Its seed spans the three adjacent UTC dates, ordered deterministically.
-
-The first candidate's gate4 passed **93/93 in 487 s**, exit 0/reaped, at
-`6b951806890dcdb83d25a39fcc63b88df39f9a53`, complete tree
-`26955d0ca270450a5dd2402ac4a025733d592292` (3293 tracked entries). Native and
-workerd golden cases both passed 44/44; corpus 264 projects/526 tests/5832
-comparisons and 27 teaching examples / 327 tests agree both ways. Local pgvector
-0.7 versus required0.8 skips remain explicit. The owned process inventory was
-empty after the gate and around both campaigns. This is unrelated to 8.4e's
-separate resident-memory question.
-
-The first matched candidate used the same `ai_accounting.py/.rs` harness
-on both sides. Its APP-only CTE regression below motivated a second candidate
-with the single-window statement; this first pair remains retained. This is a
-release Rust executable calling public
-`ai::generate`, its testing-only AiFake and real local PostgreSQL 16.3, not a
-generated whole-application HTTP benchmark. Native versus Workers/Bun AI
-performance is **N/A**: no equivalent AI fixture exists in the specialized
-TypeScript delivery host. Actual Worker correctness above is separate.
-
-| Build | Clean measured HEAD | Complete tree |
-|---|---|---|
-| Reference: production `crates/*/src` exactly prerequisite `025a38c39d0a8d22b1e5ea59be41c26d95e2c124` | `f5bcde5a528402abee15f417f5695d4236dd5532` | `c32c981ab8dbfba6afe69cd28d2791a0981a1865` |
-| First candidate: entire gate4 tree/modes restored before own build | `406462ab48c562846d2da7f3a3cebff7cfed738d` | `26955d0ca270450a5dd2402ac4a025733d592292` |
-
-Each side built its own dev compiler and release fixture, retaining both
-executables and original/snapshot hashes. Wrapper settings were
-`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; inherited
-`RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`, release OPT_LEVEL/LTO/CODEGEN_UNITS,
-`CARGO_TARGET_DIR` and the other selected overrides were unset on both sides.
-Rustc 1.99.0 (`b940084d7`), Python 3.14.0, macOS 27.0.1 arm64/10 cores were
-recorded. Harness SHA-256: Python
-`6580fd856143f0d2a5ce06455bfb57d1d68fedb120d442b2f7ac3d7d198f19d4`, Rust
-`63e751ad36c5e9993639aebb738a31f093f546fce10aebff4d2231e0ca79bf39`.
-The exact build contexts record selected inherited values, tool versions,
-full tracked hashes/modes and commands. Start/end source/artifact guards
-passed for both campaigns; the old reference stamp correctly refuses reuse
-at the candidate checkout.
-
-Three rounds rotate app/caller/retry order, each cell 50 excluded warmups,
-one separate SQL census, then 500 measured calls. The fixed prompt estimates
-7 input tokens, max_output20, attempts1, timeout1000ms, request cap1000 and
-app/caller caps10^12; no prices. Fake success reports 6 input/1 output/2 cached;
-retry-caller first returns unavailable, then success, charging 13 input/1 output/
-2 cached. Fixed `Clock::TEST` supplies no monotonic timer, so retry backoff is
-skipped: immediate fake resends isolate accounting rather than provider/retry
-wall time. The disposable server uses fsync and synchronous_commit off.
-Each `ai::generate` sample yields nearest-rank p95. **Fixture calls/s** additionally
-includes per-call Ctx/AiFake preparation and post-call assertions; it is not
-service or HTTP capacity. Statement logging is explicitly observed on for the
-census and off before timing. Direct query_once counts and actual PostgreSQL
-logs agree: **app 3→2, caller 5→2, retry-caller 7→3 statements per call**.
-Precheck refusal can legitimately issue no SQL in other workloads.
-
-| Scenario | Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
-|---|---:|---:|---:|---:|---:|
-| APP | 1 | 0.305167 | 0.397208 | 2973.34 | 2391.57 |
-| APP | 2 | 0.331375 | 0.351250 | 2947.27 | 2465.20 |
-| APP | 3 | 0.302791 | 0.353417 | 2960.28 | 2466.07 |
-| APP+CALLER | 1 | 0.465500 | 0.400917 | 2041.36 | 2325.85 |
-| APP+CALLER | 2 | 0.506334 | 0.368125 | 2026.24 | 2405.36 |
-| APP+CALLER | 3 | 0.502833 | 0.380292 | 2028.71 | 2389.47 |
-| Immediate retry+CALLER | 1 | 0.628584 | 0.556958 | 1561.98 | 1676.45 |
-| Immediate retry+CALLER | 2 | 0.645542 | 0.575708 | 1563.42 | 1663.32 |
-| Immediate retry+CALLER | 3 | 0.667292 | 0.657625 | 1566.86 | 1638.44 |
-
-Medians of the three cell p95s are APP 0.305167→0.353417ms (+15.8%),
-CALLER 0.502833→0.380292ms (−24.4%), retry 0.645542→0.575708ms (−10.8%).
-Median fixture calls/s changes are −16.7%, +17.8%, +6.4% respectively.
-APP-only therefore regressed despite its smaller statement count; fewer
-round trips do not guarantee a faster local call with the more involved
-reservation statement. These are mixed local observations, not universal
-speed gains. Five-second ambient host busy was 18.69% before reference versus
-7.67% before candidate; load8.98/13.30/32.38 versus4.17/9.77/28.16, and swap
-2405.31 versus2397.31MiB. The paired runs were quiet of owned builds/tests,
-but unrelated host activity and memory pressure varied. Whole-fixture/reaped
-child CPU was 1.457949 versus1.252201s over 5.096162 versus4.916940s including
-setup/warmup/controls/census, excluding unmeasured daemonized PostgreSQL backend
-CPU. It is neither per-call/service CPU nor a CPU optimization result.
-
-All nine cells per side passed fault/refusal controls and identical persisted
-state: APP/optional CALLER/PROMPT all have 551 calls, 3306 input (7163 retry),
-551 output,1102 cached, zero reserved tokens/micros, cost0/currencyNULL, exact
-prompt and caller digest. Census snapshots 50→51 and final 551 agree; unavailable
-storage never asks the fake, and full-budget refusal leaves state unchanged.
-Malformed/incomplete JSON, wrong accounting/census/quantiles, false controls,
-source/artifact/mode changes and same-content symlink retargets have executable
-negative controls. Raw SQL parameters and server logs remain in each result.
-
-Paths below are under ignored `tools/bench/work/ai-accounting/`.
-
-| Retained path | SHA-256 |
-|---|---|
-| `b3-reference-final/build.json` | `fdc8330b07d0a6ccc61e61c16f573d8cd87e7efcd0b250e7e372794c2dc2859c` |
-| `b3-reference-final/compiler-jadpo` | `00a6bb22758191ed84d61363006c57eee76d12e78aaa7ced8f1d87fb253250e9` |
-| `b3-reference-final/fixture` | `492325caeb2e02005a016e946a3c36635333abb47a77f912d00c6c09873dc07f` |
-| `b3-reference-final/runs-1792791184303755000.json` | `c26d30b256145c3ec074f9e63c01cbaf2a2059b5aa5ebdae014158456d83ec33` |
-| `b3-reference-final/runs-1792791184303755000.meta.json` | `459a327b5f12b8bd4e51ad1d62ff5ac5f2c52ab352a859fb8206b8b3a6a3abf4` |
-| `b3-candidate-final/build.json` | `5292fe34e38eaea9788e29c07e20c74a977a49127f1c5b2e0fca50ba7a72e102` |
-| `b3-candidate-final/compiler-jadpo` | `b74aa3ced4d02872d410aa86e2423ac3d7dcb92f0f66668a9986be8c861bbacc` |
-| `b3-candidate-final/fixture` | `355b8efffe866e87f3f5525910a483e868e47b448eed8e12c8539b0f17a8f5bc` |
-| `b3-candidate-final/runs-1792791319915240000.json` | `962eab9b9babadc333dfb7519aa105e626b69af8a4043cf381e250ce9b1fbb91` |
-| `b3-candidate-final/runs-1792791319915240000.meta.json` | `2c22aa6dcaa8afe0d545161b278347dac59f6b4592017fff730b56df7735e8bf` |
-| `reference-final-build-context.json` | `81802a8be7462dceaa65adce7cfd5eff042ac68889b8d609a48241a71018f12f` |
-| `candidate-final-build-context.json` | `b512bccdc602f262bdcda818ad63ffbd7194b61c51ef0bf5d2feb7bb2ceada75` |
-| `reference-final-premeasurement.json` | `1e0a5f4b0ae32890b596ba0df0ac556acb2e82a5bd66563e2977787ad46386b0` |
-| `candidate-final-premeasurement.json` | `807a59cbcc22c0bb60492875a03d02ed36aeeac62aa3b5b6be67a1c8c9359c79` |
-| `attempts/full-gate-round4.log` | `7ed961ca153f78aaa4b7895acfc6c338ca70ffa6ff77560a8c0fa8e10b899f3c` |
-
-Every preparation remains retained. Gate1 passed 93/93 in 1128 s at `c58fa481`
-(tree `0218f58b`) but its source guard failed before the reference build or
-any accepted timing at `35c0e2be`: a tracked directory symlink was incorrectly
-read as a file. Literal-link hashing and NUL index parsing, including actual
-source()-level Git regressions for directory/file links, materialized links
-and non-ASCII/tab/newline paths, fixed the verifier. Gate2 at `2fe7bce2` was
-interrupted130 for the final enumeration tests. Gate3 at `812f939a` was stopped
-and reaped143 to remove the Worker seed's timezone/midnight dependence and
-correct whole-fixture CPU wording; its interrupted checks are not product
-failures. The final UTC fixture's first targeted attempt used reserved alias
-`offset`; `day_delta` corrected it, and targeted Worker passed 33.31 s, all 8
-guard tests passed, then gate4 qualified the first candidate above. Early compile,
-SQL/rate-limit fixture, clippy and protocol1/2 smoke attempts are retained,
-not counted as comparative timing. Earlier CPU metadata wording overstated
-PostgreSQL inclusion; the accepted pair uses the corrected explicit scope.
-
-The retained 62-file set, including both compiler/fixture snapshots, all raw
-attempts, build/host contexts and summaries, has canonical path→SHA-256 map
-digest `3c5ccd627a3bb5baaebae9e0cb8079dbeb52950815c48edf5ead02ed44c8ca9f`.
-`retained-index.json` records that map, excluding itself. Do not overwrite
-failed attempts or reuse stamps after source edits. Reproduce the exact clean
-revisions with fresh labels using the method in `tools/bench/README.md`;
-changing the measured path/harness requires rebuilding and repeating the
-matched comparison. No real provider/account or deployment was used.
-
-
-##### Final single-window candidate: fresh matched comparison
-
-The first pair's APP-only regression motivated a bounded second candidate.
-Extra CTE planning/execution work was a plausible explanation, not a
-profile-proven cause. APP-only take/top-up now select `TAKE_APP`, byte-identical
-to the prerequisite's single-row reservation SQL; the multiwindow CTE and
-all-window debit remain unchanged. Empty rows mean refusal only for this
-single-row statement, while all actual store errors, including the private
-primary-key conflict, remain unavailable there. Both paths still use the
-same amount precheck and fail closed on malformed nonempty results.
-
-Failing focused tests were committed at `f9d4614465212fc03cf3b2f39be9a066f2386eba`
-before production edits: APP-only still sent ten parameters and treated an
-empty result as unavailable, and its registry entry did not exist. New live
-PostgreSQL coverage runs four 16-thread APP-only token/cost cohorts on first
-and existing rows, four held-row interleavings with observed real waiters,
-refusal timestamp invariance, failed top-up/debit hold preservation and exact
-release/charge. Production selection is tied to the same registered statement
-by runtime tests; first-insert amount prechecks require no SQL. Focused runtime
-11/11, live PostgreSQL 6/6, guard 8/8 and scoped clippy passed.
-
-Gate5 at `2114b84b7fdab1b685867c54e07540638f9129e6` / tree
-`935f9f649f57a7fd0b735c5e64eca4b2b7a448c3` failed one of 93 steps in 488 s.
-The existing `ai::tests::every_send_is_taken_from_the_limits_and_charged`
-observer filtered only `TAKE`, missing the now-successful APP-only `TAKE_APP`
-queries and finding `taken=[]`. A bounded search found no other stale
-observer. Targeted red reproduced this; the one-line filter correction kept
-all send/amount/charge assertions and passed. No production or measured
-harness change followed that gate failure.
-
-The **final gate6 passed 93/93 in 480 s**, exit 0/reaped, at
-`d709394e5b0abd830fd89d2aed6f4ec109a25203`, complete tree
-`1931a8bf3f897aea7952b2e5ee748193a2ac24cc` (3293 entries). Native/workerd
-golden 44/44 each, the 264-project / 526-test / 5832-comparison corpus and
-27 teaching examples / 327 tests passed again, with the same explicit local
-pgvector extension skips. This supersedes gate4 for the accepted candidate;
-the first comparison, its adverse result and every attempt remain retained.
-
-Both reference and candidate were freshly built and measured again with the
-unchanged final harness and 3×500-call protocol above. The reference restored
-`ai.rs`, `ai_budget.rs` and `statements.rs`, proving every production
-`crates/*/src` file exactly matches prerequisite `025a38c39d0a8d22b1e5ea59be41c26d95e2c124`.
-The candidate restored the **entire** final gated tree/modes, proven by
-`git write-tree` before its own build. Compiler/fixture snapshots are retained;
-all selected inherited flags remain unset and explicit build flags/toolchain
-match the first pair. No builds/tests ran during either timed campaign.
-
-| Build | Clean measured HEAD | Complete tree |
-|---|---|---|
-| Fresh reference | `9c3fae27fcd64a0b36bff77ac2d5befd265062c0` | `2e6d3652ebe6289940ec3a8fc9d59768719a48b9` |
-| Final candidate | `f7a7ce6d9c2f7485359ed9efd0b0a8d63500d6cb` | `1931a8bf3f897aea7952b2e5ee748193a2ac24cc` |
-
-| Scenario | Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
-|---|---:|---:|---:|---:|---:|
-| APP | 1 | 0.315208 | 0.274083 | 2922.39 | 3199.52 |
-| APP | 2 | 0.348125 | 0.285125 | 2862.63 | 3215.15 |
-| APP | 3 | 0.314834 | 0.323792 | 2903.49 | 3011.95 |
-| APP+CALLER | 1 | 0.472000 | 0.442958 | 2021.27 | 2313.29 |
-| APP+CALLER | 2 | 0.515500 | 0.426000 | 2000.71 | 2320.00 |
-| APP+CALLER | 3 | 0.526875 | 0.433625 | 1985.02 | 2280.34 |
-| Immediate retry+CALLER | 1 | 0.632416 | 0.639209 | 1555.91 | 1584.57 |
-| Immediate retry+CALLER | 2 | 0.681833 | 0.607250 | 1559.24 | 1631.20 |
-| Immediate retry+CALLER | 3 | 0.650209 | 0.645083 | 1546.26 | 1610.01 |
-
-Median cell p95: APP 0.315208→0.285125 ms (−9.54%), CALLER
-0.515500→0.433625 ms (−15.88%), immediate retry 0.650209→0.639209 ms
-(−1.69%). Median fixture calls/s: 2903.49→3199.52 (+10.20%),
-2000.71→2313.29 (+15.62%), 1555.91→1610.01 (+3.48%). The APP-only
-regression recovered **in this pair**; APP round3 and retry round1 still have
-higher candidate p95. The small retry change is within substantial round
-variation. These observations do not establish a universal gain or isolate
-causation. Verified SQL remains the primary result: **3→2 APP, 5→2 CALLER,
-7→3 immediate-retry statements**, with direct wrapper counts and PostgreSQL
-logs agreeing in every cell.
-
-All nine cells on each side passed known-fault/refusal controls, complete
-result validation and strict source/artifact guards at both ends. Every
-persisted APP/CALLER/PROMPT state is identical across the fresh pair, with
-the exact counts/cached tokens/digest/currency and zero holds described above.
-All owned service/process inventories were empty after the gate, builds and
-campaigns. Five-second ambient host busy was 12.22% reference versus 6.11%
-candidate, load 3.34/11.20/17.47 versus 3.15/8.25/15.38; swap stayed 2271.50 MiB.
-Unrelated host activity still varies. Whole-fixture/reaped child CPU was
-1.424293 versus 1.281173 s over 4.948474 versus 4.802539 s, with the same
-setup-included/daemonized-PG-excluded scope; it is not per-call/service CPU.
-The p95/fixture-throughput distinction, immediate fake resend without backoff,
-local non-durable test-server settings and Workers/Bun N/A scope above apply
-unchanged. No generated HTTP or real provider/account timing is claimed.
-
-Final raw paths are under `tools/bench/work/ai-accounting/`:
-
-| Retained path | SHA-256 |
-|---|---|
-| `b3-reference-app-final/build.json` | `42da07c2da4ce71b242ac6c75634e0741c33a3252b0f21b8fac886b943b1b106` |
-| `b3-reference-app-final/compiler-jadpo` | `00a6bb22758191ed84d61363006c57eee76d12e78aaa7ced8f1d87fb253250e9` |
-| `b3-reference-app-final/fixture` | `492325caeb2e02005a016e946a3c36635333abb47a77f912d00c6c09873dc07f` |
-| `b3-reference-app-final/runs-1792793007532617000.json` | `925bc9bab74082050888ad2a08f585866b86aa3f8819a49be10cafbdd3fd558c` |
-| `b3-reference-app-final/runs-1792793007532617000.meta.json` | `5937e5340f49520d8f09f2c31223b49e2f8ed0b30e615beb15d1efd75b33bbda` |
-| `b3-candidate-app-final/build.json` | `218fa80958ce809202ddb81493c5cabd895a2509c1de6308d0fd7a1d8a97d917` |
-| `b3-candidate-app-final/compiler-jadpo` | `c460a41d2f9c4d5b32ddfa609a2c3ce27190b720f598efadfde197b3b1f302b2` |
-| `b3-candidate-app-final/fixture` | `e193a1227f5b73586e7e01b75337f1dc74b21f2909db36c8724041d5501aaac8` |
-| `b3-candidate-app-final/runs-1792793139000242000.json` | `b39fcce88d1443627e8f6f68543de58b1b5c31eb4d9bd974e878b12d61bf1356` |
-| `b3-candidate-app-final/runs-1792793139000242000.meta.json` | `092bc66ee169b917b721b66c14cf614ad2e6e424818b82803973ec588fc45fd3` |
-| `reference-app-final-build-context.json` | `7139fc2bf2237fb7ba7746c061020afc84dd83cfc09a8357318b8593147aed93` |
-| `candidate-app-final-build-context.json` | `b28068c4575557f2029b0f5171c0bf2203b039f4316c5c298d1a6586ed4314b5` |
-| `reference-app-final-premeasurement.json` | `7f8fc3eee970517bb85b435e10436b31729462d70700c1a6c940002433142e6c` |
-| `candidate-app-final-premeasurement.json` | `cbc8c4e324a27c3b1935c4ee25eeed34a273047e26ca09330e1eed52f50f651c` |
-| `attempts/full-gate-round5.log` | `37b23034b9d748fd2253c27b7b93fcc832cb89d397c0f5485a62ed83256cb416` |
-| `attempts/full-gate-round6.log` | `12833c05d05fddde7a4b2fd0549eb162f17be3cceee36fcebe04f49f315c4766` |
-
-`first-pair-preserved.json` proves all 62 original retained files remain
-byte-identical (SHA-256 `529f67e63ff68013a62c30706a7e367edc11b5b9cd403efd2751497b96f25911`).
-The expanded 103-file canonical map is `retained-final-index.json`, excluding
-itself, with digest `f32d1f648bf7fa255440894f60591681bf73476793c0a7b738614302ad3da2ad`.
-It includes both comparisons, compiler/fixture snapshots, every red/fix/gate
-attempt, source/build/host contexts and complete result summaries. Exact
-reproduction uses the two clean revisions and fresh labels with the same
-`ai_accounting.py build` then `measure --calls 500` commands from the README;
-source/artifact guards require rebuilding after any checkout change. The
-postmeasurement updates are facts/method prose only; production and harness
-bytes match the final gated/measured candidate.
-
-
-#### Version checks in writes (chunk 9.1b4, measured 2026-10-24 London)
-
-The successful outside-call write now checks its first-loaded `xmin` in the
-mutation's own `WHERE`, removing its separate locking prequery. The failure-only
-probe preserves concurrent-change priority before policy/field/guard/missing
-classification. A stale attempt can now execute a zero-row mutation before its
-probe; that extra failure-path statement is a structural tradeoff, not measured
-failure-path latency. Repeated writes bypass the version only while their
-transaction retains its lock; rollback restores the checked set as described
-in §2.6. No language semantics or TypeScript baseline contract was weakened.
-
-**Verification and attempts.** Predicate and savepoint regressions were observed
-red against prerequisite production before the implementation. These early tests
-were uncommitted working changes; there is no clean red revision to cite.
-Initial fixture corrections included unused rereads, requiring a key for multiple
-changing calls (the second-snapshot case instead uses read-only calls), an awaited
-control connection instead of nesting runtimes, valid by-id inputs, dependent
-pickup cleanup/delete grants and valid lifecycle field guards. The new tests then
-passed on real PostgreSQL, including holder/waiter synchronization observed in
-`pg_stat_activity` before releasing the holder. Existing commit-retry, tenant,
-policy, field, lifecycle and negative suites remain in the full gate.
-
-| Attempt | Outcome and correction |
-|---|---|
-| Initial debug runtime smoke | Migration generation was missing; use the matched compiler before `Prepared::load`. Subsequent `smoke/runtime-2.json` and `runtime-3.json` each ran three rounds of five calls. Logging readiness was then tightened to observed records on all three active connections. These are setup checks, not release timing. |
-| Initial HTTP smoke | Bun-only short cells passed (`smoke/patch.json`); this did not qualify the later full-duration quota protocol. |
-| Gate 1, `c1e20a957b1314c59c67b9f3e5c4f6fc51d7ad81` | Failed 2/93 steps in 944 s. Compiler tests caught inline SQL in the plan crate and the stale CLI SQL snapshot; clippy caught three benchmark expressions. Move formatting into `jadpo-sql`, update the snapshot and fix the three diagnostics together. |
-| Gate 2, `c08b83ce3af3eb93d3ebca06d2146b4a2f5cda46` | Passed 93 steps in 484 s after focused architecture/CLI/SQL/clippy checks. |
-| First reference, `99656d94086497fce7c7efb938029b9437a78f7b` | Release runtime passed; first PATCH cell rejected 32,783 measured 429 responses after its fixed caller exhausted the real 600/min quota. Retain `b4-reference-final/` unchanged; do not accept those PATCH timings. |
-| Quota-preserving harness correction | Give 256 independent owners/rows to disjoint client partitions, cycling i, i+C, …; preserve real limits and fixed/default load modes. Eight load unit tests, two process tests, six Python guards and strict load clippy passed. A bounded Bun smoke verified 5,875/10,114 measured 200s at 1/8 clients and all 256 cases. |
-| Final gate, `404ad02ef78ff49b5f772a50f78678ffc38fc6ae` | Passed 93 steps in 652 s. Native and workerd golden contracts: 44 each; corpus: 264 projects, 526 tests, 5,832 typed comparisons. Compiled Worker route differential: eight tests across three projects, including the non-NULL version fixture. Existing nearest-query skips require pgvector 0.8; installed 0.7 remains unchanged. |
-
-Gates ran directly and completed/reaped with their tool exit status. No retained
-gate-output file/hash exists: automatic approval review rejected creating a new
-gate log/preflight packet, so the permitted direct execution was used. The
-benchmark tool's required raw measurement JSON/build provenance remains retained.
-No new tracker, report or evidence-packet file was created.
-
-**Matched source and method.** Both final labels use the same gated harness and
-its complete four-runtime 176/176 conformance. Before its own build, the reference
-restored every affected production source directory, including `jadpo-sql`, from
-`e7647abbdfc39e9b4cacd55e12cf7520f999469c`; comparison confirmed *all*
-`crates/*/src` matched that prerequisite. The candidate restored the entire gated
-tree, including modes, and `git write-tree` proved equality before its own build.
-Each command used `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0
-CARGO_BUILD_JOBS=4`. Selected inherited/effective **outer benchmark environment**
-target-dir, encoded rustflags, rustflags and toolchain overrides were explicitly
-null; no other outer profile override was set. These historical stamps did not
-observe inner codegen Cargo settings; those values are unavailable, rather than
-established null. Chunk 9.1b5 records inner invocations separately. Full tracked mode/content/link/HEAD/tree and original/saved artifact
-guards passed at both campaign ends. Every one of 68 saved snapshots across the
-pair was independently rehashed after completion. Reference original paths were
-subsequently superseded by the candidate; its historical freshness and immutable
-snapshots are retained, not claimed current against the candidate checkout.
-
-| Role | Clean HEAD | Complete tree |
-|---|---|---|
-| Final gate | `404ad02ef78ff49b5f772a50f78678ffc38fc6ae` | `6f538200443eff32d0c29975b570a5dbe00dd9eb` |
-| Reference | `58933ff74cc9fdac860aea20567acc2e52537253` | `da4e36f68cc212b1e6df1747155626e36860cf0f` |
-| Candidate | `050aa8fd3c434518deb782ba3f61b0f060d0a143` | `6f538200443eff32d0c29975b570a5dbe00dd9eb` |
-
-Canonical complete source-map SHA-256 (sorted compact JSON) is
-`ae61817524431500f346c0052027fa68aa30e217aa5c990319e168e880cf1dfe`
-reference and `b25fe0fb4fc91d16ea581638d41fab6ec4c4087890b21675fb37b8be2b5a9494`
-candidate. The build maps retain all 34 original/saved artifact pairs, paths,
-versions, flags and start/end process context per side. Actual Bun is 1.2.20,
-Node v24.18.1, workerd 2026-10-07, PostgreSQL/psql 16.3; rustc/cargo 1.99.0,
-Python 3.14.0, macOS 27.0.1 arm64 on an M1 Pro with 16 GiB RAM. Build preparation
-is not timed request work: reference took 532.91 s, candidate **2,940.60 s**
-(49 min; the earlier 32-min observation was mid-build). Candidate preparation
-advanced through compilation/contracts and completed successfully; these data
-do not isolate the cause of the duration difference. Raw UTC timestamps put
-reference runtime/PATCH at Oct 23 23:41–23:43 and candidate at Oct 24
-01:01–01:04, all Oct 24 in Europe/London. Candidate build ended 00:32:50 UTC;
-the unequal build-to-measurement gaps are retained, not a matched cooldown claim.
-
-**Release Rust runtime/compiler-generated-plan fixture.** The ordinary Jadpo
-action executes via `Prepared`/interpreter graph dispatch, the action boundary
-and real PostgreSQL with a local capability fake. This is neither a generated
-native application benchmark nor HTTP throughput. Bun/Workers timing is N/A.
-Each of three rounds checks malformed-provider output, a real stale-row rerun,
-50 warmups, one SQL census and 500 successful measured calls. Every successful
-call invokes the provider once with no open action transaction and persists
-`note=Fresh,label=Fresh b`; the stale control reruns and reads the fresh note.
-
-The census agrees between the wrapper and observed PostgreSQL logging in every
-round: **4→3 data SQL statements**, with **four transaction commands unchanged**
-(read BEGIN/ROLLBACK, write BEGIN/COMMIT), hence **8→7 runtime roundtrips**.
-PostgreSQL observes **9→8** including the provider connection's separate one-query
-no-open-transaction assertion. Setup/control queries are outside the census.
-The removed statement is `SELECT xmin::text … FOR NO KEY UPDATE`; the remaining
-UPDATE binds a non-NULL version in `($3::text IS NULL OR xmin::text = $3)`.
-The read and snapshot-version SELECTs remain. Counts distinguish transaction
-commands from data SQL and the independent provider query.
-
-| Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
-|---|---:|---:|---:|---:|
-| 1 | 0.561416 | 0.773333 | 1997.18 | 1762.07 |
-| 2 | 0.730875 | 0.587042 | 1805.29 | 2064.01 |
-| 3 | 0.580958 | 0.606792 | 1965.66 | 2036.88 |
-
-Median cell p95 **0.580958→0.606792 ms (+4.45%, adverse)**; median fixture
-throughput 1965.66→2036.88 calls/s (+3.62%). Candidate round 1 is worse on both
-measures. The verified statement removal is successful; these timings do not
-establish a latency gain. Whole-fixture/reaped child CPU was 0.913589→0.981269 s
-across 2.599952→2.676850 s wrapper wall time, including compiler/setup, warmups,
-census and controls. Daemonized PostgreSQL backend CPU is excluded/unmeasured;
-this is not per-call service CPU or database capacity.
-
-**Ordinary warm HTTP PATCH control.** Genuine generated release Worker under
-local workerd versus persistent warm Bun; two-second warmup, five-second cells,
-1/8 closed-loop clients, three rotated-order rounds. Each client cycles its
-disjoint subset of 256 owners/rows. Every cell starts a fresh server/limit store
-and reset seed. At most 54 successful calls per case including warmup, plus
-bounded setup probes, stayed below the unchanged 600/min caller quota. All 24
-cells had only 200s, zero errors and complete independent response/persisted-state
-validation; every case was exercised, refused requests changed nothing and
-injected receipt/untouched-row corruptions were rejected. This workload binds
-NULL because it has no outside call; it measures ordinary-write overhead, not
-the positive outside-call statement saving.
-
-| Target / clients | Round | Reference requests/s | Candidate requests/s | Reference p95 ms | Candidate p95 ms |
-|---|---:|---:|---:|---:|---:|
-| workerd / 1 | 1 | 863.13 | 820.89 | 1.425 | 1.530 |
-| workerd / 1 | 2 | 872.54 | 865.05 | 1.416 | 1.411 |
-| workerd / 1 | 3 | 836.51 | 877.96 | 1.460 | 1.395 |
-| workerd / 8 | 1 | 1554.56 | 1624.35 | 6.248 | 6.055 |
-| workerd / 8 | 2 | 1586.62 | 1566.42 | 6.166 | 6.271 |
-| workerd / 8 | 3 | 1558.32 | 1558.45 | 6.263 | 6.228 |
-| Bun / 1 | 1 | 1207.47 | 1180.37 | 1.467 | 1.509 |
-| Bun / 1 | 2 | 1205.19 | 1209.56 | 1.462 | 1.469 |
-| Bun / 1 | 3 | 1203.53 | 1207.45 | 1.475 | 1.485 |
-| Bun / 8 | 1 | 1974.64 | 1982.67 | 7.150 | 7.110 |
-| Bun / 8 | 2 | 2006.78 | 1994.05 | 6.952 | 6.959 |
-| Bun / 8 | 3 | 1971.41 | 1978.64 | 7.217 | 7.164 |
-
-Median workerd requests/s: 863.13→865.05 (1 client), 1558.32→1566.42 (8);
-p95: 1.425→1.411 and 6.248→6.228 ms. Bun medians: 1205.19→1207.45 and
-1974.64→1982.67 requests/s; p95 1.467→1.485 and 7.150→7.110 ms. Workerd
-remains about **71.6%/79.0% of Bun throughput**, essentially the same gap as the
-reference's 71.6%/78.9%. Candidate workerd round 1/one client and round 2/eight
-clients are adverse; Bun also varies. Ordinary-write overhead is broadly
-unchanged/inconclusive in this pair, not evidence of a positive outside-call
-HTTP gain, Cloudflare edge capacity or an open-loop latency SLO.
-
-| Target / clients | Median service CPU ms/request, ref→candidate | Helper/pool CPU ms/request | Load CPU cores |
-|---|---:|---:|---:|
-| workerd / 1 | 0.877361→0.846047 | 0.179297→0.175682 | 0.020337→0.020279 |
-| workerd / 8 | 0.645285→0.642802 | 0.180885→0.178342 | 0.030655→0.030280 |
-| Bun / 1 | 0.721872→0.722553 | 0→0 | 0.023891→0.023600 |
-| Bun / 8 | 0.634631→0.634536 | 0→0 | 0.044948→0.044895 |
-
-CPU is sampled over the post-warmup service interval; the load core fraction
-covers its own warmup plus measurement lifetime. Daemonized PostgreSQL CPU is
-unmeasured. Whole reaped PATCH children used 107.132770→107.005537 s including
-setup/controls/load/services across 100.450564→100.840889 s wrapper wall time;
-these scopes must not be mixed into service CPU. Candidate ambient host busy was
-materially higher: workerd 1-client 30.17–32.79% versus 19.26–22.28%; 8-client
-37.29–37.37% versus 26.51–26.88%. Raw per-cell host CPU and start/end load/process
-inventories retain this drift. Runtime start load was 2.56/4.19/7.63 reference
-versus 9.46/6.94/7.05 candidate. Matched memory/swap/thermal history was not
-captured, limiting attribution. A stdout-only snapshot before candidate PATCH
-showed 3,011.81 MiB swap used and no recorded thermal/performance warning; it is
-not a matched reference pressure measurement. No owned service remained in
-build/campaign end inventories. No builds/tests ran during timed campaigns.
-
-**Retained identities.** All paths below are relative to
-`tools/bench/work/version-writes/`. The complete original/saved artifact maps
-and source/flags/runtime metadata are in each `build.json`; raw wrappers include
-all rounds, receipts, before/after columns, control results and freshness guards.
-
-| Path | SHA-256 |
-|---|---|
-| `b4-reference-partition-final/build.json` | `f79c3b3b974568c3d6d7ba7c5269ef633d6125fffbca0ae639cb431bf25558ab` |
-| `b4-reference-partition-final/runtime-1792798879011432000.json` | `a492b4362fb1f6cc6195ca6de5aaaea9bfeb5c173f48b5ff7629a0112dc52e97` |
-| `b4-reference-partition-final/runtime-1792798879011432000.raw.json` | `502958975822fe8e343923d29ea3034d6e0f858d29626b3bf002b191d24c02b0` |
-| `b4-reference-partition-final/patch-1792798890696328000.json` | `c2760332046c0483986b94e94cc6f8005f557484f3884f25d4b7ae6f43a0c4d7` |
-| `b4-candidate-partition-final/build.json` | `6ab76219237190d67318661c86c1825328918fbeb9b7162c7ecace0203c9c3d4` |
-| `b4-candidate-partition-final/runtime-1792803710126051000.json` | `aff1b445946940fed98ad7e644d2e6847d594816e763ecb96c1a22c2ec1a0117` |
-| `b4-candidate-partition-final/runtime-1792803710126051000.raw.json` | `64efea76857c60aa2dee0c70bf11251f25d5a752ea1fb8937dacc4adbe53656b` |
-| `b4-candidate-partition-final/patch-1792803747338864000.json` | `1add357cc376a1e493fa058107013af94620544779f048a57d584ceb8eb78a7c` |
-| `b4-reference-final/build.json` (superseded) | `34f2baf37dab28103157c85754402b4518e1dcbe435692e3694faf6ed9421057` |
-| `b4-reference-final/runtime-1792797385173428000.json` (superseded) | `89d93c1e7e04d99ffb48dddc0d6f7e3f014efa8da466c5314fbb2c4987731a55` |
-| `b4-reference-final/patch-1792797395313691000.json` (rejected 429s) | `cd9bbba0b5e887a723ff317b4394289971d52242e2d175ea5121f7cdbf7743af` |
-
-Saved fixture `artifacts/000-jadpo-bench-versions` hashes:
-`b15ef9098ef19da4bac9a5d54320bf6a33fb85a05f1179f2af68c4ff21c20606`
-reference, `7d65a50364aeef228eed1a9e76ebfa885310926ddfc2927e999afc47f81d4958`
-candidate. Saved compiler `artifacts/029-jadpo`:
-`52baf5f2e2d3438239d7235861b93d87504cfc511e4cd45c7161b151a4f7b52b` →
-`878d7d13ce8cd825ed83d939dcae8a9d9197b3ed56816ee4e1b85ead638e7593`.
-Worker `artifacts/004-kiosk.wasm`:
-`4c8b6ab7f4abeb3fe3131fdbd136bdbccaa8f36d9ee6f2bbbbf3a7be49fd3ad7` →
-`bbe9643e67a0b7540267ad8e2efea32e5e3450cadadd8c8934ad3d2d3e68e4d1`.
-Both sides' load hash is
-`1907f1be3c5d99c6a05654e6f8e5bfd1cf653607f8782fa9689ef77d3fd867ae`,
-Bun `ced62d46acb0ca76435103e679e417731bdd0e2da6cd89137f6464dd718c97c4`,
-workerd `9c4f2e8630350133dae6889e3970120ffce802c04bbd744c9d55e2826dc5c8c5`.
-Reproduce with fresh immutable labels and the README's build/runtime/patch
-commands on the exact revisions. Final subsequent edits record facts/method
-only; production and harness bytes remain those of the gated/measured tree.
-
-
-#### Breakers in delivery claims (chunk 9.1b5, measured 2026-10-24 London)
-
-The connected claim removes one independent breaker snapshot statement while
-retaining the conditional probe/hold operations described in §2.6. The decisive
-structural evidence is an independently observed PostgreSQL census through the
-public generated delivery path. The performance result is a modest observed
-Worker/Bun change, with mixed rounds and host variation, not a causal 8.45% gain.
-The connectionless control keeps its original claim and zero breaker reads.
-
-**Sources, build and verification.** Both labels use the same final harness,
-fixture and TypeScript bytes. The reference restored the *entire* `crates/` tree
-from prerequisite `97aba24a4afc7bb0ad43a4eac7c62ee420f670ee`; comparison was empty,
-including all `crates/*/src` and modes. The candidate restored the complete gated
-tree/modes before its own build. Guards retain every tracked byte, executable
-mode, literal symlink target, HEAD/tree and original/saved artifact hash, and
-passed at both ends of both campaigns. Independent post-pair checks rehashed all
-4,910 saved snapshots and 42 consumed per-round Worker host files on each side.
-Only the shared reference compiler original was subsequently superseded by the
-candidate build; its snapshot and all label-local originals remain retained.
-
-| Role | HEAD | Complete tree |
-|---|---|---|
-| Reference | `9f383b263d63a8fce1383598e9a22d354c46926a` | `348b6f03bd43dad48424b2d9d6062abc6901bf1c` |
-| Candidate and full gate | `dc5193ac84a77dc9f0d35a45eb531980a8d25ec4` | `3519f1800e28eddf76a70bd07a5011f9b5a3c1c8` |
-
-The final direct-stdout gate passed **93 steps in 375 s**, including native and
-Worker golden 44/44 each, 264 compiled corpus projects, 526 tests and 5,832 typed
-comparisons, 27 teaching projects/327 tests both ways, and eight Worker route
-comparisons across three projects. Existing pgvector 0.7 nearest-query skips
-remain. No gate-output file or new evidence packet was created.
-
-Outer inherited selected flags were unset. Effective outer flags were
-`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; encoded
-rustflags, target-dir, RUSTFLAGS and toolchain overrides were explicitly unset.
-Unlike the historical 9.1b4 outer-only stamps above, these builds also capture
-all eight inner Cargo invocations' real pinned tool, argv, cwd and selected
-flags. The executable observer delegates without altering arguments, environment
-or exit status (checked by a transparency control). Inner builds use production
-release profiles, `SOURCE_DATE_EPOCH=0`, the recorded shared native/wasm target
-and ICU locale directories, and encoded remaps for the build cache, runtime
-crates and Cargo directory; full values are in `cargo-provenance.jsonl`.
-Pinned npm installs were offline with lifecycle scripts disabled. Actual runtime
-paths/hashes and saved copies are retained for workerd 2026-10-07, Bun 1.2.20,
-Node v24.18.1, PostgreSQL/psql 16.3, rustc/cargo 1.99.0 and Python 3.14.0.
-
-**Method and outcomes.** Each side runs three rounds of 10,000 deliveries on
-local persistent workerd, persistent warm Bun/Node, and native external tick
-processes. Every tick admits up to 100 deliveries in four lanes; target order
-rotates each round. Native includes process/session startup and is supporting
-evidence, not a warm-service comparison. The connected subscriber performs one
-real local HTTP safe GET through its Live package driver before committing a
-unique receipt and handled marker. The local provider checks exact method,
-path/cohort and bearer credential and disables Nagle's algorithm. Its calls are
-not runtime fakes, so actual breaker feedback is exercised. The fixed Bun/Node
-baseline already uses an idiomatic joined claim on both sides. The separate
-connectionless 10,000-delivery fixture is the original database-only workload.
-
-Both sides pass all 24 cells: exact delivery columns/clocks, receipt and handled
-identities/counts, immutable event/payload/encoding/trace/depth fingerprints,
-closed-breaker columns, and exactly 10,000 provider sends per connected cell
-(zero for backlog), with no missing or duplicate work. Each target also passes
-ten connected controls or six backlog controls: replay, live/expired leases,
-malformed payload, transactional rollback, claim error, and where connected,
-provider refusal/unavailability plus recovery, open hold and closed breaker.
-The expired running claim is inspected while its observed provider request is
-held; release and executor join occur on every outcome. Workload calibration
-clears every owned mutable table, including housekeeping, proves zero counts,
-and preserves full migration metadata and extension rows before emitting its
-new real template. All original/saved artifact and SQL-logging-off guards pass.
-
-**Observed SQL, one-delivery tick.** Logging readiness is established by actual
-records for every active runtime/pool backend before the census offset; future
-native backends inherit confirmed global logging. Completion waits for actual
-settlement/COMMIT records and validates committed state. Administrative psql is
-excluded; provider-control SQL is zero. These counts include fixed DUE, sweep,
-feedback and housekeeping work. They are **not linear per-delivery SQL costs**
-for the separately timed 100-delivery ticks.
-
-| Workload / target | Reference data + transaction statements | Candidate | Independent breaker READ / joined claim |
-|---|---|---|---|
-| Connected / workerd | 12 + 2 | 11 + 2 | 1 / 0 → 0 / 1 |
-| Connected / native external | 14 + 4 | 13 + 4 | 1 / 0 → 0 / 1 |
-| Connected / Bun or Node | 8 + 2 | 8 + 2 | 0 / 1 unchanged |
-| Backlog / workerd | 10 + 2 | 10 + 2 | 0 / 0 unchanged |
-| Backlog / native external | 12 + 4 | 12 + 4 | 0 / 0 unchanged |
-| Backlog / Bun or Node | 6 + 2 | 6 + 2 | 0 / 0 unchanged |
-
-Every round agrees. Native's extra two data statements and BEGIN/ROLLBACK are
-cold-session migration checks, classified from actual SQL. Full SQL lists,
-backend readiness proof and persisted outcomes are retained in each raw cell.
-
-**Connected results, every round.** p95 is the latency of a tick processing up
-to 100 deliveries, not an individual HTTP request or delivery latency.
-
-| Target | Reference deliveries/s, rounds 1 / 2 / 3 | Candidate deliveries/s | Reference tick p95 ms | Candidate tick p95 ms |
-|---|---|---|---|---|
-| Local workerd | 1300.357 / 1365.189 / 1323.240 | 1274.158 / 1435.087 / 1450.706 | 91.771 / 86.408 / 88.083 | 93.242 / 85.166 / 81.726 |
-| Warm Bun | 2114.274 / 2260.428 / 2095.777 | 2271.180 / 2275.360 / 2214.508 | 58.433 / 51.721 / 55.617 | 51.131 / 51.794 / 50.956 |
-| Native, external tick | 1954.952 / 2020.193 / 1998.886 | 2088.952 / 1952.304 / 2050.774 | 54.812 / 55.413 / 55.532 | 52.601 / 56.526 / 55.394 |
-| Warm Node | 1270.153 / 1252.005 / 1261.752 | 1301.748 / 1330.165 / 1285.657 | 91.594 / 92.270 / 92.532 | 89.779 / 95.625 / 93.294 |
-
-Median workerd throughput is 1,323.240→1,435.087 deliveries/s (+8.45%); median
-tick p95 is 88.083→85.166 ms (−3.31%). Unchanged Bun also rises 7.42% to
-2,271.180 deliveries/s and its p95 falls 8.07% to 51.131 ms. Workerd/Bun median
-throughput therefore moves only **62.586%→63.187% (+0.601 percentage points)**.
-The first Worker round is adverse in both throughput and p95; Node median p95
-also worsens 1.11%. Native median throughput rises 2.60% with essentially flat
-p95. These observations do not isolate the claim change from host/JIT variation.
-
-**Connectionless control, every round.**
-
-| Target | Reference deliveries/s, rounds 1 / 2 / 3 | Candidate deliveries/s | Reference tick p95 ms | Candidate tick p95 ms |
-|---|---|---|---|---|
-| Local workerd | 2227.551 / 2173.855 / 2224.175 | 2234.528 / 2267.848 / 2255.518 | 54.872 / 56.305 / 55.230 | 56.408 / 53.744 / 53.654 |
-| Warm Bun | 3595.591 / 3691.679 / 3821.514 | 3820.946 / 3881.450 / 3775.429 | 33.117 / 32.128 / 31.298 | 30.664 / 29.952 / 32.296 |
-| Native, external tick | 2565.950 / 2583.402 / 2461.058 | 2688.402 / 2545.951 / 2713.593 | 44.777 / 43.501 / 46.854 | 41.480 / 46.130 / 42.400 |
-| Warm Node | 3459.969 / 3553.835 / 3377.428 | 3635.316 / 3556.674 / 3648.372 | 33.745 / 35.919 / 35.987 | 34.817 / 34.054 / 33.398 |
-
-Median workerd throughput rises 1.41% and p95 falls 2.69%, while unchanged Bun
-rises 3.50%, native 4.77% and Node 5.07%. Workerd/Bun moves adversely from
-60.248% to 59.030%. No breaker read/join was added and no material common-path
-slowdown is established; the individual adverse rounds remain visible.
-
-**CPU and host limits.** CPU below lists component medians in seconds per cell;
-raw files retain every round's separate service, pool, Python controller/provider
-and reaped-child counters. Native uses reaped child CPU including startup.
-Worker's pool is listed separately and must be included in comparisons.
-PostgreSQL daemon CPU is unmeasured. Child CPU is captured immediately after
-timed ticks, before host diagnostics spawn subprocesses.
-
-| Workload / target | Reference CPU seconds per 10,000 deliveries | Candidate CPU seconds |
-|---|---|---|
-| connected / workers | 7.020000 + 3.280000 pool; 0.851340 controller/provider | 6.490000 + 2.870000 pool; 0.840896 controller/provider |
-| connected / bun | 4.090000; 1.027818 controller/provider | 3.930000; 0.957348 controller/provider |
-| connected / native | 2.698247; 1.212791 controller/provider | 2.565416; 1.230008 controller/provider |
-| connected / node | 5.500000; 1.150142 controller/provider | 5.410000; 1.142186 controller/provider |
-| backlog / workers | 4.040000 + 2.370000 pool; 0.032262 controller/provider | 3.990000 + 2.290000 pool; 0.031037 controller/provider |
-| backlog / bun | 2.480000; 0.031860 controller/provider | 2.420000; 0.031437 controller/provider |
-| backlog / native | 1.966519; 0.266471 controller/provider | 1.873223; 0.261529 controller/provider |
-| backlog / node | 2.690000; 0.033303 controller/provider | 2.590000; 0.031568 controller/provider |
-
-The same 16 GiB M1 Pro/macOS host records memory, swap, pressure, whole-host CPU,
-load and process context before/after both builds and every cell. Preparation
-is 265.848→280.020 s; campaign elapsed time is 201.171→196.318 s, outside the
-per-cell throughput denominator. Connected native/Worker builds took
-80.8/43.0→85.5/45.8 s; backlog builds 63.1/31.7→65.9/33.1 s. A bounded parent
-read-only documentation search overlaps only the candidate build, never an
-accepted timed cell; build durations are not isolated performance evidence.
-Five-second pre-campaign whole-host busy CPU is 24.789%→26.063%; pre-build it is
-22.031%→27.492%. Campaign-start load (1/5/15 min) is
-4.630/12.740/20.203→4.922/6.390/13.277. Reference campaign free-memory pressure
-is 59% at start, 51% at end; candidate 56%→45%. Connected cell ranges are
-57–60% versus 56–58%; backlog 46–53% versus 33–58%. Swap is stable at
-2,779.75 MiB during the reference campaign; candidate rises to 2,879.88 MiB
-from the same start during backlog work. Conditions are observed on both sides,
-not claimed identical. Unchanged Bun's drift and these ranges limit causal
-interpretation; no additional run was selected to chase favourable latency.
-
-**Corrections and failed attempts, retained.**
-
-| Attempt | Observed outcome and correction |
-|---|---|
-| Clean `5b08cc07` regression | Compile-red for the new `gate_snapshot` API; it does not prove the former race implementation was wrong. Actual reference/candidate PostgreSQL observation above proves snapshot-statement removal. Existing priorities and conditional races have separate unit/live-PG coverage. |
-| `smoke-build-1`, `smoke-controls-1`/`-2` | Setup only. A valid qualified local/provider `Ticket` collision checked but gave `Ty::Error`/no receipt write plan and a real compiled `internal_fault`. Clean red `f5fdab41` reproduces it; `783ca3c7` resolves entity field reads through canonical `Lookup::for_file`. The permanent test constructs both collision/noncollision cases and asserts SQL text type plus a write plan. Actual compiled corpus retains provider `AcmePay.Reference` storage and a local `Reference` field/assertions. Benchmark provider type is `CheckedTicket`, so exact prerequisite production can run the same harness; this correctness fix is not measured as the claim optimisation. |
-| `smoke-build-2`, `smoke-controls-3` to `-5` | Compiled setup/control proofs, not accepted timing. An independently held running claim exposed a JSON string where Bun needed a structured `lease_expired` object (`expired-json-red/failure.json`, clean `34c653ca`). `e54ac197` binds it with `db.json`; final classification controls also check refusal/unavailable kinds and malformed problem metadata. Original artifacts/raws remain retained. |
-| Superseded observation prototypes | Early fixed 0.1 s reload / 0.05 s log-flush waits were replaced by observed logging on every active backend plus actual settlement/COMMIT records and persisted-state checks. Early child-CPU capture after host-diagnostic subprocesses was moved immediately after ticks to exclude their CPU. These were corrected setup methods, not accepted timing or clean causal-red performance evidence. |
-| Gate `9791a3b5` | Failed 1/93 in 1,063 s: two unused `Reference` imports in the new compiled fixture. `bc3853cf` removes only those imports; focused preparation/check of all 16 fixture files passes. |
-| Gate `bc3853cf` | Failed 1/93 in 406 s: kiosk memory-loop booking expected 201 but received the route's valid 202 form, with pending answer fields. The exact durable cause is unknown because the gate's owned database was removed; equal reported module size does not establish historical byte identity. `dc5193ac` adds failure-only per-repair/delivery diagnostics and retains the 201 assertion, all 500 bookings and 512 KiB limit. A focused rerun passes in 26.10 s, memory 12,058,624→12,058,624 bytes; this is a successful rerun, not an explained/fixed flake. |
-| `smoke-controls-6-red`, `smoke-backlog-7-red` | Untimed checks caught stale native rows between workload calibrations and backlog Bun/Node code-only malformed metadata. `dc5193ac` resets all owned mutable tables and aligns only backlog failure metadata, preserving its algorithm. Seven verifier unit controls and `smoke-controls-8` pass all eight target/workload cells, including transition from 100 rows in each main table plus housekeeping to zero, with migration/extension state unchanged. |
-| Final gate / accepted pair | `dc5193ac`: 93/93 in 375 s. Fresh reference/candidate labels above pass all 48 cells. No extra four-target HTTP campaign was run; the requested broad before/after comparison was subsequently deferred. |
-
-**Retained identities.** Paths are relative to
-`tools/bench/work/connected-deliveries/`. Full original/saved paths, versions,
-inner Cargo argv/env, source modes, SQL lists, every row/control/round and host
-samples are in these files; they are ignored raw data, not new report packets.
-
-| Path | SHA-256 |
-|---|---|
-| `b5-reference-final-1/build.json` | `46cd3b4f12b830c54e8195321b55f2ce730c1739ce0fc5dad555fbd2b6f44478` |
-| `b5-reference-final-1/runs-1792818430938323000.json` | `85e95afaf37f3e280adc158fb4f852fe552fc228650281e57e0b2c60dfd06346` |
-| `b5-reference-final-1/cargo-provenance.jsonl` | `5dfbfeed66e62948aed84134a1dbe098c97aaad18fc8b1553445781ec9037cd0` |
-| `b5-candidate-final-1/build.json` | `129a80d0ece1b879859bf39ec2f6d67b3304c901360ee74c932132467a3aed89` |
-| `b5-candidate-final-1/runs-1792818956859881000.json` | `7f7b2d776f98ac46cb22a3a63ed328719137f3bca57db5cce10f50d38ab493cc` |
-| `b5-candidate-final-1/cargo-provenance.jsonl` | `ab4597effd1d18db46e7c3be0d89c6351d66558c33a859836dfc27ed08497c50` |
-
-Canonical sorted compact JSON tracked-file-map SHA-256 is
-`5da5933787c8062920484260b686df51f22633272fc062ca067c3e263dec3a89` reference,
-`c82023ff468a06f2abf7494b03da308df712a1b53e6c56f87d2522f4891fae91` candidate;
-artifact-map SHA-256 is
-`54b2c460a22166f8e9ec8a088b998bf5a15dc14763669cc2076a89610b29a1fd` reference,
-`b25cdaf603b4ac85336f14f4bc04c3be0b1b5d9fa986ccc91af0a34fb0be86ce` candidate.
-Each artifact map contains 9,820 original/saved entries. Exact repro commands and
-boundaries are in the bench README. Subsequent edits record facts/method only;
-production and harness remain those of the gated/measured revision.
+**Method and reproduction.** Serial and bounded builds differ only in
+`runner.rs`, `race.rs` and `schedules.rs` (serial restored from the pre-9.1b1
+revision), each built from a clean checkout. Raw per-round results stay in
+the ignored `tools/bench/work/deliveries/` raws; no timed campaign failed or
+was replaced. Reproduce with `python3 tools/bench/deliveries.py build --label
+<label>`, finish every build and test, then `measure --label <label> --mode
+warm` (three rounds, 10,000 deliveries). Review must keep process lifetime and
+warmup explicit beside Workers-versus-Bun results and rerun an affected matched
+comparison if measured paths change. Lesson: match the service boundary and
+pool lifetime before claiming a cross-target win; the workerd gap remains.
+Comparator caveat: the TypeScript fixture only drains deliveries, while Jadpo
+also runs housekeeping and workerd goes through a pool stand-in, so the gap
+includes costs a Bun service would not pay.
+
+**Fast ticks and hourly housekeeping: result** (chunk 9.1b2, local). Full
+before/after numbers, variation and caveats are in the pull request.
+
+| Idle tick, empty store | Reference | Candidate |
+|---|---:|---:|
+| Runtime SQL statements per completed-hour tick (native and workerd) | 8 | 5 |
+| Workerd idle tick p95, median of three rounds | 4.371 ms | 2.874 ms |
+
+The four prompt operations stay; the four retention statements became one
+declining lease claim. Warm delivery throughput moved within ambient variation
+and is not claimed as a gain. Method: `tools/bench/README.md`.
+
+**One-statement AI accounting: result** (chunk 9.1b3, local native-runtime
+fixture against real PostgreSQL, fake provider). Full numbers, variation and
+the rejected first candidate are in the pull request.
+
+| Scenario | SQL per call | Median p95 before → after |
+|---|---:|---:|
+| App window only | 3 → 2 | 0.315 → 0.285 ms |
+| App + caller | 5 → 2 | 0.516 → 0.434 ms |
+| Caller + immediate fake retry | 7 → 3 | 0.650 → 0.639 ms |
+
+Not HTTP or service throughput; Workers and Bun AI timing do not apply. The
+retry change is within variation. Method: `tools/bench/README.md`.
+
+**Version checks in writes: result** (chunk 9.1b4, local native-runtime
+fixture against real PostgreSQL, fake provider). Full numbers, variation and
+the PATCH control are in the pull request.
+
+| Outside-call write | Before | After |
+|---|---:|---:|
+| Data SQL statements | 4 | 3 |
+| Median p95 | 0.581 ms | 0.607 ms (+4.5%, adverse) |
+
+The statement saving is real; no latency gain is established. Not HTTP
+throughput. Method: `tools/bench/README.md`.
+
+**Breakers in delivery claims: result** (chunk 9.1b5, one-delivery tick
+census, connected subscriber). Full numbers, variation and the Bun/Node
+controls are in the pull request.
+
+| Target | Data statements before → after | Local throughput, median |
+|---|---:|---:|
+| workerd | 12 → 11 | 1,323 → 1,435 deliveries/s |
+| native, external tick | 14 → 13 | 1,999 → 2,051 deliveries/s |
+
+Unchanged Bun rose 7% in the same campaign, so workerd against Bun moved only
+62.6% → 63.2%; the first workerd round was adverse. No causal throughput gain
+is claimed. The census includes fixed housekeeping, so it is not a per-delivery
+cost. Method: `tools/bench/README.md`.
