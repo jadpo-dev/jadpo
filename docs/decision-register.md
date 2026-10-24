@@ -100,4 +100,8 @@ since all three run as standalone servers (a box, a container, AWS Lambda).
 Jadpo's WebAssembly build on Workers competes with TypeScript running on
 Workers' own V8 under workerd. Comparing Wasm on workerd with Bun or Node
 mixes the runtime with the host, so it is context, never the headline.
+For the Workers pair the headline is CPU time per request, cold start and
+bundle size, and p95, since Workers scale across isolates and bill and limit
+CPU time; throughput on one local isolate is context. Local workerd results
+are labelled local, not Workers results.
 Roadmap 9.1d5 adds the missing TypeScript-on-workerd baseline.
