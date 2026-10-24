@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from worker_screen import profile_flags, schedule, validate_manifest, validate_row
+from worker_screen import profile_flags, schedule, validate_manifest, validate_row, post_guard
 
 
 class WorkerScreenControls(unittest.TestCase):
@@ -28,7 +28,10 @@ class WorkerScreenControls(unittest.TestCase):
                              'generated_sources': {'lib.rs': 'same-generated-source'},
                              'cargo_cwd': str(folder/'generated'),
                              'wasm_sha256': hashlib.sha256((folder/'kiosk.wasm').read_bytes()).hexdigest(),
-                             'wasm_bytes': 8, 'gzip_level9_bytes': len(gzip.compress(
+                             'wasm_bytes': 8,
+                             'gzip_default6_bytes': len(gzip.compress(
+                                 (folder/'kiosk.wasm').read_bytes(), compresslevel=6, mtime=0)),
+                             'gzip_level9_bytes': len(gzip.compress(
                                  (folder/'kiosk.wasm').read_bytes(), compresslevel=9, mtime=0))}
             stamp['profiles'][level] = {'apps': apps, 'cargo': [{
                 'argv': ['build', '--release', '--target', 'wasm32-unknown-unknown'],
@@ -56,6 +59,8 @@ class WorkerScreenControls(unittest.TestCase):
                     wasm_sha256='0'*64),
                 lambda s: s['profiles']['2']['apps']['focused'].update(
                     wasm_bytes=999),
+                lambda s: s['profiles']['s']['apps']['golden'].update(
+                    gzip_default6_bytes=999),
             ]
             for fault in faults:
                 bad = copy.deepcopy(stamp)
@@ -71,6 +76,27 @@ class WorkerScreenControls(unittest.TestCase):
             stamp['artifacts'][str(wasm)] = hashlib.sha256(wasm.read_bytes()).hexdigest()
             with self.assertRaises(ValueError):
                 validate_manifest(stamp, stamp['source'])
+
+    def test_final_guard_rejects_late_snapshot_or_dependency_drift(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            stamp = self.manifest(root)
+            dependency = root/'node_modules'
+            dependency.mkdir()
+            (dependency/'module.js').write_text('export {};')
+            from worker_screen import dependencies
+            stamp['dependencies'] = {str(dependency): dependencies(dependency)}
+            saved = root/'served.wasm'
+            saved.write_bytes(b'validated served bytes')
+            rows = [{'consumed_host': {'saved': {'original': str(saved)},
+                     'files': {str(saved): hashlib.sha256(saved.read_bytes()).hexdigest()}}}]
+            post_guard(stamp, stamp['source'], rows)
+            saved.write_bytes(b'changed after its cell passed')
+            with self.assertRaises(ValueError):
+                post_guard(stamp, stamp['source'], rows)
+            (dependency/'new.js').write_text('new unrecorded dependency')
+            with self.assertRaises(ValueError):
+                post_guard(stamp, stamp['source'], [])
 
     def test_schedule_has_all_variants_and_reverses_the_order(self):
         rows = schedule(('golden-read', 'ascii-large', 'unicode-large'))

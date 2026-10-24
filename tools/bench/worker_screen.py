@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import time
+import zlib
 
 import ai_accounting as guard
 import golden
@@ -94,6 +95,7 @@ def validate_manifest(stamp, current):
             qualified.wasm_sections(wasm)
             if (record.get('wasm_sha256') != hashlib.sha256(wasm).hexdigest()
                     or record.get('wasm_bytes') != len(wasm)
+                    or record.get('gzip_default6_bytes') != len(gzip.compress(wasm, compresslevel=6, mtime=0))
                     or record.get('gzip_level9_bytes') != len(gzip.compress(wasm, compresslevel=9, mtime=0))):
                 raise ValueError('Production Wasm identity or size differs from its profile record')
 
@@ -111,6 +113,18 @@ def validate_row(row):
     if (row.get('response_body_bytes', 0) <= 0
             or not re.fullmatch('[0-9a-f]{64}', row.get('response_body_sha256', ''))):
         raise ValueError('Whole-response byte identity missing')
+
+
+def post_guard(stamp, current, rows):
+    # Earlier served originals are regenerated per cell; their immutable saved
+    # copies are the historical evidence. Any final drift faults the whole run.
+    validate_manifest(stamp, current)
+    for row in rows:
+        host = row.get('consumed_host')
+        if host:
+            for saved in host['saved'].values():
+                if golden.sha(saved) != host['files'][saved]:
+                    raise ValueError('A saved served Worker snapshot changed')
 
 
 def snapshot(path, directory, stamp):
@@ -165,6 +179,8 @@ def build(label, tools_from):
     stamp = {'schemaVersion': 1, 'kind': 'worker-screen', 'qualification': QUALIFICATION,
              'source': before, 'complete': False, 'profiles': {}, 'artifacts': {}, 'saved': {},
              'tools_reference': str(reference_path), 'tools_reference_sha256': golden.sha(reference_path),
+             'compression': {'default_level': 6, 'optional_level': 9,
+                             'zlib_runtime': zlib.ZLIB_RUNTIME_VERSION},
              'inherited_flags': selected_flags(os.environ),
              'build_environment': {'fixed': {**FLAGS, 'SOURCE_DATE_EPOCH': '0'},
                                    'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME')},
@@ -251,15 +267,18 @@ def build(label, tools_from):
                     'production': str(production), 'generated_sources': generated,
                     'cargo_cwd': str(project/'build/rust/kiosk'),
                     'wasm_bytes': len(wasm),
+                    'gzip_default6_bytes': len(gzip.compress(wasm, compresslevel=6, mtime=0)),
                     'gzip_level9_bytes': len(gzip.compress(wasm, compresslevel=9, mtime=0)),
                     'wasm_sha256': hashlib.sha256(wasm).hexdigest(),
                     'executable_sections_sha256': hashlib.sha256(
                         b''.join(qualified.wasm_sections(wasm))).hexdigest(),
                     'production_module_bytes': sum(p.stat().st_size for p in production.iterdir()
                         if p.suffix in ('.wasm', '.js', '.mjs')),
+                    'module_gzip6_proxy_bytes': sum(len(gzip.compress(p.read_bytes(), compresslevel=6, mtime=0))
+                        for p in production.iterdir() if p.suffix in ('.wasm', '.js', '.mjs')),
                     'module_gzip9_proxy_bytes': sum(len(gzip.compress(p.read_bytes(), compresslevel=9, mtime=0))
                         for p in production.iterdir() if p.suffix in ('.wasm', '.js', '.mjs')),
-                    'compressed_size_scope': 'Sum of gzip-9 module sizes; not a provider upload measurement.'}
+                    'compressed_size_scope': 'Module gzip sums (default level 6 and level 9); not a provider upload measurement.'}
             profile['cargo'] = [json.loads(line) for line in provenance.read_text().splitlines()]
             snapshot(wrapper, directory, stamp)
             snapshot(provenance, directory, stamp)
@@ -369,9 +388,13 @@ def run(label, output, duration, warmup, principals):
                     server.stop()
                 database.stop()
                 (destination/'results.json').write_text(json.dumps(result, indent=2)+'\n')
-            validate_manifest(stamp, guard.source())
+            if guard.source() != stamp['source']:
+                raise ValueError('Source changed during the experimental campaign')
             print(f'  verified: {cell["workload"]} · {cell["variant"]} · round {cell["round"]}',
                   file=sys.stderr, flush=True)
+        if golden.sha(manifest) != result['build_sha256']:
+            raise ValueError('Experimental build manifest changed during the campaign')
+        post_guard(stamp, guard.source(), result['rows'])
         result.update(complete=True)
     except BaseException as error:
         result['failure'] = str(error)
