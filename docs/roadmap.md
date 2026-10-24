@@ -37,9 +37,12 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    result, and follows AGENTS.md's builder-specific gate/PR rule. Codex opens
    compiler/runtime/keeper PRs for Claude without auto-merge and never merges.
    Chunks marked **needs Richard** stop for him at the point named; every other chunk runs
-   unattended. For performance exploration, resume the catalogue's highest-
-   priority eligible experiment from its frozen baseline; record blockers and
-   continue other eligible experiments across sessions until the available
+   unattended. For performance exploration, first follow the catalogue's
+   primary-comparison/control prerequisite; optimization measurements are
+   currently paused for the missing TypeScript/workerd control and design
+   review. Once accepted, resume the highest-priority eligible experiment
+   from its frozen baseline; record blockers and continue other eligible
+   experiments across sessions until the available
    queue, including new ideas, is exhausted. There is no experiment-count or
    batch/task/time quota that permits early production implementation.
 2. Plan it in the session, not in a document: read its area pages, list the
@@ -225,6 +228,14 @@ catalogue/workflow updates branch from main and auto-merge after required CI;
 code delivery still follows Codex's manual, never-merge PR rule in AGENTS.md.
 This adds no completion ticks for the unmerged Phase 9 source stack.
 
+Richard's later 2026-10-24 method correction makes the primary pairs standalone
+TypeScript/Bun versus Jadpo native Rust, and TypeScript/workerd versus Jadpo
+Wasm/workerd. The missing TypeScript/workerd control and design review come
+first; optimization measurements, including P61, are paused until accepted.
+Cross-deployment Bun/Workers results and F01 remain valid historical records,
+not a compiler-only gap or the revised primary target. Keep local warm and
+cold comparisons separate; see the catalogue for pooling/lifetime controls.
+
 - [ ] **9.1 Benchmarks:** `opus · high` the golden todo plus focused workloads (reads,
   writes, signed-in lists, large rows, cold start) on native, Wasm under
   workerd and on Workers, against an equivalent Bun and TypeScript app and
@@ -238,9 +249,10 @@ This adds no completion ticks for the unmerged Phase 9 source stack.
   the AI budget's reserve and charge each one statement; a write after an
   outside call checking its version in its own `WHERE`; a delivery's
   breaker read joined into its claim.
-- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` until it matches the Bun app on throughput
-  and p95, or Richard accepts a measured gap. The earlier experiments reached
-  about 79% of Bun's throughput and list what to try next
+- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` until it matches the equivalent
+  TypeScript/workerd app on throughput and p95, or Richard accepts a measured
+  gap, using the primary-pair method above. The earlier cross-deployment
+  experiments reached about 79% of Bun's throughput and list what to try next
   ([optimisation results](experiments/wasm-optimization-results.md)).
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
   type, locals and parameters typed, a `Value` made only at the runtime's

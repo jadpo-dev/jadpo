@@ -49,8 +49,13 @@ what it finds on the same branch, and merges it.
 ## Performance exploration (Richard, 2026-10-24)
 
 Follow [the experiment catalogue](docs/performance-experiments.md) across
-sessions. A dedicated discovery agent maintains credible hypotheses, potential
-savings calculations and impact order. Run cheap independent prototypes from
+sessions. Primary comparisons are TypeScript/Bun versus Jadpo native Rust,
+and TypeScript/workerd versus Jadpo Wasm/workerd; cross-deployment Bun versus
+Workers is secondary. The missing TypeScript/workerd control and reviewed
+design come first; optimization measurements, including source-only P61, are
+paused until accepted. Preserve prior results and historical forecasts.
+A dedicated discovery agent maintains credible hypotheses, potential savings
+calculations and impact order. Run cheap independent prototypes from
 one exact frozen baseline in a reusable sibling scratch worktree; explicitly
 stack dependent experiments on retained prerequisite commits and measure both
 marginal and combined gains. Freeze each variant's prediction, workload,
@@ -72,7 +77,8 @@ The catalogue is an explicit exception to the no-plan-document rule below.
 New ideas/results update it with evidence, dependencies and maintained order.
 Coordinate open catalogue PRs and ID allocation first: update a pending PR for
 the same scope or serialize edits; batch related results/ideas when useful.
-Do not create concurrent conflicting catalogue branches. Catalogue/workflow-only PRs branch from current main and use
+Do not create concurrent conflicting catalogue branches. Catalogue/workflow-
+only PRs branch from current main and use
 `gh pr merge --merge --auto` with required CI, without admin/bypass; never
 include compiler/runtime/keeper code or CI changes. This is the only Codex
 auto-merge exception. Experiment baseline B is separately frozen and may be an

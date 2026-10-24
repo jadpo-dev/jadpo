@@ -7,6 +7,73 @@ AGENTS.md's prohibition on plan documents and separate evidence packets: keep
 one catalogue, link existing raw records and architecture findings, and do not
 create a second progress log.
 
+## Primary comparisons and current control prerequisite (2026-10-24)
+
+Richard corrected the primary comparison method after the screens below:
+
+| Primary pair | Deployment and connection lifetime |
+|---|---|
+| TypeScript/Bun vs Jadpo native Rust executable | Standalone servers, direct PostgreSQL, persistent application state and clients/pools |
+| TypeScript/workerd vs Jadpo Wasm/workerd | Local Workers, persistent application state, invocation-owned connections through the same transaction-pool helper topology/caps: golden 10, focused 20 |
+
+**The missing TypeScript/workerd control comes first. Optimization measurements,
+including P61, are paused until that control is accepted and the comparison
+design is reviewed.** Review the design before implementing the control; do
+not resume P61 from the older “next experiment” instructions. Optional three-
+TypeScript lifetime arms are secondary diagnostics and do not block this
+missing primary pair. The strong direct-PG Bun control remains unchanged.
+
+Bun versus Workers is a secondary cross-deployment comparison. Differences
+include connection lifetime, driver transport, crypto and HTTP bindings; it
+cannot by itself identify a compiler-only or intrinsic engine gap. All prior
+raw results and within-Workers gains remain valid within their recorded
+references. F01 is preserved as the historical initial54 cross-deployment
+planning model, not the revised primary target. Do not rewrite its forecasts
+or erase earlier adverse results.
+
+The source-reviewed control proposal is to retain the same TypeScript
+business logic, authentication, schema, validation and SQL, with one persistent
+application. The golden entry is [golden_host.mjs](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/tools/bench/golden_host.mjs#L1).
+A stable Store facade would resolve and bind methods to a request-local Store
+through AsyncLocalStorage, awaiting close in finally; never use a mutable
+global current client or cross-invocation sockets. Recreating
+[createApplication](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/examples/golden-todo/typescript/src/app.ts#L267)
+per request would reset limits, admission, auth and readiness state. Preserve
+those caches and the focused app's windows/readiness; scheduling stays external.
+Trusted loopback peer identity comes from the harness binding, never an
+untrusted caller header.
+
+Cached postgres 3.4.7 exposes a workerd entry using cloudflare:sockets;
+esbuild 0.28.2 and Wrangler 4.149.0 are available locally. This is a feasible
+source-backed route, **not tested runtime compatibility**. Require artifact/
+metafile evidence of workerd condition resolution and actual nodejs_compat
+support for AsyncLocalStorage, crypto HMAC/timingSafeEqual/X509Certificate and
+net/https/dns imports. Avoid Node server/process bootstrap in the Worker entry;
+do not stub business or security functions. Keep driver options identical and
+capture business versus client-startup SQL in untimed acceptance: type
+discovery and prepared/session setup may repeat with invocation lifetime.
+
+Native currently uses [available_parallelism](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-native/src/deployable.rs#L181)
+and [persistent Drivers per worker](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-native/src/deployable.rs#L327),
+with [10 open / 8 idle connections per driver](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L20).
+Bun's [golden Store](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/examples/golden-todo/typescript/src/db/store.ts#L59)
+keeps five general plus five exclusive clients; its
+[focused client](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/tools/bench/typescript/server.ts#L16)
+has max20/prepare:false. Preserve and disclose these architectures, worker/core
+counts and connection budgets; do not impose an invented single-core limit or
+route the standalone pair through the helper. CPU accounting covers the full
+server process/all native threads, helper CPU separately and workerd+helper
+sum, with PG/load/fixture CPU distinct. Require provenance-valid native and
+Workers artifacts, exact body/state/security/peer/cancellation guards, matched
+concurrency/order, isolate count and owned cleanup. Warmup/admission/drain
+boundary limits remain explicit.
+
+The same hosting-model rule applies to a later serverless comparison: Bun and
+native Rust can use suitable Lambda adapters, then be compared on the same
+hosting model. No deployment or account work is authorized here. Establish
+local warm pairs first; cold start is a separate measurement. This control
+proposal has no optimization ID, gain forecast, build or measured result yet.
+
 ## Resume and finish the exploration
 
 Richard's 2026-10-24 instructions apply across sessions. Explore the available
@@ -30,8 +97,10 @@ qualification and manual review separately.
    Discovery has no target count: the initial inventory contains 54 candidates,
    rather than padding it to 100. Discovery may continue while another agent
    edits, but all owned builds and unrelated work stop during measurement.
-3. Freeze one baseline source **B**, its exact production artifacts, harness,
-   toolchain, dependencies, feature/profile flags, workload, full-body/state/auth/
+3. Check the primary comparison prerequisite above before resuming any
+   optimization measurement. Freeze one baseline source **B**, its exact
+   production artifacts, harness, toolchain, dependencies, feature/profile
+   flags, workload, full-body/state/auth/
    quota controls and measurement protocol. Use one reusable scratch worktree
    beside the repository, never under `/private/tmp`. Coordinate with other
    sessions so no concurrent agent build or test contaminates a timed window.
@@ -47,8 +116,9 @@ qualification and manual review separately.
    stack and B respectively, with each observed gain adjacent to its own
    prediction. Alternatives are separate variants; overlap warns against
    attributing the same savings twice.
-5. Commit each prototype before building. Run focused correctness and a short,
-   matched workerd/Bun screen using the frozen protocol; a microbenchmark is
+5. Commit each prototype before building. After the control prerequisite is
+   accepted, run focused correctness and a short matched screen of the primary
+   deployment pair using its frozen protocol; a microbenchmark is
    supporting evidence, never an application-throughput result. Do not run the
    full 176-case qualification, full gate or a production PR for every cheap
    prototype. Preserve existing guards; never bypass source/artifact checks or
@@ -126,8 +196,10 @@ measurements exist. Freeze the scenario before future results, retain its
 original assumptions, and expose sensitivity to unknowns.
 
 The tables are separate impact queues: primary reads, other warm workloads,
-then cold start/module work. Continue an already-running prototype before
-resuming the sorted queue. Within each workload queue, prioritize applicable
+then cold start/module work. The current control prerequisite overrides
+prototype continuation and queue order: optimization measurements are paused.
+Once accepted, continue an already-running prototype before resuming the
+sorted queue. Within each workload queue, prioritize applicable
 opportunities with measured component evidence, considering credible removable
 cost, confidence and experiment cost/risk; then investigate source-backed
 unisolated mechanisms. Speculative upper ranges alone do not outrank measured
@@ -219,10 +291,12 @@ supported P03's independent signed-read experiment, now measured small positive
 with limited causal attribution; its original 0.5–2% prediction is unchanged.
 P21 first-only is now a promising measured ASCII prototype; the current
 P21.suffix form is negative/rejected. Neither is a production promotion.
-Richard prioritized the larger P61 transfer-inclusive micro next, independently
-from H84/B4fda with no P21 stack and its original unknown forecast, before
-further small tweaks. Host-capability integration follows only if that micro
-warrants it; new P21 bitmap work remains catalogue-only for now.
+Richard's later comparison-method correction supersedes the earlier P61-next
+priority: the missing TypeScript/workerd control and reviewed primary-pair
+design come first. Optimization measurements are paused; P61's source-only
+preparation is retained below, with no build or timing. Its roundtrip and
+host-sink alternatives keep their original unknown forecasts; neither P61 nor
+P21 bitmap work resumes merely because it heads an optimization queue.
 P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
 F01 below remains frozen for the initial 54 ideas; later discoveries expand the
@@ -296,7 +370,7 @@ re-ranking. Do not fabricate a number to make the table sortable.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
-| **P61 — Conditional host long-text JSON escaping** (queued; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. See [frozen micro and independent host-sink alternative](#p61--frozen-roundtrip-micro-and-conditional-host-sink). | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
+| **P61 — Conditional host long-text JSON escaping** (paused for primary control; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. See [frozen micro and independent host-sink alternative](#p61--frozen-roundtrip-micro-and-conditional-host-sink). | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
 | **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
 | **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
 | **P55 — Safe synchronous Response slice constructor** (queued; unmeasured) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | Not measured | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
@@ -726,7 +800,8 @@ as a performance capture.
 
 ### P21.suffix-bitmap — catalogue-only emerging alternative
 
-P61 remains next; there is no bitmap implementation or measured result yet.
+The primary-control prerequisite now takes precedence over P61 and bitmap
+work; there is no bitmap implementation or measured result yet.
 This explicit dependent variant uses P21 First's checked 8-byte reads and
 little-endian lane order, rather than depending on the rejected repeated-
 earliest Suffix. An exact 8-lane mask could enumerate every escape in one word
@@ -753,7 +828,16 @@ Canonical escape spelling and existing-prefix/append behavior remain required.
 
 ## P61 — frozen roundtrip micro and conditional host sink
 
-The current probe stays **P61.roundtrip**, independent H84/B4fda without
+**P61 is paused for the missing TypeScript/workerd control and design review.**
+The source-only roundtrip preparation is retained at
+`fa2040748bee8df7537c51c7c641360a1be55e79`, tree
+`73d81efb1e84bc1ead21c9eda100e5e3fcc72f50`, under immutable Git ref
+`refs/experiments/a4-baseline-84e1c00b/p61-roundtrip-fa204074-source-paused`.
+Only eight Python adapter controls ran; there was no Cargo/example build,
+actual Wasm/workerd preflight or timing, and no P61 build manifest or raw
+performance result exists. The previous “P61 next” instruction is superseded.
+
+The frozen **P61.roundtrip** protocol remains independent H84/B4fda without
 P02/P03/P21. Its prediction is **unknown, including loss**, with no micro-to-
 application-throughput projection. The frozen protocol compares B's Rust
 writer with primitive-string `JSON.stringify`, charging eligibility scanning,
@@ -767,7 +851,7 @@ this probe, and no result is claimed here.
 
 | P61 variant | Frozen prediction | Measured throughput gain | Scope / dependency |
 |---|---|---|---|
-| P61.roundtrip | Unknown, including loss; micro metric only | Not measured | Current transfer-inclusive probe from B |
+| P61.roundtrip | Unknown, including loss; micro metric only | Not measured | Paused source-only transfer-inclusive probe from B |
 | P61.host-sink | Unknown, including loss; no claimed application gain | Not measured | Conditional alternative; does not depend on roundtrip winning |
 
 **P61.host-sink remains eligible even if JS→Rust transfer makes the roundtrip
@@ -962,10 +1046,12 @@ headroom promise or an observed gain. P03's separate matched screen above now
 supplies its actual gains; these diagnostic weights do not change its original
 prediction or isolate the screen's causal effect.
 
-P21 is the next bounded ASCII first-escape lead, not a claim to remove the
-writer's entire 7.83% self footprint. Mixed input escapes nearly immediately,
-so its first-scan scope stays near zero; P61 needs a transfer-inclusive text
-micro before capability integration. Current scalar-count samples motivate
+At the time of this diagnostic, P21 was the next bounded ASCII first-escape
+lead, not a claim to remove the writer's entire 7.83% self footprint; its
+subsequent result is retained above. Mixed input escapes nearly immediately,
+so its first-scan scope stays near zero. P61's frozen roundtrip micro and its
+independent host-sink alternative are now paused for the primary control.
+Current scalar-count samples motivate
 P11/P13 checks while retaining mandatory max-length counting. Named BLAKE3's
 small sampled footprint keeps P58 a small/unknown lead. These findings change
 investigation priority, not original predictions or frozen F01.
@@ -1016,6 +1102,26 @@ Ordinary CPU profile names do not prove a tier restriction. A separate tier
 diagnostic is conditional on remaining ambiguity, not an automatic next step.
 No new production/native/176 build or benchmark was run for this audit.
 
+### ABI audit: externref and multivalue already active
+
+There is no newly discovered global wasm-bindgen ABI switch to enable.
+Frozen B's saved `b/artifacts/13055-kiosk.js` (SHA-256
+`809b0b79a023e5c2c764256826551540f02e33b1c6064417cceda58fc71ad386`)
+passes objects directly at fetch/connect/read/then/write bindings and lacks
+legacy heap/getObject/addHeapObject helpers. Its bound `13053-kiosk.wasm`
+identity is in the artifact table below; TABLE includes externref (0x6f),
+IMPORT includes externref initialization, and target_features includes
+reference-types/multivalue. Pinned [Workers binding](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/workers.rs#L73)
+uses web(true) without disabling overrides. Cached wasm-bindgen-cli-support
+0.2.129 detects those input features and runs the externref transformation;
+an older off-by-default comment does not establish a missing setting here.
+
+[Initialization](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/workers.rs#L108)
+is already once per isolate; saved glue caches decoders, encoders and memory
+views. Scalar ASCII/Unicode transfer and owned Uint8Array copying still exist,
+but belong to P55/P61/P59/P60, not a new global ABI candidate. This source/
+artifact inspection adds no gain forecast, build, test or performance result.
+
 All paths below are relative to the same durable archive A used for P02.
 The diagnostic build/raw/profile identities are:
 
@@ -1037,6 +1143,10 @@ module paths; the scan addresses refer to the named intermediate artifacts:
 | B bound focused | `b/artifacts/13053-kiosk.wasm` | `5f757dff726b79bec6e11f316cd2a330ff7c4bdb742f2ceaab22ef930d1fd21c` |
 | F bound focused | `variants/f-simd/artifacts/00091-kiosk.wasm` | `7955e36cc4ec08a4325bcd3c328b3abbc7851fb4ef8cfecbb7b48804e715a61f` |
 | P02 bound focused | `variants/p02-simd/artifacts/00091-kiosk.wasm` | `45a69fdce98caa47bff7ef7d6ecf1477fd929854763980e43050bfa8c8cec5ce` |
+
+The following F01 section is preserved unchanged. Under Richard's later
+method correction it is a **historical cross-deployment planning model**;
+its Bun-relative gap is secondary to the target-matched primary pairs above.
 
 ## F01 — full-list planning forecast (2026-10-24)
 
