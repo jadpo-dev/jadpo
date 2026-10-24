@@ -1621,18 +1621,27 @@ pub fn write_string(text: &str, out: &mut String) {
     // Reserve the ordinary UTF-8 length; escaping may still need more space.
     out.reserve(text.len() + 2);
     out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
+    if let Some(index) = text
+        .bytes()
+        .position(|byte| byte < 0x20 || byte == b'"' || byte == b'\\')
+    {
+        // An ASCII escape byte is always a UTF-8 boundary.
+        out.push_str(&text[..index]);
+        for c in text[index..].chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                c if (c as u32) < 0x20 => {
+                    let _ = write!(out, "\\u{:04x}", c as u32);
+                }
+                c => out.push(c),
             }
-            c => out.push(c),
         }
+    } else {
+        out.push_str(text);
     }
     out.push('"');
 }
