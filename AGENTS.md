@@ -53,9 +53,11 @@ sessions. A dedicated discovery agent maintains credible hypotheses, potential
 savings calculations and impact order. Run cheap independent prototypes from
 one exact frozen baseline in a reusable sibling scratch worktree; explicitly
 stack dependent experiments on retained prerequisite commits and measure both
-marginal and combined gains. Save every source/harness commit under a durable
-Git ref and retain raw results/artifacts, including losses and adverse metrics,
-before resetting the working branch. Stop owned builds/services, including
+marginal and combined gains. Freeze each variant's prediction, workload,
+metric and reference before implementation; retain the original and record
+actual throughput gain beside it, including marginal/combined comparisons.
+Save every source/harness commit under a durable Git ref and retain raw
+results/artifacts, including losses and adverse metrics, before resetting the working branch. Stop owned builds/services, including
 PostgreSQL, and coordinate a quiet host during measurements.
 
 Explore the available queue, including emerging ideas, to exhaustion before
