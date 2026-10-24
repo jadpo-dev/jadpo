@@ -54,7 +54,7 @@ async function tick() {
       const item = readable[cursor++];
       if (!item) break;
       const claimed = await db.unsafe<{attempts:number;state?:string;probe_at?:Date;probe_until?:Date}[]>(claimSql,
-        [item.id,now,lease,JSON.stringify({code:'lease_expired'}),db.array(['checks'])]);
+        [item.id,now,lease,db.json({code:'lease_expired'}),db.array(['checks'])]);
       if (!claimed.length) continue;
       const already = await db`SELECT id FROM jadpo_handled_deliveries WHERE id=${item.id}`;
       if (already.length) {
