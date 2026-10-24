@@ -5697,27 +5697,8 @@ and `tools/bench/work/todo/matrix-busy-host-ead8d2c8.json`, SHA-256 respectively
 The failed setup-only functional smoke is retained separately and supplies
 no comparison cell. Each result includes full source and artifact maps.
 
-<<<<<<< HEAD
-| Input or artifact | SHA-256 |
-|---|---|
-| `Cargo.lock` | `215fd087c4bf5cd03f21311e67f388883a7aba013af53a3445fa99aca01f4950` |
-| `examples/golden-todo/typescript/package-lock.json` | `73933caaffe00f1ebabe4bbc05630e91eaa596e40ea8113228849aed0857d82c` |
-| `tools/bench/load/Cargo.lock` | `cbe692030d0854b6e2927dd5b71641aed5e8b5771541a197b92c8a2e109dad38` |
-| `tools/bench/typescript/package-lock.json` | `cf6506f6515e0029255285d0a94ae47cab4fd7213902f6c1c09347590df66316` |
-| `tools/workers/package-lock.json` | `7649655efb232dcc01dc327a9b2830b4e9fabfffd47a16cb3e59b9e93bfa9453` |
-| Compiler (not timed) | `ae662ebca57b28e314ed702782b8d48ac43455691a906faa06b1d42c765bb5c1` |
-| Golden native (14,196,128 bytes) | `53904c09887ce6f7b19ef6a7319b76f17259099bcb2e37e1be739b2db23e5634` |
-| Golden Wasm (7,302,702 bytes) | `9c04cf6aecbf3b519812e502d3d0e97275e17ccb0df0d87eb3120917c9573254` |
-| Release load generator | `6a7cc932bcf970d7e59a8f44b8b8c8da3e0ea0351508dd8e17a4ef5b86811545` |
-| Release pool stand-in | `b56ab11147b2bcf68cb05adee3e7f652629d2c3340a085ec2e129ac65df4646f` |
-| Golden emitted TypeScript: 20-file relative-path/digest manifest | `36712c181369da46ad502a201a6426fdb13dd7900f4378b25ddefb889f1a542b` |
-| Focused native | `6fcf5636e1d178ca7ff94815c116225388013631ca833e6108b969abcdb56a82` |
-| Focused Wasm | `9e25734534b67b9eac4c79a34e19463ab6ae36c4b391670664229c47c29db7c3` |
-
-The TypeScript manifest digest hashes sorted JSON of relative emitted `src/`
-paths to their SHA-256 strings, identically for Bun and Node. Full maps also
-retain the production shim/glue, fixture signer and configuration inputs.
-
+The pinned lockfile, compiler, artifact and result hashes are in the raw
+result files, which carry full source and artifact maps.
 
 **Bounded durable delivery sweeps** (chunk 9.1b1, 2026-10-23).
 The hypothesis was that awaiting each due delivery serially left database I/O
@@ -5800,7 +5781,3 @@ in `runner.rs`, `race.rs` and `schedules.rs`; reproduce with
 builds or tests running. Review must retain the four-lane bound, separate
 contexts, serial batch work, drain/hand-on behaviour and handled atomicity.
 These results do not establish the cause of the wider Wasm gap.
-=======
-The pinned lockfile, compiler, artifact and result hashes are in the raw
-result files, which carry full source and artifact maps.
->>>>>>> origin/chunk-9.1d4
