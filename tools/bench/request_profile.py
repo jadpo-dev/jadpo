@@ -244,8 +244,8 @@ def wasm_sections(data):
 
 class Window:
     """Observe the owned PostgreSQL process's parameter-free duration records."""
-    def __init__(self, inspector, logfile):
-        self.inspector, self.logfile = inspector, logfile
+    def __init__(self, inspector, logfile, durations=True):
+        self.inspector, self.logfile, self.durations = inspector, logfile, durations
         self.observation = None
     def start(self):
         if self.inspector: self.inspector.start()
@@ -254,12 +254,21 @@ class Window:
         if self.inspector: self.inspector.stop()
         raw = self.logfile.read_bytes()[self.offset:].decode(errors='replace')
         durations = [float(v) for v in re.findall(r'duration: ([0-9.]+) ms', raw)]
-        if not durations: raise ValueError('Disposable PostgreSQL emitted no server duration observations')
-        self.observation = {'server_phase_duration_ms': durations, 'server_duration_records': len(durations),
+        if self.durations and not durations:
+            raise ValueError('Disposable PostgreSQL emitted no server duration observations')
+        if not self.durations and durations:
+            raise ValueError('PostgreSQL emitted duration records while logging was disabled')
+        self.observation = {'enabled': self.durations, 'server_phase_duration_ms': durations, 'server_duration_records': len(durations),
             'duration_record_prefixes': [line.split(' ms', 1)[0]+' ms' for line in raw.splitlines() if re.search(r'duration: [0-9.]+ ms', line)],
-            'scope': 'PostgreSQL log_duration protocol-phase records, including separate Parse/Bind/Execute where applicable, for the load window. Enabled for this owned disposable process lifetime; SQL text and parameters excluded. Logging adds diagnostic overhead; overlapping records cannot be added/subtracted into request tails.'}
+            'scope': ('PostgreSQL log_duration protocol-phase records, including separate Parse/Bind/Execute where applicable, for the load window. Enabled for this owned disposable process lifetime; SQL text and parameters excluded. Logging adds diagnostic overhead; overlapping records cannot be added/subtracted into request tails.' if self.durations else 'PostgreSQL duration logging disabled and checked before load; no server duration observations collected.')}
     def close(self):
         if self.inspector: self.inspector.close()
+
+
+def check_duration_setting(database, enabled):
+    actual = database.query('postgres', "SELECT current_setting('log_duration')")
+    if actual != ('on' if enabled else 'off'):
+        raise ValueError('PostgreSQL duration setting differs from the requested mode')
 
 
 def configure(directory):
@@ -275,7 +284,11 @@ def build(label):
     before = guard.source(); directory = WORK/label
     directory.mkdir(parents=True, exist_ok=False)
     stamp = {'source': before, 'start': context(), 'artifacts': {}, 'complete': False,
-             'inherited_flags': selected_flags(os.environ)}
+             'inherited_flags': selected_flags(os.environ),
+             'compiler_selection': {'requested': {key: os.environ.get(key) for key in ('RUSTC', 'RUSTDOC', 'RUSTUP_TOOLCHAIN')},
+                 'rustup_which': {name: subprocess.check_output(['rustup', 'which', name], text=True).strip()
+                                  for name in ('rustc', 'rustdoc', 'cargo')},
+                 'scope': 'Outer requested selectors and Rustup resolution; not an independent trace of child executable selection.'}}
     (directory/'build.json').write_text(json.dumps(stamp, indent=2)+'\n')
     wrapper = directory/'capture-cargo'; wrapper.write_text(CARGO_WRAPPER); wrapper.chmod(0o755)
     provenance = directory/'cargo-provenance.jsonl'
@@ -329,6 +342,9 @@ def build(label):
             path = Path(location).resolve(); paths.append(path)
             stamp['runtimes'][name] = {'path': str(path), 'sha256': golden.sha(path),
                 'version': subprocess.check_output([str(path), '--version'], text=True).strip()}
+        for key in ('RUSTC', 'RUSTDOC'):
+            if os.environ.get(key): paths.append(Path(os.environ[key]))
+        paths.extend(Path(path) for path in stamp['compiler_selection']['rustup_which'].values())
         snapshots = directory/'artifacts'; snapshots.mkdir()
         stamp['saved'] = {}
         for index, path in enumerate(dict.fromkeys(paths)):
@@ -460,12 +476,14 @@ def run(args):
                         harness = golden
                     work = harness.WORK
                     logs = work/'logs'; logs.mkdir(exist_ok=True)
-                    database = harness.Database(diagnostics=True)
+                    durations = args.postgres_durations == 'on'
+                    database = harness.Database(diagnostics=durations)
                     server = observer = inspector = None
                     row = {'round': round_+1, 'workload': workload, 'target': target,
                            'instrumentation': args.profile if target == 'workers' else 'none', 'verified': False}
                     result['rows'].append(row)
                     try:
+                        check_duration_setting(database, durations)
                         database.prepare(target)
                         inspector_port = spike.free_port() if target == 'workers' and args.profile != 'none' else None
                         # Use an isolated named copy in the generated workerd config;
@@ -501,7 +519,7 @@ def run(args):
                                    helper_pids=[p.pid for p in server.helpers])
                         if inspector_port:
                             inspector = Inspector(inspector_port, output/f'{len(result["rows"]):03d}-{workload}.cpuprofile')
-                        observer = Window(inspector, spike.WORK/'pg.log')
+                        observer = Window(inspector, spike.WORK/'pg.log', durations=durations)
                         if focused:
                             harness.measure(server, database, route, args.connections, args.warmup, args.duration,
                                             args.principals, 16384, row, observer=observer, payload=payload)
@@ -538,13 +556,15 @@ def run(args):
     print(f'passed: whole-request profiles · {len(result["rows"])} cells · {output}')
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
     prepare = commands.add_parser('build'); prepare.add_argument('--label', required=True)
     measure = commands.add_parser('run'); measure.add_argument('--label', required=True)
     measure.add_argument('--output', required=True)
     measure.add_argument('--profile', choices=('production', 'named', 'none'), default='production')
+    measure.add_argument('--postgres-durations', choices=('on', 'off'), default='on',
+                         help='owned PostgreSQL duration logging; off for capacity comparisons')
     measure.add_argument('--targets', default='workers')
     measure.add_argument('--workloads', default='golden-read,'+','.join(payloads()))
     measure.add_argument('--connections', type=int, default=16)
@@ -552,7 +572,7 @@ def main():
     measure.add_argument('--duration', type=float, default=8)
     measure.add_argument('--warmup', type=float, default=2)
     measure.add_argument('--principals', type=int, default=2048)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not args.label or not all(c.isalnum() or c in '-_' for c in args.label): parser.error('Use a simple immutable build label')
     if args.command == 'build': build(args.label); return
     targets, workloads = args.targets.split(','), args.workloads.split(',')

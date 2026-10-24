@@ -3,6 +3,8 @@ import base64
 import copy
 import hashlib
 import http.server
+import contextlib
+import io
 import json
 from pathlib import Path
 import socket
@@ -10,8 +12,9 @@ import struct
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock, patch
 
-from request_profile import Inspector, validate_profile, payloads, wasm_sections, capture_host, validate_host, summary
+from request_profile import Inspector, validate_profile, payloads, wasm_sections, capture_host, validate_host, summary, Window, check_duration_setting, main
 
 GOOD = {'nodes': [{'id': 1, 'callFrame': {'functionName': '(root)', 'url': '', 'scriptId': '0', 'lineNumber': -1, 'columnNumber': -1}, 'children': [2]},
                   {'id': 2, 'callFrame': {'functionName': 'work', 'url': 'wasm://module', 'scriptId': '1', 'lineNumber': 0, 'columnNumber': 1}, 'hitCount': 2}],
@@ -87,6 +90,47 @@ class Peer(http.server.BaseHTTPRequestHandler):
 
 
 class InspectorControls(unittest.TestCase):
+    def test_duration_logging_modes_fail_closed(self):
+        with tempfile.TemporaryDirectory() as raw:
+            logfile = Path(raw)/'postgres.log'
+            logfile.write_text('earlier duration: 1.000 ms\n')
+            for enabled, logged, valid in ((True, True, True), (True, False, False),
+                                           (False, False, True), (False, True, False)):
+                with self.subTest(enabled=enabled, logged=logged):
+                    inspector = Mock()
+                    window = Window(inspector, logfile, durations=enabled)
+                    window.start()
+                    with logfile.open('a') as stream:
+                        stream.write('LOG: duration: 0.125 ms  execute: SELECT private\n' if logged else 'ordinary server message\n')
+                    if valid:
+                        window.stop()
+                        self.assertEqual(window.observation['enabled'], enabled)
+                        self.assertEqual(window.observation['server_phase_duration_ms'], [.125] if logged else [])
+                        self.assertNotIn('private', str(window.observation))
+                    else:
+                        with self.assertRaises(ValueError): window.stop()
+                    window.close()
+                    inspector.start.assert_called_once()
+                    inspector.stop.assert_called_once()
+                    inspector.close.assert_called_once()
+        for enabled, actual, valid in ((True, 'on', True), (False, 'off', True),
+                                      (True, 'off', False), (False, 'on', False)):
+            database = Mock(); database.query.return_value = actual
+            if valid: check_duration_setting(database, enabled)
+            else:
+                with self.assertRaises(ValueError): check_duration_setting(database, enabled)
+
+    def test_duration_option_defaults_on_and_accepts_only_explicit_modes(self):
+        for option, expected in (([], 'on'), (['--postgres-durations', 'off'], 'off'),
+                                 (['--postgres-durations', 'on'], 'on')):
+            with patch('request_profile.run') as run:
+                main(['run', '--label', 'fixture', '--output', 'new', *option])
+                self.assertEqual(run.call_args.args[0].postgres_durations, expected)
+        with patch('request_profile.run') as run, contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                main(['run', '--label', 'fixture', '--output', 'new', '--postgres-durations', 'maybe'])
+            run.assert_not_called()
+
     def test_weighted_summary_keeps_context_identity_and_inclusive_counts(self):
         # Distinct contexts deliberately share a name. Expected weights/counts
         # are hand-worked: the middle node is sampled once, the leaf twice.

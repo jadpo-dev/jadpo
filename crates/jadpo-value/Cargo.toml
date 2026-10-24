@@ -60,5 +60,14 @@ x509-parser.workspace = true
 rsa.workspace = true
 p256.workspace = true
 
+[dev-dependencies]
+stats_alloc.workspace = true
+
+# An isolated counting allocator, without parallel test-harness allocations.
+[[test]]
+name = "json_allocations"
+path = "tests/json_allocations/main.rs"
+harness = false
+
 [lints]
 workspace = true

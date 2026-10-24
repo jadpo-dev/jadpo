@@ -2014,6 +2014,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "stats_alloc",
  "subtle",
  "writeable",
  "x509-parser 0.16.0",

@@ -1980,6 +1980,84 @@ mod tests {
         write_string("say \"hi\"\n\u{1}", &mut out);
         assert_eq!(out, "\"say \\\"hi\\\"\\n\\u0001\"");
     }
+    #[test]
+    fn string_bytes_preserve_the_canonical_escapes_and_unicode() {
+        // Fixed bytes are independent of both this writer and serde's choice
+        // of escape spelling (serde uses \b and \f, unlike Jadpo).
+        let controls: String = (0u8..32).map(char::from).collect();
+        let expected_controls = concat!(
+            "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007",
+            "\\u0008\\t\\n\\u000b\\u000c\\r\\u000e\\u000f",
+            "\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017",
+            "\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\""
+        );
+        for (text, expected) in [
+            ("", "\"\""),
+            (controls.as_str(), expected_controls),
+            ("\u{7f}", "\"\u{7f}\""),
+            ("say \"hi\"\\", "\"say \\\"hi\\\"\\\\\""),
+            (
+                "e\u{301}é🙂\u{2028}\u{2029}",
+                "\"e\u{301}é🙂\u{2028}\u{2029}\"",
+            ),
+        ] {
+            for prefix in ["", "already written: é "] {
+                let mut out = prefix.to_owned();
+                write_string(text, &mut out);
+                assert_eq!(&out[..prefix.len()], prefix);
+                assert_eq!(&out[prefix.len()..], expected);
+                assert_eq!(
+                    serde_json::from_str::<String>(&out[prefix.len()..]).unwrap(),
+                    text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn string_bytes_cover_dense_alternating_and_late_escapes() {
+        for (text, expected) in [
+            (
+                "\"\\\n\u{8}".repeat(1024),
+                format!("\"{}\"", "\\\"\\\\\\n\\u0008".repeat(1024)),
+            ),
+            (
+                "é\"🙂\\e\u{301}\t".repeat(1024),
+                format!("\"{}\"", "é\\\"🙂\\\\e\u{301}\\t".repeat(1024)),
+            ),
+            (
+                format!("{}\n", "x".repeat(65_535)),
+                format!("\"{}\\n\"", "x".repeat(65_535)),
+            ),
+        ] {
+            let mut out = "prefix:".to_owned();
+            write_string(&text, &mut out);
+            assert_eq!(&out[..7], "prefix:");
+            assert_eq!(&out[7..], expected);
+            assert_eq!(serde_json::from_str::<String>(&out[7..]).unwrap(), text);
+        }
+    }
+
+    #[test]
+    fn seeded_unicode_scalar_strings_round_trip_without_rewriting_text() {
+        let mut state = 0x5a17_9d3bu32;
+        for _ in 0..128 {
+            let mut text = String::from("\0\"\\\n\r\té🙂e\u{301}");
+            for _ in 0..256 {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                if let Some(c) = char::from_u32(state % 0x11_0000) {
+                    text.push(c);
+                }
+            }
+            let mut out = String::from("prefix:");
+            write_string(&text, &mut out);
+            assert_eq!(&out[..7], "prefix:");
+            assert_eq!(serde_json::from_str::<String>(&out[7..]).unwrap(), text);
+            assert!(!out[8..out.len() - 1].chars().any(|c| c < '\u{20}'));
+        }
+    }
     /// Codecs for vectors: 0 an item, 1 a 2-item vector compared by
     /// cosine, 2 a 2,001-item one indexed at half precision, by euclidean
     /// distance, 3 a map's key, 4 a map of 2-item vectors.

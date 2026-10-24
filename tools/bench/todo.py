@@ -332,10 +332,12 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
     try:
         time.sleep(max(0, warmup - (time.monotonic() - load_started)))
         cpu_before = spike.cpu_s(server.process.pid)
+        helper_before = sum(spike.cpu_s(helper.pid) for helper in server.helpers)
         host_before = host_cpu_ticks()
         out = load_output(process, warmup + duration + 45, row)
         row['load_completed_unix'] = time.time()
         cpu_after = spike.cpu_s(server.process.pid)
+        helper_after = sum(spike.cpu_s(helper.pid) for helper in server.helpers)
         host_after = host_cpu_ticks()
         if observer:
             observer.stop()
@@ -356,7 +358,8 @@ def measure(server, pg, route, connections, warmup, duration, principals, addres
         elif before != after:
             raise ValueError('Read workload changed stored rows')
         row.update(target=server.target, route=route, cpu_ms_per_request=(cpu_after - cpu_before) * 1000 / row['requests'], cpu_cores=(cpu_after - cpu_before) / row['elapsed_s'], peak_rss_mb=peak[0], wasm_mb=server.memory_mb(), load1=load1, persisted_delta=after-before, load_cpu_cores=row['load_cpu_s']/row['load_wall_s'], obligations=obligations)
-        row.update(load1_after=os.getloadavg()[0],
+        row.update(helper_cpu_ms_per_request=(helper_after-helper_before)*1000/row['requests'],
+                   load1_after=os.getloadavg()[0],
                    host_cpu_percent=100*(host_after[0]-host_before[0])/(host_after[1]-host_before[1])
                        if host_before and host_after and host_after[1] > host_before[1] else None,
                    verified=True)
