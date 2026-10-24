@@ -2618,8 +2618,7 @@ check failed: 1 error, 1 file
 
 ### Habits from other languages
 
-People and agents write constructs from other languages out of habit
-(decision register, 2026-10-15). Each has an error of its own that names
+People and agents write constructs from other languages out of habit. Each has an error of its own that names
 the habit and the Jadpo form, with an edit, and parsing carries on as if the
 Jadpo form had been written, so a line gives one error. When the Jadpo
 form only renames or drops words, the rest of the project is checked too.
@@ -2921,8 +2920,7 @@ chunk 6.4b2 (area 19, "Data formats"): only the runtime builds an
 - **Two spellings for objects and enums.** `value X { }` and
   `type X = Object { }` produce the same thing, as do `enum X { }` and
   `type X = Enum { }`. The golden app uses only the keyword forms.
-- **`input` and `output` are keywords without a meaning.** The decision register
-  says boundary roles "are not type categories", yet `input` and `output`
+- **`input` and `output` are keywords without a meaning.** Boundary roles are not type categories, yet `input` and `output`
   declare objects, and nothing stops an `output` being a route's input.
 - **`=` appears only in `type`.** `type Pence = Int { }` uses `=`; `value`,
   `enum`, `entity` and `failure` do not. Flagged in area 1 for the syntax pass.
@@ -3511,8 +3509,7 @@ to when that page is written.
    `T | undefined` is the same idea.
 4. **Which collection operations come first?** Collections are declared but
    cannot be built, counted or iterated. *Decided 2026-10-12:* build list
-   literals (`[a, b]`), `for item in items` (already the recommended loop form
-   in the decision register) and a small namespaced set:
+   literals (`[a, b]`), `for item in items` (the recommended loop form) and a small namespaced set:
    `list.count`, `list.contains`, `list.map`,
    `list.filter`. Keep collections invariant (Kotlin and Rust do;
    TypeScript's covariant arrays are unsound). Closes TYPE-002 for lists.
@@ -3562,8 +3559,7 @@ to when that page is written.
     `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and
     `Output`; see "One form for every type" above. Only `Input` objects may
     use `optional` and `default`, a route accepts only an `Input` and returns
-    only an `Output`. This amends the decision-register line that boundary
-    roles are not type categories.
+    only an `Output`.
 
 11. **Which built-in types does the signature rule cover?** *Decided 2026-10-12:*
     keep it for representation types and `Instant`, `CalendarDate`, `Time` and

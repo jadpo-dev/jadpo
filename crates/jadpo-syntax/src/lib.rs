@@ -130,8 +130,7 @@ fn parse(text: &str, entry: Entry) -> Parse {
     let green = sink::build(text, &tokens, std::mem::take(&mut parser.events));
     errors.sort_by_key(|error| (error.start, error.end));
     // A syntax error never brings a second on its line: whatever else the
-    // line holds is reported once the first is fixed (decision register,
-    // 2026-10-15).
+    // line holds is reported once the first is fixed.
     let mut suppressed = parser.suppressed;
     let mut line = None;
     errors.retain(|error| {

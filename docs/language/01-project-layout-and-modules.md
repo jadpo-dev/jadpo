@@ -1753,8 +1753,7 @@ check failed: 1 error, 1 file
 
 ### Habits from other languages
 
-People and agents write constructs from other languages out of habit
-(decision register, 2026-10-15). Each has an error of its own that names
+People and agents write constructs from other languages out of habit. Each has an error of its own that names
 the habit and the Jadpo form, with an edit, and parsing carries on as if the
 Jadpo form had been written, so a line gives one error. When the Jadpo
 form only renames or drops words, the rest of the project is checked too.

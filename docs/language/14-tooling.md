@@ -2585,7 +2585,7 @@ what other areas carried here and where this page answers it.
     *Decided 2026-10-13:* declared in `app.jadpo` under `deployables: { }`,
     each saying what it serves or runs (`serves: [main, webhooks]`,
     `runs: [Trigger.schedules, Trigger.subscribers]`) and its target
-    (`Target.native` or `Target.wasm`, decision register 2026-10-13); each is
+    (`Target.native` or `Target.wasm`, compiler-runtime §1); each is
     compiled from what it reaches; with none declared, one deployable runs
     everything; `jadpo build <deployable>` builds one and `jadpo dev` runs all
     in one process. Built in chunk 8.1o for the one deployable an app that

@@ -1,5 +1,4 @@
-//! The corpus of broken files in `tests/broken/` (decision register,
-//! "Errors for habits from other languages", 2026-10-15): habits from
+//! The corpus of broken files in `tests/broken/` (area 3, "Habits from other languages"): habits from
 //! other languages and common slips, each broken line marked with the one
 //! error it gives as `// error: rule.id`. A syntax error never brings a
 //! second on its line, and no line without a mark gives one. The edits

@@ -1,6 +1,6 @@
 # Project layout patterns: research for Jadpo
 
-Researched 2026-10-11. This is input to the [project structure workstream](../../archive/specs-v0/project-structure.md)
+Researched 2026-10-11. This is input to the project structure workstream
 and to [Project layout and modules](../01-project-layout-and-modules.md). It is
 evidence for choosing a layout, not the decision itself.
 
