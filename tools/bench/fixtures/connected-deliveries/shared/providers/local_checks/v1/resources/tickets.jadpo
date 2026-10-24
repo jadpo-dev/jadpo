@@ -1,0 +1,11 @@
+public resource tickets {
+    get: {
+        method: HttpMethod.get
+        path: "/tickets/{ticket}"
+        input: TicketLookup
+        output: TicketAnswer
+        changes: false
+        failures: [TicketUnknown]
+        source: PackageSource.written
+    }
+}

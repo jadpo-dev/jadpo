@@ -1,0 +1,14 @@
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    events: {
+        store: main
+    }
+    schedules: {
+        trigger: ScheduleTrigger.external
+    }
+}

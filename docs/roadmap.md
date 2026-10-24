@@ -235,45 +235,13 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   method. The headline pairs are native against Bun and Node, and Wasm
   against TypeScript on workerd, led by CPU time per request, cold start and
   p95 (Richard, 2026-10-24).
-- [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
-  local protocol before and after each improvement.
-  Delivered through 9.1b1–9.1b5 below, in order. This split changes sizing,
-  not acceptance; sessions take the first unticked concrete subchunk.
-  From the Phase 6 review: deliveries swept concurrently within each
-  sweep, with a bound, and a backlog of 10,000 deliveries among the
-  workloads.
-  From the Phase 7 review: the tick's housekeeping measured (about 20
-  statements per store on an idle tick), then split into a fast tick and
-  an hourly pass one instance takes under a lease, its deletes batched;
-  the AI budget's reserve and charge each one statement; a write after an
-  outside call checking its version in its own `WHERE`; a delivery's
-  breaker read joined into its claim.
-- [ ] **9.1b1 Bounded delivery sweeps and the backlog:** `opus · high` after
-  9.1d: measure the existing sweep, run deliveries concurrently within a
-  recorded bound, and add the 10,000-delivery workload. Keep the decided
-  sweep size, connection budgets, leases, retry safety, shutdown and hand-on
-  behaviour. Verify responses and durable effects, retain all runs, and
-  measure the same local protocol before and after the change.
-- [ ] **9.1b2 Fast ticks and hourly housekeeping:** `opus · high` after
-  9.1b1: measure idle-tick statements and latency, separate prompt work from
-  an hourly cleanup pass one instance takes under a lease, and batch every
-  delete. Preserve retention, handled-record safety, failure recovery and
-  multi-instance behaviour; report before/after measurements.
-- [ ] **9.1b3 One-statement AI accounting:** `opus · high` after 9.1b2:
-  make each reserve and charge one statement, including every applicable
-  window. Preserve atomic refusal, concurrent limits, repair/retry top-ups,
-  usage accounting and conservative failure handling; measure statements
-  and latency before and after, using local fixtures without real accounts.
-- [ ] **9.1b4 Version checks in writes:** `opus · high` after 9.1b3:
-  check a row loaded before an outside call in the write's own WHERE.
-  Preserve first-loaded versions, row/policy refusals, repeated writes,
-  transaction retries and keyed/unkeyed-call safety; exercise real races
-  and measure the same protocol before and after.
-- [ ] **9.1b5 Breakers in delivery claims:** `opus · high` after 9.1b4:
-  join a delivery's breaker read into its claim. Preserve multi-connection
-  holds, the one-probe lease, retry budgets and release/claim races; measure
-  statement counts and delivery performance before and after. Tick 9.1b
-  only when all five subchunks meet its original acceptance.
+- [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
+- [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
+- [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
+- [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
+- [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11, "One-statement AI accounting"; area 21, "Chosen in chunk 5.5v5"; `tools/bench/README.md`.
+- [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11, "Version checks in writes"; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
+- [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6, "Breaker snapshots in delivery claims", and §2.11; `tools/bench/README.md`.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
   golden todo plus focused workloads on Workers against the equivalent Bun and

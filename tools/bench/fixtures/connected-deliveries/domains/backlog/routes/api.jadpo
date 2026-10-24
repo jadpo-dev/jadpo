@@ -1,0 +1,12 @@
+use backlog/actions { QueueAccepted, QueueInput, queue }
+
+routes Api {
+    prefix: /api
+    POST /queue {
+        authentication: RouteAuthentication.none
+        input: QueueInput
+        output: QueueAccepted
+        status: SuccessStatus.accepted
+        run: queue(input)
+    }
+}

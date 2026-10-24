@@ -334,6 +334,11 @@ struct Budgeted {
     claims: RefCell<Vec<(i64, i64)>>,
     deferred: RefCell<Vec<LocalFuture<'static, ()>>>,
     handed: RefCell<Vec<HandOn>>,
+    stop_after_claims: Cell<Option<usize>>,
+    stopping: Cell<bool>,
+    stopping_waker: RefCell<Option<std::task::Waker>>,
+    expire_after_claims: Cell<Option<usize>>,
+    timer_waker: RefCell<Option<std::task::Waker>>,
 }
 
 impl Budgeted {
@@ -351,6 +356,11 @@ impl Budgeted {
             claims: RefCell::new(Vec::new()),
             deferred: RefCell::new(Vec::new()),
             handed: RefCell::new(Vec::new()),
+            stop_after_claims: Cell::new(None),
+            stopping: Cell::new(false),
+            stopping_waker: RefCell::new(None),
+            expire_after_claims: Cell::new(None),
+            timer_waker: RefCell::new(None),
         }
     }
 
@@ -423,9 +433,30 @@ impl Host for Budgeted {
     fn sleep(&self, millis: u64) -> LocalFuture<'_, ()> {
         if self.real_time {
             Box::pin(tokio::time::sleep(Duration::from_millis(millis)))
+        } else if self.expire_after_claims.get().is_some() {
+            let until = self.monotonic.get().saturating_add(millis);
+            Box::pin(std::future::poll_fn(move |cx| {
+                if self.monotonic.get() >= until {
+                    std::task::Poll::Ready(())
+                } else {
+                    *self.timer_waker.borrow_mut() = Some(cx.waker().clone());
+                    std::task::Poll::Pending
+                }
+            }))
         } else {
             Box::pin(std::future::pending())
         }
+    }
+
+    fn stopping(&self) -> LocalFuture<'_, ()> {
+        Box::pin(std::future::poll_fn(|cx| {
+            if self.stopping.get() {
+                std::task::Poll::Ready(())
+            } else {
+                *self.stopping_waker.borrow_mut() = Some(cx.waker().clone());
+                std::task::Poll::Pending
+            }
+        }))
     }
 
     fn budget_ms(&self, _invocation: Invocation) -> u64 {
@@ -469,6 +500,26 @@ impl Database for Budgeted {
             self.claims
                 .borrow_mut()
                 .push((at.div_euclid(1000), until.div_euclid(1000)));
+        }
+        if self
+            .stop_after_claims
+            .get()
+            .is_some_and(|limit| self.claims.borrow().len() >= limit)
+        {
+            self.stopping.set(true);
+            if let Some(waker) = self.stopping_waker.borrow_mut().take() {
+                waker.wake();
+            }
+        }
+        if self
+            .expire_after_claims
+            .get()
+            .is_some_and(|limit| self.claims.borrow().len() >= limit)
+        {
+            self.monotonic.set(self.budget_ms);
+            if let Some(waker) = self.timer_waker.borrow_mut().take() {
+                waker.wake();
+            }
         }
         self.db.query_once(sql, params)
     }
@@ -982,4 +1033,78 @@ fn jadpo_dev_stops_cleanly_on_sigterm() {
         std::thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(status.code(), Some(0), "{status:?}");
+}
+
+#[test]
+fn a_sweep_stops_admission_and_settles_all_four_inflight_claims_on_shutdown() {
+    let Some(loaded) = load("sweep-shutdown") else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = Budgeted::new(&loaded.url, 2_000, true, 0);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        for index in 0..8 {
+            drop(
+                host.call(
+                    program,
+                    "post_note",
+                    vec![Value::text(&format!("note-{index}"))],
+                )
+                .await,
+            );
+        }
+        host.stall.set(true);
+        host.stop_after_claims.set(Some(4));
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            jadpo_runtime::runner::sweep(program, &host, "main", T0),
+        )
+        .await
+        .expect("shutdown settles")
+        .expect("sweep");
+        assert_eq!(host.claims.borrow().len(), 4, "no admission after shutdown");
+        assert_eq!(
+            host.count(
+                "SELECT count(*) FROM jadpo_deliveries WHERE status='pending' AND attempts=0"
+            )
+            .await,
+            8
+        );
+        assert_eq!(host.count("SELECT count(*) FROM echo").await, 0);
+        host.stop_after_claims.set(None);
+        host.stopping.set(false);
+        host.stall.set(false);
+        jadpo_runtime::runner::sweep(program, &host, "main", T0)
+            .await
+            .expect("fresh tick recovers");
+        assert_eq!(host.count("SELECT count(*) FROM echo").await, 8);
+        assert_eq!(
+            host.count("SELECT count(*) FROM jadpo_handled_deliveries")
+                .await,
+            8
+        );
+    });
+}
+
+#[test]
+fn a_sweep_budget_settles_four_timed_out_attempts_and_leaves_the_other_four_unclaimed() {
+    let Some(loaded) = load("sweep-budget") else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = Budgeted::new(&loaded.url, 2_000, false, 0);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        for index in 0..8 {
+            drop(host.call(program, "post_note", vec![Value::text(&format!("note-{index}"))]).await);
+        }
+        host.stall.set(true);
+        host.expire_after_claims.set(Some(4));
+        tokio::time::timeout(Duration::from_secs(10), jadpo_runtime::runner::sweep(program, &host, "main", T0)).await.expect("budget settles").expect("sweep");
+        assert_eq!(host.claims.borrow().len(), 4, "no new admission once budget spent");
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_deliveries WHERE status='pending' AND attempts=1 AND last_failure->>'code'='deadline_exceeded'").await, 4);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_deliveries WHERE status='pending' AND attempts=0").await, 4);
+        assert_eq!(host.count("SELECT count(*) FROM echo").await, 0);
+    });
 }

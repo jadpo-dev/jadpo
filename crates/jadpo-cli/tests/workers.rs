@@ -40,6 +40,7 @@ use serde_json::Value;
 use crate::deployable::{apply, migrations, rows};
 
 /// The Workers cron (chunk 8.2f).
+mod ai_accounting;
 mod depot;
 mod external;
 /// Teaching example 23's kiosk (chunks 8.2b, 8.2d, 8.2i and 8.4f).

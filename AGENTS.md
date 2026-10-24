@@ -19,6 +19,25 @@ compiled native and WebAssembly deployables.
 - The first compiler (v0): git tag `archive/compiler-v0`. Never copy its
   special cases.
 
+## Performance results and review (Richard, 2026-10-24)
+
+Each optimisation's pull request description carries its results: what
+changed and why, reference and candidate revisions, before/after with run
+variation, CPU and other trade-offs, and adverse results. The repository
+keeps only the method in `tools/bench/README.md`, at most one short summary
+table in `docs/compiler-runtime.md`, and the regression tests and benchmark
+controls that protect the gain; no raw paths, digests, per-round tables or
+logs of failed experiments. Never silently restore an older implementation
+or omit an adverse result. Correctness takes precedence over speed.
+
+Compare like with like:
+Jadpo native against TypeScript on Bun and Node; Jadpo's Wasm build against
+TypeScript on workerd, leading with CPU time per request, cold start and
+p95. Label local workerd results as local, match and disclose process
+lifetimes and warmup, and name the workload and its scope. After each
+chunk, report what was built, the gate result and the PR link in three
+lines. Codex never merges these pull requests or enables auto merge.
+
 ## Working rules
 
 - `python3 tools/verify.py` is the gate. It must pass before a chunk merges.

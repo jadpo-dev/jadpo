@@ -299,17 +299,24 @@ public action check_card(input: PayRequest) fails DeclinedCard -> PayReply {
 "#,
     ),
     (
+        "domains/billing/types/reference.jadpo",
+        // This domain's name is valid beside AcmePay.Reference. Both its
+        // create and its post-provider update must retain their SQL plans.
+        "type Reference = Text { max_length: 40 }\n",
+    ),
+    (
         "domains/billing/types/card_state.jadpo",
         "/// What the card on a plan did.\ntype CardState = Enum {\n    unchecked\n    accepted\n    declined\n}\n",
     ),
     (
         "domains/billing/entities/plan.jadpo",
-        r#"use billing/types { CardState }
+        r#"use billing/types { CardState, Reference }
 use shared/providers/acme_pay
 
 entity Plan {
     id: Uuid
     tier: AcmePay.Reference
+    own_tier: Reference
     card: CardState
 
     policy: {
@@ -323,7 +330,7 @@ entity Plan {
     (
         "domains/billing/actions/add_plan.jadpo",
         r#"use billing/entities { Plan }
-use billing/types { CardState }
+use billing/types { CardState, Reference }
 use shared/providers/acme_pay
 
 /// Adds a plan whose card isn't checked yet.
@@ -331,6 +338,7 @@ action add_plan(tier: AcmePay.Reference) -> Plan {
     return Plan.create {
         set: {
             tier: tier
+            own_tier: Reference(tier)
             card: CardState.unchecked
         }
     }
@@ -378,12 +386,14 @@ test "a declined card is kept on the plan" {
     var plan: Plan = add_plan("gold")
     var checked: Plan = attempt check_plan(plan.id)
     assert checked.card == CardState.declined
+    assert checked.own_tier == "gold"
 }
 
 test "an accepted card is kept on the plan" {
     var plan: Plan = add_plan("gold")
     var checked: Plan = attempt check_plan(plan.id)
     assert checked.card == CardState.accepted
+    assert checked.own_tier == "gold"
 }
 "#,
     ),
@@ -680,6 +690,13 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
             "the repair café",
             example_project("23-repair-cafe", "workerd-repair-cafe"),
         ),
+        (
+            "a write after an outside call",
+            corpus_project(
+                &crate::call_snapshots::compiled_route_files(),
+                "workerd-version-write",
+            ),
+        ),
     ];
     let folders: Vec<PathBuf> = projects
         .iter()
@@ -696,7 +713,7 @@ fn route_tests_on_workerd_give_the_interpreters_records() {
         .iter()
         .map(|compared| (compared.tests, compared.passed))
         .collect();
-    assert_eq!(counts, [(3, 3), (4, 4)]);
+    assert_eq!(counts, [(3, 3), (4, 4), (1, 1)]);
     println!(
         "compared on workerd: {} route tests of {} projects with the interpreter's records, every one passing, in {:.0?}",
         counts.iter().map(|(tests, _)| tests).sum::<usize>(),

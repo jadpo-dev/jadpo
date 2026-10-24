@@ -12,11 +12,18 @@ pub struct SchedulesPlan {
     /// The store each schedule's state row, lease and run records are in
     /// (`jadpo_schedules`, `jadpo_schedule_runs`): `schedules: { store: }`,
     /// or the only database (area 12, "Outbox placement, settled").
-    /// `None` when there are no schedules.
+    /// `None` when this deployable executes no schedules.
     pub store: Option<String>,
     /// Every store holding the runtime's own tables (the outbox, delivery
     /// records and idempotency keys), which the tick sweeps, by name.
     pub stores: Vec<String>,
+    /// Whole-application stores holding schedule run history, independent
+    /// of the schedules this deployable executes. An hourly cleanup owner
+    /// must cover them even when `store` is `None` after pruning.
+    pub cleanup_schedules: Vec<String>,
+    /// Whole-application stores holding batch runs, problems and cancels,
+    /// independent of the batch bodies this deployable reaches.
+    pub cleanup_batches: Vec<String>,
     /// The store browser sessions and API tokens are kept in
     /// (`jadpo_sessions`), beside the principal's users, whose ended ones
     /// the tick deletes (area 8; chunk 6.10); `None` when nothing signs one
@@ -65,6 +72,8 @@ impl SchedulesPlan {
     pub fn ticks(&self) -> bool {
         self.store.is_some()
             || !self.stores.is_empty()
+            || !self.cleanup_schedules.is_empty()
+            || !self.cleanup_batches.is_empty()
             || self.sessions.is_some()
             || self.keys.is_some()
             || self.received.is_some()

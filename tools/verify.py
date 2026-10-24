@@ -133,7 +133,7 @@ POSTGRES = [
     # The driver, the test database's template and copies; and TLS to
     # servers of its own on this machine, one given a certificate the
     # test makes (chunk 8.1n).
-    ('live PostgreSQL', [('jadpo-test', 'postgres'), ('jadpo-test', 'postgres_tls')], ['--nocapture']),
+    ('live PostgreSQL', [('jadpo-test', 'postgres'), ('jadpo-test', 'postgres_tls'), ('jadpo-test', 'ai_accounting')], ['--nocapture']),
     # Each test's outcome-and-effect record: the corpus run twice with the
     # same records, and a perturbed run named where it differs (chunk 8.1c).
     ('live PostgreSQL: outcome-and-effect records', [('jadpo-test', 'records')], []),
@@ -395,6 +395,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     # a tag of its own, and templates are built under a name of their own
     # and renamed.
     if full:
+        checks.append(Step('warm delivery services: reuse, fresh ticks and durable failure controls', 'tests',
+                           [python, 'tools/bench/delivery_services.py'], postgres=True, alone=True))
         # One wrapper owns npm installation and the whole TS pipeline under an
         # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
         # Real deadline controls and cold type-aware lint checks need the same

@@ -280,11 +280,6 @@ impl Planner<'_> {
                         field: "id".to_string(),
                     }
                 };
-                row = Some(RowCheck {
-                    table: table.to_string(),
-                    id: id_source.clone(),
-                    sql: text::row_version(table),
-                });
                 let mut assignments: Vec<String> = Vec::new();
                 // Each field it changes, with its value once written, as
                 // SQL the `WHERE` can test.
@@ -600,7 +595,7 @@ impl Planner<'_> {
                     && let Some(when) = &transition.when
                 {
                     let mut asking = Writing::default();
-                    let id = asking.param(id_source, SqlType::Uuid);
+                    let id = asking.param(id_source.clone(), SqlType::Uuid);
                     let mut asked = vec![text::equal("id", &id)];
                     asked.extend(self.access(&mut asking, entity_model, Reach::Write)?);
                     let mut bare = text::select_one(table);
@@ -644,6 +639,21 @@ impl Planner<'_> {
                         false,
                     )?);
                 }
+                // A version is runtime state, not an application input. Reserve
+                // its own slot (never deduplicate it with a literal NULL).
+                let version = writing.params.len() as u32;
+                writing.params.push(WriteParam {
+                    source: WriteSource::Stored(jadpo_std::SqlValue::Null(SqlType::Text)),
+                    ty: SqlType::Text,
+                });
+                let expected = jadpo_sql::placeholder(version as usize);
+                conditions.push(text::holds_row_version(&expected));
+                row = Some(RowCheck {
+                    table: table.to_string(),
+                    id: id_source,
+                    version,
+                    sql: text::row_version(table),
+                });
                 let write = |conditions: &[String]| {
                     let mut sql = match op {
                         _ if transition.is_some() => text::update(table, &assignments),

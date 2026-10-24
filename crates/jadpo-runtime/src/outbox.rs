@@ -148,6 +148,64 @@ pub const PARK: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'failed', \
 /// attempt not counted, for deferred work or the sweep to run it again.
 pub const RELEASE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'pending', \"attempts\" = \"attempts\" - 1, \"next_attempt_at\" = $3 WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
 
+/// Claims a delivery and reads all its connections' breakers in the same
+/// statement. A missing breaker still returns the claim; a lost claim
+/// returns no rows. Only the conditional claim changes delivery state.
+pub fn claim_breakers_sql() -> String {
+    format!(
+        "WITH \"claimed\" AS ({CLAIM}) SELECT \"c\".\"attempts\", \"b\".\"connection\", \"b\".\"state\", \"b\".\"failures\", \"b\".\"probe_at\", \"b\".\"probe_until\", \"b\".\"pauses\" FROM \"claimed\" AS \"c\" LEFT JOIN \"jadpo_circuit_breakers\" AS \"b\" ON \"b\".\"connection\" = ANY($5::text[]) ORDER BY \"b\".\"connection\""
+    )
+}
+
+/// A delivery's claim and the breaker snapshot that accompanied it.
+pub(crate) struct Claimed {
+    pub attempt: u32,
+    pub breakers: Vec<crate::Row>,
+}
+
+/// Only deliveries that call a connection need its breaker snapshot.
+/// Schedules and batches retain their shared lease operation, and a
+/// connectionless delivery keeps its lean, original claim statement.
+pub(crate) async fn claim(
+    database: &dyn crate::Database,
+    budget: &crate::budget::Budget<'_>,
+    lease: &Leased,
+    connections: &[String],
+    now: i64,
+) -> Result<Option<Claimed>, crate::StoreError> {
+    use crate::lease::Leased as _;
+    let (sql, mut params) = lease.claim(now, crate::lease::until(budget, now));
+    let joined;
+    let sql = if connections.is_empty() {
+        sql
+    } else {
+        params.push(SqlValue::Array(
+            SqlType::Text,
+            connections.iter().cloned().map(SqlValue::Text).collect(),
+        ));
+        joined = claim_breakers_sql();
+        &joined
+    };
+    let rows = database.query_once(sql, &params).await?;
+    let Some(first) = rows.first() else {
+        return Ok(None);
+    };
+    let attempt = match first.first() {
+        Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(u32::MAX),
+        _ => return Ok(None),
+    };
+    Ok(Some(Claimed {
+        attempt,
+        breakers: if connections.is_empty() {
+            Vec::new()
+        } else {
+            rows.into_iter()
+                .map(|row| row.into_iter().skip(1).collect())
+                .collect()
+        },
+    }))
+}
+
 /// A delivery's record as the runner leases it ([`crate::lease`]):
 /// claimed for its next attempt, and given back with that attempt, its
 /// number known once it is claimed, not counted.
@@ -627,6 +685,124 @@ pub fn named_tenant<'a>(held: impl Iterator<Item = &'a Value>) -> [u8; 16] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct ClaimStore {
+        rows: std::cell::RefCell<Option<Result<Vec<crate::Row>, crate::StoreError>>>,
+        statements: std::cell::RefCell<Vec<(String, Vec<SqlValue>)>>,
+    }
+
+    impl crate::Database for ClaimStore {
+        fn begin_at(
+            &self,
+            _: crate::Isolation,
+        ) -> crate::LocalFuture<'_, Result<Box<dyn crate::Transaction>, crate::StoreError>>
+        {
+            Box::pin(async { panic!("claim must not open a transaction") })
+        }
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            params: &'a [SqlValue],
+        ) -> crate::LocalFuture<'a, Result<Vec<crate::Row>, crate::StoreError>> {
+            self.statements
+                .borrow_mut()
+                .push((sql.into(), params.into()));
+            Box::pin(async { self.rows.borrow_mut().take().expect("one claim") })
+        }
+    }
+
+    #[test]
+    fn a_delivery_claim_keeps_all_breakers_and_the_connectionless_fast_path() {
+        let host = crate::MemoryHost::new();
+        let budget = crate::budget::Budget::start(&host, crate::budget::Invocation::Tick);
+        let lease = Leased {
+            id: [1; 16],
+            attempt: 0,
+        };
+        for connections in [vec![], vec!["a".into(), "b".into()]] {
+            let rows = if connections.is_empty() {
+                vec![vec![SqlValue::Int4(2)]]
+            } else {
+                vec![
+                    vec![
+                        SqlValue::Int4(2),
+                        SqlValue::Text("a".into()),
+                        SqlValue::Text("closed".into()),
+                    ],
+                    vec![
+                        SqlValue::Int4(2),
+                        SqlValue::Text("b".into()),
+                        SqlValue::Text("open".into()),
+                    ],
+                ]
+            };
+            let store = ClaimStore {
+                rows: std::cell::RefCell::new(Some(Ok(rows))),
+                statements: Default::default(),
+            };
+            let claimed = crate::block_on(claim(&store, &budget, &lease, &connections, 123))
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(claimed.attempt, 2);
+            assert_eq!(claimed.breakers.len(), connections.len());
+            if !connections.is_empty() {
+                assert_eq!(claimed.breakers[1][0], SqlValue::Text("b".into()));
+            }
+            let statements = store.statements.borrow();
+            assert_eq!(statements.len(), 1);
+            assert_eq!(
+                statements[0].0,
+                if connections.is_empty() {
+                    CLAIM.into()
+                } else {
+                    claim_breakers_sql()
+                }
+            );
+            assert_eq!(
+                statements[0].1.len(),
+                if connections.is_empty() { 4 } else { 5 }
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_breaker_is_a_claim_but_a_lost_or_failed_claim_never_runs() {
+        let host = crate::MemoryHost::new();
+        let budget = crate::budget::Budget::start(&host, crate::budget::Invocation::Tick);
+        let lease = Leased {
+            id: [1; 16],
+            attempt: 0,
+        };
+        let connections = vec!["absent".into()];
+        for rows in [
+            Ok(vec![]),
+            Ok(vec![vec![SqlValue::Text("malformed attempt".into())]]),
+            Err(crate::StoreError::Unavailable),
+        ] {
+            let store = ClaimStore {
+                rows: std::cell::RefCell::new(Some(rows)),
+                statements: Default::default(),
+            };
+            assert!(!matches!(
+                crate::block_on(claim(&store, &budget, &lease, &connections, 123)),
+                Ok(Ok(Some(_)))
+            ));
+        }
+        let store = ClaimStore {
+            rows: std::cell::RefCell::new(Some(Ok(vec![vec![
+                SqlValue::Int4(1),
+                SqlValue::Null(SqlType::Text),
+            ]]))),
+            statements: Default::default(),
+        };
+        let claimed = crate::block_on(claim(&store, &budget, &lease, &connections, 123))
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(claimed.attempt, 1);
+        assert_eq!(claimed.breakers, vec![vec![SqlValue::Null(SqlType::Text)]]);
+    }
 
     #[test]
     fn a_traceparent_header_reads_and_writes_back() {

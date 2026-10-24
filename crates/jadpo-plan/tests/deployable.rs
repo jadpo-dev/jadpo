@@ -686,3 +686,52 @@ fn external_issuer_and_audience_are_kept_only_where_the_method_is_served() {
         );
     }
 }
+
+#[test]
+fn a_pruned_role_with_only_schedule_state_still_ticks_without_keeping_the_runner() {
+    let db = Database::default();
+    let files: Vec<(String, String)> = [
+        ("app.jadpo", "application { connections: { state: { driver: Driver.postgres url: config.state_url } } schedules: { store: state } deployables: { web: { serves: [main] } jobs: { runs: [Trigger.schedules] } } }\n"),
+        ("config.jadpo", "config { state_url: PostgresUrl }\n"),
+        ("domains/cafe/actions/tidy.jadpo", "action tidy() -> Unit { assert 1 == 1 }\n"),
+        ("domains/cafe/schedules/nightly.jadpo", "use cafe/actions { tidy }\nschedule nightly { every: 1d run: tidy() }\n"),
+    ].into_iter().map(|(path, text)| (path.to_string(), text.to_string())).collect();
+    let project = checked(&db, &files);
+    let web = planned(&db, project, "web");
+    assert!(web.callables().is_empty());
+    let runtime = web.runtime();
+    assert!(!runtime.runs.schedules && !runtime.runs.subscribers);
+    assert!(runtime.schedules.store.is_none());
+    assert!(runtime.schedules.schedules.is_empty());
+    assert!(runtime.schedules.stores.is_empty());
+    assert_eq!(runtime.schedules.cleanup_schedules, ["state"]);
+    assert!(runtime.schedules.cleanup_batches.is_empty());
+    assert!(
+        runtime.schedules.ticks(),
+        "state-only cleanup must still tick"
+    );
+    assert_eq!(
+        runtime
+            .connections
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["state"]
+    );
+    assert_eq!(
+        runtime
+            .config
+            .fields
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["state_url"]
+    );
+    let bytes = runtime.encode_deployable().expect("encoded");
+    assert!(
+        RuntimePlan::decode(&bytes)
+            .expect("decoded")
+            .schedules
+            .ticks()
+    );
+}

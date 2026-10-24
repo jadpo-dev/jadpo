@@ -157,7 +157,7 @@ pub fn called(calls: &[Logged]) -> BTreeMap<String, Called> {
     out
 }
 
-/// What [`gate`] decided for a delivery.
+/// What [`gate_snapshot`] decided for a delivery.
 #[derive(Debug, Default)]
 pub(crate) struct Watch {
     /// The connections it is the probe of, with the pauses so far.
@@ -172,7 +172,7 @@ pub(crate) enum Gate {
     Held,
 }
 
-/// One breaker's row, as [`gate`] reads it.
+/// One breaker's row, as [`gate_snapshot`] reads it.
 struct Row {
     connection: String,
     state: String,
@@ -187,33 +187,18 @@ fn millis(value: Option<&SqlValue>) -> Option<i64> {
     }
 }
 
-/// Decides at `now` whether attempt `attempt` of delivery `id`, claimed
-/// in `database` within `budget`, which calls out through `connections`,
-/// runs: held while one of their breakers is open and isn't due a probe,
-/// or its probe is another's; otherwise run, as the probe of each that
-/// is due one. A store that can't be read lets it run.
-pub(crate) async fn gate(
+/// Decides from the breaker's snapshot returned by the delivery claim
+/// whether it runs. The snapshot never grants a probe or holds a delivery:
+/// those changes still check the current breaker in conditional statements.
+pub(crate) async fn gate_snapshot(
     database: &dyn Database,
-    connections: &[String],
+    rows: &[crate::Row],
     id: [u8; 16],
     attempt: u32,
     budget: &Budget<'_>,
     now: i64,
 ) -> Gate {
     let mut watch = Watch::default();
-    if connections.is_empty() {
-        return Gate::Run(watch);
-    }
-    let names = SqlValue::Array(
-        SqlType::Text,
-        connections
-            .iter()
-            .map(|name| SqlValue::Text(name.clone()))
-            .collect(),
-    );
-    let Ok(rows) = database.query_once(READ, &[names]).await else {
-        return Gate::Run(watch);
-    };
     let rows: Vec<Row> = rows
         .iter()
         .filter_map(|row| match (row.first(), row.get(1)) {
@@ -515,6 +500,123 @@ mod tests {
             self.0.borrow_mut().push(sql.to_string());
             Box::pin(async { Ok(Vec::new()) })
         }
+    }
+
+    /// The claim already read every relevant breaker; a closed/absent
+    /// snapshot runs without another database round trip.
+    #[test]
+    fn a_claimed_breaker_snapshot_needs_no_separate_read() {
+        let store = Statements::default();
+        let host = crate::MemoryHost::new();
+        let budget = Budget::start(&host, crate::budget::Invocation::Tick);
+        let rows = vec![vec![
+            SqlValue::Text("couriers".into()),
+            SqlValue::Text(CLOSED.into()),
+            SqlValue::Int4(0),
+        ]];
+        assert!(matches!(
+            crate::block_on(gate_snapshot(&store, &rows, [1; 16], 1, &budget, 0)),
+            Ok(Gate::Run(_))
+        ));
+        assert!(store.0.borrow().is_empty());
+    }
+
+    struct Script(std::cell::RefCell<std::collections::VecDeque<(&'static str, Vec<crate::Row>)>>);
+
+    impl Database for Script {
+        fn begin_at(
+            &self,
+            _: crate::Isolation,
+        ) -> crate::LocalFuture<'_, Result<Box<dyn crate::Transaction>, StoreError>> {
+            Box::pin(async { panic!("breaker changes are conditional statements") })
+        }
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            params: &'a [SqlValue],
+        ) -> crate::LocalFuture<'a, Result<Vec<crate::Row>, StoreError>> {
+            Box::pin(async move {
+                let (expected, rows) = self
+                    .0
+                    .borrow_mut()
+                    .pop_front()
+                    .expect("unexpected statement");
+                assert_eq!(sql, expected, "{params:?}");
+                Ok(rows)
+            })
+        }
+    }
+
+    fn snapshot(connection: &str, state: &str, at: Option<i64>) -> crate::Row {
+        vec![
+            SqlValue::Text(connection.into()),
+            SqlValue::Text(state.into()),
+            SqlValue::Int4(5),
+            at.map_or(SqlValue::Null(SqlType::Timestamp), micros),
+            at.map_or(SqlValue::Null(SqlType::Timestamp), micros),
+            SqlValue::Int4(1),
+        ]
+    }
+
+    #[test]
+    fn a_later_connection_can_hold_the_whole_delivery_before_any_probe_is_taken() {
+        let host = crate::MemoryHost::new();
+        let budget = Budget::start(&host, crate::budget::Invocation::Tick);
+        let store = Script(std::cell::RefCell::new(
+            [(HOLD, vec![vec![SqlValue::Uuid([1; 16])]])].into(),
+        ));
+        let rows = [
+            snapshot("a", OPEN, Some(0)),
+            snapshot("b", OPEN, Some(1000)),
+        ];
+        assert!(matches!(
+            crate::block_on(gate_snapshot(&store, &rows, [1; 16], 1, &budget, 1)),
+            Ok(Gate::Held)
+        ));
+        assert!(store.0.borrow().is_empty());
+    }
+
+    #[test]
+    fn losing_a_later_probe_returns_every_earlier_probe() {
+        let host = crate::MemoryHost::new();
+        let budget = Budget::start(&host, crate::budget::Invocation::Tick);
+        let store = Script(std::cell::RefCell::new(
+            [
+                (TAKE_PROBE, vec![vec![SqlValue::Int4(1)]]),
+                (TAKE_PROBE, vec![vec![SqlValue::Int4(2)]]),
+                (TAKE_PROBE, vec![]),
+                (HOLD, vec![vec![SqlValue::Uuid([1; 16])]]),
+                (PROBE_UNUSED, vec![]),
+                (PROBE_UNUSED, vec![]),
+            ]
+            .into(),
+        ));
+        let rows = [
+            snapshot("a", OPEN, Some(0)),
+            snapshot("b", PROBING, Some(0)),
+            snapshot("c", OPEN, Some(0)),
+        ];
+        assert!(matches!(
+            crate::block_on(gate_snapshot(&store, &rows, [1; 16], 1, &budget, 1)),
+            Ok(Gate::Held)
+        ));
+        assert!(store.0.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_snapshot_does_not_override_a_breaker_that_closed_before_the_hold() {
+        let host = crate::MemoryHost::new();
+        let budget = Budget::start(&host, crate::budget::Invocation::Tick);
+        let store = Script(std::cell::RefCell::new([(HOLD, vec![])].into()));
+        let rows = [
+            snapshot("a", OPEN, Some(1000)),
+            vec![SqlValue::Null(SqlType::Text)],
+        ];
+        assert!(matches!(
+            crate::block_on(gate_snapshot(&store, &rows, [1; 16], 1, &budget, 1)),
+            Ok(Gate::Run(_))
+        ));
+        assert!(store.0.borrow().is_empty());
     }
 
     /// A delivery claimed while its connection's breaker was closed with

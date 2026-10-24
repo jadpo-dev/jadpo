@@ -1,0 +1,2 @@
+/// A local benchmark provider.
+package LocalChecks.v1 { licence: Licence.proprietary jadpo: "1.0" }

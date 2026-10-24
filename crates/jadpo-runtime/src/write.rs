@@ -50,21 +50,30 @@ pub(crate) async fn write(
     site: u32,
 ) -> Result<Written, Interrupt> {
     let now = ctx.now();
-    let params = params_of(ctx, &plan.params, json, inputs, site, now)?;
-    // A row the action loaded before an outside call is held to the
-    // version it was loaded at; one changed since is a concurrent change,
-    // which runs the action again (area 6, "Outside calls hold no
-    // transaction"; chunk 7.4).
-    if let Some(row) = plan.row.as_ref().filter(|_| ctx.loaded_before_call()) {
-        let id = source_value(ctx, &row.id, inputs, site, now)?;
-        let id = match to_sql(&id, SqlType::Uuid) {
-            Ok(id) => id,
-            Err(what) => return Err(defect(ctx, &what, site)),
-        };
-        if let Err(error) = ctx.check_row(&plan.store, row, id).await {
-            return Err(refused(ctx, error, site));
-        }
+    let mut params = params_of(ctx, &plan.params, json, inputs, site, now)?;
+    // Open the write transaction before consulting checked keys: a nested
+    // rollback may have ended the transaction that established them.
+    if let Err(error) = ctx.transaction(&plan.store).await {
+        return Err(refused(ctx, error, site));
     }
+    let versioned = if let Some(row) = plan.row.as_ref().filter(|_| ctx.loaded_before_call()) {
+        let id = source_value(ctx, &row.id, inputs, site, now)?;
+        let id = to_sql(&id, SqlType::Uuid).map_err(|what| defect(ctx, &what, site))?;
+        let expected = ctx.expected_row(row, &id);
+        let Some(param) = params.get_mut(row.version as usize) else {
+            return Err(defect(
+                ctx,
+                "a write's row version parameter is missing",
+                site,
+            ));
+        };
+        *param = expected
+            .as_ref()
+            .map_or(SqlValue::Null(SqlType::Text), |v| SqlValue::Text(v.clone()));
+        expected.map(|_| (row, id))
+    } else {
+        None
+    };
     let unpoliced = ctx.unpoliced();
     let sql = match (&plan.unpoliced, unpoliced) {
         (Some(sql), true) => sql,
@@ -111,6 +120,14 @@ pub(crate) async fn write(
         Err(error) => return Err(refused(ctx, error, site)),
     };
     let Some(row) = rows.first() else {
+        // Preserve the precheck's refusal priority. Only a refused write
+        // needs a separate probe; a successful mutation checked xmin and
+        // acquired its row lock in the mutation itself.
+        if let Some((row, id)) = &versioned
+            && let Err(error) = ctx.check_row(&plan.store, row, id.clone()).await
+        {
+            return Err(refused(ctx, error, site));
+        }
         // A transition whose `when:` can refuse a visible record asks
         // whether the record is there: then the condition refused it.
         if let Some(guard) = &plan.guard {
@@ -220,6 +237,9 @@ pub(crate) async fn write(
             site,
         )));
     };
+    if let Some((row, id)) = versioned {
+        ctx.checked_row(row, id);
+    }
     let Some(returns) = &plan.returns else {
         return Ok(Written::Value(Value::Unit));
     };

@@ -1,0 +1,15 @@
+use backlog/entities { Receipt }
+use backlog/types { Ticket }
+use backlog/failures { AlreadyRecorded }
+
+action record(ticket: Ticket) fails AlreadyRecorded -> Unit {
+    var receipt: Receipt = attempt Receipt.create {
+        set: {
+            ticket: ticket
+        }
+        conflict: {
+            Receipt.ticket: AlreadyRecorded
+        }
+    }
+    assert receipt.ticket == ticket
+}

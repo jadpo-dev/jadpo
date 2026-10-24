@@ -719,3 +719,38 @@ fn a_route_leaves_room_for_its_ai_calls() {
     let patient = route.replace("        run:", "        deadline: 60s\n        run:");
     assert_eq!(found_at("", &patient), NONE);
 }
+
+/// A store holding only AI counters still owns hourly retention. Its lease
+/// is part of the same generated schema/snapshot as any other system table.
+#[test]
+fn ai_only_store_migrates_the_housekeeping_lease() {
+    let db = Database::default();
+    let project = support::project_with_migrated_records(
+        &db,
+        Layout::Project,
+        &[("app.jadpo", APP), CONFIG],
+        &[],
+    );
+    let schema = jadpo_check::data::schema(&db, project);
+    let store = schema.stores.get("main").expect("AI-only main store");
+    assert!(store.tables.contains_key("jadpo_ai_usage"));
+    assert!(store.tables.contains_key("jadpo_housekeeping"));
+    assert!(!store.tables.contains_key("jadpo_outbox"));
+    let mut previous = (**schema).clone();
+    previous
+        .stores
+        .get_mut("main")
+        .unwrap()
+        .tables
+        .remove("jadpo_housekeeping");
+    let migration = jadpo_graph::migration::migration_sql(&previous, schema, &|_| None)
+        .expect("lease migrates")
+        .to_document("hourly_cleanup");
+    assert!(
+        migration.contains("CREATE TABLE \"jadpo_housekeeping\""),
+        "{migration}"
+    );
+    for column in ["lease_id", "lease_until", "last_cleaned_at"] {
+        assert!(migration.contains(&format!("\"{column}\"")), "{migration}");
+    }
+}

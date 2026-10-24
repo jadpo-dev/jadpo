@@ -1,5 +1,236 @@
 # Performance harnesses
 
+## Durable delivery backlog (chunks 9.1b1–9.1b1a)
+
+`deliveries.py` measures a focused database-only subscriber, separately from
+any golden reminder/provider workflow. Commit the inputs first; each build
+requires a clean checkout, builds its own compiler, and records the exact
+commit, source/artifact SHA-256 maps, tool versions and flags. Missing or
+changed inputs/artifacts are refused before and after measurement. Each label
+retains a hashed `compiler-jadpo` copy and a `build.json` naming its original
+compiler path, source and artifact map before another build can overwrite it.
+
+```sh
+python3 tools/bench/deliveries.py build --label serial
+python3 tools/bench/deliveries.py measure --label serial --rounds 1 --count 100
+python3 tools/bench/deliveries.py measure --label serial
+# After committing a runtime change, build and measure a new label.
+python3 tools/bench/deliveries.py build --label bounded
+python3 tools/bench/deliveries.py measure --label bounded
+```
+
+The default `--mode warm` protocol is three rounds rotating native, workerd,
+Bun and Node. Each measured cell starts with exactly 10,000 durable deliveries/
+events in disposable PostgreSQL 16 (`synchronous_commit=off`, 400 connections,
+256MB shared buffers); 100 ticks of at most 100 drain the backlog. Workerd,
+Bun and Node each start one persistent process per cell. Bun and Node use the
+same ordinary `node:http` compatibility host, `POST /tick`, event loop and
+postgres-js pool capped at four. This specialized Bun host differs from the
+strong golden app's native `Bun.serve` binding. Workerd invokes the production
+generated `scheduled` handler through local HTTP and a service binding with
+`service_binding_extra_handlers`; its Hyperdrive binding reaches the release
+transaction-pool stand-in, cap four. No JSONL controller or virtual clock is timed.
+
+An empty readiness tick is excluded. Before **every** measured cell, a real
+100-delivery cohort must pass the durable-state audit; the harness then resets
+to the exact measured seed. This ordinary-work warmup initializes the persistent
+services' pools/JIT outside timing. Negative/race controls run once per target
+per campaign, before its first warmup. The clock, lease, lane cursor and counts
+are recomputed per tick; measured Bun/Node replies must keep the same owned PID.
+HTTP calls have a 120-second deadline; any failure invalidates the cell, retains
+its attempt, and stops/reaps the owned services. TypeScript drains every admitted
+lane before answering an error and closes its pool on graceful shutdown.
+
+Native uses its ordinary external `app tick` process every time, including
+startup. Its warmup cohort cannot warm subsequent processes: it is supporting
+external-tick context, outside the warm-service comparison. There is no equivalent
+ordinary native HTTP tick host in this fixture.
+
+`--mode external` retains the original per-tick Bun/Node process starts and
+empty-readiness protocol. The 9.1b1 raw results and their exact source revisions
+remain in compiler/runtime §2.11; their per-target serial/bounded comparisons
+are valid, but persistent workerd versus fresh Bun processes is not a warm-service
+comparison. Only compare serial and bounded builds under the **same** final
+mode, harness and warmup protocol. Record invocation lifetimes next to the numbers.
+
+The fixture's real calibration POST must return the exact 202 ticket response
+and commit one handled receipt. Its actual event/subscriber keys and encoding
+seed the backlog, with fixed UUID delivery/event identities and ticket payloads.
+Each successful delivery creates a UUIDv7 receipt and commits its handled
+marker in the same transaction. Audits require exact 10,000 receipt tickets,
+valid UUIDv7 identifiers, exact handled/succeeded/attempt counts, no missing or
+unexpected effects, and an unchanged fingerprint of the joined event/delivery
+identities, payloads, encodings, times, trace/depth and subscriber mapping.
+One post-window replay cohort must add attempts without adding effects.
+
+Before timing each target, real controls exercise malformed payload parking,
+a refused handled-marker insert rolling back the preceding receipt, live and
+expired leases, and two simultaneous sweeps. The ledger refusal must leave
+pending/unavailable retries and no writes: area6's atomic transaction and
+area12's retry-on-unavailable, implemented by the existing held-commit and
+outbox retry paths. It differs from the receipt's authored unique-conflict
+failure. Verifier unit faults reject missing/duplicate effects and stale builds.
+
+The specialized `typescript/deliveries.ts` is identical on pinned Bun/Node,
+using postgres-js with pool 4 and uuid 13's UUIDv7 generation. It validates
+payloads, conditionally claims/fences a 16-minute lease, observes the fixture's
+10-attempt/24-hour window, atomically writes receipt+handled marker, and handles
+ledger refusal conservatively. This is a focused comparator; it supplies no
+full application, auth, tenants, provider or generic-language proof. Its service
+shutdown controls do not establish generic Jadpo shutdown equivalence.
+Jadpo's existing housekeeping is included in its tick, while the specialized
+comparator only drains deliveries. The strong golden TypeScript remains the
+separate application comparison. These measurements add the delivery path;
+they do not replace or repeat the unchanged 9.1d4 HTTP matrix.
+
+Builds use `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`;
+production native/Wasm use ordinary `jadpo build` release profiles. All owned
+builds/tests stop before timing. Unrelated apps remain running; load and whole
+host CPU counters, per-tick durations/responses, external tick-child CPU,
+persistent service CPU and service RSS at cell end are retained. Workerd pool
+CPU is separate and also summed with workerd for the server-CPU comparison;
+Bun/Node include their pool in-process. PostgreSQL and Python CPU are excluded
+from those server numbers. Five-second ambient and per-cell whole-host counters
+retain unrelated load. Tick p95 is nearest-rank over the 100 ticks in a cell;
+a median of those three p95s is not per-delivery or HTTP request latency. Raw attempts and failed setup/smokes stay under
+ignored `work/deliveries/<label>/runs-*.json` with logs; none is overwritten or
+converted into a passing result. Three busy-host rounds are exploratory and
+do not establish edge capacity, a latency SLO or an inherent language win.
+The superseded initial `before` protocol used UUIDv4 in the TypeScript receipt;
+only matched UUIDv7 pairs support that original external-mode comparison.
+The warm-service pair and all-round variation are recorded in compiler/runtime
+§2.11, "Warm durable delivery comparison". The new behavioral PostgreSQL/HTTP
+controls run in an isolated full-gate step (`delivery_services.py`), after their
+own pinned install/build; lint and quick profiles do not run live services.
+Shared gate URI/keyword/socket DSNs reuse `tools/golden-todo/postgres.py`, preserve
+endpoint/quoted startup settings, and never fall back to another server. Review
+must retain these controls, exact state/fingerprint/replay audits and strict
+source/artifact guards. Changes to a measured path require the affected matched
+campaign again, with unfavorable attempts retained. Reproduce a historical
+pair from its exact clean source revisions; later method edits do not authorize
+reusing that pair's build stamps at a different HEAD.
+
+## Idle ticks and hourly housekeeping (chunk 9.1b2)
+
+`idle_ticks.py` measures generated native external ticks and a persistent local
+workerd scheduled handler against empty business state, separately from warm
+delivery throughput. Use the same clean build/source/artifact guard and compiler
+snapshot as `deliveries.py`; commit inputs before building, finish/reap all
+builds/tests, and record host/process context before timing.
+
+```sh
+python3 tools/bench/deliveries.py build --label idle-reference
+python3 tools/bench/idle_ticks.py --label idle-reference --ticks 5 --rounds 1
+python3 tools/bench/idle_ticks.py --label idle-reference --ticks 100 --rounds 3
+python3 tools/bench/deliveries.py measure --label idle-reference --mode warm --count 100 --rounds 1
+python3 tools/bench/deliveries.py measure --label idle-reference --mode warm --count 10000 --rounds 3
+```
+
+The default idle protocol alternates Workers/native order over three rounds,
+100 samples per cell after ten excluded empty ticks. It requires one actual
+successful `runtime.ticked` per sample, with no problems, ran schedules,
+deliveries or deletions, plus unchanged empty business state. A Workers
+scheduled outcome `ok` alone does not establish this. A real negative control
+renames the deliveries table, requires the runtime audit to reject the failed
+tick, restores it, and audits success. Unit faults reject missing/duplicate/
+failed ticks in the gate; no production instrumentation or fast runtime path
+is added for the harness.
+
+Each cell separately enables PostgreSQL statement logging for one audited
+census tick, retains the SQL/response, excludes migration/readiness/admin
+startup and requires the prompt due-delivery SELECT and breaker UPDATE.
+Logging is disabled before the latency loop. The count is for this fixture's
+completed-hour fastpath; a due hourly pass still performs bounded retention
+plus lease claim/release. The final paired census is four unchanged prompt
+operations plus four reference cleanup statements (8), versus those four plus
+one declining conditional housekeeping claim (5). Other schema holdings can
+add work. Bun/Node generic housekeeping/idle metrics are N/A: the specialized
+TypeScript comparator drains deliveries only.
+
+Latency uses `perf_counter`, p95 nearest-rank over the 100 ticks; native includes
+100 ordinary process starts while Workers stays warm. Resource/service/helper
+CPU snapshots bracket only the timed loop, excluding DB state/log audits and
+psql children. Workerd's separate pool helper must be included in server CPU;
+PostgreSQL/Python are excluded. Short service CPU samples are quantized. No
+wall-clock speed assertions run in CI. Raw `idle-<timestamp>.json` retains
+per-tick replies/logs/durations, control/census evidence, counts, CPU/load,
+empty-state audits, exact source/artifact map and end freshness.
+
+Rebuild and repeat both sides when the measured harness or protocol changes.
+Finish and reap all builds and tests first, record owned-process and ambient
+CPU/load context, and keep unrelated apps and services running. Test helpers
+must kill and wait for their children (regressions cover the failure paths);
+a clean benchmark shutdown does not prove every test descendant stopped. Idle
+SQL reduction is the primary result; small warm-delivery changes under varying
+load are not a causal throughput claim. Results go in the pull request.
+
+## AI accounting (chunk 9.1b3)
+
+`ai_accounting.py` builds a release Rust executable calling the public
+`jadpo_runtime::ai::generate` path with `AiFake` and real disposable local
+PostgreSQL. This is a native runtime microfixture, separate from generated
+application HTTP throughput. Workers/Bun timings are N/A: the existing
+specialized delivery comparator has no AI path. The actual compiled Worker
+refusal regression supplies separate correctness evidence.
+
+```sh
+python3 tools/bench/ai_accounting.py build --label ai-reference
+python3 tools/bench/ai_accounting.py measure --label ai-reference --calls 500
+# Restore/commit the entire final gated candidate tree, including modes.
+python3 tools/bench/ai_accounting.py build --label ai-candidate
+python3 tools/bench/ai_accounting.py measure --label ai-candidate --calls 500
+python3 -m unittest discover -s tools/bench -p test_ai_accounting.py
+```
+
+Both sides must use the same final harness. The reference restores production
+`crates/*/src` from its exact prerequisite; the candidate restores the entire
+passing gated tree, proven by `git write-tree` before its own build. Each clean
+build records HEAD, full tracked tree/modes/content, compiler and fixture
+hashes, and retains both executable snapshots. NUL-delimited Git index paths
+are read literally; symlinks hash their target text, including directory links
+and Git's materialized-link checkout mode. A changed HEAD, tree, mode or
+original/saved executable refuses timing before and after. Historical build
+stamps never authorize a new checkout. Retain selected inherited compiler/
+release-profile environment beside each build; the wrapper explicitly sets
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4` and otherwise
+uses normal dev compiler/release fixture profiles. The compiler is provenance
+context and is excluded from the timed path.
+
+Three rounds alternate app/caller/retry order. Each cell resets state, runs
+missing-table and full-budget controls, then warms 50 calls. One separate
+census call retains all `query_once` SQL/parameters and corroborates the count
+with PostgreSQL statement logs. The measured connection must observe
+`SHOW log_statement = all` before that census and `none` before timing; admin,
+readiness, logging and state audits are outside latency. The local test server
+has `fsync=off` and `synchronous_commit=off`; no account-configured database or
+provider is used. The fixed prompt estimates seven input tokens, with
+`max_output:20`, `attempts:1`, `timeout:1000ms`, request cap1000 and app/caller
+caps10^12. Prices are absent. The fake reports six input, one output and two
+cached tokens. Retry-caller scripts one unavailable send followed by success;
+it is charged 13 input, one output and two cached tokens. `Clock::TEST` has no
+monotonic timer here, so retry backoff is skipped: these are immediate fake
+resends isolating accounting, not provider latency or real retry wall time.
+
+The default is 500 measured calls per cell. Each sample brackets only
+`ai::generate`; p95 uses nearest rank. **Fixture calls/s** also includes each
+call's Ctx/AiFake preparation and post-call answer/request-count assertions.
+It is not HTTP/service capacity. Exact APP/CALLER/PROMPT counts, caller digest,
+reported/cached tokens, zero remaining holds, currency and cost are validated
+at warmup50, census51 and final551 calls. Timing uses logging off and requires
+the same query count as the census. Missing accounting storage must stop
+before asking the fake; full budget must refuse without requests or state
+changes. Partial JSON is incomplete until all nine cells pass. Unit controls
+reject incomplete/corrupt state, false controls, wrong census/quantiles, stale
+source/artifacts, retargeted links and changed modes. There are no speed
+assertions in the gate.
+
+Finish and reap all owned builds, tests and services before timing and record
+ambient CPU/load, memory and swap. Child CPU covers the whole fixture, not
+per-call or service CPU; PostgreSQL backend CPU is excluded. Host-load drift
+prevents a universal speed claim. Changing the measured path or harness
+requires fresh builds and the affected campaign again. Results go in the pull
+request.
+
 ## Golden application comparison (chunk 9.1d4)
 
 `golden.py` uses the complete `examples/golden-todo` application and its
@@ -446,3 +677,151 @@ subscriber path is evidence for those costs; these microbenchmarks cannot
 stand in for it. Next comparison work must implement the actual golden
 contract and strong baseline, fix required reached-boundary gaps, and verify
 all 44 cases before making app performance claims.
+
+### Version checks in writes (9.1b4)
+
+`version_writes.py` compares the exact prerequisite's production
+`crates/*/src` with the candidate, retaining the same final harness on both
+sides. The build label is immutable. `ai_accounting.source()` and
+`validate()` guard every tracked file, Git mode (including literal symlink
+targets), HEAD, tree and executable at both ends. Each label saves the
+compiler, fixture, HTTP load tool, generated native/Worker artifacts,
+TypeScript output and the actual Bun/Node/workerd/PostgreSQL client
+binaries, hashes and versions. Original artifact paths remain guarded too.
+A source or artifact change requires a fresh build; no old-source bypass.
+
+```
+CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4 \
+  python3 tools/bench/version_writes.py build --label <fresh-label>
+python3 tools/bench/version_writes.py runtime --label <fresh-label> --calls 500
+python3 tools/bench/version_writes.py patch --label <fresh-label> --warmup 2 --duration 5
+```
+
+The first command runs the existing golden application's complete 44-case
+contract on all four targets before generating its production HTTP
+artifacts. All pinned npm installs disable lifecycle scripts. Selected
+inherited and effective Rust build flags are recorded separately. Before
+building a reference, restore all affected production source directories
+from its exact commit and commit that state, retaining the final harness.
+Before building the candidate, restore the entire clean gated tree,
+including modes, and prove `git write-tree` equals its gated tree. Run both
+sides sequentially, with no concurrent builds or benchmarks; retain start
+and end host/process inventories and all failed attempts. Never reuse a
+label or overwrite a result.
+
+There are two deliberately separate workloads:
+
+- **Compiler-generated-plan runtime fixture.** A release Rust executable
+  loads the shared ordinary Jadpo shipping project with `Prepared`, after
+  its matched compiler makes a migration. It executes through interpreter
+  dispatch and the production action boundary/write runtime, with a local
+  capability fake and real disposable PostgreSQL. It is not generated
+  native application or HTTP throughput. Each of three rounds performs
+  malformed-provider and real-stale-row controls, 50 warmups, one SQL census,
+  and 500 measured calls. Each call reads a shipment, closes its snapshot,
+  calls a changing keyed provider operation, then updates the shipment.
+  It validates the returned label, final persisted note/label, one provider
+  call per successful measured action, and no open action transaction at
+  every provider call. The stale control must rerun and read the fresh note;
+  malformed wire output must preserve stored state. Python negative controls
+  reject incomplete rounds, wrong counts/quantiles, missing controls and
+  incorrect persisted values. PostgreSQL logging is observed on all three
+  active connections before the census offset. File-log readiness is
+  bounded by observed statement records, not an assumed flush delay.
+  The wrapper counts data SQL and explicit BEGIN/ROLLBACK/COMMIT commands
+  separately; PostgreSQL must observe that total plus the provider's one
+  independent no-transaction assertion query. Those control queries stay
+  in both timings, labelled separately. The raw census includes SQL and
+  bound parameter values. Bun and Workers timing are N/A for this fixture.
+  Whole-fixture child CPU includes compiler/setup, warmups, census and
+  controls; daemonized PostgreSQL backend CPU is excluded and unmeasured.
+- **Warm ordinary HTTP PATCH.** The existing golden application's
+  title-only `PATCH /todos/{todo_id}` runs on its generated release Worker
+  under local workerd and on persistent Bun, each with the same process
+  lifetime, fresh seed, real signed sessions, startup/readiness phase and
+  two-second pool/isolate warmup. Three rounds rotate target order, with
+  one and eight closed-loop keep-alive clients for five seconds per cell.
+  Each cell starts a fresh service/limit store and seeds 256 independent
+  owners, credentials and owned rows. Client i cycles cases i, i+C, ...
+  for C clients, so no overlapping requests share a row. All 256 cases must
+  return verified receipts. This distributes demand under the real 600/min
+  caller quota; any 429 still rejects the cell. The Rust load tool's opt-in
+  partition mapping preserves its existing fixed/default protocols. Every response
+  must match the expected identity, owner, title, status, due date and
+  creation time; update times must be valid zoned instants within the cell.
+  Final persisted rows must agree with the last response for each case/row,
+  and all fields except title/update time, including reminder/lifecycle
+  fields and every untouched row, must stay identical. Invalid-title and
+  foreign-owner refusals preserve all data. Deliberately bad receipt
+  timestamps and untouched-row mutations must fail the independent guard.
+  Server, helper/pool and load-generator CPU are reported separately;
+  PostgreSQL daemon CPU is unmeasured. This is local workerd evidence,
+  not Cloudflare edge capacity or an open-loop latency SLO.
+
+The focused statement reduction is the primary invariant. PATCH is the
+common-write regression control and the supported Worker/Bun comparison.
+Report every round and its range, including adverse cells. Investigate a
+material common-path slowdown rather than dropping a case or counting a
+short smoke as qualification. Raw files live under the ignored
+`tools/bench/work/version-writes/`; the pull request carries the results.
+
+### Breakers in delivery claims (9.1b5)
+
+`connected_deliveries.py` compares a connected subscriber through the real
+production generated delivery path and the original connectionless backlog
+control. Build and measure each clean side sequentially with the **same final
+harness**, fresh immutable labels, no concurrent timed/build work, and full
+tracked byte/mode/literal-link/HEAD/tree plus original/saved artifact guards.
+Restore the entire reference `crates/` tree from the exact prerequisite and
+prove equality; restore the entire gated candidate tree/modes before its build.
+Default application/load behaviour is unchanged.
+
+```sh
+env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_TARGET_DIR \
+  python3 tools/bench/connected_deliveries.py build --label <fresh-label>
+env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_TARGET_DIR \
+  python3 tools/bench/connected_deliveries.py measure --label <fresh-label> --count 10000 --rounds 3
+```
+
+Builds use effective incremental=0, dev debug=0, jobs=4; production native and
+Wasm release profiles; pinned offline npm dependencies with scripts disabled.
+The executable Cargo observer records only selected flags plus actual real-tool
+path/argv/cwd, including inner encoded remaps, target/locale directories and
+source epoch, while transparently preserving delegation and status. Build
+stamps retain all runtime paths/versions/hashes and originals/snapshots, including
+Python, workerd, Bun, Node, psql, rustc/cargo, compiler and generated artifacts.
+Source/artifact guards run at both ends; each Worker round also guards the exact
+host files it consumes. Host memory/swap/pressure/load/CPU and selected outer
+inherited/effective flags are captured on both sides, before builds/campaigns
+and around every cell. Raw data lives under ignored `work/connected-deliveries/`.
+
+Each of three rounds rotates four targets; every cell processes 10,000 seeded
+deliveries in up-to-100-delivery ticks and four lanes. Workerd and Bun/Node are
+matched persistent warm services; native external ticks include startup and are
+supporting evidence. The connected subscriber makes one actual local HTTP safe
+GET through its Live package driver before a unique committed receipt/handled
+marker. Its TCP_NODELAY provider validates every method/path/cohort/credential.
+Bun/Node use the same idiomatic **joined claim from the outset** on both sides.
+Ten connected/six backlog controls cover duplicates, leases, malformed data,
+rollback and claim failure, with connected provider refusal/unavailability and
+recovery, open hold and closed breaker. A held provider exposes the actual
+expired running claim and structured JSON failure before completion; every
+failure path releases and joins. Complete calibration resets include all owned
+mutable tables/housekeeping, preserve migration metadata/extension rows and
+record table lists and before/zero-after counts between workloads.
+
+An independent SQL census observes actual logging on every active runtime/pool
+backend before its accepted offset, waits for settlement/COMMIT logs, and then
+checks persisted state. New native sessions inherit confirmed logging;
+administrative psql is excluded. Data, transaction and provider-control SQL are
+separate. **This is a one-delivery tick census**, with fixed DUE/sweep/housekeeping
+and native cold-session checks; do not linearise it as SQL cost per delivery in
+timed 100-delivery ticks. Timed windows independently require SQL logging off.
+Every cell validates all delivery columns/clocks, receipts/handled identities,
+immutable event/trace/depth/payload/encoding, breaker columns and exact provider
+counts. CPU records service/pool, Python controller/provider and native children
+separately; PostgreSQL daemon CPU is excluded, and child CPU closes before host
+diagnostic subprocesses start.
+
+Raw data stays in the ignored `work/connected-deliveries/`; the pull request
+carries the results.

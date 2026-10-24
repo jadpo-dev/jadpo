@@ -18,6 +18,7 @@
 
 use std::cell::Cell;
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -26,7 +27,8 @@ use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, RUN_LIMIT_MS, Settled, run_deferred, settle_within, sweep};
 use jadpo_runtime::{
-    Database, Executor, Isolation, LocalFuture, Outcome, Row, SqlValue, StoreError, Transaction,
+    Ctx, Database, Executor, Isolation, LocalFuture, Outcome, Places, Plan, Row, SqlValue,
+    StoreError, Transaction,
 };
 use jadpo_term::Environment;
 use jadpo_test::host::{Harness, Timer};
@@ -630,5 +632,178 @@ fn a_routes_within_races_a_subscribers_body_never_its_commit() {
             [("pending".to_string(), 0, None)]
         );
         assert_eq!(ctx.take_deferred().len(), 1);
+    });
+}
+
+/// Hold four real subscriber bodies until all are admitted. The timeout
+/// only detects deadlock; counters, not wall time, establish the bound.
+struct Overlapping<'a> {
+    program: &'a Program,
+    active: Cell<usize>,
+    maximum: Cell<usize>,
+    released: Cell<bool>,
+}
+impl Executor for Overlapping<'_> {
+    fn places(&self) -> &Places {
+        self.program.places()
+    }
+    fn plan(&self) -> Plan<'_> {
+        Executor::plan(self.program)
+    }
+    fn run<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        callable: u32,
+        args: Vec<Value>,
+    ) -> LocalFuture<'a, Outcome> {
+        Box::pin(async move {
+            struct Active<'a>(&'a Cell<usize>);
+            impl Drop for Active<'_> {
+                fn drop(&mut self) {
+                    self.0.set(self.0.get() - 1);
+                }
+            }
+            self.active.set(self.active.get() + 1);
+            let _active = Active(&self.active);
+            self.maximum.set(self.maximum.get().max(self.active.get()));
+            if self.active.get() >= 4 {
+                self.released.set(true);
+            }
+            std::future::poll_fn(|cx| {
+                if self.released.get() {
+                    std::task::Poll::Ready(())
+                } else {
+                    cx.waker().wake_by_ref();
+                    std::task::Poll::Pending
+                }
+            })
+            .await;
+            tokio::task::yield_now().await;
+            self.program.run(ctx, callable, args).await
+        })
+    }
+}
+
+#[test]
+fn sweeps_overlap_four_bodies_keep_the_hundred_limit_and_commit_each_effect_once() {
+    let Some(loaded) = load("bounded-sweeps") else {
+        return;
+    };
+    let (program, host) = (&loaded.program, host(&loaded.url));
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        for index in 0..120 {
+            drop(post(&host, program, &format!("note-{index}")).await);
+        }
+        let executor = Overlapping {
+            program,
+            active: Cell::new(0),
+            maximum: Cell::new(0),
+            released: Cell::new(false),
+        };
+        let first = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            sweep(&executor, &host, "main", T0),
+        )
+        .await
+        .expect("four bodies must overlap")
+        .expect("sweep");
+        assert_eq!(
+            executor.maximum.get(),
+            4,
+            "exactly four lanes, including descendants"
+        );
+        assert_eq!(first.len(), 200, "100 selected relays and their 100 echoes");
+        assert!(
+            first
+                .iter()
+                .all(|outcome| matches!(outcome, Outcome::Value(_)))
+        );
+        assert_eq!(host.count("SELECT count(*) FROM echo").await, 100);
+        assert_eq!(
+            host.count("SELECT count(*) FROM jadpo_deliveries WHERE status='pending'")
+                .await,
+            20
+        );
+        let mut left = Box::pin(sweep(&executor, &host, "main", T0));
+        let mut right = Box::pin(sweep(&executor, &host, "main", T0));
+        let (mut a, mut b) = (None, None);
+        std::future::poll_fn(|cx| {
+            if a.is_none()
+                && let std::task::Poll::Ready(out) = left.as_mut().poll(cx)
+            {
+                a = Some(out);
+            }
+            if b.is_none()
+                && let std::task::Poll::Ready(out) = right.as_mut().poll(cx)
+            {
+                b = Some(out);
+            }
+            if a.is_some() && b.is_some() {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        let (left, right) = (a.expect("first sweep"), b.expect("second sweep"));
+        assert!(left.is_ok() && right.is_ok());
+        assert!(executor.maximum.get() <= 8, "four lanes per invocation");
+        assert_eq!(host.count("SELECT count(*) FROM echo").await, 120);
+        assert_eq!(
+            host.count("SELECT count(DISTINCT note_id) FROM echo").await,
+            120
+        );
+        assert_eq!(
+            host.count("SELECT count(*) FROM jadpo_handled_deliveries")
+                .await,
+            240
+        );
+        assert_eq!(
+            host.count("SELECT count(*) FROM jadpo_deliveries WHERE status <> 'succeeded'")
+                .await,
+            0
+        );
+        assert!(
+            sweep(&executor, &host, "main", T0)
+                .await
+                .expect("empty sweep")
+                .is_empty()
+        );
+    });
+}
+
+#[test]
+fn a_spent_sweep_leaves_unstarted_deliveries_durable_for_the_next_tick() {
+    let Some(loaded) = load("spent-sweep") else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = host(&loaded.url).budget(0);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        drop(post(&host, program, "durable").await);
+        assert!(
+            sweep(program, &host, "main", T0)
+                .await
+                .expect("spent sweep")
+                .is_empty()
+        );
+        assert_eq!(
+            host.count(
+                "SELECT count(*) FROM jadpo_deliveries WHERE status='pending' AND attempts=0"
+            )
+            .await,
+            1
+        );
+        let fresh = self::host(&loaded.url);
+        assert_eq!(
+            sweep(program, &fresh, "main", T0)
+                .await
+                .expect("fresh sweep")
+                .len(),
+            2
+        );
+        assert_eq!(fresh.count("SELECT count(*) FROM echo").await, 1);
     });
 }

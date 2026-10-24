@@ -1793,3 +1793,61 @@ fn a_requested_run_no_tick_picks_up_is_withdrawn() {
     drop(host);
     databases.release(copy, false);
 }
+
+/// Independent connections contend for one hourly cleanup; a successful pass
+/// skips until the hour, while a failed or capped pass remains eligible.
+#[test]
+fn hourly_housekeeping_contends_retries_and_preserves_retention() {
+    let root = project("hourly-housekeeping");
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("database");
+    let (_, url) = copy.stores.get("main").unwrap();
+    let host = Harness::postgres(url).at(T0).random_from(0);
+    let other = Harness::postgres(url).at(T0).random_from(1 << 40);
+    Runtime::new().unwrap().block_on(async {
+        host.rows("INSERT INTO jadpo_idempotency_keys (scope,key,request_digest,stored_at,kept_until) SELECT 'anonymous', i::text, 'd', '2026-01-01', '2026-01-02' FROM generate_series(1,10001) i RETURNING 1").await;
+        let (a,b) = futures_join(tick(&program,&host,T0),tick(&program,&other,T0)).await;
+        assert!(a.problems.is_empty() && b.problems.is_empty(), "{a:?} {b:?}");
+        let tail = tick(&program,&host,T0 + 1).await;
+        assert_eq!(a.deleted.keys + b.deleted.keys + tail.deleted.keys,10001);
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NOT NULL AND lease_id IS NULL").await,1);
+        host.rows("INSERT INTO jadpo_idempotency_keys (scope,key,request_digest,stored_at,kept_until) VALUES ('anonymous','late','d','2026-01-01','2026-01-02') RETURNING 1").await;
+        assert_eq!(tick(&program,&other,T0 + 60_000).await.deleted.keys,0);
+        assert_eq!(tick(&program,&host,T0 + 3_600_001).await.deleted.keys,1);
+        host.rows("UPDATE jadpo_housekeeping SET last_cleaned_at=NULL RETURNING 1").await;
+        host.rows("ALTER TABLE jadpo_idempotency_keys RENAME TO hidden_keys").await;
+        let failed = tick(&program,&host,T0 + 3_600_002).await;
+        assert!(!failed.problems.is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NULL AND lease_id IS NULL").await,1);
+        host.rows("ALTER TABLE hidden_keys RENAME TO jadpo_idempotency_keys").await;
+        assert!(tick(&program,&other,T0 + 3_600_003).await.problems.is_empty());
+        // Execute the actual registered lease statements: a crashed lease_id
+        // expires, only one independent connection claims its replacement,
+        // and the stale lease_id cannot complete or clear the replacement.
+        use jadpo_runtime::Database;
+        let statements=jadpo_runtime::statements::system_statements();
+        let claim=&statements.iter().find(|(name,_)|*name=="schedules::housekeeping::CLAIM").unwrap().1;
+        let release=&statements.iter().find(|(name,_)|*name=="schedules::housekeeping::RELEASE").unwrap().1;
+        host.rows("UPDATE jadpo_housekeeping SET last_cleaned_at=NULL,lease_id='01010101-0101-0101-0101-010101010101',lease_until='2026-10-19T09:00:01Z' RETURNING 1").await;
+        let now=T0+3_600_004;
+        let params=|lease_id|vec![SqlValue::Uuid([lease_id;16]),SqlValue::Timestamp((now+60_000)*1000),SqlValue::Timestamp(now*1000),SqlValue::Timestamp((now-3_600_000)*1000)];
+        let a=params(2);let b=params(3);
+        let (a,b)=futures_join(host.store().query_once(claim,&a),other.store().query_once(claim,&b)).await;
+        assert_eq!(a.unwrap().len()+b.unwrap().len(),1);
+        assert!(host.store().query_once(release,&[SqlValue::Uuid([1;16]),SqlValue::Timestamp(now*1000)]).await.unwrap().is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NOT NULL AND last_cleaned_at IS NULL").await,1);
+        assert!(tick(&program,&host,now+1).await.problems.is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NOT NULL AND last_cleaned_at IS NULL").await,1);
+        assert!(tick(&program,&host,now+60_000).await.problems.is_empty());
+        assert_eq!(host.count("SELECT count(*) FROM jadpo_housekeeping WHERE lease_id IS NULL AND last_cleaned_at IS NOT NULL").await,1);
+
+    });
+}

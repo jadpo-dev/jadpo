@@ -452,9 +452,9 @@ fn ended_sessions_tokens_and_keys_are_deleted_and_live_ones_kept() {
             SELECT gen_random_uuid(), '00000000-0000-7000-8000-0000000000a1', 'old ' || n, NULL, '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z' FROM generate_series(1, 10001) AS n \
             RETURNING 1")
             .await;
-        let first = tick(&program, &host, T0 + MINUTE).await;
+        let first = tick(&program, &host, T0 + HOUR).await;
         assert_eq!(first.deleted.sessions, 10_000);
-        let second = tick(&program, &host, T0 + 2 * MINUTE).await;
+        let second = tick(&program, &host, T0 + HOUR + MINUTE).await;
         assert_eq!(second.deleted.sessions, 1);
         let left = host
             .count(&host.main, "SELECT count(*) FROM \"jadpo_sessions\"")
@@ -530,7 +530,7 @@ fn handled_records_go_only_once_their_delivery_can_no_longer_repeat() {
         // waits for its own day.
         host.rows(&host.main, "UPDATE \"jadpo_deliveries\" SET \"status\" = 'succeeded', \"next_attempt_at\" = NULL RETURNING 1")
             .await;
-        let settled = tick(&program, &host, T0 + 24 * HOUR + 6 * MINUTE).await;
+        let settled = tick(&program, &host, T0 + 25 * HOUR + 6 * MINUTE).await;
         assert_eq!(settled.deleted.events, 2, "{:?}", settled.deleted);
         assert_eq!(settled.deleted.handled, 4, "{:?}", settled.deleted);
         assert_eq!(host.handled().await, (1, 1));
@@ -724,5 +724,25 @@ fn what_an_operator_settled_goes_after_thirty_days_and_what_could_run_stays() {
         assert_eq!(second.deleted.deliveries, 1, "{:?}", second.deleted);
         assert_eq!(second.deleted.events, 1, "{:?}", second.deleted);
         assert_eq!(host.count(&host.main, outbox).await, 2);
+    });
+}
+
+#[test]
+fn hourly_housekeeping_failure_in_one_store_does_not_suppress_another() {
+    let Some((program, _databases, host)) = load("hourly-independent") else {
+        return;
+    };
+    Runtime::new().unwrap().block_on(async {
+        host.rows(&host.main,"ALTER TABLE jadpo_idempotency_keys RENAME TO hidden_keys").await;
+        let failed=tick(&program,&host,T0).await;
+        assert!(!failed.problems.is_empty());
+        assert_eq!(host.count(&host.main,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NULL AND lease_id IS NULL").await,1);
+        assert_eq!(host.count(&host.tallies,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NOT NULL AND lease_id IS NULL").await,1);
+        host.rows(&host.main,"ALTER TABLE hidden_keys RENAME TO jadpo_idempotency_keys").await;
+        let recovered=tick(&program,&host,T0+MINUTE).await;
+        assert!(recovered.problems.is_empty(),"{recovered:?}");
+        assert_eq!(host.count(&host.main,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at IS NOT NULL AND lease_id IS NULL").await,1);
+        // The successful store's completion is unchanged on the next tick.
+        assert_eq!(host.count(&host.tallies,"SELECT count(*) FROM jadpo_housekeeping WHERE last_cleaned_at='2026-10-19T09:00:00Z'").await,1);
     });
 }

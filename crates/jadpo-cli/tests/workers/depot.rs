@@ -320,6 +320,10 @@ fn a_workers_cron_ticks_runs_schedules_and_receives_a_queue_each_10_seconds() {
     // for a moment.
     rows(
         &database.native,
+        "UPDATE jadpo_housekeeping SET last_cleaned_at = NULL",
+    );
+    rows(
+        &database.native,
         "ALTER TABLE jadpo_idempotency_keys RENAME TO jadpo_idempotency_keys_away",
     );
     let ended = worker.scheduled(now_ms() - 59_000);

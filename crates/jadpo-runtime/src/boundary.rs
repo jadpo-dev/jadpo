@@ -88,7 +88,7 @@ pub(crate) struct Boundary {
     /// what a write after the call holds it to.
     versions: BTreeMap<RowKey, String>,
     /// Of `versions`, the rows its open transaction checked and locked,
-    /// which stay as checked until it ends.
+    /// which stay checked while their locks survive, including savepoints.
     checked: BTreeSet<RowKey>,
 }
 
@@ -199,10 +199,27 @@ impl Boundary {
         !self.versions.is_empty()
     }
 
+    /// Expected version for a write in the current transaction. Its
+    /// caller opens the transaction first, clearing obsolete checked keys.
+    pub(crate) fn expected(&self, row: &RowCheck, id: &SqlValue) -> Option<String> {
+        let key = (row.table.clone(), id.clone());
+        if self.checked.contains(&key) {
+            None
+        } else {
+            self.versions.get(&key).cloned()
+        }
+    }
+
+    /// A successful mutation checked and locked this row in its own WHERE.
+    /// Later writes in the same transaction must accept our own new xmin.
+    pub(crate) fn checked(&mut self, row: &RowCheck, id: SqlValue) {
+        self.checked.insert((row.table.clone(), id));
+    }
+
     /// Holds the row `row` names, `id`, to the version a snapshot an
-    /// outside call closed loaded it at, before a write to it (chunk 7.4):
-    /// read and locked in its transaction in `store`, once in that
-    /// transaction. A row changed or gone since is a concurrent change.
+    /// outside call closed loaded it at, when a mutation changed no row:
+    /// read and locked in its transaction in `store`, before classifying
+    /// the ordinary refusal. A row changed or gone is a concurrent change.
     pub(crate) async fn check(
         &mut self,
         capabilities: &Capabilities<'_>,
@@ -742,6 +759,7 @@ pub(crate) struct Undo {
     session: Option<SessionEffect>,
     issued: bool,
     binding: Option<Binding>,
+    checked: BTreeSet<RowKey>,
 }
 
 impl Undo {
@@ -756,6 +774,7 @@ impl Undo {
                 session: boundary.session.clone(),
                 issued: boundary.issued,
                 binding: boundary.binding.clone(),
+                checked: boundary.checked.clone(),
             },
             None => Undo {
                 open: false,
@@ -764,6 +783,7 @@ impl Undo {
                 session: None,
                 issued: false,
                 binding: None,
+                checked: BTreeSet::new(),
             },
         };
         if undo.open
@@ -800,6 +820,13 @@ impl Undo {
             }
         }
         if failed && let Some(boundary) = ctx.boundary_mut() {
+            // ROLLBACK TO releases locks acquired after the savepoint.
+            // Checks established before it survive; those inside do not.
+            boundary.checked = if self.open && same {
+                self.checked
+            } else {
+                BTreeSet::new()
+            };
             boundary.outbox.truncate(self.emitted);
             boundary.session = self.session;
             boundary.issued = self.issued;
@@ -874,6 +901,7 @@ mod tests {
             table: "todo".into(),
             id: jadpo_std::write::WriteSource::Input(0),
             sql: "CHECK".into(),
+            version: 0,
         }
     }
 
@@ -1492,6 +1520,60 @@ mod tests {
             ],
             "the callee's transaction undone whole, never a savepoint it doesn't hold"
         );
+    }
+
+    #[test]
+    fn a_failed_savepoint_restores_only_checks_whose_locks_survive() {
+        let host = Recorded::new(0);
+        let places = Places::new();
+        let mut ctx = Ctx::new(&places, &host, Env::default());
+        ctx.give_boundary(Some(Boundary::default()));
+        block_on(async {
+            ctx.transaction("main").await.unwrap();
+            let before = ("todo".to_string(), SqlValue::Uuid([1; 16]));
+            let inside = ("todo".to_string(), SqlValue::Uuid([2; 16]));
+            ctx.boundary_mut().unwrap().checked.insert(before.clone());
+            let undo = Undo::take(&mut ctx).await.unwrap();
+            ctx.boundary_mut().unwrap().checked.insert(inside);
+            let _ = undo.settle(&mut ctx, refused()).await;
+            assert_eq!(ctx.boundary().unwrap().checked, BTreeSet::from([before]));
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_caught_whole_transaction_rollback_requires_a_new_version_check() {
+        for had_snapshot in [false, true] {
+            let host = Recorded::new(0);
+            let places = Places::new();
+            let mut ctx = Ctx::new(&places, &host, Env::default());
+            ctx.give_boundary(Some(Boundary::default()));
+            block_on(async {
+                let key = ("todo".to_string(), SqlValue::Uuid(ROW));
+                ctx.boundary_mut()
+                    .unwrap()
+                    .versions
+                    .insert(key.clone(), "first".into());
+                if had_snapshot {
+                    ctx.read_transaction("main").await.unwrap();
+                }
+                let undo = Undo::take(&mut ctx).await.unwrap();
+                if had_snapshot {
+                    ctx.close_snapshot().await.unwrap();
+                }
+                ctx.transaction("main").await.unwrap();
+                ctx.boundary_mut().unwrap().checked.insert(key);
+                let _ = undo.settle(&mut ctx, refused()).await;
+                assert!(!ctx.transaction_open());
+                ctx.transaction("main").await.unwrap();
+                assert_eq!(
+                    ctx.expected_row(&check(), &SqlValue::Uuid(ROW)),
+                    Some("first".into())
+                );
+                assert!(ctx.boundary().unwrap().checked.is_empty());
+            })
+            .unwrap();
+        }
     }
 
     #[test]

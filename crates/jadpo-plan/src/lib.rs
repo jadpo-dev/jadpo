@@ -336,12 +336,15 @@ fn schedules_plan(
             .map(|(name, _)| name.clone())
     };
     use jadpo_std::system::{
-        IDEMPOTENCY_KEYS, RECEIVED_EVENTS, SERVICE_KEYS, SESSIONS, STEP_RECORDS,
+        BATCH_RUNS, IDEMPOTENCY_KEYS, RECEIVED_EVENTS, SCHEDULE_RUNS, SERVICE_KEYS, SESSIONS,
+        STEP_RECORDS,
     };
     SchedulesPlan {
         schedules,
         store,
         stores: holding(IDEMPOTENCY_KEYS.table).collect(),
+        cleanup_schedules: holding(SCHEDULE_RUNS.table).collect(),
+        cleanup_batches: holding(BATCH_RUNS.table).collect(),
         sessions: holding(SESSIONS.table).next(),
         keys: holding(SERVICE_KEYS.table).next(),
         received: holding(RECEIVED_EVENTS.table).next(),

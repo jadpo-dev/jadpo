@@ -1,0 +1,540 @@
+{
+  "format": 1,
+  "stores": {
+    "main": {
+      "driver": "postgres",
+      "tables": {
+        "bench": {
+          "columns": {
+            "fixer": {
+              "allows": {
+                "max_length": 40,
+                "min_length": 1
+              },
+              "field": "fixer",
+              "nullable": true,
+              "position": 2,
+              "type": "text"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "item": {
+              "allows": {
+                "values": [
+                  "bike",
+                  "knitwear",
+                  "lamp",
+                  "microwave",
+                  "toaster"
+                ]
+              },
+              "field": "item",
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "entity": "Bench",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "bench_pkey"
+          },
+          "unique": {
+            "bench_item_key": {
+              "columns": [
+                "item"
+              ],
+              "rule": "Bench.item"
+            }
+          }
+        },
+        "jadpo_circuit_breakers": {
+          "columns": {
+            "alerted_at": {
+              "nullable": true,
+              "position": 8,
+              "type": "timestamptz(3)"
+            },
+            "connection": {
+              "position": 0,
+              "type": "text"
+            },
+            "failures": {
+              "position": 2,
+              "type": "integer"
+            },
+            "opened_at": {
+              "nullable": true,
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "pauses": {
+              "position": 4,
+              "type": "integer"
+            },
+            "probe_at": {
+              "nullable": true,
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "probe_id": {
+              "nullable": true,
+              "position": 6,
+              "type": "uuid"
+            },
+            "probe_until": {
+              "nullable": true,
+              "position": 7,
+              "type": "timestamptz(3)"
+            },
+            "state": {
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "connection"
+            ],
+            "name": "jadpo_circuit_breakers_pkey"
+          },
+          "system": "circuit_breakers"
+        },
+        "jadpo_deliveries": {
+          "columns": {
+            "attempts": {
+              "position": 4,
+              "type": "integer"
+            },
+            "held_for": {
+              "nullable": true,
+              "position": 9,
+              "type": "text"
+            },
+            "held_ms": {
+              "nullable": true,
+              "position": 11,
+              "type": "bigint"
+            },
+            "held_since": {
+              "nullable": true,
+              "position": 10,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "last_failure": {
+              "nullable": true,
+              "position": 6,
+              "type": "jsonb"
+            },
+            "last_tried_at": {
+              "nullable": true,
+              "position": 7,
+              "type": "timestamptz(3)"
+            },
+            "next_attempt_at": {
+              "nullable": true,
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "outbox_id": {
+              "position": 1,
+              "type": "uuid"
+            },
+            "retried_at": {
+              "nullable": true,
+              "position": 8,
+              "type": "timestamptz(3)"
+            },
+            "status": {
+              "position": 3,
+              "type": "text"
+            },
+            "subscriber": {
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "foreign_keys": {
+            "jadpo_deliveries_outbox_id_fkey": {
+              "columns": [
+                "outbox_id"
+              ],
+              "on_delete": "cascade",
+              "table": "jadpo_outbox"
+            }
+          },
+          "indexes": {
+            "jadpo_deliveries_status_next_attempt_at_idx": {
+              "columns": [
+                "status",
+                "next_attempt_at"
+              ],
+              "reason": "system deliveries"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_deliveries_pkey"
+          },
+          "system": "deliveries",
+          "unique": {
+            "jadpo_deliveries_outbox_id_subscriber_key": {
+              "columns": [
+                "outbox_id",
+                "subscriber"
+              ],
+              "rule": "system deliveries"
+            }
+          }
+        },
+        "jadpo_handled_deliveries": {
+          "columns": {
+            "handled_at": {
+              "position": 1,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_handled_deliveries_pkey"
+          },
+          "system": "handled_deliveries"
+        },
+        "jadpo_housekeeping": {
+          "columns": {
+            "last_cleaned_at": {
+              "nullable": true,
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "lease_id": {
+              "nullable": true,
+              "position": 1,
+              "type": "uuid"
+            },
+            "lease_until": {
+              "nullable": true,
+              "position": 2,
+              "type": "timestamptz(3)"
+            },
+            "slot": {
+              "position": 0,
+              "type": "integer"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "slot"
+            ],
+            "name": "jadpo_housekeeping_pkey"
+          },
+          "system": "housekeeping"
+        },
+        "jadpo_idempotency_keys": {
+          "columns": {
+            "kept_until": {
+              "position": 6,
+              "type": "timestamptz(3)"
+            },
+            "key": {
+              "position": 1,
+              "type": "text"
+            },
+            "request_digest": {
+              "position": 2,
+              "type": "text"
+            },
+            "response": {
+              "nullable": true,
+              "position": 4,
+              "type": "jsonb"
+            },
+            "scope": {
+              "position": 0,
+              "type": "text"
+            },
+            "status": {
+              "nullable": true,
+              "position": 3,
+              "type": "smallint"
+            },
+            "stored_at": {
+              "position": 5,
+              "type": "timestamptz(3)"
+            }
+          },
+          "indexes": {
+            "jadpo_idempotency_keys_kept_until_idx": {
+              "columns": [
+                "kept_until"
+              ],
+              "reason": "system idempotency keys"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "scope",
+              "key"
+            ],
+            "name": "jadpo_idempotency_keys_pkey"
+          },
+          "system": "idempotency_keys"
+        },
+        "jadpo_operator_actions": {
+          "columns": {
+            "acted_at": {
+              "position": 1,
+              "type": "timestamptz(3)"
+            },
+            "action": {
+              "position": 2,
+              "type": "text"
+            },
+            "event": {
+              "nullable": true,
+              "position": 6,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "item": {
+              "position": 4,
+              "type": "uuid"
+            },
+            "kind": {
+              "position": 3,
+              "type": "text"
+            },
+            "operator": {
+              "position": 8,
+              "type": "text"
+            },
+            "role": {
+              "position": 9,
+              "type": "text"
+            },
+            "target": {
+              "position": 5,
+              "type": "text"
+            },
+            "was": {
+              "position": 7,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_operator_actions_item_idx": {
+              "columns": [
+                "item"
+              ],
+              "reason": "system operator actions"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_operator_actions_pkey"
+          },
+          "system": "operator_actions"
+        },
+        "jadpo_outbox": {
+          "columns": {
+            "depth": {
+              "nullable": true,
+              "position": 6,
+              "type": "integer"
+            },
+            "emitted_at": {
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "encoding": {
+              "nullable": true,
+              "position": 5,
+              "type": "smallint"
+            },
+            "event": {
+              "position": 1,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "payload": {
+              "position": 2,
+              "type": "jsonb"
+            },
+            "traceparent": {
+              "nullable": true,
+              "position": 4,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_outbox_emitted_at_idx": {
+              "columns": [
+                "emitted_at"
+              ],
+              "reason": "system outbox"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_outbox_pkey"
+          },
+          "system": "outbox"
+        },
+        "repair": {
+          "columns": {
+            "bench_id": {
+              "allows": {},
+              "field": "bench_id",
+              "nullable": true,
+              "position": 3,
+              "type": "uuid"
+            },
+            "booked_at": {
+              "allows": {},
+              "field": "booked_at",
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "item": {
+              "allows": {
+                "values": [
+                  "bike",
+                  "knitwear",
+                  "lamp",
+                  "microwave",
+                  "toaster"
+                ]
+              },
+              "field": "item",
+              "position": 1,
+              "type": "text"
+            },
+            "symptom": {
+              "allows": {
+                "max_length": 300,
+                "min_length": 3
+              },
+              "field": "symptom",
+              "position": 2,
+              "type": "text"
+            },
+            "ticket_printed_at": {
+              "allows": {},
+              "field": "ticket_printed_at",
+              "nullable": true,
+              "position": 4,
+              "type": "timestamptz(3)"
+            }
+          },
+          "entity": "Repair",
+          "foreign_keys": {
+            "repair_bench_id_fkey": {
+              "columns": [
+                "bench_id"
+              ],
+              "on_delete": "set_null",
+              "table": "bench"
+            }
+          },
+          "indexes": {
+            "repair_bench_id_idx": {
+              "columns": [
+                "bench_id"
+              ],
+              "reason": "reference Repair.bench_id"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "repair_pkey"
+          }
+        },
+        "thank_you_note": {
+          "columns": {
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "note": {
+              "allows": {
+                "max_length": 280,
+                "min_length": 1
+              },
+              "field": "note",
+              "position": 2,
+              "type": "text"
+            },
+            "repair_id": {
+              "allows": {},
+              "field": "repair_id",
+              "position": 1,
+              "type": "uuid"
+            }
+          },
+          "entity": "ThankYouNote",
+          "foreign_keys": {
+            "thank_you_note_repair_id_fkey": {
+              "columns": [
+                "repair_id"
+              ],
+              "on_delete": "cascade",
+              "table": "repair"
+            }
+          },
+          "indexes": {
+            "thank_you_note_repair_id_id_idx": {
+              "columns": [
+                "repair_id",
+                "id"
+              ],
+              "reason": "query pinned_notes"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "thank_you_note_pkey"
+          }
+        }
+      }
+    }
+  }
+}

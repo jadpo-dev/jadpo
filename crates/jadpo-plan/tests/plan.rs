@@ -221,3 +221,85 @@ fn sites_are_decoded_with_anchors_and_slots() {
         .expect("a reject");
     assert_eq!(reject, (vec![Some(0), Some(1)], true));
 }
+
+#[test]
+fn a_connected_delivery_keeps_the_provider_and_receipt_write_plans() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tools/bench/fixtures/connected-deliveries");
+    let loaded = jadpo_db::load(&root);
+    for contested in [false, true] {
+        let db = Database::default();
+        let files = loaded
+            .project
+            .files(&loaded.db)
+            .iter()
+            .map(|file| {
+                let path = file.path(&loaded.db);
+                let text = file.text(&loaded.db);
+                let (path, text) = if contested {
+                    (
+                        path.replace("checked_ticket.jadpo", "ticket.jadpo"),
+                        text.replace("CheckedTicket", "Ticket"),
+                    )
+                } else {
+                    (path.clone(), text.clone())
+                };
+                File::new(&db, path, text)
+            })
+            .collect();
+        let project = Project::new(
+            &db,
+            files,
+            loaded.project.other_files(&loaded.db).clone(),
+            Layout::Project,
+            loaded.project.identities(&loaded.db).clone(),
+            loaded.project.records(&loaded.db).clone(),
+        );
+        let problems: Vec<_> = jadpo_check::check(&db, project)
+            .into_iter()
+            .filter(jadpo_check::blocks_running)
+            .collect();
+        assert!(problems.is_empty(), "contested={contested}: {problems:#?}");
+        let model = jadpo_check::data::data_model(&db, project);
+        let receipt = model
+            .entities
+            .iter()
+            .find(|entity| entity.name == "Receipt")
+            .unwrap();
+        let ticket = receipt
+            .fields
+            .iter()
+            .find(|field| field.name == "ticket")
+            .unwrap();
+        assert_eq!(
+            ticket.sql_type.as_deref(),
+            Some("text"),
+            "contested={contested}: {ticket:#?}"
+        );
+        let plan = Plan::build(&db, project);
+        let record = plan
+            .callables()
+            .iter()
+            .find(|c| c.key.name() == "record")
+            .unwrap();
+        let writes: Vec<_> = record
+            .sites
+            .iter()
+            .filter_map(|site| match &site.decoded {
+                Decoded::Write { plan, .. } => Some(plan),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(writes.len(), 1);
+        assert!(
+            writes[0].is_some(),
+            "contested={contested}: missing receipt write"
+        );
+        assert!(
+            record
+                .sites
+                .iter()
+                .any(|site| matches!(site.decoded, Decoded::Provider(_)))
+        );
+    }
+}

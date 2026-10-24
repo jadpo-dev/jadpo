@@ -1,0 +1,2 @@
+/// A ticket to check.
+public type TicketLookup = Object { ticket: CheckedTicket }

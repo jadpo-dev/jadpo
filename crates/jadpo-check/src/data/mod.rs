@@ -535,6 +535,9 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         .iter()
         .find(|s| s.kind == ItemKind::Entity)?;
     let file = crate::lookups::file_at(db, project, Name::new(db, symbol.path.clone()))?;
+    // Field types are written in the entity's domain, where an own type
+    // can share its short name with a provider's qualified public type.
+    let lookup = Lookup::for_file(db, project, file);
     let source = tree::source(db, file)?;
     let Some(Decl::EntityDecl(decl)) = tree::decl_at(&source, symbol.index) else {
         return None;
@@ -2796,6 +2799,15 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 .tables
                 .insert(system.table.to_string(), columns::system_table(system));
         }
+    }
+    // Every schema store keeps runtime state (entities have the outbox,
+    // and state-only stores hold schedules or AI usage). Add this after
+    // all feature stores have been collected, including AI-only stores.
+    for store in schema.stores.values_mut() {
+        store.tables.insert(
+            system::HOUSEKEEPING.table.to_string(),
+            columns::system_table(&system::HOUSEKEEPING),
+        );
     }
     Arc::new(schema)
 }

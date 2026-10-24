@@ -1522,7 +1522,10 @@ runtime
 state decided on 2026-10-16 (multi-step call records and batch runs beside
 the outbox, OAuth grants, poll state, and webhook and queue
 de-duplication) follows the same rules and is always in a database, never
-a cache (area 16). The manifest
+a cache (area 16). Every store holding runtime state also keeps `jadpo_housekeeping`, the
+owner, lease and last completed hourly cleanup pass (area 12; chunk
+9.1b2), including a store holding only AI usage. It is generated and
+migrated with the other system tables. The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 A system table that keeps a value beyond a request, the outbox's payload,
@@ -2541,7 +2544,7 @@ error: No migration creates these entities' tables yet
   |
 1 | entity Note {
   |        ^^^^ no table yet
-  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for idempotency keys, and 2 more.
+  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for circuit breakers, new system table for deliveries, new system table for handled deliveries, new system table for housekeeping, and 3 more.
   next: Run `jadpo migrate new initial` (agent)
   rule: migration.out_of_date
   help: docs/language/05-data.html#migration-out-of-date

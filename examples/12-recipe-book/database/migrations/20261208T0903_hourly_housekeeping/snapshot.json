@@ -1,0 +1,774 @@
+{
+  "format": 1,
+  "stores": {
+    "main": {
+      "driver": "postgres",
+      "tables": {
+        "baker": {
+          "columns": {
+            "handle": {
+              "allows": {
+                "max_length": 40,
+                "min_length": 3
+              },
+              "field": "handle",
+              "position": 1,
+              "type": "text"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            }
+          },
+          "entity": "Baker",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "baker_pkey"
+          },
+          "unique": {
+            "baker_handle_key": {
+              "columns": [
+                "handle"
+              ],
+              "rule": "Baker.handle"
+            }
+          }
+        },
+        "bakery": {
+          "columns": {
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "name": {
+              "allows": {
+                "max_length": 80,
+                "min_length": 1
+              },
+              "field": "name",
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "entity": "Bakery",
+          "indexes": {
+            "bakery_name_id_sorted_idx": {
+              "collate_c": [
+                "name"
+              ],
+              "columns": [
+                "name",
+                "id"
+              ],
+              "reason": "query my_bakeries"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "bakery_pkey"
+          }
+        },
+        "ingredient": {
+          "columns": {
+            "allergen": {
+              "allows": {
+                "values": [
+                  "eggs",
+                  "gluten",
+                  "milk",
+                  "nuts"
+                ]
+              },
+              "field": "allergen",
+              "nullable": true,
+              "position": 2,
+              "type": "text"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "name": {
+              "allows": {
+                "max_length": 60,
+                "min_length": 1
+              },
+              "field": "name",
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "entity": "Ingredient",
+          "indexes": {
+            "ingredient_name_sorted_idx": {
+              "collate_c": [
+                "name"
+              ],
+              "columns": [
+                "name"
+              ],
+              "reason": "query ingredient_list"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "ingredient_pkey"
+          },
+          "unique": {
+            "ingredient_name_key": {
+              "columns": [
+                "name"
+              ],
+              "rule": "Ingredient.name"
+            }
+          }
+        },
+        "jadpo_circuit_breakers": {
+          "columns": {
+            "alerted_at": {
+              "nullable": true,
+              "position": 8,
+              "type": "timestamptz(3)"
+            },
+            "connection": {
+              "position": 0,
+              "type": "text"
+            },
+            "failures": {
+              "position": 2,
+              "type": "integer"
+            },
+            "opened_at": {
+              "nullable": true,
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "pauses": {
+              "position": 4,
+              "type": "integer"
+            },
+            "probe_at": {
+              "nullable": true,
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "probe_id": {
+              "nullable": true,
+              "position": 6,
+              "type": "uuid"
+            },
+            "probe_until": {
+              "nullable": true,
+              "position": 7,
+              "type": "timestamptz(3)"
+            },
+            "state": {
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "connection"
+            ],
+            "name": "jadpo_circuit_breakers_pkey"
+          },
+          "system": "circuit_breakers"
+        },
+        "jadpo_deliveries": {
+          "columns": {
+            "attempts": {
+              "position": 4,
+              "type": "integer"
+            },
+            "held_for": {
+              "nullable": true,
+              "position": 9,
+              "type": "text"
+            },
+            "held_ms": {
+              "nullable": true,
+              "position": 11,
+              "type": "bigint"
+            },
+            "held_since": {
+              "nullable": true,
+              "position": 10,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "last_failure": {
+              "nullable": true,
+              "position": 6,
+              "type": "jsonb"
+            },
+            "last_tried_at": {
+              "nullable": true,
+              "position": 7,
+              "type": "timestamptz(3)"
+            },
+            "next_attempt_at": {
+              "nullable": true,
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "outbox_id": {
+              "position": 1,
+              "type": "uuid"
+            },
+            "retried_at": {
+              "nullable": true,
+              "position": 8,
+              "type": "timestamptz(3)"
+            },
+            "status": {
+              "position": 3,
+              "type": "text"
+            },
+            "subscriber": {
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "foreign_keys": {
+            "jadpo_deliveries_outbox_id_fkey": {
+              "columns": [
+                "outbox_id"
+              ],
+              "on_delete": "cascade",
+              "table": "jadpo_outbox"
+            }
+          },
+          "indexes": {
+            "jadpo_deliveries_status_next_attempt_at_idx": {
+              "columns": [
+                "status",
+                "next_attempt_at"
+              ],
+              "reason": "system deliveries"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_deliveries_pkey"
+          },
+          "system": "deliveries",
+          "unique": {
+            "jadpo_deliveries_outbox_id_subscriber_key": {
+              "columns": [
+                "outbox_id",
+                "subscriber"
+              ],
+              "rule": "system deliveries"
+            }
+          }
+        },
+        "jadpo_handled_deliveries": {
+          "columns": {
+            "handled_at": {
+              "position": 1,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_handled_deliveries_pkey"
+          },
+          "system": "handled_deliveries"
+        },
+        "jadpo_housekeeping": {
+          "columns": {
+            "last_cleaned_at": {
+              "nullable": true,
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "lease_id": {
+              "nullable": true,
+              "position": 1,
+              "type": "uuid"
+            },
+            "lease_until": {
+              "nullable": true,
+              "position": 2,
+              "type": "timestamptz(3)"
+            },
+            "slot": {
+              "position": 0,
+              "type": "integer"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "slot"
+            ],
+            "name": "jadpo_housekeeping_pkey"
+          },
+          "system": "housekeeping"
+        },
+        "jadpo_idempotency_keys": {
+          "columns": {
+            "kept_until": {
+              "position": 6,
+              "type": "timestamptz(3)"
+            },
+            "key": {
+              "position": 1,
+              "type": "text"
+            },
+            "request_digest": {
+              "position": 2,
+              "type": "text"
+            },
+            "response": {
+              "nullable": true,
+              "position": 4,
+              "type": "jsonb"
+            },
+            "scope": {
+              "position": 0,
+              "type": "text"
+            },
+            "status": {
+              "nullable": true,
+              "position": 3,
+              "type": "smallint"
+            },
+            "stored_at": {
+              "position": 5,
+              "type": "timestamptz(3)"
+            }
+          },
+          "indexes": {
+            "jadpo_idempotency_keys_kept_until_idx": {
+              "columns": [
+                "kept_until"
+              ],
+              "reason": "system idempotency keys"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "scope",
+              "key"
+            ],
+            "name": "jadpo_idempotency_keys_pkey"
+          },
+          "system": "idempotency_keys"
+        },
+        "jadpo_operator_actions": {
+          "columns": {
+            "acted_at": {
+              "position": 1,
+              "type": "timestamptz(3)"
+            },
+            "action": {
+              "position": 2,
+              "type": "text"
+            },
+            "event": {
+              "nullable": true,
+              "position": 6,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "item": {
+              "position": 4,
+              "type": "uuid"
+            },
+            "kind": {
+              "position": 3,
+              "type": "text"
+            },
+            "operator": {
+              "position": 8,
+              "type": "text"
+            },
+            "role": {
+              "position": 9,
+              "type": "text"
+            },
+            "target": {
+              "position": 5,
+              "type": "text"
+            },
+            "was": {
+              "position": 7,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_operator_actions_item_idx": {
+              "columns": [
+                "item"
+              ],
+              "reason": "system operator actions"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_operator_actions_pkey"
+          },
+          "system": "operator_actions"
+        },
+        "jadpo_outbox": {
+          "columns": {
+            "depth": {
+              "nullable": true,
+              "position": 6,
+              "type": "integer"
+            },
+            "emitted_at": {
+              "position": 3,
+              "type": "timestamptz(3)"
+            },
+            "encoding": {
+              "nullable": true,
+              "position": 5,
+              "type": "smallint"
+            },
+            "event": {
+              "position": 1,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "payload": {
+              "position": 2,
+              "type": "jsonb"
+            },
+            "traceparent": {
+              "nullable": true,
+              "position": 4,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_outbox_emitted_at_idx": {
+              "columns": [
+                "emitted_at"
+              ],
+              "reason": "system outbox"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_outbox_pkey"
+          },
+          "system": "outbox"
+        },
+        "jadpo_sessions": {
+          "columns": {
+            "csrf_verifier": {
+              "nullable": true,
+              "position": 3,
+              "type": "text"
+            },
+            "ends_at": {
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "principal_id": {
+              "position": 1,
+              "type": "uuid"
+            },
+            "started_at": {
+              "position": 4,
+              "type": "timestamptz(3)"
+            },
+            "verifier": {
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_sessions_ends_at_idx": {
+              "columns": [
+                "ends_at"
+              ],
+              "reason": "system sessions"
+            },
+            "jadpo_sessions_principal_id_idx": {
+              "columns": [
+                "principal_id"
+              ],
+              "reason": "system sessions"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_sessions_pkey"
+          },
+          "system": "sessions",
+          "unique": {
+            "jadpo_sessions_verifier_key": {
+              "columns": [
+                "verifier"
+              ],
+              "rule": "system sessions"
+            }
+          }
+        },
+        "platform_staff": {
+          "columns": {
+            "baker_id": {
+              "allows": {},
+              "field": "baker_id",
+              "position": 1,
+              "type": "uuid"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "role": {
+              "allows": {
+                "values": [
+                  "editor"
+                ]
+              },
+              "field": "role",
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "entity": "PlatformStaff",
+          "foreign_keys": {
+            "platform_staff_baker_id_fkey": {
+              "columns": [
+                "baker_id"
+              ],
+              "on_delete": "cascade",
+              "table": "baker"
+            }
+          },
+          "indexes": {
+            "platform_staff_baker_id_idx": {
+              "columns": [
+                "baker_id"
+              ],
+              "reason": "reference PlatformStaff.baker_id"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "platform_staff_pkey"
+          }
+        },
+        "recipe": {
+          "columns": {
+            "author_id": {
+              "allows": {},
+              "field": "author_id",
+              "position": 2,
+              "type": "uuid"
+            },
+            "bakery_id": {
+              "allows": {},
+              "field": "bakery_id",
+              "position": 1,
+              "type": "uuid"
+            },
+            "batch_cost": {
+              "allows": {
+                "min": "0"
+              },
+              "field": "batch_cost",
+              "position": 4,
+              "type": "bigint"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "name": {
+              "allows": {
+                "max_length": 80,
+                "min_length": 1
+              },
+              "field": "name",
+              "position": 3,
+              "type": "text"
+            },
+            "old_reference": {
+              "allows": {
+                "patterns": [
+                  "R-[0-9]{6}"
+                ]
+              },
+              "field": "old_reference",
+              "nullable": true,
+              "position": 5,
+              "type": "text"
+            }
+          },
+          "entity": "Recipe",
+          "foreign_keys": {
+            "recipe_author_id_fkey": {
+              "columns": [
+                "author_id"
+              ],
+              "on_delete": "restrict",
+              "table": "baker"
+            },
+            "recipe_bakery_id_fkey": {
+              "columns": [
+                "bakery_id"
+              ],
+              "on_delete": "cascade",
+              "table": "bakery"
+            }
+          },
+          "indexes": {
+            "recipe_author_id_idx": {
+              "columns": [
+                "author_id"
+              ],
+              "reason": "reference Recipe.author_id"
+            },
+            "recipe_bakery_id_name_id_sorted_idx": {
+              "collate_c": [
+                "name"
+              ],
+              "columns": [
+                "bakery_id",
+                "name",
+                "id"
+              ],
+              "reason": "query bakery_recipes"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "recipe_pkey"
+          }
+        },
+        "staff_member": {
+          "columns": {
+            "baker_id": {
+              "allows": {},
+              "field": "baker_id",
+              "position": 2,
+              "type": "uuid"
+            },
+            "bakery_id": {
+              "allows": {},
+              "field": "bakery_id",
+              "position": 1,
+              "type": "uuid"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "joined_at": {
+              "allows": {},
+              "field": "joined_at",
+              "position": 4,
+              "type": "timestamptz(3)"
+            },
+            "role": {
+              "allows": {
+                "values": [
+                  "baker",
+                  "counter",
+                  "owner"
+                ]
+              },
+              "field": "role",
+              "position": 3,
+              "type": "text"
+            }
+          },
+          "entity": "StaffMember",
+          "foreign_keys": {
+            "staff_member_baker_id_fkey": {
+              "columns": [
+                "baker_id"
+              ],
+              "on_delete": "cascade",
+              "table": "baker"
+            },
+            "staff_member_bakery_id_fkey": {
+              "columns": [
+                "bakery_id"
+              ],
+              "on_delete": "cascade",
+              "table": "bakery"
+            }
+          },
+          "indexes": {
+            "staff_member_baker_id_idx": {
+              "columns": [
+                "baker_id"
+              ],
+              "reason": "reference StaffMember.baker_id"
+            },
+            "staff_member_bakery_id_joined_at_id_idx": {
+              "columns": [
+                "bakery_id",
+                "joined_at",
+                "id"
+              ],
+              "reason": "query team"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "staff_member_pkey"
+          }
+        }
+      }
+    }
+  }
+}

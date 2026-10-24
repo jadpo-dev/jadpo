@@ -1,0 +1,21 @@
+application {
+    connections: {
+        checks: {
+            package: LocalChecks.v1
+            domains: [backlog]
+            credential: config.checks_api_key
+            environment: config.checks_environment
+            retry: { attempts: 1 }
+        }
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    events: {
+        store: main
+    }
+    schedules: {
+        trigger: ScheduleTrigger.external
+    }
+}

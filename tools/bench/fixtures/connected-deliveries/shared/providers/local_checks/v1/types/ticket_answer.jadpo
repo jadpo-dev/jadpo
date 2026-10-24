@@ -1,0 +1,2 @@
+/// The ticket the provider checked.
+public type TicketAnswer = Object { ticket: CheckedTicket }

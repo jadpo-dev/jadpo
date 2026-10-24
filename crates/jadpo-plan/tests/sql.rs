@@ -291,8 +291,8 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
     if plan.missing.is_some() {
         out.push_str("-- no row: the entity's not-found failure\n");
     }
-    // A row loaded before an outside call is held to its version first
-    // (chunk 7.4).
+    // Successful writes compare the version in their own WHERE. A write
+    // changing no row probes the version before classifying its refusal.
     if let Some(row) = &plan.row {
         let id = match &row.id {
             WriteSource::Input(at) => format!("input {at}"),
@@ -300,8 +300,8 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             other => format!("{other:?}"),
         };
         out.push_str(&format!(
-            "-- loaded before a call: {} row {id} held to its version first\n",
-            row.table
+            "-- loaded before a call: {} row {id}, expected version in ${}; no row probes version first\n",
+            row.table, row.version + 1
         ));
         for line in row.sql.lines() {
             out.push_str(&format!("--   {line}\n"));
@@ -411,4 +411,31 @@ query own_projects(name: Project.name, owner: Principal.user?) -> List<Project> 
     let query = |name: &str| plan.query_named(name).expect("a query").caller;
     assert_eq!(query("own_projects"), Some(1), "an optional caller, second");
     assert_eq!(query("project_by_id"), None);
+}
+
+/// Every compiler-generated mutation, including its policy-free form,
+/// compares the pre-call row version in the mutation's own WHERE.
+#[test]
+fn every_mutation_holds_its_row_version_in_its_own_where() {
+    let plan = plan();
+    let mut checked = 0;
+    for callable in plan.callables() {
+        for site in &callable.sites {
+            if let Decoded::Write { plan: Some(id), .. } = &site.decoded
+                && let Some(found) = plan.write(*id)
+                && found.plan.row.is_some()
+            {
+                for sql in std::iter::once(&found.plan.sql).chain(found.plan.unpoliced.iter()) {
+                    assert!(
+                        sql.contains("\"xmin\"::text = $"),
+                        "{}: {sql}",
+                        callable.key.name()
+                    );
+                    assert!(sql.contains("::text IS NULL OR"), "{sql}");
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked >= 3);
 }

@@ -424,7 +424,32 @@ fn a_teaching_example_is_built_for_workers_and_served_by_workerd() {
         let address = format!("198.51.100.{}", at % 250 + 1);
         let (status, body) =
             worker.send("POST", "/repairs", &[("CF-Connecting-IP", &address)], LAMP);
-        assert_eq!(status, 201, "{body}\n{}", worker.log());
+        // Read the exact durable state only on failure: a 202 is allowed by
+        // this route, but this test still requires its expected inline result.
+        // Keep its cause visible before the owned database is removed.
+        let state = || {
+            let response: Value = serde_json::from_str(&body).expect("a booking response");
+            let id = response["id"]
+                .as_str()
+                .unwrap_or_default()
+                .replace('\'', "''");
+            rows(
+                &database.native,
+                &format!(
+                    "SELECT json_build_object('repair', (SELECT row_to_json(r) FROM repair r WHERE id::text='{id}'), \
+                     'deliveries', (SELECT json_agg(json_build_object('delivery',row_to_json(d),'event',o.event,'payload',o.payload)) \
+                     FROM jadpo_deliveries d JOIN jadpo_outbox o ON o.id=d.outbox_id \
+                     WHERE o.payload->>'repair_id'='{id}'))::text"
+                ),
+            )
+        };
+        assert_eq!(
+            status,
+            201,
+            "{body}\nstate: {:?}\n{}",
+            state(),
+            worker.log()
+        );
     };
     (0..WARM_BOOKINGS).for_each(book);
     let warm = worker.linear_memory();

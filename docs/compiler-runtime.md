@@ -2863,8 +2863,64 @@ its commit.
 runs late work at the tick's time. A batch run's row keeps the chain
 depth it started at (`depth`), which each page's context takes; each
 item resets the boundary's event allowance (`Boundary::allowance`); and
-`batches::clean`, a tick hook, deletes runs that ended 30 days ago with
-their problems and cancels.
+hourly housekeeping deletes runs that ended 30 days ago with their problems
+and cancels (chunk 9.1b2).
+
+**Bounded delivery sweeps** (chunk 9.1b1). A sweep still reads at most 100
+oldest due deliveries, waking breakers and parking lost/unreadable work first.
+It partitions that selection round-robin into four static lanes and drains
+them with the same local `race::join_all` schedules use. Every lane calls the
+ordinary serial `runner::drive`: each piece gets its own context and current
+host time; descendants and a batch run's own batches remain sequential. Four
+is a reversible implementation bound, shared by both targets, below Workers'
+six connection-opening slots; every actual connection/provider call retains
+its host guard. Lanes share the invocation's host and budget, and stop
+admission when spent/shutting down while draining admitted work through the
+existing claim, body-only timeout, held commit, retry/release and handled-record
+paths. Unstarted work remains durable for the tick. Static lanes do not steal
+work, so one slow lane may outlive the others; completion order is unspecified.
+After-response work and route settlement retain their existing serial driver.
+Real PostgreSQL regressions rendezvous four subscriber bodies, enforce 100
+selected deliveries including sequential descendants, race duplicate sweeps,
+and advance shutdown/monotonic expiry after four claims, proving settlement
+without assuming a fast machine. The focused 10,000-delivery method and
+comparator boundaries are in `tools/bench/README.md`.
+
+**Fast ticks and hourly housekeeping** (chunk 9.1b2). Prompt work stays on
+ordinary ticks: due schedules, delivery sweeps and breaker alerts, queue
+receiving, polls, unfinished-work metrics/alerts and expired batch-lease
+recovery. Retention runs afterwards, once an hour per successfully completed
+store, in `schedules::housekeeping`. The generated `jadpo_housekeeping` table
+holds a singleton slot, random `lease_id`, `lease_until` and `last_cleaned_at`.
+It is part of physical schema snapshots, generated migrations, drift checking
+and prepared-statement coverage, including schedule-only and AI-usage-only
+stores. There is no runtime DDL or state hidden in application rows.
+
+One conditional upsert claims a due store. The lease uses the remaining tick
+budget plus the existing minute margin; release/completion matches its random
+identity, fencing a former owner. Stores contend independently: a successful
+store is not suppressed by another store's failure. Completion requires every
+eligible delete to finish; failure, a 10,000-row cap, exhausted budget or
+shutdown leaves the previous completion unchanged, so the next tick may
+resume. A crash leaves a lease that expires. Every delete admits at most
+1,000 rows per batch and ten batches, checking budget/shutdown between batches.
+The same retention windows and event/delivery/handled ordering remain: local
+handled deletion commits atomically with its event, remote handled deletion
+follows that commit; interruption can retain a safe orphan, never remove a
+replay guard early. Expired auth and idempotency reads still enforce expiry
+independently of cleanup.
+
+`SchedulesPlan.cleanup_schedules` and `.cleanup_batches` come from whole-schema
+`SCHEDULE_RUNS`/`BATCH_RUNS` holdings, separately from runnable schedules and
+batch bodies. `ticks()` includes those holdings. A web role can therefore win
+cleanup for a shared store without omitting history that only the jobs role
+executes. All PostgreSQL/Redis connection settings were already retained for
+every role; providers and unreachable bodies stay pruned. Actual pruned-plan
+and native two-role regressions cover a state-only schedule store, batch
+history/problems/cancels in another store, no web runners, and the jobs tick
+skipping completed cleanup while retaining prompt work. Live contention,
+failed/partial/crashed retry, stale-owner fencing, independent stores, retention,
+budget/shutdown and cross-store handled safety run in the gate. Measurement is in §2.11.
 
 **Schedules and the tick** (chunk 6.2). The checker reads each schedule
 (`jadpo_check::schedules`: `every:` and `run:`, an action of its own
@@ -2880,13 +2936,12 @@ schedule's state row (`jadpo_schedules`), takes the lease of each one due
 in one conditional statement, runs them side by side as the system with
 no tenant under the tick's clock and a new trace, records each run and
 skipped tick (`jadpo_schedule_runs`) and delivers what they emitted; then
-in each store it calls `runner::sweep` and deletes expired idempotency
-keys; events every subscriber has had, with their delivery records and,
-in the same statement, the handled records kept beside them, then the
-rest of those handled records in each other store by the deliveries'
-ids (chunk 6.10); and ended sessions, tokens and service keys where
-they are kept; then it runs `schedules::HOOKS`,
-which picks up batch runs whose lease lapsed (`batches::resume`). The
+in each store it calls `runner::sweep`. Queue receiving, polls and
+unfinished-work observation remain prompt, followed by `schedules::HOOKS`,
+which picks up batch runs whose lease lapsed (`batches::resume`). Hourly
+housekeeping then sweeps expired keys, retained events/deliveries/handled
+records and ended sessions, tokens, service keys and other runtime history
+in their stores, as described above (chunk 9.1b2). The
 whole tick runs within the budget its host gives a tick (chunk 6.7),
 each step starting only while it isn't spent, its runs' actions through
 `runner::within_budget`. Natively the HTTP server's first
@@ -4098,15 +4153,38 @@ a new transaction at the same level in the same store, counted by a
 generation `boundary::Undo` compares, so a caught action whose call
 closed the snapshot its savepoint was in has its own transaction rolled
 back whole instead. Every update and delete plan carries a `RowCheck`
-(its table, where its `id` comes from, and `row_version`'s statement,
-`FOR NO KEY UPDATE`): before the write, a row loaded before a call is
-read and locked in the new transaction, once per transaction
-(`Ctx::check_row`), and another version, or none, is
-`StoreError::ConcurrentChange`, which reruns the action within
-`RERUN_ATTEMPTS`; the rerun takes the same steps, so a keyed call
-repeats under its key. A reference's refusal planned as `Raises::Gone`
-is a concurrent change too once rows were loaded before a call. The SQL
-goldens show both statements.
+(its table, where its `id` comes from, its expected-version parameter and
+`row_version`'s failure-only `FOR NO KEY UPDATE` statement). The write's own
+`WHERE` compares `xmin::text` with that parameter
+(`jadpo-sql::statement::holds_row_version`); a typed NULL bypasses it for an
+untracked row or a row this transaction already checked and locked. Only a
+mutation changing no row runs the probe, before policy, field,
+lifecycle-condition and missing-row classification. Another version, or none,
+is `StoreError::ConcurrentChange`, which reruns the action within
+`RERUN_ATTEMPTS`; the rerun takes the same steps, so a keyed call repeats
+under its key. The write transaction opens before checked keys are consulted,
+and `Undo` restores the pre-savepoint set on rollback (clearing it when the
+callee's whole transaction ends), so a released lock never leaves a stale
+bypass. A successful tracked write marks its row checked, so a later update or
+delete in the transaction does not reject our own new `xmin`. A reference's
+refusal planned as `Raises::Gone` is a concurrent change too once rows were
+loaded before a call. The SQL goldens show the predicate and the probe.
+
+**Breaker snapshots in delivery claims.** A subscriber with connections
+uses `outbox::claim_breakers_sql`: the conditional claim is a CTE left-joined
+to all its connection breaker rows. `outbox::claim` consumes every joined row,
+keeps one claim when breaker rows are absent, and distinguishes a lost claim
+from a query error. Connectionless subscribers keep the original four-parameter
+`CLAIM`, with no join. Shared schedule and batch lease behaviour is unchanged.
+`runner::attempt` keeps the missing-subscriber, depth, handled-record,
+retry-budget and slot priorities before `breaker::gate_snapshot`. The joined
+rows replace only the independent read: the snapshot never grants a probe or
+holds a delivery. The conditional `HOLD`, `TAKE_PROBE` and `PROBE_UNUSED`
+still arbitrate the current state, so multiple-connection holds, the one-probe
+lease, returned unused probes and hold/release races are unchanged. A breaker
+that opens after the claim statement is seen by the next delivery's claim, as
+a breaker that opens after the former read was. A failed combined claim leaves
+the delivery unclaimed for a later retry and never runs its provider.
 
 **Calls before writes, checked** (chunk 7.4b; area 6, "Several outside
 calls"). `jadpo_check::types::outside_calls` works out, once per project,
@@ -5663,3 +5741,235 @@ no comparison cell. Each result includes full source and artifact maps.
 
 The pinned lockfile, compiler, artifact and result hashes are in the raw
 result files, which carry full source and artifact maps.
+
+**Bounded durable delivery sweeps** (chunk 9.1b1, 2026-10-23).
+The hypothesis was that awaiting each due delivery serially left database I/O
+unoverlapped. The generic runtime now partitions the same oldest-at-most-100
+selection into four static round-robin lanes, each using the existing serial
+`runner::drive`; the existing local draining join was shared with schedules.
+The bound is four per invocation, including descendants; contexts are separate,
+a batch's own batches remain sequential, and connection opening retains its
+host guards (six on Workers). Claims, leases, retries, safe-key windows,
+payload parking, atomic handled-record writes, shutdown hand-on and no ordering
+promise are unchanged. Admission stops when the common budget/shutdown is
+spent; admitted futures drain safely. No work stealing is promised: an uneven
+lane can remain busy after the others finish. §2.6 records the implementation;
+`tools/bench/README.md` records the executable method and comparator limits.
+
+This adds a focused pure-database background workload, not the full golden
+reminder workflow or HTTP list/read/write comparison above. Each cell drains
+exactly 10,000 durable deliveries with 100 production ticks. Native includes
+100 external tick process starts. Bun and Node also start one process per
+tick, whereas workerd stays running across ticks. Their startup and pool
+lifetimes therefore differ: the per-target serial-versus-bounded comparisons
+remain matched, but the cross-target times do not establish a warm-service
+Workers-versus-Bun win. Chunk 9.1b1a adds that missing warm-service comparison;
+these original results remain retained with this limitation. Workerd invokes
+the generated production scheduled handler through a local binding and the
+existing transaction-pool stand-in capped at four; it is not real edge
+Hyperdrive. The identical pinned
+Bun/Node specialized fixture uses postgres-js pool four, UUIDv7 receipt IDs,
+payload validation, conditional/fenced claims, and atomic receipt+handled
+commits. It covers the reached delivery path, not generic language/provider/
+auth/shutdown behavior. Jadpo tick housekeeping is included; the comparator
+only drains deliveries. The separate strong golden TypeScript was unchanged.
+
+The matched pair below uses the final UUIDv7 harness. Each side has three
+rotated rounds across all four targets. Both campaigns passed all 12 cells,
+all 20 negative/race controls and start/end source/artifact freshness guards:
+240,000 measured deliveries in total. Every cell had exactly 10,000 receipts,
+unique ticket matches, UUIDv7 IDs, handled markers, succeeded deliveries,
+attempts and events; zero missing/unexpected effects or pending work; and an
+unchanged joined delivery/event identity-and-payload fingerprint. After timing,
+a deliberately reset replay cohort added 100 attempts without an extra effect.
+Controls cover malformed payload parking, live and expired leases, concurrent
+duplicate sweeps, and a refused handled-ledger insert after the receipt: both
+writes roll back and the work remains pending/unavailable for retry. That
+last case follows area6 atomicity and area12 infrastructure-fault retry; it
+must not be confused with an authored receipt unique-conflict refusal.
+
+Richard closed apps before this pair. Five-second pre-campaign whole-machine
+CPU samples were still 21.8% busy before serial and 12.0% before bounded;
+one-minute load was 15.94 and 3.97. No owned builds/tests ran during timing,
+and unrelated processes were left alone. These are exploratory observations
+on an M1 Pro (10 cores, 16 GB, macOS 27.0.1), not isolated capacity or a pure
+code-effect estimate. Unchanged Bun and Node controls became slower, retaining
+the adverse spread below. PostgreSQL was the same disposable local 16.3 setup
+on both sides (`synchronous_commit=off`, 400 connections, 256 MB shared buffers).
+
+Elapsed seconds are median [min–max] of three runs. Throughput is 10,000 divided
+by median elapsed; p95 is the median of the three per-run nearest-rank p95s
+of 100 tick durations, not per-delivery latency or a pooled percentile.
+
+| Target | Serial 10k seconds | Four-lane 10k seconds | Deliveries/s serial → bounded | Tick p95 ms serial → bounded |
+|---|---:|---:|---:|---:|
+| Native Jadpo | 4.7549 [4.7515–4.7996] | 3.7219 [3.6303–3.9476] | 2,103 → 2,687 | 52.326 → 41.436 |
+| workerd Jadpo | 7.7943 [7.7673–8.0264] | 4.3710 [4.3206–4.6490] | 1,283 → 2,288 | 91.737 → 52.968 |
+| Bun control | 7.6728 [7.6566–7.7465] | 8.4539 [7.8349–9.4821] | 1,303 → 1,183 | 81.457 → 90.673 |
+| Node control | 10.2185 [10.1988–10.2632] | 10.8426 [10.2872–10.8866] | 979 → 922 | 105.908 → 115.273 |
+
+Native elapsed fell 21.7% and workerd 43.9%; unchanged Bun rose 10.2% and Node
+6.1%. These observed shifts do not remove the host drift. Native process CPU
+rose about 19% despite lower elapsed; workerd process CPU fell about 23%, with
+a separate pool cost. Four lanes trade extra active work/connections and CPU
+for I/O overlap; they are not a claim of an inherent language or edge win.
+Raw per-round results stay in the ignored `tools/bench/work/deliveries/`
+raws. Superseded: the first protocol used UUIDv4 receipts (unlike Jadpo's
+UUIDv7), and a campaign on a busier host; neither is a baseline for the
+percentages above. Each side was built from a clean checkout that differs only
+in `runner.rs`, `race.rs` and `schedules.rs`; reproduce with
+`python3 tools/bench/deliveries.py build --label <label>` then `measure
+--label <label>` (three rounds, 10,000 deliveries, four targets), with no
+builds or tests running. Review must retain the four-lane bound, separate
+contexts, serial batch work, drain/hand-on behaviour and handled atomicity.
+These results do not establish the cause of the wider Wasm gap.
+
+**Warm durable delivery comparison** (chunk 9.1b1a, 2026-10-23).
+Local workerd's four-lane runtime delivers 2,239/s against warm Bun's 4,017/s on
+the database-only backlog: 56% of Bun throughput, with median tick p95 55.206 ms
+against 29.479 ms. Serial workerd was 1,155/s and 107.064 ms. Bounded workerd's
+elapsed time fell 48.4%, but it still takes 1.79 times Bun's time. This corrects
+the earlier cross-target interpretation: 9.1b1's fresh Bun/Node processes charged
+startup and pool creation on every tick while workerd stayed alive. That method
+establishes each target's serial/bounded change, not a warm-service Bun win.
+Both the original protocol/results above and `--mode external` remain available.
+These are local workerd background-delivery measurements, not real Workers,
+HTTP request latency, per-delivery latency or a full application comparison.
+
+The hypothesis here was that matching service lifetimes would reveal the actual
+remaining workerd/Bun gap. No production runtime/compiler change was added.
+`typescript/deliveries.ts` now serves ordinary HTTP ticks in a persistent process
+on both runtimes, using the identical `node:http` compatibility host and pool
+four; this is a specialized comparator, distinct from the strong golden Bun
+app's `Bun.serve` host. Each invocation gets a fresh clock, 16-minute lease,
+cursor and counts; the same UUIDv7, payload validation, selected-100 bound,
+conditional/fenced claims, 10-attempt/24-hour window and atomic receipt/handled
+write are retained. Concurrent invocations share the bounded pool. Failed ticks
+drain admitted lanes before answering; owned processes are stopped/reaped on
+errors or HTTP deadlines, and graceful service shutdown closes the pool.
+
+Workerd retains its production local HTTP→scheduled binding and separate
+four-connection pool stand-in. Every persistent service restarts per cell,
+receives an excluded empty readiness tick, then a real verified 100-delivery
+warmup cohort before reset to exactly 10,000 measured deliveries. Thus process
+startup and ordinary pool/JIT initialization are outside timing on both sides.
+Controls precede the first warmup for each target. Native has no equivalent
+ordinary HTTP tick service here: its external `app tick` starts, even after
+its excluded warmup cohort, are included and reported only as supporting context.
+Jadpo includes housekeeping; the specialized TypeScript fixture only drains
+deliveries. This comparison does not establish generic auth/provider/language
+or shutdown equivalence. No real providers, keys, accounts or deployments ran.
+
+Both campaigns passed all 12 cells, all 20 malformed/rollback/live-lease/
+expired-lease/duplicate-sweep controls, and strict start/end source/artifact
+freshness. All 240,000 measured deliveries had exact receipt ticket sets,
+UUIDv7 IDs, handled/succeeded/attempt/event counts, zero pending/missing/unexpected
+effects, unchanged joined identity/payload fingerprints, and a replay cohort
+adding 100 attempts without effects. The real HTTP/PostgreSQL regression tests
+also prove PID reuse, later-due work and later timestamps across ticks, fresh
+cohorts, SQL-error recovery and pool cleanup on Bun and Node. They run in the
+full gate's own isolated step; lint/quick remain free of live services.
+
+The host remained busy: M1 Pro, ten cores, 16 GB, macOS 27.0.1. No owned
+build/test ran during either campaign. Five-second ambient CPU was 10.45% busy
+before serial and 16.97% before bounded; one-minute loads were 4.73 and 4.67.
+Whole-host per-cell counters are retained; the adverse serial Node cell saw
+64.58% busy and is included. Unchanged Bun median elapsed rose 0.12%, Node
+3.01%; these controls and all-round spread limit pure code-effect claims.
+PostgreSQL 16.3 settings match 9.1b1. Rust 1.99.0, Bun 1.2.20, Node 24.18.1 and
+pinned workerd 2026-10-07 were unchanged. Builds used
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; ordinary
+native/Wasm release `jadpo build`, without wasm-opt; compiler build CPU excluded.
+
+Elapsed is median [min–max] seconds of three rotated rounds; throughput is
+10,000/median elapsed [min–max round throughput]. Tick p95 is median [min–max] of each round's
+nearest-rank p95 over its 100 tick durations. Native's lifetime differs.
+
+| Target | Serial 10k seconds | Bounded 10k seconds | Deliveries/s serial → bounded | Tick p95 ms serial → bounded |
+|---|---:|---:|---:|---:|
+| Local workerd Jadpo, warm | 8.6557 [8.3320–9.0474] | 4.4663 [4.4212–4.6057] | 1,155 [1,105–1,200] → 2,239 [2,171–2,262] | 107.064 [94.337–109.694] → 55.206 [53.525–60.498] |
+| Bun control, warm | 2.4864 [2.4125–2.5130] | 2.4893 [2.4671–2.6585] | 4,022 [3,979–4,145] → 4,017 [3,762–4,053] | 29.096 [28.555–30.689] → 29.479 [28.676–30.942] |
+| Node control, warm | 2.6868 [2.6544–3.7901] | 2.7676 [2.6816–2.9654] | 3,722 [2,638–3,767] → 3,613 [3,372–3,729] | 33.390 [30.197–50.443] → 33.479 [32.743–34.285] |
+| Native Jadpo, external ticks | 5.1046 [5.0771–5.1303] | 3.8295 [3.8144–3.9550] | 1,959 [1,949–1,970] → 2,611 [2,528–2,622] | 56.309 [55.700–56.850] → 45.841 [44.089–47.899] |
+
+CPU seconds, median [min–max]:
+
+| Target | Process CPU serial → bounded | Separate pool CPU serial → bounded |
+|---|---|---|
+| workerd | 5.44 [5.44–5.59] → 4.02 [3.89–4.13] | 2.22 [2.16–2.23] → 2.28 [2.24–2.36] |
+| Bun | 2.36 [2.29–2.37] → 2.35 [2.34–2.48] | — |
+| Node | 2.52 [2.52–3.01] → 2.59 [2.52–2.76] | — |
+| Native external | 1.686 [1.674–1.692] → 1.915 [1.905–1.944] | — |
+
+Every round follows (1/2/3), including the slower Node run. Process CPU for
+warm services includes their in-process pooling; workerd's separate pool is
+listed explicitly. Combined workerd+pool median CPU fell 7.67 [7.60–7.81]→6.26 [6.17–6.49] s (18.4%),
+while median pool CPU rose 2.22→2.28 s. Native tick-child CPU rose 1.686→1.915 s
+(13.6%) despite lower elapsed. PostgreSQL and Python CPU are excluded; these
+are server-process costs, not total system costs. Workerd RSS at cell end
+was 229.3/240.0/241.2 MiB serial, 234.7/245.3/243.0 MiB bounded (not peak).
+
+**Method and reproduction.** Serial and bounded builds differ only in
+`runner.rs`, `race.rs` and `schedules.rs` (serial restored from the pre-9.1b1
+revision), each built from a clean checkout. Raw per-round results stay in
+the ignored `tools/bench/work/deliveries/` raws; no timed campaign failed or
+was replaced. Reproduce with `python3 tools/bench/deliveries.py build --label
+<label>`, finish every build and test, then `measure --label <label> --mode
+warm` (three rounds, 10,000 deliveries). Review must keep process lifetime and
+warmup explicit beside Workers-versus-Bun results and rerun an affected matched
+comparison if measured paths change. Lesson: match the service boundary and
+pool lifetime before claiming a cross-target win; the workerd gap remains.
+Comparator caveat: the TypeScript fixture only drains deliveries, while Jadpo
+also runs housekeeping and workerd goes through a pool stand-in, so the gap
+includes costs a Bun service would not pay.
+
+**Fast ticks and hourly housekeeping: result** (chunk 9.1b2, local). Full
+before/after numbers, variation and caveats are in the pull request.
+
+| Idle tick, empty store | Reference | Candidate |
+|---|---:|---:|
+| Runtime SQL statements per completed-hour tick (native and workerd) | 8 | 5 |
+| Workerd idle tick p95, median of three rounds | 4.371 ms | 2.874 ms |
+
+The four prompt operations stay; the four retention statements became one
+declining lease claim. Warm delivery throughput moved within ambient variation
+and is not claimed as a gain. Method: `tools/bench/README.md`.
+
+**One-statement AI accounting: result** (chunk 9.1b3, local native-runtime
+fixture against real PostgreSQL, fake provider). Full numbers, variation and
+the rejected first candidate are in the pull request.
+
+| Scenario | SQL per call | Median p95 before → after |
+|---|---:|---:|
+| App window only | 3 → 2 | 0.315 → 0.285 ms |
+| App + caller | 5 → 2 | 0.516 → 0.434 ms |
+| Caller + immediate fake retry | 7 → 3 | 0.650 → 0.639 ms |
+
+Not HTTP or service throughput; Workers and Bun AI timing do not apply. The
+retry change is within variation. Method: `tools/bench/README.md`.
+
+**Version checks in writes: result** (chunk 9.1b4, local native-runtime
+fixture against real PostgreSQL, fake provider). Full numbers, variation and
+the PATCH control are in the pull request.
+
+| Outside-call write | Before | After |
+|---|---:|---:|
+| Data SQL statements | 4 | 3 |
+| Median p95 | 0.581 ms | 0.607 ms (+4.5%, adverse) |
+
+The statement saving is real; no latency gain is established. Not HTTP
+throughput. Method: `tools/bench/README.md`.
+
+**Breakers in delivery claims: result** (chunk 9.1b5, one-delivery tick
+census, connected subscriber). Full numbers, variation and the Bun/Node
+controls are in the pull request.
+
+| Target | Data statements before → after | Local throughput, median |
+|---|---:|---:|
+| workerd | 12 → 11 | 1,323 → 1,435 deliveries/s |
+| native, external tick | 14 → 13 | 1,999 → 2,051 deliveries/s |
+
+Unchanged Bun rose 7% in the same campaign, so workerd against Bun moved only
+62.6% → 63.2%; the first workerd round was adverse. No causal throughput gain
+is claimed. The census includes fixed housekeeping, so it is not a per-delivery
+cost. Method: `tools/bench/README.md`.
