@@ -2997,8 +2997,6 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   incorporated, under Richard’s stacked-dependency authorization above.
   Built: the ordinary golden application and versioned executable contract,
   preserving the original candidate. All 44 cases pass on native and compiled
-  workerd; the full 89-step gate passes. Exact prerequisite histories are
-  incorporated under the stacked-dependency authorization; review and PR merges
-  remain pending. Shared local PostgreSQL connection handling and generic
+  workerd. Shared local PostgreSQL connection handling and generic
   declared-provider readiness metadata close the contract without application-
   specific compiler paths.
