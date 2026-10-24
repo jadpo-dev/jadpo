@@ -399,7 +399,9 @@ def controls(target,folder,pg,port,provider,template,connected):
         if rows[0]['attempts']!=expected_attempt:raise ValueError(report)
         if name=='open-hold' and (rows[0]['status']!='held' or rows[0]['held_for']!='checks' or rows[0]['held_since'] is None):raise ValueError(report)
         if name=='provider-unavailable' and (rows[0]['status']!='pending' or rows[0]['last_failure']!={'code':'unavailable','kind':'unavailable'}):raise ValueError(report)
-        if name=='provider-refused' and rows[0]['status']!='failed':raise ValueError(report)
+        if name=='provider-refused' and (rows[0]['status']!='failed' or rows[0]['last_failure']!={'code':'already_recorded','kind':'conflict'}):raise ValueError(report)
+        if name=='malformed' and (rows[0]['status']!='failed' or rows[0]['last_failure'].get('code')!='payload_unreadable' or not rows[0]['last_failure'].get('problem')):raise ValueError(report)
+        if name=='rollback' and rows[0]['last_failure']!={'code':'unavailable','kind':'unavailable'}:raise ValueError(report)
         report['breakers']=pg.breakers(target)
         if name=='provider-unavailable':
             b=report['breakers']

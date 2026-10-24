@@ -44,7 +44,7 @@ async function tick() {
     if (!body || typeof body !== 'object' || Object.keys(body).length !== 1 ||
         typeof body.ticket !== 'string' || [...body.ticket].length < 1 || [...body.ticket].length > 80) {
       await db`UPDATE jadpo_deliveries SET status='failed',next_attempt_at=NULL,
-        last_failure=${db.json({code:'payload_unreadable'})} WHERE id=${item.id} AND status IN ('pending','running')`;
+        last_failure=${db.json({code:'payload_unreadable',problem:'ticket must be text of 1..80 characters in a one-field object'})} WHERE id=${item.id} AND status IN ('pending','running')`;
     } else { readable.push({...item, ticket: body.ticket}); }
   }
   let cursor = 0;
@@ -116,7 +116,7 @@ async function tick() {
         await feedback();
         await db`UPDATE jadpo_deliveries SET status=${again ? 'pending' : 'failed'},
           next_attempt_at=${again ? next : null},
-          last_failure=${db.json({code:terminal ? (code === 'provider_refused' ? 'already_recorded' : 'internal_fault') : 'unavailable', ...(terminal ? {} : {kind:'unavailable'})})}
+          last_failure=${db.json({code:terminal ? (code === 'provider_refused' ? 'already_recorded' : 'internal_fault') : 'unavailable', ...(terminal ? (code === 'provider_refused' ? {kind:'conflict'} : {}) : {kind:'unavailable'})})}
           WHERE id=${item.id} AND status='running' AND attempts=${claimed[0]!.attempts}`;
       }
     }
