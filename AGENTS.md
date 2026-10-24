@@ -43,37 +43,24 @@ was built, what the gate showed and any decision it recorded. It never
 merges. Claude reviews the pull request against the area pages, fixes
 what it finds on the same branch, and merges it.
 
-## Performance results and review (Richard, 2026-10-23)
+## Performance results and review (Richard, 2026-10-24)
 
-Record every optimisation round in the existing performance sections of
-`docs/compiler-runtime.md` and the relevant `tools/bench/README.md` method,
-so its pull request carries the results and the reasoning a reviewer needs.
-Include what changed and why; the exact reference and candidate revisions;
-the workload, build settings, host conditions and reproduction commands;
-before/after results with run variation, CPU and other relevant trade-offs;
-raw result paths and digests; and the correctness checks and invariants that
-must remain true. Retain unsuccessful experiments and superseded protocols
-with their lessons and explain which results can be compared. Use these
-existing fact and method sections, not another tracker or a standalone packet.
-Link the record from the pull request description.
+Each optimisation's pull request description carries its results: what
+changed and why, reference and candidate revisions, before/after with run
+variation, CPU and other trade-offs, and adverse results. The repository
+keeps only the method in `tools/bench/README.md`, at most one short summary
+table in `docs/compiler-runtime.md`, and the regression tests and benchmark
+controls that protect the gain; no raw paths, digests, per-round tables or
+logs of failed experiments. Never silently restore an older implementation
+or omit an adverse result. Correctness takes precedence over speed.
 
-Keep the deterministic regression tests and benchmark controls that protect
-the improvement. If review changes a measured path, rerun the affected
-comparison and update its record, making any lost gain or correctness trade-off
-explicit. Do not silently restore an older implementation or omit an adverse
-result. Correctness still takes precedence over speed.
-
-After each optimisation, lead Richard's update with Jadpo on Workers versus
-Bun: before/after throughput and p95 latency where the workload supports them,
-and the remaining gap. This is Phase 9's main target. Label local workerd
-measurements explicitly; they are not real Workers results. Match and disclose
-process lifetimes and startup/pool warmup in cross-target comparisons; a
-persistent workerd isolate versus fresh Bun processes is not a warm-service
-comparison. Native Jadpo and
-Node comparisons provide supporting context where the same workload supports
-it. Name the workload and its scope, variation and trade-offs; do not imply
-that a background-work result also measures HTTP requests. After each completed
-chunk, also report what was built, the gate result and the PR link in three
+Compare like with like
+([decision](docs/decision-register.md#performance-comparisons-pair-like-with-like--2026-10-24)):
+Jadpo native against TypeScript on Bun and Node; Jadpo's Wasm build against
+TypeScript on workerd, leading with CPU time per request, cold start and
+p95. Label local workerd results as local, match and disclose process
+lifetimes and warmup, and name the workload and its scope. After each
+chunk, report what was built, the gate result and the PR link in three
 lines. Codex never merges these pull requests or enables auto merge.
 
 ## Working rules
