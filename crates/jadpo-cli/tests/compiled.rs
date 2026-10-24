@@ -349,7 +349,7 @@ action add_plan(tier: AcmePay.Reference) -> Plan {
         "domains/billing/actions/check_plan.jadpo",
         r#"use app { pay }
 use billing/entities { Plan, PlanNotFound }
-use billing/types { CardState, Reference }
+use billing/types { CardState }
 use shared/providers/acme_pay
 
 /// Checks a plan's card, keeping whether it went through: a declined card
@@ -376,7 +376,7 @@ action check_plan(plan_id: Plan.id) fails PlanNotFound -> Plan {
         "domains/billing/actions/check_plan.test.jadpo",
         r#"use app { pay }
 use billing/entities { Plan }
-use billing/types { CardState, Reference }
+use billing/types { CardState }
 use billing/actions { add_plan }
 
 test "a declined card is kept on the plan" {
