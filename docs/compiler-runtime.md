@@ -7924,8 +7924,8 @@ first intended focused Workers row, ascii-small round 1, saved
 Its source/build linkage and all four served-module mappings/hashes must match
 the qualified producer. Golden Wrangler is saved artifact 0009, SHA
 `b76750000fa904249f0d3e35a45b9df6b93b8f6da6d9f9e43faa937c9a38c7cc`.
-Consumed main/date/rules/rate-limit fields match the candidate; differing local
-Worker names do not affect the runner. No named diagnostic Wasm is imported.
+Runner-consumed main/date/rate-limit fields match the candidate; source rules
+are additionally compared. Differing local Worker names do not affect the runner. No named diagnostic Wasm is imported.
 
 Unchanged compiler/schema/application/security/TS/load input prefixes, actual
 workerd and signing-helper binaries, emitted JS, npm dependencies, current
@@ -8043,9 +8043,10 @@ wrappers and all database/server/helper/build processes were reaped before
 releasing quiet; a preexisting user caffeinate was untouched.
 
 Shipping Os/fatLTO/CGU1 and runtime versions stay fixed (workerd 2026-10-07,
-Bun 1.2.20, Node 24.18.1, PostgreSQL 16.3, Rustup 1.99.0 proxy paths,
-Python 3.14.0). Inherited encoded/ordinary Rust flags and target override are unset;
-CARGO_INCREMENTAL=0, DEV_DEBUG=0, JOBS=4, EPOCH0 and own scoped XDG
+Bun 1.2.20, Node 24.18.1, PostgreSQL 16.3, Rust 1.99.0 selected through
+Rustup proxy paths, Python 3.14.0). Inherited encoded/ordinary Rust flags and
+target override are unset; CARGO_INCREMENTAL=0, CARGO_PROFILE_DEV_DEBUG=0,
+CARGO_BUILD_JOBS=4, SOURCE_DATE_EPOCH=0 and own scoped XDG
 `target/jadpo-compiled/gate-cache-1db7e872` are recorded. The inactive a2 target
 was CoW-cloned into the sibling a3 worktree, dependencies reused only with
 hash guards, and no a2 source/cache/raw/snapshot was written. Outer selectors
