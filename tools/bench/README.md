@@ -1175,3 +1175,10 @@ run the required full gate directly to stdout, with the same scoped environment:
 ```sh
 bench_env caffeinate -i python3 tools/verify.py
 ```
+
+
+The final reviewed code/tests/facts passed the full gate at
+`fbd1241944529a521de0d9f7e5f9635b6dc300af` (tree
+`a3763713ff2f6e4d99659114231110773337f5ab`), **93/93 in 568 s**, direct
+stdout with all processes reaped. Later gate-result/completion metadata does
+not alter the exact 288a measured artifacts.

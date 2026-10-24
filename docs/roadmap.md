@@ -263,21 +263,34 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   validators' patterns compiled when first used if 9.1 shows cold start
   pays for them.
 - [x] **9.2a1 Current request-path and large JSON profiling**: compiler/runtime §2.11, "Whole-request CPU attribution"; `tools/bench/README.md`.
-- [ ] **9.2a2 Bulk JSON string writing:** `gpt-6.1-sol · xhigh`
-  after 9.2a1, continuing the same unattended local 9.2 model batch.
-  Optimise the measured generic JSON string writer using safe bulk UTF-8 spans
-  and fewer output-buffer allocations. Preserve area 19's byte-identical compact
-  JSON, existing escape spelling, Unicode and appended-output behaviour; leave
-  authentication, policy, quotas, boundary normalisation and validation intact.
-  Start with independent canonical/round-trip and deterministic allocation
-  controls, including dense and late escapes. Compare fresh baseline/candidate
-  builds with the same final harness, Workers against strong Bun first, retaining
-  complete body/state checks and a small signed-read regression guard. Throughput
-  and p95 runs omit inspector and PostgreSQL duration logging on both sides;
-  keep diagnostic profiles separate. Record exact sources/artifacts, every round,
-  failed/adverse attempts, CPU scopes and remaining limits in §2.11 and the bench
-  README. Pass the full gate and open a separate manual PR without merging.
-  The complete four-runtime app comparison remains deferred until more progress.
+- [x] **9.2a2 JSON string writing and bounded Wasm screens**: compiler/runtime §2.11, "JSON string writing and bounded Wasm screens"; `tools/bench/README.md`.
+
+- [ ] **9.2a3 Standalone repeatable-read handoffs:** `gpt-6.1-sol · xhigh`
+  after 9.2a2, continuing the same unattended local 9.2 model batch.
+  Test a generic terminal-read capability that queues BEGIN, the unnamed typed
+  read and COMMIT together for a fresh, eligible standalone read. Preserve
+  explicit repeatable read, policy-before-decoding, missing/invalid-value and
+  terminal-error precedence, existing retry classification/budgets and invocation
+  connection ownership. Keep ordinary fallback for actions, includes/settings/
+  rechecks, held/handled/background/resumable contexts, extension/compound or
+  provider-coded values not proved safe, and recorded transactions whose physical
+  commit/rollback effects must remain truthful. No application-specific shortcut,
+  autocommit substitution or language/configuration change.
+  Start with failing scripted protocol controls that withhold responses until all
+  three groups arrive; test deferred end errors, aborted-query rollback tags,
+  cancellation and pool discard, no post-terminal SQL, hidden/invalid precedence,
+  retries, actual negative-eligibility SQL and recorded rollback. Exercise explicit
+  isolation, clean unnamed session reuse and the optimized production host path;
+  recorded differential tests alone only establish the fallback.
+  Use focused checks and short, guarded Workers/Bun screens between experiments,
+  with inspector and PostgreSQL duration logging off. Retain every round, rejected
+  attempt, actual operation-count evidence and source/artifact identity in §2.11
+  and the bench README. Keep only a worthwhile measured improvement; if rejected,
+  restore the production path and record the result before selecting the next
+  profile-driven candidate. Qualify the selected result and pass one final full
+  gate before a separate manual PR; never merge or enable auto-merge. The complete
+  four-runtime application comparison remains deferred until further progress.
+
 - [ ] **9.2b One passkey implementation** `opus · xhigh`: 8.2l's pure-Rust
   checks used by both hosts, `webauthn-rs` kept only as a test reference,
   the test authenticator on `p256`, so no native deployable links

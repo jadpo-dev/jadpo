@@ -3250,3 +3250,38 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   and `tools/bench/README.md`. Exact unmerged prerequisite `a847d511` is included
   under Richard's stacked-dependency permission. Claude reviews and merges;
   Codex opens the PR without auto-merge and never merges it.
+
+- [x] **9.2a2 Bulk JSON string writing:** `gpt-6.1-sol · xhigh`
+  after 9.2a1, continuing the same unattended local 9.2 model batch.
+  Optimise the measured generic JSON string writer using safe bulk UTF-8 spans
+  and fewer output-buffer allocations. Preserve area 19's byte-identical compact
+  JSON, existing escape spelling, Unicode and appended-output behaviour; leave
+  authentication, policy, quotas, boundary normalisation and validation intact.
+  Start with independent canonical/round-trip and deterministic allocation
+  controls, including dense and late escapes. Compare fresh baseline/candidate
+  builds with the same final harness, Workers against strong Bun first, retaining
+  complete body/state checks and a small signed-read regression guard. Throughput
+  and p95 runs omit inspector and PostgreSQL duration logging on both sides;
+  keep diagnostic profiles separate. Record exact sources/artifacts, every round,
+  failed/adverse attempts, CPU scopes and remaining limits in §2.11 and the bench
+  README. Pass the full gate and open a separate manual PR without merging.
+  The complete four-runtime app comparison remains deferred until more progress.
+
+  Built: the generic JSON writer reserves ordinary UTF-8 output and copies the
+  prefix before its first escape once, retaining the original scalar suffix.
+  Independent canonical/round-trip/seeded tests and an allocation-budget control
+  pass. Rejected bulk variants, a 24-cell compiler-setting screen and 150/180-row
+  writer diagnostics explain the choice; shipping compiler settings are unchanged.
+  Full qualification passed all 176 contracts. The selected 30-cell local Workers/
+  Bun confirmation measured large ASCII 1,038→1,200 requests/s and late escape
+  1,039→1,212, with p95 24.631→20.914 and 23.226→20.949 ms. Signed/small/mixed
+  throughput and p95 adverse results, reserve-only micro advantages, all rounds,
+  host/control/time-gap limits, failed/superseded attempts and exact identities
+  remain in compiler/runtime §2.11 and `tools/bench/README.md`; this is not a
+  universal performance win or Bun parity. The measured executable source is
+  `288a6778`; later source-comment/facts changes are explicitly distinguished.
+  The final own-worktree full gate passed 93/93 in 568 s at `fbd12419`, tree
+  `a3763713ff2f6e4d99659114231110773337f5ab`; subsequent edits record completion
+  metadata only. Exact unmerged prerequisite `656795ce` is included under
+  Richard's stacked-dependency permission. Claude reviews and merges; Codex opens
+  the PR without auto-merge and never merges it.

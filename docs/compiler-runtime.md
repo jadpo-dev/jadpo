@@ -7812,3 +7812,15 @@ explicitly experimental and never forge full-contract qualification.
 Full reproduction commands and guard scopes are in the bench README. Shipping
 compiler defaults remain unchanged. The next separate chunk targets the
 dominant signed-read path; no PostgreSQL protocol pipelining is implemented here.
+
+
+The final reviewed code, tests, methods and result tables passed
+`python3 tools/verify.py` at
+`fbd1241944529a521de0d9f7e5f9635b6dc300af`, tree
+`a3763713ff2f6e4d99659114231110773337f5ab`: **93/93 steps in 568 s**,
+direct stdout, all owned processes reaped. Both golden 44 targets, the compiled
+corpus (264 projects / 526 tests / 5,832 typed-entry comparisons), eight workerd
+routes across three projects and kiosk memory at 12,058,624 bytes after
+100/500 bookings pass; only established pgvector-version skips remain.
+Measured artifacts stay the exact 288a source above. Subsequent gate-result
+and roadmap/archive completion metadata do not change executable behavior.
