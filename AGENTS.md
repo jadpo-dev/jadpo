@@ -51,12 +51,12 @@ what it finds on the same branch, and merges it.
 Follow [the experiment catalogue](docs/performance-experiments.md) across
 sessions. Primary comparisons are TypeScript/Bun versus Jadpo native Rust,
 and TypeScript/workerd versus Jadpo Wasm/workerd; cross-deployment Bun versus
-Workers is secondary. Two provisional TypeScript/workerd control screens pass
-local guards and agent review; the native primary pair is still missing.
-Prepare a provenance-valid current native/Bun production pair next; P61
-remains paused during that preparation, then resume eligible P61/queue work.
+Workers is secondary. Both primary pairs now have provisional locally guarded,
+agent-reviewed results. Resume paused P61/eligible exploration; no baseline
+prerequisite remains. Keep each control's loader/host/lifetime limits explicit.
 Control acceptance uses local checks and agent review under standing
-authorization, not a new Richard approval. Preserve prior results and historical forecasts.
+authorization, not a new Richard approval. Preserve prior results and historical
+forecasts.
 A dedicated discovery agent maintains credible hypotheses, potential savings
 calculations and impact order. Run cheap independent prototypes from
 one exact frozen baseline in a reusable sibling scratch worktree; explicitly
@@ -64,6 +64,11 @@ stack dependent experiments on retained prerequisite commits and measure both
 marginal and combined gains. Freeze each variant's prediction, workload,
 metric and reference before implementation; retain the original and record
 actual throughput gain beside it, including marginal/combined comparisons.
+Every result also gives a simple/moderate/complex implementation assessment
+from its source: distinguish prototype roughness from likely keeper interfaces,
+dependencies, platform and maintenance burden, revisit its pre-estimate honestly,
+and give the tradeoff/recommendation for later human carry-forward selection.
+This is advisory, not promotion; preserve frozen performance predictions.
 Save every source/harness commit under a durable Git ref and retain raw
 results/artifacts, including losses and adverse metrics, before resetting the
 working branch. Stop owned builds/services, including PostgreSQL, and

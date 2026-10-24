@@ -39,10 +39,9 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    Chunks marked **needs Richard** stop for him at the point named; every other chunk runs
    unattended. For performance exploration, first follow the catalogue's
    primary-comparison/control prerequisite; optimization measurements are
-   coordinated through locally checked, agent-reviewed controls. Two Workers
-   screens are provisional; prepare a provenance-valid current native/Bun
-   production pair next. P61 remains paused during that preparation. Then resume
-   eligible P61/queue work and the highest-priority
+   coordinated through locally checked, agent-reviewed controls. Both primary
+   pairs now have provisional results; resume paused P61/eligible exploration
+   without another baseline prerequisite, then the highest-priority
    eligible experiment from its frozen baseline; record blockers and continue
    other eligible experiments across sessions until the available queue,
    including new ideas, is exhausted. There is no experiment-count or
@@ -232,10 +231,9 @@ This adds no completion ticks for the unmerged Phase 9 source stack.
 
 Richard's later 2026-10-24 method correction makes the primary pairs standalone
 TypeScript/Bun versus Jadpo native Rust, and TypeScript/workerd versus Jadpo
-Wasm/workerd. Two local TypeScript/workerd controls pass guards and agent
-review; they are provisional, and the native primary pair is still missing.
-Prepare a provenance-valid current native/Bun production pair next; P61
-remains paused during preparation, then eligible P61/queue work resumes.
+Wasm/workerd. The two local TypeScript/workerd controls and current native/Bun
+pair pass guards and agent review, with provisional loader/host/lifetime limits.
+Resume paused P61/eligible queue work without another baseline prerequisite.
 Acceptance means local compatibility/body/state/security/resource/provenance
 checks plus agent review under standing authorization, not a new Richard
 approval.
