@@ -517,6 +517,25 @@ mod tests {
         }
     }
 
+    /// The claim already read every relevant breaker; a closed/absent
+    /// snapshot runs without another database round trip.
+    #[test]
+    fn a_claimed_breaker_snapshot_needs_no_separate_read() {
+        let store = Statements::default();
+        let host = crate::MemoryHost::new();
+        let budget = Budget::start(&host, crate::budget::Invocation::Tick);
+        let rows = vec![vec![
+            SqlValue::Text("couriers".into()),
+            SqlValue::Text(CLOSED.into()),
+            SqlValue::Int4(0),
+        ]];
+        assert!(matches!(
+            crate::block_on(gate_snapshot(&store, &rows, [1; 16], 1, &budget, 0)),
+            Some(Gate::Run(_))
+        ));
+        assert!(store.0.borrow().is_empty());
+    }
+
     /// A delivery claimed while its connection's breaker was closed with
     /// no failures, which the breaker opened on while it ran, closes it
     /// when its provider answers, releasing what it held (area 12, "A
