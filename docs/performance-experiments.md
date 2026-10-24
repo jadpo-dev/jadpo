@@ -296,7 +296,7 @@ re-ranking. Do not fabricate a number to make the table sortable.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
-| **P61 — Conditional host long-text JSON escaping** (queued; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
+| **P61 — Conditional host long-text JSON escaping** (queued; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. See [frozen micro and independent host-sink alternative](#p61--frozen-roundtrip-micro-and-conditional-host-sink). | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
 | **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
 | **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Current D samples completion/scheduling contexts; constructor/completion and true-I/O census is still required to identify removable work. Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
 | **P55 — Safe synchronous Response slice constructor** (queued; unmeasured) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | Not measured | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
@@ -750,6 +750,67 @@ borrow masks with possible later-lane false positives. Word reads may cross
 scalar boundaries, but String appends must start/end at discovered ASCII
 escape positions or known string boundaries, never arbitrary word ends.
 Canonical escape spelling and existing-prefix/append behavior remain required.
+
+## P61 — frozen roundtrip micro and conditional host sink
+
+The current probe stays **P61.roundtrip**, independent H84/B4fda without
+P02/P03/P21. Its prediction is **unknown, including loss**, with no micro-to-
+application-throughput projection. The frozen protocol compares B's Rust
+writer with primitive-string `JSON.stringify`, charging eligibility scanning,
+Rust↔JS transfers, allocation, append and drop. Use the six existing
+string_screen shapes, owned Rust input prepared outside each timed group,
+fresh output for every write, fixed N per shape committed before timing,
+and five rotated/reversed rounds. A host monotonic clock brackets the fixed-N
+HTTP batch; disclose binding/request overhead. Preserve exact canonical output
+and control-8/12 fallback. No production host/value-JS integration is part of
+this probe, and no result is claimed here.
+
+| P61 variant | Frozen prediction | Measured throughput gain | Scope / dependency |
+|---|---|---|---|
+| P61.roundtrip | Unknown, including loss; micro metric only | Not measured | Current transfer-inclusive probe from B |
+| P61.host-sink | Unknown, including loss; no claimed application gain | Not measured | Conditional alternative; does not depend on roundtrip winning |
+
+**P61.host-sink remains eligible even if JS→Rust transfer makes the roundtrip
+micro lose.** It would retain escaped JS string tokens/chunks through Response
+construction. This is a substantive source-backed alternative, not an expansion
+of the current probe; cost **L**, confidence low, ownership/semantics risk high.
+
+Current [typed writers](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L628)
+and [generic Codecs::write](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1354)
+write into `&mut String`; [HTTP output](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/http/mod.rs#L1586)
+moves that owned String into the [Response byte Vec](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/http/mod.rs#L108).
+`into_bytes()` moves the buffer; it is **not another copy**. The
+[Workers adapter](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L417)
+then creates an owned Uint8Array and Response. There is no pluggable host sink
+in those current interfaces.
+
+The conditional design is a target-neutral sink separating raw Rust-formatted
+tokens from TEXT escaping, with a pure String default and a new request-owned
+body/capability seam across codegen, generic fallback, runtime and Workers.
+Keep numeric formatting, field order/omission and custom-codec traversal in
+Rust; batch raw punctuation/numeric tokens across the bridge. Do not use
+whole-object JS/BigInt serialization, numeric coercion, hidden re-encoding or
+global/cross-invocation JS state. A safe caught Response binding must accept
+the existing JS value directly: cached web-sys 0.3.106
+`new_with_opt_str_and_init` accepts Rust `&str`, which would reintroduce transfer
+and defeat that retained-JS design.
+
+Materialized/pure fallback may initially handle byte-dependent paths, including
+[HEAD byte clearing](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/http/mod.rs#L434),
+[idempotency persistence](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/http/idempotency.rs#L268)
+and [response_value parsing](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/http/mod.rs#L2092).
+Preserve custom codecs, streams, bodyless statuses, primitive-string escaping,
+canonical control-8/12 fallback and errors/non-string results. Append each
+escaped token only after complete success; never silently rerun a custom-codec
+traversal as whole-document fallback. Release request handles on completion or
+cancellation. JS chunk overhead, flushing/flattening, Response encoding and GC
+can erase savings and must stay inside the measured accounting.
+
+Host-sink overlaps P55 by bypassing the same intermediate body-copy opportunity;
+do not add their gains. P55 still applies to byte-fallback paths. There is no
+claimed Value/SQL clone elimination, and the current writer's 18.8% sampled
+self footprint is context, not removable headroom. This entry adds no
+implementation, test, build, capture or framework document.
 
 ## Current-B CPU diagnostic and compiler audit (2026-10-24)
 
