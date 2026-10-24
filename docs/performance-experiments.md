@@ -16,12 +16,17 @@ Richard corrected the primary comparison method after the screens below:
 | TypeScript/Bun vs Jadpo native Rust executable | Standalone servers, direct PostgreSQL, persistent application state and clients/pools |
 | TypeScript/workerd vs Jadpo Wasm/workerd | Local Workers, persistent application state, invocation-owned connections through the same transaction-pool helper topology/caps: golden 10, focused 20 |
 
-**The missing TypeScript/workerd control comes first. Optimization measurements,
-including P61, are paused until that control is accepted and the comparison
-design is reviewed.** Review the design before implementing the control; do
-not resume P61 from the older “next experiment” instructions. Optional three-
-TypeScript lifetime arms are secondary diagnostics and do not block this
-missing primary pair. The strong direct-PG Bun control remains unchanged.
+**The faithful TypeScript/workerd port and explicit no-array-discovery control
+now pass local compatibility/body/state/security/resource/cleanup/provenance
+checks and agent design review; both controlled pairs are recorded below.**
+They are provisional references, not a strongest global TypeScript claim. P61
+remains paused while a provenance-valid current native/Bun production pair
+is prepared; then resume eligible P61/queue work. The standalone native pair
+is still missing. Acceptance uses local checks
+and agent review under standing unattended authorization, not a new Richard
+approval. Do not resume P61 from older “next experiment” instructions. Optional
+three-TypeScript lifetime arms are secondary diagnostics. The strong direct-PG
+Bun control remains unchanged.
 
 Bun versus Workers is a secondary cross-deployment comparison. Differences
 include connection lifetime, driver transport, crypto and HTTP bindings; it
@@ -45,8 +50,9 @@ untrusted caller header.
 
 Cached postgres 3.4.7 exposes a workerd entry using cloudflare:sockets;
 esbuild 0.28.2 and Wrangler 4.149.0 are available locally. This is a feasible
-source-backed route, **not tested runtime compatibility**. Require artifact/
-metafile evidence of workerd condition resolution and actual nodejs_compat
+source-backed route now exercised by the guarded local port below, not
+complete-contract qualification. Its artifact/metafile evidence must retain
+workerd condition resolution and actual nodejs_compat
 support for AsyncLocalStorage, crypto HMAC/timingSafeEqual/X509Certificate and
 net/https/dns imports. Avoid Node server/process bootstrap in the Worker entry;
 do not stub business or security functions. Keep driver options identical and
@@ -72,7 +78,8 @@ The same hosting-model rule applies to a later serverless comparison: Bun and
 native Rust can use suitable Lambda adapters, then be compared on the same
 hosting model. No deployment or account work is authorized here. Establish
 local warm pairs first; cold start is a separate measurement. This control
-proposal has no optimization ID, gain forecast, build or measured result yet.
+comparison has no optimization ID or gain forecast. The first local Workers
+control is measured below; the standalone native primary pair is still missing.
 
 ## Resume and finish the exploration
 
@@ -283,6 +290,260 @@ Retire an old source worktree only after checking its exact PR state and
 retaining its refs/data; do not disturb another session's active main, a3 or
 scratch worktree.
 
+## Workerd primary control — faithful port (2026-10-24)
+
+**Provisional existing-app control, not an optimization result or strongest
+TypeScript baseline.** The missing runtime port now executes on real workerd
+and passes the local seam/body/state/security/cleanup/provenance checks and
+agent design review. Acceptance means those local checks and review under
+Richard's standing unattended authorization; it does not add a new Richard
+permission gate. The separately validated one-option control follows below;
+neither run establishes the strongest global TypeScript baseline. P61 remains
+paused during preparation of a provenance-valid current native/Bun production
+pair, after which eligible P61/queue work resumes. There is still no
+native-versus-Bun primary result.
+
+Control source is `fda8fc4b12991b9046290467a173ba56bc512afa`, tree
+`3468359bf6e444fb8388f3e5befc0e1ce097cd75`, retained under
+`refs/experiments/a4-baseline-84e1c00b/ts-workerd-seam-fda8fc4b`.
+Only six adapter/harness/test files differ from H84; original TypeScript app
+and Bun sources are unchanged. The Jadpo arm consumes frozen B Wasm/JS; the
+TypeScript arm consumes its distinct bundle. Both use the same cached workerd,
+pair flags and helper topology, with explicit new per-app nodejs_compat
+configurations: golden also retains its original global_fetch_strictly_public
+flag; focused originally had no flags.
+This is a newly labelled control configuration, not a replacement for earlier
+B captures. Invocation-owned postgres/CF 3.4.7 clients use the same external
+transaction-pool helper caps (golden 10 / focused 20), with singleton application
+state and awaited request cleanup. Each implementation retains its existing
+schema/authentication: TypeScript golden HMAC and Jadpo BLAKE3 are distinct.
+
+Untimed acceptance checked 16 concurrent exact owner reads, persistent quotas
+(120 unauthorized responses then 429), spoofed peer rejection, partial-body
+abort cleanup and a following exact read. This is not a blocked-SQL-cancel
+claim. Both apps report one application instance, zero active clients and zero
+close failures after probes. Golden's untimed census finds one business SELECT
+and one lifecycle catalog query, with zero authority reads. Initial readiness
+was separately body-verified; the census records first catalog+select1 and
+second no SQL, without retaining status/body for those census calls. This is
+a limited cache probe, not complete cache proof. Focused catalog queries are
+separately recorded and excluded only from the existing business-query probe,
+not from timed work.
+Default fetch_types and other driver options are unchanged. Six golden client
+objects are constructed for each request; startup/catalog/close costs remain
+inside service/helper CPU. Helper CPU near 1.2–1.3ms per TypeScript request is
+material and motivated the separately validated tuning below, not a
+language-win claim.
+
+Before implementation/measurement, the explicit Workerd-only URL
+`fetch_types=false` variant's prediction was frozen **unknown**, including
+possible loss. The following source-based scope was recorded before its result:
+Cached postgres 3.4.7 fetchArrayTypes populates SQL-array OID parsers,
+serializers and its type map; neither app's schemas/queries use PostgreSQL
+arrays or custom types. Built-in scalar/JSONB handling and Drizzle timestamp
+handling remain. Keep original application/npm sources, all other driver
+options and the six golden client objects unchanged. Golden discovery uses a
+named prepare:true path while Drizzle unsafe business queries default to
+prepare:false; the helper intercepts Terminate and reuses backends without
+DISCARD. Removing discovery may remove query/row/codec setup and a possible
+retained-named-statement startup path. This is not a measured prepared-statement
+leak claim without a direct census, and focused prepare:false means that golden
+path cannot explain every cost. Validate and label this variant separately.
+
+The fixed 12 cells cover three workloads × Jadpo/TypeScript workerd × two
+whole-order reversed rounds, c16, 1s warmup + 2s admission, 2048 principals,
+inspector NONE and PostgreSQL duration logging off. All cells complete with
+zero load/warmup errors, invalid bodies and state changes; exact body identities
+are 166/65610/152992 bytes. All 66 immutable served copies were verified. Sleep
+observation is empty, and all 24 host/helper PIDs plus owned PostgreSQL were
+reaped. This short screen is not 176-case qualification, a full gate, capacity
+confirmation or intrinsic language/engine evidence.
+
+Medians are per implementation over both rounds. CPU columns keep service
+and external helper separate; the sum is their comparable combined scope,
+excluding PG and load-generator CPU. RPS ratio is a ratio of medians, not an
+optimization gain, forecast accuracy result or pooling-adjusted language score.
+
+| Workload | Jadpo / TS req/s | Jadpo / TS p95 ms | Jadpo / TS service CPU ms/request | Jadpo / TS helper CPU ms/request | Jadpo / TS combined CPU ms/request | Jadpo/TS RPS ratio |
+|---|---|---|---|---|---|---|
+| Signed golden | 2292.015 / 460.612 | 8.7705 / 42.9280 | 0.513311 / 2.290268 | 0.141375 / 1.267217 | 0.654686 / 3.557486 | 4.9760× |
+| Large ASCII | 1264.107 / 516.920 | 18.9760 / 42.2220 | 0.810399 / 2.014007 | 0.173509 / 1.294398 | 0.983908 / 3.308405 | 2.4455× |
+| Mixed Unicode | 794.183 / 270.508 | 26.3085 / 109.4095 | 1.291105 / 3.719865 | 0.209429 / 1.240310 | 1.500534 / 4.960175 | 2.9359× |
+
+Every following cell is **req/s / p95 ms / service CPU ms/request / separate
+helper CPU ms/request / sampled peak RSS MB**. Focused raw names peak_rss_mb
+and golden sampled_peak_rss_mb are sampled process observations, not lifetime
+maxima; neither includes the helper's RSS.
+
+| Workload / round | Jadpo workerd | TypeScript workerd |
+|---|---|---|
+| Signed golden / 1 | 2309.519 / 8.709 / 0.578959 / 0.159862 / 315.7 | 431.841 / 43.225 / 2.415902 / 1.294597 / 682.9 |
+| Signed golden / 2 | 2274.511 / 8.832 / 0.447663 / 0.122888 / 314.2 | 489.382 / 42.631 / 2.164634 / 1.239837 / 691.0 |
+| Large ASCII / 1 | 1284.983 / 18.499 / 0.795807 / 0.170807 / 356.2 | 513.065 / 42.085 / 2.026144 / 1.288515 / 384.5 |
+| Large ASCII / 2 | 1243.231 / 19.453 / 0.824990 / 0.176211 / 375.3 | 520.775 / 42.359 / 2.001871 / 1.300281 / 394.0 |
+| Mixed Unicode / 1 | 788.835 / 26.833 / 1.302706 / 0.207678 / 291.9 | 266.389 / 111.183 / 3.754579 / 1.282051 / 316.1 |
+| Mixed Unicode / 2 | 799.532 / 25.784 / 1.279503 / 0.211180 / 295.9 | 274.628 / 107.636 / 3.685152 / 1.198569 / 319.5 |
+
+Cold/first fields are the existing harness observations, **not a dedicated
+cold-start benchmark**. Each cell is cold ms / first ms / idle RSS MB.
+
+| Workload / round | Jadpo workerd | TypeScript workerd |
+|---|---|---|
+| Signed golden / 1 | 61.614 / 26.615 / 97.5 | 54.898 / 35.378 / 59.9 |
+| Signed golden / 2 | 62.166 / 26.947 / 97.4 | 57.866 / 38.035 / 60.1 |
+| Large ASCII / 1 | 60.168 / 36.808 / 93.7 | 52.505 / 38.547 / 58.4 |
+| Large ASCII / 2 | 58.722 / 35.871 / 93.8 | 52.738 / 39.746 / 58.5 |
+| Mixed Unicode / 1 | 63.532 / 36.336 / 93.8 | 52.568 / 36.609 / 58.5 |
+| Mixed Unicode / 2 | 57.746 / 34.795 / 93.9 | 56.629 / 42.636 / 58.5 |
+
+Preserve variation and host limits: TypeScript signed RPS is 431.841/489.382
+across rounds. Jadpo golden round1 has a 622.664ms clock gap (within the frozen
+1s guard), with service+helper CPU 0.578959+0.159862ms/request versus
+0.447663+0.122888 in round2; other gaps are 4.926–9.733ms. Host load changes
+across the declared schedule (load1 roughly 3.84–14.09), and per-row host CPU,
+load-generator CPU, elapsed/drain windows and complete status/body data remain
+in raw. Jadpo idle RSS is higher in every cell; its cold harness observation is
+higher in every corresponding cell. TypeScript golden sampled peak RSS reaches
+691MB. None of those observations is discarded because throughput favors Jadpo.
+
+Archive paths below are relative to A, the durable campaign archive already
+identified for P02. They retain complete scalar rows, source/artifact maps,
+metafiles and served identities; setup failures are not performance screens.
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Frozen control build | `controls/ts-workerd-seam-fda8fc4b/build.json` | `e3299af17583c87d017cba24408301f6a0b62bb7579768a27d5551b0cfae384a` |
+| Guarded seam setup | `controls/ts-workerd-seam-fda8fc4b/seam-setup/results.json` | `76f2da8523ed2cd8b5ec897f6dd59b02e8922e9dde638e14f28be5a468bd2bec` |
+| Complete fixed 12 paired result | `controls/ts-workerd-seam-fda8fc4b/paired12-none-pg-off-c16-r2/results.json` | `73f3d25534f84a29a7843442c070c4c6f228568b93547b17ac076cbfd94b9295` |
+| Failed neutral-bundler/main-fields setup, source 340724e0 | `controls/ts-workerd-340724e0/build.json` | `f44bb312c7220be366ce53674ed2af9d45e96471952801d4b9c70dfb4f68ab18` |
+| Golden bundle passed, focused flags assumption rejected, source aae76127 | `controls/ts-workerd-mainfields/build.json` | `de28103664bb7379ca7ffd2bbd44ee988305c4e60dd52e3ba644fa8a4c1eb7c3` |
+| Corrected per-app-flags setup, source 74eccf8d | `controls/ts-workerd-per-app-flags/build.json` | `2e8bdb54e9907d8b6a9c9bb97d49fd00c005ab8c08c01f66f86c9dc65b7a4965` |
+| Initial compatibility setup at 74eccf8d | `controls/ts-workerd-per-app-flags/compatibility-setup/results.json` | `0210bb32b93dbfb39783533652aad02bd5531ff1be9dd040e4058f24f98c307c` |
+
+This adds no optimization ID or gain forecast. All 61 original predictions,
+F01 and previous results remain unchanged. The faithful port is useful evidence;
+its separately labelled platform tuning is measured below, without a
+strongest-TypeScript or general performance conclusion.
+
+## Workerd primary control — explicit no-array discovery (2026-10-24)
+
+**Second provisional platform-option control; not a strongest global
+TypeScript baseline or intrinsic language win.** The frozen prediction was
+**unknown, including loss**. Source `b7fbec9bacf10c1715c463a6eaa4d0bdd577eb87`,
+tree `b4d4495a90a70c6f4788ee1ecf73cc8a60fac141`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/ts-workerd-no-array-b7fbec9b`.
+The only runtime-setting change from the faithful port is binding-derived
+Workerd URL `fetch_types=false`. Cached postgres/CF options are deep-equal
+except that boolean, which is omitted from server startup parameters. Original
+app/npm sources, all other options, six golden client objects, business SQL,
+authentication, validation, helper caps/topology, singleton state and invocation
+lifetimes are unchanged. No lazy construction or cross-request I/O was added.
+
+Remaining adapter costs are explicit: golden constructs six Sql objects and
+ten Connection state objects per invocation; focused constructs up to twenty
+Connection states. These are object counts, not ten/twenty opened sockets.
+Object/queue/parser/Drizzle recreation and AsyncLocalStorage/facade work remain.
+Optional lazy-client, pool-max or minification reference variants have unknown
+benefit and are not mandatory before further Jadpo work. Application creation
+is once per isolate; focused's three schema queries run/check once and readiness
+caching is validated in the tuned seam. There is no accidental per-request app,
+readiness or schema-startup rerun. HMAC versus BLAKE3 and existing ORM,
+validation and policy implementations still differ, so this deployment pair
+is not universal engine evidence.
+
+Actual workerd seam probes verify built-in UUID/text (é/😀), timestamps/NULL,
+int8/int4 and nested JSONB including backspace/form-feed. Neither schema/query
+uses PostgreSQL arrays/custom types. The untimed golden census now has exactly
+one business SELECT, no authority reads and zero catalog queries. Readiness
+status/body are checked here; first SQL is select1, then none. Focused catalog
+census is also empty. Sixteen concurrent owners, quota/trusted-peer checks,
+partial-body abort followed by an exact read and cleanup all pass. Both apps
+end with opened=closed, active 0, closeFailures 0 and one application instance.
+
+Disabling fetchArrayTypes removes the discovery query, row transfer, parser/
+serializer/map setup and a possible golden named-prepared startup path as one
+combined option effect. Golden discovery used prepare:true while Drizzle unsafe
+business SQL defaults prepare:false; the helper reuses backends without
+DISCARD/DEALLOCATE. This supports a possible retained-statement mechanism,
+**not a measured prepared-statement leak** without a direct census. Focused's
+prepare:false also prevents assigning its costs to that golden-only path.
+
+The fixed 12-cell protocol is unchanged: three workloads × Jadpo/TypeScript
+workerd × two full-order reversed rounds, c16, 1s warmup + 2s admission,
+2048 principals, inspector NONE and PG duration logging off. The Jadpo arm
+consumes frozen B Wasm/JS; both arms retain the new pair's nodejs_compat and
+per-app original flags, cached workerd and same helper topology. All 12 cells
+complete with zero load/warmup errors, invalid bodies and state changes;
+all 66 immutable served copies and exact bodies pass. Sleep observation is
+empty; all 24 host/helper PIDs and owned PostgreSQL/workerd are reaped.
+There is no native primary result, full qualification or gate claim.
+
+Medians below are within this screen. The service/helper sum excludes PG and
+load-generator CPU, and the RPS ratio is a ratio of medians, not an optimization
+gain. TypeScript medians in the earlier default-port screen were
+460.612/516.920/270.508 req/s, versus 793.541/902.127/359.782 here (signed/ASCII/
+Unicode). Those are **separate screens, not a matched default-versus-tuned
+marginal estimate**; retain both, and do not attribute a pure query-removal gain
+or compare cross-campaign absolute rates as a controlled causal effect.
+
+| Workload | Jadpo / tuned TS req/s | Jadpo / tuned TS p95 ms | Jadpo / tuned TS service CPU ms/request | Jadpo / tuned TS helper CPU ms/request | Jadpo / tuned TS combined CPU ms/request | Jadpo/tuned-TS RPS ratio |
+|---|---|---|---|---|---|---|
+| Signed golden | 2276.299 / 793.541 | 8.9610 / 28.8465 | 0.448529 / 1.350737 | 0.123915 / 0.131942 | 0.572444 / 1.482679 | 2.8685× |
+| Large ASCII | 1251.125 / 902.127 | 20.5750 / 27.4525 | 0.812897 / 1.138229 | 0.177433 / 0.164535 | 0.990330 / 1.302764 | 1.3869× |
+| Mixed Unicode | 796.610 / 359.782 | 26.7070 / 99.5560 | 1.282694 / 2.849962 | 0.208588 / 0.212274 | 1.491282 / 3.062236 | 2.2141× |
+
+Every cell below is **req/s / p95 ms / service CPU ms/request / separate helper
+CPU ms/request / sampled peak RSS MB**, with the same raw RSS naming and
+sampling limits as the first control.
+
+| Workload / round | Jadpo workerd | Tuned TypeScript workerd |
+|---|---|---|
+| Signed golden / 1 | 2287.473 / 8.870 / 0.445318 / 0.124427 / 316.5 | 780.891 / 29.379 / 1.365667 / 0.134014 / 624.5 |
+| Signed golden / 2 | 2265.125 / 9.052 / 0.451741 / 0.123402 / 316.1 | 806.190 / 28.314 / 1.335807 / 0.129870 / 630.4 |
+| Large ASCII / 1 | 1289.124 / 18.346 / 0.796905 / 0.170213 / 364.7 | 895.788 / 27.876 / 1.137493 / 0.160133 / 383.7 |
+| Large ASCII / 2 | 1213.127 / 22.804 / 0.828888 / 0.184653 / 361.8 | 908.465 / 27.029 / 1.138965 / 0.168937 / 379.1 |
+| Mixed Unicode / 1 | 795.193 / 26.191 / 1.285090 / 0.205864 / 309.4 | 365.934 / 96.105 / 2.807018 / 0.215924 / 309.9 |
+| Mixed Unicode / 2 | 798.027 / 27.223 / 1.280298 / 0.211311 / 303.4 | 353.630 / 103.007 / 2.892907 / 0.208623 / 320.2 |
+
+The harness cold/first observations remain separate from a dedicated cold-start
+benchmark. Each cell is cold ms / first ms / idle RSS MB.
+
+| Workload / round | Jadpo workerd | Tuned TypeScript workerd |
+|---|---|---|
+| Signed golden / 1 | 62.063 / 30.985 / 97.4 | 56.188 / 36.672 / 59.0 |
+| Signed golden / 2 | 62.636 / 30.663 / 97.4 | 53.314 / 33.544 / 59.0 |
+| Large ASCII / 1 | 62.376 / 35.541 / 93.8 | 49.157 / 35.404 / 53.5 |
+| Large ASCII / 2 | 58.194 / 34.843 / 93.8 | 49.201 / 35.857 / 53.5 |
+| Mixed Unicode / 1 | 58.611 / 35.171 / 93.8 | 49.029 / 35.388 / 53.5 |
+| Mixed Unicode / 2 | 58.774 / 32.934 / 93.8 | 49.422 / 35.870 / 53.5 |
+
+The large helper-CPU discrepancy in the first port is absent in this control:
+median helper CPU is roughly 0.12–0.21ms/request in both arms. Other differences
+remain. Jadpo ASCII round2 p95 is 22.804ms versus 18.346 in round1; TypeScript
+Unicode p95 increases 96.105→103.007ms. TypeScript signed peak RSS is
+624.5/630.4MB versus Jadpo 316.5/316.1; Jadpo idle RSS and harness cold observations
+are higher in every paired cell. Clock gaps are 5.131–11.204ms. Load1 varies
+roughly 2.98–12.00 across the schedule, with per-row host/load-generator CPU,
+elapsed/drain scope and all status/body observations retained in raw. Do not
+turn either two-round screen into a capacity or statistical-confidence claim.
+
+Archive-relative identities use the same durable A as the first control:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Explicit-option control build | `controls/ts-workerd-no-array-b7fbec9b/build.json` | `ecbc40f1569abbd9e7b10d4d4ff90b4bba90f7c038b173fa48051ecaa990a3d7` |
+| Actual codecs/census/seam setup | `controls/ts-workerd-no-array-b7fbec9b/seam-setup/results.json` | `5b2892c137381927ae6809079a84376cca8bc3c5bdb8e32bf7ea3986230d3e50` |
+| Complete explicit-option fixed12 result | `controls/ts-workerd-no-array-b7fbec9b/paired12-none-pg-off-c16-r2/results.json` | `c1f3dd30086c2ec7ebef29a23ad036945c39a56be8e652ccbfc34faec782bcc1` |
+
+Next, prepare a provenance-valid current native/Bun production pair; the
+builder's bounded source plan is underway. No current native production
+artifact exists yet; native binaries from historical producer 288a6778 are
+stale references and must not be reused as current. P61 remains source-only
+and paused during native-baseline preparation, then eligible P61/queue work
+resumes under standing authorization without a new Richard approval. The
+exploration queue is neither exhausted nor promoted. All 61 candidate
+forecasts, F01 and prior raw/results survive.
+
 ## Primary read queue
 
 P02 is measured/mixed and retained as an exploratory prototype, with no
@@ -292,9 +553,10 @@ with limited causal attribution; its original 0.5–2% prediction is unchanged.
 P21 first-only is now a promising measured ASCII prototype; the current
 P21.suffix form is negative/rejected. Neither is a production promotion.
 Richard's later comparison-method correction supersedes the earlier P61-next
-priority: the missing TypeScript/workerd control and reviewed primary-pair
-design come first. Optimization measurements are paused; P61's source-only
-preparation is retained below, with no build or timing. Its roundtrip and
+priority: locally reviewed primary controls now have two provisional screens,
+and preparation of the current native/Bun production pair comes next. P61
+remains paused during that preparation, then eligible P61/queue work resumes;
+its source-only preparation is retained below, with no build or timing. Its roundtrip and
 host-sink alternatives keep their original unknown forecasts; neither P61 nor
 P21 bitmap work resumes merely because it heads an optimization queue.
 P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
@@ -828,7 +1090,8 @@ Canonical escape spelling and existing-prefix/append behavior remain required.
 
 ## P61 — frozen roundtrip micro and conditional host sink
 
-**P61 is paused for the missing TypeScript/workerd control and design review.**
+**P61 remains paused during current native/Bun production-pair preparation;
+then resume eligible P61/queue work under standing authorization.**
 The source-only roundtrip preparation is retained at
 `fa2040748bee8df7537c51c7c641360a1be55e79`, tree
 `73d81efb1e84bc1ead21c9eda100e5e3fcc72f50`, under immutable Git ref

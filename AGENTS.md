@@ -51,9 +51,12 @@ what it finds on the same branch, and merges it.
 Follow [the experiment catalogue](docs/performance-experiments.md) across
 sessions. Primary comparisons are TypeScript/Bun versus Jadpo native Rust,
 and TypeScript/workerd versus Jadpo Wasm/workerd; cross-deployment Bun versus
-Workers is secondary. The missing TypeScript/workerd control and reviewed
-design come first; optimization measurements, including source-only P61, are
-paused until accepted. Preserve prior results and historical forecasts.
+Workers is secondary. Two provisional TypeScript/workerd control screens pass
+local guards and agent review; the native primary pair is still missing.
+Prepare a provenance-valid current native/Bun production pair next; P61
+remains paused during that preparation, then resume eligible P61/queue work.
+Control acceptance uses local checks and agent review under standing
+authorization, not a new Richard approval. Preserve prior results and historical forecasts.
 A dedicated discovery agent maintains credible hypotheses, potential savings
 calculations and impact order. Run cheap independent prototypes from
 one exact frozen baseline in a reusable sibling scratch worktree; explicitly

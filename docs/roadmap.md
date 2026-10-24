@@ -39,11 +39,13 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    Chunks marked **needs Richard** stop for him at the point named; every other chunk runs
    unattended. For performance exploration, first follow the catalogue's
    primary-comparison/control prerequisite; optimization measurements are
-   currently paused for the missing TypeScript/workerd control and design
-   review. Once accepted, resume the highest-priority eligible experiment
-   from its frozen baseline; record blockers and continue other eligible
-   experiments across sessions until the available
-   queue, including new ideas, is exhausted. There is no experiment-count or
+   coordinated through locally checked, agent-reviewed controls. Two Workers
+   screens are provisional; prepare a provenance-valid current native/Bun
+   production pair next. P61 remains paused during that preparation. Then resume
+   eligible P61/queue work and the highest-priority
+   eligible experiment from its frozen baseline; record blockers and continue
+   other eligible experiments across sessions until the available queue,
+   including new ideas, is exhausted. There is no experiment-count or
    batch/task/time quota that permits early production implementation.
 2. Plan it in the session, not in a document: read its area pages, list the
    examples and errors it must make pass, and write those as failing tests
@@ -230,8 +232,13 @@ This adds no completion ticks for the unmerged Phase 9 source stack.
 
 Richard's later 2026-10-24 method correction makes the primary pairs standalone
 TypeScript/Bun versus Jadpo native Rust, and TypeScript/workerd versus Jadpo
-Wasm/workerd. The missing TypeScript/workerd control and design review come
-first; optimization measurements, including P61, are paused until accepted.
+Wasm/workerd. Two local TypeScript/workerd controls pass guards and agent
+review; they are provisional, and the native primary pair is still missing.
+Prepare a provenance-valid current native/Bun production pair next; P61
+remains paused during preparation, then eligible P61/queue work resumes.
+Acceptance means local compatibility/body/state/security/resource/provenance
+checks plus agent review under standing authorization, not a new Richard
+approval.
 Cross-deployment Bun/Workers results and F01 remain valid historical records,
 not a compiler-only gap or the revised primary target. Keep local warm and
 cold comparisons separate; see the catalogue for pooling/lifetime controls.
