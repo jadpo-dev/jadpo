@@ -783,3 +783,40 @@ material common-path slowdown rather than dropping a case or counting a
 short smoke as qualification. Raw files live under the ignored
 `tools/bench/work/version-writes/`; fact sections in `docs/compiler-runtime.md`
 record exact paired identities, results, failures, digests and limitations.
+
+
+The final 9.1b4 comparison used `b4-reference-partition-final` at
+`58933ff74cc9fdac860aea20567acc2e52537253` (production exactly prerequisite
+`e7647abbdfc39e9b4cacd55e12cf7520f999469c`) and
+`b4-candidate-partition-final` at `050aa8fd3c434518deb782ba3f61b0f060d0a143`.
+The entire candidate tree/modes equals gated `404ad02e` tree
+`6f538200443eff32d0c29975b570a5dbe00dd9eb`; each side had its own build.
+Runtime/PATCH outputs are respectively `runtime-1792798879011432000.json` /
+`patch-1792798890696328000.json` reference and
+`runtime-1792803710126051000.json` / `patch-1792803747338864000.json` candidate.
+Both `build.json` files contain all 68 original/saved artifact-map entries per
+side. Exact source/artifact/raw digests, every round, CPU scopes, attempts and
+limits are recorded in compiler-runtime §2.11, “Version checks in writes”.
+
+Observed successful-action census: 4→3 **data** SQL, four transaction commands
+unchanged, hence 8→7 runtime roundtrips; PostgreSQL logs 9→8 including the
+independent provider assertion. The release runtime median cell p95 worsened
+0.580958→0.606792 ms (+4.45%); median fixture throughput rose 3.62%. Ordinary
+PATCH workerd medians were 863.13→865.05 / 1558.32→1566.42 requests/s at 1/8
+clients, with about the same 71.6%/79.0% of Bun throughput. This confirms SQL
+removal, not a latency gain or positive outside-call HTTP performance claim.
+Retain adverse rounds and higher candidate host CPU; matched memory/swap/thermal
+history is unavailable. Preparation also took 532.91→2940.60 s, outside request
+timing; causal attribution is not supported.
+
+The first immutable label `b4-reference-final` remains retained: its runtime
+passed, but fixed-caller PATCH exhausted the genuine 600/min quota and the guard
+rejected 429s. Short smoke success had missed this duration-dependent refusal.
+The final disjoint partitions preserved limits, required every one of 256 cases,
+and passed all 24 cells with at most 54 calls/case including warmup plus bounded
+setup probes. Do not reuse the rejected cell as throughput. Avoid another cold
+full comparison merely to chase favorable latency; inspect controls/source and
+report supported invariants and variation. The first full gate also correctly
+caught SQL-layer ownership and a stale CLI snapshot; final full gate passed all
+93 steps including the final harness, actual Worker route8/3 and both44-case
+golden targets. Subsequent edits are facts/method prose only.

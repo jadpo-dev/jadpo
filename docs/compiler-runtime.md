@@ -4172,7 +4172,17 @@ update without rejecting our own new `xmin`. The rerun takes the same steps,
 so a keyed call
 repeats under its key. A reference's refusal planned as `Raises::Gone`
 is a concurrent change too once rows were loaded before a call. The SQL
-goldens show the predicate and failure-only probe.
+goldens show the predicate and failure-only probe. The formatter lives in
+`jadpo-sql::statement::holds_row_version`; the planner reserves a separate
+nullable parameter for every update/delete and keeps it in unpoliced SQL too.
+Ordinary writes without pre-call versions bind NULL without building row keys.
+`call_snapshots` exercises the first-loaded version across rereads and another
+snapshot, record/by-id and repeated mutations, deletion, policy/field/guard
+refusals, keyed reruns, unkeyed ambiguity and an observed blocked PostgreSQL
+waiter. Boundary regressions cover both savepoint rollback and a caught callee
+whose snapshot closure changed the transaction generation. A compiled Worker
+route also executes a non-NULL version parameter; the concurrent races run on
+the native runtime, not on that route. See §2.11 for the measured SQL census.
 
 **Calls before writes, checked** (chunk 7.4b; area 6, "Several outside
 calls"). `jadpo_check::types::outside_calls` works out, once per project,
@@ -6693,3 +6703,204 @@ reproduction uses the two clean revisions and fresh labels with the same
 source/artifact guards require rebuilding after any checkout change. The
 postmeasurement updates are facts/method prose only; production and harness
 bytes match the final gated/measured candidate.
+
+
+#### Version checks in writes (chunk 9.1b4, measured 2026-10-24 London)
+
+The successful outside-call write now checks its first-loaded `xmin` in the
+mutation's own `WHERE`, removing its separate locking prequery. The failure-only
+probe preserves concurrent-change priority before policy/field/guard/missing
+classification. A stale attempt can now execute a zero-row mutation before its
+probe; that extra failure-path statement is a structural tradeoff, not measured
+failure-path latency. Repeated writes bypass the version only while their
+transaction retains its lock; rollback restores the checked set as described
+in §2.6. No language semantics or TypeScript baseline contract was weakened.
+
+**Verification and attempts.** Predicate and savepoint regressions were observed
+red against prerequisite production before the implementation. These early tests
+were uncommitted working changes; there is no clean red revision to cite.
+Initial fixture corrections included unused rereads, requiring a key for multiple
+changing calls (the second-snapshot case instead uses read-only calls), an awaited
+control connection instead of nesting runtimes, valid by-id inputs, dependent
+pickup cleanup/delete grants and valid lifecycle field guards. The new tests then
+passed on real PostgreSQL, including holder/waiter synchronization observed in
+`pg_stat_activity` before releasing the holder. Existing commit-retry, tenant,
+policy, field, lifecycle and negative suites remain in the full gate.
+
+| Attempt | Outcome and correction |
+|---|---|
+| Initial debug runtime smoke | Migration generation was missing; use the matched compiler before `Prepared::load`. Subsequent `smoke/runtime-2.json` and `runtime-3.json` each ran three rounds of five calls. Logging readiness was then tightened to observed records on all three active connections. These are setup checks, not release timing. |
+| Initial HTTP smoke | Bun-only short cells passed (`smoke/patch.json`); this did not qualify the later full-duration quota protocol. |
+| Gate 1, `c1e20a957b1314c59c67b9f3e5c4f6fc51d7ad81` | Failed 2/93 steps in 944 s. Compiler tests caught inline SQL in the plan crate and the stale CLI SQL snapshot; clippy caught three benchmark expressions. Move formatting into `jadpo-sql`, update the snapshot and fix the three diagnostics together. |
+| Gate 2, `c08b83ce3af3eb93d3ebca06d2146b4a2f5cda46` | Passed 93 steps in 484 s after focused architecture/CLI/SQL/clippy checks. |
+| First reference, `99656d94086497fce7c7efb938029b9437a78f7b` | Release runtime passed; first PATCH cell rejected 32,783 measured 429 responses after its fixed caller exhausted the real 600/min quota. Retain `b4-reference-final/` unchanged; do not accept those PATCH timings. |
+| Quota-preserving harness correction | Give 256 independent owners/rows to disjoint client partitions, cycling i, i+C, …; preserve real limits and fixed/default load modes. Eight load unit tests, two process tests, six Python guards and strict load clippy passed. A bounded Bun smoke verified 5,875/10,114 measured 200s at 1/8 clients and all 256 cases. |
+| Final gate, `404ad02ef78ff49b5f772a50f78678ffc38fc6ae` | Passed 93 steps in 652 s. Native and workerd golden contracts: 44 each; corpus: 264 projects, 526 tests, 5,832 typed comparisons. Compiled Worker route differential: eight tests across three projects, including the non-NULL version fixture. Existing nearest-query skips require pgvector 0.8; installed 0.7 remains unchanged. |
+
+Gates ran directly and completed/reaped with their tool exit status. No retained
+gate-output file/hash exists: automatic approval review rejected creating a new
+gate log/preflight packet, so the permitted direct execution was used. The
+benchmark tool's required raw measurement JSON/build provenance remains retained.
+No new tracker, report or evidence-packet file was created.
+
+**Matched source and method.** Both final labels use the same gated harness and
+its complete four-runtime 176/176 conformance. Before its own build, the reference
+restored every affected production source directory, including `jadpo-sql`, from
+`e7647abbdfc39e9b4cacd55e12cf7520f999469c`; comparison confirmed *all*
+`crates/*/src` matched that prerequisite. The candidate restored the entire gated
+tree, including modes, and `git write-tree` proved equality before its own build.
+Each command used `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0
+CARGO_BUILD_JOBS=4`. Selected inherited/effective target-dir, encoded rustflags,
+rustflags and toolchain overrides were explicitly null; no other profile override
+was set. Full tracked mode/content/link/HEAD/tree and original/saved artifact
+guards passed at both campaign ends. Every one of 68 saved snapshots across the
+pair was independently rehashed after completion. Reference original paths were
+subsequently superseded by the candidate; its historical freshness and immutable
+snapshots are retained, not claimed current against the candidate checkout.
+
+| Role | Clean HEAD | Complete tree |
+|---|---|---|
+| Final gate | `404ad02ef78ff49b5f772a50f78678ffc38fc6ae` | `6f538200443eff32d0c29975b570a5dbe00dd9eb` |
+| Reference | `58933ff74cc9fdac860aea20567acc2e52537253` | `da4e36f68cc212b1e6df1747155626e36860cf0f` |
+| Candidate | `050aa8fd3c434518deb782ba3f61b0f060d0a143` | `6f538200443eff32d0c29975b570a5dbe00dd9eb` |
+
+Canonical complete source-map SHA-256 (sorted compact JSON) is
+`ae61817524431500f346c0052027fa68aa30e217aa5c990319e168e880cf1dfe`
+reference and `b25fe0fb4fc91d16ea581638d41fab6ec4c4087890b21675fb37b8be2b5a9494`
+candidate. The build maps retain all 34 original/saved artifact pairs, paths,
+versions, flags and start/end process context per side. Actual Bun is 1.2.20,
+Node v24.18.1, workerd 2026-10-07, PostgreSQL/psql 16.3; rustc/cargo 1.99.0,
+Python 3.14.0, macOS 27.0.1 arm64 on an M1 Pro with 16 GiB RAM. Build preparation
+is not timed request work: reference took 532.91 s, candidate **2,940.60 s**
+(49 min; the earlier 32-min observation was mid-build). Candidate preparation
+advanced through compilation/contracts and completed successfully; these data
+do not isolate the cause of the duration difference. Raw UTC timestamps put
+reference runtime/PATCH at Oct 23 23:41–23:43 and candidate at Oct 24
+01:01–01:04, all Oct 24 in Europe/London. Candidate build ended 00:32:50 UTC;
+the unequal build-to-measurement gaps are retained, not a matched cooldown claim.
+
+**Release Rust runtime/compiler-generated-plan fixture.** The ordinary Jadpo
+action executes via `Prepared`/interpreter graph dispatch, the action boundary
+and real PostgreSQL with a local capability fake. This is neither a generated
+native application benchmark nor HTTP throughput. Bun/Workers timing is N/A.
+Each of three rounds checks malformed-provider output, a real stale-row rerun,
+50 warmups, one SQL census and 500 successful measured calls. Every successful
+call invokes the provider once with no open action transaction and persists
+`note=Fresh,label=Fresh b`; the stale control reruns and reads the fresh note.
+
+The census agrees between the wrapper and observed PostgreSQL logging in every
+round: **4→3 data SQL statements**, with **four transaction commands unchanged**
+(read BEGIN/ROLLBACK, write BEGIN/COMMIT), hence **8→7 runtime roundtrips**.
+PostgreSQL observes **9→8** including the provider connection's separate one-query
+no-open-transaction assertion. Setup/control queries are outside the census.
+The removed statement is `SELECT xmin::text … FOR NO KEY UPDATE`; the remaining
+UPDATE binds a non-NULL version in `($3::text IS NULL OR xmin::text = $3)`.
+The read and snapshot-version SELECTs remain. Counts distinguish transaction
+commands from data SQL and the independent provider query.
+
+| Round | Reference p95 ms | Candidate p95 ms | Reference fixture calls/s | Candidate fixture calls/s |
+|---|---:|---:|---:|---:|
+| 1 | 0.561416 | 0.773333 | 1997.18 | 1762.07 |
+| 2 | 0.730875 | 0.587042 | 1805.29 | 2064.01 |
+| 3 | 0.580958 | 0.606792 | 1965.66 | 2036.88 |
+
+Median cell p95 **0.580958→0.606792 ms (+4.45%, adverse)**; median fixture
+throughput 1965.66→2036.88 calls/s (+3.62%). Candidate round 1 is worse on both
+measures. The verified statement removal is successful; these timings do not
+establish a latency gain. Whole-fixture/reaped child CPU was 0.913589→0.981269 s
+across 2.599952→2.676850 s wrapper wall time, including compiler/setup, warmups,
+census and controls. Daemonized PostgreSQL backend CPU is excluded/unmeasured;
+this is not per-call service CPU or database capacity.
+
+**Ordinary warm HTTP PATCH control.** Genuine generated release Worker under
+local workerd versus persistent warm Bun; two-second warmup, five-second cells,
+1/8 closed-loop clients, three rotated-order rounds. Each client cycles its
+disjoint subset of 256 owners/rows. Every cell starts a fresh server/limit store
+and reset seed. At most 54 successful calls per case including warmup, plus
+bounded setup probes, stayed below the unchanged 600/min caller quota. All 24
+cells had only 200s, zero errors and complete independent response/persisted-state
+validation; every case was exercised, refused requests changed nothing and
+injected receipt/untouched-row corruptions were rejected. This workload binds
+NULL because it has no outside call; it measures ordinary-write overhead, not
+the positive outside-call statement saving.
+
+| Target / clients | Round | Reference requests/s | Candidate requests/s | Reference p95 ms | Candidate p95 ms |
+|---|---:|---:|---:|---:|---:|
+| workerd / 1 | 1 | 863.13 | 820.89 | 1.425 | 1.530 |
+| workerd / 1 | 2 | 872.54 | 865.05 | 1.416 | 1.411 |
+| workerd / 1 | 3 | 836.51 | 877.96 | 1.460 | 1.395 |
+| workerd / 8 | 1 | 1554.56 | 1624.35 | 6.248 | 6.055 |
+| workerd / 8 | 2 | 1586.62 | 1566.42 | 6.166 | 6.271 |
+| workerd / 8 | 3 | 1558.32 | 1558.45 | 6.263 | 6.228 |
+| Bun / 1 | 1 | 1207.47 | 1180.37 | 1.467 | 1.509 |
+| Bun / 1 | 2 | 1205.19 | 1209.56 | 1.462 | 1.469 |
+| Bun / 1 | 3 | 1203.53 | 1207.45 | 1.475 | 1.485 |
+| Bun / 8 | 1 | 1974.64 | 1982.67 | 7.150 | 7.110 |
+| Bun / 8 | 2 | 2006.78 | 1994.05 | 6.952 | 6.959 |
+| Bun / 8 | 3 | 1971.41 | 1978.64 | 7.217 | 7.164 |
+
+Median workerd requests/s: 863.13→865.05 (1 client), 1558.32→1566.42 (8);
+p95: 1.425→1.411 and 6.248→6.228 ms. Bun medians: 1205.19→1207.45 and
+1974.64→1982.67 requests/s; p95 1.467→1.485 and 7.150→7.110 ms. Workerd
+remains about **71.6%/79.0% of Bun throughput**, essentially the same gap as the
+reference's 71.6%/78.9%. Candidate workerd round 1/one client and round 2/eight
+clients are adverse; Bun also varies. Ordinary-write overhead is broadly
+unchanged/inconclusive in this pair, not evidence of a positive outside-call
+HTTP gain, Cloudflare edge capacity or an open-loop latency SLO.
+
+| Target / clients | Median service CPU ms/request, ref→candidate | Helper/pool CPU ms/request | Load CPU cores |
+|---|---:|---:|---:|
+| workerd / 1 | 0.877361→0.846047 | 0.179297→0.175682 | 0.020337→0.020279 |
+| workerd / 8 | 0.645285→0.642802 | 0.180885→0.178342 | 0.030655→0.030280 |
+| Bun / 1 | 0.721872→0.722553 | 0→0 | 0.023891→0.023600 |
+| Bun / 8 | 0.634631→0.634536 | 0→0 | 0.044948→0.044895 |
+
+CPU is sampled over the post-warmup service interval; the load core fraction
+covers its own warmup plus measurement lifetime. Daemonized PostgreSQL CPU is
+unmeasured. Whole reaped PATCH children used 107.132770→107.005537 s including
+setup/controls/load/services across 100.450564→100.840889 s wrapper wall time;
+these scopes must not be mixed into service CPU. Candidate ambient host busy was
+materially higher: workerd 1-client 30.17–32.79% versus 19.26–22.28%; 8-client
+37.29–37.37% versus 26.51–26.88%. Raw per-cell host CPU and start/end load/process
+inventories retain this drift. Runtime start load was 2.56/4.19/7.63 reference
+versus 9.46/6.94/7.05 candidate. Matched memory/swap/thermal history was not
+captured, limiting attribution. A stdout-only snapshot before candidate PATCH
+showed 3,011.81 MiB swap used and no recorded thermal/performance warning; it is
+not a matched reference pressure measurement. No owned service remained in
+build/campaign end inventories. No builds/tests ran during timed campaigns.
+
+**Retained identities.** All paths below are relative to
+`tools/bench/work/version-writes/`. The complete original/saved artifact maps
+and source/flags/runtime metadata are in each `build.json`; raw wrappers include
+all rounds, receipts, before/after columns, control results and freshness guards.
+
+| Path | SHA-256 |
+|---|---|
+| `b4-reference-partition-final/build.json` | `f79c3b3b974568c3d6d7ba7c5269ef633d6125fffbca0ae639cb431bf25558ab` |
+| `b4-reference-partition-final/runtime-1792798879011432000.json` | `a492b4362fb1f6cc6195ca6de5aaaea9bfeb5c173f48b5ff7629a0112dc52e97` |
+| `b4-reference-partition-final/runtime-1792798879011432000.raw.json` | `502958975822fe8e343923d29ea3034d6e0f858d29626b3bf002b191d24c02b0` |
+| `b4-reference-partition-final/patch-1792798890696328000.json` | `c2760332046c0483986b94e94cc6f8005f557484f3884f25d4b7ae6f43a0c4d7` |
+| `b4-candidate-partition-final/build.json` | `6ab76219237190d67318661c86c1825328918fbeb9b7162c7ecace0203c9c3d4` |
+| `b4-candidate-partition-final/runtime-1792803710126051000.json` | `aff1b445946940fed98ad7e644d2e6847d594816e763ecb96c1a22c2ec1a0117` |
+| `b4-candidate-partition-final/runtime-1792803710126051000.raw.json` | `64efea76857c60aa2dee0c70bf11251f25d5a752ea1fb8937dacc4adbe53656b` |
+| `b4-candidate-partition-final/patch-1792803747338864000.json` | `1add357cc376a1e493fa058107013af94620544779f048a57d584ceb8eb78a7c` |
+| `b4-reference-final/build.json` (superseded) | `34f2baf37dab28103157c85754402b4518e1dcbe435692e3694faf6ed9421057` |
+| `b4-reference-final/runtime-1792797385173428000.json` (superseded) | `89d93c1e7e04d99ffb48dddc0d6f7e3f014efa8da466c5314fbb2c4987731a55` |
+| `b4-reference-final/patch-1792797395313691000.json` (rejected 429s) | `cd9bbba0b5e887a723ff317b4394289971d52242e2d175ea5121f7cdbf7743af` |
+
+Saved fixture `artifacts/000-jadpo-bench-versions` hashes:
+`b15ef9098ef19da4bac9a5d54320bf6a33fb85a05f1179f2af68c4ff21c20606`
+reference, `7d65a50364aeef228eed1a9e76ebfa885310926ddfc2927e999afc47f81d4958`
+candidate. Saved compiler `artifacts/029-jadpo`:
+`52baf5f2e2d3438239d7235861b93d87504cfc511e4cd45c7161b151a4f7b52b` →
+`878d7d13ce8cd825ed83d939dcae8a9d9197b3ed56816ee4e1b85ead638e7593`.
+Worker `artifacts/004-kiosk.wasm`:
+`4c8b6ab7f4abeb3fe3131fdbd136bdbccaa8f36d9ee6f2bbbbf3a7be49fd3ad7` →
+`bbe9643e67a0b7540267ad8e2efea32e5e3450cadadd8c8934ad3d2d3e68e4d1`.
+Both sides' load hash is
+`1907f1be3c5d99c6a05654e6f8e5bfd1cf653607f8782fa9689ef77d3fd867ae`,
+Bun `ced62d46acb0ca76435103e679e417731bdd0e2da6cd89137f6464dd718c97c4`,
+workerd `9c4f2e8630350133dae6889e3970120ffce802c04bbd744c9d55e2826dc5c8c5`.
+Reproduce with fresh immutable labels and the README's build/runtime/patch
+commands on the exact revisions. Final subsequent edits record facts/method
+only; production and harness bytes remain those of the gated/measured tree.
