@@ -35,7 +35,8 @@ PORT = 18765
 
 
 def command(args, **kwargs):
-    return subprocess.run(args, cwd=ROOT, check=True, **kwargs)
+    kwargs.setdefault('cwd',ROOT)
+    return subprocess.run(args, check=True, **kwargs)
 
 
 def context():
@@ -159,7 +160,9 @@ def build(label):
             paths.extend(p for p in out.iterdir() if p.is_file())
     stamp['runtimes']={}
     for name in ('workerd','bun','node','psql','rustc','cargo'):
-        path=Path(base.spike.workerd() if name=='workerd' else base.spike.tool(name)).resolve()
+        location = (command(['rustup','which',name],capture_output=True,text=True).stdout.strip()
+                    if name in ('rustc','cargo') else (base.spike.workerd() if name=='workerd' else base.spike.tool(name)))
+        path=Path(location).resolve()
         stamp['runtimes'][name]={'path':str(path),'version':command([str(path),'--version'],capture_output=True,text=True).stdout.strip(),'sha256':guard.sha(path)}
         paths.append(path)
     paths.extend((HERE/'typescript/build').glob('*.js'))
