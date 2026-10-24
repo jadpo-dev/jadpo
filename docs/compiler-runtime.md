@@ -5367,20 +5367,9 @@ status before the typed provider call. Only an acknowledged provider
 The route table also carries sorted declared provider-connection names;
 readiness reports them as `unchecked` without a network probe, including on
 a store outage (areas 7 and 11). There are no compiler branches for the application.
-Both targets pass all 44 cases using the integrated checkout’s compiler and
-runtime; no missing control or case is counted as a pass. The checked source
-is `415a33b557ff2f1cf373739c11edf0fed77cdc53` (2026-10-23), with the
-checkout’s `target/debug/jadpo` and runtime, not a prerequisite-checkout
-substitution. The compiler’s SHA-256 is
-`f9ed2a55945c535409821aa79965f75fec8a15e1891e0750f9f9b23691b28d2e`;
-the application/runtime/harness source fingerprint is
-`26d74a11832534009016eac536df4ef706a0916ac6706adbc0e5a964c95cdf16`.
-The full `python3 tools/verify.py` gate passed all 89 steps at that source,
-including all 44 native and all 44 workerd cases against the gate’s shared
-PostgreSQL server over its Unix socket. The histories of prerequisites
-`86c0b010`, `d0ff1cb7` and `735c6d52` are integrated in that order under
-Richard’s permission to build on unmerged branches; their review and merge
-remain pending.
+Both targets pass all 44 cases using the checkout’s own compiler and
+runtime, against the gate’s shared PostgreSQL server; no missing control or
+case is counted as a pass.
 
 `tools/golden-todo/run.py` executes the same 44 IDs on generated native code
 and generated Wasm under workerd. Its private host controls supply clocks,
