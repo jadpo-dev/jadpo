@@ -156,26 +156,13 @@ wall-clock speed assertions run in CI. Raw `idle-<timestamp>.json` retains
 per-tick replies/logs/durations, control/census evidence, counts, CPU/load,
 empty-state audits, exact source/artifact map and end freshness.
 
-Retain separate timestamped smoke/full attempts; never overwrite a failed
-result. Rebuild/repeat both sides when the measured harness/protocol changes.
-For b2 the fresh reference's production `crates/*/src` and all generated schema
-fixture inputs exactly matched prerequisite cb1, retaining the final measured
-harness; the restored candidate's complete tracked tree/modes matched its
-passing full gate. Sources, trees, compiler/artifact hashes, all rounds/CPU,
-raw paths/digests and every superseded preparation are in compiler/runtime
-§2.11, "Fast ticks and hourly housekeeping: matched measurements".
-
-The earlier b2 reference was repeated after proven test-helper workerd orphans
-were stopped. Those came from an npm wrapper lifetime bug and a native failed-
-readiness child without kill+wait ownership; actual failure-path regressions
-cover the narrow fixes. A clean benchmark shutdown is not proof that every
-other test descendant stopped: record exact owned executable identities after
-the full gate and before/after timing. Preserve unrelated apps/services and
-record ambient CPU/load, memory/swap and control drift. The b1/b1a historical
-results remain exploratory under an unknown orphan-host condition, and the
-separate 8.4e resident-memory question is unchanged. Idle SQL reduction is the
-primary b2 result; observed small warm-delivery changes under varying load do
-not establish a causal throughput win or full TS/Jadpo housekeeping equivalence.
+Rebuild and repeat both sides when the measured harness or protocol changes.
+Finish and reap all builds and tests first, record owned-process and ambient
+CPU/load context, and keep unrelated apps and services running. Test helpers
+must kill and wait for their children (regressions cover the failure paths);
+a clean benchmark shutdown does not prove every test descendant stopped. Idle
+SQL reduction is the primary result; small warm-delivery changes under varying
+load are not a causal throughput claim. Results go in the pull request.
 
 ## Golden application comparison (chunk 9.1d4)
 
