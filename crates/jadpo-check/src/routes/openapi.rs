@@ -119,11 +119,12 @@ enum When {
     /// A route that selects one kind of caller, where the API accepts a
     /// method that signs in the other.
     OtherKind,
+    External,
 }
 
 /// What signing in can answer (area 8, "Failures"): each status, schema
 /// name and code, its description, and when it answers.
-const SIGN_IN: [(&str, &str, &str, &str, When); 8] = [
+const SIGN_IN: [(&str, &str, &str, &str, When); 10] = [
     (
         "401",
         "AuthenticationRequired",
@@ -179,6 +180,20 @@ const SIGN_IN: [(&str, &str, &str, &str, When); 8] = [
         "authentication_unavailable",
         "The store sessions are kept in can't be reached.",
         When::Always,
+    ),
+    (
+        "403",
+        "ExternalSignInRefused",
+        "sign_in_refused",
+        "No provisioned active application user has this verified provider subject.",
+        When::External,
+    ),
+    (
+        "500",
+        "AuthenticationMisconfigured",
+        "authentication_misconfigured",
+        "The configured issuer, discovery metadata or signing keys are invalid.",
+        When::External,
     ),
 ];
 
@@ -344,6 +359,9 @@ pub fn document(
             jadpo_std::AuthenticationMethod::ApiToken => Some(
                 "An API token, `jadpo_token_` and 64 hexadecimal digits, which a route whose action calls `sessions.issue_token` gives once.",
             ),
+            jadpo_std::AuthenticationMethod::ExternalToken => Some(
+                "A signed JWT from the configured issuer, checked against its published keys and the configured audience. Its subject resolves an active application user on every request; provider profile claims grant no authority.",
+            ),
             jadpo_std::AuthenticationMethod::ServiceKey => Some(
                 "A service key, `jadpo_key_` and 64 hexadecimal digits, which a route whose action calls `issue_key` gives once.",
             ),
@@ -353,6 +371,9 @@ pub fn document(
             let mut scheme = Value::object();
             scheme.set("type", "http");
             scheme.set("scheme", "bearer");
+            if *method == jadpo_std::AuthenticationMethod::ExternalToken {
+                scheme.set("bearerFormat", "JWT");
+            }
             scheme.set("description", description);
             schemes.set(method.name(), scheme);
             let mut requirement = Value::object();
@@ -440,12 +461,13 @@ fn served_operation(
     if served.authentication.needs_caller() {
         let users = methods
             .iter()
-            .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+            .any(|method| matches!(method, M::BrowserSession | M::ApiToken | M::ExternalToken));
         let services = methods.contains(&M::ServiceKey);
         let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
         for (status, name, code, description, when) in SIGN_IN {
             let answers = match when {
                 When::Always => true,
+                When::External => methods.contains(&M::ExternalToken),
                 When::Users => users,
                 When::Services => services,
                 When::CookieWrite | When::OtherKind => false,
@@ -620,14 +642,14 @@ fn exchange_operation(
     responses.set("200", success);
     let users = methods
         .iter()
-        .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+        .any(|method| matches!(method, M::BrowserSession | M::ApiToken | M::ExternalToken));
     let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
     for (status, name, code, description, when) in SIGN_IN {
         let answers = match when {
             When::Always | When::Services => true,
             When::OtherKind => users,
             When::CookieWrite => methods.contains(&M::BrowserSession),
-            When::Users => false,
+            When::Users | When::External => false,
         };
         if !answers {
             continue;
@@ -858,13 +880,13 @@ fn passkey_operation(
         use jadpo_std::AuthenticationMethod as M;
         let users = methods
             .iter()
-            .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+            .any(|method| matches!(method, M::BrowserSession | M::ApiToken | M::ExternalToken));
         for (status, name, code, description, when) in SIGN_IN {
             let answers = match when {
                 When::Always | When::Users => true,
                 When::CookieWrite => step.method() != jadpo_std::HttpMethod::Get,
                 When::OtherKind => methods.contains(&M::ServiceKey) && users,
-                When::Services => false,
+                When::Services | When::External => false,
             };
             if answers {
                 failures.push((status, name, code, description));
@@ -1596,12 +1618,13 @@ fn operation(
         use jadpo_std::AuthenticationMethod as M;
         let users = methods
             .iter()
-            .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+            .any(|method| matches!(method, M::BrowserSession | M::ApiToken | M::ExternalToken));
         let services = methods.contains(&M::ServiceKey);
         for (status, name, code, description, when) in SIGN_IN {
             let answers = match when {
                 When::Always => true,
                 When::CookieWrite => writes && methods.contains(&M::BrowserSession),
+                When::External => methods.contains(&M::ExternalToken),
                 When::Users => users,
                 When::Services => services,
                 When::OtherKind => match route.caller {

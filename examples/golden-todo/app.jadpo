@@ -1,0 +1,42 @@
+use todo/entities { Service, User }
+use todo/types { ServiceStatus, UserStatus }
+
+application {
+    revocation_delay: 5m
+    connections: {
+        reminder_mail: {
+            package: ReminderMail.v1
+            domains: [todo]
+            credential: config.mail_api_key
+            environment: config.mail_environment
+        }
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+    }
+    schedules: {
+        store: main
+        trigger: ScheduleTrigger.external
+    }
+    events: {
+        store: main
+    }
+    apis: {
+        main: {
+            prefix: /
+            serve_openapi: false
+        }
+    }
+}
+
+principal {
+    user: {
+        subject: User.authentication_subject
+        active: User.status == UserStatus.active
+    }
+    service: {
+        subject: Service.name
+        active: Service.status == ServiceStatus.active
+    }
+}

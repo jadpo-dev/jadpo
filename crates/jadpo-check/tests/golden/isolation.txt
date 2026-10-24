@@ -119,3 +119,12 @@
   action report_loss                 read_committed
   fixture item_on_shelf              read_committed
   fixture umbrella_report            read_committed
+golden-todo
+  action add_todo                    read_committed
+  action delete_todo                 repeatable_read: reads `Todo` with `get`
+  action deliver_reminder            repeatable_read: calls the query `current_reminder`
+  action disable_user                read_committed
+  action edit_todo                   repeatable_read: reads `Todo` with `get`
+  action prepare_reminder            repeatable_read: calls the query `current_reminder`
+  action queue_reminders             repeatable_read: calls the query `overdue_candidates`
+  fixture alice                      read_committed

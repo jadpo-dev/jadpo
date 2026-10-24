@@ -548,3 +548,13 @@ manual
 # WebAuthn's `packed` attestation statement format, which the Workers
 # host's passkey ceremonies read (chunk 8.2l); ordinary English.
 packed
+
+# Generic vocabulary exposed by the golden app's ordinary declarations:
+# AI/translation message collections and provider message identifiers;
+# authentication/user storage; resolver/query candidate collections;
+# and the CLI's existing delivery retry wording. None is a todo-specific noun.
+messages
+message_id
+users
+candidates
+queued

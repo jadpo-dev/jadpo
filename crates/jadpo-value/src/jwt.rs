@@ -56,6 +56,72 @@ use crate::certificate::SubjectKey;
 use crate::json::{Codecs, Path, Problem};
 use crate::{Fault, Value};
 
+/// Reads one provider document while refusing duplicate members at every
+/// depth, as JWT header and claim documents are read. The caller bounds
+/// its byte length before parsing; serde also bounds nesting depth.
+pub fn strict_document(bytes: &[u8]) -> Option<Json> {
+    serde_json::from_slice::<Strict>(bytes)
+        .ok()
+        .map(|Strict(value)| value)
+}
+
+/// A provider's public JWK, through the standard type's ordinary field
+/// and cross-field rules. Unknown public metadata is ignored; private
+/// material and unsupported key operations are always refused.
+pub fn read_jwk(json: &Json) -> Option<Value> {
+    let members = json.as_object()?;
+    if members
+        .keys()
+        .any(|name| jwk::REFUSED_MEMBERS.contains(&name.as_str()))
+    {
+        return None;
+    }
+    let parts = jadpo_std::standard::security::JWK_FIELDS
+        .iter()
+        .map(|(name, _)| {
+            let wire = if *name == "use_" { "use" } else { name };
+            match members.get(wire) {
+                None | Some(Json::Null) => Some(Value::None),
+                Some(Json::String(text)) if *name != "x5c" => Some(Value::text(text)),
+                Some(Json::Array(items)) if *name == "x5c" => {
+                    let items = items
+                        .iter()
+                        .map(|item| item.as_str().map(Value::text))
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(Value::list(items))
+                }
+                _ => None,
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    for ((_, part), value) in jadpo_std::standard::security::JWK_FIELDS.iter().zip(&parts) {
+        if !jwk_part(*part, value) {
+            return None;
+        }
+    }
+    let value =
+        crate::standard::from_parts(&jadpo_std::standard::security::JWK_ENTRY, &parts).ok()?;
+    if crate::across::broken_standard(&value).is_some() || key_of(&value).is_none() {
+        return None;
+    }
+    Some(value)
+}
+
+fn jwk_part(part: jadpo_std::standard::Part, value: &Value) -> bool {
+    use jadpo_std::standard::Part;
+    match (part, value) {
+        (Part::Optional(_), Value::None) => true,
+        (Part::Optional(inner), value) => jwk_part(*inner, value),
+        (Part::List(inner), Value::List(items)) => items.iter().all(|item| jwk_part(*inner, item)),
+        (Part::Matching(_), Value::Text(_)) => {
+            crate::validate::Validator::new(part.builtin(), vec![part.rules()])
+                .check(value)
+                .is_ok()
+        }
+        _ => false,
+    }
+}
+
 /// Why a token is refused, as the call's `attempt` maps it.
 fn refused(key: RuleKey) -> Fault {
     Fault::Broke(key)
@@ -377,15 +443,16 @@ fn claim_names(codecs: &Codecs<'_>, codec: CodecId) -> Vec<String> {
         .collect()
 }
 
-/// The token's registered claims as a `JwtClaims`, and every claim it
-/// makes, once its signature, times, issuer and audience hold.
-fn verified(
-    token: &str,
-    keys: &[Value],
-    issuer: Option<&str>,
-    audience: Option<&str>,
-    now: i64,
-) -> Result<(Value, serde_json::Map<String, Json>), Fault> {
+/// A compact token's untrusted structure, shared by verification and
+/// provider preflight. No claim becomes authority at this boundary.
+struct Compact<'a> {
+    header: &'a str,
+    payload: &'a str,
+    protected: serde_json::Map<String, Json>,
+    signature: Vec<u8>,
+}
+
+fn compact(token: &str) -> Result<Compact<'_>, Fault> {
     if !is_jwt(token) {
         return Err(refused(RuleKey::Malformed));
     }
@@ -395,14 +462,13 @@ fn verified(
         return Err(refused(RuleKey::Malformed));
     };
     let protected = object(header)?;
-    let Some(Json::String(algorithm)) = protected.get("alg") else {
+    let Some(Json::String(_algorithm)) = protected.get("alg") else {
         return Err(refused(RuleKey::Malformed));
     };
-    let kid = match protected.get("kid") {
-        None => None,
-        Some(Json::String(kid)) => Some(kid.as_str()),
+    match protected.get("kid") {
+        None | Some(Json::String(_)) => {}
         Some(_) => return Err(refused(RuleKey::Malformed)),
-    };
+    }
     // A nested token's claims are another token, which this doesn't read.
     if protected
         .get("cty")
@@ -415,8 +481,50 @@ fn verified(
     if protected.contains_key("crit") {
         return Err(refused(RuleKey::InvalidSignature));
     }
-    let signed = format!("{header}.{payload}");
     let signature = decode_base64url(signature).ok_or(refused(RuleKey::Malformed))?;
+    Ok(Compact {
+        header,
+        payload,
+        protected,
+        signature,
+    })
+}
+
+/// Rejects independently invalid token structure before provider I/O.
+/// It reads strict JSON structure only, never trusts a claim or a token
+/// URL, and does not replace signature, issuer, audience or time checks.
+pub fn preflight_jwt(token: &str) -> Result<(), Fault> {
+    let token = compact(token)?;
+    if !matches!(
+        token.protected.get("alg").and_then(Json::as_str),
+        Some("EdDSA" | "RS256" | "ES256")
+    ) {
+        return Err(refused(RuleKey::InvalidSignature));
+    }
+    object(token.payload)?;
+    Ok(())
+}
+
+/// The token's registered claims as a `JwtClaims`, and every claim it
+/// makes, once its signature, times, issuer and audience hold.
+fn verified(
+    token: &str,
+    keys: &[Value],
+    issuer: Option<&str>,
+    audience: Option<&str>,
+    now: i64,
+) -> Result<(Value, serde_json::Map<String, Json>), Fault> {
+    let compact = compact(token)?;
+    let header = compact.header;
+    let payload = compact.payload;
+    let protected = &compact.protected;
+    let algorithm = protected
+        .get("alg")
+        .and_then(Json::as_str)
+        .ok_or(refused(RuleKey::Malformed))?;
+    let kid = protected.get("kid").and_then(Json::as_str);
+    let signed = format!("{header}.{payload}");
+    let signature = compact.signature;
     // Only a key used with the algorithm the header names is tried, with
     // that key's own algorithm: `none` and every algorithm no key is used
     // with find none.
@@ -591,6 +699,19 @@ mod tests {
             panic!("claims: {claims:?}");
         };
         record.get(name).expect("a claim")
+    }
+
+    #[test]
+    fn provider_documents_and_public_keys_use_the_checked_readers() {
+        assert!(strict_document(br#"{"keys":[],"keys":[]}"#).is_none());
+        assert!(strict_document(br#"{"keys":[{"kid":"a","kid":"b"}]}"#).is_none());
+        let mut json = serde_json::json!({"kty":"OKP", "crv":"Ed25519", "x": KEY, "kid":"current"});
+        assert!(read_jwk(&json).is_some());
+        json["d"] = Json::String("private".into());
+        assert!(read_jwk(&json).is_none());
+        json.as_object_mut().expect("object").remove("d");
+        json["alg"] = Json::String("HS256".into());
+        assert!(read_jwk(&json).is_none());
     }
 
     #[test]

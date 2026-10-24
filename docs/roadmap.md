@@ -26,6 +26,13 @@ and the full entries of finished chunks, are in the
 
 Saying **"continue the roadmap"** starts this routine; it runs unattended.
 
+Richard, 2026-10-23: Phase 9 dependent chunks may build and run their full
+gate on exact unmerged prerequisite commits, merged into their own chunk
+branch in dependency order. Record those commits and dependent pull requests;
+review and PR merges remain pending. Codex opens pull requests without auto
+merge and never merges them. A prerequisite need not reach `main` before a
+dependent chunk can complete its own build and full gate.
+
 1. Take the first chunk below that is not ticked. Its tag (`opus · high`)
    is the model and effort it needs. Say in one line which chunk is next and
    its tag, then carry on without waiting. The building is done by a
@@ -229,23 +236,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   below; sessions take their first unticked concrete subchunk. The split
   changes sizing, not the application or comparison scope.
 - [x] **9.1d1 Provisioned external JWT subjects**: compiler/runtime §2.6; area 8, "Ways to sign in" and implementation status.
-- [ ] **9.1d2 Golden todo and executable contract:** `opus · high` after
-  9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
-  the split isolates generic defects exposed by the executable contract
-  (2026-10-23), without reducing its 44-case scope.
+- [x] **9.1d2 Golden todo and executable contract**: compiler/runtime §2.6 and §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d2a Generic runtime contract fixes:** §2.6; areas 5 (Lifecycle), 10 (connection URLs) and 11 (safe key windows and record modes).
-- [ ] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
-  and 9.1d2a: implement the actual application from `examples/golden-todo`
-  using the current area pages, with all 44 case IDs executable on native
-  and workerd. Preserve the original candidate and make any correction
-  required by a decided area an explicit versioned successor, retaining the
-  case and its policy obligation. Include authentication timelines, physical
-  query accounting, omission-aware patches, pagination, relationships,
-  lifecycle, reminder delivery, preflight and dependency failures.
-  Unsupported cases remain visible and block completion; generic fixtures
-  do not count. Independent application and harness authoring may proceed
-  against an explicitly identified verified prerequisite checkout; final
-  own-worktree validation and completion await reviewed prerequisites on main.
+- [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [ ] **9.1d3 Strong TypeScript golden todo:** `opus · high` after 9.1d2:
   implement the same versioned application contract and all 44 cases with
   the specified strict TypeScript, Hono, Zod, Drizzle, CASL and JOSE stack
@@ -253,6 +246,8 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   guarantees, including durable authentication, admission, cancellation,
   transaction retries, idempotency and output validation before commit.
   Declared schemas alone do not establish runtime response validation.
+  Its final gate may use the exact unmerged prerequisite histories above;
+  dependency review and merges remain separate.
 - [ ] **9.1d4 Local application comparison:** `opus · high` after 9.1a,
   9.1d2 and 9.1d3: run the complete golden todo plus focused reads, writes,
   signed-in lists, large rows and cold start on native, workerd, Bun and

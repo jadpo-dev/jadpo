@@ -42,6 +42,7 @@
 //! `Access.system` grants.
 
 pub mod address;
+pub mod external_token;
 #[cfg(test)]
 mod guarantees;
 mod health;

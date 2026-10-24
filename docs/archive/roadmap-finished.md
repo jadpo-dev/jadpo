@@ -2974,3 +2974,29 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   required. Also validate connection URL structure in shared startup/config
   checking, retaining valid explicit local-socket forms and reporting every
   invalid declaration without credentials (Richard, 2026-10-23).
+
+- [x] **9.1d2 Golden todo and executable contract:** `opus · high` after
+  9.1d1, delivered through 9.1d2a and 9.1d2b below. Both remain required;
+  the split isolates generic defects exposed by the executable contract
+  (2026-10-23), without reducing its 44-case scope.
+  Built through 9.1d2a and 9.1d2b: generic runtime fixes, the actual golden
+  application and all 44 shared cases on native and compiled workerd.
+
+- [x] **9.1d2b Golden todo and all 44 cases:** `opus · high` after 9.1d1
+  and 9.1d2a: implement the actual application from `examples/golden-todo`
+  using the current area pages, with all 44 case IDs executable on native
+  and workerd. Preserve the original candidate and make any correction
+  required by a decided area an explicit versioned successor, retaining the
+  case and its policy obligation. Include authentication timelines, physical
+  query accounting, omission-aware patches, pagination, relationships,
+  lifecycle, reminder delivery, preflight and dependency failures.
+  Unsupported cases remain visible and block completion; generic fixtures
+  do not count. Independent application and harness authoring may proceed
+  against an explicitly identified verified prerequisite checkout. Final
+  validation uses its own checkout with the exact prerequisite histories
+  incorporated, under Richard’s stacked-dependency authorization above.
+  Built: the ordinary golden application and versioned executable contract,
+  preserving the original candidate. All 44 cases pass on native and compiled
+  workerd. Shared local PostgreSQL connection handling and generic
+  declared-provider readiness metadata close the contract without application-
+  specific compiler paths.

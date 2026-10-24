@@ -279,3 +279,77 @@ fn a_deployables_plan_holds_only_the_routes_it_serves() {
         kiosk.runtime().routes.routes.len()
     );
 }
+
+#[test]
+fn external_tokens_plan_one_subject_lookup_without_credential_tables() {
+    let db = Database::default();
+    let source = r#"config {
+    issuer: Url
+    audience: Text
+}
+principal {
+    user: {
+        subject: Reader.handle
+        active: Reader.active == true
+    }
+}
+authentication {
+    external_token: {
+        issuer: config.issuer
+        audience: config.audience
+    }
+}
+entity Reader {
+    id: Uuid
+    handle: Text {
+        unique: true
+    }
+    active: Bool
+}
+"#;
+    let project = Project::new(
+        &db,
+        vec![File::new(&db, "main.jadpo".into(), source.into())],
+        Vec::new(),
+        Layout::Loose,
+        Default::default(),
+        Vec::new(),
+    );
+    let problems = jadpo_check::check(&db, project);
+    assert!(
+        !problems.iter().any(jadpo_check::blocks_running),
+        "{problems:?}"
+    );
+    let plan = Plan::build(&db, project);
+    let identity = plan.routes().identity.as_ref().expect("identity");
+    let external = identity.external_token.as_ref().expect("external tokens");
+    assert_eq!(external.issuer, "issuer");
+    assert_eq!(external.audience, "audience");
+    assert!(
+        external.lookup.contains("\"handle\" = $1"),
+        "{}",
+        external.lookup
+    );
+    assert!(
+        external.lookup.contains("\"active\""),
+        "{}",
+        external.lookup
+    );
+    assert!(
+        !external.lookup.contains("jadpo_sessions"),
+        "{}",
+        external.lookup
+    );
+    assert!(!external.lookup.contains("JOIN"), "{}", external.lookup);
+    assert!(identity.user.as_ref().expect("user").lookup.is_none());
+    assert!(!identity.api_tokens);
+    assert!(identity.signing_keys.is_empty());
+    assert!(
+        !jadpo_check::data::schema(&db, project)
+            .to_document()
+            .contains("jadpo_sessions")
+    );
+    let bytes = bytes_of(&db, project).expect("encodes");
+    let restored = RuntimePlan::decode(&bytes).expect("decodes");
+    assert_eq!(restored.routes.identity, plan.runtime().routes.identity);
+}

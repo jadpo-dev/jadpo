@@ -41,6 +41,7 @@ use crate::deployable::{apply, migrations, rows};
 
 /// The Workers cron (chunk 8.2f).
 mod depot;
+mod external;
 /// Teaching example 23's kiosk (chunks 8.2b, 8.2d, 8.2i and 8.4f).
 mod kiosk;
 /// After the response (chunk 8.2h) and a Worker's limits (chunk 8.4a).
@@ -240,6 +241,15 @@ impl Workerd {
     /// as `wrangler dev` does with a local connection string; any other is
     /// text.
     fn start(out: &Path, wrangler: &Value, bindings: &[(&str, &str)]) -> Workerd {
+        Self::start_with_provider(out, wrangler, bindings, None)
+    }
+
+    fn start_with_provider(
+        out: &Path,
+        wrangler: &Value,
+        bindings: &[(&str, &str)],
+        provider: Option<&crate::external_tokens::Provider>,
+    ) -> Workerd {
         // A folder of its own, config and log, since this module's tests
         // run side by side, each with its workerd.
         static STARTED: AtomicUsize = AtomicUsize::new(0);
@@ -380,6 +390,52 @@ impl Workerd {
             ),
         )
         .expect("the config");
+        // A test-only outbound service maps two public fixture hosts to
+        // local TLS. The compiled production Worker and its public-fetch
+        // flag are unchanged; the fixture CA still verifies the connection.
+        let config_path = dir.join("config.capnp");
+        let mut configuration = fs::read_to_string(&config_path).expect("config");
+        if let Some(flags) = wrangler
+            .get("compatibility_flags")
+            .and_then(Value::as_array)
+        {
+            let flags: Vec<String> = flags
+                .iter()
+                .map(|flag| serde_json::to_string(flag).expect("flag"))
+                .collect();
+            configuration = configuration.replace(
+                &format!("compatibilityDate = \"{date}\",\n"),
+                &format!(
+                    "compatibilityDate = \"{date}\",\n  compatibilityFlags = [{}],\n",
+                    flags.join(", ")
+                ),
+            );
+        }
+        if let Some(provider) = provider {
+            fs::write(
+                dir.join("provider-authority.pem"),
+                &provider.authority.root_pem,
+            )
+            .expect("fixture CA");
+            let proxy = format!(
+                r#"export default {{ async fetch(request) {{
+              const url = new URL(request.url);
+              if (!["identity.example", "keys.example"].includes(url.hostname)) return new Response("unknown fixture host", {{status:502}});
+              url.hostname = "localhost"; url.port = "{}";
+              return fetch(new Request(url, request));
+            }} }};"#,
+                provider.port
+            );
+            fs::write(dir.join("provider.mjs"), proxy).expect("fixture proxy");
+            configuration = configuration.replace("(name = \"cron\", worker = .cron),", "(name = \"cron\", worker = .cron),\n    (name = \"provider\", worker = .provider),");
+            configuration = configuration.replace("network = (allow = [\"public\", \"private\", \"local\"])", "network = (allow = [\"public\", \"private\", \"local\"], tlsOptions = (trustedCertificates = [embed \"provider-authority.pem\"]))");
+            configuration = configuration.replace(
+                "globalOutbound = \"machine\"",
+                "globalOutbound = \"provider\"",
+            );
+            configuration.push_str(&format!("\nconst provider :Workerd.Worker = (modules = [(name = \"provider.mjs\", esModule = embed \"provider.mjs\")], compatibilityDate = \"{date}\", globalOutbound = \"machine\");\n"));
+        }
+        fs::write(&config_path, configuration).expect("configured fixture");
         let log = dir.join("workerd.log");
         let file = fs::File::create(&log).expect("the log");
         let child = Command::new(workerd())

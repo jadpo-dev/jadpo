@@ -1,0 +1,14 @@
+/// The provider acknowledges template acceptance and deduplicates by key.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://mail.example.invalid"
+        sandbox: "https://mail.example.invalid"
+    }
+    credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
+        window: 24h
+        max_length: 255
+    }
+}

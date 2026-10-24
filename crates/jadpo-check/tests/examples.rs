@@ -120,7 +120,7 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     (
         "setting AuthenticationMethod.external_token",
-        "not built: tokens from another provider, after the first build (area 8)",
+        "provisioned external-provider authentication; teaching examples are updated in the phase 9 examples chunk (area 8)",
     ),
     (
         "setting AuthenticationMethod.oauth_token",

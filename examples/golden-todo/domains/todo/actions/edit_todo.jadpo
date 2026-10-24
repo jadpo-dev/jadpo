@@ -1,0 +1,38 @@
+use todo/entities { Todo, TodoNotFound }
+use todo/types { PatchTodo, TodoView }
+use todo/failures { DueDateInPast }
+
+action edit_todo(todo_id: Todo.id, input: PatchTodo) fails TodoNotFound, DueDateInPast -> TodoView {
+    match input.due_at {
+        some(optional_due) -> {
+            match optional_due {
+                some(due) -> {
+                    if (due <= clock.now) {
+                        reject DueDateInPast
+                    }
+                }
+                none -> {}
+            }
+        }
+        none -> {}
+    }
+    var item: Todo = attempt Todo.get(todo_id)
+    var changed: Todo = Todo.update(item) {
+        patch: input
+        when_supplied: {
+            due_at: {
+                reminder_sent_at: none
+                reminder_queued_at: none
+                reminder_revision: item.reminder_revision + 1
+            }
+        }
+    }
+    return TodoView {
+        id: changed.id
+        title: changed.title
+        status: changed.status
+        due_at: changed.due_at
+        created_at: changed.created_at
+        updated_at: changed.updated_at
+    }
+}

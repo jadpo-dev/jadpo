@@ -372,6 +372,15 @@ impl WorkersOutbound {
     }
 }
 
+/// Dropping the outer route while discovery is awaiting a JS promise
+/// must abort that fetch too; dropping a controller alone does not.
+struct AbortOnDrop(AbortController);
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 impl Outbound for WorkersOutbound {
     fn get<'a>(
         &'a self,
@@ -398,6 +407,7 @@ impl Outbound for WorkersOutbound {
                 repeatable: true,
             };
             let abort = AbortController::new().map_err(|error| js::said(&error))?;
+            let _cancellation = AbortOnDrop(abort.clone());
             let went = Cell::new(false);
             let exchange = async {
                 let place = self.opening.place().await;

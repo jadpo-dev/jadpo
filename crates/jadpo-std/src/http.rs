@@ -955,6 +955,9 @@ pub struct IdentityPlan {
     pub cookie: Option<String>,
     /// Whether `api_token` is declared.
     pub api_tokens: bool,
+    /// An external provider, checked independently of the revocation delay.
+    #[serde(default)]
+    pub external_token: Option<ExternalTokenPlan>,
     pub user: Option<PrincipalPlan>,
     pub service: Option<PrincipalPlan>,
     /// The credential statements the owning record's grants limit (area
@@ -977,6 +980,18 @@ pub struct IdentityPlan {
     pub passkeys: Option<PasskeyPlan>,
     /// `sign_in: { magic_link: }` (area 8, "Magic links"), when declared.
     pub magic_links: Option<MagicLinkPlan>,
+}
+
+/// External JWT authentication (area 8): configuration names and one
+/// subject-to-current-user query, `$1` subject and `$2` invocation time.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExternalTokenPlan {
+    pub issuer: String,
+    pub audience: String,
+    pub lookup: String,
+    /// Subject field's codec in the program's JSON type table.
+    pub subject_type: u32,
+    pub subject_sql: crate::SqlType,
 }
 
 /// Listing, issuing and revoking credentials, limited to holders whose
@@ -1295,6 +1310,10 @@ pub struct RouteTable {
     /// The PostgreSQL stores the application's entities live in, in name
     /// order: what `GET /health/ready` checks.
     pub stores: Vec<String>,
+    /// The declared provider-package connections, in name order. Readiness
+    /// reports each as unchecked without calling its provider (areas 7/11).
+    #[serde(default)]
+    pub integrations: Vec<String>,
     /// Who can sign in and how; `None` when nothing is declared.
     pub identity: Option<IdentityPlan>,
     /// Where the client's address is read; `None` takes the host's default

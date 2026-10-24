@@ -622,6 +622,51 @@ fn health_is_answered_by_the_runtime_from_its_stores() {
 }
 
 #[test]
+fn readiness_lists_integrations_without_calling_them() {
+    let mut encoded = serde_json::to_value(table(Some("main"), false)).expect("table");
+    encoded["integrations"] = serde_json::json!(["provider_a", "provider_b"]);
+    let table: RouteTable = serde_json::from_value(encoded).expect("table metadata");
+    let program = Program::new(Ends::Writes);
+    let host = Fake::default();
+    let request = |method: &str| Request {
+        method: method.into(),
+        path: "/health/ready".into(),
+        ..Request::default()
+    };
+    let ready = send(&table, &program, &host, &request("GET"), NOW);
+    assert_eq!(ready.status, 200);
+    let body: serde_json::Value = serde_json::from_slice(&ready.body).expect("readiness");
+    assert_eq!(
+        body["integrations"],
+        serde_json::json!({"provider_a":"unchecked","provider_b":"unchecked"})
+    );
+    assert_eq!(ready.header("cache-control"), Some("no-store"));
+    let head = send(&table, &program, &host, &request("HEAD"), NOW);
+    assert_eq!(head.status, 200);
+    assert!(head.body.is_empty());
+    let options = send(&table, &program, &host, &request("OPTIONS"), NOW);
+    assert_eq!(options.status, 204);
+    assert_eq!(options.header("allow"), Some("GET, HEAD, OPTIONS"));
+    assert_eq!(
+        host.store.lines(),
+        ["SELECT 1", "SELECT 1"],
+        "only declared stores are probed"
+    );
+    assert_eq!(program.runs.get(), 0, "readiness executes no action");
+    let missing = Fake {
+        no_store: true,
+        ..Fake::default()
+    };
+    let failed = send(&table, &program, &missing, &request("GET"), NOW);
+    assert_eq!(failed.status, 503);
+    let body: serde_json::Value = serde_json::from_slice(&failed.body).expect("readiness");
+    assert_eq!(
+        body["integrations"],
+        serde_json::json!({"provider_a":"unchecked","provider_b":"unchecked"})
+    );
+}
+
+#[test]
 fn a_worker_reuses_its_readiness_check_for_a_second() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);

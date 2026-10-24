@@ -369,8 +369,17 @@ authentication {
   their BLAKE3 digests, like a session's.
 - A bearer token is never accepted from the URL, and the cookie name and
   `Authorization` header can never be ordinary route input.
-- `external_token` adds one pinned dependency; applications without it
-  have none. The algorithms, limits and key refresh are fixed by the compiler.
+- `external_token` uses the compiler's pinned JWT cryptography (area 19).
+  Its algorithms, limits and key refresh are fixed by the compiler;
+  applications without the method make no discovery or key requests.
+- **Provider reachability (Richard, 2026-10-22):** the configured issuer
+  and its discovered key endpoint use HTTPS, with no redirects and only
+  public resolved addresses. The discovery document must name exactly
+  the configured issuer, including its trailing slash. Its `jwks_uri`
+  may name another public HTTPS authority; the token never supplies an
+  address to fetch. Discovery appends `/.well-known/openid-configuration`
+  after the issuer's path, removing a final slash for that request only
+  ([OpenID Connect Discovery §§3, 4.1, 4.3](https://openid.net/specs/openid-connect-discovery-1_0.html)).
 - With a revocation delay and service keys, the compiler generates
   `POST /auth/exchange`, which trades a key for a short-lived token (question
   1's proposal fixes the path). A service sends its key as `Authorization:
@@ -3892,11 +3901,41 @@ jadpo-value's ES256 and RS256 and held to `webauthn-rs`'s answers, a
 device's attestation `none` or packed self-attestation there ("Passkeys
 on Workers' attestation (chosen in chunk 8.2l)" below).
 
+Built in chunk 9.1d1: `external_token:` with `issuer: config.issuer`
+and `audience: config.audience` (`Url` and `Text` settings) accepts area
+19's EdDSA, RS256 and ES256 JWTs
+for provisioned subjects on native and Workers. Multi-column and
+structured principal subject fields remain explicitly
+`toolchain.not_built_yet` for this method. Issuer and audience
+comparison is exact, and each request reads the subject's current user
+record, active condition and lifecycle visibility. Provider profile and
+permission claims do not become stored identity or policy grants. The
+runtime uses one provider cache per application startup, with at most 64
+keys, 64 KiB discovery and 256 KiB JWKS documents, 3 seconds per fetch,
+5 minutes of cached keys, and at most one refresh per 30 seconds even
+when a request is cancelled. Explicit encryption keys are ignored;
+signing keys retain area 19's strict `Jwk` contract. Invalid credentials
+are 401, invalid provider/configuration data is
+`authentication_misconfigured` (500), and unreachable providers are
+`authentication_unavailable` (503); responses expose neither provider
+content nor credentials. The outer route deadline also cancels discovery
+and key requests. Production native transport filters actual DNS answers;
+Workers uses the public network with `global_fetch_strictly_public`.
+Local generated-CA fixture transports exercise authentication and TLS on
+both hosts, with explicit test-only address mapping; they do not prove
+Cloudflare production DNS filtering.
+
 Not yet, each `toolchain.not_built_yet` where it is written:
 
-- `external_token`, `sign_in:`'s `providers:` and `oauth_provider:`,
-  after the first build, and with them `on_first_sign_in:` for those
-  ways in.
+- `sign_in:`'s `providers:` and `oauth_provider:`, after the first build,
+  and `on_first_sign_in:` for provider and external-token sign-in.
+  Chunk 9.1d1 builds external tokens for provisioned users; declaring
+  their first-sign-in hook remains an explicit `toolchain.not_built_yet`.
+  An unknown subject without a hook is `sign_in_refused` (403).
+- Scope declarations and policy scope restrictions remain unbuilt.
+  As area 9 specifies, an external method narrows scopes only when it
+  declares the scopes it reads; undeclared provider scope/profile claims
+  never replace application authority.
 - A setting loosened past its limit, until acceptances (area 18).
 - OAuth grants: `OAuthGrant` credentials, the connecting and disconnecting
   routes and `on_behalf_of:` (decided 2026-10-16, area 11); no roadmap chunk
@@ -4144,6 +4183,7 @@ builds it.
 | Starting and ending sessions (chosen in chunk 4.3) | `sessions.start(user_id)` takes the user entity's `id`, `sessions.end()` nothing; only actions call them, not functions, queries, tests, fixtures or seeds. Each writes the sessions' store, so the action writes that store (one store per action, area 6). A test that calls such an action keeps the session with no response to set it on. `sessions.end()` on a request with no session ends none and still clears the cookies | 2026-10-16 |
 | The caller in code (chosen in chunk 4.3) | `current_principal` alone is a `Principal`, whose fields aren't read until a kind is selected; a route passes `current_principal`, `current_principal.user` or one of its fields, never both kinds. A caller's `id` counts as a record loaded earlier, so writing a record that refers to it needs no not-found failure. `as:` signs in a user through a real browser session (a session kept in its own transaction, the cookie, the CSRF token and an `Origin`); `as:` on a route anyone may call is `semantic.request_invalid` | 2026-10-16 |
 | Reports (chosen in chunk 4.3) | Each API's OpenAPI document lists the accepted methods as security schemes (`browser_session` as an `apiKey` cookie) and requires them at the top; a route anyone may call says `security: []`, and every other answers 401 (`authentication_required`, `invalid_credentials`, `ambiguous_credentials`), 403 (`user_disabled`, and `csrf_rejected` on a write) and 503 (`authentication_unavailable`). The API record writes `authentication: none` under a route anyone may call. `jadpo routes` shows `required`, `none` or `fresh`. Wrong route and API values are `route.authentication_invalid` and `api.authentication_invalid` (area 7) | 2026-10-16 |
+| External-token network and provisioned subjects (Richard; chunk 9.1d1) | Public HTTPS issuer and keys only, no redirects; exact issuer metadata may name a cross-authority public HTTPS `jwks_uri`, never token header URLs. EdDSA/RS256/ES256 verification uses area 19, followed by a current active-user lookup on every request. Compiler-owned bounded discovery/cache/refresh; no provider profile authority. Unknown subject is 403 `sign_in_refused`. External `on_first_sign_in:` and scopes remain explicitly unbuilt; this does not complete provider login or the golden application. | 2026-10-22 |
 | Not built yet (chosen in chunk 4.3; updated in 4.3b) | `revocation_delay:` is checked for a positive duration, then `toolchain.not_built_yet` until signing keys (chunk 5.1b), as are `origin:` and a `signing_key:` read from configuration; a `signing_key:` written as a literal is `semantic.auth_setting_invalid`. `external_token:`, `sign_in_providers:` and `oauth_provider:` wait for after the first build (Superseded in chunk 5.1b: the delay, `signing_key:` and `origin:` are built, below) | 2026-10-16 |
 | Bearer credentials (chosen in chunk 4.3b) | `api_token:` and `service_key:` take only `signing_key:` (a literal is `semantic.auth_setting_invalid`, a configuration value waits for 5.1b), so each is written `{}`; `api_token:` needs the principal's `user:` and `service_key:` its `service:` (`semantic.auth_principal_required`). Each travels as `Authorization: Bearer <value>`, the scheme in any case: an API token is `jadpo_token_` and 64 hexadecimal digits, a service key `jadpo_key_` and 64, 32 random bytes kept only as their BLAKE3 verifiers. The prefix says which method a credential is; one the route's API doesn't accept, or any other value, is 401 `invalid_credentials` without clearing cookies. A bearer credential needs no `Origin` or CSRF token | 2026-10-16 |
 | API tokens (chosen in chunk 4.3b) | A token is a session without a cookie: a `jadpo_sessions` row with no CSRF verifier, lasting 30 days from `sessions.issue_token(user_id) -> ApiToken`, with no sliding renewal; a cookie never signs in with a token's row, nor a bearer with a session's. `sessions.end()` ends the token or session a request came with, needing either method. `sessions.tokens(user_id) -> List<IssuedToken>` lists the user's tokens that haven't ended, oldest first; `sessions.revoke_token(token_id)` takes a `Uuid` and deletes only a token, never a browser session; an unknown `id` revokes nothing | 2026-10-16 |

@@ -128,10 +128,19 @@ async fn readiness(table: &RouteTable, host: &dyn Host) -> Response {
         });
     }
     stores.push('}');
+    let mut integrations = String::from("{");
+    for (at, integration) in table.integrations.iter().enumerate() {
+        if at > 0 {
+            integrations.push(',');
+        }
+        write_string(integration, &mut integrations);
+        integrations.push_str(":\"unchecked\"");
+    }
+    integrations.push('}');
     let status = if ready { "ready" } else { "not_ready" };
     json(
         if ready { 200 } else { 503 },
-        format!("{{\"status\":\"{status}\",\"stores\":{stores},\"integrations\":{{}}}}"),
+        format!("{{\"status\":\"{status}\",\"stores\":{stores},\"integrations\":{integrations}}}"),
     )
 }
 

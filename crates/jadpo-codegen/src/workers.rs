@@ -202,6 +202,8 @@ pub struct Wrangler<'a> {
     pub hyperdrive: &'a [Hyperdrive],
     /// Whether its tick has a store to keep or sweep.
     pub ticks: bool,
+    /// External identity discovery must use the public Internet on Workers.
+    pub public_identity: bool,
     /// The rate-limiting bindings its rate limits are counted in.
     pub rate_limits: &'a [jadpo_std::http::RateLimitBinding],
     /// The queues it receives, those on Cloudflare Queues consumed.
@@ -262,6 +264,12 @@ pub fn wrangler(file: &Wrangler<'_>) -> String {
             object(vec![("enabled", Json::Value(true.into()))]),
         ),
     ];
+    if file.public_identity {
+        entries.push((
+            "compatibility_flags",
+            texts(&["global_fetch_strictly_public".into()]),
+        ));
+    }
     if !file.required.is_empty() {
         entries.push(("secrets", object(vec![("required", texts(file.required))])));
     }

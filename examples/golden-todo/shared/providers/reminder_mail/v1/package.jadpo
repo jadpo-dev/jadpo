@@ -1,0 +1,5 @@
+/// Typed local fixture contract for a hosted reminder template service.
+package ReminderMail.v1 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
