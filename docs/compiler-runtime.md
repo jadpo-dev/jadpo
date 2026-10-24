@@ -8044,7 +8044,7 @@ releasing quiet; a preexisting user caffeinate was untouched.
 
 Shipping Os/fatLTO/CGU1 and runtime versions stay fixed (workerd 2026-10-07,
 Bun 1.2.20, Node 24.18.1, PostgreSQL 16.3, Rustup 1.99.0 proxy paths,
-Python 3). Inherited encoded/ordinary Rust flags and target override are unset;
+Python 3.14.0). Inherited encoded/ordinary Rust flags and target override are unset;
 CARGO_INCREMENTAL=0, DEV_DEBUG=0, JOBS=4, EPOCH0 and own scoped XDG
 `target/jadpo-compiled/gate-cache-1db7e872` are recorded. The inactive a2 target
 was CoW-cloned into the sibling a3 worktree, dependencies reused only with
