@@ -228,30 +228,13 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
 - [x] **9.1d2b Golden todo and all 44 cases**: compiler/runtime §2.11; `examples/golden-todo/README.md`.
 - [x] **9.1d3 Strong TypeScript golden todo**: compiler/runtime §2.7 and §2.11; `examples/golden-todo/typescript/README.md`.
 - [x] **9.1d4 Local application comparison**: compiler/runtime §2.11, "Complete local application comparison"; `tools/bench/README.md`.
-- [ ] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
-  local protocol before and after each improvement.
-  Delivered through 9.1b1–9.1b5 below, with the warm-comparison correction
-  9.1b1a between 9.1b1 and 9.1b2. This split changes sizing,
-  not acceptance; sessions take the first unticked concrete subchunk.
-  From the Phase 6 review: deliveries swept concurrently within each
-  sweep, with a bound, and a backlog of 10,000 deliveries among the
-  workloads.
-  From the Phase 7 review: the tick's housekeeping measured (about 20
-  statements per store on an idle tick), then split into a fast tick and
-  an hourly pass one instance takes under a lease, its deletes batched;
-  the AI budget's reserve and charge each one statement; a write after an
-  outside call checking its version in its own `WHERE`; a delivery's
-  breaker read joined into its claim.
+- [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
 - [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11, "Warm durable delivery comparison"; `tools/bench/README.md`.
 - [x] **9.1b2 Fast ticks and hourly housekeeping**: compiler/runtime §2.6, "Fast ticks and hourly housekeeping", and §2.11; `tools/bench/README.md`.
 - [x] **9.1b3 One-statement AI accounting**: compiler/runtime §2.11, "One-statement AI accounting"; area 21, "Chosen in chunk 5.5v5"; `tools/bench/README.md`.
 - [x] **9.1b4 Version checks in writes**: compiler/runtime §2.6, "Snapshots before calls", and §2.11, "Version checks in writes"; area 6, "Outside calls hold no transaction"; `tools/bench/README.md`.
-- [ ] **9.1b5 Breakers in delivery claims:** `opus · high` after 9.1b4:
-  join a delivery's breaker read into its claim. Preserve multi-connection
-  holds, the one-probe lease, retry budgets and release/claim races; measure
-  statement counts and delivery performance before and after. Tick 9.1b
-  only when all five subchunks meet its original acceptance.
+- [x] **9.1b5 Breakers in delivery claims**: compiler/runtime §2.6 and §2.11, "Breakers in delivery claims"; `tools/bench/README.md`.
 - [ ] **9.1c Workers benchmark results:** `opus · high` **needs Richard**
   after 9.1b: approve access and deployment before using his account. Run the
   golden todo plus focused workloads on Workers against the equivalent Bun and

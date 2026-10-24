@@ -3170,3 +3170,48 @@ Chunks from the Phase 8 review, whose findings are on the roadmap:
   §2.6/§2.11 and `tools/bench/README.md`. Exact unmerged prerequisite `e7647abb`
   is included under Richard's stacked-dependency permission. Claude reviews and
   merges; Codex opens the PR without auto-merge and never merges it.
+
+- [x] **9.1b5 Breakers in delivery claims:** `opus · high` after 9.1b4:
+  join a delivery's breaker read into its claim. Preserve multi-connection
+  holds, the one-probe lease, retry budgets and release/claim races; measure
+  statement counts and delivery performance before and after. Tick 9.1b
+  only when all five subchunks meet its original acceptance.
+  Built: delivery claims return their breaker snapshots in the same statement;
+  connectionless claims retain the original path. Multi-connection holds,
+  conditional single-probe leases, refunds, held-time accounting and retry
+  budgets remain covered by scripted boundaries and real PostgreSQL races.
+  A generic cross-domain entity-type lookup defect found by the compiled
+  provider fixture is fixed and covered by permanent plan and compiled tests.
+  The final own-checkout gate passed 93/93 in 375 s at `dc5193ac`.
+  Both fresh matched campaigns passed all 24 cells and 64 controls each.
+  A connected single-delivery tick uses one fewer data statement on Jadpo;
+  its fixed housekeeping means this census is not a linear per-delivery cost.
+  Local workerd measured 1,323→1,435 deliveries/s and tick p95 88.083→85.166 ms;
+  unchanged Bun measured 2,114→2,271/s and 55.617→51.131 ms. Workerd/Bun throughput
+  moved from 62.59% to 63.19%; mixed rounds and host conditions prevent attributing
+  the entire absolute gain to this change. Connectionless controls, CPU scopes,
+  all rounds, source/artifact identities, failed gates, compiler/harness fixes,
+  and the unexplained kiosk 202 failure are retained in compiler/runtime §2.11
+  and `tools/bench/README.md`. Exact unmerged prerequisite `97aba24a` is included
+  under Richard's stacked-dependency permission. Claude reviews and merges;
+  Codex opens the PR without auto-merge and never merges it.
+
+- [x] **9.1b Runtime performance:** `opus · high` after 9.1d, measure the same
+  local protocol before and after each improvement.
+  Delivered through 9.1b1–9.1b5 below, with the warm-comparison correction
+  9.1b1a between 9.1b1 and 9.1b2. This split changes sizing,
+  not acceptance; sessions take the first unticked concrete subchunk.
+  From the Phase 6 review: deliveries swept concurrently within each
+  sweep, with a bound, and a backlog of 10,000 deliveries among the
+  workloads.
+  From the Phase 7 review: the tick's housekeeping measured (about 20
+  statements per store on an idle tick), then split into a fast tick and
+  an hourly pass one instance takes under a lease, its deletes batched;
+  the AI budget's reserve and charge each one statement; a write after an
+  outside call checking its version in its own `WHERE`; a delivery's
+  breaker read joined into its claim.
+  Built: all five original runtime requirements and the 9.1b1a warm-service
+  comparison correction are complete, with their own full gates and manual
+  review pull requests. The original acceptance above is unchanged. Real
+  Workers measurement remains 9.1c, and WebAssembly/Bun parity remains 9.2;
+  this closes neither the 9.1 benchmark umbrella nor Phase 9.
