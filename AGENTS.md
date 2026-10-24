@@ -57,8 +57,9 @@ marginal and combined gains. Freeze each variant's prediction, workload,
 metric and reference before implementation; retain the original and record
 actual throughput gain beside it, including marginal/combined comparisons.
 Save every source/harness commit under a durable Git ref and retain raw
-results/artifacts, including losses and adverse metrics, before resetting the working branch. Stop owned builds/services, including
-PostgreSQL, and coordinate a quiet host during measurements.
+results/artifacts, including losses and adverse metrics, before resetting the
+working branch. Stop owned builds/services, including PostgreSQL, and
+coordinate a quiet host during measurements.
 
 Explore the available queue, including emerging ideas, to exhaustion before
 proper production implementation. There is no maximum experiment count or

@@ -313,9 +313,16 @@ c9d5, with final gated source 0fce and the exact identities linked above. It is
 not a fresh matched baseline campaign for a new experiment. Worker baselines
 G/A/U are **2296.1126 / 1301.4498 / 795.8662 req/s**; fixed Bun controls are
 **6465.9123 / 6170.3874 / 1635.8239**. G is golden signed singleton, A large
-ASCII unsigned GET, U mixed Unicode unsigned GET. The new experiment still
-freezes its exact B/harness/artifacts and matches its measured comparison; if
-that reference changes, preserve F01 and record a new forecast before results.
+ASCII unsigned GET, U mixed Unicode unsigned GET. F01 freezes a production-
+behaviour/percentage forecast anchored to these historical numbers. Evaluate
+actual percentage gains against a **contemporaneous matched B with the same
+production behaviour**, recording campaign/reference identities and host drift;
+never compare raw req/s across days. Each experiment still freezes its exact
+B/harness/artifacts before measurement. Shared-harness or artifact remaps alone
+do not require hindsight changes to F01: keep its absolute-rate predictions
+fixed and label actual percentages against their matched B. A production
+baseline or hypothesis-scope change requires a new dated forecast before
+results, preserving F01.
 
 For each workload, `W_forecast = W_baseline / (1 - f)`, with Bun held fixed.
 Here f sums **assumed net removable current Worker CPU shares across disjoint
@@ -349,7 +356,7 @@ extrapolation are explicit assumptions. The focused
 [Payload rule](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/tools/bench/fixtures/todo/domains/planning/types/payload.jadpo#L1)
 requires its maximum-length check. a2/a3 savings are already in the baseline.
 
-| Workload / conditional scenario | Assumed CPU removal f | Predicted throughput gain over anchor | Measured throughput gain over same anchor | Predicted Worker req/s | Predicted share of fixed Bun |
+| Workload / conditional scenario | Assumed CPU removal f | Predicted throughput gain for anchored behaviour | Measured throughput gain vs matched B | F01 predicted Worker req/s (fixed) | Predicted share of fixed Bun |
 |---|---|---|---|---|---|
 | G signed / Low | 4.5% | +4.71% | Not measured | 2,404 | 37.18% |
 | A ASCII / Low | 4.5% | +4.71% | Not measured | 1,363 | 22.09% |
@@ -381,10 +388,13 @@ removable budget is realized, the same model gives approximately
 gives zero. Actual regressions and new bottlenecks are outside that simple
 positive-savings model and must be reported, not hidden.
 
-When a combined stack is measured, put its observed gain beside the applicable
-frozen prediction with the same reference, all rounds and short-screen limits;
-link source/artifacts/raw results and every other/adverse metric. Retain F01's
-original numbers so prediction accuracy remains inspectable. Separate future
+When a combined stack is measured, put its observed percentage gain versus
+its contemporaneous matched B beside the applicable frozen prediction for the
+same production behaviour. Retain campaign/reference identity, host drift,
+all rounds and short-screen limits; link source/artifacts/raw results and
+every other/adverse metric. Keep F01's absolute-rate predictions fixed rather
+than comparing them with a different day's raw rates. Retain its original
+numbers so prediction accuracy remains inspectable. Separate future
 workloads can reveal large benefits in zero-budget IDs without retroactively
 crediting these three reads.
 
