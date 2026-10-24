@@ -42,7 +42,7 @@ readings of the source.
    continues. But the graph can disagree with what runs, and every
    graph feature (source maps, spans named by node, path IDs, thresholds,
    `why`, path coverage) is added once to the graph and again to the
-   generator. A second target (E09) starts again from the syntax tree.
+   generator. A second target starts again from the syntax tree.
 2. **One typed graph that everything reads.** Parse, resolve and type-check
    into a graph of declarations, edges and per-callable control flow, each
    node with a stable identity; code generation, reports, the language
@@ -103,8 +103,8 @@ are built later:
 | Path coverage, production in review, query cost per path | Path enumeration; queries per path | Area 17 questions 11, 12 and 14 |
 | Production replay | Every effect boundary (clock, random, integration, store read) as a node | Area 17 question 13 |
 | Exact review paths | Branch-level reachability instead of may-call | Area 17 question 9 |
-| Application graph, console and MCP | The graph itself as versioned JSON | Area 17 question 8; roadmap E11 |
-| Second target (WASM, native) | A target-independent graph | Roadmap E09 |
+| Application graph, console and MCP | The graph itself as versioned JSON | Area 17 question 8 |
+| Second target (WASM, native) | A target-independent graph | Roadmap |
 
 **What else it enables during development:**
 
@@ -119,13 +119,12 @@ are built later:
   lines; disjoint subgraphs cannot conflict.
 - **Exact review paths.** With control flow, the approval report can name
   the branch that reaches a field instead of "may-call".
-- **More than one target** (E09) from the same graph.
+- **More than one target** from the same graph.
 
 ### 1.2 Impact of the finished language review (2026-10-13)
 
 Written after all eighteen review areas were decided and after Richard
-decided to drop the TypeScript/Bun target for native Rust and WebAssembly
-([decision register](decision-register.md#runtime-targets--2026-10-13)).
+decided to target native Rust and WebAssembly instead of TypeScript/Bun.
 Nothing in the review needs reopening. What changes is the build plan.
 
 **1. The rework option no longer holds up.** Its one advantage was keeping
@@ -139,8 +138,7 @@ rebuild, now.
 **2. Development needs a second way to run the graph.** The decided testing
 target is a watch-mode rerun in under a second (roadmap item 3). Compiling
 generated Rust cannot meet it: recompiling an 816-line generated fixture
-took a median 8.61 s with cached dependencies, release mode
-([native experiment](experiments/native-rust-experiment-results.md#startup-build-cost-and-artifacts)),
+took a median 8.61 s with cached dependencies, release mode,
 and a real application is larger. Recommendation: two executors over one
 graph.
 
@@ -150,6 +148,10 @@ graph.
   interpreter's own record of what it did.
 - **Compiled** for deployables: graph to Rust, then native or `wasm32`
   through rustc.
+  Targets are native Rust for long-running servers and WebAssembly for
+  hosts such as Cloudflare Workers; every language feature works on both.
+  Where a host supplies a mechanism (scheduling, for example), Jadpo offers
+  its own by default and the host's as an option.
 - **One shared runtime crate** both use, so only callable bodies differ:
   HTTP, sessions and OAuth, policy evaluation, store drivers, the outbox,
   scheduler and leases, idempotency, rate limits, telemetry, frame mapping,
@@ -233,9 +235,7 @@ Each subsection gives the decision, the reason and the main alternative
 rejected, so a chunk can start building without redesigning. Where an area
 page's body and its Decisions table differ, the table wins: `connections:`
 replaces area 5's `stores:` (area 11), email types and templates live in
-`emails/` (area 16), and tests use an in-memory cache (area 13). The v0
-compiler's architecture is kept in [the archive](archive/compiler-runtime-v0.md)
-for reference only.
+`emails/` (area 16), and tests use an in-memory cache (area 13).
 
 ### 2.1 Workspace and crates
 
@@ -404,8 +404,7 @@ test that fails when they drift. *Rejected:* tree-sitter or LALR
 generators, with weaker recovery and messages, and a second lossless tree
 still needed.
 
-**Habits from other languages** (chunk 3.8, decision register
-2026-10-15). `jadpo_syntax::habits` is the catalogue of constructs
+**Habits from other languages** (chunk 3.8). `jadpo_syntax::habits` is the catalogue of constructs
 carried over from TypeScript and JavaScript, Python, Rust, Go, Java and
 C#, Kotlin and Swift, and SQL (`let`, `fn`, `&&`, `===`, `;`, `#`, `T[]`,
 `??`, `switch`, `import … from` and the rest), each with its rule, where
@@ -3045,8 +3044,7 @@ comes in 8.2; publishing events outward comes with Phase 7. Drivers
 classify their own errors into the runtime's fixed set (conflict with the
 constraint name, serialisation failure, unavailable, fault), so executors
 and targets agree; the experiments found exactly this classification
-drifting between adapters
-([shared conformance](experiments/shared-rust-conformance-results.md)).
+drifting between adapters.
 Package-backed capabilities use one generic driver, the package driver
 (chunk 7.2c, below), over the `Fetch` the host gives, as the PostgreSQL
 driver runs over its `Transport`; packages never generate driver code. Drivers
@@ -4811,8 +4809,7 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
   keeps no session state outside a transaction and takes leases with rows,
   never advisory locks. Rows reach the module as wire bytes rather than
   JavaScript values, which should remove the conversion that held the
-  experiments to about 79% of Bun
-  ([optimisation results](experiments/wasm-optimization-results.md)): an
+  experiments to about 79% of Bun: an
   inference until the performance spike (chunk 8.3) measures it.
 - Six connections waiting for their answer's head at once per
   invocation
@@ -4829,9 +4826,7 @@ for, which tests the stand-in; and wasmtime, which runs no JavaScript.
   component-model support and only experimental WASI. Each deployable links only the drivers it reaches, which keeps
   start-up inside the one-second limit.
 - Application and runtime are one trusted module, the "trusted
-  first-party" mode of the
-  [host trust decision](experiments/wasm-host-trust-decision.md); the
-  guest-and-monitor designs are not carried forward.
+  first-party" mode.
 
 ### 2.7 Tests and the gate
 
@@ -5498,20 +5493,9 @@ status before the typed provider call. Only an acknowledged provider
 The route table also carries sorted declared provider-connection names;
 readiness reports them as `unchecked` without a network probe, including on
 a store outage (areas 7 and 11). There are no compiler branches for the application.
-Both targets pass all 44 cases using the integrated checkout’s compiler and
-runtime; no missing control or case is counted as a pass. The checked source
-is `415a33b557ff2f1cf373739c11edf0fed77cdc53` (2026-10-23), with the
-checkout’s `target/debug/jadpo` and runtime, not a prerequisite-checkout
-substitution. The compiler’s SHA-256 is
-`f9ed2a55945c535409821aa79965f75fec8a15e1891e0750f9f9b23691b28d2e`;
-the application/runtime/harness source fingerprint is
-`26d74a11832534009016eac536df4ef706a0916ac6706adbc0e5a964c95cdf16`.
-The full `python3 tools/verify.py` gate passed all 89 steps at that source,
-including all 44 native and all 44 workerd cases against the gate’s shared
-PostgreSQL server over its Unix socket. The histories of prerequisites
-`86c0b010`, `d0ff1cb7` and `735c6d52` are integrated in that order under
-Richard’s permission to build on unmerged branches; their review and merge
-remain pending.
+Both targets pass all 44 cases using the checkout’s own compiler and
+runtime, against the gate’s shared PostgreSQL server; no missing control or
+case is counted as a pass.
 
 `tools/golden-todo/run.py` executes the same 44 IDs on generated native code
 and generated Wasm under workerd. Its private host controls supply clocks,

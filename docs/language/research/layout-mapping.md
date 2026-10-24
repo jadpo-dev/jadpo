@@ -4,8 +4,8 @@
 recorded in [area 1](../01-project-layout-and-modules.md#decisions).
 **Inputs:** [layout patterns](layout-patterns.md) (evidence, principles P1–P12,
 candidates A–C), [layout scenarios](layout-scenarios.md) (S1–S6, questions
-Q1–Q25), area 1, the [event model](../../archive/specs-v0/event-model.md) §3 and the
-[entity, query and transaction model](../../archive/specs-v0/entity-query-model.md).
+Q1–Q25), area 1, the event model §3 and the
+entity, query and transaction model.
 
 **Evidence vs judgement.** "patterns §n" and "S1–S6" cite the research.
 Golden-app facts were checked again against `examples/golden-todo-migration/`

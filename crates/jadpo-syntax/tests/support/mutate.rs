@@ -86,7 +86,7 @@ pub const PIECES: &[&str] = &[
     "config ",
     "x: ",
     "Name ",
-    // Habits from other languages (decision register, 2026-10-15).
+    // Habits from other languages.
     "let ",
     "let mut ",
     "const ",

@@ -13,7 +13,7 @@ Two things were carried to area 7:
 2. **One way to accept a reviewed change**, shared by everything that must not
    change silently: a breaking API change, a database drop or a move between
    stores (area 5), a policy weakening (area 9 and the
-   [approval protocol](../../archive/specs-v0/approval-protocol.md)), and a new or renamed
+   approval protocol), and a new or renamed
    domain (area 1). The compiler flags the change; the build passes only once
    a person records an acceptance.
 

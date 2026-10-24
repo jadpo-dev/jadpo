@@ -1,5 +1,4 @@
-//! Habits from other languages (decision register, "Errors for habits from
-//! other languages", 2026-10-15): constructs people and agents write out of
+//! Habits from other languages (area 3, "Habits from other languages"): constructs people and agents write out of
 //! muscle memory from TypeScript and JavaScript, Python, Rust, Go, Java and
 //! C#, Kotlin and Swift, and SQL, each with an unambiguous Jadpo spelling.
 //!

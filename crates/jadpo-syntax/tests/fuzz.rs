@@ -4,7 +4,7 @@
 //! repeats; the failing input is printed.
 //!
 //! The mutations insert habits from other languages too, and every parse
-//! keeps the rule behind them (decision register, 2026-10-15): a syntax
+//! keeps the rule behind them: a syntax
 //! error never brings a second on its line, and when every error is a clean
 //! habit (`Parse::checkable`), applying the edits gives, round by round, a
 //! file with none.

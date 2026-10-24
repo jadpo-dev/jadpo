@@ -585,7 +585,7 @@ impl Names<'_> {
             return;
         }
         // `string`, `int`, `Vec`: another language's name for a type Jadpo
-        // has (decision register, 2026-10-15).
+        // has.
         if let Some((meaning, jadpo)) = habits::foreign_type(&text) {
             let shown = if jadpo == "?" { "T?" } else { jadpo };
             let mut problem = foreign_type(&text, meaning, jadpo, shown, span.clone());
@@ -1962,8 +1962,7 @@ pub(crate) fn record_head(names: &Names<'_>, record: &ast::RecordExpr, out: &mut
 }
 
 /// `type.foreign_type`: `written` names a type the way another language
-/// does, `meaning` says where, and Jadpo writes `shown` (decision register,
-/// 2026-10-15). The caller adds the edit.
+/// does, `meaning` says where, and Jadpo writes `shown`. The caller adds the edit.
 fn foreign_type(written: &str, meaning: &str, jadpo: &str, shown: &str, span: Span) -> Diagnostic {
     let habit = &habits::FOREIGN_TYPE;
     Diagnostic::new(habit.rule, habit.message(written, shown))

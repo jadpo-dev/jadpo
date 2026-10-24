@@ -386,7 +386,7 @@ fn empty_project(files: usize) -> Diagnostic {
 }
 
 /// `type.foreign_value`: `null`, `None` or `True` written for a value Jadpo
-/// spells `none`, `true` or `false` (decision register, 2026-10-15), when
+/// spells `none`, `true` or `false`, when
 /// `written` is one; the caller has checked the name means nothing else.
 pub(crate) fn foreign_value(written: &str, span: jadpo_diag::Span) -> Option<Diagnostic> {
     let (meaning, jadpo) = jadpo_syntax::habits::foreign_value(written)?;

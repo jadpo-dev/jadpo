@@ -8,40 +8,16 @@ compiled native and WebAssembly deployables.
 ## Where things are
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
-  only tracker; each session takes the first unticked chunk. Finished
-  chunks' full entries: [docs/archive/roadmap-finished.md](docs/archive/roadmap-finished.md).
+  only tracker; each session takes the first unticked chunk. A finished chunk
+  is one ticked line naming where its work is written; its full text lives
+  in git history.
 - What the language means: [docs/language](docs/language/README.md), twenty-one
-  decided areas. Where anything else disagrees, the area page wins.
+  decided areas. Where anything else disagrees, the area page wins. Language
+  decisions are recorded on the area page.
 - How it is built: [docs/compiler-runtime.md](docs/compiler-runtime.md).
-- Other decisions: [docs/decision-register.md](docs/decision-register.md).
-- The archived v0 compiler: git tag `archive/compiler-v0`; superseded
-  documents: [docs/archive](docs/archive/README.md). Read them only when a
-  chunk needs the background, and never copy their special cases.
-
-## "Continue the roadmap"
-
-This request runs unattended: follow "How a session works" in the roadmap.
-Name the next chunk and its model and effort tag in one line, then carry on
-without waiting for a reply. Do each chunk's building in a subagent started
-with the chunk's tagged model and effort; Richard asks for this explicitly,
-so setting the subagent's `model` and `effort` from the tag is authorised.
-Keep going chunk after chunk, merging each through its own pull request,
-and stop only at the points the roadmap lists. Report at the end what was
-merged and anything that needs Richard.
-
-## Who builds what (Richard, 2026-10-22)
-
-Claude finishes Phase 8 (the review chunks 8.4a–8.4j) as usual. Codex
-builds Phase 9, performance, starting once 8.4c, 8.4e and 8.4f have
-merged, since they change what a deployable runs and how it is built.
-When Codex builds a chunk it works on its own `chunk-<id>` branch in a
-worktree beside the repository, follows the working rules below and
-passes the full gate, ticks the chunk as the roadmap's "How a session
-works" says (one line naming where what it built is written), pushes, and
-opens the pull request **without** `--auto`, its description saying what
-was built, what the gate showed and any decision it recorded. It never
-merges. Claude reviews the pull request against the area pages, fixes
-what it finds on the same branch, and merges it.
+- Process rules: the working rules above.
+- The first compiler (v0): git tag `archive/compiler-v0`. Never copy its
+  special cases.
 
 ## Performance results and review (Richard, 2026-10-24)
 
@@ -54,8 +30,7 @@ controls that protect the gain; no raw paths, digests, per-round tables or
 logs of failed experiments. Never silently restore an older implementation
 or omit an adverse result. Correctness takes precedence over speed.
 
-Compare like with like
-([decision](docs/decision-register.md#performance-comparisons-pair-like-with-like--2026-10-24)):
+Compare like with like:
 Jadpo native against TypeScript on Bun and Node; Jadpo's Wasm build against
 TypeScript on workerd, leading with CPU time per request, cold start and
 p95. Label local workerd results as local, match and disclose process
@@ -97,3 +72,34 @@ lines. Codex never merges these pull requests or enables auto merge.
     for its own completion; never poll for a process by name (`pgrep -f`
     matches the loop itself and never ends). Stop anything you started
     before you report.
+
+## Richard's own orchestration
+
+The sections under this heading apply only to Richard's own Claude and Codex
+sessions. Other contributors and their agents follow
+[CONTRIBUTING.md](CONTRIBUTING.md) and the working rules above.
+
+### "Continue the roadmap"
+
+This request runs unattended: follow "How a session works" in the roadmap.
+Name the next chunk and its model and effort tag in one line, then carry on
+without waiting for a reply. Do each chunk's building in a subagent started
+with the chunk's tagged model and effort; Richard asks for this explicitly,
+so setting the subagent's `model` and `effort` from the tag is authorised.
+Keep going chunk after chunk, merging each through its own pull request,
+and stop only at the points the roadmap lists. Report at the end what was
+merged and anything that needs Richard.
+
+### Who builds what (Richard, 2026-10-22)
+
+Claude finishes Phase 8 (the review chunks 8.4a–8.4j) as usual. Codex
+builds Phase 9, performance, starting once 8.4c, 8.4e and 8.4f have
+merged, since they change what a deployable runs and how it is built.
+When Codex builds a chunk it works on its own `chunk-<id>` branch in a
+worktree beside the repository, follows the working rules above and
+passes the full gate, ticks the chunk as the roadmap's "How a session
+works" says (one line naming where what it built is written), pushes, and
+opens the pull request **without** `--auto`, its description saying what
+was built, what the gate showed and any decision it recorded. It never
+merges. Claude reviews the pull request against the area pages, fixes
+what it finds on the same branch, and merges it.

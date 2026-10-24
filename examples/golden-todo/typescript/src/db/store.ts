@@ -22,7 +22,14 @@ function cancellable<T extends postgres.Sql | postgres.TransactionSql>(
       return (...args: Parameters<postgres.Sql["unsafe"]>) => {
         const scope = scopes.getStore();
         scope?.check();
-        const query = target.unsafe(...args);
+        // Drizzle calls unsafe() without options, which postgres-js leaves
+        // unprepared. Prepare so repeated statements skip parsing, as a strong
+        // baseline should.
+        const [text, parameters, options] = args;
+        const query = target.unsafe(text, parameters, {
+          prepare: true,
+          ...options,
+        });
         if (scope) {
           const abort = () => {
             query.cancel();

@@ -473,8 +473,7 @@ impl Reader<'_> {
             [_, variant] => variant.as_str(),
             _ => written.as_str(),
         };
-        // Workers is where WebAssembly runs (decision register,
-        // 2026-10-13).
+        // Workers is where WebAssembly runs (compiler-runtime §1).
         let near = match variant {
             "workers" | "cloudflare" | "worker" | "webassembly" => Some("wasm"),
             _ => nearest(variant, DeployTarget::NAMES.iter().copied()),

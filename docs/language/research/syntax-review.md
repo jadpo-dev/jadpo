@@ -4,10 +4,10 @@
 finding is settled in the area page it belongs to.
 **Inputs:** the lexer keyword list (`jadpo/crates/syntax/src/lib.rs`) and the
 contextual words in `parser.rs` and `parser/delivery.rs`;
-[grammar v0.1](../../archive/specs-v0/grammar-v0.1.md) (including §4.1, §4.2, tests and
+grammar v0.1 (including §4.1, §4.2, tests and
 fixtures, §13, §15, scheduled jobs and the §18 successor candidate);
-[syntax draft](../../archive/specs-v0/syntax.md); [naming contract](../../archive/specs-v0/naming-and-qualification.md);
-[event model](../../archive/specs-v0/event-model.md); the source in `examples/` and
+syntax draft; naming contract;
+event model; the source in `examples/` and
 `tests/validation/fixtures/reminder-delivery-v1.jadpo`; and the review sections
 of [area 1](../01-project-layout-and-modules.md) and
 [area 2](../02-values-and-types.md).

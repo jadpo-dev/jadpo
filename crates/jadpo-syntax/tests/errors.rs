@@ -400,7 +400,7 @@ fn other_languages_operators_are_one_error_each() {
 }
 
 /// Habits from other languages whose edit rewrites more than a word
-/// (decision register, 2026-10-15): the edit writes the Jadpo form.
+///: the edit writes the Jadpo form.
 #[test]
 fn habit_edits_write_the_jadpo_form() {
     let cases = [
