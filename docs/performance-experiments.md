@@ -22,9 +22,10 @@ current native/Bun standalone pair recorded below. These are provisional
 references with the stated loader/host/lifetime limits, not universal
 language/engine evidence. **P61 roundtrip and P21.suffix-bitmap are rejected;
 P55's safe Response constructor remains promising with adverse RSS. Next is
-independent P05 design review, preserving its original 0–5% golden hypothesis
-and unknown actual gain; P11 is measured/mixed and retained. Continue eligible
-exploration without another baseline prerequisite.** Acceptance uses local checks and
+independent P04 ownership diagnostic under its accepted frozen protocol; micro
+gain is unknown and HTTP forecast/actual scope stays separate. P05's tested form is rejected as flat/mixed;
+P11 remains measured/mixed and retained. Continue eligible exploration without
+another baseline prerequisite.** Acceptance uses local checks and
 agent review under standing unattended authorization, not a new Richard
 approval. Optional three-TypeScript lifetime arms are secondary diagnostics;
 the strong direct-PG Bun application remains unchanged.
@@ -222,10 +223,11 @@ labelled separately from Jadpo optimizations; unbuilt ideas stay prospective.
 The tables are separate impact queues: primary reads, other warm workloads,
 then cold start/module work. Both primary-pair controls are established;
 P61 roundtrip and the bitmap form are rejected, while P55 is retained with
-adverse RSS. P11 is measured/mixed; independent P05 design review is next,
-with its frozen hypothesis and unknown actual benefit. No P11 stack is assumed.
-A future control blocker must be explicit; do not keep an obsolete baseline prerequisite. Continue an
-already-running prototype before resuming the sorted queue. Within each
+adverse RSS. P11 is measured/mixed and P05's tested form is rejected as flat/mixed.
+Independent P04 ownership-micro design is next; no P02/P05 stack is assumed.
+A future control blocker must be explicit; do not keep an obsolete baseline
+prerequisite. Continue an already-running prototype before resuming the sorted
+queue. Within each
 workload queue, prioritize applicable
 opportunities with measured component evidence, considering credible removable
 cost, confidence and experiment cost/risk; then investigate source-backed
@@ -721,8 +723,9 @@ priority: locally reviewed primary controls now have two provisional screens,
 and the current native/Bun pair is recorded above. P61 roundtrip is now
 measured/rejected; its independent host-sink alternative stays unmeasured.
 P55 remains measured/promising with adverse RSS; P21.suffix-bitmap is now
-rejected. P11 is measured/mixed; independent P05 design review is next from
-H84/B4fda, with no P11 stack or baseline prerequisite. Preserve original forecasts/results and continue
+rejected. P11 is measured/mixed and P05's tested form is flat/mixed/rejected.
+Independent P04 ownership-micro design is next from H84/B4fda, with no P02/P05
+stack or baseline prerequisite. Preserve original forecasts/results and continue
 eligible ideas without an arbitrary promotion boundary.
 P13 chain reuse remains a separate hypothesis; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
@@ -735,8 +738,8 @@ queue without retroactively changing that forecast.
 | **P03 — Signed base64url table decoder** (measured small positive; prototype retained) | Signed reads; E | 0.5–2% | Signed +2.0625% vs B (marginal=combined); ASCII/mixed controls +1.4274%/+1.3656%, no direct decoder attribution. [All18 rows and limits](#p03--signed-base64url-first-screen-2026-10-24). | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%; current D signed self 1.5216%, ancestor union 1.9410% of all weighted samples (diagnostic scope, not removable headroom). Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
 | **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
 | **P11 — Skip unneeded scalar count** (measured mixed; prototype retained) | Large text; E | 0–5% | P11/B signed −1.9439%, ASCII +1.4957%, mixed +3.0801%; signed adverse both rounds, mixed tail/RSS adverse. [All18 rows and assessment](#p11--scalar-count-first-screen-2026-10-24). | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
-| **P05 — Prepare immutable driver configuration** (selected independent design; unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | Not measured | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
-| **P04 — SQL text ownership** (queued; unmeasured) | Large text reads; E | 0–5% | Not measured | Verified raw → String → `Rc<str>` copies, cost unisolated. Profile allocation/copy first; moving String into Rc alone does not guarantee zero-copy. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [read.rs:1101](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1101). | Low; M–L; high representation risk | Independent; overlaps P02/P09; representation affects P52 |
+| **P05 — Prepare immutable driver configuration** (tested prepared form rejected; other variants unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | P05/B golden +0.4724%; ASCII/Unicode controls −0.5972%/+0.2914%, reversing round signs; tested form rejected. [All18 rows and moderate assessment](#p05--immutable-postgresql-preparation-first-screen-2026-10-24). | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
+| **P04 — SQL text ownership** (diagnostic protocol accepted; unmeasured) | Large text reads; E | 0–5% | Not measured | Verified raw → String → `Rc<str>` copies, cost unisolated. Profile allocation/copy first; moving String into Rc alone does not guarantee zero-copy. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [read.rs:1101](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1101). | Low; M–L; high representation risk | Independent; overlaps P02/P09; representation affects P52 |
 | **P13 — Reuse scalar count across rule chain** (queued; unmeasured) | Deep-chain text; E + chain F | 0–5%; current-fixture relevance uncertain | Not measured | Avoid repeated inherited-rule scans. Profile chain count; preserve first-failure order and exact diagnostic count. [validate.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/validate.rs#L265). | Low; M; medium | Independent, or explicit prerequisite P11 when stacked; overlaps P43 |
 | **P19 — Cheap response capacity hints** (queued; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
 | **P07 — Direct Claims deserialization** (queued; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
@@ -1548,18 +1551,147 @@ keep nonempty order, built-in/transform/fault behavior and fake/RNG behavior
 unchanged. Prospective complexity is **moderate** for added indirection, memory
 and tests; a cached length bit alone still leaves the empty-layer loop. This
 source-only idea overlaps P11, but no saving is inferred from P11's aggregate
-result. No implementation, decision or promotion follows, and P05 stays next.
+result. No implementation, decision or promotion follows; P04 design is next.
 
-Next is **P05 independent design review**, H84/B4fda without a P11 stack.
-Preserve its original **0–5% golden-read hypothesis**, with actual gain unknown;
-there is no measured many-driver or native-warm claim. Prospective complexity
-is **moderate**: prepare immutable PostgreSQL configuration at the existing
-IsolateStarted boundary while constructing fresh invocation-local pools and
-Supplies. Do not retain invocation sockets/state in the immutable preparation.
-Keep preparation-once and lazy-per-driver variants separate if both are tried.
-This is a source/design direction, not an implemented or measured P05 result.
-P13 remains available for a later independently meaningful or explicit stacked
-experiment; no arbitrary count or negative-result threshold ends exploration.
+The P05 preparation design was frozen before implementation, with its original
+0–5% golden hypothesis and unknown actual benefit. Its measured result follows;
+P04 ownership-micro design is next. P13 remains a separate possible later
+experiment, and no negative-result count ends exploration.
+
+## P05 — immutable PostgreSQL preparation first screen (2026-10-24)
+
+**Flat/mixed: reject this tested form for current-workload performance.** There
+is no promotion or favorable rerun. The original **0–5% golden-read throughput
+hypothesis** remains frozen; ASCII/Unicode controls had no old numeric forecast.
+This is independent H84/B4fda without P11 or another prototype stack; marginal
+and combined P05/B are identical. Source
+`32b6d50be9c80dc31946c0c2748623e7d9f52f1f`, tree
+`121cc272bc48ca3c28a04ff324f8191798d40bce`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/p05-prepared`.
+
+**Actual implementation assessment — moderate.** Two internal prepared types
+share immutable PG Config/endpoints/security/timeout through Rc; factory
+preparation retains Rc<Started> and an indexed success-only cache. Five-file
+pool/factory/Workers wiring covers fetch, cron, queue and hand_on at the existing
+isolate-started boundary. Fresh invocation pools, supplies, transports and tasks
+remain invocation-owned. There is no new dependency or language choice, but a
+proper keeper still adds fault-order/fallback, lifetime and feature-enabled/
+disabled maintenance. This matches the prospective moderate estimate; the
+acyclic ownership and cache/index rules are lasting production obligations,
+not benchmark scaffolding. **Tradeoff / advice:** the current near-flat screen
+does not justify that burden, so do not carry this tested form forward for
+these workloads. Many-driver scaling, lazy-per-driver and other unmeasured
+variants remain distinct; this is not a universal rejection of preparation.
+
+The fixed 18 screen is B/P05/Bun × three workloads × two full-order reversed
+rounds, c16, 2s admission + 1s warmup, 2048 principals, shipping Os/fat LTO/one
+codegen unit, remap-only child flags, offline builds, inspector NONE and PG
+durations OFF. All 18 rows have zero load/warmup errors, invalid bodies and
+state changes. Full-body/source/shared/artifact guards, 96 saved served copies
+and empty Sleep observations pass; all owned services/PostgreSQL are reaped.
+Bun is secondary cross-deployment context. There is no long confirmation,
+176-case qualification, full gate or production PR.
+
+Gains use ratios of this campaign's two-round medians, not historical raw rates
+or normalized percentages of Bun. Every workload's RPS direction reverses
+between rounds; there is no repeatable CPU win.
+
+| Workload | Original frozen forecast | Actual P05/B gain (marginal = combined) | Round1 / round2 gains | Median B / P05 / secondary Bun req/s |
+|---|---|---|---|---|
+| Golden signed | 0–5% golden | +0.4724% | -0.2365% / +1.1758% | 2312.233 / 2323.156 / 6349.663 |
+| ASCII control | No old numeric control forecast | -0.5972% | -1.5700% / +0.3800% | 1304.015 / 1296.227 / 5949.892 |
+| Unicode control | No old numeric control forecast | +0.2914% | +1.7008% / -1.0939% | 796.339 / 798.660 / 1637.118 |
+
+ASCII p95 is worse in both rounds, **+8.6283/+5.3419%**. Golden p95 is
++2.1671/−0.1938%; Unicode p95 is −4.2930/+3.3612%. Service CPU is essentially
+flat; Unicode is slightly higher in both rounds. All RSS/cold/resource
+observations remain below rather than being filtered by a favorable median.
+
+Each cell is **req/s / p95 ms / service CPU ms/request / separate helper CPU
+ms/request / sampled peak RSS MB**, with the existing process-sampling limits.
+PG and load-generator resources remain separate.
+
+| Workload / round | B | P05 | Secondary Bun |
+|---|---|---|---|
+| Golden signed / 1 | 2303.146 / 8.629 / 0.442037 / 0.121343 / 318.9 | 2297.698 / 8.816 / 0.443382 / 0.123886 / 314.1 | 6401.895 / 3.552 / 0.191227 / 0.000000 / 207.2 |
+| Golden signed / 2 | 2321.321 / 8.773 / 0.436465 / 0.118254 / 316.0 | 2348.615 / 8.756 / 0.435892 / 0.123326 / 316.4 | 6297.430 / 3.612 / 0.193605 / 0.000000 / 207.1 |
+| ASCII control / 1 | 1307.014 / 18.590 / 0.788571 / 0.167619 / 362.8 | 1286.494 / 20.194 / 0.789474 / 0.166409 / 356.6 | 5943.858 / 4.301 / 0.219383 / 0.000000 / 191.9 |
+| ASCII control / 2 | 1301.017 / 17.971 / 0.788366 / 0.168389 / 358.5 | 1305.961 / 18.931 / 0.785660 / 0.171625 / 354.2 | 5955.926 / 4.116 / 0.218066 / 0.000000 / 191.1 |
+| Unicode control / 1 | 789.511 / 27.673 / 1.278055 / 0.205736 / 306.3 | 802.939 / 26.485 / 1.280148 / 0.210266 / 294.5 | 1641.647 / 12.084 / 0.727493 / 0.000000 / 186.1 |
+| Unicode control / 2 | 803.167 / 25.735 / 1.276990 / 0.209747 / 302.8 | 794.381 / 26.600 / 1.280450 / 0.212367 / 305.7 | 1632.589 / 12.301 / 0.726052 / 0.000000 / 180.0 |
+
+Harness cold/first observations are not a dedicated cold-start benchmark.
+Every cell is cold ms / first ms / idle RSS MB.
+
+| Workload / round | B | P05 | Secondary Bun |
+|---|---|---|---|
+| Golden signed / 1 | 62.925 / 29.745 / 97.4 | 63.871 / 29.541 / 97.4 | 183.849 / 17.913 / 92.5 |
+| Golden signed / 2 | 63.048 / 28.767 / 97.5 | 63.554 / 32.786 / 97.8 | 92.999 / 13.036 / 91.3 |
+| ASCII control / 1 | 61.610 / 36.039 / 94.0 | 59.108 / 36.365 / 93.9 | 126.502 / 5.181 / 89.0 |
+| ASCII control / 2 | 58.069 / 36.057 / 93.9 | 58.832 / 36.409 / 94.0 | 84.756 / 4.314 / 88.8 |
+| Unicode control / 1 | 58.596 / 35.994 / 93.8 | 58.873 / 34.090 / 93.9 | 86.475 / 3.365 / 89.5 |
+| Unicode control / 2 | 57.885 / 35.206 / 93.8 | 62.650 / 36.197 / 94.1 | 81.417 / 4.114 / 89.7 |
+
+Host/load-generator CPU, elapsed/drain scope and complete body/status data
+remain in raw; load1 endpoints span roughly 3.33–13.55. Artifact growth is
+retained: golden raw/gzip6 7325897/2690117→7329486/2693146; focused
+7364454/2662029→7368019/2663256. gzip6 remains a compression proxy, not an
+upload-size measurement. No size or warm/cold/native/many-driver benefit is
+claimed from this screen.
+
+Expected missing-API red source `9ccae6cb05b000e58fe1625d0151a9b6b76d9f89`
+is retained at ref ending p05-prepared-red-tests. Fifty driver tests and
+PG-enabled/disabled Clippy subsequently pass. An initial mismatched alias/
+invocation was rejected **before any result directory or service/database
+started**; its console remains durable. Corrected smoke used unchanged source
+and artifacts without rebuilding. This is neither artifact drift nor a timing/
+producer failure. A later ad-hoc RSS parser correction was analysis only; the
+raw producer fields remain unchanged.
+
+Archive-relative identities use durable A:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Candidate build | `variants/p05-prepared/build.json` | `ed6483f1e75691e22b7bc2921a4e795fd7e538790ca584924b6511093ab17267` |
+| Corrected four-host smoke | `screens/p05-prepared/setup-smoke/results.json` | `b3c96c7c60a77648e4d80e1439b8f16e09532c81666a5bf03654497ecca4c168` |
+| Complete fixed 18 result | `screens/p05-prepared/screen18-none-pg-off-c16-r2/results.json` | `bca31ab3ffc2db9b8b6141812028f7320179ecf60e1905db2600850c79ccb0e8` |
+| Complete screen console | `screens/p05-prepared-screen18-console.log` | `c4278060a523114a13a99fa6a4e7382b35525d9409bb89f59d2a1013a9a30830` |
+| Expected missing-API red controls | `screens/p05-prepared-focused-red.log` | `b1587226790329d4b0ba6db602dbbcbf0148905a92e416391605061334a43700` |
+| Fifty focused driver tests | `screens/p05-prepared-focused-green.log` | `88cb50e3db2b961e0b3ac4f8367009d3f4b44a380383f76bf3938105e3f93330` |
+| Feature Clippy checks | `screens/p05-prepared-clippy.log` | `7a8310ad9654e8dc80a66ec66278b975f3db8020f8ec3e5385bc23ba88bfa7a1` |
+| Rejected smoke alias invocation | `screens/p05-prepared-smoke-alias-attempt-console.log` | `e6e1eea0560a3802c1d8eb438b43151da064dda6c260706e532de8ebc3bdd323` |
+
+### P04 ownership micro — accepted diagnostic protocol
+
+Next is independent **P04** from H84/B4fda, without P02/P05 or another stack.
+Keep the original **0–5% large-read HTTP hypothesis** unchanged; HTTP actuals
+remain unmeasured. The separate ownership micro has an **unknown gain/loss in
+its own per-operation metric**, with no projection to HTTP throughput or claim
+that production integration is cheap.
+
+The prior source-only design is now accepted and diagnostic implementation is
+authorized, without a production API. At protocol freeze there is no build or
+timed result. Compare raw→String→Rc<str> with raw→validated &str→Rc<str>; both
+arms prepare owned input outside the group and include UTF-8 validation,
+allocation, the final observable Value and drop. The final Rc copy still exists.
+
+The frozen 30 cells are small-ascii/large-ascii/mixed-unicode × two opaque arms
+× five rotated/reversed rounds, with 200000/1024/256 iterations per respective
+case. External host monotonic ns/value includes fixed HTTP/binding overhead;
+it is not application throughput. Preserve invalid-UTF8 exact-error and
+mutate/drop ownership checks. A cheap IR check must show the baseline
+intermediate copy actually survives, using symmetric controls without a
+baseline-only barrier. The micro forecast stays **unknown, including loss**;
+HTTP 0–5% and unmeasured HTTP actuals remain separate.
+
+**Prospective complexity — simple diagnostic, complex proper keeper.** SqlValue
+currently carries both result rows and ToSql Sync parameters: adding an Rc
+variant would break the enum's Sync requirement. Arc still leaves the final
+Rc copy; a proper integration likely needs a broader result/parameter split
+and representation/lifetime/interface testing. Do not infer keeper cost from
+a small micro or claim it has already removed those production copies. No
+production dependency/API design is approved or implemented by this diagnostic
+authorization.
 
 ## P55 — safe Response constructor first screen (2026-10-24)
 
@@ -1674,16 +1806,18 @@ Archive-relative retained identities use the same durable A:
 
 The dependent P21.suffix-bitmap was subsequently measured and rejected above;
 its unknown forecasts stay intact. P11's mixed result follows above; independent
-P05 design review is next with its frozen golden hypothesis and unknown actual
-benefit, without a P11 stack. Retain P55's simple code/moderate ownership burden and adverse
+P05's tested form is flat/mixed/rejected; independent P04 ownership-micro design
+is next, without P02/P05 stacking or an HTTP projection. Retain P55's simple
+code/moderate ownership burden and adverse
 RSS for later human selection; exploration continues without promotion.
 
 ## P61 — frozen roundtrip micro and conditional host sink
 
 **P61.roundtrip is measured/rejected; P61.host-sink remains a distinct,
 unmeasured alternative.** Both primary-pair controls remain established.
-P11 is measured/mixed and independent P05 design review is next; P55's measured
-result and ownership assessment remain retained above.
+P11 is measured/mixed and P05's tested form is rejected; independent P04
+ownership-micro design is next. P55's measured result and ownership assessment
+remain retained above.
 Continue eligible exploration without another baseline prerequisite.
 
 The original source-only preparation fa204074/ref ending
@@ -1848,7 +1982,7 @@ predict it. If final Response encoding is omitted, label that lower bound and
 exclude any application-gain claim. Even a promising probe still needs full
 HTTP ownership/byte validation. This is a conditional cheap check, not an
 implementation or host-sink rejection. The bitmap form is separately rejected;
-independent P05 design review is next, without a P11 stack.
+independent P04 ownership-micro design is next, without P02/P05 stacking.
 
 **P61.host-sink remains eligible despite the measured roundtrip loss.** It would retain escaped JS string tokens/chunks through Response
 construction. This is a substantive source-backed alternative, not an expansion

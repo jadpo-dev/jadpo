@@ -42,9 +42,9 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    coordinated through locally checked, agent-reviewed controls. Both primary
    pairs now have provisional results. P61 roundtrip is measured/rejected;
    P55 is measured/promising with adverse RSS; dependent P21.suffix-bitmap is
-   rejected; P11 is measured/mixed. Independent P05 design review is next, with
-   its frozen golden hypothesis and unknown actual benefit; no P11 stack is
-   assumed. No baseline prerequisite remains;
+   rejected; P11 is measured/mixed and P05's tested form is flat/mixed/rejected.
+   Independent P04 ownership-micro design is next, with unknown micro gain and
+   no HTTP projection or P02/P05 stack. No baseline prerequisite remains;
    then resume the highest-priority
    eligible experiment from its frozen baseline; record blockers and continue
    other eligible experiments across sessions until the available queue,
@@ -239,8 +239,9 @@ Wasm/workerd. The two local TypeScript/workerd controls and current native/Bun
 pair pass guards and agent review, with provisional loader/host/lifetime limits.
 P61 roundtrip is measured/rejected; its host-sink alternative stays unmeasured.
 P55 is measured/promising with higher mixed RSS; P21.suffix-bitmap is rejected.
-P11 is measured/mixed; independent P05 design review is next, with its frozen
-golden hypothesis and unknown actual gain. No P11 stack is assumed. Continue eligible work without another baseline
+P11 is measured/mixed; P05's tested form is flat/mixed/rejected. Independent
+P04 ownership-micro design is next, with unknown micro gain and no HTTP
+projection or P02/P05 stack. Continue eligible work without another baseline
 prerequisite.
 Acceptance means local compatibility/body/state/security/resource/provenance
 checks plus agent review under standing authorization, not a new Richard

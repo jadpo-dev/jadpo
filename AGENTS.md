@@ -55,8 +55,9 @@ Workers is secondary. Both primary pairs now have provisional locally guarded,
 agent-reviewed results. P61 roundtrip is measured/rejected, its host-sink
 alternative remains unmeasured, and P55 is measured/promising with higher
 mixed RSS. P21.suffix-bitmap is rejected and P11 is measured/mixed. Independent
-P05 design review is next, preserving its original 0–5% golden hypothesis and
-unknown actual gain; no P11 stack is assumed. No baseline prerequisite remains. Keep each control's
+P05's tested form is flat/mixed/rejected. Independent P04 ownership-micro
+design is next: unknown micro gain, unchanged HTTP hypothesis/unmeasured HTTP
+actual, simple diagnostic versus complex prospective keeper; no P02/P05 stack. No baseline prerequisite remains. Keep each control's
 loader/host/lifetime limits explicit.
 Control acceptance uses local checks and agent review under standing
 authorization, not a new Richard approval. Preserve prior results and historical
