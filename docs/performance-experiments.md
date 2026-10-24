@@ -22,8 +22,9 @@ current native/Bun standalone pair recorded below. These are provisional
 references with the stated loader/host/lifetime limits, not universal
 language/engine evidence. **P61 roundtrip and P21.suffix-bitmap are rejected;
 P55's safe Response constructor remains promising with adverse RSS. Next is
-independent P04 ownership diagnostic under its accepted frozen protocol; micro
-gain is unknown and HTTP forecast/actual scope stays separate. P05's tested form is rejected as flat/mixed;
+independent P19.tail-slack, with the original 0–3% hypothesis and unknown actual
+gain. P04 has positive micro-mechanism evidence only, with HTTP unmeasured.
+P05's tested form is rejected as flat/mixed;
 P11 remains measured/mixed and retained. Continue eligible exploration without
 another baseline prerequisite.** Acceptance uses local checks and
 agent review under standing unattended authorization, not a new Richard
@@ -224,7 +225,8 @@ The tables are separate impact queues: primary reads, other warm workloads,
 then cold start/module work. Both primary-pair controls are established;
 P61 roundtrip and the bitmap form are rejected, while P55 is retained with
 adverse RSS. P11 is measured/mixed and P05's tested form is rejected as flat/mixed.
-Independent P04 ownership-micro design is next; no P02/P05 stack is assumed.
+P04's positive mechanism evidence remains unintegrated. Independent
+P19.tail-slack is next, with its frozen hypothesis and unknown actual gain.
 A future control blocker must be explicit; do not keep an obsolete baseline
 prerequisite. Continue an already-running prototype before resuming the sorted
 queue. Within each
@@ -724,8 +726,9 @@ and the current native/Bun pair is recorded above. P61 roundtrip is now
 measured/rejected; its independent host-sink alternative stays unmeasured.
 P55 remains measured/promising with adverse RSS; P21.suffix-bitmap is now
 rejected. P11 is measured/mixed and P05's tested form is flat/mixed/rejected.
-Independent P04 ownership-micro design is next from H84/B4fda, with no P02/P05
-stack or baseline prerequisite. Preserve original forecasts/results and continue
+P04 has positive mechanism evidence, with HTTP unmeasured and complex keeper
+work still conditional. Independent P19.tail-slack is next, with unknown actual
+gain and no baseline prerequisite. Preserve original forecasts/results and continue
 eligible ideas without an arbitrary promotion boundary.
 P13 chain reuse remains a separate hypothesis; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
@@ -739,9 +742,9 @@ queue without retroactively changing that forecast.
 | **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
 | **P11 — Skip unneeded scalar count** (measured mixed; prototype retained) | Large text; E | 0–5% | P11/B signed −1.9439%, ASCII +1.4957%, mixed +3.0801%; signed adverse both rounds, mixed tail/RSS adverse. [All18 rows and assessment](#p11--scalar-count-first-screen-2026-10-24). | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
 | **P05 — Prepare immutable driver configuration** (tested prepared form rejected; other variants unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | P05/B golden +0.4724%; ASCII/Unicode controls −0.5972%/+0.2914%, reversing round signs; tested form rejected. [All18 rows and moderate assessment](#p05--immutable-postgresql-preparation-first-screen-2026-10-24). | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
-| **P04 — SQL text ownership** (diagnostic protocol accepted; unmeasured) | Large text reads; E | 0–5% | Not measured | Verified raw → String → `Rc<str>` copies, cost unisolated. Profile allocation/copy first; moving String into Rc alone does not guarantee zero-copy. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [read.rs:1101](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1101). | Low; M–L; high representation risk | Independent; overlaps P02/P09; representation affects P52 |
+| **P04 — SQL text ownership** (mechanism measured/retained; HTTP unmeasured) | Large text reads; E | 0–5% | HTTP throughput not measured. Micro direct time −22.9155% short / −10.9937% ASCII / −2.5476% mixed; mechanism retained. [All30 cells and assessment](#p04-ownership-micro--positive-mechanism-evidence-2026-10-24). | Verified raw → String → `Rc<str>` copies, cost unisolated. Profile allocation/copy first; moving String into Rc alone does not guarantee zero-copy. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [read.rs:1101](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1101). | Low; M–L; high representation risk | Independent; overlaps P02/P09; representation affects P52 |
 | **P13 — Reuse scalar count across rule chain** (queued; unmeasured) | Deep-chain text; E + chain F | 0–5%; current-fixture relevance uncertain | Not measured | Avoid repeated inherited-rule scans. Profile chain count; preserve first-failure order and exact diagnostic count. [validate.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/validate.rs#L265). | Low; M; medium | Independent, or explicit prerequisite P11 when stacked; overlaps P43 |
-| **P19 — Cheap response capacity hints** (queued; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
+| **P19 — Cheap response capacity hints** (tail-slack selected; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
 | **P07 — Direct Claims deserialization** (queued; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
 | **P06 — Batch request-header bridge** (queued; unmeasured) | Ordinary reads; E + header-heavy F | 0–3%; header-heavy unknown | Not measured | JS iterator → pair Array → separate string conversions/lowercase/trim. Preserve order, duplicates, case and trimming; profile bridge cost for header-heavy bound. [fetch.rs:215](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/fetch.rs#L215). | Low; M; medium | Independent; overlaps P10/P28 |
 | **P21 — Vectorize first-escape search only** (first measured/retained; suffix rejected) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | First/B ASCII +11.2918%, signed +1.9197%, mixed −0.5716%; suffix/first −0.9633% / −0.9024% / −0.7076% (ASCII/signed/mixed). Bitmap/First signed +0.3103%, ASCII −1.6059%, mixed −21.5197%; bitmap rejected. [Bitmap result](#p21suffix-bitmap--measured-result-2026-10-24). [All24 original rows, separate predictions and limits](#p21--first-escape-and-dependent-suffix-screen-2026-10-24). | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
@@ -1551,12 +1554,13 @@ keep nonempty order, built-in/transform/fault behavior and fake/RNG behavior
 unchanged. Prospective complexity is **moderate** for added indirection, memory
 and tests; a cached length bit alone still leaves the empty-layer loop. This
 source-only idea overlaps P11, but no saving is inferred from P11's aggregate
-result. No implementation, decision or promotion follows; P04 design is next.
+result. No implementation, decision or promotion follows; independent
+P19.tail-slack is next.
 
 The P05 preparation design was frozen before implementation, with its original
 0–5% golden hypothesis and unknown actual benefit. Its measured result follows;
-P04 ownership-micro design is next. P13 remains a separate possible later
-experiment, and no negative-result count ends exploration.
+P04's subsequent mechanism result follows below. P13 remains a separate
+possible later experiment, and no negative-result count ends exploration.
 
 ## P05 — immutable PostgreSQL preparation first screen (2026-10-24)
 
@@ -1661,37 +1665,154 @@ Archive-relative identities use durable A:
 | Feature Clippy checks | `screens/p05-prepared-clippy.log` | `7a8310ad9654e8dc80a66ec66278b975f3db8020f8ec3e5385bc23ba88bfa7a1` |
 | Rejected smoke alias invocation | `screens/p05-prepared-smoke-alias-attempt-console.log` | `e6e1eea0560a3802c1d8eb438b43151da064dda6c260706e532de8ebc3bdd323` |
 
-### P04 ownership micro — accepted diagnostic protocol
+### P04 ownership micro — positive mechanism evidence (2026-10-24)
 
-Next is independent **P04** from H84/B4fda, without P02/P05 or another stack.
-Keep the original **0–5% large-read HTTP hypothesis** unchanged; HTTP actuals
-remain unmeasured. The separate ownership micro has an **unknown gain/loss in
-its own per-operation metric**, with no projection to HTTP throughput or claim
-that production integration is cheap.
+**Retain the mechanism result; no production integration or promotion.** The
+original **0–5% large-read HTTP hypothesis** remains unchanged and HTTP actuals
+are still unmeasured. The separate micro forecast was **unknown, including
+loss**; the actuals below are time reductions, not application RPS projections
+or estimates of parameter-bridging/integration costs. P04 integration remains
+conditional and eligible; this micro does not exhaust the whole idea.
 
-The prior source-only design is now accepted and diagnostic implementation is
-authorized, without a production API. At protocol freeze there is no build or
-timed result. Compare raw→String→Rc<str> with raw→validated &str→Rc<str>; both
-arms prepare owned input outside the group and include UTF-8 validation,
-allocation, the final observable Value and drop. The final Rc copy still exists.
+Actual source `95c7f6296ff21156f3e7b02087e954f7c7871db5`, tree
+`18b1c393ba5d850b9f42e158b6dd54d30c70256a`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/p04-ownership`. This is independent
+H84/B4fda, without P02/P05 or another stack. The frozen 30 cells use the existing
+small-ascii/large-ascii/mixed-unicode cases, two opaque arms and five rotated/
+reversed rounds; respective counts are 200000/1024/256. Owned input preparation
+is outside each group; both arms include UTF-8 validation, transient/final owned
+allocation, observable Value checksum and drop. External host monotonic
+**ns/value, lower is better**, includes fixed HTTP/binding/checksum-response
+overhead. No dedicated HTTP throughput, p95, startup or production-size result
+is claimed.
 
-The frozen 30 cells are small-ascii/large-ascii/mixed-unicode × two opaque arms
-× five rotated/reversed rounds, with 200000/1024/256 iterations per respective
-case. External host monotonic ns/value includes fixed HTTP/binding overhead;
-it is not application throughput. Preserve invalid-UTF8 exact-error and
-mutate/drop ownership checks. A cheap IR check must show the baseline
-intermediate copy actually survives, using symmetric controls without a
-baseline-only barrier. The micro forecast stays **unknown, including loss**;
-HTTP 0–5% and unmeasured HTTP actuals remain separate.
+All 30 unique case/arm/round cells complete with matching checksums and elapsed/
+iteration arithmetic. All 44 actual preflight checks pass: 22 owned-byte/
+overwrite-reuse-drop, 20 exact invalid-UTF8 errors and two negative controls.
+Four served copies, source/shared/build binding, 316 artifact/current-ICU guards,
+Sleep and owned-service cleanup pass. There was no DB, application/native
+build, 176-case qualification or full gate.
 
-**Prospective complexity — simple diagnostic, complex proper keeper.** SqlValue
-currently carries both result rows and ToSql Sync parameters: adding an Rc
-variant would break the enum's Sync requirement. Arc still leaves the final
-Rc copy; a proper integration likely needs a broader result/parameter split
-and representation/lifetime/interface testing. Do not infer keeper cost from
-a small micro or claim it has already removed those production copies. No
-production dependency/API design is approved or implemented by this diagnostic
-authorization.
+**Original estimate versus actual implementation assessment:** the original
+**simple diagnostic** estimate remains recorded at
+`d00d5f896f0e38beea92c07be64a42a7df35e5ed`. The two safe decoder functions
+are indeed simple. Actual temporary workerd adapter, provenance and lifetime/
+correctness machinery is **moderate**: matching opaque loops, executable/
+artifact identity, failure controls and ownership proof require more scaffolding
+than those decoder functions alone. Source review revised that scope before
+building; 95c7f629's assessment followup changes no decoder behavior. This is an
+honest estimate revision, not a rewritten performance forecast. Eleven Python
+controls pass, and the first build/preflight succeeds without a failed setup.
+**Prospective proper keeper remains complex**, not delivered: SqlValue still
+combines result rows with ToSql Sync parameters; an Rc variant breaks that enum's
+Sync use, and Arc still leaves the final Rc copy. A broader result/parameter
+split and interface/lifetime testing remain conditional work.
+
+**Tradeoff / advice:** keep the allocation/copy mechanism evidence for later
+human selection, while weighing complex integration against the smaller mixed
+micro effect. Do not promote a production API or call it zero-copy. More
+eligible experiments remain; independent P19.tail-slack is next, with unknown
+actual benefit.
+
+Medians use all five rounds. Time change is
+`100 × (median direct ns/value / median String→Rc ns/value − 1)`; negative means
+less time. No rate-equivalent percentage is substituted for an HTTP gain.
+
+| Case | Iterations/group | Frozen micro forecast | String→Rc / direct median ns/value | Direct time change | String→Rc / direct process CPU median ns/value |
+|---|---|---|---|---|---|
+| small-ascii | 200000 | Unknown, including loss | 48.0025 / 37.0025 | -22.9155% | 50.000 / 50.000 |
+| large-ascii | 1024 | Unknown, including loss | 8235.5957 / 7330.2002 | -10.9937% | 9765.625 / 9765.625 |
+| mixed-unicode | 256 | Unknown, including loss | 98440.1054 / 95932.2929 | -2.5476% | 78125.000 / 117187.500 |
+
+| Case | Round1 / round2 / round3 / round4 / round5 direct time changes |
+|---|---|
+| small-ascii | -64.3562% / -23.3417% / -25.7130% / -22.6408% / -22.2755% |
+| large-ascii | -11.8834% / -10.5881% / -9.6762% / -12.0838% / -9.2838% |
+| mixed-unicode | -2.6154% / -2.4964% / -2.5156% / -2.0396% / -2.6990% |
+
+The short baseline round1 **104.3023ns** outlier stays in the result; other
+baseline short rounds are 47.4344–49.8346ns. Do not delete it or present the
+−64.3562% first-round reduction as a stable gain. Process CPU uses coarse 10ms
+accounting, with many zero observations; mixed median CPU is adverse
+78125→117187.5ns/value despite lower elapsed time, so no CPU win is claimed.
+RSS points 43.8→45.5MB come from the same continuing process, not isolated
+per-arm peaks or leak evidence.
+
+Every cell below is **external ns/value / quantized process CPU ns/value /
+point RSS MB**. All elapsed windows/checksums and rounds remain in raw.
+
+| Case / round | String→Rc baseline | Direct Rc |
+|---|---|---|
+| small-ascii / 1 | 104.3023 / 150.000 / 43.8 | 37.1773 / 0.000 / 43.8 |
+| small-ascii / 2 | 48.0025 / 50.000 / 44.0 | 36.7979 / 50.000 / 44.0 |
+| small-ascii / 3 | 49.8346 / 50.000 / 44.1 | 37.0206 / 50.000 / 44.1 |
+| small-ascii / 4 | 47.8321 / 50.000 / 45.4 | 37.0025 / 50.000 / 45.4 |
+| small-ascii / 5 | 47.4344 / 0.000 / 45.4 | 36.8681 / 50.000 / 45.5 |
+| large-ascii / 1 | 8360.3114 / 9765.625 / 43.8 | 7366.8213 / 9765.625 / 43.8 |
+| large-ascii / 2 | 8235.5957 / 9765.625 / 44.0 | 7363.6064 / 0.000 / 44.0 |
+| large-ascii / 3 | 8077.2705 / 9765.625 / 44.4 | 7295.6952 / 0.000 / 44.4 |
+| large-ascii / 4 | 8261.3926 / 9765.625 / 45.4 | 7263.1026 / 9765.625 / 45.4 |
+| large-ascii / 5 | 8080.3633 / 9765.625 / 45.5 | 7330.2002 / 9765.625 / 45.5 |
+| mixed-unicode / 1 | 98333.8241 / 78125.000 / 43.9 | 95762.0432 / 117187.500 / 43.9 |
+| mixed-unicode / 2 | 98585.9374 / 117187.500 / 44.0 | 96124.8361 / 78125.000 / 44.0 |
+| mixed-unicode / 3 | 98779.7848 / 117187.500 / 44.4 | 96294.9216 / 78125.000 / 44.5 |
+| mixed-unicode / 4 | 97929.6879 / 78125.000 / 45.4 | 95932.2929 / 117187.500 / 45.4 |
+| mixed-unicode / 5 | 98440.1054 / 78125.000 / 45.5 | 95783.2031 / 117187.500 / 45.5 |
+
+For valid nonempty input, independent full-IR review confirms the baseline's
+raw-length allocation/copy→UTF8→Rc allocation/second copy→RawVec drop, versus
+direct UTF8→Rc allocation/one copy. Both validate, and **direct still copies**.
+The automated __rust_alloc-only list is empty because backend allocator/helper
+names differ; that list is not zero-allocation proof. Manual full-IR inspection
+establishes survival of the baseline intermediate without an asymmetric barrier.
+Ownership checks retain physical A5/5A memset→barriers→raw drop→final Value-byte
+observation, rather than trusting source writes that might optimize away.
+
+The cached offline example build takes 23.58s with B's child Os/fat LTO/one-CGU
+flags/remaps and current ICU input path. Current 303 ICU hashes are checked
+before/after, **not historical B-byte equivalence**. No production dependency
+or parameter bridge was added. The build records bound/unbound/IR identities
+and all current served originals/snapshots; successful setup logs are not
+failed-producer records.
+
+Archive-relative identities use durable A:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Example build and assessment metadata | `diagnostics/p04-ownership/build.json` | `42d9aea7fc73fc92f040514f21c6e3442e2e29857bf8124842f0502e1a1c644c` |
+| Actual 44 ownership/error/negative checks | `diagnostics/p04-ownership/preflight.json` | `8d851eea26bf59f7c0e04ee90605b7ec232e2ee19b2dde3587cf371f0860dd75` |
+| Complete fixed 30 five-round raw | `diagnostics/p04-ownership/fixed30-five-rounds/results.json` | `e1ad385cd0a944f4be788ebd559f312c01336e1fb4fa8fdc0c1e67aaaefe1af5` |
+| Full retained IR | `diagnostics/p04-ownership/driver.ll` | `93aa4cdf72f2d5988f65f63789d2d1ccbc34db036ba917023f648e21db30aa89` |
+| Eleven Python controls | `screens/p04-ownership-focused-controls.log` | `be80f976f3211ea81400202da159e75f5a22469eb74676bf5db1226f06570ed3` |
+| Successful example build console | `screens/p04-ownership-build-console.log` | `e50dbb2dc5218c9d016235d7faf5febde18d9679fb9ebb9798487c277ff2333b` |
+| Complete five-round console | `screens/p04-ownership-fixed30-console.log` | `96baef2b02fe5f9ab25af3ea847eebd783b0477c0e1e27ce5d52708c5e04258b` |
+
+### P19.tail-slack — selected independent prototype
+
+Next is P19.tail-slack from H84/B4fda, without any prior stack. The original
+**0–3% application-throughput hypothesis** stays frozen and actual benefit is
+unknown; prospective implementation complexity is **simple**. No timing result
+exists. Baseline write_string reserves text plus quotes exactly, so a final
+closing token may cause further capacity growth. The generic candidate adds
+**32 tail bytes only when remaining capacity is below the required amount**;
+never grow merely to refresh slack. Do not specialize by payload/type/route,
+prewalk the value or retain a cross-request output buffer.
+
+First run cheap B/candidate length/capacity transition checks plus exact JSON,
+prefix and Unicode controls. Capacity growth does **not** establish physical
+copying, and native/Wasm allocator behavior can differ. A standard 18 HTTP
+screen is proposed only after those focused checks. This is the authorized
+prototype direction, not a measured gain or a reason to promote a keeper;
+P04's complex integration remains conditional, eligible and HTTP-unmeasured.
+
+The tests-only baseline probe `a35aff4baa6a8a01305d064b479e8af5acd8b2e4`
+records native debug logical capacity transitions: after a long string,
+length/capacity 65549/65549 becomes 65550/131098 after the closing object token;
+Unicode capacity grows 98317→196634. The short case changes length 4→5 while
+capacity stays 8. These are allocation/growth requests and observed capacity,
+**not physical-copy evidence or HTTP gains**; candidate focused checks are still
+underway. Retained `screens/p19-tail-baseline-capacity.log` has SHA-256
+`2b8fabc8280d80ffbab47ecbc3f7bac08af63730d250e4b644b3989113c41ebb`.
 
 ## P55 — safe Response constructor first screen (2026-10-24)
 
@@ -1806,8 +1927,9 @@ Archive-relative retained identities use the same durable A:
 
 The dependent P21.suffix-bitmap was subsequently measured and rejected above;
 its unknown forecasts stay intact. P11's mixed result follows above; independent
-P05's tested form is flat/mixed/rejected; independent P04 ownership-micro design
-is next, without P02/P05 stacking or an HTTP projection. Retain P55's simple
+P05's tested form is flat/mixed/rejected; P04's mechanism result is retained,
+without an HTTP projection. Independent P19.tail-slack is next, with unknown
+actual benefit. Retain P55's simple
 code/moderate ownership burden and adverse
 RSS for later human selection; exploration continues without promotion.
 
@@ -1815,8 +1937,9 @@ RSS for later human selection; exploration continues without promotion.
 
 **P61.roundtrip is measured/rejected; P61.host-sink remains a distinct,
 unmeasured alternative.** Both primary-pair controls remain established.
-P11 is measured/mixed and P05's tested form is rejected; independent P04
-ownership-micro design is next. P55's measured result and ownership assessment
+P11 is measured/mixed and P05's tested form is rejected; P04's positive
+mechanism result remains unintegrated. Independent P19.tail-slack is next,
+with unknown actual benefit. P55's measured result and ownership assessment
 remain retained above.
 Continue eligible exploration without another baseline prerequisite.
 
@@ -1982,7 +2105,8 @@ predict it. If final Response encoding is omitted, label that lower bound and
 exclude any application-gain claim. Even a promising probe still needs full
 HTTP ownership/byte validation. This is a conditional cheap check, not an
 implementation or host-sink rejection. The bitmap form is separately rejected;
-independent P04 ownership-micro design is next, without P02/P05 stacking.
+independent P19.tail-slack is next after retaining P04's mechanism evidence
+without HTTP projection.
 
 **P61.host-sink remains eligible despite the measured roundtrip loss.** It would retain escaped JS string tokens/chunks through Response
 construction. This is a substantive source-backed alternative, not an expansion
