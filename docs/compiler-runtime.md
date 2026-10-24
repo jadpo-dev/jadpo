@@ -5642,26 +5642,13 @@ ordered visible list with full six-field projections and null next cursor.
 | Node write | 1,278 / 1.211 | 2,039 / 13.130 | 2,312 / 39.325 |
 | Node signed-list | 211 / 9.534 | 263 / 77.579 | 261 / 284.918 |
 
-The 64-connection spreads below retain all three runs, including unfavourable
-ones. CPU/request, process cores and sampled RSS are three-run medians at
-64 connections. RSS and Wasm linear memory use MiB (the raw keys say `mb`);
-RSS is sampled every 250 ms, not a lifetime high-water measurement. End-of-cell
-linear memory is not JavaScript heap or total workerd RSS.
-
-| Golden target / work | req/s min–max | p95 ms min–max | CPU ms/req | Process cores | Sampled RSS MiB | Wasm MiB |
-|---|---:|---:|---:|---:|---:|---:|
-| Native read | 23,064–24,457 | 6.529–7.131 | 0.108 | 2.53 | 18.5 | — |
-| Native write | 17,852–18,831 | 8.918–10.152 | 0.126 | 2.33 | 16.9 | — |
-| Native signed-list | 9,885–11,200 | 14.069–16.434 | 0.343 | 3.66 | 19.2 | — |
-| workerd read | 1,454–1,634 | 59.623–78.592 | 0.630 | 0.98 | 234.5 | 13.8 |
-| workerd write | 1,362–1,567 | 63.734–91.295 | 0.682 | 0.97 | 257.2 | 14.1 |
-| workerd signed-list | 867–1,011 | 111.391–126.570 | 1.013 | 0.93 | 258.9 | 14.2 |
-| Bun read | 4,183–4,573 | 19.184–22.197 | 0.249 | 1.09 | 170.3 | — |
-| Bun write | 1,820–2,135 | 39.492–52.194 | 0.625 | 1.20 | 155.6 | — |
-| Bun signed-list | 458–459 | 149.702–175.030 | 2.355 | 1.08 | 143.5 | — |
-| Node read | 3,538–4,461 | 20.520–33.275 | 0.318 | 1.23 | 277.4 | — |
-| Node write | 2,280–2,332 | 37.312–39.358 | 0.524 | 1.21 | 282.4 | — |
-| Node signed-list | 251–262 | 264.869–336.754 | 6.665 | 1.73 | 367.8 | — |
+Spread, CPU, memory, cold-start and large-row (100 B / 64 KiB) figures for
+every run stay in the raw result files named below, not in this page. At
+64 connections the golden medians put native at roughly 6x (reads) and 8x
+(writes) the best TypeScript host and 24x on signed lists (Bun); the
+focused 64 KiB read put native at roughly 2.2x Bun/Node and 13x workerd.
+Cold start to first valid response (median): native about 22 ms, workerd
+71 ms, Bun 114 ms, Node 464 ms.
 
 The golden workerd stand-in pool adds median 0.180/0.185/0.322 CPU ms per
 read/write/list request at 64 connections, outside the workerd process figures.
@@ -5674,18 +5661,6 @@ and 0.624 for focused reads. These CPU observations do not prove client or
 host capacity headroom; the machine was not isolated, and whole-host
 saturation limits attribution of throughput differences.
 
-Golden cold start is spawn through the first fully valid database-backed
-readiness response, with fixture signing and the external pool startup
-excluded. There are 27 starts per target. Values below are median [min–max];
-large outliers remain included, and this is not a controlled OS cold-cache test.
-
-| Golden target | Ready ms | First request ms | Idle RSS MiB |
-|---|---:|---:|---:|
-| Native | 21.73 [18.38–385.34] | 3.16 [2.59–4.72] | 11.9 |
-| workerd | 71.10 [69.45–350.50] | 39.44 [33.13–268.68] | 97.5 |
-| Bun | 113.61 [102.19–432.03] | 16.06 [14.38–31.80] | 92.0 |
-| Node | 463.56 [422.75–1364.96] | 33.05 [24.48–128.79] | 257.5 |
-
 **Distinct large-row scaffold.** The golden title bound is 200 Unicode
 scalars. The separate 9.1a scaffold measures public sample reads with stored
 payloads of 100 and 65,536 bytes (64 KiB), plus their JSON envelope; it is not
@@ -5697,26 +5672,6 @@ sample bodies are checked. The TypeScript scaffold's pool and the local
 workerd stand-in are each capped at 20, as in 9.1a; these are separate from
 the golden pool configuration above. It completed 4,872,023 measured requests.
 The same median req/s / median per-run p95 ms notation applies.
-
-| Focused target / stored payload | 1 connection | 16 connections | 64 connections |
-|---|---:|---:|---:|
-| Native 100 B | 6,125 / 0.256 | 25,856 / 1.150 | 30,718 / 5.512 |
-| Native 64 KiB | 2,304 / 0.579 | 10,506 / 3.239 | 10,637 / 18.446 |
-| workerd 100 B | 882 / 1.625 | 1,637 / 13.298 | 1,624 / 70.488 |
-| workerd 64 KiB | 421 / 2.986 | 819 / 33.742 | 822 / 122.786 |
-| Bun 100 B | 4,638 / 0.338 | 10,772 / 2.463 | 9,712 / 9.809 |
-| Bun 64 KiB | 2,235 / 0.716 | 4,449 / 5.899 | 4,750 / 17.854 |
-| Node 100 B | 4,038 / 0.393 | 9,537 / 2.598 | 9,210 / 10.021 |
-| Node 64 KiB | 2,023 / 0.737 | 4,625 / 4.943 | 4,687 / 18.805 |
-
-For the focused 64-KiB route at 64 connections, req/s ranges were native
-10,636–11,444, workerd 713–823, Bun 4,708–4,880 and Node 4,666–5,107;
-p95 ranges were respectively 15.973–19.105, 116.279–159.705,
-17.215–18.590 and 17.159–20.518 ms. Median CPU/request was
-0.308/1.181/0.245/0.208 ms; median sampled RSS was
-42.4/370.7/127.9/291.4 MiB, in that same order. Workerd's final linear memory
-was 18.1–18.2 MiB. The complete smaller-read spreads and all other metrics
-remain in the raw result, without choosing favourable rounds.
 
 In these observations workerd was behind Bun on golden reads and writes,
 but ahead on golden signed lists. There is no single overall performance-gap
@@ -5740,9 +5695,9 @@ and `tools/bench/work/todo/matrix-busy-host-ead8d2c8.json`, SHA-256 respectively
 `2dbfaa2e830bbbda05b479ef783360c4775691fa4a50428eb0a31d26f356ace8` and
 `25aa350f613547b84947a10d6da1de6bc5c3ba7084f9d9fbf523f2002cac6205`.
 The failed setup-only functional smoke is retained separately and supplies
-no comparison cell. Each result includes full source and artifact maps;
-selected exact SHA-256 identities are below.
+no comparison cell. Each result includes full source and artifact maps.
 
+<<<<<<< HEAD
 | Input or artifact | SHA-256 |
 |---|---|
 | `Cargo.lock` | `215fd087c4bf5cd03f21311e67f388883a7aba013af53a3445fa99aca01f4950` |
@@ -5845,3 +5800,7 @@ in `runner.rs`, `race.rs` and `schedules.rs`; reproduce with
 builds or tests running. Review must retain the four-lane bound, separate
 contexts, serial batch work, drain/hand-on behaviour and handled atomicity.
 These results do not establish the cause of the wider Wasm gap.
+=======
+The pinned lockfile, compiler, artifact and result hashes are in the raw
+result files, which carry full source and artifact maps.
+>>>>>>> origin/chunk-9.1d4
