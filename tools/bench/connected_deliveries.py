@@ -8,6 +8,7 @@ The connectionless 10k control retains its original application and service.
 from __future__ import annotations
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import datetime as dt
 import http.server
 import json
@@ -18,6 +19,7 @@ import re
 import resource
 import shutil
 import subprocess
+import sys
 import threading
 import traceback
 import time
@@ -60,6 +62,8 @@ class Provider:
         self.calls = []
         self.status = 200
         self.lock = threading.Lock()
+        self.called = threading.Event()
+        self.allowed = threading.Event();self.allowed.set()
         owner = self
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -68,6 +72,8 @@ class Provider:
                 with owner.lock:
                     owner.calls.append({'method':'GET','path':self.path,'authorization':self.headers.get('authorization')})
                     status = owner.status
+                owner.called.set()
+                if not owner.allowed.wait(15):status=503
                 ticket = self.path.removeprefix('/tickets/')
                 answer = {'ticket':ticket} if status == 200 else {'error':{'code':'ticket_unknown'}}
                 body = json.dumps(answer).encode()
@@ -82,11 +88,13 @@ class Provider:
         self.thread = threading.Thread(target=self.server.serve_forever,daemon=True)
         self.thread.start()
     def reset(self,status=200):
+        self.allowed.set();self.called.clear()
         with self.lock:
             self.calls.clear();self.status=status
     def snapshot(self):
         with self.lock:return list(self.calls)
     def close(self):
+        self.allowed.set()
         self.server.shutdown();self.server.server_close();self.thread.join()
 
 
@@ -119,6 +127,11 @@ def validate_handled(deliveries,handled,started,ended):
     for row in handled:
         if set(row)!={'id','handled_at'} or not started-1<=flags.instant(row['handled_at'])<=ended+1:
             raise ValueError('handled marker columns or clock differ')
+
+
+def validate_running_claim(row):
+    if row['status']!='running' or row['attempts']!=1 or row['last_failure']!={'code':'lease_expired'}:
+        raise ValueError(f'expired claim must keep a structured lease failure before provider returns: {row}')
 
 
 def validate_census(census,connected):
@@ -184,9 +197,9 @@ def build(label):
             paths.extend(p for p in (project/'build/rust').rglob('*') if p.is_file())
             paths.append(project/'build/manifest.json')
     stamp['runtimes']={}
-    for name in ('workerd','bun','node','psql','rustc','cargo'):
+    for name in ('workerd','bun','node','psql','rustc','cargo','python'):
         location = (command(['rustup','which',name],capture_output=True,text=True).stdout.strip()
-                    if name in ('rustc','cargo') else (base.spike.workerd() if name=='workerd' else base.spike.tool(name)))
+                    if name in ('rustc','cargo') else (sys.executable if name=='python' else (base.spike.workerd() if name=='workerd' else base.spike.tool(name))))
         path=Path(location).resolve()
         stamp['runtimes'][name]={'path':str(path),'version':command([str(path),'--version'],capture_output=True,text=True).stdout.strip(),'sha256':guard.sha(path)}
         paths.append(path)
@@ -222,10 +235,10 @@ class Database(base.Database):
         self.sql(target,'TRUNCATE jadpo_circuit_breakers')
 
 
-def service(target,folder,pg,owned,connected):
+def service(target,folder,pg,owned,connected,*,launch="smoke"):
     if target=='workers':
         extra=['(name="CHECKS_API_KEY",text="benchmark-key")','(name="CHECKS_ENVIRONMENT",text="sandbox")'] if connected else []
-        process,helper,port=base.worker(folder,pg,folder/f'{target}.log',owned,extra_bindings=extra)
+        process,helper,port=base.worker(folder,pg,folder/f'{target}.log',owned,extra_bindings=extra,runtime_directory=folder/'hosts'/launch)
         return process,helper,port
     if target in ('bun','node'):
         port=base.spike.free_port()
@@ -356,7 +369,19 @@ def controls(target,folder,pg,port,provider,template,connected):
         elif name=='closed-breaker':pg.closed(target)
         elif name=='open-hold':pg.sql(target,"INSERT INTO jadpo_circuit_breakers(connection,state,failures,pauses,probe_at) VALUES('checks','open',5,1,clock_timestamp()+interval '1 hour')")
         try:
-            report['response']=base.tick(target,folder,pg,port)
+            if connected and name=='expired-lease':
+                # Inspect the actual claimed row while the real provider's
+                # request is observed and held. Always release and join.
+                provider.allowed.clear()
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    future=pool.submit(base.tick,target,folder,pg,port)
+                    try:
+                        if not provider.called.wait(10):raise ValueError('expired delivery never reached held provider')
+                        report['running_claim']=pg.rows(target)[0]
+                        validate_running_claim(report['running_claim'])
+                    finally:provider.allowed.set()
+                    report['response']=future.result()
+            else:report['response']=base.tick(target,folder,pg,port)
         except base.TickError:
             if name!='claim-error':raise
             report['response']='claim rejected'
@@ -415,8 +440,10 @@ def measure(label,count,rounds,targets):
                 for target in order:
                     pg.reset(target,template,1)
                     pg.sql(target,"UPDATE jadpo_deliveries SET next_attempt_at=clock_timestamp()+interval '1 hour'")
-                    process,helper,port=service(target,folder,pg,owned,connected)
-                    row={'workload':workload,'round':round_index+1,'target':target,'ok':False}
+                    process,helper,port=service(target,folder,pg,owned,connected,launch=f'round-{round_index+1}')
+                    consumed=folder/'hosts'/f'round-{round_index+1}'
+                    host_artifacts={str(p):guard.sha(p) for p in consumed.rglob('*') if p.is_file()} if target=='workers' else {}
+                    row={'host_artifacts':host_artifacts,'workload':workload,'round':round_index+1,'target':target,'ok':False}
                     result['runs'].append(row);save()
                     try:
                         key=f'{workload}:{target}'
@@ -468,6 +495,7 @@ def measure(label,count,rounds,targets):
                         if connected:validate_provider(row['provider_calls'],count)
                         elif row['provider_calls']:raise ValueError('connectionless workload called provider')
                         if process is not None and process.poll() is not None:raise ValueError('service died or restarted')
+                        if any(guard.sha(Path(p))!=digest for p,digest in host_artifacts.items()):raise ValueError('consumed Worker host artifact changed')
                         row['ok']=True
                         print(json.dumps({k:row[k] for k in ('workload','round','target','deliveries_per_second','tick_p95_ms','ok')}),flush=True)
                     except BaseException as error:

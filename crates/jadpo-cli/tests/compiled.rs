@@ -315,7 +315,8 @@ use shared/providers/acme_pay
 
 entity Plan {
     id: Uuid
-    tier: Reference
+    tier: AcmePay.Reference
+    own_tier: Reference
     card: CardState
 
     policy: {
@@ -333,10 +334,11 @@ use billing/types { CardState, Reference }
 use shared/providers/acme_pay
 
 /// Adds a plan whose card isn't checked yet.
-action add_plan(tier: Reference) -> Plan {
+action add_plan(tier: AcmePay.Reference) -> Plan {
     return Plan.create {
         set: {
             tier: tier
+            own_tier: Reference(tier)
             card: CardState.unchecked
         }
     }
@@ -356,7 +358,7 @@ action check_plan(plan_id: Plan.id) fails PlanNotFound -> Plan {
     var plan: Plan = attempt Plan.get(plan_id)
     var state: CardState = match pay.check_card(
         AcmePay.PayRequest {
-            reference: AcmePay.Reference(plan.tier)
+            reference: plan.tier
         }
     ) {
         success -> CardState.accepted
@@ -384,12 +386,14 @@ test "a declined card is kept on the plan" {
     var plan: Plan = add_plan("gold")
     var checked: Plan = attempt check_plan(plan.id)
     assert checked.card == CardState.declined
+    assert checked.own_tier == "gold"
 }
 
 test "an accepted card is kept on the plan" {
     var plan: Plan = add_plan("gold")
     var checked: Plan = attempt check_plan(plan.id)
     assert checked.card == CardState.accepted
+    assert checked.own_tier == "gold"
 }
 "#,
     ),

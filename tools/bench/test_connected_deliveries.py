@@ -37,6 +37,12 @@ class Controls(unittest.TestCase):
             self.assertNotIn('PATH',entry['effective_flags'])
             self.assertEqual(wrapper.stat().st_mode&0o777,0o755)
 
+    def test_expired_running_claim_rejects_a_json_string_or_unclaimed_row(self):
+        row={'status':'running','attempts':1,'last_failure':{'code':'lease_expired'}}
+        c.validate_running_claim(row)
+        for field,value in [('status','pending'),('attempts',0),('last_failure','{"code":"lease_expired"}'),('last_failure',None)]:
+            with self.assertRaises(ValueError,msg=field):c.validate_running_claim({**row,field:value})
+
     def test_exact_delivery_columns_and_time(self):
         c.validate_rows(self.before,self.after,1,self.start,self.start+1)
         for field in self.after[0]:
