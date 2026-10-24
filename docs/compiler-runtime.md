@@ -7375,7 +7375,8 @@ diagnostic binder 39.04 s; these are preparation durations, not request costs.
 SHA-256 for every accepted CPU capture and every consumed host snapshot. The
 incomplete serial directory also retains all four raw profiles, clearly excluded
 from accepted summaries. The 30 accepted plus four incomplete profiles all pass
-the nonempty/tree/timeDelta validation. Subsequent edits are facts/method only.
+the nonempty/tree/timeDelta validation. Raw captures remain byte-identical; the
+corrected summary code receives a separate full-gate identity recorded below.
 
 | Path | SHA-256 |
 |---|---|
