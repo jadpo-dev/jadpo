@@ -1,0 +1,14 @@
+use planning/entities { User }
+use planning/types { Title }
+
+entity Todo {
+    id: Uuid
+    owner_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+    policy: {
+        create: [owner_id]
+        read: [owner_id]
+    }
+}

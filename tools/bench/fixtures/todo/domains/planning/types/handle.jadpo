@@ -1,0 +1,4 @@
+type Handle = Text {
+    min_length: 1
+    max_length: 80
+}

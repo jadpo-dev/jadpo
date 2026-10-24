@@ -1,0 +1,9 @@
+use planning/entities { Todo, User }
+use planning/types { TodoView }
+
+query my_todos(owner: User.id) -> List<TodoView> {
+    from: Todo
+    where: Todo.owner_id == owner
+    order: [Todo.title asc, Todo.id asc]
+    limit: 50
+}

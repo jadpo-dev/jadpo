@@ -1179,7 +1179,15 @@ the package cache is; the project's `build/rust/cache/` with neither),
 Jadpo of one version never share one. Its `locales/<digest>/` holds the
 CLDR data a locale set carries, named by a digest of the exported
 files, written under another name and renamed into place, so no build
-reads it half written and identical sets share it. Its
+reads it half written and identical sets share it. Each build verifies the
+expected exported files, not only the directory's name: a restored/pruned
+cache may retain an empty digest directory. Verification and repair hold a
+per-digest filesystem lock (`locales/.<digest>.lock`); incomplete or corrupt
+entries are written under a unique staging name and published whole, while
+complete entries are untouched. Export and cargo run outside that lock.
+This recovers the empty directories left by the pinned CI cache action's
+[recursive target cleanup](https://github.com/Swatinem/rust-cache/blob/6323deb102c322ba6fcbdcafc7e3dddab59af2b6/src/cleanup.ts#L9-L33),
+without clearing valid build artifacts or changing cache keys. Its
 `targets/<host>-<locales>[-<overrides>]/` is a cargo target for each
 host (`native`, `wasm`), locale data and set of cargo's
 `CARGO_PROFILE_RELEASE_*` overrides (the gate builds its test
@@ -5224,3 +5232,39 @@ the inspector): the socket bridge's `write` and `read` themselves, about
 a third of the samples, `queueMicrotask` 7%, garbage collection 4%,
 Jadpo's compiled code a few percent; no reader's or writer's
 constructor nor `releaseLock`.
+
+
+**Chunk 9.1a instrumentation** (2026-10-22). `tools/bench/todo.py` adds a
+local generic todo-shaped microbenchmark scaffold on native, workerd, Bun
+and Node. It records complete response/state checks, p95 including requests
+that drain past the admission window, finite request deadlines, cold start,
+server CPU/RSS/Wasm memory, load CPU and source/artifact identities. Its fast
+fault-sensitive checks are part of the gate; timed measurements are not.
+The existing repair-café harness above remains reproducible and exercises a
+subscriber path absent from these short routes.
+
+An initial 16-cell smoke (four targets by four routes, one connection,
+one-second admission and 0.2-second warmup) passed its instrumentation
+checks. It was performed while build load was decaying and is not a
+comparative performance result. Later write probes checked UUIDv7 responses,
+owner/title persistence and BEGIN/INSERT RETURNING/COMMIT statement shapes.
+No final comparative data is published for this scaffold. Its generic title
+ordering, bare list, cascade and public sample routes differ from the actual
+golden todo; none of the 44 golden acceptance cases is claimed as passed.
+
+The request-path audit in `tools/bench/README.md` found substantive baseline
+gaps beyond the business SQL: full body/header/input guards, durable session
+renewal/revocation, address canonicalization/refusal headers, deadline and
+rollback safety, idempotency, response identity and complete error/retry
+mapping. In particular the TypeScript scaffold validates returned write data
+after commit, while Jadpo validates before committing. Both do runtime output
+boundary validation: Jadpo validates stored fields and serializes a known
+shape, while the TypeScript route performs one Zod output parse (the Hono
+OpenAPI response schema adds no automatic second parse). Unicode scalar
+boundary tests now prevent JavaScript UTF-16 length from changing text rules.
+
+Roadmap 9.1 remains the original full benchmark requirement: 9.1a supplies
+instruments only; 9.1d must implement and validate the actual golden todo and
+strong TypeScript baseline before local app comparison, then 9.1b measures
+runtime improvements and 9.1c measures real Workers with Richard. The short
+scaffold is no evidence that the full application performance gap has closed.
