@@ -215,9 +215,12 @@ scratch worktree.
 
 P02 is measured/mixed and retained as an exploratory prototype, with no
 production promotion or favorable rerun. The current-B CPU diagnostic below
-supports P03 as the next cheap independent signed-read experiment; its original
-0.5–2% prediction is unchanged. Next bounded leads are P21's ASCII first-escape
-scan and a transfer-inclusive P61 mixed-text micro before any host integration.
+supported P03's independent signed-read experiment, now measured small positive
+with limited causal attribution; its original 0.5–2% prediction is unchanged.
+P21's independent safe u64 SWAR first-escape preparation is next, with the
+original 0–3% ASCII/late-escape prediction and near-zero direct mixed/signed
+scope. Optional P21.suffix keeps separate marginal/combined comparisons.
+A transfer-inclusive P61 mixed-text micro precedes any host integration.
 P11/P13 count work warrants focused checks; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
 F01 below remains frozen for the initial 54 ideas; later discoveries expand the
@@ -226,7 +229,7 @@ queue without retroactively changing that forecast.
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
 | **P02 — Safe SIMD UTF-8 validation** (measured/mixed; prototype retained) | Mixed large / ASCII reads; E | 2–6% mixed; 0–1% ASCII | P/F mixed +6.071%; ASCII −0.586%; signed control +0.103%. Combined P/B +6.550% / −0.968% / −1.554% (mixed/ASCII/signed). [All rounds, predictions and adverse metrics](#p02--simd-utf-8-first-screen-2026-10-24). | Historical mixed self 6.7–7.1%, ASCII ≈0.55%; conditional full-removal ceiling ≈7.2–7.7%, not achievable validation removal. Verify cached safe API and Wasm SIMD support; identical-feature control, no handwritten unsafe validator or download. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [postgres/wire.rs:648](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L648). | Medium; S–M; medium | Depends on F (same-feature control); F/B and combined P/B predictions unknown; overlaps P04 |
-| **P03 — Signed base64url table decoder** (queued; unmeasured) | Signed reads; E | 0.5–2% | Not measured | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%; current D signed self 1.5216%, ancestor union 1.9410% of all weighted samples (diagnostic scope, not removable headroom). Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
+| **P03 — Signed base64url table decoder** (measured small positive; prototype retained) | Signed reads; E | 0.5–2% | Signed +2.0625% vs B (marginal=combined); ASCII/mixed controls +1.4274%/+1.3656%, no direct decoder attribution. [All18 rows and limits](#p03--signed-base64url-first-screen-2026-10-24). | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%; current D signed self 1.5216%, ancestor union 1.9410% of all weighted samples (diagnostic scope, not removable headroom). Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
 | **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
 | **P11 — Skip unneeded scalar count** (queued; unmeasured) | Large text; E | 0–5% | Not measured | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
 | **P05 — Prepare immutable driver configuration** (queued; unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | Not measured | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
@@ -490,6 +493,108 @@ downloading. Generated app code/plans remain equal
 across B/F/P except lock entry; no source/artifact guard was bypassed. Prototype
 source, prerequisites and all immutable artifacts were retained before reset.
 
+## P03 — signed base64url first screen (2026-10-24)
+
+**Measured small positive, prototype retained; causal attribution is limited.**
+The parent independently accepted the complete 18-cell capture. The original
+signed application-throughput prediction **+0.5–2% versus B** remains frozen.
+This is independent from H84/B4fda, without P02 or new features/dependencies;
+marginal and combined P03/B are the same comparison. Public ASCII/Unicode
+controls had approximately zero direct decoder scope, with unpredicted
+regression/codegen effects checked. Their positive movement is not a decoder
+gain and prevents assigning the signed change wholly to the decoder. No
+production promotion, full gate, prototype PR or favorable rerun followed.
+
+The fixed two rounds reverse the declared B/P03/Bun × three-workload order,
+c16, 2 s admission plus 1 s warmup, 2,048 principals, inspector NONE and
+PostgreSQL durations OFF. All18 errors/warmup errors/invalid bodies/state
+deltas are zero, three full body identities match, all96 immutable served
+snapshots and source/artifact guards pass. Clock gaps are 5.230–10.543 ms,
+Sleep has no events and all owned services were reaped. This remains a
+provisional short local screen, not long confirmation or a capacity/edge/p95
+assurance. Do not subtract public-control movement as an invented causal
+correction.
+
+Actual gains use **100 × (median P03 req/s / median B req/s − 1)** in this
+contemporaneous campaign, not historical-day raw rates or a median of round
+ratios. Both round ratios and the same-run Bun controls remain visible.
+
+| Workload | Frozen throughput prediction | Actual P03/B gain (marginal = combined) | Round1 / round2 gain | Median B / P03 / Bun req/s |
+|---|---|---|---|---|
+| signed | 0.5–2% | +2.0625% | +2.8993% / +1.2167% | 2336.9356 / 2385.1346 / 6307.2538 |
+| ASCII control | Approximately 0 direct; other movement unknown | +1.4274% | +3.4755% / -0.5110% | 1276.6191 / 1294.8418 / 5964.2702 |
+| mixed control | Approximately 0 direct; other movement unknown | +1.3656% | +1.2062% / +1.5259% | 788.4493 / 799.2166 / 1633.6090 |
+
+The signed ratio is slightly above the prediction's upper edge; the public
+controls also improve, so this is a bounded positive signal rather than a
+universal or isolated causal claim. Signed p95 changes −2.1729% / −1.4273%,
+service CPU/request −3.2835% / −0.6164%. All measured p95s decline, while
+signed round2 sampled peak RSS **298.0→314.3 MB** and ASCII round2 service
+CPU/request **0.786175→0.789474 ms** are adverse and retained. No memory-neutral
+or leak claim follows from these sparse samples.
+
+Every cell is **req/s / p95 ms / service CPU ms per request / separate pool-helper
+CPU ms per request / sampled peak RSS MB**. Service CPU excludes the helper and
+PostgreSQL; RSS is sampled, not a lifetime maximum.
+
+| Workload / round | B | P03 | Bun control |
+|---|---|---|---|
+| signed / 1 | 2349.389 / 8.560 / 0.4332 / 0.1189 / 299.8 | 2417.505 / 8.374 / 0.4190 / 0.1218 / 299.5 | 6314.016 / 3.569 / 0.1923 / 0.0000 / 205.4 |
+| signed / 2 | 2324.482 / 8.758 / 0.4356 / 0.1202 / 298.0 | 2352.765 / 8.633 / 0.4329 / 0.1210 / 314.3 | 6300.491 / 3.633 / 0.1935 / 0.0000 / 205.5 |
+| ASCII / 1 | 1241.499 / 20.256 / 0.8133 / 0.1763 / 362.3 | 1284.648 / 19.376 / 0.7913 / 0.1629 / 359.6 | 5986.041 / 4.170 / 0.2162 / 0.0000 / 194.0 |
+| ASCII / 2 | 1311.739 / 18.911 / 0.7862 / 0.1709 / 362.1 | 1305.036 / 18.322 / 0.7895 / 0.1678 / 354.0 | 5942.500 / 4.324 / 0.2202 / 0.0000 / 189.6 |
+| mixed / 1 | 790.619 / 32.162 / 1.2806 / 0.2072 / 301.4 | 800.156 / 26.065 / 1.2709 / 0.2108 / 301.5 | 1644.593 / 12.148 / 0.7271 / 0.0000 / 173.9 |
+| mixed / 2 | 786.280 / 29.911 / 1.2879 / 0.2146 / 310.0 | 798.277 / 26.559 / 1.2749 / 0.2114 / 302.3 | 1622.625 / 12.331 / 0.7334 / 0.0000 / 180.5 |
+
+All cold-ready / first-answer milliseconds follow; they are sparse local
+observations, not deployment cold-start predictions. Per-row host/load, body
+bytes/hashes, load-generator and helper CPU, other latency quantiles and
+process context remain in the full raw18 records, including adverse entries.
+
+| Workload / round | B cold / first | P03 cold / first | Bun cold / first |
+|---|---|---|---|
+| signed / 1 | 154.812 / 90.004 | 62.736 / 30.280 | 927.187 / 18.959 |
+| signed / 2 | 62.294 / 29.059 | 59.004 / 29.335 | 88.607 / 11.725 |
+| ASCII / 1 | 62.449 / 36.156 | 57.789 / 34.569 | 90.285 / 3.396 |
+| ASCII / 2 | 57.235 / 34.894 | 57.644 / 34.614 | 85.161 / 5.765 |
+| mixed / 1 | 58.560 / 35.585 | 59.445 / 36.596 | 84.780 / 3.803 |
+| mixed / 2 | 57.676 / 34.631 | 58.807 / 35.373 | 86.149 / 4.880 |
+
+Whole-host CPU spans 32.248–53.175%, load-average endpoints 5.870–15.395.
+Host drift and two short reversed rounds limit attribution. Generated
+application inputs match B exactly and only `http/signed.rs` changes from H84;
+there are no feature/dependency edits. The two production Wasm modules each
+shrink 222 bytes: golden **7325675 / 2689999** raw/gzip6, focused
+**7364232 / 2661741**. gzip6 remains a compression proxy, not a provider upload
+measurement. Exact candidate module hashes are golden
+`cd20b412e6682a69ef668ff54ae81d1b6364560b9aadcb18d5b22be8e0d1c1f2`,
+focused `badfa8710533a4f0fc9089899fd65fcc6d878b3f0676d7c93a0c3a6bff25bff7`;
+all distinct original/saved artifact maps remain guarded in the build record.
+
+P03 source `e25e40b0f30d8a1394df0488cb2a8c203dd1256f`, tree
+`e7dbb94898153a747dc6b268d00f79cc4628cf94`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/p03-table`. It reuses the exact frozen
+shared H84/B records above. Paths below are relative to archive A used by P02:
+
+| P03 record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Build | `variants/p03-table/build.json` | `97a8dc1f8dfc766ed47a30ce561fea963c5c393b20891f1291e02217ce22b7f8` |
+| No-load cohort smoke | `screens/p03-table/setup-cohort/results.json` | `428ff9703f0399a5f343c93947f3ff54bdda96f6780f23e0a69d2b737314a622` |
+| Complete fixed18 result | `screens/p03-table/screen18-none-pg-off-c16-r2/results.json` | `a60512531facedaa3e31161ff51788ade752dbe5b2b11600b567651533f91cf2` |
+
+Nine signed controls pass on the test-only baseline source
+`a320802f146ccbae9837b92967533b99391fca72` and on the final candidate; affected
+Clippy library/tests pass with warnings denied. Earlier candidate
+`5eec038aa881603f27b1a1cfa49e0480116b1d60` passed the same nine controls but
+Clippy denied three indexing sites. Follow-up
+`4f946f5092e7684218923560ba61db45dc4d082b` failed compilation because const
+slice get/get_mut remained unstable on pinned Rust 1.99. Final e25e uses a
+literal 256-entry table and checked runtime lookup. All setup source commits
+remain retained ancestors of the named P03 ref; exact setup stderr is in task
+sessions 63042/45152, not invented benchmark raw. No earlier screen or
+performance failure occurred for those preparation attempts. Source/artifacts
+were retained and guarded before resetting for the next independent idea.
+
 ## Current-B CPU diagnostic and compiler audit (2026-10-24)
 
 **Instrumented diagnostic, not a throughput result or a new performance gain.**
@@ -589,14 +694,56 @@ native/program samples remain unassigned rather than credited to an idea.
 A constructor-versus-completion and true-I/O census is required before any
 structural P59/P60 implementation or numeric impact promotion.
 
+### Constructor-only refinement and planned callback/I/O census
+
+A narrower union on the same timeDelta-weighted D captures matches JsFuture
+constructor names ending `::from`, excluding `::from::finish`. It counts each
+sample once under any matching constructor. This is still an ancestor context,
+not all removable work or a callback count, and overlaps allocator/closure work.
+
+| JsFuture constructor-only union | G signed | A ASCII | U mixed |
+|---|---|---|---|
+| Percent total / nonidle samples | 1.5917 / 1.6778 | 2.1169 / 2.2137 | 1.8135 / 1.8836 |
+
+Caller partitions below are percentages of all weighted samples, with rounding:
+
+| Constructor caller | G signed | A ASCII | U mixed |
+|---|---|---|---|
+| poll_read | 0.6184 | 1.4402 | 1.3717 |
+| poll_write | 0.2487 | 0.2261 | 0.1211 |
+| poll_shutdown | 0.1057 | 0.0953 | 0.0561 |
+| Timer | 0.4319 | 0.1178 | 0.0730 |
+| Other | 0.1870 | 0.2375 | 0.1914 |
+
+Read+write constructor unions are approximately **0.8671 / 1.6663 / 1.4928%**
+of total G/A/U samples. This narrows P59's directly identified constructor
+mechanism; completion and queue unions must not be added to it. Causal GC
+relief is unassigned, and not all identified constructor work is removable.
+No original prediction or F01 number changes.
+
+The next census is **planned, not an executed result**: separately pin
+instrumented diagnostic JavaScript with unchanged named B Wasm, count existing
+connect/read/write/close and bytes, then registrations/completions, closure
+creation/invocation and queue scheduling/execution, classifying synchronous
+completion versus queue-dispatch origin. Use WeakMap tags and callback
+forwarding without extra Promise/then calls or global prototype edits. Baseline
+JS is `b/artifacts/13055-kiosk.js`, SHA-256
+`809b0b79a023e5c2c764256826551540f02e33b1c6064417cceda58fc71ad386`;
+hook sites are connect165, close154/158/161, reader305/writer351,
+queue433–434, read436–438, then515–521, write541–543 and makeMutClosure722.
+Each census needs its own source/artifact identity and semantic guards; it is
+not a D-equivalence or capacity claim. Whole-window counts include warmup/drain
+and cannot be divided by measured-only request counts.
+
 P03 remains an independent H84/B4fda experiment: its **original 0.5–2% signed
 application-throughput prediction** was frozen before implementation and is
 unchanged. Marginal equals combined P03/B, with no P02 stack. ASCII/Unicode
 have approximately zero direct scope, with unpredicted regression/codegen
 side effects still checked. The signed decoder's 153135 self-weighted µs and
 195351 ancestor-union µs over 10064296 total µs support a bounded lead, not a
-headroom promise or an observed gain. All throughput-actual fields remain
-unmeasured for P03 until its separate matched screen.
+headroom promise or an observed gain. P03's separate matched screen above now
+supplies its actual gains; these diagnostic weights do not change its original
+prediction or isolate the screen's causal effect.
 
 P21 is the next bounded ASCII first-escape lead, not a claim to remove the
 writer's entire 7.83% self footprint. Mixed input escapes nearly immediately,
