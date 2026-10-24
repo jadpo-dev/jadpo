@@ -228,7 +228,11 @@ MEMORY_WORKER = """export default {
 """
 
 
-def workerd_config(folder: Path, port: int, database_host: str, database: str, memory_port: int) -> Path:
+LOOPBACK_WORKER_HTTP = '(injectRequestHeaders = [(name = "CF-Connecting-IP", value = "127.0.0.1")])'
+
+
+def workerd_config(folder: Path, port: int, database_host: str, database: str, memory_port: int,
+                   trusted_loopback: bool = False) -> Path:
     """The test harness's config (crates/jadpo-cli/tests/workers.rs) for the
     built kiosk: its modules, Hyperdrive binding and stand-in rate-limiting
     binding, without the cron Worker, and the harness's `memory` Worker on
@@ -258,6 +262,7 @@ def workerd_config(folder: Path, port: int, database_host: str, database: str, m
             f'(name = "{limit["name"]}", wrapped = (moduleName = "bench:ratelimit", innerBindings = ['
             f'(name = "limit", json = "{limit["simple"]["limit"]}"), '
             f'(name = "period", json = "{limit["simple"]["period"]}"), (name = "log", json = "false")]))')
+    http = LOOPBACK_WORKER_HTTP if trusted_loopback else '()'
     config = f'''using Workerd = import "/workerd/workerd.capnp";
 
 const config :Workerd.Config = (
@@ -268,7 +273,7 @@ const config :Workerd.Config = (
     (name = "hyperdrive", external = (address = "{database_host}", tcp = ())),
   ],
   sockets = [
-    (name = "http", address = "127.0.0.1:{port}", http = (), service = "kiosk"),
+    (name = "http", address = "127.0.0.1:{port}", http = {http}, service = "kiosk"),
     (name = "memory", address = "127.0.0.1:{memory_port}", http = (), service = "memory"),
   ],
   extensions = [(modules = [(name = "bench:ratelimit", internal = true, esModule = embed "ratelimit-binding.mjs")])],

@@ -326,7 +326,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
              [python, 'tools/examples.py', '--export-corpus'], jadpo=True,
              postgres=full, env=no_postgres, show='skipped:'),
         Step('focused TypeScript baseline types and Unicode contracts', 'lint', [python, 'tools/bench/check_typescript.py']),
-        Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'tools/bench', '-p', 'test_contracts.py']),
+        Step('benchmark verifier contracts', 'lint', [python, '-m', 'unittest', 'discover', '-s', 'tools/bench', '-p', 'test_*.py']),
+        Step('benchmark trusted proxy controls', 'lint', ['node', '--test', 'tools/bench/golden_proxy.test.mjs']),
         Step('benchmark load correctness', 'lint', ['cargo', 'test', '--locked', '--manifest-path', 'tools/bench/load/Cargo.toml', '--bin', 'load', '--test', 'protocol'], lane='cargo'),
         Step('benchmark load formatting', 'lint', ['rustfmt', '--edition', '2024', '--check', 'tools/bench/load/src/bin/load.rs', 'tools/bench/load/tests/protocol.rs'], lane='cargo'),
         Step('focused benchmark fixture', 'docs', [python, 'tools/bench/check_fixture.py'], jadpo=True),
@@ -396,8 +397,10 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
     if full:
         # One wrapper owns npm installation and the whole TS pipeline under an
         # OS lock; the raw-HTTP Node/Bun controllers use this run's PostgreSQL.
+        # Real deadline controls and cold type-aware lint checks need the same
+        # isolation from builders as watch latency, without relaxing deadlines.
         checks.append(Step('TypeScript golden todo: static, integration and shared conformance', 'tests',
-                           [python, 'examples/golden-todo/typescript/adapter/verify.py'], postgres=True))
+                           [python, 'examples/golden-todo/typescript/adapter/verify.py'], postgres=True, alone=True))
         # Each prints its `skipped:` lines (a server too old for a test, on
         # a developer's machine), which libtest otherwise keeps to itself.
         checks += [Step(name, 'tests', tests=modules(tests),
@@ -426,6 +429,8 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         checks.append(Step('golden todo: all 44 workerd cases', 'wasm32',
                            [python, 'tools/golden-todo/run.py', '--targets', 'workerd'],
                            jadpo=True, postgres=True, lane='cargo', env=dict(TEST_RELEASE_PROFILE), show=True))
+        checks.append(Step('benchmark workerd trusted ingress controls', 'wasm32',
+                           [python, 'tools/bench/check_transport.py'], lane='cargo'))
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],
                            lane='cargo'))
