@@ -244,7 +244,10 @@ fn terminal_transaction_rejects_later_statements_without_sql() {
 
 #[test]
 fn cancelled_terminal_read_discards_its_connection_and_forbids_further_sql() {
-    for responses in [false, true] {
+    // Cancel immediately after the first poll, after enqueueing reaches the
+    // server, and during response delivery. All must drop the owned connection.
+    for phase in 0..3 {
+        let responses = phase == 2;
         let cancelled = Rc::new(std::cell::Cell::new(false));
         let server_cancelled = Rc::clone(&cancelled);
         let queued_phase = Rc::new(std::cell::Cell::new(false));
@@ -285,8 +288,10 @@ fn cancelled_terminal_read_discards_its_connection_and_forbids_further_sql() {
                     Poll::Ready(())
                 })
                 .await;
-                while !queued_phase.get() {
-                    tokio::task::yield_now().await;
+                if phase != 0 {
+                    while !queued_phase.get() {
+                        tokio::task::yield_now().await;
+                    }
                 }
                 drop(reading);
                 assert_eq!(
@@ -343,7 +348,9 @@ fn extension_parameter_keeps_the_ordinary_transaction_open() {
             );
             statement(&mut server).await.unwrap();
             server.write_all(&command("BEGIN", b'T')).await.unwrap();
-            server.write_all(ANSWERED).await.unwrap();
+            let mut answered = ANSWERED.to_vec();
+            answered[ANSWERED.len() - 1] = b'T';
+            server.write_all(&answered).await.unwrap();
             let (kind, ending) = message(&mut server).await.unwrap();
             assert_eq!(kind, b'Q');
             assert_eq!(ending, b"ROLLBACK\0");
