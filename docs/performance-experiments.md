@@ -100,7 +100,8 @@ edits and `L` an architectural experiment; these are cost categories, not time
 promises. `E` uses an existing read screen, `F` needs a focused workload and
 `C` measures cold start. Every candidate is initially **queued / unmeasured**;
 there is no observed result, source prototype ref or raw record until one is
-entered explicitly. Every measured-gain cell therefore starts as **Not measured**.
+entered explicitly. Each new measured-gain cell starts as **Not measured**;
+measured entries now carry their observed values and linked results below.
 Each future variant keeps its original prediction and its own result, including
 losses. Compare observed gain with that prediction so accuracy is visible;
 label the reference and summary statistic, retain all rounds in the linked
@@ -175,9 +176,11 @@ and awaits manual review; its exact gated source remains 0fce above.
 Do not infer a main completion tick or current production deployment from the
 passing local gate.
 
-The proposed exploration baseline B is this a3 production behavior, provisional
-until a3 finishes and its exact source/build/harness identities and dependency
-PRs are frozen. **The documentation PR starts from current main; experiments
+The exploration baseline B is now frozen at a3 production source
+`4fda5e597a3f508e1666ef46de0e0a3b850179b3`, with shared harness H84
+`84e1c00bc97fb565bcb5810a01b6028b0da803a9`; the exact immutable refs,
+builds and archive identities are in the P02 result below. Production behaviour
+is unchanged by that harness/artifact remap. **The documentation PR starts from current main; experiments
 start from B, which can be an explicitly authorized unmerged PR stack.** Main
 does not yet contain this Phase 9 harness or the source PR stack (the Phase 9
 source PRs through #375 were open at inventory time). Do not copy its unmerged completion ticks or try
@@ -210,9 +213,15 @@ scratch worktree.
 
 ## Primary read queue
 
+P02 is measured/mixed and retained as an exploratory prototype, with no
+production promotion or favorable rerun. The next investigation is a current-B
+CPU diagnostic for P59/P60 before re-ranking further implementation work.
+F01 below remains frozen for the initial 54 ideas; later discoveries expand the
+queue without retroactively changing that forecast.
+
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
-| **P02 — Safe SIMD UTF-8 validation** (queued; unmeasured) | Mixed large / ASCII reads; E | 2–6% mixed; 0–1% ASCII | Not measured | Historical mixed self 6.7–7.1%, ASCII ≈0.55%; conditional full-removal ceiling ≈7.2–7.7%, not achievable validation removal. Verify cached safe API and Wasm SIMD support; identical-feature control, no handwritten unsafe validator or download. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [postgres/wire.rs:648](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L648). | Medium; S–M; medium | Independent; overlaps P04 |
+| **P02 — Safe SIMD UTF-8 validation** (measured/mixed; prototype retained) | Mixed large / ASCII reads; E | 2–6% mixed; 0–1% ASCII | P/F mixed +6.071%; ASCII −0.586%; signed control +0.103%. Combined P/B +6.550% / −0.968% / −1.554% (mixed/ASCII/signed). [All rounds, predictions and adverse metrics](#p02--simd-utf-8-first-screen-2026-10-24). | Historical mixed self 6.7–7.1%, ASCII ≈0.55%; conditional full-removal ceiling ≈7.2–7.7%, not achievable validation removal. Verify cached safe API and Wasm SIMD support; identical-feature control, no handwritten unsafe validator or download. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [postgres/wire.rs:648](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L648). | Medium; S–M; medium | Depends on F (same-feature control); F/B and combined P/B predictions unknown; overlaps P04 |
 | **P03 — Signed base64url table decoder** (queued; unmeasured) | Signed reads; E | 0.5–2% | Not measured | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%. Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
 | **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
 | **P11 — Skip unneeded scalar count** (queued; unmeasured) | Large text; E | 0–5% | Not measured | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
@@ -255,6 +264,7 @@ scratch worktree.
 | **P46 — Avoid replaced startup defaults** (queued; unmeasured) | Cold; C | Unknown; warm throughput zero expected | Not measured | Default/test configuration immediately replaced by production configuration. Measure replaced construction cost; retain interpreter/test defaults and startup failures. [compiled.rs:196](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/compiled.rs#L196), [compiled.rs:213](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/compiled.rs#L213), [deployable.rs:330](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/deployable.rs#L330). | Low-medium; M; medium | Independent; overlaps P47 |
 | **P45 — Deduplicate regex compilation** (queued; unmeasured) | Cold/RSS; C | Unknown; warm throughput zero expected | Not measured | Already once PER PROCESS; identical validators may compile duplicate regex. Count duplicates and measure cold CPU/RSS; immutable sharing only. [plan.rs:55](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/plan.rs#L55). | Low; M; medium | Independent |
 | **P47 — Share/emit immutable plan data** (queued; unmeasured) | Large-app cold/RSS; C | Unknown; warm benefit unestablished | Not measured | Plan/place/shape structures reconstructed despite existing process/isolate cache. Measure startup allocations versus artifact growth before redesign. [compiled.rs:143](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/compiled.rs#L143), [plan.rs:72](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/plan.rs#L72). | Low; L; high size/compatibility risk | Independent; overlaps P46 |
+| **P57 — Plan-chosen subsystem Cargo features** (queued; unmeasured) | Artifact/cold/start/RSS; C + warm control | Unknown; warm throughput may be zero | Not measured | Explicit roadmap 9.2 target: HTML/regex/Markdown/geodesy/batches/webhooks/sign-in. Runtime has only testing feature and value broad unconditional dependencies: [crates/jadpo-runtime/Cargo.toml:1](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/Cargo.toml#L1), [crates/jadpo-value/Cargo.toml:1](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/Cargo.toml#L1). Inspect retained code; compare a manual known-plan feature control before a production planner. | Low; M control / L planner; high reachability/linking risk | P56 may help some pruning, not universal prerequisite; test alone and combined; distinct P45/P47 |
 
 ## Already present and excluded repetitions
 
@@ -277,6 +287,12 @@ re-ranking. Do not fabricate a number to make the table sortable.
 
 | Candidate / current status | Applicable workload / experiment | Predicted throughput gain (hypothetical) | Measured throughput gain | Basis, next check and pinned source | Confidence; cost; risk | Dependency / alternative / overlap IDs |
 |---|---|---|---|---|---|---|
+| **P59 — Reusable socket Promise completion state** (queued; unmeasured) | All PostgreSQL paths, especially fragmented reads; F | Unknown; current exclusive bridge/allocation/causal GC profile first | Not measured | Fresh JsFuture per read/write at [transport.rs:445](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L445) and [transport.rs:515](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L515) creates Rc/state, two once callbacks and Promise.then. Prototype read-only, write-only then combined; retain owned bytes, settlement after cancel/drop, close/TLS/pending-read/error/slot/waitUntil leak guarantees. | Low; M–L; high lifetime/completion risk | Shared-state prerequisite explicit for variants; independent P01/P08/P55; overlaps P60 scheduling/GC, not all read/write/connect cost |
+| **P60 — Invocation-local ready-task pumping** (queued; unmeasured) | PostgreSQL task handoffs; F; investigate first | Unknown; removable exclusive task-bridge budget only | Not measured | Connection spawn [postgres/driver.rs:366](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-drivers/src/postgres/driver.rs#L366) and [transport.rs:205](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/transport.rs#L205) cross a microtask executor that defers wakes during polling. Drive only invocation-owned ready tasks; residual work stays in that invocation waitUntil. Preserve bounded fairness/deadlines/abort/drain/streaming/8.4e no-leak rules. | Low; L; high scheduling/lifecycle risk | Alternative/overlap P59; neither prerequisite; combined measurement if retained; distinct P49; no global drain/socket reuse or PG-backend-creation claim |
+| **P55 — Safe synchronous Response slice constructor** (queued; unmeasured) | Large ASCII/mixed primarily; small signed control; F | Unknown; measure exclusive intermediate copy/allocation and causal GC | Not measured | Remove intermediate owned Uint8Array copy through cached safe Response slice API; current [deployable.rs:432](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-host-workers/src/deployable.rs#L432). Verify generated JS and construct→mutate/drop/reuse/grow-memory→async-read body ownership, exact binary/Unicode/empty/large bodies, bodyless 101/204/205/304, streaming, statuses/headers/errors. No borrowed view across await. | Low; S; medium lifetime/host-semantics risk | Independent of P10/P25/P26; allocation effects interact P61 |
+| **P56 — Direct known standard-operation calls** (queued; unmeasured) | Hot pure standard op; F; current singleton reads may gain zero | Unknown; current body attribution/call census first | Not measured | Known Op still enters broad enum/argument-shape dispatcher: [body.rs:1908](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/body.rs#L1908), [compiled.rs:884](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-runtime/src/compiled.rs#L884), [lib.rs:89](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/lib.rs#L89). Arguments already stack slices, return unboxed; preserve Fault→Refused, inline pace/deadlines/recording/stack. LTO may already fold dispatch. Explicit roadmap 9.2 target. | Low; S–M prototype; high semantic risk | Independent of P34; may enable P57 dead-code pruning; measure separately/combined |
+| **P58 — Explicit BLAKE3 wasm32 SIMD backend** (queued; unmeasured) | Short keyed signed tokens; F + actual signed screen | Unknown; old identified crypto budget only about 0.2–0.24%; small lead | Not measured | Cached BLAKE3 1.8.7 wasm32_simd feature is separate from global +simd128; current [Cargo.toml:245](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/Cargo.toml#L245) uses std+pure. Keep keyed format and constant-time Hash equality. Verify boundary-length/current/previous/wrong-key vectors, Wasm SIMD presence and workerd behavior. No substitution of Bun HMAC format. | Low; S–M; medium crypto/target risk | Independent P03; P22 can mask; B/C same flags or separate F/F+C comparison; reuse P02 F only as explicit control |
+| **P61 — Conditional host long-text JSON escaping** (queued; unmeasured) | Transfer-inclusive long-text Wasm micro first; HTTP only if worthwhile | Unknown; transfer/append allocations may lose, especially ASCII | Not measured | Primitive js_sys::JSON::stringify only; current [json.rs:1620](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-value/src/json.rs#L1620) and [entries.rs:633](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/entries.rs#L633) need optional Workers writer capability with pure/native default. Exact canonical bytes require Rust fallback for U+0008/U+000C (or proven token-aware repair); catch failures and append only after success. Full Unicode/control/prefix differential checks and generic thresholds. | Low; S micro / L integration; high canonical-byte/capability risk | Conditional; competes P21/string writers; independent P55 but allocation/copy effects interact; no old a2 gain credit |
 | **P22 — Bounded authenticated Claims cache** (queued; unmeasured) | Repeated credentials; E + hit/churn/rotation F | Unknown impact; 0–8% uncalibrated sizing only, not a ranking bound; churn can regress | Not measured | Repeated crypto/decode/parse. First measure current exclusive crypto/decode/parse cost and representative hit/churn behavior. Key by exact token and scope to the immutable current/previous signing-key set; every request retains expiry, method, constant-time secret verifier, fresh-route behavior and CSRF. Bound entries AND bytes; no benchmark-tuned 2,048-owner capacity. [http/identity.rs:449](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/identity.rs#L449). | Low; M; high security/lifecycle risk | Independent; masks P03/P07/P23 |
 | **P29 — Threshold include-key deduplication** (queued; unmeasured) | Large collections; F | Unknown; profile key count and contains cost | Not measured | keys.contains per parent is quadratic. Potentially substantial at scale; measure threshold and small-list regression; preserve required order. [read.rs:713](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L713). | Medium mechanism, unknown app benefit; S–M; medium | Independent; compatible with P31 |
 | **P30 — Pipeline sibling include SELECTs** (queued; unmeasured) | Several includes; F | Unknown; measure sequential handoffs/wait share | Not measured | Use SAME repeatable-read transaction. Preserve snapshot, policy/error ordering, cancellation and drain; no automatic a3 terminal eligibility. [read.rs:712](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L712), [read.rs:737](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L737). | Low; L; high | Independent; overlaps include-work changes P29/P31 |
@@ -298,6 +314,172 @@ re-ranking. Do not fabricate a number to make the table sortable.
 | **P41 — Old parser numeric/path copies** (queued; unmeasured) | Deep numeric JSON; F | Unknown; profile lexeme/path allocations | Not measured | Copies exact numeric text/path and formats array indices. Preserve numeric source lexeme and diagnostics. [json/document.rs:227](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json/document.rs#L227), [json/document.rs:152](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json/document.rs#L152). | Low; M; high exactness risk | Independent; superseded where P40 removes path |
 | **P37 — Reserve flatten output** (queued; unmeasured) | Large nested lists; F | Unknown; measure reallocations versus extra length pass | Not measured | Repeated extend from empty Vec. Check overflow/failure behavior; small lists may lose. [list.rs:288](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/list.rs#L288). | Low; S; low-medium | Independent |
 | **P20 — Direct JSON control escape hex** (queued; unmeasured) | Control-heavy strings; F | Unknown; current mixed fixture little/none expected | Not measured | Generic formatting for \u00XX. Measure control frequency and writer share; LF/TAB already dedicated cases. Exact canonical bytes required. [json.rs:1639](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1639). | Low; S; low | Independent |
+
+## Source details for discoveries P55–P61
+
+These seven source-backed additions are outside F01's frozen initial54. Their
+current impacts are unknown; profiling must establish a removable budget before
+claiming a large gain. The inspected production source is 4fda above.
+
+- P55 uses cached web-sys 0.3.106 `gen_Response.rs:187–190`,
+  `new_with_opt_u8_array_and_init(Option<&mut [u8]>, &ResponseInit)`.
+  wasm-bindgen-cli-support 0.2.129 `wit/outgoing.rs:670–705` emits OptionView;
+  `js/binding.rs:1984–1994` emits a direct Wasm array view. Baseline generated
+  `b/s/focused/workers/build/target/kiosk/kiosk.js` instead has an intermediate
+  `new Uint8Array(getArrayU8FromWasm0(...))`, SHA-256
+  `809b0b79a023e5c2c764256826551540f02e33b1c6064417cceda58fc71ad386`.
+  Rust type safety alone does not establish host copy ownership: the row's
+  mutation/drop/memory-growth-before-consumption test is required.
+- P56 does not remove a heap argument Vec or boxed return: neither exists on
+  this standard-operation path. `effects` borrows its tables. A direct call can
+  help reachability but LTO behavior must be measured. P57 measures actual
+  retained code and cold/build/RSS costs, separately from warmed request speed.
+- P58's cached BLAKE3 `build.rs:24/296/373`, `platform.rs:94/151/187` and
+  `wasm32_simd.rs:359/376` enable SIMD short compression with the explicit
+  feature, including keyed token lengths. The old three named profiles have
+  BLAKE3 leaf-self sums 0.1867/0.2199/0.2274%, and nonoverlapping any-BLAKE3-
+  ancestor sample unions 0.2015/0.2397/0.2409%; portable compression leaves
+  0.1119/0.1398/0.1497%. Do not add self and inclusive figures or treat them as
+  all current/inlined crypto cost. Raw captures remain under archive
+  `LLM-coding-chunk-9.2a1/tools/bench/work/request-profile/request-current-rustup-16d24dc4/named-c16-r3/{001,006,011}-golden-read.cpuprofile`.
+  Test consumed keyed digests/sign/open at 0,1,63,64,65,255,1023,1024,1025 and
+  actual token lengths, existing vectors and all key cases on Wasm/workerd.
+- P59's cached js-sys 0.3.106 `futures/mod.rs:196` constructs Promise callback
+  state; P60's `futures/queue.rs:33/79` defers wakes during task polling.
+  Keep callbacks alive through settlement even after cancellation. Reusing an
+  allocation does not justify an unsafe borrowed byte array across await.
+  a3 handoff savings are already in B and not available as fresh credit.
+- P61's safe cached `js_sys::JSON::stringify` catches exceptions, but native
+  JSON uses `\b`/`\f` where Jadpo's canonical writer deliberately uses
+  `\u0008`/`\u000c`. Reject those scalars to unchanged fallback or prove
+  token-aware repair; blind replacement corrupts literal backslash sequences.
+  Preserve non-ASCII literals, non-NFC, astral scalars, U+2028/U+2029, other
+  controls, quotes, backslashes, empty/huge/prefixed outputs and failure atomicity.
+  An explicit optional Workers capability supplies the host writer; value stays
+  pure and native defaults unchanged. This remains conditional on a successful
+  transfer-inclusive micro, not a new language serialization choice.
+
+## P02 — SIMD UTF-8 first screen (2026-10-24)
+
+**Measured/mixed, exploratory prototype retained; no production promotion or
+favorable rerun.** The parent independently checked the complete fixed 24-cell
+raw capture. P uses safe SIMD UTF-8 validation; F retains standard validation
+with the same global simd128 flag and an unused cached dependency, so F/B is
+not a flag-only causal estimate. No BLAKE3 backend change was made. The frozen
+P/F prediction was mixed +2–6%, ASCII +0–1%; F/B and combined P/B forecasts
+were unknown. Signed reads are a regression control without a frozen numeric
+prediction. Original ranges remain in the queue; no hindsight forecast edit.
+
+The two rounds reverse the entire declared order: three workloads × B/F/P/Bun,
+c16, 2 s admission after 1 s warmup, 2,048 principals, shipping Os, inspector
+NONE and PostgreSQL durations OFF. All errors, warmup errors, invalid bodies
+and persisted deltas are zero; three complete expected body identities match.
+All 144 immutable served copies and 72 current program originals were reviewed.
+UTC versus load-clock gaps are 4.845–272.194 ms; no Sleep/DarkWake was observed.
+All owned services, including temporary PostgreSQL, were reaped. This short
+local screen is provisional, not long confirmation, p95 assurance, edge data
+or full contract qualification. There was no full gate or production PR for
+this prototype.
+
+Each actual below is **100 × (median candidate req/s / median reference req/s − 1)**,
+using this contemporaneous campaign's two rounds; per-round ratios are also
+retained. It is not a historical-day raw-rate comparison or the median of
+ratios, and does not infer SQL or socket counts.
+
+| Comparison / workload | Frozen predicted throughput gain | Actual gain (ratio of medians) | Round 1 / round 2 actual gains |
+|---|---|---|---|
+| P/F marginal / mixed | 2–6% | +6.071% | +6.810% / +5.334% |
+| P/F marginal / ASCII | 0–1% | -0.586% | -0.733% / -0.439% |
+| P/F marginal / signed | Unknown (regression control) | +0.103% | -0.426% / +0.636% |
+| P/B combined / mixed | Unknown | +6.550% | +7.014% / +6.084% |
+| P/B combined / ASCII | Unknown | -0.968% | -1.723% / -0.205% |
+| P/B combined / signed | Unknown | -1.554% | -2.777% / -0.303% |
+| F/B control / mixed | Unknown | +0.452% | +0.192% / +0.712% |
+| F/B control / ASCII | Unknown | -0.384% | -0.997% / +0.235% |
+| F/B control / signed | Unknown | -1.655% | -2.362% / -0.934% |
+
+Mixed P/F exceeds the forecast's upper edge slightly; ASCII is below its
+predicted range, with both rounds negative. Mixed P/F p95 changes are
+−2.830% / **+18.693%**; ASCII **+9.802% / +7.496%**; signed +0.883% / −0.459%.
+Mixed service CPU/request changes −7.212% / −6.867%, while its separate helper
+CPU rises; ASCII service CPU is approximately flat and signed is mixed.
+Signed sampled peak RSS B 294.0/291.3→P 315.9/296.1 MB is adverse. All rows,
+including regressions and the higher mixed round-2 p95, remain below and in raw.
+
+Every cell is **req/s / p95 ms / service CPU ms per request / separate pool-helper
+CPU ms per request / sampled peak RSS MB**. Service CPU excludes PostgreSQL and
+the helper. RSS uses each harness's sampled-peak field, not a lifetime maximum.
+
+| Workload / round | B | F | P | Bun control |
+|---|---|---|---|---|
+| mixed / 1 | 801.216 / 26.241 / 1.4613 / 0.2353 / 306.3 | 802.753 / 26.538 / 1.2855 / 0.2040 / 306.3 | 857.417 / 25.787 / 1.1928 / 0.2085 / 304.3 | 1646.303 / 11.955 / 0.7288 / 0.0000 / 172.6 |
+| mixed / 2 | 798.485 / 28.157 / 1.2687 / 0.2114 / 295.7 | 804.173 / 25.839 / 1.2840 / 0.2099 / 300.7 | 847.067 / 30.669 / 1.1958 / 0.2110 / 306.3 | 1637.742 / 12.260 / 0.7271 / 0.0000 / 184.3 |
+| ASCII / 1 | 1300.536 / 18.825 / 0.7902 / 0.1688 / 358.2 | 1287.567 / 18.742 / 0.7969 / 0.1663 / 359.8 | 1278.125 / 20.579 / 0.7947 / 0.1675 / 362.7 | 5951.585 / 4.141 / 0.2182 / 0.0000 / 188.7 |
+| ASCII / 2 | 1288.254 / 19.478 / 0.7924 / 0.1662 / 361.6 | 1291.276 / 19.010 / 0.7906 / 0.1658 / 357.7 | 1285.612 / 20.435 / 0.7913 / 0.1668 / 366.3 | 5727.145 / 4.620 / 0.2241 / 0.0000 / 183.9 |
+| signed / 1 | 2353.625 / 8.665 / 0.4300 / 0.1207 / 294.0 | 2298.040 / 8.949 / 0.4410 / 0.1217 / 314.8 | 2288.253 / 9.028 / 0.4447 / 0.1243 / 315.9 | 6256.505 / 3.588 / 0.1933 / 0.0000 / 205.0 |
+| signed / 2 | 2303.960 / 8.818 / 0.4374 / 0.1213 / 291.3 | 2282.443 / 8.925 / 0.4438 / 0.1224 / 312.7 | 2296.969 / 8.884 / 0.4367 / 0.1238 / 296.1 | 6162.685 / 3.695 / 0.1987 / 0.0000 / 205.9 |
+
+Cold-ready / first-answer milliseconds, all rounds (sparse local observations,
+not a deployment cold-start guarantee). P/F mixed cold and first-answer times
+rise in both rounds; ASCII cold rises in both; signed cold rises in round 2.
+The first B mixed observation is retained without a favorable replacement.
+
+| Workload / round | B cold / first | F cold / first | P cold / first | Bun cold / first |
+|---|---|---|---|---|
+| mixed / 1 | 181.782 / 119.917 | 59.956 / 34.994 | 62.427 / 36.624 | 174.813 / 8.541 |
+| mixed / 2 | 58.441 / 35.156 | 59.424 / 36.075 | 60.266 / 36.273 | 83.215 / 4.600 |
+| ASCII / 1 | 62.150 / 36.430 | 60.612 / 37.657 | 61.986 / 36.200 | 108.047 / 5.164 |
+| ASCII / 2 | 57.468 / 34.469 | 57.313 / 34.464 | 57.598 / 34.431 | 96.396 / 4.429 |
+| signed / 1 | 67.716 / 33.131 | 78.767 / 30.339 | 62.952 / 28.276 | 186.679 / 16.507 |
+| signed / 2 | 59.771 / 24.860 | 58.198 / 25.441 | 59.790 / 25.021 | 92.345 / 11.868 |
+
+Whole-host CPU is 31.727–57.294%; load-average endpoints are 11.910–18.819.
+Per-row host CPU/load, load-generator CPU, pool-helper CPU, body bytes/hashes,
+startup and process context are retained in raw. Such host/control drift and
+only two short reversed rounds limit attribution; no favorable cell was rerun.
+
+| Artifact variant | Golden Wasm / gzip6 bytes | Focused Wasm / gzip6 bytes |
+|---|---|---|
+| B | 7325897 / 2690117 | 7364454 / 2662029 |
+| F | 7227132 / 2660139 | 7262733 / 2635201 |
+| P | 7229455 / 2660983 | 7265056 / 2636349 |
+
+P grows relative to F in both apps; the smaller F/P artifacts versus B are not
+validator-only size attribution. gzip6 is a deterministic Wasm compression
+proxy, not provider upload size; module gzip sums/other sizes stay in manifests.
+
+All paths below are relative to the durable archive
+`/Users/richardwillars/Documents/Codex/jadpo-benchmark-archive/performance-exploration/a4-baseline-84e1c00b/`.
+Immutable refs share prefix `refs/experiments/a4-baseline-84e1c00b/`.
+
+| Identity | Retained source/ref or raw record | SHA-256 / tree |
+|---|---|---|
+| B production | `production-base` → `4fda5e597a3f508e1666ef46de0e0a3b850179b3` | Production base; inherited a3 behaviour |
+| H84 | `harness-baseline` → `84e1c00bc97fb565bcb5810a01b6028b0da803a9` | Tree `8fc8bdfc23e05dea15d498e36d3df120877a1286` |
+| Shared H84 | `shared.json` | `860842f0d5ab4bc03001e57b89df873cec97dff161fbd761f0748cb9941a577c` |
+| B build | `b/build.json` | `27601fe276921157443e72cd0d735d230f169f7b7354463682dcd4f86fe663af` |
+| F source | `f-simd` → `97ad528b7bf85f3f6ba5ce4bac4dc37f7e989886` | Tree `f4335592584b5524fda077926a9efa37196ecc0a` |
+| F build | `variants/f-simd/build.json` | `2695df1289aa25172f42349cbdf5c9f75cb29b2b548135266e7d4be05fc103d0` |
+| P source | `p02-simd` → `db5abfba30e646de1d045f14ac23389172cb7e73` | Tree `32e146cc27889d2172850d4569c04f8b598742c5` |
+| P build | `variants/p02-simd/build.json` | `2a1185ad2c0ea4a2994c7acfb4a96ada88db01bc35fbd15c056507843a99017e` |
+| Fixed 24-cell result | `screens/p02-simd/screen24-none-pg-off-c16-r2/results.json` | `004a0a9e699ae9e18ab0df6a142dde509bb744962ba3fdc850281d2eec0157d4` |
+| F controls | `variants/f-simd/utf8-control/results.json` | `d9442f9675cc2234ec2c6d095c2813807d35b93c8b5d414cc797ce31410ff76e` |
+| P controls | `variants/p02-simd/utf8-control/results.json` | `5cca603f38daaaf6c214db07f340ecc4ad108f703acef97d40d030ca549a7527` |
+| B no-load smoke | `screens/b/setup-b/results.json` | `20c1a51bb8f18b0f21564a92f9e7d5c171070cd03e1ab8e0cf7462a6ae4e606d` |
+| Cohort no-load smoke | `screens/p02-simd/setup-cohort/results.json` | `8e5d69537f9917b7421e1706e49adf6d395ed2dac3e2ae80bf4bf50afe2fb804` |
+
+Focused validation includes 341,514 codec cases on the native baseline and
+SIMD Wasm F/P controls, 35 driver library tests and affected Clippy. They retain
+valid/invalid UTF-8, source errors and JSONB marker behavior; no speed claim
+comes from invalid-input allocation changes. Control Wasm hashes F/P are
+`aaaa36e8f40e0ba00fa016b3894cecfcea6fc0e97fd2690f1e4cea8da11af37b` /
+`bfee1086ec828fb816201e1421ef70c5b53bbbe9cb3d656759dd6877b0d5afcb`.
+The initial offline resolver failure source `0336a026` remains under
+`f-offline-resolution-attempt`; no load ran on that failed setup. Two exact
+cached index/archive records were checksum-verified and copied into the active
+Cargo namespace, without downloading. Generated app code/plans remain equal
+across B/F/P except lock entry; no source/artifact guard was bypassed. Prototype
+source, prerequisites and all immutable artifacts were retained before reset.
 
 ## F01 — full-list planning forecast (2026-10-24)
 
