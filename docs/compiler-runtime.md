@@ -2867,6 +2867,25 @@ item resets the boundary's event allowance (`Boundary::allowance`); and
 hourly housekeeping deletes runs that ended 30 days ago with their problems
 and cancels (chunk 9.1b2).
 
+**Breaker snapshots in delivery claims** (chunk 9.1b5). A subscriber with
+connections uses `outbox::claim_breakers_sql`: the conditional claim is a CTE
+left-joined to all its connection breaker rows. `outbox::claim` consumes every
+joined row, keeps one claim when breaker rows are absent, and distinguishes a
+lost claim from a query error. Connectionless subscribers retain the original
+four-parameter `CLAIM`, with no join or breaker read. Shared schedule/batch lease
+behaviour is unchanged. `runner::attempt` retains missing-subscriber, depth,
+handled-record, retry-budget and slot priorities before `breaker::gate_snapshot`.
+The joined rows replace only the independent snapshot read: conditional `HOLD`,
+`TAKE_PROBE` and `PROBE_UNUSED` still arbitrate current state, preserving multiple
+connection holds, one probe lease, returned unused probes and hold/release races.
+Real PostgreSQL holder/waiter tests observe row-lock contention, one claim/probe
+winner, and a hold after release with an exact attempt refund and 5,000 ms wake
+accounting; scripted controls cover returning earlier probes and closure before
+hold. A combined-query failure leaves work unclaimed for a later retry and never
+executes its provider. This differs from the former independent breaker-read
+error path, which let already-claimed work run; the area page does not promise
+that fail-open availability behaviour.
+
 **Bounded delivery sweeps** (chunk 9.1b1). A sweep still reads at most 100
 oldest due deliveries, waking breakers and parking lost/unreadable work first.
 It partitions that selection round-robin into four static lanes and drains
@@ -6750,9 +6769,11 @@ restored every affected production source directory, including `jadpo-sql`, from
 `crates/*/src` matched that prerequisite. The candidate restored the entire gated
 tree, including modes, and `git write-tree` proved equality before its own build.
 Each command used `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0
-CARGO_BUILD_JOBS=4`. Selected inherited/effective target-dir, encoded rustflags,
-rustflags and toolchain overrides were explicitly null; no other profile override
-was set. Full tracked mode/content/link/HEAD/tree and original/saved artifact
+CARGO_BUILD_JOBS=4`. Selected inherited/effective **outer benchmark environment**
+target-dir, encoded rustflags, rustflags and toolchain overrides were explicitly
+null; no other outer profile override was set. These historical stamps did not
+observe inner codegen Cargo settings; those values are unavailable, rather than
+established null. Chunk 9.1b5 records inner invocations separately. Full tracked mode/content/link/HEAD/tree and original/saved artifact
 guards passed at both campaign ends. Every one of 68 saved snapshots across the
 pair was independently rehashed after completion. Reference original paths were
 subsequently superseded by the candidate; its historical freshness and immutable
@@ -6904,3 +6925,198 @@ workerd `9c4f2e8630350133dae6889e3970120ffce802c04bbd744c9d55e2826dc5c8c5`.
 Reproduce with fresh immutable labels and the README's build/runtime/patch
 commands on the exact revisions. Final subsequent edits record facts/method
 only; production and harness bytes remain those of the gated/measured tree.
+
+
+#### Breakers in delivery claims (chunk 9.1b5, measured 2026-10-24 London)
+
+The connected claim removes one independent breaker snapshot statement while
+retaining the conditional probe/hold operations described in §2.6. The decisive
+structural evidence is an independently observed PostgreSQL census through the
+public generated delivery path. The performance result is a modest observed
+Worker/Bun change, with mixed rounds and host variation, not a causal 8.45% gain.
+The connectionless control keeps its original claim and zero breaker reads.
+
+**Sources, build and verification.** Both labels use the same final harness,
+fixture and TypeScript bytes. The reference restored the *entire* `crates/` tree
+from prerequisite `97aba24a4afc7bb0ad43a4eac7c62ee420f670ee`; comparison was empty,
+including all `crates/*/src` and modes. The candidate restored the complete gated
+tree/modes before its own build. Guards retain every tracked byte, executable
+mode, literal symlink target, HEAD/tree and original/saved artifact hash, and
+passed at both ends of both campaigns. Independent post-pair checks rehashed all
+4,910 saved snapshots and 42 consumed per-round Worker host files on each side.
+Only the shared reference compiler original was subsequently superseded by the
+candidate build; its snapshot and all label-local originals remain retained.
+
+| Role | HEAD | Complete tree |
+|---|---|---|
+| Reference | `9f383b263d63a8fce1383598e9a22d354c46926a` | `348b6f03bd43dad48424b2d9d6062abc6901bf1c` |
+| Candidate and full gate | `dc5193ac84a77dc9f0d35a45eb531980a8d25ec4` | `3519f1800e28eddf76a70bd07a5011f9b5a3c1c8` |
+
+The final direct-stdout gate passed **93 steps in 375 s**, including native and
+Worker golden 44/44 each, 264 compiled corpus projects, 526 tests and 5,832 typed
+comparisons, 27 teaching projects/327 tests both ways, and eight Worker route
+comparisons across three projects. Existing pgvector 0.7 nearest-query skips
+remain. No gate-output file or new evidence packet was created.
+
+Outer inherited selected flags were unset. Effective outer flags were
+`CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_BUILD_JOBS=4`; encoded
+rustflags, target-dir, RUSTFLAGS and toolchain overrides were explicitly unset.
+Unlike the historical 9.1b4 outer-only stamps above, these builds also capture
+all eight inner Cargo invocations' real pinned tool, argv, cwd and selected
+flags. The executable observer delegates without altering arguments, environment
+or exit status (checked by a transparency control). Inner builds use production
+release profiles, `SOURCE_DATE_EPOCH=0`, the recorded shared native/wasm target
+and ICU locale directories, and encoded remaps for the build cache, runtime
+crates and Cargo directory; full values are in `cargo-provenance.jsonl`.
+Pinned npm installs were offline with lifecycle scripts disabled. Actual runtime
+paths/hashes and saved copies are retained for workerd 2026-10-07, Bun 1.2.20,
+Node v24.18.1, PostgreSQL/psql 16.3, rustc/cargo 1.99.0 and Python 3.14.0.
+
+**Method and outcomes.** Each side runs three rounds of 10,000 deliveries on
+local persistent workerd, persistent warm Bun/Node, and native external tick
+processes. Every tick admits up to 100 deliveries in four lanes; target order
+rotates each round. Native includes process/session startup and is supporting
+evidence, not a warm-service comparison. The connected subscriber performs one
+real local HTTP safe GET through its Live package driver before committing a
+unique receipt and handled marker. The local provider checks exact method,
+path/cohort and bearer credential and disables Nagle's algorithm. Its calls are
+not runtime fakes, so actual breaker feedback is exercised. The fixed Bun/Node
+baseline already uses an idiomatic joined claim on both sides. The separate
+connectionless 10,000-delivery fixture is the original database-only workload.
+
+Both sides pass all 24 cells: exact delivery columns/clocks, receipt and handled
+identities/counts, immutable event/payload/encoding/trace/depth fingerprints,
+closed-breaker columns, and exactly 10,000 provider sends per connected cell
+(zero for backlog), with no missing or duplicate work. Each target also passes
+ten connected controls or six backlog controls: replay, live/expired leases,
+malformed payload, transactional rollback, claim error, and where connected,
+provider refusal/unavailability plus recovery, open hold and closed breaker.
+The expired running claim is inspected while its observed provider request is
+held; release and executor join occur on every outcome. Workload calibration
+clears every owned mutable table, including housekeeping, proves zero counts,
+and preserves full migration metadata and extension rows before emitting its
+new real template. All original/saved artifact and SQL-logging-off guards pass.
+
+**Observed SQL, one-delivery tick.** Logging readiness is established by actual
+records for every active runtime/pool backend before the census offset; future
+native backends inherit confirmed global logging. Completion waits for actual
+settlement/COMMIT records and validates committed state. Administrative psql is
+excluded; provider-control SQL is zero. These counts include fixed DUE, sweep,
+feedback and housekeeping work. They are **not linear per-delivery SQL costs**
+for the separately timed 100-delivery ticks.
+
+| Workload / target | Reference data + transaction statements | Candidate | Independent breaker READ / joined claim |
+|---|---|---|---|
+| Connected / workerd | 12 + 2 | 11 + 2 | 1 / 0 → 0 / 1 |
+| Connected / native external | 14 + 4 | 13 + 4 | 1 / 0 → 0 / 1 |
+| Connected / Bun or Node | 8 + 2 | 8 + 2 | 0 / 1 unchanged |
+| Backlog / workerd | 10 + 2 | 10 + 2 | 0 / 0 unchanged |
+| Backlog / native external | 12 + 4 | 12 + 4 | 0 / 0 unchanged |
+| Backlog / Bun or Node | 6 + 2 | 6 + 2 | 0 / 0 unchanged |
+
+Every round agrees. Native's extra two data statements and BEGIN/ROLLBACK are
+cold-session migration checks, classified from actual SQL. Full SQL lists,
+backend readiness proof and persisted outcomes are retained in each raw cell.
+
+**Connected results, every round.** p95 is the latency of a tick processing up
+to 100 deliveries, not an individual HTTP request or delivery latency.
+
+| Target | Reference deliveries/s, rounds 1 / 2 / 3 | Candidate deliveries/s | Reference tick p95 ms | Candidate tick p95 ms |
+|---|---|---|---|---|
+| Local workerd | 1300.357 / 1365.189 / 1323.240 | 1274.158 / 1435.087 / 1450.706 | 91.771 / 86.408 / 88.083 | 93.242 / 85.166 / 81.726 |
+| Warm Bun | 2114.274 / 2260.428 / 2095.777 | 2271.180 / 2275.360 / 2214.508 | 58.433 / 51.721 / 55.617 | 51.131 / 51.794 / 50.956 |
+| Native, external tick | 1954.952 / 2020.193 / 1998.886 | 2088.952 / 1952.304 / 2050.774 | 54.812 / 55.413 / 55.532 | 52.601 / 56.526 / 55.394 |
+| Warm Node | 1270.153 / 1252.005 / 1261.752 | 1301.748 / 1330.165 / 1285.657 | 91.594 / 92.270 / 92.532 | 89.779 / 95.625 / 93.294 |
+
+Median workerd throughput is 1,323.240→1,435.087 deliveries/s (+8.45%); median
+tick p95 is 88.083→85.166 ms (−3.31%). Unchanged Bun also rises 7.42% to
+2,271.180 deliveries/s and its p95 falls 8.07% to 51.131 ms. Workerd/Bun median
+throughput therefore moves only **62.586%→63.187% (+0.601 percentage points)**.
+The first Worker round is adverse in both throughput and p95; Node median p95
+also worsens 1.11%. Native median throughput rises 2.60% with essentially flat
+p95. These observations do not isolate the claim change from host/JIT variation.
+
+**Connectionless control, every round.**
+
+| Target | Reference deliveries/s, rounds 1 / 2 / 3 | Candidate deliveries/s | Reference tick p95 ms | Candidate tick p95 ms |
+|---|---|---|---|---|
+| Local workerd | 2227.551 / 2173.855 / 2224.175 | 2234.528 / 2267.848 / 2255.518 | 54.872 / 56.305 / 55.230 | 56.408 / 53.744 / 53.654 |
+| Warm Bun | 3595.591 / 3691.679 / 3821.514 | 3820.946 / 3881.450 / 3775.429 | 33.117 / 32.128 / 31.298 | 30.664 / 29.952 / 32.296 |
+| Native, external tick | 2565.950 / 2583.402 / 2461.058 | 2688.402 / 2545.951 / 2713.593 | 44.777 / 43.501 / 46.854 | 41.480 / 46.130 / 42.400 |
+| Warm Node | 3459.969 / 3553.835 / 3377.428 | 3635.316 / 3556.674 / 3648.372 | 33.745 / 35.919 / 35.987 | 34.817 / 34.054 / 33.398 |
+
+Median workerd throughput rises 1.41% and p95 falls 2.69%, while unchanged Bun
+rises 3.50%, native 4.77% and Node 5.07%. Workerd/Bun moves adversely from
+60.248% to 59.030%. No breaker read/join was added and no material common-path
+slowdown is established; the individual adverse rounds remain visible.
+
+**CPU and host limits.** CPU below lists component medians in seconds per cell;
+raw files retain every round's separate service, pool, Python controller/provider
+and reaped-child counters. Native uses reaped child CPU including startup.
+Worker's pool is listed separately and must be included in comparisons.
+PostgreSQL daemon CPU is unmeasured. Child CPU is captured immediately after
+timed ticks, before host diagnostics spawn subprocesses.
+
+| Workload / target | Reference CPU seconds per 10,000 deliveries | Candidate CPU seconds |
+|---|---|---|
+| connected / workers | 7.020000 + 3.280000 pool; 0.851340 controller/provider | 6.490000 + 2.870000 pool; 0.840896 controller/provider |
+| connected / bun | 4.090000; 1.027818 controller/provider | 3.930000; 0.957348 controller/provider |
+| connected / native | 2.698247; 1.212791 controller/provider | 2.565416; 1.230008 controller/provider |
+| connected / node | 5.500000; 1.150142 controller/provider | 5.410000; 1.142186 controller/provider |
+| backlog / workers | 4.040000 + 2.370000 pool; 0.032262 controller/provider | 3.990000 + 2.290000 pool; 0.031037 controller/provider |
+| backlog / bun | 2.480000; 0.031860 controller/provider | 2.420000; 0.031437 controller/provider |
+| backlog / native | 1.966519; 0.266471 controller/provider | 1.873223; 0.261529 controller/provider |
+| backlog / node | 2.690000; 0.033303 controller/provider | 2.590000; 0.031568 controller/provider |
+
+The same 16 GiB M1 Pro/macOS host records memory, swap, pressure, whole-host CPU,
+load and process context before/after both builds and every cell. Preparation
+is 265.848→280.020 s; campaign elapsed time is 201.171→196.318 s, outside the
+per-cell throughput denominator. Connected native/Worker builds took
+80.8/43.0→85.5/45.8 s; backlog builds 63.1/31.7→65.9/33.1 s. A bounded parent
+read-only documentation search overlaps only the candidate build, never an
+accepted timed cell; build durations are not isolated performance evidence.
+Five-second pre-campaign whole-host busy CPU is 24.789%→26.063%; pre-build it is
+22.031%→27.492%. Campaign-start load (1/5/15 min) is
+4.630/12.740/20.203→4.922/6.390/13.277. Reference campaign free-memory pressure
+is 59% at start, 51% at end; candidate 56%→45%. Connected cell ranges are
+57–60% versus 56–58%; backlog 46–53% versus 33–58%. Swap is stable at
+2,779.75 MiB during the reference campaign; candidate rises to 2,879.88 MiB
+from the same start during backlog work. Conditions are observed on both sides,
+not claimed identical. Unchanged Bun's drift and these ranges limit causal
+interpretation; no additional run was selected to chase favourable latency.
+
+**Corrections and failed attempts, retained.**
+
+| Attempt | Observed outcome and correction |
+|---|---|
+| Clean `5b08cc07` regression | Compile-red for the new `gate_snapshot` API; it does not prove the former race implementation was wrong. Actual reference/candidate PostgreSQL observation above proves snapshot-statement removal. Existing priorities and conditional races have separate unit/live-PG coverage. |
+| `smoke-build-1`, `smoke-controls-1`/`-2` | Setup only. A valid qualified local/provider `Ticket` collision checked but gave `Ty::Error`/no receipt write plan and a real compiled `internal_fault`. Clean red `f5fdab41` reproduces it; `783ca3c7` resolves entity field reads through canonical `Lookup::for_file`. The permanent test constructs both collision/noncollision cases and asserts SQL text type plus a write plan. Actual compiled corpus retains provider `AcmePay.Reference` storage and a local `Reference` field/assertions. Benchmark provider type is `CheckedTicket`, so exact prerequisite production can run the same harness; this correctness fix is not measured as the claim optimisation. |
+| `smoke-build-2`, `smoke-controls-3` to `-5` | Compiled setup/control proofs, not accepted timing. An independently held running claim exposed a JSON string where Bun needed a structured `lease_expired` object (`expired-json-red/failure.json`, clean `34c653ca`). `e54ac197` binds it with `db.json`; final classification controls also check refusal/unavailable kinds and malformed problem metadata. Original artifacts/raws remain retained. |
+| Gate `9791a3b5` | Failed 1/93 in 1,063 s: two unused `Reference` imports in the new compiled fixture. `bc3853cf` removes only those imports; focused preparation/check of all 16 fixture files passes. |
+| Gate `bc3853cf` | Failed 1/93 in 406 s: kiosk memory-loop booking expected 201 but received the route's valid 202 form, with pending answer fields. The exact durable cause is unknown because the gate's owned database was removed; equal reported module size does not establish historical byte identity. `dc5193ac` adds failure-only per-repair/delivery diagnostics and retains the 201 assertion, all 500 bookings and 512 KiB limit. A focused rerun passes in 26.10 s, memory 12,058,624→12,058,624 bytes; this is a successful rerun, not an explained/fixed flake. |
+| `smoke-controls-6-red`, `smoke-backlog-7-red` | Untimed checks caught stale native rows between workload calibrations and backlog Bun/Node code-only malformed metadata. `dc5193ac` resets all owned mutable tables and aligns only backlog failure metadata, preserving its algorithm. Seven verifier unit controls and `smoke-controls-8` pass all eight target/workload cells, including transition from 100 rows in each main table plus housekeeping to zero, with migration/extension state unchanged. |
+| Final gate / accepted pair | `dc5193ac`: 93/93 in 375 s. Fresh reference/candidate labels above pass all 48 cells. No extra four-target HTTP campaign was run; the requested broad before/after comparison was subsequently deferred. |
+
+**Retained identities.** Paths are relative to
+`tools/bench/work/connected-deliveries/`. Full original/saved paths, versions,
+inner Cargo argv/env, source modes, SQL lists, every row/control/round and host
+samples are in these files; they are ignored raw data, not new report packets.
+
+| Path | SHA-256 |
+|---|---|
+| `b5-reference-final-1/build.json` | `46cd3b4f12b830c54e8195321b55f2ce730c1739ce0fc5dad555fbd2b6f44478` |
+| `b5-reference-final-1/runs-1792818430938323000.json` | `85e95afaf37f3e280adc158fb4f852fe552fc228650281e57e0b2c60dfd06346` |
+| `b5-reference-final-1/cargo-provenance.jsonl` | `5dfbfeed66e62948aed84134a1dbe098c97aaad18fc8b1553445781ec9037cd0` |
+| `b5-candidate-final-1/build.json` | `129a80d0ece1b879859bf39ec2f6d67b3304c901360ee74c932132467a3aed89` |
+| `b5-candidate-final-1/runs-1792818956859881000.json` | `7f7b2d776f98ac46cb22a3a63ed328719137f3bca57db5cce10f50d38ab493cc` |
+| `b5-candidate-final-1/cargo-provenance.jsonl` | `ab4597effd1d18db46e7c3be0d89c6351d66558c33a859836dfc27ed08497c50` |
+
+Canonical sorted compact JSON tracked-file-map SHA-256 is
+`5da5933787c8062920484260b686df51f22633272fc062ca067c3e263dec3a89` reference,
+`c82023ff468a06f2abf7494b03da308df712a1b53e6c56f87d2522f4891fae91` candidate;
+artifact-map SHA-256 is
+`54b2c460a22166f8e9ec8a088b998bf5a15dc14763669cc2076a89610b29a1fd` reference,
+`b25cdaf603b4ac85336f14f4bc04c3be0b1b5d9fa986ccc91af0a34fb0be86ce` candidate.
+Each artifact map contains 9,820 original/saved entries. Exact repro commands and
+boundaries are in the bench README. Subsequent edits record facts/method only;
+production and harness remain those of the gated/measured revision.

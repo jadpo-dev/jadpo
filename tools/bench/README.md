@@ -718,8 +718,10 @@ python3 tools/bench/version_writes.py patch --label <fresh-label> --warmup 2 --d
 The first command runs the existing golden application's complete 44-case
 contract on all four targets before generating its production HTTP
 artifacts. All pinned npm installs disable lifecycle scripts. Selected
-inherited and effective Rust build flags are recorded separately. Before
-building a reference, restore all affected production source directories
+inherited and effective **outer benchmark environment** Rust build flags are
+recorded separately. Historical 9.1b4 stamps did not observe inner codegen Cargo
+settings; those values are unavailable. The 9.1b5 method below observes them
+separately. Before building a reference, restore all affected production source directories
 from its exact commit and commit that state, retaining the final harness.
 Before building the candidate, restore the entire clean gated tree,
 including modes, and prove `git write-tree` equals its gated tree. Run both
@@ -820,3 +822,92 @@ report supported invariants and variation. The first full gate also correctly
 caught SQL-layer ownership and a stale CLI snapshot; final full gate passed all
 93 steps including the final harness, actual Worker route8/3 and both44-case
 golden targets. Subsequent edits are facts/method prose only.
+
+
+### Breakers in delivery claims (9.1b5)
+
+`connected_deliveries.py` compares a connected subscriber through the real
+production generated delivery path and the original connectionless backlog
+control. Build and measure each clean side sequentially with the **same final
+harness**, fresh immutable labels, no concurrent timed/build work, and full
+tracked byte/mode/literal-link/HEAD/tree plus original/saved artifact guards.
+Restore the entire reference `crates/` tree from the exact prerequisite and
+prove equality; restore the entire gated candidate tree/modes before its build.
+Default application/load behaviour is unchanged.
+
+```sh
+env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_TARGET_DIR \
+  python3 tools/bench/connected_deliveries.py build --label <fresh-label>
+env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_TARGET_DIR \
+  python3 tools/bench/connected_deliveries.py measure --label <fresh-label> --count 10000 --rounds 3
+```
+
+Builds use effective incremental=0, dev debug=0, jobs=4; production native and
+Wasm release profiles; pinned offline npm dependencies with scripts disabled.
+The executable Cargo observer records only selected flags plus actual real-tool
+path/argv/cwd, including inner encoded remaps, target/locale directories and
+source epoch, while transparently preserving delegation and status. Build
+stamps retain all runtime paths/versions/hashes and originals/snapshots, including
+Python, workerd, Bun, Node, psql, rustc/cargo, compiler and generated artifacts.
+Source/artifact guards run at both ends; each Worker round also guards the exact
+host files it consumes. Host memory/swap/pressure/load/CPU and selected outer
+inherited/effective flags are captured on both sides, before builds/campaigns
+and around every cell. Raw data lives under ignored `work/connected-deliveries/`.
+
+Each of three rounds rotates four targets; every cell processes 10,000 seeded
+deliveries in up-to-100-delivery ticks and four lanes. Workerd and Bun/Node are
+matched persistent warm services; native external ticks include startup and are
+supporting evidence. The connected subscriber makes one actual local HTTP safe
+GET through its Live package driver before a unique committed receipt/handled
+marker. Its TCP_NODELAY provider validates every method/path/cohort/credential.
+Bun/Node use the same idiomatic **joined claim from the outset** on both sides.
+Ten connected/six backlog controls cover duplicates, leases, malformed data,
+rollback and claim failure, with connected provider refusal/unavailability and
+recovery, open hold and closed breaker. A held provider exposes the actual
+expired running claim and structured JSON failure before completion; every
+failure path releases and joins. Complete calibration resets include all owned
+mutable tables/housekeeping, preserve migration metadata/extension rows and
+record table lists and before/zero-after counts between workloads.
+
+An independent SQL census observes actual logging on every active runtime/pool
+backend before its accepted offset, waits for settlement/COMMIT logs, and then
+checks persisted state. New native sessions inherit confirmed logging;
+administrative psql is excluded. Data, transaction and provider-control SQL are
+separate. **This is a one-delivery tick census**, with fixed DUE/sweep/housekeeping
+and native cold-session checks; do not linearise it as SQL cost per delivery in
+timed 100-delivery ticks. Timed windows independently require SQL logging off.
+Every cell validates all delivery columns/clocks, receipts/handled identities,
+immutable event/trace/depth/payload/encoding, breaker columns and exact provider
+counts. CPU records service/pool, Python controller/provider and native children
+separately; PostgreSQL daemon CPU is excluded, and child CPU closes before host
+diagnostic subprocesses start.
+
+The accepted reference `b5-reference-final-1` is
+`9f383b263d63a8fce1383598e9a22d354c46926a` (all crates exactly prerequisite
+`97aba24a4afc7bb0ad43a4eac7c62ee420f670ee`); candidate
+`b5-candidate-final-1` is gated `dc5193ac84a77dc9f0d35a45eb531980a8d25ec4`, tree
+`3519f1800e28eddf76a70bd07a5011f9b5a3c1c8`. Gate: 93/93 in 375 s. Each campaign
+passes all 24 cells; raw files are `runs-1792818430938323000.json` reference and
+`runs-1792818956859881000.json` candidate. Compiler-runtime §2.11 “Breakers in
+delivery claims” records exact source/tree/file/artifact/raw digests, every
+performance round, CPU scopes, host/build conditions, all failed attempts and
+limitations; §2.6 records current-state arbitration and the query-error tradeoff.
+All 4,910 saved snapshots and 42 consumed Worker host files per side were
+independently rehashed after the pair. The reference shared compiler original
+was subsequently superseded; its snapshot remains intact.
+
+Observed connected Jadpo one-delivery-tick census is Worker 12→11 / native 14→13
+data statements with unchanged transaction counts; its independent breaker READ
+is replaced by the joined claim. Bun/Node 8 and backlog Worker 10 / native 12 / Bun or Node 6
+remain unchanged; backlog has zero breaker reads/joins throughout. Median
+connected Worker throughput is 1323.240→1435.087 deliveries/s (+8.45%), tick
+p95 88.083→85.166 ms; **unchanged Bun also rises 7.42%**, so relative Worker/Bun
+throughput is only 62.586%→63.187% (+0.601 percentage points). The initial Worker round is adverse,
+Node median p95 worsens, and connectionless Worker/Bun is 60.248%→59.030%.
+Matched host observations retain pressure/swap variation and +1.274pp
+pre-campaign ambient busy CPU; do not claim a causal 8.45% gain. Keep every
+round and all bad/superseded setup data, including the compiler namespace/write
+plan defect, structured-JSON red, two failed gates (the kiosk 202 cause remains
+unknown), and workload-transition/backlog-metadata corrections. No extra HTTP
+comparison or favourable-latency rerun was selected. Final subsequent changes
+are facts/method prose only.
