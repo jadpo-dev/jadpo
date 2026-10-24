@@ -44,9 +44,12 @@ Saying **"continue the roadmap"** starts this routine; it runs unattended.
    P55 is measured/promising with adverse RSS; dependent P21.suffix-bitmap is
    rejected; P11 is measured/mixed and P05's tested form is flat/mixed/rejected.
    P04 has retained positive mechanism evidence only, with no HTTP projection.
-   Independent P19.tail-slack is next, with its frozen hypothesis and unknown
-   actual gain; focused capacity/JSON controls precede timing. No baseline
-   prerequisite remains; then resume the highest-priority eligible experiment from its frozen baseline; record blockers and continue
+   P19's fixed-32 tail policy is negative/mixed/rejected. Independent
+   P01's private gate is source-blocked on supported module emission before
+   code. Independent P07 bounded Claims prototype is next, with its frozen
+   hypothesis, unknown actual gain and existing acceptance preserved. No baseline
+   prerequisite remains; then resume the highest-priority eligible experiment
+   from its frozen baseline; record blockers and continue
    other eligible experiments across sessions until the available queue,
    including new ideas, is exhausted. There is no experiment-count or
    batch/task/time quota that permits early production implementation.
@@ -241,9 +244,11 @@ P61 roundtrip is measured/rejected; its host-sink alternative stays unmeasured.
 P55 is measured/promising with higher mixed RSS; P21.suffix-bitmap is rejected.
 P11 is measured/mixed; P05's tested form is flat/mixed/rejected. Independent
 P04 has retained positive mechanism evidence only, with unmeasured HTTP and
-conditional complex integration. Independent P19.tail-slack is next, with its
-frozen hypothesis and unknown actual gain; focused capacity/JSON controls
-precede timing. Continue eligible work without another baseline
+conditional complex integration. P19's fixed-32 policy is rejected as
+negative/mixed. P01's private gate is source-blocked on supported module
+emission before code. Independent P07 bounded Claims prototype is next,
+with its frozen hypothesis, unknown actual gain and existing acceptance
+preserved. Continue eligible work without another baseline
 prerequisite.
 Acceptance means local compatibility/body/state/security/resource/provenance
 checks plus agent review under standing authorization, not a new Richard

@@ -22,8 +22,10 @@ current native/Bun standalone pair recorded below. These are provisional
 references with the stated loader/host/lifetime limits, not universal
 language/engine evidence. **P61 roundtrip and P21.suffix-bitmap are rejected;
 P55's safe Response constructor remains promising with adverse RSS. Next is
-independent P19.tail-slack, with the original 0–3% hypothesis and unknown actual
-gain. P04 has positive micro-mechanism evidence only, with HTTP unmeasured.
+independent P07 bounded Claims prototype, with the original 0–3% hypothesis
+and unknown actual gain; P01's gate design is source-blocked. P19's tested fixed-32 tail policy is rejected as
+negative/mixed. P04 has positive micro-mechanism evidence only, with HTTP
+unmeasured.
 P05's tested form is rejected as flat/mixed;
 P11 remains measured/mixed and retained. Continue eligible exploration without
 another baseline prerequisite.** Acceptance uses local checks and
@@ -226,7 +228,9 @@ then cold start/module work. Both primary-pair controls are established;
 P61 roundtrip and the bitmap form are rejected, while P55 is retained with
 adverse RSS. P11 is measured/mixed and P05's tested form is rejected as flat/mixed.
 P04's positive mechanism evidence remains unintegrated. Independent
-P19.tail-slack is next, with its frozen hypothesis and unknown actual gain.
+P19's tested fixed-32 tail policy is rejected as negative/mixed. Independent
+P07 bounded Claims prototype is next; actual gain remains unknown.
+P01's gate design is source-blocked before code.
 A future control blocker must be explicit; do not keep an obsolete baseline
 prerequisite. Continue an already-running prototype before resuming the sorted
 queue. Within each
@@ -727,8 +731,10 @@ measured/rejected; its independent host-sink alternative stays unmeasured.
 P55 remains measured/promising with adverse RSS; P21.suffix-bitmap is now
 rejected. P11 is measured/mixed and P05's tested form is flat/mixed/rejected.
 P04 has positive mechanism evidence, with HTTP unmeasured and complex keeper
-work still conditional. Independent P19.tail-slack is next, with unknown actual
-gain and no baseline prerequisite. Preserve original forecasts/results and continue
+work still conditional. P19's fixed-32 tail policy is now rejected as
+negative/mixed. P01's gate design is source-blocked before code. Independent
+P07 bounded Claims prototype is next, with unknown actual gain and no
+baseline prerequisite. Preserve original forecasts/results and continue
 eligible ideas without an arbitrary promotion boundary.
 P13 chain reuse remains a separate hypothesis; P59/P60 need a callback/I/O census
 before structural implementation. These are priorities, not a batch limit.
@@ -739,13 +745,13 @@ queue without retroactively changing that forecast.
 |---|---|---|---|---|---|---|
 | **P02 — Safe SIMD UTF-8 validation** (measured/mixed; prototype retained) | Mixed large / ASCII reads; E | 2–6% mixed; 0–1% ASCII | P/F mixed +6.071%; ASCII −0.586%; signed control +0.103%. Combined P/B +6.550% / −0.968% / −1.554% (mixed/ASCII/signed). [All rounds, predictions and adverse metrics](#p02--simd-utf-8-first-screen-2026-10-24). | Historical mixed self 6.7–7.1%, ASCII ≈0.55%; conditional full-removal ceiling ≈7.2–7.7%, not achievable validation removal. Verify cached safe API and Wasm SIMD support; identical-feature control, no handwritten unsafe validator or download. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [postgres/wire.rs:648](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L648). | Medium; S–M; medium | Depends on F (same-feature control); F/B and combined P/B predictions unknown; overlaps P04 |
 | **P03 — Signed base64url table decoder** (measured small positive; prototype retained) | Signed reads; E | 0.5–2% | Signed +2.0625% vs B (marginal=combined); ASCII/mixed controls +1.4274%/+1.3656%, no direct decoder attribution. [All18 rows and limits](#p03--signed-base64url-first-screen-2026-10-24). | Linear alphabet search, intermediate `Vec<u32>` and full canonical re-encode; historical self 1.5–1.9%; current D signed self 1.5216%, ancestor union 1.9410% of all weighted samples (diagnostic scope, not removable headroom). Preserve canonical alphabet/length/tail bits, UTF-8 and constant-time tag comparison. [http/signed.rs:319](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L319), [encoding.rs:124](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/encoding.rs#L124). | Medium; S; medium parsing risk | Independent; may supply P24 helper; overlaps P07/P23/P24; masked by P22 |
-| **P01 — Timer cancellation** (queued; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent; overlaps P14; measure both separately then combined |
+| **P01 — Timer cancellation** (gate design source-blocked; unmeasured) | Signed/small reads; E + timer controls | 0–3% | Not measured | Promise timers resolve on early cancellation. Historical self 1.9–2%; GC/microtask saving unknown. Retain settlement and 8.4e no-leak guarantees. [timer.rs:34](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L34), [timer.rs:73](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L73), [timer.rs:85](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/timer.rs#L85). | Medium-low; M; high lifecycle risk | Independent baseline; gate form deferred on supported shim/module emission; overlaps P14; measure both separately then combined |
 | **P11 — Skip unneeded scalar count** (measured mixed; prototype retained) | Large text; E | 0–5% | P11/B signed −1.9439%, ASCII +1.4957%, mixed +3.0801%; signed adverse both rounds, mixed tail/RSS adverse. [All18 rows and assessment](#p11--scalar-count-first-screen-2026-10-24). | chars().count runs without dimensions/min/max. Check actual rule chain and compiler output: benefit can be zero if count is otherwise needed/eliminated. [rules.rs:570](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-std/src/rules.rs#L570). | Low; S; low | Independent; overlaps P13/P43; optional P13 stack |
 | **P05 — Prepare immutable driver configuration** (tested prepared form rejected; other variants unmeasured) | Golden reads; E + many-connections F | 0–5% golden; many connections unknown | P05/B golden +0.4724%; ASCII/Unicode controls −0.5972%/+0.2914%, reversing round signs; tested form rejected. [All18 rows and moderate assessment](#p05--immutable-postgresql-preparation-first-screen-2026-10-24). | First DB access builds all configured connections and parses URLs/security. Separate preparation-once and lazy per-driver variants; measure configuration scaling. Sockets remain invocation-local. [factory.rs:204](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/factory.rs#L204), [deployable.rs:325](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/deployable.rs#L325). | Low; M; medium | Independent |
 | **P04 — SQL text ownership** (mechanism measured/retained; HTTP unmeasured) | Large text reads; E | 0–5% | HTTP throughput not measured. Micro direct time −22.9155% short / −10.9937% ASCII / −2.5476% mixed; mechanism retained. [All30 cells and assessment](#p04-ownership-micro--positive-mechanism-evidence-2026-10-24). | Verified raw → String → `Rc<str>` copies, cost unisolated. Profile allocation/copy first; moving String into Rc alone does not guarantee zero-copy. [postgres/wire.rs:607](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-drivers/src/postgres/wire.rs#L607), [read.rs:1101](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1101). | Low; M–L; high representation risk | Independent; overlaps P02/P09; representation affects P52 |
 | **P13 — Reuse scalar count across rule chain** (queued; unmeasured) | Deep-chain text; E + chain F | 0–5%; current-fixture relevance uncertain | Not measured | Avoid repeated inherited-rule scans. Profile chain count; preserve first-failure order and exact diagnostic count. [validate.rs:265](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/validate.rs#L265). | Low; M; medium | Independent, or explicit prerequisite P11 when stacked; overlaps P43 |
-| **P19 — Cheap response capacity hints** (tail-slack selected; unmeasured) | Multi-field/list responses; E + list F | 0–3% | Not measured | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
-| **P07 — Direct Claims deserialization** (queued; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
+| **P19 — Cheap response capacity hints** (fixed-32 tail policy rejected; alternatives unmeasured) | Multi-field/list responses; E + list F | 0–3% | P19/B signed −1.3501%, ASCII −0.8234%, mixed −2.3634%; tested fixed-32 policy rejected. [All18 rows and simple assessment](#p19--tail-capacity-first-screen-2026-10-24). | Response String starts empty; nested writer reserves text separately. Use cheap hints; avoid expensive full sizing traversal or unbounded retained buffer. [http/mod.rs:1590](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/mod.rs#L1590). | Low; S–M; low | Independent; overlaps baseline a2 reserve/P04/P53 |
+| **P07 — Direct Claims deserialization** (bounded prototype authorized; unmeasured) | Signed reads; E | 0–3% | Not measured | serde_json Map then field copies. Preserve historical encodings, optional fields and current duplicate/unknown-field behavior. [http/signed.rs:218](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/http/signed.rs#L218). | Low; S–M; medium compatibility risk | Independent; overlaps P03/P23; masked by P22 |
 | **P06 — Batch request-header bridge** (queued; unmeasured) | Ordinary reads; E + header-heavy F | 0–3%; header-heavy unknown | Not measured | JS iterator → pair Array → separate string conversions/lowercase/trim. Preserve order, duplicates, case and trimming; profile bridge cost for header-heavy bound. [fetch.rs:215](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-host-workers/src/fetch.rs#L215). | Low; M; medium | Independent; overlaps P10/P28 |
 | **P21 — Vectorize first-escape search only** (first measured/retained; suffix rejected) | ASCII/late-escape reads; E | 0–3%; early-escape mixed ≈0 | First/B ASCII +11.2918%, signed +1.9197%, mixed −0.5716%; suffix/first −0.9633% / −0.9024% / −0.7076% (ASCII/signed/mixed). Bitmap/First signed +0.3103%, ASCII −1.6059%, mixed −21.5197%; bitmap rejected. [Bitmap result](#p21suffix-bitmap--measured-result-2026-10-24). [All24 original rows, separate predictions and limits](#p21--first-escape-and-dependent-suffix-screen-2026-10-24). | Current D ASCII writer self 7.8301%, but only its first-escape scan is targeted; that scan is scalar even in F. Retain the a2 scalar suffix, safe same-feature control and mixed near-zero first-scan scope; no full-writer/old-a2 credit. Conditional P21.suffix is separately predicted below. [json.rs:1624](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-value/src/json.rs#L1624). | Low; M; medium | Independent; baseline a2 writer retained |
 | **P12 — Direct UUID hex formatting** (queued; unmeasured) | Singleton reads; E + UUID-list F | 0–2%; UUID-list impact unknown | Not measured | Sixteen format! allocations then Value::uuid lowercasing. Measure direct hex first; trusted canonical constructor as separate variant. Profile UUID-list share before estimating it. [read.rs:1327](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1327), [read.rs:1103](https://github.com/richardwillars/jadpo/blob/c9d5c98bf6aef9ad9ce673a51234fd7b42201ae0/crates/jadpo-runtime/src/read.rs#L1103). | Low-medium; S; low | Independent |
@@ -1555,7 +1561,7 @@ unchanged. Prospective complexity is **moderate** for added indirection, memory
 and tests; a cached length bit alone still leaves the empty-layer loop. This
 source-only idea overlaps P11, but no saving is inferred from P11's aggregate
 result. No implementation, decision or promotion follows; independent
-P19.tail-slack is next.
+P07 bounded Claims prototype is next; P01's gate design is source-blocked.
 
 The P05 preparation design was frozen before implementation, with its original
 0–5% golden hypothesis and unknown actual benefit. Its measured result follows;
@@ -1711,8 +1717,8 @@ split and interface/lifetime testing remain conditional work.
 **Tradeoff / advice:** keep the allocation/copy mechanism evidence for later
 human selection, while weighing complex integration against the smaller mixed
 micro effect. Do not promote a production API or call it zero-copy. More
-eligible experiments remain; independent P19.tail-slack is next, with unknown
-actual benefit.
+eligible experiments remain; independent P07 bounded Claims prototype is
+next, with unknown actual benefit. P01's gate design is source-blocked.
 
 Medians use all five rounds. Time change is
 `100 × (median direct ns/value / median String→Rc ns/value − 1)`; negative means
@@ -1787,32 +1793,169 @@ Archive-relative identities use durable A:
 | Successful example build console | `screens/p04-ownership-build-console.log` | `e50dbb2dc5218c9d016235d7faf5febde18d9679fb9ebb9798487c277ff2333b` |
 | Complete five-round console | `screens/p04-ownership-fixed30-console.log` | `96baef2b02fe5f9ab25af3ea847eebd783b0477c0e1e27ce5d52708c5e04258b` |
 
-### P19.tail-slack — selected independent prototype
+### P19 — tail capacity first screen (2026-10-24)
 
-Next is P19.tail-slack from H84/B4fda, without any prior stack. The original
-**0–3% application-throughput hypothesis** stays frozen and actual benefit is
-unknown; prospective implementation complexity is **simple**. No timing result
-exists. Baseline write_string reserves text plus quotes exactly, so a final
-closing token may cause further capacity growth. The generic candidate adds
-**32 tail bytes only when remaining capacity is below the required amount**;
-never grow merely to refresh slack. Do not specialize by payload/type/route,
-prewalk the value or retain a cross-request output buffer.
+**Negative/mixed: reject this tested fixed-32 tail policy for current-workload
+performance.** There is no promotion, favorable rerun or prototype PR. The
+original **0–3% application-throughput hypothesis** remains unchanged. This is
+independent H84/B4fda, without any earlier prototype stack; marginal and combined
+P19/B are identical. Source `e800c33a65ac6b8281b7af5d1e365b997e8b2b27`, tree
+`7f8d583471988758ae6648486a7080958d10e0e8`, is retained at
+`refs/experiments/a4-baseline-84e1c00b/p19-tail`.
 
-First run cheap B/candidate length/capacity transition checks plus exact JSON,
-prefix and Unicode controls. Capacity growth does **not** establish physical
-copying, and native/Wasm allocator behavior can differ. A standard 18 HTTP
-screen is proposed only after those focused checks. This is the authorized
-prototype direction, not a measured gain or a reason to promote a keeper;
-P04's complex integration remains conditional, eligible and HTTP-unmeasured.
+**Actual implementation assessment — simple.** The localized write_string
+reserve guard adds 32 generic tail bytes only when existing remaining capacity
+is below text length plus quotes. Checked arithmetic falls back to the required
+amount on overflow; existing sufficient slack is left alone. Escaping and
+public interfaces, dependencies and features are unchanged. No platform API
+is added.
+This matches the prospective simple estimate. The lasting maintenance burden
+is the bounded growth/overflow rule and exact JSON/capacity controls, separate
+from the temporary measurement scaffold. **Tradeoff / advice:** even a small
+implementation burden is unjustified by this negative/mixed screen. Do not
+carry this fixed-32 policy forward for these workloads; other capacity policies
+remain unmeasured rather than universally rejected.
 
-The tests-only baseline probe `a35aff4baa6a8a01305d064b479e8af5acd8b2e4`
-records native debug logical capacity transitions: after a long string,
-length/capacity 65549/65549 becomes 65550/131098 after the closing object token;
-Unicode capacity grows 98317→196634. The short case changes length 4→5 while
-capacity stays 8. These are allocation/growth requests and observed capacity,
-**not physical-copy evidence or HTTP gains**; candidate focused checks are still
-underway. Retained `screens/p19-tail-baseline-capacity.log` has SHA-256
-`2b8fabc8280d80ffbab47ecbc3f7bac08af63730d250e4b644b3989113c41ebb`.
+Focused native debug controls prove a logical growth-request mechanism only:
+long-final baseline length/capacity 11/11→65549/65549→65550/131098 becomes
+11/11→65549/65581→65550/65581; final-token realloc requests fall 1→0. Following
+fields, lists and Unicode show similar logical tail-growth removal. This is
+**not physical-copy or GC evidence**, and native/Wasm allocators can differ.
+The cost stays visible: short output length/capacity 4/8 becomes 4/36, while
+already sufficient preallocated capacity stays unchanged. These controls do
+not establish an HTTP gain.
+
+The fixed 18 screen is B/P19/Bun × three workloads × two full-order reversed
+rounds, c16, 2s admission + 1s warmup, 2048 principals, shipping Os/fat LTO/one
+codegen unit, remap-only child flags, offline builds, inspector NONE and PG
+durations OFF. All 18 rows complete with zero load/warmup errors, invalid bodies
+and state changes. Full-body/source/shared/build/artifact guards, 96 saved
+served copies and empty Sleep observations pass; all owned services/PostgreSQL
+are reaped. Bun is secondary cross-deployment context, not a contemporaneous
+TypeScript/workerd arm. No long confirmation, 176-case qualification or full
+gate follows.
+
+Gains are ratios of this campaign's two-round medians, not historical raw rates.
+All median RPS changes are negative; ASCII and Unicode round directions vary.
+
+| Workload | Original frozen forecast | Actual P19/B gain (marginal = combined) | Round1 / round2 gains | Median B / P19 / secondary Bun req/s |
+|---|---|---|---|---|
+| Golden signed | 0–3% | -1.3501% | -1.1408% / -1.5614% | 2350.018 / 2318.291 / 6233.604 |
+| ASCII large | 0–3% | -0.8234% | -1.6962% / +0.0474% | 1292.567 / 1281.924 / 5911.173 |
+| Unicode large | 0–3% | -2.3634% | +3.8694% / -8.4354% | 784.993 / 766.440 / 1614.675 |
+
+Signed p95 is worse in both rounds, **+2.5307/+1.0925%**. Large-response RSS is
+higher in both rounds: ASCII 362.3→369.4 and 356.8→360.2MB; Unicode 300.1→319.3
+and 304.8→306.8MB. Unicode round2 has host CPU **34.81% versus B 23.72%**, with
+RPS −8.4354%, CPU/request +7.6870% and p95 +14.4418%. This adverse variation
+is unlocalized; there is no interference or causal explanation claimed and no
+rerun to replace it. Signed CPU/request changes −0.3255/+1.6265%; ASCII
++0.7822/+0.0385%; Unicode −2.4011/+7.6870%. All observations remain visible.
+
+Each cell is **req/s / p95 ms / service CPU ms/request / separate helper CPU
+ms/request / sampled peak RSS MB**. Raw uses sampled_peak_rss_mb on golden and
+peak_rss_mb on focused rows; both retain the same process-sampling limitations.
+PG and load-generator resources remain separate.
+
+| Workload / round | B | P19 | Secondary Bun |
+|---|---|---|---|
+| Golden signed / 1 | 2361.097 / 8.456 / 0.433404 / 0.120507 / 300.6 | 2334.162 / 8.670 / 0.431993 / 0.121899 / 297.1 | 6192.941 / 3.694 / 0.197676 / 0.000000 / 206.8 |
+| Golden signed / 2 | 2338.939 / 8.787 / 0.435339 / 0.121639 / 296.8 | 2302.419 / 8.883 / 0.442420 / 0.123617 / 314.3 | 6274.267 / 3.621 / 0.195907 / 0.000000 / 208.5 |
+| ASCII large / 1 | 1291.143 / 19.222 / 0.797995 / 0.173477 / 362.3 | 1269.243 / 19.085 / 0.804237 / 0.164770 / 369.4 | 5911.839 / 4.245 / 0.217997 / 0.000000 / 191.8 |
+| ASCII large / 2 | 1293.992 / 18.514 / 0.795848 / 0.173010 / 356.8 | 1294.605 / 18.669 / 0.796154 / 0.169231 / 360.2 | 5910.507 / 4.064 / 0.219632 / 0.000000 / 196.6 |
+| Unicode large / 1 | 774.740 / 34.741 / 1.301282 / 0.211538 / 300.1 | 804.718 / 26.465 / 1.270037 / 0.209618 / 319.3 | 1613.095 / 12.349 / 0.738110 / 0.000000 / 176.0 |
+| Unicode large / 2 | 795.245 / 26.174 / 1.291329 / 0.212102 / 304.8 | 728.162 / 29.954 / 1.390593 / 0.231766 / 306.8 | 1616.255 / 12.214 / 0.729231 / 0.000000 / 181.4 |
+
+Harness cold/first observations are not a dedicated cold-start benchmark.
+Every cell is cold ms / first ms / idle RSS MB.
+
+| Workload / round | B | P19 | Secondary Bun |
+|---|---|---|---|
+| Golden signed / 1 | 72.058 / 39.904 / 97.5 | 91.673 / 26.587 / 97.7 | 170.744 / 19.267 / 91.7 |
+| Golden signed / 2 | 58.606 / 28.347 / 97.4 | 59.760 / 25.044 / 97.4 | 86.651 / 14.670 / 92.0 |
+| ASCII large / 1 | 62.581 / 36.454 / 93.9 | 61.087 / 34.906 / 93.7 | 96.203 / 4.291 / 89.2 |
+| ASCII large / 2 | 58.085 / 35.350 / 93.9 | 58.394 / 35.524 / 94.0 | 88.850 / 5.533 / 89.1 |
+| Unicode large / 1 | 62.482 / 34.097 / 93.8 | 58.525 / 35.770 / 93.8 | 83.703 / 2.991 / 89.4 |
+| Unicode large / 2 | 59.798 / 33.783 / 94.2 | 62.361 / 35.216 / 94.0 | 85.976 / 4.363 / 88.0 |
+
+All host/load CPU, elapsed/drain windows and full body/status/state data remain
+in raw. Wasm raw/gzip6 bytes grow: golden 7325897/2690117→7325956/2690146;
+focused 7364454/2662029→7364513/2662048. gzip6 is a compression proxy, not an
+upload-size measurement. There is no size, GC, native or cold-start benefit
+claimed.
+
+The tests-only source `a35aff4baa6a8a01305d064b479e8af5acd8b2e4` is retained at
+ref ending p19-tail-red-tests. The initial isolated allocation control passes;
+the intended closing-token test is red while the sufficient-capacity control
+passes. Candidate 14 JSON tests, allocation controls and Clippy subsequently
+pass. The expected red is not a failed setup or performance campaign; there is
+no other failed setup reported. Baseline capacity observations and complete
+focused/build/smoke/screen logs remain durable.
+
+Archive-relative identities use durable A:
+
+| Record | Archive-relative path | SHA-256 |
+|---|---|---|
+| Candidate build | `variants/p19-tail/build.json` | `03704842edc2e03fe71f44beadfaa05eda8fc2fe7c98c6d7b0c9c3915b4f79c7` |
+| Four-host smoke | `screens/p19-tail/setup-smoke/results.json` | `70ae632e52957e2014898b47f86b3b87e177f821d8bf8cde4a9b6576205852c5` |
+| Complete fixed 18 raw | `screens/p19-tail/screen18-none-pg-off-c16-r2/results.json` | `f2937f9d6fd262207843ad4613d601627f3292290570234579cf8285220d1c02` |
+| Complete screen console | `screens/p19-tail-screen18-console.log` | `c07c6aae18691a6d05635b6dee3b6b12a4f579bbc71b6f67f98c7da124f1076c` |
+| Baseline capacity observations | `screens/p19-tail-baseline-capacity.log` | `2b8fabc8280d80ffbab47ecbc3f7bac08af63730d250e4b644b3989113c41ebb` |
+| Expected closing-token red controls | `screens/p19-tail-focused-red.log` | `cb76366962fb884d691e67bd2c7d2d5b428c8d4407631830d93cf1f57bd4b24e` |
+| Fourteen JSON/allocation/Clippy controls | `screens/p19-tail-focused-green.log` | `0bef7e11d841051f7b2757060b1a12071ad446d7f935df75deb4ecf2c00c204e` |
+| Complete build console | `screens/p19-tail-build-console.log` | `1f9519b6cbda653a33b8032e3aca905c3f87355644bfe9ab5934dc849baf8d54` |
+| Complete smoke console | `screens/p19-tail-smoke-console.log` | `2abe424ab2849f5f1e664bca217e9884c9752328aa3612f9fc1f426e4bcb167f` |
+
+### P01.timer-future — source-blocked design
+
+The proposed independent P01.timer-future uses H84/B4fda without a P19 or another
+prototype stack. Its original **0–3% signed/small-read hypothesis** stays frozen;
+actual gain is **unknown**. Prospective implementation is **moderate**, with
+high lifecycle risk. This is bounded design review before code, not an
+implementation or performance claim. Source review found the blocker below
+before any edit, build, test or timing.
+
+The proposed Rust Sleep future owns state/waker and a Closure with Weak state;
+a private JS callback gate detaches before fire, cancellation or arm failure,
+so late callbacks are no-ops. Remove this timer's Promise/JsFuture/resolve path
+without forgetting closures, global callback maps or expanding into P59.
+Preserve the existing arm/deadline origin, min(…,2^53) clamp, asynchronous zero,
+work-first priority, error behavior, drop/drain and 8.4e no-leak guarantees.
+Actual-workerd lifecycle/live-counter and fault controls must precede any
+application screen. P04 complex integration and other eligible alternatives
+remain unmeasured; exploration continues without promotion or a count limit.
+
+**Deferred gate prerequisite:** [workers::bind](https://github.com/richardwillars/jadpo/blob/4fda5e597a3f508e1666ef46de0e0a3b850179b3/crates/jadpo-codegen/src/workers.rs#L88)
+rejects nonempty wasm-bindgen snippets/local_modules, and cached profile_bind
+delegates that binder. There is no existing private helper module, so inline_js
+would not ship this safe gate. Eval/dynamic Function are prohibited. An explicit
+supported shim/module-emission prerequisite needs ESM, binding and lifetime
+tests before this form can proceed. Do not widen the bundler just to push P01;
+this is neither a language-choice/user-permission blocker nor exhaustion of P01.
+
+### P07 — bounded Claims prototype authorized
+
+Next is independent P07 from H84/B4fda: the bounded compatibility prototype is
+authorized, with the original **0–3% signed-read hypothesis** and **unknown
+actual gain**. Prospective complexity is **moderate** for compatibility parsing
+and differential tests; there is no new language, public API or platform choice.
+No implementation or measured gain is claimed here; P12 is not selected.
+
+The private Slots/root visitor has eight Option<Value> fields and uses
+next_entry<String,Value>: key String allocations and nested Value parsing are
+intentionally retained. Known slots overwrite on every duplicate, including
+wrong types. Parse unknown values completely before discarding them, and retain
+serde_json::from_str's end check. Then preserve existing encoding/member order,
+optional r/c and subject quirks; ownership moves for v/c are optional if simple.
+Do not substitute a derive or IgnoredAny path that changes acceptance.
+
+A cfg(test) frozen-Map differential oracle precedes any application build. Use
+the already pinned workspace serde as a direct runtime edge, with only required
+lock metadata, offline and without downloading dependencies. If lock metadata
+changes, retain producer/hash guards and capture a current compiler if needed;
+do not weaken provenance checks. These are prototype controls, not measured
+performance or proof of a production keeper.
+
 
 ## P55 — safe Response constructor first screen (2026-10-24)
 
@@ -1928,8 +2071,9 @@ Archive-relative retained identities use the same durable A:
 The dependent P21.suffix-bitmap was subsequently measured and rejected above;
 its unknown forecasts stay intact. P11's mixed result follows above; independent
 P05's tested form is flat/mixed/rejected; P04's mechanism result is retained,
-without an HTTP projection. Independent P19.tail-slack is next, with unknown
-actual benefit. Retain P55's simple
+without an HTTP projection. P19's fixed-32 policy is rejected;
+independent P07 bounded Claims prototype is next, with unknown actual benefit.
+P01's gate design is source-blocked. Retain P55's simple
 code/moderate ownership burden and adverse
 RSS for later human selection; exploration continues without promotion.
 
@@ -1938,8 +2082,9 @@ RSS for later human selection; exploration continues without promotion.
 **P61.roundtrip is measured/rejected; P61.host-sink remains a distinct,
 unmeasured alternative.** Both primary-pair controls remain established.
 P11 is measured/mixed and P05's tested form is rejected; P04's positive
-mechanism result remains unintegrated. Independent P19.tail-slack is next,
-with unknown actual benefit. P55's measured result and ownership assessment
+mechanism result remains unintegrated. P19's fixed-32 policy is rejected;
+independent P07 bounded Claims prototype is next, with unknown actual benefit.
+P01's gate design is source-blocked. P55's measured result and ownership assessment
 remain retained above.
 Continue eligible exploration without another baseline prerequisite.
 
@@ -2105,8 +2250,9 @@ predict it. If final Response encoding is omitted, label that lower bound and
 exclude any application-gain claim. Even a promising probe still needs full
 HTTP ownership/byte validation. This is a conditional cheap check, not an
 implementation or host-sink rejection. The bitmap form is separately rejected;
-independent P19.tail-slack is next after retaining P04's mechanism evidence
-without HTTP projection.
+independent P07 bounded Claims prototype is next after rejecting P19's
+fixed-32 policy and retaining P04's mechanism evidence without HTTP projection;
+P01's gate design is source-blocked before code.
 
 **P61.host-sink remains eligible despite the measured roundtrip loss.** It would retain escaped JS string tokens/chunks through Response
 construction. This is a substantive source-backed alternative, not an expansion

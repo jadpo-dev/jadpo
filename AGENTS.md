@@ -58,9 +58,13 @@ mixed RSS. P21.suffix-bitmap is rejected and P11 is measured/mixed. Independent
 P05's tested form is flat/mixed/rejected. P04 has retained positive mechanism
 evidence only: HTTP remains unmeasured, original simple diagnostic estimate is
 preserved, actual scaffold is moderate and prospective keeper complex.
-Independent P19.tail-slack is next, with its original 0–3% hypothesis, unknown
-actual gain and simple prospective implementation; focused capacity/JSON
-controls precede timing. No baseline prerequisite remains. Keep each control's
+P19's fixed-32 tail policy is negative/mixed/rejected. Independent
+P01.timer-future's private gate is source-blocked on supported shim/module
+emission before code. Independent P07 bounded Claims prototype is next:
+original 0–3% hypothesis, unknown actual gain and moderate prospective
+compatibility/parser-test burden; preserve
+existing duplicate/unknown JSON and numeric/type/error acceptance. No baseline
+prerequisite remains. Keep each control's
 loader/host/lifetime limits explicit.
 Control acceptance uses local checks and agent review under standing
 authorization, not a new Richard approval. Preserve prior results and historical
