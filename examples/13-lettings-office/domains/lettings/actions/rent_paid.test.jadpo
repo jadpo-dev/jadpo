@@ -1,4 +1,4 @@
-use lettings/types { RentPayment, SignedWebhook }
+use lettings/types { RentPayment, SignedWebhook, WeeklyRent }
 use lettings/failures { WebhookRefused }
 use lettings/actions { acknowledge_payment }
 
@@ -8,23 +8,23 @@ test "a webhook signed with the shared secret is read" {
     var acknowledgement: SignedWebhook = acknowledge_payment(
         RentPayment {
             tenancy_ref: "T-1042"
-            paid: 25000
+            paid: WeeklyRent(money.from_minor(25000, Currency.gbp))
         }
     )
-    assert acknowledgement.body == "{\"tenancy_ref\":\"T-1042\",\"paid\":25000}"
+    assert acknowledgement.body == "{\"tenancy_ref\":\"T-1042\",\"paid\":{\"amount\":25000,\"currency\":\"GBP\"}}"
     var payment: RentPayment = attempt rent_paid(acknowledgement.body, acknowledgement.webhook_mac)
-    assert payment.paid == 25000
+    assert payment.paid == WeeklyRent(money.from_minor(25000, Currency.gbp))
 }
 
 test "a webhook whose body was changed is refused" {
     var acknowledgement: SignedWebhook = acknowledge_payment(
         RentPayment {
             tenancy_ref: "T-1042"
-            paid: 25000
+            paid: WeeklyRent(money.from_minor(25000, Currency.gbp))
         }
     )
     assert rent_paid(
-        "{\"tenancy_ref\":\"T-1042\",\"paid\":99999}",
+        "{\"tenancy_ref\":\"T-1042\",\"paid\":{\"amount\":99999,\"currency\":\"GBP\"}}",
         acknowledgement.webhook_mac
     ) fails WebhookRefused
 }

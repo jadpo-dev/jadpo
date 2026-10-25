@@ -1,15 +1,17 @@
-use shared/types { Grams, SackCount }
+use shared/types { FlourWeight, SackCount }
 use shared/failures { TooHeavy }
 use pantry/libraries { sacks }
 
-/// How many grams of flour the pantry holds once `delivered` sacks join
+/// How much flour the pantry holds once `delivered` sacks join
 /// the `in_store` ones.
-action restock(in_store: SackCount, delivered: SackCount) fails TooHeavy -> Grams {
-    // Each side is from 0 to 96000 grams, so the sum is never below 0 but
-    // can pass the 100000 the scales weigh: only `max` can break, and it
+action restock(in_store: SackCount, delivered: SackCount) fails TooHeavy -> FlourWeight {
+    // Each side is from 0 to 96kg, so the sum is never below 0 but
+    // can pass the 100kg the scales weigh: only `max` can break, and it
     // is checked when it runs. `TooHeavy`, a shared failure, names what
     // went wrong.
-    var total: Grams = attempt Grams(sacks.grams_in(in_store) + sacks.grams_in(delivered)) {
+    var held: FlourWeight = attempt sacks.weight_in(in_store)
+    var arriving: FlourWeight = attempt sacks.weight_in(delivered)
+    var total: FlourWeight = attempt FlourWeight(held + arriving) {
         max: TooHeavy
     }
     return total

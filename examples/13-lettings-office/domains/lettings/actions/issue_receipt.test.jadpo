@@ -1,12 +1,15 @@
-use lettings/types { SignedReceipt }
+use lettings/types { SignedReceipt, WeeklyRent }
 use lettings/actions { check_receipt, receipt_key }
 
 test "a receipt checks with the office's public key" {
-    var receipt_issued: SignedReceipt = issue_receipt("T-1042", 25000)
-    assert receipt_issued.receipt == "Harbour Lettings received 25000p for tenancy T-1042."
+    var receipt_issued: SignedReceipt = issue_receipt(
+        "T-1042",
+        WeeklyRent(money.from_minor(25000, Currency.gbp))
+    )
+    assert receipt_issued.receipt == "Harbour Lettings received GBP 250.00 for tenancy T-1042."
     assert check_receipt(receipt_issued.receipt, receipt_issued.office_signature, receipt_key())
     assert not check_receipt(
-        "Harbour Lettings received 99999p for tenancy T-1042.",
+        "Harbour Lettings received GBP 999.99 for tenancy T-1042.",
         receipt_issued.office_signature,
         receipt_key()
     )
@@ -14,7 +17,10 @@ test "a receipt checks with the office's public key" {
 
 test "another office's key doesn't check the office's receipts" {
     // RFC 8032's first test key: a public key, so not a secret.
-    var receipt_issued: SignedReceipt = issue_receipt("T-1042", 25000)
+    var receipt_issued: SignedReceipt = issue_receipt(
+        "T-1042",
+        WeeklyRent(money.from_minor(25000, Currency.gbp))
+    )
     assert not check_receipt(
         receipt_issued.receipt,
         receipt_issued.office_signature,
@@ -28,6 +34,6 @@ test "a receipt names the office the deployment sets" {
     }
     assert issue_receipt(
         "T-1042",
-        25000
-    ).receipt == "Quayside Homes received 25000p for tenancy T-1042."
+        WeeklyRent(money.from_minor(25000, Currency.gbp))
+    ).receipt == "Quayside Homes received GBP 250.00 for tenancy T-1042."
 }

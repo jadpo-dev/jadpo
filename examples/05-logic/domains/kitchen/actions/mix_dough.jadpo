@@ -11,20 +11,20 @@
 // Brackets group. `and` and `or` stop as soon as the answer is known.
 // Logical operators are words: `!`, `&&` and `||` are not Jadpo.
 
-/// A weight in grams, never negative.
-type Grams = Int {
-    min: 0
+/// A weight of flour or water, never negative.
+type DoughWeight = Mass {
+    min: 0g
 }
 
-/// A temperature in degrees, which may be below freezing.
-type Celsius = Int {
-    min: -40
-    max: 300
+/// A water temperature, which may be below freezing.
+type WaterTemperature = Temperature {
+    min: -40degC
+    max: 300degC
 }
 
-/// How long a dough has been kneaded, in minutes.
-type Minutes = Int {
-    min: 0
+/// How long a dough has been kneaded.
+type Kneading = Duration {
+    min: 0m
 }
 
 /// Whether dough has been left to rest, which does some of the
@@ -34,39 +34,38 @@ type Rested = Bool {}
 /// Whether dough is ready to shape.
 type Ready = Bool {}
 
-/// Water hotter or colder than a dough wants, in degrees either way.
-type Difference = Int {
-    min: -340
-    max: 340
-}
+/// Water hotter or colder than a dough wants.
+type Difference = TemperatureDifference {}
 
 /// How far the water is from the 26 degrees a dough wants: positive when
 /// too warm, negative when too cold.
-function water_difference(water: Celsius) -> Difference {
-    // Subtracting two values gives a plain `Int`; the range of `Celsius`
-    // proves the result fits `Difference`, so no check can fail.
-    return Difference(water - 26)
+function water_difference(water: WaterTemperature) -> Difference {
+    // Subtracting two temperatures gives a `TemperatureDifference`, which
+    // `Difference(...)` names.
+    return Difference(water - 26degC)
 }
 
-/// Whether a dough of `flour` and `water` grams, mixed with water at
-/// `temperature` and kneaded for `minutes`, is ready: wet enough, mixed
+/// Whether a dough of `flour` and `water`, mixed with water at
+/// `temperature` and kneaded for `kneaded`, is ready: wet enough, mixed
 /// within 4 degrees of 26, and either kneaded long enough or rested.
 action mix_dough(
-    flour: Grams,
-    water: Grams,
-    temperature: Celsius,
-    minutes: Minutes,
+    flour: DoughWeight,
+    water: DoughWeight,
+    temperature: WaterTemperature,
+    kneaded: Kneading,
     rested: Rested
 ) -> Ready {
     // `*` binds tighter than `>=`, which binds tighter than `and`, which
     // binds tighter than `or`. Hydration is water as a share of flour,
-    // worked out in whole numbers: 100 * water >= 65 * flour means at
-    // least 65%.
-    var wet_enough: Bool = 100 * water >= 65 * flour
+    // worked out with whole-number multipliers: water * 100 >= flour * 65
+    // means at least 65%.
+    var wet_enough: Bool = water * 100 >= flour * 65
     var difference: Difference = water_difference(temperature)
-    // Within 4 degrees either way: no more than 4 too warm, and, with
-    // unary minus turning the sign round, no more than 4 too cold.
-    var close_enough: Bool = difference <= 4 and -difference <= 4
+    var warmest: Difference = Difference(units.of(4, TemperatureDifferenceUnit.kelvin))
+    var coldest: Difference = Difference(units.of(-4, TemperatureDifferenceUnit.kelvin))
+    // Within 4 degrees either way: no more than 4 too warm and no more than
+    // 4 too cold. Two comparisons joined by `and`, each tighter than it.
+    var close_enough: Bool = difference <= warmest and difference >= coldest
     // The brackets make the `or` happen before the `and`.
-    return Ready(wet_enough and close_enough and (minutes >= 10 or rested))
+    return Ready(wet_enough and close_enough and (kneaded >= 10m or rested))
 }

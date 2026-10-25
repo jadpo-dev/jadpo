@@ -1,0 +1,13 @@
+// A type used by more than one file lives in its domain's `types/`
+// folder, one type per file, named after it. `weigh_flour` and
+// `price_flour` both use `SackWeight`, so it lives here rather than in
+// either of them.
+//
+// A weight is a quantity, so it is built on the standard `Mass` rather than
+// on a bare number: the unit is part of every value (`500g`, `2kg`), and a
+// weight can never be mixed up with a temperature or a count.
+
+/// The weight of a delivery of flour. Never negative, with no upper limit.
+type SackWeight = Mass {
+    min: 0g
+}

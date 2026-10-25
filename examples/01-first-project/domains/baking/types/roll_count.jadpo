@@ -1,13 +1,13 @@
 // A type two files use has a file of its own, named after it, in its
-// domain's `types/` folder. `weigh_loaves.jadpo` and `usual_order.jadpo`
-// both use `Grams`, so it lives here; the compiler asks for the move
+// domain's `types/` folder. `count_rolls.jadpo` and `usual_order.jadpo`
+// both use `RollCount`, so it lives here; the compiler asks for the move
 // (`layout.promotion_required`) the moment a second file uses a type
 // declared in another file.
 //
 // A named type: a built-in representation (`Int`), a name that says what
 // the value means, and the rules every valid value follows.
 
-/// A weight in grams, never negative.
-type Grams = Int {
+/// A number of rolls, never negative.
+type RollCount = Int {
     min: 0
 }

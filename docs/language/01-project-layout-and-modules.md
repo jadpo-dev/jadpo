@@ -982,9 +982,9 @@ type Stock = Int {
 ```
 
 ```jadpo check project=e-import-unused file=shared/types/percent.jadpo hidden
-type Percent = Int {
-    min: 0
-    max: 100
+type Percent = Percentage {
+    min: 0%
+    max: 100%
 }
 ```
 
@@ -1079,9 +1079,9 @@ type Stock = Int {
 ```
 
 ```jadpo check project=e-import-duplicate file=shared/types/percent.jadpo hidden
-type Percent = Int {
-    min: 0
-    max: 100
+type Percent = Percentage {
+    min: 0%
+    max: 100%
 }
 ```
 

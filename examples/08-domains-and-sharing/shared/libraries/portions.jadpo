@@ -2,21 +2,21 @@
 // named after it. It is called like the standard library, through its
 // name: `portions.together(...)`. A library holds only functions.
 
-use shared/types { Grams, PortionCount }
+use shared/types { FlourWeight, PortionCount }
 use shared/failures { TooHeavy }
 
 /// Working with weights made of equal portions.
 library portions {
-    /// The weight of `count` portions of `each` grams.
-    function together(each: Grams, count: PortionCount) fails TooHeavy -> Grams {
-        var total: Grams = attempt Grams(each * count) {
+    /// The weight of `count` portions weighing `each`.
+    function together(each: FlourWeight, count: PortionCount) fails TooHeavy -> FlourWeight {
+        var total: FlourWeight = attempt FlourWeight(each * count) {
             max: TooHeavy
         }
         return total
     }
 
     /// The larger of two weights.
-    function larger(first: Grams, second: Grams) -> Grams {
+    function larger(first: FlourWeight, second: FlourWeight) -> FlourWeight {
         if (first > second) {
             return first
         }

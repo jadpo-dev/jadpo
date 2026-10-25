@@ -1,0 +1,5 @@
+/// What is left to pay of a deposit once the holding deposit is counted.
+type DepositBalance = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
+}

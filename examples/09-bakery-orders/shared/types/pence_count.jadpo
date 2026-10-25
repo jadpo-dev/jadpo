@@ -1,4 +1,0 @@
-/// A price written as a number of pence.
-type PenceCount = Int {
-    min: 0
-}

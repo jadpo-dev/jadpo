@@ -5,15 +5,15 @@ test "an ingredient that goes in twice is bought once" {
         ingredients: [
             Ingredient {
                 name: "Butter"
-                weight: 100
+                weight: 100g
             },
             Ingredient {
                 name: "Flour"
-                weight: 150
+                weight: 150g
             },
             Ingredient {
                 name: "Butter"
-                weight: 10
+                weight: 10g
             }
         ]
         allergens: [Hazard.gluten, Hazard.milk]

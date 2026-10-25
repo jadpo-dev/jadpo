@@ -1,6 +1,6 @@
 // Walking a list with `for`.
 
-use baking/types { Grams, IngredientName, Recipe }
+use baking/types { IngredientName, IngredientWeight, Recipe }
 
 /// How many ingredients a recipe has.
 type IngredientCount = Int {
@@ -11,9 +11,9 @@ type IngredientCount = Int {
 /// ingredients went in, and the flour's weight, which bakers work every
 /// other amount out from. A recipe with no flour has `none`.
 type RecipeLabel = Output {
-    total: Grams
+    total: IngredientWeight
     ingredients: IngredientCount
-    flour: Grams?
+    flour: IngredientWeight?
 }
 
 /// How many ingredients `recipe` has.
@@ -26,7 +26,7 @@ function count_ingredients(recipe: Recipe) -> IngredientCount {
 }
 
 /// The weight of the first ingredient called `name`, or `none`.
-function weight_of(recipe: Recipe, name: IngredientName) -> Grams? {
+function weight_of(recipe: Recipe, name: IngredientName) -> IngredientWeight? {
     for ingredient in recipe.ingredients {
         // `return` inside a loop ends the whole function at once.
         if (ingredient.name == name) {
@@ -41,12 +41,12 @@ action weigh_recipe(recipe: Recipe) -> RecipeLabel {
     // `var mut` names a value that can be pointed at a new value of the
     // same type. Only a `var mut` local can be assigned; parameters and
     // fields never can.
-    var mut total: Grams = 0
+    var mut total: IngredientWeight = 0g
     // `for` is the only loop. The loop item takes its type from the list:
     // here each `ingredient` is an `Ingredient`. There is no `while`,
     // `break` or `continue`.
     for ingredient in recipe.ingredients {
-        total = Grams(total + ingredient.weight)
+        total = IngredientWeight(total + ingredient.weight)
     }
     return RecipeLabel {
         total: total

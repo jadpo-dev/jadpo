@@ -1,0 +1,4 @@
+/// A whole number of a currency's minor units, the argument of `money.from_minor`.
+type MinorUnits = Int {
+    min: 0
+}
