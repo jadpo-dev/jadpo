@@ -46,7 +46,7 @@ of a postal address, an amount of money, a length, a point on the earth. Each
 has one construction that validates, one JSON shape and one storage shape, and
 fields are named, never positional (`Point { latitude: ... longitude: ... }`).
 They are global names in one flat set, like `Int`; only their operations live
-in namespaces (`money.`, `units.`, `temporal.`). There are 247 of them.
+in namespaces (`money.`, `units.`, `temporal.`). There are 253 of them.
 [Area 19](19-standard-library.md#the-standard-types) lists every one and every
 operation; the groups and their headline types are:
 
@@ -64,6 +64,30 @@ operation; the groups and their headline types are:
 | Geospatial | `Point`, `Latitude`, `Polygon`, `Geometry`, `BoundingBox`, `Geohash` | `geo` (area 20) |
 | AI | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole`, `Vector`, `Embedding` | `ai` (area 21) |
 | Codes and identifiers | `Sku`, `Ean13`, `Isbn`, `Barcode`, `TrackingNumber`, `Vin`, `VatNumber`, `NhsNumber`, `Icd10Code`, `IataAirport`, `FlightNumber`, `Orcid` | none beyond the contract below |
+
+Every standard type, by group ("(enum)" marks a closed list held as a
+built-in enum):
+
+| Group | Types |
+|---|---|
+| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, `Email`, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) |
+| Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), `Locale` (enum), `Zone` (enum) |
+| Geospatial (17) | `Point`, `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` |
+| Money, payments, banking (24) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` |
+| Tax and identity numbers (12) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `IdentityDocumentKind` (enum), `NhsNumber` |
+| Commerce and logistics (22) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ClothingSizeSystem` (enum), `ShoeSize`, `ShoeSizeSystem` (enum), `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` |
+| Time and calendar (19) | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Weekday` (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `InstantRange`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` |
+| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` |
+| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` |
+| Health (10) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `RouteOfAdministration` (enum), `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) |
+| Media and visual (16) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating`, `ContentRatingScheme` (enum) |
+| Web and network (23) | `Url`, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, `FileType`, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, `IpAddress`, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` |
+| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, `Uuid`, `Ulid`, `IdempotencyKey`, `Doi` |
+| Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` |
+| Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` |
+| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass` (enum), `BookingReference` |
+| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` |
+| AI (4) | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole` (enum) |
 
 The money group has a few rules of its own, because money is where mistakes
 cost most. `Money` holds a whole number of a currency's minor units (pence,
