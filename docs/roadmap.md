@@ -304,19 +304,25 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    reusing `jadpo suggest`'s name signal data; and the gate runs
    `jadpo suggest` over every teaching example, which must come back clean
    or ignore each finding with a reason (Richard, 2026-10-25).
-2. Personal data (area 15), with encrypted fields and keys held as data
+2. The standard type reference, generated: `tools/language_docs.py`
+   renders one entry per standard type (what it is, how to make one, its
+   fields, operations, text, JSON and storage forms, an example) from the
+   compiler's own contract data on every docs build, so the list can't
+   drift from what is built; designed with the design skills first. Area
+   19's prose stays as the explanation (Richard, 2026-10-25).
+3. Personal data (area 15), with encrypted fields and keys held as data
    (area 19, questions 10 and 21) and `crypto.verify_totp`, which waits on
    them.
-3. Remaining built-in services (area 16): flags, files, audit, search,
+4. Remaining built-in services (area 16): flags, files, audit, search,
    telemetry thresholds.
-4. Debugging and review (area 17): `why`, timelines, `test new --from`,
+5. Debugging and review (area 17): `why`, timelines, `test new --from`,
    `call`.
-5. Records and acceptances (area 18): the approval report, acceptance
+6. Records and acceptances (area 18): the approval report, acceptance
    matching, package upgrade plans.
-6. Tooling completeness (area 14): interactive tests, `rename` (refusing a
+7. Tooling completeness (area 14): interactive tests, `rename` (refusing a
    name already in use, 2026-10-16), `impact`,
    full completion.
-7. Packages and capabilities after the first build (decided 2026-10-16):
+8. Packages and capabilities after the first build (decided 2026-10-16):
    services run by Jadpo (`runs:`, Docker or Podman hidden behind
    `jadpo services`); the `documents` capability; OAuth grants per owner;
    search, `bot_check` and `scanning` capabilities; the disk driver;
@@ -326,14 +332,14 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
    `publish`, git-tag versions, publisher trust); packages from other Jadpo
    apps and the cross-app break check; choosing a provider when deploying,
    when an app other people run needs it.
-8. Product work: the developer console and MCP, the graph review UI
+9. Product work: the developer console and MCP, the graph review UI
    (Revset-inspired), the public package registry, acting as an OAuth
    provider, D1 and row-level security.
-9. A versioned application contract for frontend clients: a public contract
+10. A versioned application contract for frontend clients: a public contract
    derived by the compiler, client consumption declarations and generated
    TypeScript bindings (a React example first); presentation stays in
    ordinary frontend code.
-10. The public documentation site at jadpo.dev, structured from how
+11. The public documentation site at jadpo.dev, structured from how
    developers and agents look things up.
 
 ## How we work
