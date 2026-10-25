@@ -4,11 +4,11 @@
 // one only owners can have changed, so its cost may go back to them.
 
 use kitchen/entities { Recipe, RecipeNotFound }
-use kitchen/types { Pence, RecipeCosting }
+use kitchen/types { RecipeCosting, Sterling }
 
 /// What a batch costs now.
 type CostRecipe = Input {
-    batch_cost: Pence
+    batch_cost: Sterling
 }
 
 /// Sets what a batch of a recipe costs.

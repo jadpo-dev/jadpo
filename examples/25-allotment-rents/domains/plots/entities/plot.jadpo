@@ -1,5 +1,5 @@
 use plots/entities { Society }
-use plots/types { HolderName, OfficerRole, Pence, PlotNumber, RentDueDate }
+use plots/types { HolderName, OfficerRole, PlotNumber, RentDueDate, Sterling }
 
 /// A plot on a society's site.
 entity Plot {
@@ -9,7 +9,7 @@ entity Plot {
     }
     number: PlotNumber
     plot_holder: HolderName?
-    rent: Pence
+    rent: Sterling
     rent_due_on: RentDueDate?
     reminded_on: CalendarDate?
 

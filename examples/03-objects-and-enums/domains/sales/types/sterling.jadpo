@@ -1,0 +1,7 @@
+/// An amount in pounds, held as whole pence and never negative. Its
+/// currency is fixed, and `*` rounds half to even to a penny.
+type Sterling = Money {
+    currency: Currency.gbp
+    min: 0
+    rounding: Rounding.half_even
+}

@@ -1,5 +1,5 @@
 use kitchen/entities { Baker }
-use kitchen/types { KitchenStaff, NewStaff, RecipeCard, StaffRole, StaffView }
+use kitchen/types { KitchenStaff, NewStaff, RecipeCard, StaffRole, StaffView, Sterling }
 use kitchen/actions {
     CostRecipe,
     HandOver,
@@ -75,7 +75,7 @@ test "only an owner sets what a batch costs" {
         }
         as: Principal.user(crew.baker)
         input: CostRecipe {
-            batch_cost: 450
+            batch_cost: Sterling(money.from_minor(450, Currency.gbp))
         }
     }
     assert by_author.status == 403
@@ -88,7 +88,7 @@ test "only an owner sets what a batch costs" {
         }
         as: Principal.user(crew.owner)
         input: CostRecipe {
-            batch_cost: 450
+            batch_cost: Sterling(money.from_minor(450, Currency.gbp))
         }
     }
     assert by_owner.status == 200

@@ -4,10 +4,10 @@ test "the menu shows only the cake and its price" {
     var line: CakeLine = CakeLine {
         cake: "Battenberg"
         count: 1
-        each: 1500
+        each: CakeLine.each(money.from_minor(1500, Currency.gbp))
     }
     assert show_on_menu(line) == MenuEntry {
         cake: "Battenberg"
-        each: 1500
+        each: CakeLine.each(money.from_minor(1500, Currency.gbp))
     }
 }

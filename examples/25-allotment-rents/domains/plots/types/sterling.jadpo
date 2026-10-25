@@ -1,0 +1,9 @@
+/// An amount in pounds, held as whole pence, never negative and at most
+/// £10,000. Its currency is fixed, so an amount in another currency
+/// doesn't compile where one is wanted.
+type Sterling = Money {
+    currency: Currency.gbp
+    min: 0
+    max: 1000000
+    rounding: Rounding.half_even
+}

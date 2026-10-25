@@ -4,14 +4,14 @@
 // `Access.public`. Nothing grants `create`, so no request can add a cake;
 // the bakery's own tools do that, and the tests call `add_cake` directly.
 
-use bakery/types { CakeName, Flavour, Pence }
+use bakery/types { CakeName, Flavour, Sterling }
 
 /// A cake on the menu.
 entity Cake {
     id: Uuid
     name: CakeName
     flavour: Flavour
-    price: Pence
+    price: Sterling
     on_menu: Bool
 
     policy: {

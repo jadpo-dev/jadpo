@@ -21,7 +21,7 @@ operation that may read and write data, call integrations and call other
 actions. A **query** is a read-only operation, described in area 6.
 
 ```jadpo check project=line-total file=numbers.jadpo hidden
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
@@ -33,8 +33,8 @@ type Quantity = Int {
 
 ```jadpo check project=line-total
 /// Total for one order line before discounts.
-function line_total(price: Pence, quantity: Quantity) -> Pence {
-    var total: Pence = Pence(price * quantity)
+function stock_needed(per_pack: Stock, packs: Quantity) -> Stock {
+    var total: Stock = Stock(per_pack * packs)
     return total
 }
 ```
@@ -98,8 +98,8 @@ library rounding {
     function half_even(amount: ItemPrice) -> ItemPrice { ... }
 }
 
-var total: ItemPrice = rounding.half_even(subtotal)                    // a library
-var line: Pence = line_total(price, quantity)                      // a helper in this file
+var total: ItemPrice = rounding.half_even(subtotal)                  // a library
+var line: Stock = stock_needed(per_pack, packs)                      // a helper in this file
 var stock: Reservation = attempt inventory.reserve_for_cart(cart)  // another domain
 var todo: Todo = attempt Todo.get(todo_id)                         // an entity
 var local: ZonedTime = temporal.in_zone(at, zone)                  // the standard library
@@ -113,9 +113,9 @@ constants decided 2026-10-16, built in chunk 5.3e).
 > Decided: `var` stays, immutable by default, with `var mut` when it can change (question 2), and every variable states its type (area 2).
 
 ```jadpo fragment
-var subtotal: Pence = line_total(price, quantity)
-var mut total: Pence = subtotal
-total = Pence(total + delivery)
+var needed: Stock = stock_needed(per_pack, packs)
+var mut total: Stock = needed
+total = Stock(total + spare)
 ```
 
 - `var` names a value that never changes. `var mut` names one that can be
@@ -134,18 +134,18 @@ A `constant` names a fixed value at the top level of a file: the same in
 every deployment, worked out while compiling, and never changed.
 
 ```jadpo check project=constants
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-constant free_delivery_from: Pence = 5000
-constant small_order_fee: Pence = 250
+constant bulk_from: Stock = 5000
+constant small_batch: Stock = 250
 
-function delivery_fee(subtotal: Pence) -> Pence {
-    if (subtotal >= free_delivery_from) {
+function batch_for(needed: Stock) -> Stock {
+    if (needed >= bulk_from) {
         return 0
     }
-    return small_order_fee
+    return small_batch
 }
 ```
 
@@ -167,13 +167,13 @@ function delivery_fee(subtotal: Pence) -> Pence {
   object, an enum, `Email`, `Url` and the other types a signature may use
   are fine.
 - **A value the compiler can work out.** Literals, enum values, other
-  constants, construction from those (`Pence(5000)`, an object, a list),
+  constants, construction from those (`Stock(5000)`, an object, a list),
   and the operators of [Expressions and operators](#expressions-and-operators)
   on them. No call of any kind (functions, library functions, the standard
   library), no `config`, no `clock`, and no constant that depends on
   itself ([`constant.value_not_fixed`](#constant-value-not-fixed),
   [`constant.cycle`](#constant-cycle)). Arithmetic gives the
-  representation, as it does in a body, so `Pence(free_delivery_from * 2)`
+  representation, as it does in a body, so `Stock(bulk_from * 2)`
   constructs it back.
 - **Checked while compiling.** The value is checked against every rule of
   its type and the types it is built on, as a literal is
@@ -189,41 +189,41 @@ function delivery_fee(subtotal: Pence) -> Pence {
   constant nothing reads is unused as a function nothing calls is.
 
 ```jadpo check project=constants-built
-type Pence = Int {
+type Stock = Int {
     min: 0
     max: 100000
 }
 
 type LargeOrder = Bool {}
 
-type FeeCharged = Bool {}
+type BatchCharged = Bool {}
 
-constant small_order_fee: Pence = 250
-constant large_order_fee: Pence = Pence(small_order_fee * 2)
-constant fees: List<Pence> = [small_order_fee, large_order_fee]
+constant small_batch: Stock = 250
+constant large_batch: Stock = Stock(small_batch * 2)
+constant batch_sizes: List<Stock> = [small_batch, large_batch]
 
-function fee_for(large: LargeOrder) -> Pence {
+function batch_chosen(large: LargeOrder) -> Stock {
     if (large) {
-        return large_order_fee
+        return large_batch
     }
-    return small_order_fee
+    return small_batch
 }
 
-function charged(fee: Pence) -> FeeCharged {
-    return FeeCharged(fee in fees)
+function charged(batch: Stock) -> BatchCharged {
+    return BatchCharged(batch in batch_sizes)
 }
 ```
 
 Each of these is one error with its edit:
 
 ```jadpo check project=e-constant-in-body expect=syntax.expected_statement
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function fee() -> Pence {
-    constant small_order_fee: Pence = 250
-    return small_order_fee
+function batch() -> Stock {
+    constant small_batch: Stock = 250
+    return small_batch
 }
 ```
 
@@ -231,7 +231,7 @@ function fee() -> Pence {
 error: `constant` doesn't start a statement
  --> main.jadpo:6:5
   |
-6 |     constant small_order_fee: Pence = 250
+6 |     constant small_batch: Stock = 250
   |     ^^^^^^^^ write `var`
   reason: A constant lives at the top of a file or in a library; inside a body a value that never changes is a `var`.
   next: Use `var` instead of `constant` (agent)
@@ -242,18 +242,18 @@ check failed: 1 error, 1 file
 ```
 
 ```jadpo check project=e-constant-mut expect=syntax.expected_name
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-constant mut small_order_fee: Pence = 250
+constant mut small_batch: Stock = 250
 ```
 
 ```text output
 error: A constant can't be `mut`
  --> main.jadpo:5:10
   |
-5 | constant mut small_order_fee: Pence = 250
+5 | constant mut small_batch: Stock = 250
   |          ^^^ remove `mut`
   reason: A constant never changes, so it has no mutable form; a value that changes is a `var mut` inside a body.
   next: Remove `mut` (agent)
@@ -264,18 +264,18 @@ check failed: 1 error, 1 file
 ```
 
 ```jadpo check project=e-const-keyword expect=syntax.variable_keyword
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-const small_order_fee: Pence = 250
+const small_batch: Stock = 250
 ```
 
 ```text output
 error: Jadpo writes `constant`, not `const`
  --> main.jadpo:5:1
   |
-5 | const small_order_fee: Pence = 250
+5 | const small_batch: Stock = 250
   | ^^^^^ write `constant`
   reason: `const` declares a value that never changes in JavaScript, TypeScript, Rust, Go and C#; at the top of a Jadpo file a fixed value is `constant name: Type = value`.
   next: Use `constant` instead of `const` (agent)
@@ -315,32 +315,32 @@ uses it, `layout.promotion_required` moves it into a library, and it is read
 through the library like a library function, without brackets:
 
 ```jadpo check project=constants-library
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-type VatRate = Decimal {
+type SpareRate = Decimal {
     scale: 4
     min: 0.0000
     max: 1.0000
 }
 
-library pricing {
-    /// The UK standard rate of VAT.
-    constant vat_rate: VatRate = 0.2000
+library stocking {
+    /// The standard share held back as spare.
+    constant spare_rate: SpareRate = 0.2000
 
-    function vat_on(price: Pence) -> Pence {
-        return Pence(price / 5)
+    function spare_of(per_pack: Stock) -> Stock {
+        return Stock(per_pack / 5)
     }
 }
 
-function standard_vat() -> VatRate {
-    var uk_rate: VatRate = pricing.vat_rate
+function standard_spare() -> SpareRate {
+    var uk_rate: SpareRate = stocking.spare_rate
     return uk_rate
 }
 
-function vat(price: Pence) -> Pence {
-    return pricing.vat_on(price)
+function spare(per_pack: Stock) -> Stock {
+    return stocking.spare_of(per_pack)
 }
 ```
 
@@ -614,8 +614,8 @@ other languages](#habits-from-other-languages)).
 Questions 6 and 7 decided operator typing and division:
 
 ```jadpo fragment
-var wrong: Pence = Pence(price + quantity)       // error: adds a Quantity to Pence
-var line: Pence = Pence(price * quantity)        // fine: multiplying different units
+var wrong: Stock = Stock(per_pack + packs)       // error: adds a Quantity to Stock
+var line: Stock = Stock(per_pack * packs)        // fine: multiplying different units
 var earlier: Bool = name < other_name             // error: text has no order; use a standard function
 var share: ItemPrice = decimal.divide(total, people, rounding: Rounding.half_even)
 var boxes: BoxCount = integer.divide(items, box_size, rounding: Rounding.up)   // box_size can't be zero
@@ -753,7 +753,7 @@ call's failures on to the caller, whose `fails` list must include them;
 var todo: Todo = attempt Todo.get(todo_id)            // a variable
 return attempt todo_by_id(todo_id)                    // a return
 attempt Todo.get(todo_id)                             // on its own (question 4)
-var total: Pence = Pence(attempt price(a) + attempt price(b))   // rejected: inside an expression
+var total: Stock = Stock(attempt stock_of(a) + attempt stock_of(b))   // rejected: inside an expression
 ```
 
 Decided (question 11): `attempt` only starts a statement, so every point
@@ -769,20 +769,20 @@ Decided in area 2: `for item in items` iterates a list, and the loop variable
 takes its type from the list.
 
 ```jadpo check project=order-total file=lines.jadpo hidden
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 type OrderLine = Object {
-    subtotal: Pence
+    needed: Stock
 }
 ```
 
 ```jadpo check project=order-total
-function order_total(lines: List<OrderLine>) -> Pence {
-    var mut total: Pence = 0
+function stock_total(lines: List<OrderLine>) -> Stock {
+    var mut total: Stock = 0
     for line in lines {
-        total = Pence(total + line.subtotal)
+        total = Stock(total + line.needed)
     }
     return total
 }
@@ -1089,22 +1089,22 @@ check failed: 1 error, 1 file
 ### `constant.cycle`
 
 ```jadpo check project=e-constant-cycle expect=constant.cycle
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-constant small_order_fee: Pence = large_order_fee
-constant large_order_fee: Pence = small_order_fee
+constant small_batch: Stock = large_batch
+constant large_batch: Stock = small_batch
 ```
 
 ```text output
-error: `large_order_fee` depends on itself
- --> main.jadpo:6:35
+error: `large_batch` depends on itself
+ --> main.jadpo:6:31
   |
-6 | constant large_order_fee: Pence = small_order_fee
-  |                                   ^^^^^^^^^^^^^^^ leads back to it
-  reason: A constant's value is worked out from the constants it reads, and `large_order_fee` reads `small_order_fee`, which reads `large_order_fee`, so it has no value.
-  next: Write `large_order_fee`'s value without reading a constant that reads it (agent)
+6 | constant large_batch: Stock = small_batch
+  |                               ^^^^^^^^^^^ leads back to it
+  reason: A constant's value is worked out from the constants it reads, and `large_batch` reads `small_batch`, which reads `large_batch`, so it has no value.
+  next: Write `large_batch`'s value without reading a constant that reads it (agent)
   rule: constant.cycle
   help: docs/language/03-logic.html#constant-cycle
 
@@ -1118,39 +1118,39 @@ read the constant it names instead, or decline with a reason when the two
 share a value by coincidence.
 
 ```jadpo check project=e-constant-similar expect=constant.similar_exists
-type VatRate = Decimal {
+type SpareRate = Decimal {
     scale: 4
     min: 0.0000
     max: 1.0000
 }
 
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-library pricing {
-    /// The UK standard rate of VAT.
-    constant vat_rate: VatRate = 0.2000
+library stocking {
+    /// The standard share held back as spare.
+    constant spare_rate: SpareRate = 0.2000
 }
 
-constant standard_vat: VatRate = 0.2000
+constant standard_spare: SpareRate = 0.2000
 
-function vat_on(price: Pence) -> Pence {
-    if (pricing.vat_rate == standard_vat) {
-        return Pence(price / 5)
+function spare_of(per_pack: Stock) -> Stock {
+    if (stocking.spare_rate == standard_spare) {
+        return Stock(per_pack / 5)
     }
-    return price
+    return per_pack
 }
 ```
 
 ```text output
-error: A constant with this value exists: `pricing.vat_rate`
+error: A constant with this value exists: `stocking.spare_rate`
  --> main.jadpo:16:10
    |
-16 | constant standard_vat: VatRate = 0.2000
-   |          ^^^^^^^^^^^^ same as `pricing.vat_rate`
-  reason: `standard_vat` is a `VatRate` holding `0.2000`, as `pricing.vat_rate` in `main.jadpo` is.
-  next: Read `pricing.vat_rate` instead, and remove `standard_vat`, or write `decline constant.similar_exists: "<why>"` above it if this is deliberate (agent)
+16 | constant standard_spare: SpareRate = 0.2000
+   |          ^^^^^^^^^^^^^^ same as `stocking.spare_rate`
+  reason: `standard_spare` is a `SpareRate` holding `0.2000`, as `stocking.spare_rate` in `main.jadpo` is.
+  next: Read `stocking.spare_rate` instead, and remove `standard_spare`, or write `decline constant.similar_exists: "<why>"` above it if this is deliberate (agent)
   rule: constant.similar_exists
   help: docs/language/03-logic.html#constant-similar-exists
 
@@ -2443,7 +2443,7 @@ check failed: 1 error, 2 files
 `+` and `-` need the same named type on both sides; multiplying a price by a quantity is meaningful, adding them is not:
 
 ```jadpo check project=e-arithmetic expect=type.arithmetic_operand
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
@@ -2451,18 +2451,18 @@ type Quantity = Int {
     min: 1
 }
 
-function wrong_total(price: Pence, quantity: Quantity) -> Pence {
-    return Pence(price + quantity)
+function wrong_total(per_pack: Stock, packs: Quantity) -> Stock {
+    return Stock(per_pack + packs)
 }
 ```
 
 ```text output
-error: `Pence` and `Quantity` can't be added
+error: `Stock` and `Quantity` can't be added
  --> main.jadpo:10:18
    |
-10 |     return Pence(price + quantity)
+10 |     return Stock(per_pack + packs)
    |                  ^^^^^^^^^^^^^^^^ different types
-  reason: `+` and `-` need the same named type on both sides, or a literal, because `Pence` and `Quantity` are different units; `*` and `%` may mix types.
+  reason: `+` and `-` need the same named type on both sides, or a literal, because `Stock` and `Quantity` are different units; `*` and `%` may mix types.
   next: Use two values of the same type (agent)
   rule: type.arithmetic_operand
   help: docs/language/03-logic.html#type-arithmetic-operand
@@ -2501,7 +2501,7 @@ check failed: 1 error, 1 file
 ### `type.incomparable`
 
 ```jadpo check project=e-incomparable expect=type.incomparable
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
@@ -2511,18 +2511,18 @@ type Quantity = Int {
 
 type Flag = Bool {}
 
-function same(price: Pence, quantity: Quantity) -> Flag {
-    return Flag(price == quantity)
+function same(per_pack: Stock, packs: Quantity) -> Flag {
+    return Flag(per_pack == packs)
 }
 ```
 
 ```text output
-error: `Pence` and `Quantity` can't be compared
+error: `Stock` and `Quantity` can't be compared
  --> main.jadpo:12:17
    |
-12 |     return Flag(price == quantity)
+12 |     return Flag(per_pack == packs)
    |                 ^^^^^^^^^^^^^^^^^ different types
-  reason: `==` compares two values of the same type, after widening; `Pence` and `Quantity` are different types, and neither widens to the other.
+  reason: `==` compares two values of the same type, after widening; `Stock` and `Quantity` are different types, and neither widens to the other.
   next: Compare two values of the same type (agent)
   rule: type.incomparable
   help: docs/language/03-logic.html#type-incomparable
@@ -2587,12 +2587,12 @@ check failed: 1 error, 1 file
 A divisor's type excludes zero, so division by zero is ruled out while compiling:
 
 ```jadpo check project=e-divisor expect=type.divisor_zero
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function split_evenly(total: Pence, portions: Pence) -> Pence {
-    return Pence(total / portions)
+function split_evenly(total: Stock, portions: Stock) -> Stock {
+    return Stock(total / portions)
 }
 ```
 
@@ -2600,9 +2600,9 @@ function split_evenly(total: Pence, portions: Pence) -> Pence {
 error: `portions` may be zero
  --> main.jadpo:6:26
   |
-6 |     return Pence(total / portions)
-  |                          ^^^^^^^^ a `Pence` can be `0`
-  reason: Division by zero is ruled out while compiling: a divisor's type excludes zero, as `Int { min: 1 }` does, and `Pence` allows `0`.
+6 |     return Stock(total / portions)
+  |                          ^^^^^^^^ a `Stock` can be `0`
+  reason: Division by zero is ruled out while compiling: a divisor's type excludes zero, as `Int { min: 1 }` does, and `Stock` allows `0`.
   next: Divide by a value whose type excludes zero, building it with its constructor where the zero case is handled (agent)
   rule: type.divisor_zero
   help: docs/language/03-logic.html#type-divisor-zero
@@ -2721,24 +2721,24 @@ check failed: 1 error, 1 file
 ### `semantic.unused_variable`
 
 ```jadpo check project=e-unused-variable expect=semantic.unused_variable
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function with_delivery(price: Pence, delivery: Pence) -> Pence {
-    var subtotal: Pence = price
-    return Pence(price + delivery)
+function with_delivery(per_pack: Stock, delivery: Stock) -> Stock {
+    var needed: Stock = per_pack
+    return Stock(per_pack + delivery)
 }
 ```
 
 ```text output
-error: `subtotal` is never used
+error: `needed` is never used
  --> main.jadpo:6:9
   |
-6 |     var subtotal: Pence = price
-  |         ^^^^^^^^ never read
+6 |     var needed: Stock = per_pack
+  |         ^^^^^^ never read
   reason: A value nobody reads is never bound to a name, so a reader never wonders what it was for.
-  next: Use `subtotal`, or remove its `var` line (agent)
+  next: Use `needed`, or remove its `var` line (agent)
   rule: semantic.unused_variable
   help: docs/language/03-logic.html#semantic-unused-variable
 
@@ -2897,12 +2897,12 @@ check failed: 1 error, 1 file
 ### `type.named_argument_unknown`
 
 ```jadpo check project=e-named-unknown expect=type.named_argument_unknown
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function line_count(lines: List<Pence>) -> Pence {
-    return Pence(list.count(itmes: lines))
+function line_count(lines: List<Stock>) -> Stock {
+    return Stock(list.count(itmes: lines))
 }
 ```
 
@@ -2910,7 +2910,7 @@ function line_count(lines: List<Pence>) -> Pence {
 error: `list.count` has no argument `itmes`
  --> main.jadpo:6:29
   |
-6 |     return Pence(list.count(itmes: lines))
+6 |     return Stock(list.count(itmes: lines))
   |                             ^^^^^ not a parameter
   reason: Its one argument is `items`.
   next: Use `items:` instead of `itmes:` (agent)
@@ -2959,16 +2959,16 @@ check failed: 1 error, 1 file
 An inline function is written only as an argument to a standard-library collection operation:
 
 ```jadpo check project=e-inline-function expect=type.inline_function_placement
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function same_price(price: Pence) -> Pence {
-    return price
+function same_price(per_pack: Stock) -> Stock {
+    return per_pack
 }
 
-function passed_on(price: Pence) -> Pence {
-    return same_price(item -> price)
+function passed_on(per_pack: Stock) -> Stock {
+    return same_price(item -> per_pack)
 }
 ```
 
@@ -2976,8 +2976,8 @@ function passed_on(price: Pence) -> Pence {
 error: An inline function is only an argument to a collection operation
  --> main.jadpo:10:23
    |
-10 |     return same_price(item -> price)
-   |                       ^^^^^^^^^^^^^ inline function
+10 |     return same_price(item -> per_pack)
+   |                       ^^^^^^^^^^^^^^^^ inline function
   reason: Functions aren't values: `item -> expression` is written only as an argument to a standard-library collection operation, such as `list.map` or `list.filter`.
   next: Write the expression on its own, or pass it to a collection operation (agent)
   rule: type.inline_function_placement
@@ -2990,19 +2990,19 @@ Two parameters, `(a, b) -> expression`, are only for a standard operation
 that gives its function two values (area 19):
 
 ```jadpo check project=e-inline-function-two expect=type.inline_function_placement
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function larger(first: Pence, second: Pence) -> Pence {
+function larger(first: Stock, second: Stock) -> Stock {
     if (first > second) {
         return first
     }
     return second
 }
 
-function dearer(price: Pence) -> Pence {
-    return larger((a, b) -> a, price)
+function dearer(per_pack: Stock) -> Stock {
+    return larger((a, b) -> a, per_pack)
 }
 ```
 
@@ -3010,7 +3010,7 @@ function dearer(price: Pence) -> Pence {
 error: An inline function is only an argument to a collection operation
  --> main.jadpo:13:19
    |
-13 |     return larger((a, b) -> a, price)
+13 |     return larger((a, b) -> a, per_pack)
    |                   ^^^^^^^^^^^ inline function
   reason: Functions aren't values: `(key, value) -> expression` is written only as an argument to a standard operation that gives its function two values, `list.zip_with`, `map.filter` or `map.map_values`.
   next: Write the expression on its own, or pass it to a collection operation (agent)
@@ -3272,7 +3272,7 @@ People and agents write constructs from other languages out of habit. Each has a
 the habit and the Jadpo form, with an edit, and parsing carries on as if
 the Jadpo form had been written. A syntax error never brings a second on
 its line: anything else the line holds is reported once the first is
-fixed, so `pub fn total(): Pence {` shows `pub`, then `fn`, then `:`.
+fixed, so `pub fn total(): Stock {` shows `pub`, then `fn`, then `:`.
 When the Jadpo form only renames or drops words (`let` for `var`, `&&` for
 `and`, a `;` at the end of a line), the tree is the one the Jadpo form
 gives and the rest of the project is checked too, leaving out only
@@ -3555,18 +3555,18 @@ check failed: 1 error, 1 file
 A loop is `for item in items {`, without brackets. A counting loop has no Jadpo form, so its error has no edit.
 
 ```jadpo check project=e-habit-for expect=syntax.for_loop
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 type OrderLine = Object {
-    subtotal: Pence
+    needed: Stock
 }
 
-function order_total(lines: List<OrderLine>) -> Pence {
-    var mut total: Pence = 0
+function stock_total(lines: List<OrderLine>) -> Stock {
+    var mut total: Stock = 0
     for (const line of lines) {
-        total = Pence(total + line.subtotal)
+        total = Stock(total + line.needed)
     }
     return total
 }
@@ -3732,13 +3732,13 @@ check failed: 1 error, 1 file
 Each member is on its own line, with no commas between them.
 
 ```jadpo check project=e-habit-member-comma expect=syntax.member_comma
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 type PriceRange = Object {
-    low: Pence,
-    high: Pence
+    low: Stock,
+    high: Stock
 }
 ```
 
@@ -3746,7 +3746,7 @@ type PriceRange = Object {
 error: Jadpo has no `,` between members
  --> main.jadpo:6:15
   |
-6 |     low: Pence,
+6 |     low: Stock,
   |               ^ remove `,`
   reason: Commas separate fields in JavaScript, TypeScript, Rust, Go, Swift and JSON; each Jadpo member is on its own line, and the formatter puts it there.
   next: Remove `,` (agent)
@@ -3835,13 +3835,13 @@ run, [Constants](#constants) included (chunk 5.3e).
    is a comma list in braces, which area 2's list decision rules out.
 - **`var` means "immutable".** In JavaScript, C#, Kotlin and Go `var` is the
    mutable form; `var mut` already mirrors Rust's `let mut`.
-- **Units are checked by comparison but not by addition.** `Pence + Quantity`
-   compiles and `Pence == Quantity` does not, although area 2's rule is that
+- **Units are checked by comparison but not by addition.** `Stock + Quantity`
+   compiles and `Stock == Quantity` does not, although area 2's rule is that
    named types never mix silently.
 - **Division contradicts area 2.** Area 2 decided `Decimal` is exact with a
    scale and that division names a rounding mode; the archived compiler's `/` was
    JavaScript division producing a float.
-- **Area 2's examples omit `attempt`.** `Pence(price * quantity)` is a runtime
+- **Area 2's examples omit `attempt`.** `Stock(per_pack * packs)` is a runtime
    construction, which area 2 question 1 made fallible; whether the compiler
    may skip `attempt` when the declared ranges prove it safe is carried to
    area 4.
@@ -3857,7 +3857,7 @@ run, [Constants](#constants) included (chunk 5.3e).
 
 | Item | Area | Status |
 |---|---|---|
-| Whether a runtime construction the declared ranges prove safe (`Pence(price * quantity)` with both minimums at 0 or above and no maximum) still needs `attempt` and a mapping | 4 | Decided in area 4, question 6: no |
+| Whether a runtime construction the declared ranges prove safe (`Stock(per_pack * packs)` with both minimums at 0 or above and no maximum) still needs `attempt` and a mapping | 4 | Decided in area 4, question 6: no |
 | `fails` sets, `reject`, `propagate` and failure arms' mapping rules; how overflow, division by zero and recursion depth faults are reported | 4 | Input to area 4 |
 | Calling actions or queries inside a `for` loop (one query per item, transaction scope) | 6 | Input to area 6 |
 | Callable settings (`consistency:`, `freshness:`, `guard:`) become defaults; reading a cache or projection is declared on the cache | 6 | Follows from a decision |

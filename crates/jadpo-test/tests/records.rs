@@ -126,23 +126,23 @@ fn a_perturbed_run_is_named_at_its_first_difference() {
     let folder = example("01-first-project");
     let before = recorded(&folder.0).expect("it runs");
     perturb(
-        &folder.0.join("domains/baking/actions/price_loaves.jadpo"),
-        "Pence(total + 5)",
-        "Pence(total + 6)",
+        &folder.0.join("domains/baking/actions/weigh_loaves.jadpo"),
+        "Grams(total + 5)",
+        "Grams(total + 6)",
     );
     let after = recorded(&folder.0).expect("it runs");
     let difference = differential(&before, &after).unwrap_err();
     assert!(
         difference
             .test
-            .ends_with("\"four loaves come with a 5 pence bag\""),
+            .ends_with("\"four loaves come with a 5 gram bag\""),
         "{difference}"
     );
     let first = difference.first.as_deref().unwrap_or_default();
     let second = difference.second.as_deref().unwrap_or_default();
     assert!(first.starts_with("outcome value"), "{difference}");
     assert!(
-        second.starts_with("outcome assertion at domains/baking/actions/price_loaves.test.jadpo:")
+        second.starts_with("outcome assertion at domains/baking/actions/weigh_loaves.test.jadpo:")
             && second.contains("1006 == 1005"),
         "{difference}"
     );

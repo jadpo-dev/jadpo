@@ -116,15 +116,15 @@ decline with nothing under it is `syntax.expected_declaration`; one
 inside a body is `syntax.expected_statement`.
 
 ```jadpo check project=e-declined
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 library rounding {
-    /// The amount, capped at a thousand pence.
-    function capped(amount: Pence) -> Pence {
-        if (amount > Pence(1000)) {
-            return Pence(1000)
+    /// The amount, capped at a thousand.
+    function capped(amount: Stock) -> Stock {
+        if (amount > Stock(1000)) {
+            return Stock(1000)
         }
         return amount
     }
@@ -132,9 +132,9 @@ library rounding {
 
 /// The basket total, capped for the till.
 decline library.similar_exists: "Caps the basket for the till, which changes on its own; rounding.capped caps one line"
-function cap_total(total: Pence) -> Pence {
-    if (total > Pence(1000)) {
-        return Pence(1000)
+function cap_total(total: Stock) -> Stock {
+    if (total > Stock(1000)) {
+        return Stock(1000)
     }
     return total
 }
@@ -337,11 +337,11 @@ asked for either copy.
 ### `semantic.name_case`
 
 ```jadpo check project=e-case file=checkout.jadpo expect=semantic.name_case
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function orderTotal(subtotal: Pence) -> Pence {
+function orderTotal(subtotal: Stock) -> Stock {
     return subtotal
 }
 ```
@@ -350,7 +350,7 @@ function orderTotal(subtotal: Pence) -> Pence {
 error: Function `orderTotal` isn't written in lower_snake_case
  --> checkout.jadpo:5:10
   |
-5 | function orderTotal(subtotal: Pence) -> Pence {
+5 | function orderTotal(subtotal: Stock) -> Stock {
   |          ^^^^^^^^^^ should be `order_total`
   reason: Types, entities and route groups are written in UpperCamelCase; functions, actions, queries, fields, variables and the rest in lower_snake_case.
   next: Rename `orderTotal` to `order_total`, here and where it's used (agent)
@@ -415,12 +415,12 @@ check failed: 1 error, 2 files
 ### `naming.generic_name`
 
 ```jadpo check project=e-generic expect=naming.generic_name
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 library helpers {
-    function add_delivery(subtotal: Pence) -> Pence {
+    function add_spare(subtotal: Stock) -> Stock {
         return subtotal
     }
 }
@@ -905,26 +905,26 @@ missing import at once:
 application {}
 ```
 
-```jadpo check project=e-import-missing file=shared/types/pence.jadpo hidden
-type Pence = Int {
+```jadpo check project=e-import-missing file=shared/types/stock.jadpo hidden
+type Stock = Int {
     min: 0
 }
 ```
 
-```jadpo check project=e-import-missing file=domains/bakery/actions/price_loaf.jadpo expect=import.missing
-action price_loaf(each: Pence) -> Pence {
+```jadpo check project=e-import-missing file=domains/bakery/actions/stock_loaf.jadpo expect=import.missing
+action stock_loaf(each: Stock) -> Stock {
     return each
 }
 ```
 
 ```text output
-error: `Pence` isn't imported
- --> domains/bakery/actions/price_loaf.jadpo:1:25
+error: `Stock` isn't imported
+ --> domains/bakery/actions/stock_loaf.jadpo:1:25
   |
-1 | action price_loaf(each: Pence) -> Pence {
+1 | action stock_loaf(each: Stock) -> Stock {
   |                         ^^^^^ not imported
-  reason: Every name a file uses that it doesn't declare comes in on a `use` line, so a reader sees where it lives; `Pence` is a type in `shared/types/pence.jadpo`.
-  next: Add `use shared/types { Pence }`, or run `jadpo fmt`, which adds every missing import (agent)
+  reason: Every name a file uses that it doesn't declare comes in on a `use` line, so a reader sees where it lives; `Stock` is a type in `shared/types/stock.jadpo`.
+  next: Add `use shared/types { Stock }`, or run `jadpo fmt`, which adds every missing import (agent)
   rule: import.missing
   help: docs/language/01-project-layout-and-modules.html#import-missing
 
@@ -941,28 +941,28 @@ folder gets the edit that moves it:
 application {}
 ```
 
-```jadpo check project=e-import-unknown file=shared/types/pence.jadpo hidden
-type Pence = Int {
+```jadpo check project=e-import-unknown file=shared/types/stock.jadpo hidden
+type Stock = Int {
     min: 0
 }
 ```
 
-```jadpo check project=e-import-unknown file=domains/bakery/actions/price_loaf.jadpo expect=import.unknown
-use shared/failures { Pence }
+```jadpo check project=e-import-unknown file=domains/bakery/actions/stock_loaf.jadpo expect=import.unknown
+use shared/failures { Stock }
 
-action price_loaf(each: Pence) -> Pence {
+action stock_loaf(each: Stock) -> Stock {
     return each
 }
 ```
 
 ```text output
-error: `Pence` isn't in `shared/failures`
- --> domains/bakery/actions/price_loaf.jadpo:1:23
+error: `Stock` isn't in `shared/failures`
+ --> domains/bakery/actions/stock_loaf.jadpo:1:23
   |
-1 | use shared/failures { Pence }
+1 | use shared/failures { Stock }
   |                       ^^^^^ not in this folder
-  reason: A `use` line brings in names from the folder it names; `Pence` is a type in `shared/types/pence.jadpo`, so it comes in from `shared/types`.
-  next: Import `Pence` from `shared/types` (agent)
+  reason: A `use` line brings in names from the folder it names; `Stock` is a type in `shared/types/stock.jadpo`, so it comes in from `shared/types`.
+  next: Import `Stock` from `shared/types` (agent)
   rule: import.unknown
   help: docs/language/01-project-layout-and-modules.html#import-unknown
 
@@ -975,8 +975,8 @@ check failed: 1 error, 3 files
 application {}
 ```
 
-```jadpo check project=e-import-unused file=shared/types/pence.jadpo hidden
-type Pence = Int {
+```jadpo check project=e-import-unused file=shared/types/stock.jadpo hidden
+type Stock = Int {
     min: 0
 }
 ```
@@ -994,19 +994,19 @@ use shared/types { Percent }
 action discount_loaf(reduction: Percent) -> Unit {}
 ```
 
-```jadpo check project=e-import-unused file=domains/bakery/actions/price_loaf.jadpo expect=import.unused
-use shared/types { Pence, Percent }
+```jadpo check project=e-import-unused file=domains/bakery/actions/stock_loaf.jadpo expect=import.unused
+use shared/types { Stock, Percent }
 
-action price_loaf(each: Pence) -> Pence {
+action stock_loaf(each: Stock) -> Stock {
     return each
 }
 ```
 
 ```text output
 error: `Percent` is imported but not used
- --> domains/bakery/actions/price_loaf.jadpo:1:27
+ --> domains/bakery/actions/stock_loaf.jadpo:1:27
   |
-1 | use shared/types { Pence, Percent }
+1 | use shared/types { Stock, Percent }
   |                           ^^^^^^^ not used
   reason: A `use` line lists only the names its file uses, so each says where it comes from; nothing here uses `Percent`.
   next: Remove `Percent` from this line (agent)
@@ -1025,40 +1025,40 @@ the file's own domain are seen without an import:
 application {}
 ```
 
-```jadpo check project=e-import-unneeded file=shared/types/pence.jadpo hidden
-type Pence = Int {
+```jadpo check project=e-import-unneeded file=shared/types/stock.jadpo hidden
+type Stock = Int {
     min: 0
 }
 ```
 
-```jadpo check project=e-import-unneeded file=domains/menu/actions/price_item.jadpo
-use shared/types { Pence }
+```jadpo check project=e-import-unneeded file=domains/menu/actions/stock_item.jadpo
+use shared/types { Stock }
 
-/// A loaf's price before any choices.
-function loaf_price() -> Pence {
+/// A loaf's stock before any choices.
+function loaf_stock() -> Stock {
     return 250
 }
 
-action price_item() -> Pence {
-    return loaf_price()
+action stock_item() -> Stock {
+    return loaf_stock()
 }
 ```
 
-```jadpo check project=e-import-unneeded file=domains/menu/actions/price_item.test.jadpo expect=import.unneeded
-use menu/actions { loaf_price }
+```jadpo check project=e-import-unneeded file=domains/menu/actions/stock_item.test.jadpo expect=import.unneeded
+use menu/actions { loaf_stock }
 
-test "a loaf costs 250 pence" {
-    assert loaf_price() == 250
+test "a loaf has 250 in stock" {
+    assert loaf_stock() == 250
 }
 ```
 
 ```text output
-error: `loaf_price` is declared in this test's subject
- --> domains/menu/actions/price_item.test.jadpo:1:20
+error: `loaf_stock` is declared in this test's subject
+ --> domains/menu/actions/stock_item.test.jadpo:1:20
   |
-1 | use menu/actions { loaf_price }
+1 | use menu/actions { loaf_stock }
   |                    ^^^^^^^^^^ needs no import
-  reason: A test file sees everything its subject declares without importing it, and `loaf_price` is in `price_item.jadpo`.
+  reason: A test file sees everything its subject declares without importing it, and `loaf_stock` is in `stock_item.jadpo`.
   next: Remove this line (agent)
   rule: import.unneeded
   help: docs/language/01-project-layout-and-modules.html#import-unneeded
@@ -1072,8 +1072,8 @@ check failed: 1 error, 4 files
 application {}
 ```
 
-```jadpo check project=e-import-duplicate file=shared/types/pence.jadpo hidden
-type Pence = Int {
+```jadpo check project=e-import-duplicate file=shared/types/stock.jadpo hidden
+type Stock = Int {
     min: 0
 }
 ```
@@ -1085,20 +1085,20 @@ type Percent = Int {
 }
 ```
 
-```jadpo check project=e-import-duplicate file=domains/bakery/actions/price_loaf.jadpo expect=import.duplicate
-use shared/types { Pence }
+```jadpo check project=e-import-duplicate file=domains/bakery/actions/stock_loaf.jadpo expect=import.duplicate
+use shared/types { Stock }
 use shared/types { Percent }
 
-action price_loaf(each: Pence, reduction: Percent) -> Pence {
+action stock_loaf(each: Stock, reduction: Percent) -> Stock {
     return each
 }
 ```
 
 ```text output
 error: `shared/types` has two `use` lines
- --> domains/bakery/actions/price_loaf.jadpo:2:5
+ --> domains/bakery/actions/stock_loaf.jadpo:2:5
   |
-1 | use shared/types { Pence }
+1 | use shared/types { Stock }
   |     ------------ first line
 2 | use shared/types { Percent }
   |     ^^^^^^^^^^^^ a second line
@@ -1443,23 +1443,23 @@ is formatted or named. Of two alike library functions, the later one in
 file order is reported.
 
 ```jadpo check project=e-similar expect=library.similar_exists
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 library rounding {
-    /// The amount, capped at a thousand pence.
-    function capped(amount: Pence) -> Pence {
-        if (amount > Pence(1000)) {
-            return Pence(1000)
+    /// The amount, capped at a thousand.
+    function capped(amount: Stock) -> Stock {
+        if (amount > Stock(1000)) {
+            return Stock(1000)
         }
         return amount
     }
 }
 
-function cap_total(total: Pence) -> Pence {
-    if (total > Pence(1000)) {
-        return Pence(1000)
+function cap_total(total: Stock) -> Stock {
+    if (total > Stock(1000)) {
+        return Stock(1000)
     }
     return total
 }
@@ -1469,7 +1469,7 @@ function cap_total(total: Pence) -> Pence {
 error: A similar library function exists: `rounding.capped`
  --> main.jadpo:15:10
    |
-15 | function cap_total(total: Pence) -> Pence {
+15 | function cap_total(total: Stock) -> Stock {
    |          ^^^^^^^^^ same as `rounding.capped`
   reason: `cap_total` takes the same parameters, gives the same result and has the same body as `rounding.capped` in `main.jadpo`, apart from the names of its variables.
   next: Call `rounding.capped` instead, and remove `cap_total`, or write `decline library.similar_exists: "<why>"` above it if this is deliberate (agent)
@@ -1487,15 +1487,15 @@ reported once every other finding is answered, since another error can
 stop a rule from firing.
 
 ```jadpo check project=e-decline-unused expect=decline.unused
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 /// The basket total, capped for the till.
 decline library.similar_exists: "Caps the basket, not a line"
-function cap_total(total: Pence) -> Pence {
-    if (total > Pence(1000)) {
-        return Pence(1000)
+function cap_total(total: Stock) -> Stock {
+    if (total > Stock(1000)) {
+        return Stock(1000)
     }
     return total
 }
@@ -1522,12 +1522,12 @@ Jadpo doesn't have is reported the same way, naming the nearest declinable
 rule.
 
 ```jadpo check project=e-decline-not-declinable expect=decline.not_declinable
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 decline layout.unused_declaration: "Kept for next quarter"
-function cap_total(total: Pence) -> Pence {
+function cap_total(total: Stock) -> Stock {
     return total
 }
 ```
@@ -1552,24 +1552,24 @@ A decline says why the finding is right to leave, so a reviewer can agree
 or not.
 
 ```jadpo check project=e-decline-reason expect=decline.no_reason
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 library rounding {
-    /// The amount, capped at a thousand pence.
-    function capped(amount: Pence) -> Pence {
-        if (amount > Pence(1000)) {
-            return Pence(1000)
+    /// The amount, capped at a thousand.
+    function capped(amount: Stock) -> Stock {
+        if (amount > Stock(1000)) {
+            return Stock(1000)
         }
         return amount
     }
 }
 
 decline library.similar_exists: ""
-function cap_total(total: Pence) -> Pence {
-    if (total > Pence(1000)) {
-        return Pence(1000)
+function cap_total(total: Stock) -> Stock {
+    if (total > Stock(1000)) {
+        return Stock(1000)
     }
     return total
 }
@@ -1955,7 +1955,7 @@ The same rules for a large application:
 ```text
 app.jadpo  config.jadpo  authentication.jadpo  policy.jadpo  flags.jadpo  jadpo.lock
 shared/
-  types/          pence.jadpo  country_code.jadpo  address.jadpo
+  types/          stock.jadpo  country_code.jadpo  address.jadpo
   libraries/      rounding.jadpo
   translations/   order_reference.jadpo  en_gb.jadpo  de_de.jadpo  sources.jadpo_record
   emails/         layout.html  layout.txt  button.jadpo  button.html  button.txt
@@ -2094,7 +2094,7 @@ build/
   declaration nothing reaches (reported as `layout.unused_declaration`)
   goes after the reached ones of its kind, in written order, and a
   declaration still waits for what it uses whatever its kind, so a constant
-  of type `Pence` comes after `Pence`.
+  of type `Stock` comes after `Stock`.
 - A name must convert to its file name and back unchanged, so consecutive
   capitals are not allowed: `VatRate`, not `VATRate` (Rust's guideline too).
 - Names are unique across the whole project and across kinds, with one
@@ -2276,7 +2276,7 @@ as the code uses them, so finding a name in the page finds its import:
 
 ```jadpo fragment
 // domains/sales/actions/price_basket.jadpo
-use shared/types { Pence, Percent }
+use shared/types { Stock, Percent }
 use shared/libraries { pricing }
 use sales/types { Basket, DiscountCode, Receipt }
 use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
@@ -2311,12 +2311,12 @@ use menu
   10's `deliveries_in(range:)` to `deliveries_in(arrivals:)`.
 - **Calls into another domain keep the domain's name at the call.** `use menu`
   brings in the domain, and its public actions, queries and fixtures are
-  called as `menu.price_item(...)`, so a call that crosses domains is
+  called as `menu.stock_item(...)`, so a call that crosses domains is
   visible on its own line. Another domain's public types and failures come
   in by folder like any other name: `use menu/types { MenuItem }`.
 - **A test file sees everything its subject file declares** without
-  importing it, so `price_item.test.jadpo` calls the `loaf_price` helper
-  in `price_item.jadpo` directly. Anything else it uses is imported.
+  importing it, so `stock_item.test.jadpo` calls the `loaf_stock` helper
+  in `stock_item.jadpo` directly. Anything else it uses is imported.
 - **Reading a name therefore has three answers:** it is on a `use` line, so
   it is in `<folder>/<name>.jadpo`; it is a built-in; or it is declared in
   this file.
@@ -2566,7 +2566,7 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
 
      ```jadpo fragment
      decline library.similar_exists: "Rounds to the nearest 5p for the till; rounding.capped rounds down"
-     function till_round(price: Pence) -> Pence { ... }
+     function till_round(price: Sterling) -> Sterling { ... }
      ```
 
      `decline` becomes a reserved word; the reason is non-empty text; a

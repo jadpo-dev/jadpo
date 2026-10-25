@@ -75,7 +75,7 @@ output CakeView
     flavour: Flavour
     id: Uuid
     name: Text { min_length: 1, max_length: 60 }
-    price: Int { min: 0 }
+    price: Money { min: 0, currency: GBP, rounding: half_even }
 
 input ChangeOrder
     collect_on: CalendarDate

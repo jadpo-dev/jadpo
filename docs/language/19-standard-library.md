@@ -1602,7 +1602,7 @@ three.
 - **`sum` gives a representation**, as `+` does: `Int` or `Decimal` by its
   items' representation, so an empty list gives `0` or `0.00` as its type
   says (the checker fills an implicit `zero` of that representation,
-  `Param::implicit`). `Pence(list.sum(prices))` builds it back. Items
+  `Param::implicit`). `Stock(list.sum(counts))` builds it back. Items
   whose type has a `min` of at least `0` prove the sum is at least `0`, so
   that needs no arm for `min`; it needs one for `max` when the type has
   one.

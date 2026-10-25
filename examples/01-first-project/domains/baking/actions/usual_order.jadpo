@@ -1,13 +1,13 @@
-// A second action, in its own file. It uses `Pence` and calls
-// `price_loaves`, both declared in other files of this domain, so it
+// A second action, in its own file. It uses `Grams` and calls
+// `weigh_loaves`, both declared in other files of this domain, so it
 // imports both: a domain's own names come in by folder too, and the call
-// stays bare, `price_loaves(...)`.
+// stays bare, `weigh_loaves(...)`.
 
-use baking/types { Pence }
-use baking/actions { price_loaves }
+use baking/types { Grams }
+use baking/actions { weigh_loaves }
 
-/// The bakery's usual order: four loaves at 250 pence, delivered for 150.
-action usual_order() -> Pence {
-    var loaves: Pence = price_loaves(250, 4)
-    return Pence(loaves + 150)
+/// The bakery's usual order: four loaves at 250 grams, packed in a 150 gram box.
+action usual_order() -> Grams {
+    var loaves: Grams = weigh_loaves(250, 4)
+    return Grams(loaves + 150)
 }

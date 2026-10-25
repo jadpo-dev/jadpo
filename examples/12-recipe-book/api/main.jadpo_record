@@ -84,7 +84,7 @@ output BakeryView
     name: Text { min_length: 1, max_length: 80 }
 
 input CostRecipe
-    batch_cost: Int { min: 0 }
+    batch_cost: Money { min: 0, currency: GBP, rounding: half_even }
 
 input HandOver
     to: Uuid
@@ -117,7 +117,7 @@ output RecipeCard
     name: Text { min_length: 1, max_length: 80 }
 
 output RecipeCosting
-    batch_cost: Int { min: 0 }
+    batch_cost: Money { min: 0, currency: GBP, rounding: half_even }
     id: Uuid
     name: Text { min_length: 1, max_length: 80 }
 

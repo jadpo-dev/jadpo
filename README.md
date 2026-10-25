@@ -156,8 +156,10 @@ A type gives a value a meaning and its validation rules. This one comes
 from the [bakery example](examples/09-bakery-orders/README.md):
 
 ```jadpo
-type PenceCount = Int {
+type Sterling = Money {
+    currency: Currency.gbp
     min: 0
+    rounding: Rounding.half_even
 }
 ```
 

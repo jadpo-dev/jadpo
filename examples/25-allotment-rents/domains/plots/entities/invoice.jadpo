@@ -1,5 +1,5 @@
 use plots/entities { Plot, RentRound, Society }
-use plots/types { OfficerRole, Pence }
+use plots/types { OfficerRole, Sterling }
 
 /// A year's rent charged for one plot.
 entity Invoice {
@@ -13,7 +13,7 @@ entity Invoice {
     round_id: RentRound.id {
         on_delete: OnDelete.cascade
     }
-    amount: Pence
+    amount: Sterling
 
     policy: {
         create: [Access.system]
