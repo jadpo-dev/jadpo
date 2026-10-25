@@ -18,48 +18,340 @@ types silently.
 
 ## Built-in types
 
-These types exist without being declared, and their names cannot be reused.
+Jadpo ships its types with the language: nothing is declared to use them, and
+their names can't be reused. There are the six representation types, the
+standard types (the vocabulary two packages would otherwise each invent), and
+a few types the language's own features need.
+
+### Representation types
+
+The raw material for your own types.
+
+| Type | What it holds |
+|---|---|
+| `Bool` | `true` or `false` |
+| `Int` | An exact 64-bit integer |
+| `Decimal` | An exact decimal with a required `scale` (see Review, question 8) |
+| `Text` | Unicode text |
+| `Bytes` | A sequence of bytes |
+| `Uuid` | A universally unique identifier |
+
+There is no `Float`: arithmetic on `Decimal` is exact, and its maths belongs to
+the `decimal` namespace (area 19).
+
+### Standard types
+
+The standard types are the standard library's vocabulary: one definition each
+of a postal address, an amount of money, a length, a point on the earth. Each
+has one construction that validates, one JSON shape and one storage shape, and
+fields are named, never positional (`Point { latitude: ... longitude: ... }`).
+They are global names in one flat set, like `Int`; only their operations live
+in namespaces (`money.`, `units.`, `temporal.`). There are 253 of them.
+[Area 19](19-standard-library.md#the-standard-types) lists every one and every
+operation; the groups and their headline types are:
+
+| Group | Headline types | Namespaces |
+|---|---|---|
+| Money and payments | `Money`, `Currency`, `ExchangeRate`, `Price`, `TaxRate`, `Discount`, `Iban`, `BankAccount`, `PaymentCardNumber` | `money` |
+| Time and calendar | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `LocalTime`, `DateRange`, `RecurrenceRule`, `OpeningHours` | `temporal`, `range` |
+| Quantities and units | `Length`, `Mass`, `Temperature`, `Speed`, `Energy`, `DataSize`, `Percentage`, `Ratio`, `Range<T>` | `units`, `range` |
+| People and places | `PersonName`, `Username`, `Email`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Country`, `Language`, `Locale`, `Zone` | `locale`, `text` |
+| Web and network | `Url`, `Slug`, `DomainName`, `HttpStatus`, `IpAddress`, `Cidr`, `Cookie` | `web` |
+| Software | `SemanticVersion`, `GitRef`, `FilePath`, `TraceId`, `Ulid`, `IdempotencyKey` | `semver` |
+| Text and documents | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
+| Media | `Colour`, `ImageDimensions`, `AspectRatio`, `FrameRate`, `VideoCodec`, `Timecode`, `ContentRating` | `colour`, `media` |
+| Security and secrets | `Password`, `PasswordHash`, `Hash`, `Hmac`, `Jwt`, `PublicKey`, `Certificate`, `ApiKey`, `SecretText`, `EncryptedValue` | `crypto`, `hash`, `random` |
+| Geospatial | `Point`, `Latitude`, `Polygon`, `Geometry`, `BoundingBox`, `Geohash` | `geo` (area 20) |
+| AI | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole`, `Vector`, `Embedding` | `ai` (area 21) |
+| Codes and identifiers | `Sku`, `Ean13`, `Isbn`, `Barcode`, `TrackingNumber`, `Vin`, `VatNumber`, `NhsNumber`, `Icd10Code`, `IataAirport`, `FlightNumber`, `Orcid` | none beyond the contract below |
+
+Every standard type, by group ("(enum)" marks a closed list held as a
+built-in enum):
+
+| Group | Types |
+|---|---|
+| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, `Email`, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) |
+| Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), `Locale` (enum), `Zone` (enum) |
+| Geospatial (17) | `Point`, `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` |
+| Money, payments, banking (24) | `Money`, `Currency` (enum), `ExchangeRate`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, `PaymentCardNumber`, `MaskedCardNumber`, `CardBrand` (enum), `CardBin`, `CardExpiry`, `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`, `UkAccountNumber`, `BankAccount`, `AbaRoutingNumber`, `Lei`, `Isin` |
+| Tax and identity numbers (12) | `VatNumber`, `TaxId`, `UkUtr`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin`, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, `IdentityDocumentKind` (enum), `NhsNumber` |
+| Commerce and logistics (22) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ClothingSizeSystem` (enum), `ShoeSize`, `ShoeSizeSystem` (enum), `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` |
+| Time and calendar (19) | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Weekday` (enum), `LocalTime`, `LocalDateTime`, `Month` (enum), `YearMonth`, `Year`, `Quarter`, `IsoWeek`, `UtcOffset`, `DateRange`, `InstantRange`, `CalendarPeriod`, `RecurrenceRule`, `OpeningHours`, `CalendarEvent` |
+| Physical quantities (17) | `Length`, `Area`, `Volume`, `Angle`, `Mass`, `Pressure`, `Energy`, `Power`, `Temperature`, `TemperatureDifference`, `Speed`, `Frequency`, `Voltage`, `Current`, `Illuminance`, `SoundLevel`, `Concentration` |
+| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, `Range<T>`, `DataSize`, `Bitrate`, `Vector`, `Embedding` |
+| Health (10) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `RouteOfAdministration` (enum), `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) |
+| Media and visual (16) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating`, `ContentRatingScheme` (enum) |
+| Web and network (23) | `Url`, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, `FileType`, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, `IpAddress`, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` |
+| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, `Uuid`, `Ulid`, `IdempotencyKey`, `Doi` |
+| Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` |
+| Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` |
+| Travel (6) | `IataAirport`, `IcaoAirport`, `IataAirline`, `FlightNumber`, `CabinClass` (enum), `BookingReference` |
+| Other with a published standard (10) | `UnNumber`, `Orcid`, `CefrLevel` (enum), `Mpan`, `Mprn`, `EpcRating` (enum), `Tenure` (enum), `LawfulBasis` (enum), `Jurisdiction`, `ModelId` |
+| AI (4) | `TokenCount`, `TokenUsage`, `ChatMessage`, `ChatRole` (enum) |
+
+The money group has a few rules of its own, because money is where mistakes
+cost most. `Money` holds a whole number of a currency's minor units (pence,
+cents) and its `Currency`, never a decimal of pounds. A type built on it takes
+`currency:`, `rounding:` and `min:`/`max:` in minor units, and the `money.`
+operations (`money.from_minor`, `money.minor`, `money.sum`, `money.allocate`)
+build and work out amounts. A named type for an amount in pounds is:
+
+```jadpo check project=money-type
+type Sterling = Money {
+    currency: Currency.gbp
+    min: 0
+    rounding: Rounding.half_even
+}
+```
+
+An amount in another currency doesn't compile where a `Sterling` is wanted.
+Use `Int` for counts and sizes and `Money` for amounts of money; area 19's
+"Money and payments" has the rest.
+
+#### What every standard type does
+
+Every standard type meets the same contract, so one operation works across all
+of them:
+
+- **Construct and validate.** From its parts (`PostalCode(raw)`, or
+  `money.from_minor` for `Money`), and from text with
+  `text.parse(raw, as: T)`. Each failure is named by the rule it breaks, and
+  `malformed` means the text isn't that type at all.
+- **Show and write.** `text.format(value, locale:)` gives text for people, and
+  `text.from(value)` gives the canonical text (E.164, ISO codes, ISO 8601)
+  that `text.parse` reads back. A type with no single text form, such as
+  `PostalAddress`, can't be asked for one.
+- **Storage.** One shape: a column, or named columns for an object (`Money`'s
+  two).
+- **JSON.** One shape, read and written by `json.read`, `json.write` and every
+  route.
+- **Equality and order.** `==` works on every type; `<` and `sort_by` work
+  where order means something (quantities of one kind, `Money` of one
+  currency, times, `SemanticVersion`, `Percentage`).
+
+A type that copies a standard type under another name is the declinable error
+`type.standard_exists`: a `Booking` with only a start and an end, each an
+`Instant`, is an `InstantRange`. A declaration named like a standard type
+is `type.standard_clash`. Both are in area 19.
+
+### What the standard types do
+
+Standard types carry their own arithmetic, units and rules, so the
+expressions you'd write on paper check as strictly as a call. A length sum
+mixes units freely, and the result is a `Length`; `m` means minutes, and
+inches are written `inch`:
+
+```jadpo check project=std-length
+type Shelf = Length {}
+
+/// A metre, 2.3 inches and 3 centimetres, then 20% of that: a `Length`.
+function fifth_of(base: Shelf) -> Shelf {
+    return Shelf((base + 2.3inch + 3cm) * 20%)
+}
+```
+
+```jadpo check project=std-length file=main.test.jadpo
+test "units mix within a kind" {
+    assert fifth_of(Shelf(1metre)) == Shelf((1metre + 2.3inch + 3cm) * 20%)
+}
+```
+
+Leave out the unit's meaning and the compiler says so. Here `1m` is a
+`Duration`, which can't be added to a `Length`:
+
+```jadpo check project=std-length-minutes expect=type.arithmetic_operand
+type Shelf = Length {}
+
+/// `m` is minutes, so this adds a `Duration` to a `Length`.
+function mistaken(base: Shelf) -> Shelf {
+    return Shelf((1m + 2.3inch + 3cm) * 20%)
+}
+```
+
+```text output
+error: A duration and a quantity can't be added: a `Duration` and a `Length` are different kinds
+ --> main.jadpo:5:19
+  |
+5 |     return Shelf((1m + 2.3inch + 3cm) * 20%)
+  |                   ^^^^^^^^^^^^ different kinds
+  reason: `+` works within one kind of quantity, in any of its units; a `Duration` and a `Length` are different kinds, so the sum means nothing.
+  next: Use values of one kind, or a product or quotient the table defines (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+Money is whole minor units in one currency, so the table is strict. A rate
+scales it (`price * 120%` adds 20% VAT), and `money.split` shares an
+amount out with no penny lost: £10.00 three ways is £3.34, £3.33 and £3.33.
+`price / 3` is refused with that fix (`type.money_split`, area 19):
+
+```jadpo check project=std-money
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type Payment = Money {}
+
+/// A price with 20% VAT added.
+function with_vat(price: CakePrice) -> CakePrice {
+    return CakePrice(price * 120%)
+}
+
+/// A bill shared three ways, every penny to someone.
+function shares(total: CakePrice) -> List<Payment> {
+    return list.map(money.split(total, 3), share -> Payment(share))
+}
+```
+
+```jadpo check project=std-money file=main.test.jadpo
+test "VAT and sharing lose nothing" {
+    var price: CakePrice = CakePrice(money.from_minor(1000, Currency.gbp))
+    assert with_vat(price) == money.from_minor(1200, Currency.gbp)
+    assert shares(price) == [
+        Payment(money.from_minor(334, Currency.gbp)),
+        Payment(money.from_minor(333, Currency.gbp)),
+        Payment(money.from_minor(333, Currency.gbp))
+    ]
+}
+```
+
+`price + 20%` could mean two things, so it is refused; write `price * 120%`:
+
+```jadpo check project=std-money-percent expect=type.arithmetic_operand
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+/// Twenty percent added to a price: ambiguous, so refused.
+function more(price: CakePrice) -> CakePrice {
+    return CakePrice(price + 20%)
+}
+```
+
+```text output
+error: `CakePrice` and a percentage can't be added: it could mean two things
+ --> main.jadpo:7:22
+  |
+7 |     return CakePrice(price + 20%)
+  |                      ^^^^^^^^^^^ an amount and a percentage
+  reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
+  next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+Adding two amounts whose types fix different currencies is a compile error:
+
+```jadpo check project=std-money-currency expect=type.arithmetic_operand
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type EuroPrice = Money {
+    currency: Currency.eur
+}
+
+/// A cake in pounds and a delivery charged in euros.
+function delivered(price: CakePrice, delivery: EuroPrice) -> CakePrice {
+    return CakePrice(price + delivery)
+}
+```
+
+```text output
+error: `CakePrice` and `EuroPrice` can't be added: they're in different currencies
+ --> main.jadpo:11:22
+   |
+11 |     return CakePrice(price + delivery)
+   |                      ^^^^^^^^^^^^^^^^ GBP and EUR
+  reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
+  next: Use two amounts in the same currency (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+A `CalendarDate` plus a one-month `CalendarPeriod` clamps to the month's last
+day, `Instant - Instant` gives a `Duration`, and subtracting two temperatures
+gives a `TemperatureDifference`:
+
+```jadpo check project=std-time
+type DeliveryDay = CalendarDate {}
+
+type SeenAt = Instant {}
+
+type Gap = Duration {}
+
+/// A day a month on: the 31st of January gives the last day of February.
+function month_on(day: DeliveryDay) -> DeliveryDay {
+    return DeliveryDay(
+        day + CalendarPeriod {
+            years: 0
+            months: 1
+            days: 0
+        }
+    )
+}
+
+/// How long between two moments.
+function between(start: SeenAt, end: SeenAt) -> Gap {
+    return Gap(end - start)
+}
+```
+
+```jadpo check project=std-time file=main.test.jadpo
+test "calendar and clock arithmetic" {
+    assert month_on(DeliveryDay("2026-01-31")) == DeliveryDay("2026-02-28")
+    assert between(SeenAt("2026-10-25T09:00:00Z"), SeenAt("2026-10-25T11:30:00Z")) == Gap(150m)
+    assert 25degC - 20degC == units.of(5, TemperatureDifferenceUnit.kelvin)
+}
+```
+
+#### Why so many standard types
+
+- **Whole categories of bug disappear:** unit confusion, floating-point
+  money, mixed currencies, latitude and longitude the wrong way round, and
+  month-end and time-zone arithmetic.
+- **No choosing between competing libraries** for dates, money or addresses:
+  there is one of each.
+- **Packages and apps speak the same types,** so integration code doesn't
+  translate between them. `type.standard_exists` keeps it that way: e-commerce
+  packages share `Money`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `Sku`,
+  `PostalAddress`, `Email` and `PhoneNumber` instead of each declaring its own.
+- **Validation, storage columns, JSON and API formats come with each type.**
+- **Formatting follows the locale** the same way everywhere.
+- **Agents can't hand-roll a broken `Money`,** and a reviewer who reads
+  `Money` knows exactly what it means.
+- **Hand-rolled versions are found for you.** `jadpo suggest` scans a
+  project for money, durations, units, points and loops written by hand
+  (`price * 100`, `timeout_ms: Int`, `"£" + text.from(pence)`) and names
+  the standard type or operation to use; the agent makes the edit. A miss
+  it should have caught is taught with `jadpo suggest found`, and with
+  your approval `jadpo suggest share` sends what was learned to Jadpo, so
+  the signals improve for everyone ([tooling](14-tooling.md#suggestions)).
+
+[Area 19](19-standard-library.md#the-standard-types) has the full list and
+every operation.
+
+### Other built-in types
 
 | Kind | Types | Notes |
 |---|---|---|
-| Representation | `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid` | The raw material for your own types. `Int` is an exact 64-bit integer and `Decimal` an exact decimal with a required `scale` (see Review, question 8). |
-| Validated text | `Email`, `Url`, `IpAddress` | Ready-made named types built on `Text`. |
-| Time | `Instant`, `CalendarDate`, `ZonedTime`, `Duration`, `Zone`, `Locale`, `Weekday` and the formatting types | Described in area 10, Configuration and time (`ZonedTime` was `Time`, renamed in area 10, question 5). |
 | Containers | `List<T>`, `Set<T>`, `Map<K, V>` | Described below. |
-| Translation | `PluralCount`, `TextDirection`, `TranslationReview` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left`, which `locale.direction(value)` gives; `TranslationReview` is `.none` or `.required`, the `review:` of `translations:` in `application { }` (area 10; decided 2026-10-16). `PluralCount` is built (chunk 5.4c: an `Int` underneath that no entity stores); `TextDirection` and `TranslationReview` are built (chunk 5.4d). |
-| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept (area 16, decided 2026-10-16). |
-| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` (area 12, decided 2026-10-16; the format namespaces are chunk 5.4's). |
-| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box (area 16); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code (area 11); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata) (decided 2026-10-16). |
-| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration (decided 2026-10-12). Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16), `Document`, a template rendered to HTML or PDF (area 16, decided 2026-10-16), and `Message`, a translated message whose fields are its placeholders (area 10, decided 2026-10-16, built in chunk 5.4c). |
+| Translation | `PluralCount`, `TextDirection`, `TranslationReview` | `PluralCount` is a whole number that picks a message's plural form, used directly as a `Message` field; `TextDirection` is a locale's direction, `.left_to_right` or `.right_to_left`, which `locale.direction(value)` gives; `TranslationReview` is `.none` or `.required`, the `review:` of `translations:` in `application { }` (area 10). |
+| Files | `File`, `FileUpload`, `UploadSlot`, `FileContents` | A stored file (its key, name, size and type) as an entity field; the token of a finished upload in an `Input`; the signed address, or addresses for each part, an upload goes to; and what `store.read` returns, a file's bytes for passing on (to a provider, a PDF service, an email), which the format helpers do not accept (area 16). |
+| Batches | `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary`, `CsvFormat` | A batch run, as the batch helpers return it and as an entity field can store it; its progress from `batches.status`; one bad row or failed item, without its value; what `finished:` receives after reading (or `batches.each`) and after writing, the latter holding the stored `File`; and who a CSV is written for, `CsvFormat.spreadsheet` or `.standard` (area 12). |
+| Services | `SearchText`, `OAuthGrant`, `AnyObject` | What people type into a search box (area 16); a connection's credential held for each owner record, `OAuthGrant { owner: ... }`, written only in a connection's `credential:` and never readable by code (area 11); and, only as a package operation's input field, any of the app's object types, sent in its JSON form (Postmark's template variables, Stripe's metadata). |
+| Bases | `Object`, `Enum`, `Input`, `Output` | Used only after `=` in a `type` declaration. Areas add their own bases the same way: `Failure` (area 4), `Event` (area 12), `EmailMessage` (area 16), `Document`, a template rendered to HTML or PDF (area 16), and `Message`, a translated message whose fields are its placeholders (area 10). |
+| Decoding | `DecodeProblem` | `field: Text`, a field's path with list positions as numbers, and `rule: Text`; never the value. It is what a failure mapped from `json.read`'s `mismatch` receives in its `problem` field, and only the runtime builds one. |
 | Nothing | `Unit` | What an action returns when it returns nothing. |
 
-> Amended 2026-10-17 by area 19: the standard library's 247 vocabulary
-> types are built-in names too, global and in one flat set (`Money`,
-> `Currency`, `Percentage`, `PostalAddress`, `Length` ...; the
-> list is area 19's "The standard types"), with `EncryptionKey` and
-> `PasswordCheck`. Each arrives with its chunk (5.5a to 5.5s2), and the
-> page and example types that reuse one (`Money`, `Currency`,
-> `PostalCode`, `Sku`, `Dimensions`, `Price`) are renamed or replaced by
-> the built-in in that chunk: chunk 5.5h renamed this page's `Money`
-> objects (`PriceTag`, `OrderLine`) and its `Currency` enum, chunk 5.5l2
-> its `PostalCode` (`ShippingCode`), chunk 5.5m its `Sku`
-> (`StockCode`), chunk 5.5i3 its `Price` (`ItemPrice`), chunk 5.5m2 its
-> `Dimensions` (`BoxSize`), and chunk 5.5h gave a
-> `Money` type its `currency:` and `rounding:` settings, with `min:` and
-> `max:` in minor units (area 19, "Money and payments"), and chunk 5.5h4
-> gave a type built on `ExchangeRate` its `from:` and `to:`, the
-> currencies it converts between. A shape that copies a standard type under
-> another name is the declinable error `type.standard_exists`. Still no
-> `Float`: maths on `Decimal` (area 19, question 18) meets the need
-> question 8 waited for.
-
-> Amended 2026-10-17 by area 19 (chunk 5.5g2): `DecodeProblem` is built
-> in too, holding `field: Text`, a field's path with list positions as
-> numbers, and `rule: Text`, never the value. It is what a failure mapped
-> from `json.read`'s `mismatch` receives in its `problem` field, and only
-> the runtime builds one.
-
-The batch types' fields (area 12, decided 2026-10-16):
+The batch types' fields (area 12):
 
 | Type | Fields |
 |---|---|
@@ -78,7 +370,7 @@ Most of a program's types are named types: a built-in representation, a name
 that says what the value means, and the rules a valid value must follow.
 
 ```jadpo check project=shop
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
@@ -187,7 +479,7 @@ A value that may be `none` builds nothing: `Quantity(maybe)` with
 absent case first (built in chunk 2.11).
 
 ```jadpo check project=convert
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
@@ -196,17 +488,17 @@ type Quantity = Int {
     max: 1000
 }
 
-function line_total(price: Pence, quantity: Quantity) -> Pence {
-    return Pence(price * quantity)
+function stock_needed(per_pack: Stock, packs: Quantity) -> Stock {
+    return Stock(per_pack * packs)
 }
 ```
 
-Arithmetic works on the representation, so `price * quantity` is a plain `Int`
-and has to be turned back into `Pence`. A plain `Int` can never be returned
-where `Pence` is expected.
+Arithmetic works on the representation, so `per_pack * packs` is a plain `Int`
+and has to be turned back into `Stock`. A plain `Int` can never be returned
+where `Stock` is expected.
 
-Here `price` and `quantity` are never below zero and `Pence` has no
-maximum, so the declared ranges prove `Pence(price * quantity)` always
+Here `per_pack` and `packs` are never below zero and `Stock` has no
+maximum, so the declared ranges prove `Stock(per_pack * packs)` always
 follows its rules, and it cannot fail.
 
 ### Construction failures by rule
@@ -534,24 +826,24 @@ type ProductName = Text {
     max_length: 120
 }
 
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 ```
 
 ```jadpo check project=objects file=main.jadpo
-type PriceTag = Object {  // used inside the application
-    amount: Pence
+type StockTag = Object {  // used inside the application
+    amount: Stock
 }
 
 type CreateProduct = Input {  // arrives from outside, such as a request body
     name: ProductName
-    price: Pence
+    stock: Stock
 }
 
 type ProductView = Output {  // sent back, such as a response
     name: ProductName
-    price: PriceTag
+    stock: StockTag
 }
 ```
 
@@ -562,11 +854,11 @@ nested shape is declared once, with a name, and used by that name.
 An object value is written with its type name and every field:
 
 ```jadpo check project=objects file=view.jadpo
-function view(name: ProductName, price: Pence) -> ProductView {
+function view(name: ProductName, stock: Stock) -> ProductView {
     return ProductView {
         name: name
-        price: PriceTag {
-            amount: price
+        stock: StockTag {
+            amount: stock
         }
     }
 }
@@ -1039,7 +1331,7 @@ type Tag = Text {
     max_length: 30
 }
 
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 ```
@@ -1047,7 +1339,7 @@ type Pence = Int {
 ```jadpo check project=lists file=main.jadpo
 type BasketLine = Object {
     tag: Tag
-    price: Pence
+    stock: Stock
 }
 
 type Basket = Output {
@@ -1277,7 +1569,7 @@ type ProductName = Text {
     max_length: 120
 }
 
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 ```
@@ -1285,13 +1577,13 @@ type Pence = Int {
 ```jadpo check project=values file=main.jadpo
 type Product = Object {
     name: ProductName
-    price: Pence
+    stock: Stock
 }
 
-function reprice(product: Product, price: Pence) -> Product {
+function restock(product: Product, stock: Stock) -> Product {
     return Product {
         name: product.name
-        price: price
+        stock: stock
     }
 }
 ```
@@ -1304,23 +1596,23 @@ compiler's actual output.
 ### `type.mismatch`
 
 ```jadpo check project=e-mismatch expect=type.mismatch
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
-function add(a: Pence, b: Pence) -> Pence {
+function add(a: Stock, b: Stock) -> Stock {
     return a + b
 }
 ```
 
 ```text output
-error: `Int` can't be used where `Pence` is required
+error: `Int` can't be used where `Stock` is required
  --> main.jadpo:6:12
   |
 6 |     return a + b
   |            ^^^^^ this is `Int`
-  reason: Arithmetic works on the representation, so this is a plain `Int`; only `Pence(...)` makes it a `Pence`, checking its rules.
-  next: Convert it with `Pence(a + b)` (agent)
+  reason: Arithmetic works on the representation, so this is a plain `Int`; only `Stock(...)` makes it a `Stock`, checking its rules.
+  next: Convert it with `Stock(a + b)` (agent)
   rule: type.mismatch
   help: docs/language/02-values-and-types.html#type-mismatch
 
@@ -1597,13 +1889,13 @@ check failed: 1 error, 1 file
 A rule holds or it doesn't, so its condition is a `Bool`:
 
 ```jadpo check project=e-rule-not-condition expect=type.rule_not_condition
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
 type PriceBand = Object {
-    low: Pence
-    high: Pence
+    low: Stock
+    high: Stock
     rule spread: high - low
 }
 ```
@@ -2922,7 +3214,7 @@ chunk 6.4b2 (area 19, "Data formats"): only the runtime builds an
   `type X = Enum { }`. The golden app uses only the keyword forms.
 - **`input` and `output` are keywords without a meaning.** Boundary roles are not type categories, yet `input` and `output`
   declare objects, and nothing stops an `output` being a route's input.
-- **`=` appears only in `type`.** `type Pence = Int { }` uses `=`; `value`,
+- **`=` appears only in `type`.** `type Stock = Int { }` uses `=`; `value`,
   `enum`, `entity` and `failure` do not. Flagged in area 1 for the syntax pass.
 - **The block after a field's type changes vocabulary.** On a `value`,
   `label: ProductName { max_length: 12 }` holds constraints; on an entity,
@@ -3295,8 +3587,8 @@ type OrderId = Uuid       // rejected: reads like an alias in other languages
 #### Q7: converting between types only by constructing
 
 ```jadpo fragment
-var total: Pence = Pence(price * quantity)    // the only way across
-var raw: Int = price as Int                    // rejected: there is no cast
+var total: Stock = Stock(per_pack * packs)    // the only way across
+var raw: Int = per_pack as Int                    // rejected: there is no cast
 ```
 
 #### Q8: numbers by range and scale
@@ -3387,11 +3679,11 @@ function first_quantity() -> Quantity {
 #### Q16: every variable states its type
 
 ```jadpo fragment
-var total: Pence = Pence(price * quantity)
+var total: Stock = Stock(per_pack * packs)
 var todo: Todo = attempt Todo.get(id)
 
 for line in order.lines {       // a loop binding takes its type from the list
-    var subtotal: Pence = line.total
+    var subtotal: Stock = line.total
 }
 ```
 
@@ -3604,10 +3896,10 @@ to when that page is written.
     integer types but not to its newtypes; this goes one step further because
     the check still happens at compile time.
 
-16. **Must every variable declare its type?** Today `var total = price * quantity`
+16. **Must every variable declare its type?** Today `var total = per_pack * packs`
     is allowed and infers a plain `Int`; the mismatch only surfaces later,
-    where `total` is returned as `Pence`. *Decided 2026-10-12 (agreed in discussion):* yes: every `var`
-    states its type (`var total: Pence = Pence(price * quantity)`), while
+    where `total` is returned as `Stock`. *Decided 2026-10-12 (agreed in discussion):* yes: every `var`
+    states its type (`var total: Stock = Stock(per_pack * packs)`), while
     loop and `match` bindings take theirs from what they bind. The reader sees
     each value's type where it is introduced, a wrong type is reported on the
     line that made it, and there is one rule with no exceptions to remember.

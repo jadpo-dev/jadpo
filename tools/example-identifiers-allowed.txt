@@ -7,9 +7,11 @@
 # Words the language itself defines: `Enum.all` lists an enum's variants
 # (area 19, question 22), and the standard types' names and parts
 all
+end
 first_day
 phone
 postal_code
+start
 passport
 vat
 # `Discount` and its `amount_off`, `money.apply_discount`, and `UnitPrice`'s
@@ -558,3 +560,10 @@ message_id
 users
 candidates
 queued
+
+# Ordinary English
+between
+gap
+mistaken
+more
+shares
