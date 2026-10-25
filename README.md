@@ -30,25 +30,39 @@ type ParcelLabel = Text {
 }
 ```
 
-`domains/bakery/actions/quote_parcel.jadpo`
+`domains/bakery/actions/quote_parcel.jadpo` (without its imports and input type)
 
 ```jadpo
-/// The parcel to post an order in.
-type ParcelRequest = Input {
-    label: ParcelLabel
-}
+/// A weight on the scales.
+type ParcelWeight = Mass {}
+
+constant cake_weight: ParcelWeight = 450g
+constant box_weight: ParcelWeight = 1.2kg
+constant packing_weight: ParcelWeight = 3lb
+
+/// A whole number of pence.
+type Pence = Int {}
+
+constant pence_per_kilo: Pence = 200
+
+/// A multiplier applied to a price.
+type PriceFactor = Percentage {}
+
+// 120% of the price: the price plus 20% VAT.
+constant vat_factor: PriceFactor = 120%
 
 /// Postage for an order: its cakes plus a box, by the kilogram, with VAT.
 action quote_parcel(order_id: Order.id, input: ParcelRequest) fails OrderNotFound -> ParcelQuote {
     // Policy applies here: another customer's order is `OrderNotFound`.
     var order: OrderView = attempt order_by_id(order_id)
     // Grams, kilograms and pounds add up as a `Mass`.
-    var weight: Mass = 450g * order.quantity + 1.2kg + 3lb
-    var per_kilo: Postage = Postage(money.from_minor(200, Currency.gbp))
-    // `* 120%` adds 20% VAT; adding euros or minutes would not compile.
+    var weight: Mass = cake_weight * order.quantity + box_weight + packing_weight
+    // Dividing a `Mass` by 1kg gives a plain number: how many kilograms.
+    var kilograms: Decimal = weight / 1kg
+    var rate_per_kilo: Postage = Postage(money.from_minor(pence_per_kilo, Currency.gbp))
     return ParcelQuote {
         label: input.label
-        postage: Postage(per_kilo * (weight / 1kg) * 120%)
+        postage: Postage(rate_per_kilo * kilograms * vat_factor)
     }
 }
 ```
@@ -87,7 +101,7 @@ What the compiler enforces here:
 
 - **No ignored failures.** `quote_parcel` declares `fails OrderNotFound`; `attempt` passes it on, and anything that calls the action must handle it or declare it too.
 - **Orders stay private.** The `Order` policy lets only the customer it points at read the order, and policy is added to every query, so asking for someone else's order gives `OrderNotFound`, as if it didn't exist.
-- **Exact arithmetic across units.** Grams, kilograms and pounds add up to a `Mass`; adding minutes to it, or euros to pounds, does not compile.
+- **Exact arithmetic across units.** Grams, kilograms and pounds add up to a `Mass`, and the fixed values are named constants. Adding minutes to it is a compile error (`type.arithmetic_operand`).
 - **VAT is `* 120%`.** Money can't be mixed with a bare percentage by `+`, and the currency and rounding come from the type.
 - **A label can't exist invalid.** A `ParcelLabel` that doesn't match the pattern is refused, and a bad literal fails when the project compiles.
 
