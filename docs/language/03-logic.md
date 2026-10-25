@@ -115,7 +115,7 @@ constants decided 2026-10-16, built in chunk 5.3e).
 ```jadpo fragment
 var needed: Stock = stock_needed(per_pack, packs)
 var mut total: Stock = needed
-total = Stock(total + spare)
+total = Stock(total + holdback)
 ```
 
 - `var` names a value that never changes. `var mut` names one that can be
@@ -319,28 +319,28 @@ type Stock = Int {
     min: 0
 }
 
-type SpareRate = Decimal {
+type HoldbackRate = Decimal {
     scale: 4
     min: 0.0000
     max: 1.0000
 }
 
 library stocking {
-    /// The standard share held back as spare.
-    constant spare_rate: SpareRate = 0.2000
+    /// The standard share held back.
+    constant holdback_rate: HoldbackRate = 0.2000
 
-    function spare_of(per_pack: Stock) -> Stock {
+    function holdback_of(per_pack: Stock) -> Stock {
         return Stock(per_pack / 5)
     }
 }
 
-function standard_spare() -> SpareRate {
-    var uk_rate: SpareRate = stocking.spare_rate
+function standard_holdback() -> HoldbackRate {
+    var uk_rate: HoldbackRate = stocking.holdback_rate
     return uk_rate
 }
 
-function spare(per_pack: Stock) -> Stock {
-    return stocking.spare_of(per_pack)
+function holdback(per_pack: Stock) -> Stock {
+    return stocking.holdback_of(per_pack)
 }
 ```
 
@@ -1118,7 +1118,7 @@ read the constant it names instead, or decline with a reason when the two
 share a value by coincidence.
 
 ```jadpo check project=e-constant-similar expect=constant.similar_exists
-type SpareRate = Decimal {
+type HoldbackRate = Decimal {
     scale: 4
     min: 0.0000
     max: 1.0000
@@ -1129,14 +1129,14 @@ type Stock = Int {
 }
 
 library stocking {
-    /// The standard share held back as spare.
-    constant spare_rate: SpareRate = 0.2000
+    /// The standard share held back.
+    constant holdback_rate: HoldbackRate = 0.2000
 }
 
-constant standard_spare: SpareRate = 0.2000
+constant standard_holdback: HoldbackRate = 0.2000
 
-function spare_of(per_pack: Stock) -> Stock {
-    if (stocking.spare_rate == standard_spare) {
+function holdback_of(per_pack: Stock) -> Stock {
+    if (stocking.holdback_rate == standard_holdback) {
         return Stock(per_pack / 5)
     }
     return per_pack
@@ -1144,13 +1144,13 @@ function spare_of(per_pack: Stock) -> Stock {
 ```
 
 ```text output
-error: A constant with this value exists: `stocking.spare_rate`
+error: A constant with this value exists: `stocking.holdback_rate`
  --> main.jadpo:16:10
    |
-16 | constant standard_spare: SpareRate = 0.2000
-   |          ^^^^^^^^^^^^^^ same as `stocking.spare_rate`
-  reason: `standard_spare` is a `SpareRate` holding `0.2000`, as `stocking.spare_rate` in `main.jadpo` is.
-  next: Read `stocking.spare_rate` instead, and remove `standard_spare`, or write `decline constant.similar_exists: "<why>"` above it if this is deliberate (agent)
+16 | constant standard_holdback: HoldbackRate = 0.2000
+   |          ^^^^^^^^^^^^^^^^^ same as `stocking.holdback_rate`
+  reason: `standard_holdback` is a `HoldbackRate` holding `0.2000`, as `stocking.holdback_rate` in `main.jadpo` is.
+  next: Read `stocking.holdback_rate` instead, and remove `standard_holdback`, or write `decline constant.similar_exists: "<why>"` above it if this is deliberate (agent)
   rule: constant.similar_exists
   help: docs/language/03-logic.html#constant-similar-exists
 

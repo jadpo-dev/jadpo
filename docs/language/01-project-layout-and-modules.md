@@ -420,7 +420,7 @@ type Stock = Int {
 }
 
 library helpers {
-    function add_spare(subtotal: Stock) -> Stock {
+    function add_holdback(subtotal: Stock) -> Stock {
         return subtotal
     }
 }
@@ -995,7 +995,7 @@ action discount_loaf(reduction: Percent) -> Unit {}
 ```
 
 ```jadpo check project=e-import-unused file=domains/bakery/actions/stock_loaf.jadpo expect=import.unused
-use shared/types { Stock, Percent }
+use shared/types { Percent, Stock }
 
 action stock_loaf(each: Stock) -> Stock {
     return each
@@ -1004,10 +1004,10 @@ action stock_loaf(each: Stock) -> Stock {
 
 ```text output
 error: `Percent` is imported but not used
- --> domains/bakery/actions/stock_loaf.jadpo:1:27
+ --> domains/bakery/actions/stock_loaf.jadpo:1:20
   |
-1 | use shared/types { Stock, Percent }
-  |                           ^^^^^^^ not used
+1 | use shared/types { Percent, Stock }
+  |                    ^^^^^^^ not used
   reason: A `use` line lists only the names its file uses, so each says where it comes from; nothing here uses `Percent`.
   next: Remove `Percent` from this line (agent)
   rule: import.unused
@@ -1086,8 +1086,8 @@ type Percent = Int {
 ```
 
 ```jadpo check project=e-import-duplicate file=domains/bakery/actions/stock_loaf.jadpo expect=import.duplicate
-use shared/types { Stock }
 use shared/types { Percent }
+use shared/types { Stock }
 
 action stock_loaf(each: Stock, reduction: Percent) -> Stock {
     return each
@@ -1098,9 +1098,9 @@ action stock_loaf(each: Stock, reduction: Percent) -> Stock {
 error: `shared/types` has two `use` lines
  --> domains/bakery/actions/stock_loaf.jadpo:2:5
   |
-1 | use shared/types { Stock }
+1 | use shared/types { Percent }
   |     ------------ first line
-2 | use shared/types { Percent }
+2 | use shared/types { Stock }
   |     ^^^^^^^^^^^^ a second line
   reason: Each folder has one `use` line, listing every name the file takes from it; `use shared/types` is written twice.
   next: Move its names onto the first `shared/types` line (agent)
@@ -2276,7 +2276,7 @@ as the code uses them, so finding a name in the page finds its import:
 
 ```jadpo fragment
 // domains/sales/actions/price_basket.jadpo
-use shared/types { Stock, Percent }
+use shared/types { Percent, Sterling }
 use shared/libraries { pricing }
 use sales/types { Basket, DiscountCode, Receipt }
 use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
