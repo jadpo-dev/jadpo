@@ -92,7 +92,14 @@ impl Body<'_> {
 
     fn operand(&mut self, expr: &Expr) -> Operand {
         if is_literal(expr) {
-            Operand::Literal(Const::from_expr(expr))
+            let value = Const::from_expr(expr);
+            // A suffix that names no unit is reported here, once, and the
+            // operand is then an error the operators stay quiet about.
+            if matches!(value, Const::Quantity(_)) && self.quantity_literal(expr, &value).is_error()
+            {
+                return Operand::Value(Ty::Error);
+            }
+            Operand::Literal(value)
         } else {
             Operand::Value(self.infer(expr))
         }

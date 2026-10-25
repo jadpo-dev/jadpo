@@ -104,6 +104,25 @@ fn a_suffix_that_names_no_unit_is_reported_with_its_near_misses() {
 }
 
 #[test]
+fn a_suffix_that_names_no_unit_is_unknown_beside_an_operator_too() {
+    for body in [
+        "return Answer(a == 860gg)",
+        "return Answer(860gg == a)",
+        "return Answer(a != 860gg)",
+        "return Answer(a < 860gg)",
+        "return Answer(a + 860gg == a)",
+    ] {
+        assert_eq!(
+            rules(&format!(
+                "function same(a: Load) -> Answer {{\n    {body}\n}}\n"
+            )),
+            ["type.unit_unknown"],
+            "{body}"
+        );
+    }
+}
+
+#[test]
 fn one_kind_adds_compares_and_scales_across_units() {
     let source = "function total(a: Shelf) -> Board {\n    var sum: Length = 2metre + 45cm + 3inch\n    return Board(a + sum)\n}\n\nfunction same() -> Answer {\n    return Answer(1km == 1000metre)\n}\n\nfunction longer(a: Board, b: Board) -> Answer {\n    return Answer(a < b)\n}\n\nfunction twice(a: Board) -> Board {\n    return Board(a * 2)\n}\n\nfunction part(a: Board) -> Board {\n    return Board(a / 2.5)\n}\n\nfunction share(a: Gap, b: Gap) -> Factor {\n    return Factor(a / b)\n}\n\nfunction short(a: Board) -> Answer {\n    return Answer(a < 3metre)\n}\n";
     assert_eq!(rules(source), NONE);
