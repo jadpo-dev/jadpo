@@ -551,6 +551,33 @@ class Page:
         return missing
 
 
+class Readme(Page):
+    """README.md's `jadpo check project=...` blocks, checked as an area page's
+    are. Its other fences are only illustrations, so they are not compiled."""
+
+    def collect_blocks(self):
+        """A file shown without its `use` lines is a block with `hide=use`,
+        and a hidden block for the same file with `uses` holds those lines.
+        The two are joined before compiling, so what compiles is the shown
+        code with its imports in front."""
+        super().collect_blocks()
+        self.blocks = [b for b in self.blocks if b['attrs'].get('check')]
+        uses = {b['attrs']['file']: b for b in self.blocks if b['attrs'].get('uses')}
+        for block in self.blocks:
+            attrs = block['attrs']
+            if attrs.get('hide') == 'use':
+                imports = uses.get(attrs['file'])
+                if imports is None:
+                    self.problems.append(f'line {block["line"] + 1}: hide=use needs a block with `uses` for {attrs["file"]}')
+                else:
+                    block['source'] = imports['source'].rstrip('\n') + '\n\n' + block['source']
+        self.blocks = [b for b in self.blocks if not b['attrs'].get('uses')]
+
+    def check(self, bless=False):
+        self.collect_blocks()
+        self.check_projects(bless)
+
+
 # --- rendering -------------------------------------------------------------
 
 def inline(text):
@@ -1081,6 +1108,15 @@ def main():
                 expect = block['attrs'].get('expect', 'pass')
                 print(f'  {page.path.name}:{block["line"] + page.offset + 1}  {block["attrs"]["project"]}  {expect}  '
                       f'{reason or "NO REASON"}')
+    # The homepage example in README.md is compiled like a page's examples.
+    readme = Readme(ROOT / 'README.md', catalogue, frozen, new_catalogue)
+    readme.check(bless=args.bless)
+    if args.bless and readme.bless():
+        print('README.md: blessed output block(s)')
+    print(f'README.md: {len([b for b in readme.blocks if b["attrs"]["file"].endswith(".jadpo")])} checked file(s)')
+    for problem in readme.problems:
+        failed = True
+        print(f'  FAIL README.md: {problem}')
     for rule, files in owners.items():
         if len(files) > 1:
             failed = True
@@ -1093,9 +1129,9 @@ def main():
             failed = True
             print(f'  FAIL {rule} (area {entry.get("area")}) is claimed by no page')
     print(f'{len(owners)}/{len(catalogue)} catalogue errors are assigned to an area')
-    corpus = [(page, entry) for page in pages for entry in page.corpus]
+    corpus = [(page, entry) for page in pages + [readme] for entry in page.corpus]
     print(f'{len(corpus)} spec project(s) with tests ran under jadpo test')
-    skipped = [f'{page.path.name} {name}' for page in pages for name in page.skipped]
+    skipped = [f'{page.path.name} {name}' for page in pages + [readme] for name in page.skipped]
     if skipped:
         print(f'skipped: jadpo test for {len(skipped)} project(s) with migrations, which need PostgreSQL '
               f'(JADPO_SKIP_POSTGRES is set): {", ".join(skipped)}')
