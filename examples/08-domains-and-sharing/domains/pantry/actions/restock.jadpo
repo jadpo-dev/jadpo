@@ -9,9 +9,9 @@ action restock(in_store: SackCount, delivered: SackCount) fails TooHeavy -> Flou
     // can pass the 100kg the scales weigh: only `max` can break, and it
     // is checked when it runs. `TooHeavy`, a shared failure, names what
     // went wrong.
-    var held: FlourWeight = attempt sacks.weight_in(in_store)
-    var arriving: FlourWeight = attempt sacks.weight_in(delivered)
-    var total: FlourWeight = attempt FlourWeight(held + arriving) {
+    var in_store_weight: FlourWeight = attempt sacks.weight_in(in_store)
+    var delivered_now: FlourWeight = attempt sacks.weight_in(delivered)
+    var total: FlourWeight = attempt FlourWeight(in_store_weight + delivered_now) {
         max: TooHeavy
     }
     return total

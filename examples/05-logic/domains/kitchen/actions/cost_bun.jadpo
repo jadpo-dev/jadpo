@@ -8,7 +8,7 @@ type BatchCost = Money {
     min: 0
 }
 
-/// How many buns a batch makes. Never zero, so it can be a divisor.
+/// How many buns a batch makes. Never zero, so it can be a share_by.
 type BatchSize = Int {
     min: 1
     max: 20
@@ -39,16 +39,16 @@ type BunCost = Output {
 
 /// The number of buns as a decimal, at least 1, which an amount of money
 /// can be divided by.
-type Divisor = Decimal {
+type ShareBy = Decimal {
     scale: 2
     min: 1.00
 }
 
 /// What one bun costs when a batch costing `batch` makes `buns` buns.
 action cost_bun(batch: BatchCost, buns: BatchSize) -> BunCost {
-    var divisor: Divisor = Divisor(1.00 * buns)
+    var share_by: ShareBy = ShareBy(1.00 * buns)
     return BunCost {
-        booked: BookedCost(BookedCost(batch) / divisor)
-        labelled: LabelledCost(LabelledCost(batch) / divisor)
+        booked: BookedCost(BookedCost(batch) / share_by)
+        labelled: LabelledCost(LabelledCost(batch) / share_by)
     }
 }

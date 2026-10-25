@@ -2311,8 +2311,8 @@ type LoafPrice = Decimal {
 
 /// How far a counted batch is from its recipe, either way. `abs` is never
 /// below 0, so building `Portions` from it needs no arm.
-function drift(counted: Portions, recipe: Portions) -> Portions {
-    return Portions(integer.abs(counted - recipe))
+function drift(in_batch: Portions, recipe: Portions) -> Portions {
+    return Portions(integer.abs(in_batch - recipe))
 }
 
 /// The trays to bake: what was ordered, but never more than the oven

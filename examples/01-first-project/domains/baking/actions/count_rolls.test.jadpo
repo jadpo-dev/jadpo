@@ -19,6 +19,6 @@ test "one tray holds its rolls" {
 }
 
 test "four trays come with 5 extra rolls" {
-    var counted: RollCount = count_rolls(250, 4)
-    assert counted == 1005
+    var total_rolls: RollCount = count_rolls(250, 4)
+    assert total_rolls == 1005
 }
