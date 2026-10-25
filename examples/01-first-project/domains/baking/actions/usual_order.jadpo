@@ -1,13 +1,13 @@
-// A second action, in its own file. It uses `Pence` and calls
-// `price_loaves`, both declared in other files of this domain, so it
+// A second action, in its own file. It uses `RollCount` and calls
+// `count_rolls`, both declared in other files of this domain, so it
 // imports both: a domain's own names come in by folder too, and the call
-// stays bare, `price_loaves(...)`.
+// stays bare, `count_rolls(...)`.
 
-use baking/types { Pence }
-use baking/actions { price_loaves }
+use baking/types { RollCount }
+use baking/actions { count_rolls }
 
-/// The bakery's usual order: four loaves at 250 pence, delivered for 150.
-action usual_order() -> Pence {
-    var loaves: Pence = price_loaves(250, 4)
-    return Pence(loaves + 150)
+/// The bakery's usual order: four trays of 250 rolls, plus 150 more for the party.
+action usual_order() -> RollCount {
+    var trays: RollCount = count_rolls(250, 4)
+    return RollCount(trays + 150)
 }

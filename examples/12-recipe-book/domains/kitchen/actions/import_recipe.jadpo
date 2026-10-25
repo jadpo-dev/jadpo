@@ -3,14 +3,14 @@
 // runs it; a call with no caller, such as a test's, runs without policy.
 
 use kitchen/entities { Baker, BakerNotFound, Bakery, BakeryNotFound, Recipe }
-use kitchen/types { OldReference, Pence, RecipeName }
+use kitchen/types { OldReference, RecipeName, Sterling }
 
 /// Brings a recipe over from the bakery's old system.
 action import_recipe(
     bakery_id: Bakery.id,
     author_id: Baker.id,
     name: RecipeName,
-    batch_cost: Pence,
+    batch_cost: Sterling,
     old_reference: OldReference
 ) fails BakeryNotFound, BakerNotFound -> Recipe {
     return attempt Recipe.create {

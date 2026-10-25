@@ -1,23 +1,23 @@
 test "a wet dough at the right temperature, kneaded ten minutes, is ready" {
-    assert mix_dough(1000, 700, 25, 10, false)
+    assert mix_dough(1000g, 700g, 25degC, 10m, false)
 }
 
 test "resting stands in for kneading" {
-    assert mix_dough(1000, 700, 25, 3, true)
-    assert not mix_dough(1000, 700, 25, 3, false)
+    assert mix_dough(1000g, 700g, 25degC, 3m, true)
+    assert not mix_dough(1000g, 700g, 25degC, 3m, false)
 }
 
 test "a dry dough or cold water isn't ready" {
-    assert not mix_dough(1000, 600, 25, 10, false)
-    assert not mix_dough(1000, 700, 18, 10, false)
+    assert not mix_dough(1000g, 600g, 25degC, 10m, false)
+    assert not mix_dough(1000g, 700g, 18degC, 10m, false)
 }
 
 test "differences have a sign" {
-    assert water_difference(30) == 4
-    assert water_difference(20) == -6
+    assert water_difference(30degC) == units.of(4, TemperatureDifferenceUnit.kelvin)
+    assert water_difference(20degC) == units.of(-6, TemperatureDifferenceUnit.kelvin)
 }
 
 test "water 4 degrees too cold is close enough, 5 isn't" {
-    assert mix_dough(1000, 700, 22, 10, false)
-    assert not mix_dough(1000, 700, 21, 10, false)
+    assert mix_dough(1000g, 700g, 22degC, 10m, false)
+    assert not mix_dough(1000g, 700g, 21degC, 10m, false)
 }

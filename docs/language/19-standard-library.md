@@ -1588,7 +1588,7 @@ three.
   "Set order"), so text goes by code point, or by `locale:` (under
   "Text").
 - **Named types.** An operation giving `T`, `T?` or `List<T>` keeps the
-  items' named type (`Batch`, `Grams`). A named list type isn't kept,
+  items' named type (`Batch`, `BatchWeight`). A named list type isn't kept,
   since `filter` or `drop_first` can break its `min_length`; it is built
   back by construction (area 2). `flatten` takes a `List<List<T>>`, and
   collections stay invariant, so a list of a named list type isn't one.
@@ -1602,7 +1602,7 @@ three.
 - **`sum` gives a representation**, as `+` does: `Int` or `Decimal` by its
   items' representation, so an empty list gives `0` or `0.00` as its type
   says (the checker fills an implicit `zero` of that representation,
-  `Param::implicit`). `Pence(list.sum(prices))` builds it back. Items
+  `Param::implicit`). `Stock(list.sum(counts))` builds it back. Items
   whose type has a `min` of at least `0` prove the sum is at least `0`, so
   that needs no arm for `min`; it needs one for `max` when the type has
   one.
@@ -1620,9 +1620,7 @@ type BatchName = Text {
     max_length: 40
 }
 
-type Grams = Int {
-    min: 0
-}
+type BatchWeight = Mass {}
 
 type Shelf = Int {
     min: 1
@@ -1636,17 +1634,17 @@ type LoafPrice = Decimal {
 
 type Batch = Object {
     name: BatchName
-    grams: Grams
+    weight: BatchWeight
     shelf: Shelf
     price: LoafPrice
 }
 
 type OverPlan = Bool {}
 
-/// The flour a day's batches take. Items never below zero add up to a sum
-/// never below zero, so building `Grams` from it needs no arm.
-function flour_needed(bakings: List<Batch>) -> Grams {
-    return Grams(list.sum(list.map(bakings, batch -> batch.grams)))
+/// The flour a day's batches take: `list.sum` adds numbers, and
+/// `units.sum` adds quantities of one kind.
+function flour_needed(bakings: List<Batch>) -> BatchWeight {
+    return BatchWeight(units.sum(list.map(bakings, batch -> batch.weight)))
 }
 
 /// The day's takings at full price.
@@ -1657,7 +1655,7 @@ function takings(bakings: List<Batch>) -> LoafPrice {
 /// The heaviest batch, if there is one: `max_by` reads each batch once,
 /// where sorting would order them all to read one.
 function heaviest(bakings: List<Batch>) -> Batch? {
-    return list.max_by(bakings, batch -> batch.grams)
+    return list.max_by(bakings, batch -> batch.weight)
 }
 
 /// The batches on each shelf, in baking order.
@@ -1667,8 +1665,8 @@ function by_shelf(bakings: List<Batch>) -> Map<Shelf, List<Batch>> {
 
 /// Whether each batch came out heavier than planned, batch by batch: a
 /// two-parameter inline function is given one item from each list.
-function over_plan(bakings: List<Batch>, goals: List<Grams>) -> List<OverPlan> {
-    return list.zip_with(bakings, goals, (batch, goal) -> OverPlan(batch.grams > goal))
+function over_plan(bakings: List<Batch>, goals: List<BatchWeight>) -> List<OverPlan> {
+    return list.zip_with(bakings, goals, (batch, goal) -> OverPlan(batch.weight > goal))
 }
 ```
 
@@ -1681,29 +1679,29 @@ with `map.get` and `map.keys` (under "Maps").
 test "list operations give new lists and keep the items as they are" {
     var rye: Batch = Batch {
         name: "Rye"
-        grams: 800
+        weight: 800g
         shelf: 2
         price: 4.20
     }
     var bap: Batch = Batch {
         name: "Bap"
-        grams: 90
+        weight: 90g
         shelf: 1
         price: 0.60
     }
     var spelt: Batch = Batch {
         name: "Spelt"
-        grams: 800
+        weight: 800g
         shelf: 2
         price: 3.80
     }
     var day: List<Batch> = [rye, bap, spelt]
-    var weights: List<Grams> = [800, 90, 800]
-    assert flour_needed(day) == 1690
+    var weights: List<BatchWeight> = [800g, 90g, 800g]
+    assert flour_needed(day) == 1690g
     assert takings(day) == 8.60
     assert takings([]) == 0.00
     assert list.any(day, batch -> batch.shelf == 1)
-    assert not list.all(day, batch -> batch.grams > 100)
+    assert not list.all(day, batch -> batch.weight > 100g)
     assert list.find(day, batch -> batch.shelf == 2) == rye
     assert list.first(day) == rye
     assert list.last(day) == spelt
@@ -1712,9 +1710,9 @@ test "list operations give new lists and keep the items as they are" {
     assert heaviest(day) == rye  // the first of equal keys
     assert list.min_by(day, batch -> batch.price) == bap
     assert list.sort_by(day, batch -> batch.name) == [bap, rye, spelt]
-    assert list.sort_by(day, batch -> batch.grams) == [bap, rye, spelt]  // equal keys keep their order
+    assert list.sort_by(day, batch -> batch.weight) == [bap, rye, spelt]  // equal keys keep their order
     assert list.reverse(day) == [spelt, bap, rye]
-    assert list.distinct(weights) == [800, 90]
+    assert list.distinct(weights) == [800g, 90g]
     assert list.slice(day, 1, 5) == [bap, spelt]
     assert list.keep_first(day, 2) == [rye, bap]
     assert list.keep_last(day, 2) == [bap, spelt]
@@ -1723,26 +1721,26 @@ test "list operations give new lists and keep the items as they are" {
     assert list.append([rye], bap) == [rye, bap]
     assert list.concat([rye], [bap, spelt]) == day
     assert list.flatten([[rye], [], [bap, spelt]]) == day
-    assert over_plan(day, [700, 100, 800]) == [true, false, false]
-    assert over_plan(day, [700]) == [true]  // as long as the shorter
+    assert over_plan(day, [700g, 100g, 800g]) == [true, false, false]
+    assert over_plan(day, [700g]) == [true]  // as long as the shorter
 }
 
 test "group_by keeps each shelf's batches in baking order" {
     var rye: Batch = Batch {
         name: "Rye"
-        grams: 800
+        weight: 800g
         shelf: 2
         price: 4.20
     }
     var bap: Batch = Batch {
         name: "Bap"
-        grams: 90
+        weight: 90g
         shelf: 1
         price: 0.60
     }
     var spelt: Batch = Batch {
         name: "Spelt"
-        grams: 800
+        weight: 800g
         shelf: 2
         price: 3.80
     }
@@ -2122,7 +2120,7 @@ and an open end as `…`; a range of numbers shows each end as a number is
 shown (under "Numbers"), and takes no options. `text.parse(raw, as:
 Range<T>)` reads a range of a standard type or of a representation
 written as itself (`Range<Int>`, `Range<CalendarDate>`); a range of a
-type with rules of its own (`Range<Grams>`) is `type.mismatch`, since
+type with rules of its own (`Range<LoafWeight>`) is `type.mismatch`, since
 nothing would check those rules on its ends. A `Range<T>` isn't ordered,
 and `type.standard_exists` matches no shape for it, since `InstantRange`
 already claims a start and an end. (The range operations' stubs are
@@ -2130,67 +2128,67 @@ already claims a start and an end. (The range operations' stubs are
 `TextForm::Range` and `FormatKey::Range`, with ranges of dates as its
 examples, `Examples::of`.)
 
-Bands of loaf weights, one with no upper limit:
+Bands of cake sizes in slices, one with no upper limit:
 
 ```jadpo check project=generic-ranges
-type Grams = Int {
+type SliceCount = Int {
     min: 0
 }
 
-type LoafName = Text {
+type CakeName = Text {
     min_length: 1
 }
 
-type Loaf = Object {
-    name: LoafName
-    weight: Grams
+type Cake = Object {
+    name: CakeName
+    slices: SliceCount
 }
 
 type InBand = Bool {}
 
-/// The weights sold as large: 800 g and up, with no upper limit.
-function large() -> Range<Grams> {
+/// The cakes sold as large: 16 slices and up, with no upper limit.
+function large() -> Range<SliceCount> {
     return Range {
-        start: 800
+        start: 16
         end: none
     }
 }
 
-/// Whether a loaf's weight is in `band`.
-function in_band(loaf: Loaf, band: Range<Grams>) -> InBand {
-    return InBand(range.contains(band, loaf.weight))
+/// Whether a cake's slice count is in `band`.
+function in_band(cake: Cake, band: Range<SliceCount>) -> InBand {
+    return InBand(range.contains(band, cake.slices))
 }
 
-/// The weights two bands share, if any.
-function common_weights(first: Range<Grams>, second: Range<Grams>) -> Range<Grams>? {
+/// The slice counts two bands share, if any.
+function common_weights(first: Range<SliceCount>, second: Range<SliceCount>) -> Range<SliceCount>? {
     return range.intersection(first, second)
 }
 ```
 
 ```jadpo check project=generic-ranges file=main.test.jadpo
 test "a range of any ordered type, either end open" {
-    var medium: Range<Grams> = Range {
-        start: 400
-        end: 800
+    var medium: Range<SliceCount> = Range {
+        start: 8
+        end: 16
     }
-    var small: Range<Grams> = Range {
+    var small: Range<SliceCount> = Range {
         start: none
-        end: 500
+        end: 10
     }
-    var both: Range<Grams> = Range {
-        start: 400
-        end: 500
+    var both: Range<SliceCount> = Range {
+        start: 8
+        end: 10
     }
-    var rye: Loaf = Loaf {
+    var rye: Cake = Cake {
         name: "Rye"
-        weight: 800
+        slices: 16
     }
     assert in_band(rye, large())
     assert not in_band(rye, medium)  // a range doesn't hold its end
-    assert common_weights(medium, large()) == none  // they meet at 800
+    assert common_weights(medium, large()) == none  // they meet at 16
     assert common_weights(medium, small) == both
     assert range.overlaps(small, medium)
-    assert text.from(large()) == "800/.."
+    assert text.from(large()) == "16/.."
 }
 ```
 
@@ -2286,7 +2284,7 @@ what an operator can't.
 A bakery's numbers, through the operations chunk 5.5d built:
 
 ```jadpo check project=number-operations
-type Grams = Int {
+type Portions = Int {
     min: 0
 }
 
@@ -2295,11 +2293,13 @@ type TrayCount = Int {
     max: 12
 }
 
-type LoafCount = Int {
-    min: 0
+type LoafCount = Int {}
+
+type FlourWeight = Mass {
+    min: 0g
 }
 
-type Kilograms = Decimal {
+type Hydration = Decimal {
     scale: 3
     min: 0.000
 }
@@ -2309,10 +2309,10 @@ type LoafPrice = Decimal {
     min: 0.00
 }
 
-/// How far a weighed batch is from its recipe, either way. `abs` is never
-/// below 0, so building `Grams` from it needs no arm.
-function drift(weighed: Grams, recipe: Grams) -> Grams {
-    return Grams(integer.abs(weighed - recipe))
+/// How far a counted batch is from its recipe, either way. `abs` is never
+/// below 0, so building `Portions` from it needs no arm.
+function drift(in_batch: Portions, recipe: Portions) -> Portions {
+    return Portions(integer.abs(in_batch - recipe))
 }
 
 /// The trays to bake: what was ordered, but never more than the oven
@@ -2321,10 +2321,11 @@ function trays_to_bake(requested: TrayCount, oven: TrayCount) -> TrayCount {
     return integer.min(requested, oven)
 }
 
-/// Whole loaves a sack of flour makes at 0.450 kg each: part of a loaf
-/// isn't one, so the count rounds down, toward zero.
-function loaves_from(flour: Kilograms) -> LoafCount {
-    return LoafCount(integer.from_decimal(flour / 0.450, rounding: Rounding.down))
+/// Whole loaves a sack of flour makes at 450g each: part of a loaf isn't
+/// one, so the count rounds down, toward zero. Dividing a weight by a weight
+/// gives a plain `Decimal`.
+function loaves_from(flour: FlourWeight) -> LoafCount {
+    return LoafCount(integer.from_decimal(flour / 450g, rounding: Rounding.down))
 }
 
 /// A loaf's price at a fifth off, never below the lowest price.
@@ -2332,9 +2333,9 @@ function sale_price(price: LoafPrice, lowest: LoafPrice) -> LoafPrice {
     return decimal.max(LoafPrice(price * 0.80), lowest)
 }
 
-/// A batch's weight to the nearest 100 g, for its label.
-function label_weight(weight: Kilograms) -> Kilograms {
-    return Kilograms(decimal.round(weight, scale: 1, rounding: Rounding.half_up))
+/// A dough's hydration to one place, for its label.
+function label_hydration(hydration: Hydration) -> Hydration {
+    return Hydration(decimal.round(hydration, scale: 1, rounding: Rounding.half_up))
 }
 
 /// The price as a customer reads it, in their own locale.
@@ -2346,9 +2347,7 @@ function price_label(price: LoafPrice, customer: Locale) -> PresentationText {
 `min` and `max` take two values of one type, as `+` does: a literal
 takes the other's type and is checked against it, so `integer.min(requested,
 20)` is an error where `TrayCount` stops at 12, and a plain number, such as
-`requested + 1`, makes the result a plain `Int`. A rounding never crosses
-zero, so `loaves_from`'s count of flour never below zero is never below
-zero either. The page's values, and each mode to one place:
+`requested + 1`, makes the result a plain `Int`. The page's values, and each mode to one place:
 
 ```jadpo check project=number-operations file=main.test.jadpo
 test "number operations give what the page says" {
@@ -2356,12 +2355,12 @@ test "number operations give what the page says" {
     assert drift(1020, 1000) == 20
     assert trays_to_bake(10, 8) == 8
     assert trays_to_bake(3, 8) == 3
-    assert loaves_from(10.000) == 22
-    assert loaves_from(0.449) == 0
+    assert loaves_from(10kg) == 22
+    assert loaves_from(449g) == 0
     assert sale_price(4.20, 3.50) == 3.50
     assert sale_price(5.00, 3.50) == 4.00
-    assert label_weight(1.250) == 1.3
-    assert label_weight(1.249) == 1.2
+    assert label_hydration(1.250) == 1.3
+    assert label_hydration(1.249) == 1.2
     assert integer.max(3, 8) == 8
     assert decimal.abs(-2.50) == 2.50
     assert decimal.min(4.20, 3.80) == 3.80

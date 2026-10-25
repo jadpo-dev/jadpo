@@ -2,7 +2,7 @@
 // that may be left out. `==` compares objects by their contents, field by
 // field, so a whole expected value can be written out and compared.
 
-use sales/types { CakeLine }
+use sales/types { CakeLine, Sterling }
 
 test "a plain request quotes a medium cake with no candles" {
     var request: CakeRequest = CakeRequest {
@@ -14,7 +14,7 @@ test "a plain request quotes a medium cake with no candles" {
         line: CakeLine {
             cake: "Lemon drizzle"
             count: 1
-            each: 2600
+            each: CakeLine.each(money.from_minor(2600, Currency.gbp))
         }
         icing: none
         candles: 0
@@ -33,7 +33,7 @@ test "a request's own choices replace the defaults" {
     var quote: CakeQuote = quote_cake(request)
     // Reading through nested objects: `quote.line.each` has the field type
     // `CakeLine.each`.
-    assert quote.line.each == 3800
+    assert quote.line.each == Sterling(money.from_minor(3800, Currency.gbp))
     assert quote.icing == "Happy birthday"
     assert quote.candles == 7
 }

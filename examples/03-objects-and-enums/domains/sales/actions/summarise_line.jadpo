@@ -14,16 +14,16 @@
 // `show_on_menu.jadpo` and `change_line.jadpo` use `pick` and
 // `optional: all`.
 
-use sales/types { CakeLine, Pence }
+use sales/types { CakeLine, Sterling }
 
 /// A line as the receipt prints it.
 type LineReceipt = Output {
     include: [CakeLine]
     omit: [CakeLine.count]
     // A written field replaces a copied field of the same name, visibly:
-    // the receipt's `each` is plain `Pence`, without the line's £60 limit.
-    each: Pence
-    total: Pence
+    // the receipt's `each` is a plain `Sterling`, without the line's £60 limit.
+    each: Sterling
+    total: Sterling
 }
 
 /// The receipt line for `line`.
@@ -31,6 +31,6 @@ action summarise_line(line: CakeLine) -> LineReceipt {
     return LineReceipt {
         cake: line.cake
         each: line.each
-        total: Pence(line.each * line.count)
+        total: Sterling(line.each * line.count)
     }
 }

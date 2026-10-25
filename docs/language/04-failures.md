@@ -300,7 +300,7 @@ When the declared ranges, or the conditions it sits under (area 2,
 target's rules, it is not fallible, so it takes no `attempt` (question 6):
 
 ```jadpo check project=proven file=types.jadpo hidden
-type Pence = Int {
+type Stock = Int {
     min: 0
 }
 
@@ -315,13 +315,13 @@ type QuantityTooLarge = Failure {
 ```
 
 ```jadpo check project=proven
-function line_total(price: Pence, quantity: Quantity) -> Pence {
-    var total: Pence = Pence(price * quantity)  // both at least 0, Pence has no maximum
+function stock_needed(per_pack: Stock, packs: Quantity) -> Stock {
+    var total: Stock = Stock(per_pack * packs)  // both at least 0, Stock has no maximum
     return total
 }
 
-function doubled(quantity: Quantity) fails QuantityTooLarge -> Quantity {
-    var result: Quantity = attempt Quantity(quantity * 2) {  // at least 2, but can exceed 1000
+function doubled(packs: Quantity) fails QuantityTooLarge -> Quantity {
+    var result: Quantity = attempt Quantity(packs * 2) {  // at least 2, but can exceed 1000
         max: QuantityTooLarge
     }
     return result
@@ -1338,8 +1338,8 @@ check failed: 1 error, 1 file
 6. **Does a construction the declared ranges prove safe still need
    `attempt`?** *Decided 2026-10-12:* no. Area 3 made `attempt` an error on
    anything that cannot fail, so the compiler decides from the ranges, and
-   its error says which case applies. `Pence(price * quantity)` with both at
-   least 0 and no maximum on `Pence` stays plain; `Quantity(quantity * 2)`
+   its error says which case applies. `Stock(per_pack * packs)` with both at
+   least 0 and no maximum on `Stock` stays plain; `Quantity(quantity * 2)`
    with a maximum of 1000 needs `attempt` and an arm for `max`. Changing a range
    flips call sites, and the compiler reports each one. *Built in chunk 2.6,*
    with an `if` condition counting as proof (area 2, "Conditions as

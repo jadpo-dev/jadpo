@@ -1,13 +1,18 @@
 // A library private to its domain: only `pantry` calls it.
 
-use shared/types { Grams, SackCount }
+use shared/types { FlourWeight, SackCount }
+use shared/failures { TooHeavy }
 
-/// Sacks of flour and the grams in them.
+/// Sacks of flour and the weight in them.
 library sacks {
-    /// The grams of flour in `count` full sacks.
-    function grams_in(count: SackCount) -> Grams {
-        // 6 sacks of 16000 grams is 96000, inside `Grams`' 100000, so the
-        // ranges prove this can't fail.
-        return Grams(count * 16000)
+    /// The weight of flour in `count` full sacks.
+    function weight_in(count: SackCount) fails TooHeavy -> FlourWeight {
+        // A weight times a count is a plain `Mass`, so whether it fits the
+        // 100kg `FlourWeight` allows is checked when it runs, and `TooHeavy`
+        // names what went wrong.
+        var weight: FlourWeight = attempt FlourWeight(16kg * count) {
+            invalid: TooHeavy
+        }
+        return weight
     }
 }

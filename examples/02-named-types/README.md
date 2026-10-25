@@ -4,17 +4,18 @@ Every built-in representation Jadpo has so far, the rules a type can add
 to it, and how values move between types. The project is a bakery's
 pantry; each action shows one family of built-in types.
 
-The rule behind Jadpo's types: representation is not meaning. A weight
-and a temperature are both whole numbers underneath, but they mean
+The rule behind Jadpo's types: representation is not meaning. A sack
+count and a number of degrees can both be whole numbers, but they mean
 different things, so they are different types, and the compiler never
-converts between them silently. A value becomes a type only by being
+converts between them silently. Where the language already has a type for
+what you mean (a weight, a temperature, an amount of money), use it. A value becomes a type only by being
 checked against that type's rules.
 
 ## What it teaches
 
-1. **A type two files share.** `domains/pantry/types/grams.jadpo` lives in `types/` because two actions use it. [Area 1, Sharing and promotion](../../docs/language/01-project-layout-and-modules.md#sharing-and-promotion).
-2. **Whole numbers and `Bool`.** `min`, `max`, negative values, a meaning given to a yes-or-no answer, and a construction the compiler proves safe. See `actions/weigh_flour.jadpo` and [area 2, Constraints](../../docs/language/02-values-and-types.md#constraints).
-3. **Exact decimals.** `scale`, decimal literals, and `/` between whole numbers giving a count in another unit, which gets a type of its own. See `actions/price_flour.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
+1. **A type two files share.** `domains/pantry/types/sack_weight.jadpo`, a `Mass` with a rule of its own, lives in `types/` because two actions use it. [Area 1, Sharing and promotion](../../docs/language/01-project-layout-and-modules.md#sharing-and-promotion).
+2. **Whole numbers, quantities and `Bool`.** `min`, `max`, a custom whole-number type (`SackCount`), a `Mass` and a `Temperature` with unit literals (`16kg`, `-5degC`), a meaning given to a yes-or-no answer, and a construction the compiler proves safe. See `actions/weigh_flour.jadpo` and [area 2, Constraints](../../docs/language/02-values-and-types.md#constraints).
+3. **Money.** `Money` with a fixed `currency:` and a `rounding:`, built with `money.from_minor`, and `/` between two weights giving a plain decimal that a price is multiplied by. See `actions/price_flour.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
 4. **Text.** Lengths, a whole-text `pattern`, refinements and widening, joining with `+`, and string escapes. See `actions/label_jar.jadpo` and [area 2, Named types](../../docs/language/02-values-and-types.md#named-types).
 5. **Time.** `Instant`, `CalendarDate` and `Duration` with bounds, and two moments with different meanings compared through the type both are built on. See `actions/check_delivery.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
 6. **Identities, contacts and links.** `Uuid` with a `version`, `Email`, `Url`, `IpAddress` and `format: TextFormat.email`, each answer about them a yes or no of its own type. See `actions/check_note.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
@@ -52,7 +53,7 @@ target/release/jadpo fmt --check examples/02-named-types
 
 - In `label_jar.test.jadpo`, change `"RY-042"` to `"ry-042"`. `jadpo check` reports `type.invalid_literal`: the pattern must match the whole text.
   <!-- try {"file": "domains/pantry/actions/label_jar.test.jadpo", "replace": "\"RY-042\"", "with": "\"ry-042\"", "check": ["type.invalid_literal"]} -->
-- In `weigh_flour.jadpo`, change `total_weight(each, sacks)` to `total_weight(temperature, sacks)`. `jadpo check` reports `type.mismatch`: a `Celsius` is never a `Grams`, though both are whole numbers.
+- In `weigh_flour.jadpo`, change `total_weight(each, sacks)` to `total_weight(temperature, sacks)`. `jadpo check` reports `type.mismatch`: a `StoreTemperature` is never a `SackWeight`: each is its own kind of quantity.
   <!-- try {"file": "domains/pantry/actions/weigh_flour.jadpo", "replace": "total_weight(each, sacks)", "with": "total_weight(temperature, sacks)", "check": ["type.mismatch"]} -->
 - In `label_jar.jadpo`, change `ShelfName`'s `max_length: 12` to `max_length: 50`. `jadpo check` reports `type.constraint_loosened`: a refinement can only tighten what it builds on, and `JarName` allows at most 40.
   <!-- try {"file": "domains/pantry/actions/label_jar.jadpo", "replace": "    max_length: 12", "with": "    max_length: 50", "check": ["type.constraint_loosened"]} -->

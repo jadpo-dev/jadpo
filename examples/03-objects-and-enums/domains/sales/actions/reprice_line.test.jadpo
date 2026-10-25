@@ -1,19 +1,19 @@
-use sales/types { CakeLine }
+use sales/types { CakeLine, Sterling }
 
 test "repricing builds a new line and leaves the old one alone" {
     var before: CakeLine = CakeLine {
         cake: "Carrot"
         count: 2
-        each: 2400
+        each: CakeLine.each(money.from_minor(2400, Currency.gbp))
     }
     var after: CakeLine = reprice_line(
         Reprice {
             line: before
-            each: 2200
+            each: CakeLine.each(money.from_minor(2200, Currency.gbp))
         }
     )
-    assert after.each == 2200
-    assert before.each == 2400
+    assert after.each == Sterling(money.from_minor(2200, Currency.gbp))
+    assert before.each == Sterling(money.from_minor(2400, Currency.gbp))
     // Same cake and count, different price: not equal.
     assert after != before
 }
@@ -22,7 +22,7 @@ test "half price rounds down and equals a line built with the same fields" {
     var line: CakeLine = CakeLine {
         cake: "Carrot"
         count: 2
-        each: 2401
+        each: CakeLine.each(money.from_minor(2401, Currency.gbp))
     }
     var end_of_day: Reprice = Reprice {
         line: line
@@ -33,6 +33,6 @@ test "half price rounds down and equals a line built with the same fields" {
     assert reprice_line(end_of_day) == CakeLine {
         cake: "Carrot"
         count: 2
-        each: 1200
+        each: CakeLine.each(money.from_minor(1200, Currency.gbp))
     }
 }

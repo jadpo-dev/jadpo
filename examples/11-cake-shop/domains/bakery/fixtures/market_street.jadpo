@@ -3,14 +3,22 @@
 // needs a menu.
 
 use bakery/entities { Cake, Outlet }
-use bakery/types { Flavour, OutletWithMenu }
+use bakery/types { Flavour, OutletWithMenu, Sterling }
 use bakery/actions { add_cake, open_outlet }
 
 /// The Market Street outlet, with lemon and coffee cakes on the menu.
 fixture market_street() -> OutletWithMenu {
     var pickup_outlet: Outlet = attempt open_outlet("Market Street")
-    var lemon: Cake = add_cake("Lemon drizzle", Flavour.lemon, 1800)
-    var coffee: Cake = add_cake("Coffee and walnut", Flavour.coffee, 2200)
+    var lemon: Cake = add_cake(
+        "Lemon drizzle",
+        Flavour.lemon,
+        Sterling(money.from_minor(1800, Currency.gbp))
+    )
+    var coffee: Cake = add_cake(
+        "Coffee and walnut",
+        Flavour.coffee,
+        Sterling(money.from_minor(2200, Currency.gbp))
+    )
     return OutletWithMenu {
         pickup_outlet: pickup_outlet
         lemon: lemon

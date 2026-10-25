@@ -8,23 +8,23 @@ test "a recipe weighs as much as its ingredients" {
         ingredients: [
             Ingredient {
                 name: "Flour"
-                weight: 500
+                weight: 500g
             },
             Ingredient {
                 name: "Water"
-                weight: 350
+                weight: 350g
             },
             Ingredient {
                 name: "Salt"
-                weight: 10
+                weight: 10g
             }
         ]
         allergens: [Hazard.gluten]
     }
     var label: RecipeLabel = weigh_recipe(bread)
-    assert label.total == 860
+    assert label.total == 860g
     assert label.ingredients == 3
-    assert label.flour == 500
+    assert label.flour == 500g
 }
 
 test "the first ingredient with a name gives its weight" {
@@ -32,16 +32,16 @@ test "the first ingredient with a name gives its weight" {
         ingredients: [
             Ingredient {
                 name: "Flour"
-                weight: 500
+                weight: 500g
             },
             Ingredient {
                 name: "Water"
-                weight: 350
+                weight: 350g
             }
         ]
         allergens: [Hazard.gluten]
     }
-    assert weight_of(bread, "Water") == 350
+    assert weight_of(bread, "Water") == 350g
     assert weight_of(bread, "Yeast") == none
 }
 
@@ -51,7 +51,7 @@ test "an empty recipe weighs nothing" {
         allergens: []
     }
     assert weigh_recipe(nothing) == RecipeLabel {
-        total: 0
+        total: 0g
         ingredients: 0
         flour: none
     }

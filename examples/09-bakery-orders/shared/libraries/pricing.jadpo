@@ -2,12 +2,12 @@
 // minor units, pence here, with its currency, so `pricing.pence` says
 // both once for the whole bakery.
 
-use shared/types { PenceCount, Sterling }
+use shared/types { MinorAmount, Sterling }
 
 /// Prices worked out from other prices.
 library pricing {
     /// An amount written in pence: `pricing.pence(250)` is £2.50.
-    function pence(count: PenceCount) -> Sterling {
+    function pence(count: MinorAmount) -> Sterling {
         return Sterling(money.from_minor(count, Currency.gbp))
     }
 }

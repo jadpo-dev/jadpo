@@ -4,15 +4,15 @@
 // says what it is built from: a representation such as `Int`, or
 // `Object`, `Enum`, `Input`, `Output` or `Failure` for shapes.
 
-use sales/types { CakeCount, CakeName, Pence }
+use sales/types { CakeCount, CakeName, Sterling }
 
 /// One line of an order: which cake, how many, and the price of each.
 type CakeLine = Object {
     cake: CakeName
     count: CakeCount
     // A field can add rules of its own in a block after its type. These
-    // tighten `Pence` for this field only: no single cake costs over £60.
-    each: Pence {
+    // tighten `Sterling` for this field only: no single cake costs over £60.
+    each: Sterling {
         max: 6000
     }
 }

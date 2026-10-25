@@ -17,10 +17,10 @@ type Shelf = Int {
 /// Whether the oven fills with steam.
 type Steam = Bool {}
 
-/// An oven temperature in degrees.
-type OvenTemperature = Int {
-    min: 0
-    max: 300
+/// An oven temperature.
+type OvenTemperature = Temperature {
+    min: 0degC
+    max: 300degC
 }
 
 /// How a bake's top comes out.
@@ -67,9 +67,9 @@ function temperature_for(bake: Bake) -> OvenTemperature {
     // Covering every variant means no `_` is needed, and adding a variant
     // later makes every `match` that misses it a compile error.
     return match bake {
-        Bake.bread -> 230
-        Bake.pastry -> 200
-        Bake.meringue -> 100
+        Bake.bread -> 230degC
+        Bake.pastry -> 200degC
+        Bake.meringue -> 100degC
     }
 }
 
@@ -84,16 +84,16 @@ function turned_down(bake: Bake, shelf: Shelf) -> OvenTemperature {
         Bake.meringue -> {}
         Bake.bread -> {
             if (shelf == 2) {
-                setting = 210
+                setting = 210degC
             } else if (shelf == 1) {
-                setting = 220
+                setting = 220degC
             } else {
                 setting = base
             }
         }
         Bake.pastry -> {
             if (shelf > 0) {
-                setting = 190
+                setting = 190degC
             }
         }
     }

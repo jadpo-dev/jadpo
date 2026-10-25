@@ -1,0 +1,53 @@
+// An action is an operation the application offers. Each action has its
+// own file in its domain's `actions/` folder, named after it, so a search
+// for a name always finds exactly one file.
+//
+// A file opens with `use` lines naming where every name it uses, but
+// doesn't declare, comes from. `use baking/types { RollCount }` brings in
+// `RollCount` from the folder `domains/baking/types/`, where it is in
+// `roll_count.jadpo`. So every name in a file is on a `use` line, built in
+// (`Int`, `Bool`), or declared in the file itself. `jadpo fmt` adds a
+// missing `use` line and removes one nothing needs.
+
+use baking/types { RollCount }
+
+// Types and helpers that only this action uses live here too, after it:
+// the declaration a file is named after comes first, and everything else
+// in the file is there for it. `TrayCount` and `RollCount` are both whole
+// numbers, but Jadpo treats them as different types, so one can never be
+// passed where the other is expected.
+
+/// How many trays of rolls one customer may buy at once.
+type TrayCount = Int {
+    min: 1
+    max: 50
+}
+
+// A function is pure: it works its result out from its arguments and
+// nothing else. A helper used only in this file is called by its bare
+// name. `///` above a declaration describes it, for editors and generated
+// documentation; `//` comments like this one are notes for the reader.
+
+/// The rolls in `trays` trays of `each` rolls.
+function trays_total(each: RollCount, trays: TrayCount) -> RollCount {
+    // Arithmetic works on the representation, so `each * trays` is a
+    // plain `Int`. `RollCount(...)` turns it back into `RollCount` by checking the
+    // rules; it is validation, never a cast. Both sides are at least 0 and
+    // `RollCount` has no maximum, so the compiler can prove it never fails.
+    return RollCount(each * trays)
+}
+
+/// How many rolls a customer gets for `trays` trays: more than three
+/// trays come with 5 extra rolls.
+action count_rolls(each: RollCount, trays: TrayCount) -> RollCount {
+    // Every variable states its type. `var` names a value that never
+    // changes; example 04 shows `var mut` for one that does.
+    var total: RollCount = trays_total(each, trays)
+    // A condition is always in brackets and must be a `Bool`: Jadpo has no
+    // truthiness. Comparing a `TrayCount` with the literal 3 is fine,
+    // because a literal takes the type of the other side.
+    if (trays > 3) {
+        return RollCount(total + 5)
+    }
+    return total
+}

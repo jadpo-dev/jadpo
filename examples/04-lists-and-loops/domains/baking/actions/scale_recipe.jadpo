@@ -6,7 +6,7 @@
 // functions are not values, so they can't be stored or passed to your own
 // functions.
 
-use baking/types { Grams, Ingredient, IngredientName, Recipe }
+use baking/types { Ingredient, IngredientName, IngredientWeight, Recipe }
 
 /// How many times a recipe is made at once.
 type Batches = Int {
@@ -22,7 +22,7 @@ type ScaledRecipe = Output {
 }
 
 /// The names of the ingredients heavier than `over`, in recipe order.
-function heavy_ingredients(recipe: Recipe, over: Grams) -> List<IngredientName> {
+function heavy_ingredients(recipe: Recipe, over: IngredientWeight) -> List<IngredientName> {
     var heavy: List<Ingredient> = list.filter(
         recipe.ingredients,
         ingredient -> ingredient.weight > over
@@ -37,7 +37,7 @@ action scale_recipe(recipe: Recipe, bakes: Batches) -> ScaledRecipe {
         recipe.ingredients,
         ingredient -> Ingredient {
             name: ingredient.name
-            weight: Grams(ingredient.weight * bakes)
+            weight: IngredientWeight(ingredient.weight * bakes)
         }
     )
     var whole_batch: Recipe = Recipe {
@@ -47,6 +47,6 @@ action scale_recipe(recipe: Recipe, bakes: Batches) -> ScaledRecipe {
     // The bench scale weighs up to 5 kg.
     return ScaledRecipe {
         recipe: whole_batch
-        floor_scale: heavy_ingredients(whole_batch, 5000)
+        floor_scale: heavy_ingredients(whole_batch, 5000g)
     }
 }

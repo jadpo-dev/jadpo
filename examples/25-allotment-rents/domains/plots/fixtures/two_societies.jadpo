@@ -1,5 +1,5 @@
 use plots/entities { Plot, Society }
-use plots/types { SocietySites }
+use plots/types { SocietySites, Sterling }
 use plots/actions { add_plot, found_society }
 
 /// Hill Top and Vale Road, each with a plot whose rent is overdue on
@@ -7,10 +7,34 @@ use plots/actions { add_plot, found_society }
 fixture two_societies() -> SocietySites {
     var hill_top: Society = found_society("Hill Top Allotments")
     var vale_road: Society = found_society("Vale Road Gardens")
-    var ada: Plot = attempt add_plot(hill_top.id, 1, "Ada", 4500, "2026-09-30")
-    var ben: Plot = attempt add_plot(vale_road.id, 7, "Ben", 3800, "2026-10-01")
-    var cy: Plot = attempt add_plot(vale_road.id, 8, "Cy", 3800, "2026-12-01")
-    var unlet_plot: Plot = attempt add_plot(vale_road.id, 9, none, 3800, none)
+    var ada: Plot = attempt add_plot(
+        hill_top.id,
+        1,
+        "Ada",
+        Sterling(money.from_minor(4500, Currency.gbp)),
+        "2026-09-30"
+    )
+    var ben: Plot = attempt add_plot(
+        vale_road.id,
+        7,
+        "Ben",
+        Sterling(money.from_minor(3800, Currency.gbp)),
+        "2026-10-01"
+    )
+    var cy: Plot = attempt add_plot(
+        vale_road.id,
+        8,
+        "Cy",
+        Sterling(money.from_minor(3800, Currency.gbp)),
+        "2026-12-01"
+    )
+    var unlet_plot: Plot = attempt add_plot(
+        vale_road.id,
+        9,
+        none,
+        Sterling(money.from_minor(3800, Currency.gbp)),
+        none
+    )
     return SocietySites {
         hill_top: hill_top
         vale_road: vale_road

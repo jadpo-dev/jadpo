@@ -5,16 +5,20 @@
 // another domain shares its caller's transaction, so both commit or
 // neither does.
 
-use shared/types { Grams, SackCount }
+use shared/types { FlourWeight, SackCount }
+use shared/failures { TooHeavy }
 use pantry/failures { FlourShort }
 use pantry/libraries { sacks }
 
-/// Takes `asked` grams from the `in_store` full sacks, and says how much
+/// Takes `asked` flour from the `in_store` full sacks, and says how much
 /// flour went.
-public action take_flour(asked: Grams, in_store: SackCount) fails FlourShort -> Grams {
+public action take_flour(
+    asked: FlourWeight,
+    in_store: SackCount
+) fails FlourShort, TooHeavy -> FlourWeight {
     // A local can't reuse a library's or a domain's name, so
-    // `sacks.grams_in` below always means the library.
-    var available: Grams = sacks.grams_in(in_store)
+    // `sacks.weight_in` below always means the library.
+    var available: FlourWeight = attempt sacks.weight_in(in_store)
     if (asked > available) {
         reject FlourShort {
             available: available

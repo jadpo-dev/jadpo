@@ -50,8 +50,8 @@ target/release/jadpo fmt --check examples/04-lists-and-loops
 
 - In `weigh_recipe.jadpo`, change `var mut total` to `var total`. `jadpo check` reports `type.assign_immutable`: only a `var mut` can be assigned.
   <!-- try {"file": "domains/baking/actions/weigh_recipe.jadpo", "replace": "var mut total", "with": "var total", "check": ["type.assign_immutable"]} -->
-- In `weigh_recipe.test.jadpo`, change `== 860` to `== 861`. `jadpo test` fails with `test.assertion_failed`, showing each side's value and the command that reruns just that test.
-  <!-- try {"file": "domains/baking/actions/weigh_recipe.test.jadpo", "replace": "== 860", "with": "== 861", "test": ["test.assertion_failed"]} -->
+- In `weigh_recipe.test.jadpo`, change `== 860g` to `== 861g`. `jadpo test` fails with `test.assertion_failed`, showing each side's value and the command that reruns just that test.
+  <!-- try {"file": "domains/baking/actions/weigh_recipe.test.jadpo", "replace": "== 860g", "with": "== 861g", "test": ["test.assertion_failed"]} -->
 - In `shopping_list.jadpo`, give `ShoppingList` a rule: change `Set<IngredientName> {}` to `Set<IngredientName> { min_length: 1 }`, on three lines. `jadpo check` reports `failure.attempt_required`: a recipe with no ingredients would break it, so building one can now fail; [06-failures](../06-failures/README.md) shows how a construction that can fail is handled.
   <!-- try {"file": "domains/baking/actions/shopping_list.jadpo", "replace": "Set<IngredientName> {}", "with": "Set<IngredientName> {\n    min_length: 1\n}", "check": ["failure.attempt_required"]} -->
 - Then read [05-logic](../05-logic/README.md).

@@ -1,33 +1,54 @@
 // Rounding a share. A batch's cost divided by the buns it makes rarely
-// comes out to the penny, so the code says which way the half penny
-// goes: `decimal.divide` keeps the result's places and rounds as told.
+// comes out to the penny, so the type says which way the half penny goes:
+// a `Money` type's `rounding:` decides it when the amount is divided.
 
-/// A price in pounds and pence.
-type ItemPrice = Decimal {
-    scale: 2
-    min: 0.00
+/// What a batch cost, in pounds.
+type BatchCost = Money {
+    currency: Currency.gbp
+    min: 0
 }
 
-/// How many buns a batch makes. Never zero, so it can be a divisor.
+/// How many buns a batch makes. Never zero, so it can be a share_by.
 type BatchSize = Int {
     min: 1
     max: 20
 }
 
+/// A bun's cost as the books record it. The books send a half penny to the
+/// even penny (banker's rounding), so rounding errors don't all lean one
+/// way over many batches.
+type BookedCost = Money {
+    currency: Currency.gbp
+    min: 0
+    rounding: Rounding.half_even
+}
+
+/// A bun's cost as its shelf label shows it, which rounds a half penny up,
+/// as a till does.
+type LabelledCost = Money {
+    currency: Currency.gbp
+    min: 0
+    rounding: Rounding.half_up
+}
+
 /// A bun's cost, as the books record it and as its shelf label shows it.
 type BunCost = Output {
-    booked: ItemPrice
-    labelled: ItemPrice
+    booked: BookedCost
+    labelled: LabelledCost
+}
+
+/// The number of buns as a decimal, at least 1, which an amount of money
+/// can be divided by.
+type ShareBy = Decimal {
+    scale: 2
+    min: 1.00
 }
 
 /// What one bun costs when a batch costing `batch` makes `buns` buns.
-action cost_bun(batch: ItemPrice, buns: BatchSize) -> BunCost {
+action cost_bun(batch: BatchCost, buns: BatchSize) -> BunCost {
+    var share_by: ShareBy = ShareBy(1.00 * buns)
     return BunCost {
-        // The books send a half penny to the even penny (banker's
-        // rounding), so rounding errors don't all lean one way over many
-        // batches.
-        booked: ItemPrice(decimal.divide(batch, buns, rounding: Rounding.half_even))
-        // A shelf label rounds a half penny up, as a till does.
-        labelled: ItemPrice(decimal.divide(batch, buns, rounding: Rounding.half_up))
+        booked: BookedCost(BookedCost(batch) / share_by)
+        labelled: LabelledCost(LabelledCost(batch) / share_by)
     }
 }

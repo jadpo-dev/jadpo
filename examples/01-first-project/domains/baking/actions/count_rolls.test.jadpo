@@ -1,0 +1,24 @@
+// Tests sit beside the file they test, named `<file>.test.jadpo`, and hold
+// only `test` declarations. Run them with `jadpo test` from anywhere in
+// the project.
+//
+// A test is a sentence and a body. The body is ordinary code plus
+// `assert`, which fails the test when its condition is false. Literals
+// such as `250` take the type of the parameter they are passed to, and the
+// compiler checks them against its rules: passing `0` trays would not
+// compile, because `TrayCount` starts at 1.
+//
+// A test file sees everything the file it tests declares, so it calls
+// `count_rolls` without importing it; anything else it uses, such as
+// `RollCount`, comes in on a `use` line.
+
+use baking/types { RollCount }
+
+test "one tray holds its rolls" {
+    assert count_rolls(250, 1) == 250
+}
+
+test "four trays come with 5 extra rolls" {
+    var total_rolls: RollCount = count_rolls(250, 4)
+    assert total_rolls == 1005
+}

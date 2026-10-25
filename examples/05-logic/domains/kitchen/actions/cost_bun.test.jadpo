@@ -1,9 +1,11 @@
 test "a half penny goes to the even penny in the books, and up on the label" {
-    // 10.05 shared by 2 is 5.025: half-even gives 5.02, half-up 5.03.
-    assert cost_bun(10.05, 2) == BunCost {
-        booked: 5.02
-        labelled: 5.03
+    // £10.05 shared by 2 is 5.025p: half-even gives £5.02, half-up £5.03.
+    var batch: BatchCost = BatchCost(money.from_minor(1005, Currency.gbp))
+    assert cost_bun(batch, 2) == BunCost {
+        booked: BookedCost(money.from_minor(502, Currency.gbp))
+        labelled: LabelledCost(money.from_minor(503, Currency.gbp))
     }
-    // 10.15 shared by 2 is 5.075: both give 5.08, the even penny.
-    assert cost_bun(10.15, 2).booked == 5.08
+    // £10.15 shared by 2 is 5.075: both give £5.08, the even penny.
+    var other: BatchCost = BatchCost(money.from_minor(1015, Currency.gbp))
+    assert cost_bun(other, 2).booked == BookedCost(money.from_minor(508, Currency.gbp))
 }

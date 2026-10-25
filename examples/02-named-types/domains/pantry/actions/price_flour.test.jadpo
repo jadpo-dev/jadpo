@@ -1,9 +1,11 @@
-test "flour is charged by the whole kilogram" {
-    // `1.20` is a `PricePerKilo` and the result a `DeliveryCost`, so both
-    // are exact: 2 kilograms at 1.20 is exactly 2.40.
-    assert price_flour(2500, 1.20) == 2.40
+test "flour is charged by the kilogram" {
+    // £1.20 a kilogram: 2.5 kilograms cost exactly £3.00.
+    var per_kilo: KiloPrice = KiloPrice(money.from_minor(120, Currency.gbp))
+    assert price_flour(2500g, per_kilo) == DeliveryCost(money.from_minor(300, Currency.gbp))
 }
 
-test "less than a kilogram costs nothing" {
-    assert price_flour(999, 1.20) == 0.00
+test "a part kilogram is charged to the nearest penny" {
+    // 999 grams at £1.20 is £1.1988, which rounds to £1.20.
+    var per_kilo: KiloPrice = KiloPrice(money.from_minor(120, Currency.gbp))
+    assert price_flour(999g, per_kilo) == DeliveryCost(money.from_minor(120, Currency.gbp))
 }

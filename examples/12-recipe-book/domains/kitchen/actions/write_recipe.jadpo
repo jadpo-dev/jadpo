@@ -2,7 +2,7 @@
 // create that set it from a baker's request would be refused.
 
 use kitchen/entities { Bakery, BakeryNotFound, Recipe }
-use kitchen/types { RecipeCard, RecipeName }
+use kitchen/types { RecipeCard, RecipeName, Sterling }
 
 /// What writing a recipe takes.
 type WriteRecipe = Input {
@@ -20,7 +20,7 @@ action write_recipe(
             bakery_id: bakery_id
             author_id: author.id
             name: input.name
-            batch_cost: 0
+            batch_cost: Sterling(money.from_minor(0, Currency.gbp))
             old_reference: none
         }
     }
