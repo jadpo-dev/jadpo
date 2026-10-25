@@ -7,15 +7,8 @@
 // route shows its contract without opening either.
 
 use bakery/entities { Order }
-use bakery/types { OrderView, ParcelQuote }
-use bakery/actions {
-    ChangeOrder,
-    ParcelRequest,
-    PlaceOrder,
-    change_order,
-    place_order,
-    quote_parcel
-}
+use bakery/types { OrderView }
+use bakery/actions { ChangeOrder, PlaceOrder, change_order, place_order }
 use bakery/queries { my_orders, order_by_id }
 
 /// A customer's orders, from the website.
@@ -47,12 +40,5 @@ routes AccountOrders {
         input: ChangeOrder
         output: OrderView
         run: change_order(order_id, input)
-    }
-
-    /// Quotes the postage for one of the customer's orders.
-    POST /{order_id: Order.id}/parcel {
-        input: ParcelRequest
-        output: ParcelQuote
-        run: quote_parcel(order_id, input)
     }
 }

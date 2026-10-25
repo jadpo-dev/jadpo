@@ -10,14 +10,7 @@
 
 use bakery/entities { Customer }
 use bakery/types { OrderView, OutletWithMenu }
-use bakery/actions {
-    ChangeOrder,
-    ParcelRequest,
-    PlaceOrder,
-    place_order,
-    register,
-    suspend_customer
-}
+use bakery/actions { ChangeOrder, PlaceOrder, place_order, register, suspend_customer }
 use bakery/fixtures { market_street }
 
 test "ordering needs someone signed in" {
@@ -147,44 +140,4 @@ test "a suspended customer is refused" {
     }
     assert response.status == 403
     assert response.code == "user_disabled"
-}
-
-test "only the customer can quote the postage on their order" {
-    var market: OutletWithMenu = market_street()
-    var ann: Customer = attempt register("ann@example.test", "Ann")
-    var bob: Customer = attempt register("bob@example.test", "Bob")
-    var anns: OrderView = attempt place_order(
-        PlaceOrder {
-            outlet_id: market.pickup_outlet.id
-            cake_id: market.lemon.id
-            quantity: 1
-            collect_on: "2026-11-07"
-        },
-        Principal.user(ann)
-    )
-    var by_bob: Response = request {
-        method: HttpMethod.post
-        path: "/account/orders/{order_id}/parcel"
-        params: {
-            order_id: anns.id
-        }
-        as: Principal.user(bob)
-        input: ParcelRequest {
-            label: "GB123456"
-        }
-    }
-    assert by_bob.status == 404
-    assert by_bob.code == "order_not_found"
-    var by_ann: Response = request {
-        method: HttpMethod.post
-        path: "/account/orders/{order_id}/parcel"
-        params: {
-            order_id: anns.id
-        }
-        as: Principal.user(ann)
-        input: ParcelRequest {
-            label: "GB123456"
-        }
-    }
-    assert by_ann.status == 200
 }

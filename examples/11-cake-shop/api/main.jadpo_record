@@ -28,12 +28,6 @@ PUT /account/orders/{order_id: Uuid}
     status 200
     fails order_not_found
 
-POST /account/orders/{order_id: Uuid}/parcel
-    input ParcelRequest (body)
-    output ParcelQuote
-    status 200
-    fails order_not_found
-
 POST /account/sign-out
     status 204
 
@@ -112,13 +106,6 @@ output OrderView
 output OutletView
     id: Uuid
     name: Text { min_length: 1, max_length: 40 }
-
-output ParcelQuote
-    label: Text { pattern: "[A-Z]{2}[0-9]{6}" }
-    postage: Money { currency: GBP, rounding: half_even }
-
-input ParcelRequest
-    label: Text { pattern: "[A-Z]{2}[0-9]{6}" }
 
 output PhoneLinked
     token: ApiToken

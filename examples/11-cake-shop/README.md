@@ -28,7 +28,6 @@ by customer by hand.
 10. **Service keys.** An outlet's counter lists its keys with `Outlet.keys`, rotates them with `Outlet.issue_key` behind `authentication: RouteAuthentication.fresh`, and sees only the orders collected there. See `domains/bakery/routes/counter.jadpo`, `domains/bakery/actions/issue_outlet_key.jadpo` and [area 8, Service credentials](../../docs/language/08-identity.md#service-credentials).
 11. **The API records.** `jadpo api update` writes each API's routes, fields and failure codes to `api/`, and `jadpo check` fails while a record disagrees with the routes, so every change to what clients see is a diff of one file. See `api/main.jadpo_record`, in the record format of [area 18](../../docs/language/18-records-and-manifest.md#what-is-committed-and-why), and [area 7, The public API record](../../docs/language/07-http.md#the-public-api-record).
 12. **Route tests.** `request { }` sends a request through the real boundary and gives a `Response`: `as:` signs in through the route's API's own method, `params:` fills the placeholders, and the tests show a 401, a refused suspended customer, policy hiding another customer's order and an outlet's counter refused once it closes. See `domains/bakery/routes/account_orders.test.jadpo`, `domains/bakery/routes/counter.test.jadpo` and [area 13, Kinds of test](../../docs/language/13-testing.md#kinds-of-test).
-13. **A checked quote.** `quote_parcel` adds a `Mass` in grams, kilograms and pounds, scales money by `* 120%` for VAT, and takes a `ParcelLabel` that can't exist invalid; it reads the order through policy, so another customer's order is `OrderNotFound`. See `domains/bakery/actions/quote_parcel.jadpo`, `domains/bakery/types/parcel_label.jadpo`, `domains/bakery/routes/account_orders.jadpo` and [area 2, What the standard types do](../../docs/language/02-values-and-types.md#what-the-standard-types-do).
 
 ## Run it
 
@@ -62,8 +61,6 @@ cd examples/11-cake-shop && ../../target/release/jadpo routes
 
 - In `cakes.jadpo`, delete the first route's `authentication: RouteAuthentication.none`. Reading the menu now needs someone signed in, and the menu's route test fails with `test.assertion_failed`: it gets 401, not 200.
   <!-- try {"file": "domains/bakery/routes/cakes.jadpo", "replace": "    GET / {\n        authentication: RouteAuthentication.none\n", "with": "    GET / {\n", "test": ["test.assertion_failed"], "failed": 1} -->
-- In `quote_parcel.jadpo`, change `3lb` to `3m`. `jadpo check` reports `type.arithmetic_operand`: `m` is minutes, so the sum adds a `Duration` to a `Mass`.
-  <!-- try {"file": "domains/bakery/actions/quote_parcel.jadpo", "replace": "1.2kg + 3lb", "with": "1.2kg + 3m", "check": ["type.arithmetic_operand"]} -->
 - In `cake.jadpo`, change `read: [Access.public]` to `read: [Access.authenticated]`. `jadpo check` reports `policy.public_grant_missing`: the menu's routes let anyone call them, and only someone signed in may read a cake.
   <!-- try {"file": "domains/bakery/entities/cake.jadpo", "replace": "read: [Access.public]", "with": "read: [Access.authenticated]", "check": ["policy.public_grant_missing"]} -->
 - In `order.jadpo`, change `read: [customer_id, outlet_id]` to `read: [customer_id]`. The counter's test fails with `test.assertion_failed`: an outlet's counter can no longer read the orders it hands over, so its list is empty.
