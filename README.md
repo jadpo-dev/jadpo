@@ -16,8 +16,8 @@ a person owns the intent and permission decisions.
 
 ## What Jadpo code looks like
 
-A customer places an order for a cake. These are real files from a small shop,
-checked by the compiler with the rest of the project.
+A customer places an order for a cake. These are real files from a small shop
+(imports left out), checked by the compiler with the rest of the project.
 
 `domains/shop/types/quantity.jadpo`
 
@@ -29,30 +29,9 @@ type Quantity = Int {
 }
 ```
 
-`domains/shop/queries/orderable_cake.jadpo`
-
-```jadpo check project=homepage file=domains/shop/queries/orderable_cake.jadpo
-use shop/entities { Cake, CakeNotFound }
-
-/// A cake that is on the menu; one that isn't reads as missing.
-query orderable_cake(cake_id: Cake.id) fails CakeNotFound -> Cake {
-    from: Cake
-    where: Cake.id == cake_id and Cake.on_menu == true
-    missing: CakeNotFound
-}
-```
-
 `domains/shop/actions/place_order.jadpo`
 
-```jadpo check project=homepage file=domains/shop/actions/place_order.jadpo
-use app { pay }
-use shop/entities { Cake, CakeNotFound, Order }
-use shop/types { OrderReceipt, Quantity, Sterling }
-use shop/failures { CardDeclined }
-use shop/queries { orderable_cake }
-use shop/events { OrderPlaced }
-use shared/providers/acme_pay
-
+```jadpo check project=homepage file=domains/shop/actions/place_order.jadpo hide=use
 /// What placing an order takes; a quantity outside 1 to 12 never gets in.
 type PlaceOrder = Input {
     cake_id: Cake.id
@@ -65,8 +44,15 @@ action place_order(
     customer: Principal.user
 ) fails CakeNotFound, CardDeclined -> OrderReceipt {
     var cake: Cake = attempt orderable_cake(input.cake_id)
-    // Price times quantity, then 20% VAT: pounds only, by the types.
-    var total: Sterling = Sterling(cake.price * input.quantity * 120%)
+    // Cakes in grams, box in kilograms, packing in pounds: one `Mass`.
+    var weight: Mass = cake.weight * input.quantity + 1.2kg + 3lb
+    // Dividing a `Mass` by 1kg gives a plain number: how many kilograms.
+    var kilograms: Decimal = weight / 1kg
+    var per_kilo: Sterling = Sterling(money.from_minor(200, Currency.gbp))
+    var goods: Sterling = Sterling(cake.price * input.quantity)
+    var postage: Sterling = Sterling(per_kilo * kilograms)
+    // `* 120%` adds 20% VAT to the goods and the postage.
+    var total: Sterling = Sterling((goods + postage) * 120%)
     // The provider's decline becomes this app's own failure.
     attempt pay.charges.create(
         AcmePay.ChargeRequest {
@@ -96,10 +82,7 @@ action place_order(
 
 `domains/shop/routes/orders.jadpo`
 
-```jadpo check project=homepage file=domains/shop/routes/orders.jadpo
-use shop/types { OrderReceipt }
-use shop/actions { PlaceOrder, place_order }
-
+```jadpo check project=homepage file=domains/shop/routes/orders.jadpo hide=use
 routes Orders {
     prefix: /orders
 
@@ -118,14 +101,30 @@ routes Orders {
 What the compiler guarantees here:
 
 - **Input can't be invalid.** A `Quantity` outside 1 to 12 never reaches `place_order`; the route refuses it.
-- **Money keeps its currency.** `cake.price * input.quantity * 120%` is pounds times a number and a VAT rate, and the result is a `Sterling`, so another currency can't be added to it.
+- **Units add up exactly.** Grams, kilograms and pounds combine as one `Mass`; adding a duration to it is a compile error (`type.arithmetic_operand`).
+- **Money keeps its currency.** Goods, postage and VAT (`* 120%`) are all `Sterling`, so another currency can't be added to them.
 - **Every failure is declared.** `place_order` lists what can go wrong, and one it forgets to list is a compile error. A cake that is off the menu is `CakeNotFound`.
-- **The provider's decline is the app's own failure.** `declined_card` is mapped to `CardDeclined`; the outside provider's failure type never leaks out.
-- **The order and its event commit together.** `Order.create` and `emit` are in one action, so the event is delivered if and only if the order was saved.
+- **The provider's decline is the app's own failure.** `declined_card` is mapped to `CardDeclined`.
+- **The order and its event commit together.** `Order.create` and `emit` are in one action.
 - **Orders belong to their customer.** The `Order` policy grants `create` and `read` only to the customer it names, and the route passes the signed-in customer, not an ID from the request.
 
 <!-- The rest of the project, so the files above are checked as a whole by
 tools/language_docs.py. GitHub does not show this comment.
+
+```jadpo check project=homepage file=domains/shop/actions/place_order.jadpo uses
+use app { pay }
+use shop/entities { Cake, CakeNotFound, Order }
+use shop/types { OrderReceipt, Quantity, Sterling }
+use shop/failures { CardDeclined }
+use shop/queries { orderable_cake }
+use shop/events { OrderPlaced }
+use shared/providers/acme_pay
+```
+
+```jadpo check project=homepage file=domains/shop/routes/orders.jadpo uses
+use shop/types { OrderReceipt }
+use shop/actions { PlaceOrder, place_order }
+```
 
 ```jadpo check project=homepage file=app.jadpo
 use shop/entities { Customer }
@@ -248,6 +247,17 @@ public resource charges {
 }
 ```
 
+```jadpo check project=homepage file=domains/shop/queries/orderable_cake.jadpo
+use shop/entities { Cake, CakeNotFound }
+
+/// A cake that is on the menu; one that isn't reads as missing.
+query orderable_cake(cake_id: Cake.id) fails CakeNotFound -> Cake {
+    from: Cake
+    where: Cake.id == cake_id and Cake.on_menu == true
+    missing: CakeNotFound
+}
+```
+
 ```jadpo check project=homepage file=domains/shop/types/sterling.jadpo
 /// An amount in pounds, held as whole pence.
 type Sterling = Money {
@@ -298,6 +308,7 @@ entity Cake {
         max_length: 60
     }
     price: Sterling
+    weight: Mass
     on_menu: Bool
 
     policy: {

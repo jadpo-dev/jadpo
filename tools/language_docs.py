@@ -556,8 +556,22 @@ class Readme(Page):
     are. Its other fences are only illustrations, so they are not compiled."""
 
     def collect_blocks(self):
+        """A file shown without its `use` lines is a block with `hide=use`,
+        and a hidden block for the same file with `uses` holds those lines.
+        The two are joined before compiling, so what compiles is the shown
+        code with its imports in front."""
         super().collect_blocks()
         self.blocks = [b for b in self.blocks if b['attrs'].get('check')]
+        uses = {b['attrs']['file']: b for b in self.blocks if b['attrs'].get('uses')}
+        for block in self.blocks:
+            attrs = block['attrs']
+            if attrs.get('hide') == 'use':
+                imports = uses.get(attrs['file'])
+                if imports is None:
+                    self.problems.append(f'line {block["line"] + 1}: hide=use needs a block with `uses` for {attrs["file"]}')
+                else:
+                    block['source'] = imports['source'].rstrip('\n') + '\n\n' + block['source']
+        self.blocks = [b for b in self.blocks if not b['attrs'].get('uses')]
 
     def check(self, bless=False):
         self.collect_blocks()
