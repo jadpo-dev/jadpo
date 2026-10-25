@@ -18,7 +18,7 @@ const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
     ),
     (
         "docs/language/02-values-and-types.md",
-        "price as Int",
+        "per_pack as Int",
         "area 2 question 7 shows the cast it rejects",
     ),
     (

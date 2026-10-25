@@ -110,6 +110,203 @@ A type that copies a standard type under another name is the declinable error
 `Instant`, is an `InstantRange`. A declaration named like a standard type
 is `type.standard_clash`. Both are in area 19.
 
+### What the standard types do
+
+Standard types carry their own arithmetic, units and rules, so the
+expressions you'd write on paper check as strictly as a call. A length sum
+mixes units freely, and the result is a `Length`; `m` means minutes, and
+inches are written `inch`:
+
+```jadpo check project=std-length
+type Shelf = Length {}
+
+/// A metre, 2.3 inches and 3 centimetres, then 20% of that: a `Length`.
+function fifth_of(base: Shelf) -> Shelf {
+    return Shelf((base + 2.3inch + 3cm) * 20%)
+}
+```
+
+```jadpo check project=std-length file=main.test.jadpo
+test "units mix within a kind" {
+    assert fifth_of(Shelf(1metre)) == Shelf((1metre + 2.3inch + 3cm) * 20%)
+}
+```
+
+Leave out the unit's meaning and the compiler says so. Here `1m` is a
+`Duration`, which can't be added to a `Length`:
+
+```jadpo check project=std-length-minutes expect=type.arithmetic_operand
+type Shelf = Length {}
+
+/// `m` is minutes, so this adds a `Duration` to a `Length`.
+function mistaken(base: Shelf) -> Shelf {
+    return Shelf((1m + 2.3inch + 3cm) * 20%)
+}
+```
+
+```text output
+error: A duration and a quantity can't be added: a `Duration` and a `Length` are different kinds
+ --> main.jadpo:5:19
+  |
+5 |     return Shelf((1m + 2.3inch + 3cm) * 20%)
+  |                   ^^^^^^^^^^^^ different kinds
+  reason: `+` works within one kind of quantity, in any of its units; a `Duration` and a `Length` are different kinds, so the sum means nothing.
+  next: Use values of one kind, or a product or quotient the table defines (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+Money is whole minor units in one currency, so the table is strict. A rate
+scales it (`price * 120%` adds 20% VAT), and `money.split` shares an
+amount out with no penny lost: £10.00 three ways is £3.34, £3.33 and £3.33.
+`price / 3` is refused with that fix (`type.money_split`, area 19):
+
+```jadpo check project=std-money
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+type Payment = Money {}
+
+/// A price with 20% VAT added.
+function with_vat(price: CakePrice) -> CakePrice {
+    return CakePrice(price * 120%)
+}
+
+/// A bill shared three ways, every penny to someone.
+function shares(total: CakePrice) -> List<Payment> {
+    return list.map(money.split(total, 3), share -> Payment(share))
+}
+```
+
+```jadpo check project=std-money file=main.test.jadpo
+test "VAT and sharing lose nothing" {
+    var price: CakePrice = CakePrice(money.from_minor(1000, Currency.gbp))
+    assert with_vat(price) == money.from_minor(1200, Currency.gbp)
+    assert shares(price) == [
+        Payment(money.from_minor(334, Currency.gbp)),
+        Payment(money.from_minor(333, Currency.gbp)),
+        Payment(money.from_minor(333, Currency.gbp))
+    ]
+}
+```
+
+`price + 20%` could mean two things, so it is refused; write `price * 120%`:
+
+```jadpo check project=std-money-percent expect=type.arithmetic_operand
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+/// Twenty percent added to a price: ambiguous, so refused.
+function more(price: CakePrice) -> CakePrice {
+    return CakePrice(price + 20%)
+}
+```
+
+```text output
+error: `CakePrice` and a percentage can't be added: it could mean two things
+ --> main.jadpo:7:22
+  |
+7 |     return CakePrice(price + 20%)
+  |                      ^^^^^^^^^^^ an amount and a percentage
+  reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
+  next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+Adding two amounts whose types fix different currencies is a compile error:
+
+```jadpo check project=std-money-currency expect=type.arithmetic_operand
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type EuroPrice = Money {
+    currency: Currency.eur
+}
+
+/// A cake in pounds and a delivery charged in euros.
+function delivered(price: CakePrice, delivery: EuroPrice) -> CakePrice {
+    return CakePrice(price + delivery)
+}
+```
+
+```text output
+error: `CakePrice` and `EuroPrice` can't be added: they're in different currencies
+ --> main.jadpo:11:22
+   |
+11 |     return CakePrice(price + delivery)
+   |                      ^^^^^^^^^^^^^^^^ GBP and EUR
+  reason: `CakePrice` is in GBP and `EuroPrice` in EUR, as their types or the calls that made them fix; amounts are added only in one currency.
+  next: Use two amounts in the same currency (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
+A `CalendarDate` plus a one-month `CalendarPeriod` clamps to the month's last
+day, `Instant - Instant` gives a `Duration`, and subtracting two temperatures
+gives a `TemperatureDifference`:
+
+```jadpo check project=std-time
+type DeliveryDay = CalendarDate {}
+
+type SeenAt = Instant {}
+
+type Gap = Duration {}
+
+/// A day a month on: the 31st of January gives the last day of February.
+function month_on(day: DeliveryDay) -> DeliveryDay {
+    return DeliveryDay(
+        day + CalendarPeriod {
+            years: 0
+            months: 1
+            days: 0
+        }
+    )
+}
+
+/// How long between two moments.
+function between(start: SeenAt, end: SeenAt) -> Gap {
+    return Gap(end - start)
+}
+```
+
+```jadpo check project=std-time file=main.test.jadpo
+test "calendar and clock arithmetic" {
+    assert month_on(DeliveryDay("2026-01-31")) == DeliveryDay("2026-02-28")
+    assert between(SeenAt("2026-10-25T09:00:00Z"), SeenAt("2026-10-25T11:30:00Z")) == Gap(150m)
+    assert 25degC - 20degC == units.of(5, TemperatureDifferenceUnit.kelvin)
+}
+```
+
+#### Why so many standard types
+
+- **Whole categories of bug disappear:** unit confusion, floating-point
+  money, mixed currencies, latitude and longitude the wrong way round, and
+  month-end and time-zone arithmetic.
+- **No choosing between competing libraries** for dates, money or addresses:
+  there is one of each.
+- **Packages and apps speak the same types,** so integration code doesn't
+  translate between them. `type.standard_exists` keeps it that way: e-commerce
+  packages share `Money`, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `Sku`,
+  `PostalAddress`, `Email` and `PhoneNumber` instead of each declaring its own.
+- **Validation, storage columns, JSON and API formats come with each type.**
+- **Formatting follows the locale** the same way everywhere.
+- **Agents can't hand-roll a broken `Money`,** and a reviewer who reads
+  `Money` knows exactly what it means.
+
+[Area 19](19-standard-library.md#the-standard-types) has the full list and
+every operation.
+
 ### Other built-in types
 
 | Kind | Types | Notes |
