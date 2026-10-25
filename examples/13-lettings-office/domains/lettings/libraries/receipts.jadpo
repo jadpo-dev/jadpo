@@ -11,7 +11,7 @@ library receipts {
         return Receipt(
             config.office_name + " received " + text.from(
                 rent
-            ) + "p for tenancy " + tenancy_ref + "."
+            ) + " for tenancy " + tenancy_ref + "."
         )
     }
 }

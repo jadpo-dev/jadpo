@@ -1,40 +1,31 @@
-// Exact decimal numbers (`Decimal`). Decimals are exact, never binary
-// floating point, so money adds up to the penny.
+// Money (`Money`): an exact amount in one currency, never a bare decimal.
+// A decimal number is exact, never binary floating point, and an amount of
+// money is held as whole pence with its currency, so it adds up to the
+// penny.
 
-use pantry/types { Grams }
+use pantry/types { SackWeight }
 
-/// A price per kilogram. `scale: 2` says a value has at most two decimal
-/// places; it also decides how the value is stored and sent. A decimal
-/// literal for it is written with a point: `0.00`, never `0`.
-type PricePerKilo = Decimal {
-    scale: 2
-    min: 0.00
+/// A price per kilogram of flour. `currency:` fixes the currency, so an
+/// amount in euros doesn't compile where one is wanted, and `rounding:`
+/// says which way a half penny goes. Money has no literal: an amount is
+/// built from its minor units, `money.from_minor(120, Currency.gbp)` for
+/// £1.20.
+type KiloPrice = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
 }
 
 /// What a delivery costs.
-type DeliveryCost = Decimal {
-    scale: 2
-    min: 0.00
+type DeliveryCost = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
 }
 
-/// A weight in whole kilograms.
-type Kilograms = Int {
-    min: 0
-}
-
-/// What `weight` grams of flour cost at `per_kilo`, for whole kilograms
-/// only: the mill doesn't charge for part of a kilogram.
-action price_flour(weight: Grams, per_kilo: PricePerKilo) -> DeliveryCost {
-    // `/` divides two values of the same named type. Between two `Int`
-    // values it drops the remainder, so 2500 grams is 2 whole kilograms.
-    // (Example 05 shows `integer.divide`, which rounds other ways.)
-    //
-    // The result is a count of kilograms, so it becomes `Kilograms`, not
-    // `Grams`: both are whole numbers, but 2 grams and 2 kilograms are not
-    // the same weight, and a type that says which one it holds means the
-    // two can never be mixed up.
-    var kilos: Kilograms = Kilograms(weight / 1000)
-    // A decimal times a whole number keeps the decimal's two places, and
-    // both are at least zero, so `DeliveryCost(...)` can't fail.
-    return DeliveryCost(per_kilo * kilos)
+/// What flour weighing `weight` costs at `per_kilo`, to the nearest penny.
+action price_flour(weight: SackWeight, per_kilo: KiloPrice) -> DeliveryCost {
+    // `/` divides two quantities of one kind, `2.5kg / 1kg`, and gives the
+    // plain `Decimal` 2.5. A price times a decimal is a price, rounded
+    // to a penny the way `KiloPrice` says, and `DeliveryCost(...)` builds
+    // the cost from it.
+    return DeliveryCost(per_kilo * (weight / 1kg))
 }

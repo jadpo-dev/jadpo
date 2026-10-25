@@ -3732,20 +3732,20 @@ setting: its value becomes the `default:` and every read of it reads
 `config.page_size`:
 
 ```jadpo check project=e-default-constant expect=configuration.default_literal_required
-type Pence = Int {
+type RowLimit = Int {
     min: 0
 }
 
-constant largest_page: Pence = 100
+constant largest_page: RowLimit = 100
 
 config {
-    page_size: Pence {
+    page_size: RowLimit {
         default: largest_page
     }
 }
 
-function page() -> Pence {
-    return Pence(config.page_size + largest_page)
+function page() -> RowLimit {
+    return RowLimit(config.page_size + largest_page)
 }
 ```
 

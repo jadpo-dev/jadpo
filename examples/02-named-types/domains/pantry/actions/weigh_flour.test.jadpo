@@ -2,16 +2,16 @@
 // action: these first two are pure tests, which call functions only.
 
 test "a sack's weight multiplies by the number of sacks" {
-    assert total_weight(16000, 3) == 48000
+    assert total_weight(16kg, 3) == 48kg
 }
 
 test "a warm pantry needs cooling and a cold one doesn't" {
-    // `-5` is a negative literal: `Celsius` allows it.
-    assert needs_cooling(30)
-    assert not needs_cooling(-5)
+    // `-5degC` is a negative literal: `StoreTemperature` allows it.
+    assert needs_cooling(30degC)
+    assert not needs_cooling(-5degC)
 }
 
 test "a very heavy delivery needs cooling whatever the temperature" {
-    assert weigh_flour(16000, 7, 12)
-    assert weigh_flour(16000, 6, 12) == false
+    assert weigh_flour(16kg, 7, 12degC)
+    assert weigh_flour(16kg, 6, 12degC) == false
 }

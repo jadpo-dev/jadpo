@@ -22,11 +22,7 @@ type TierCount = Int {
 
 /// How many tiers sit on `tier`, at any height.
 function tiers_above(tier: Tier) -> TierCount {
-    var mut count: TierCount = 0
-    for upper in tier.above {
-        count = TierCount(count + 1 + tiers_above(upper))
-    }
-    return count
+    return TierCount(list.sum(list.map(tier.above, upper -> TierCount(1 + tiers_above(upper)))))
 }
 
 /// How many tiers the whole cake has, the base included.

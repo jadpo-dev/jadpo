@@ -10,7 +10,7 @@
 // `pantry` and `shared/` (its failure, types and library) come in by
 // folder, one line per folder.
 
-use shared/types { Grams, PortionCount, SackCount }
+use shared/types { FlourWeight, PortionCount, SackCount }
 use shared/failures { TooHeavy }
 use shared/libraries { portions }
 use pantry/failures { FlourShort }
@@ -22,11 +22,11 @@ public type LoafCount = Int {
     max: 100
 }
 
-/// The flour for `loaves` loaves of 450 grams, or at least the 2000 grams
+/// The flour for `loaves` loaves of 450g, or at least the 2000g
 /// the mixer needs to turn.
-function flour_for(loaves: LoafCount) fails TooHeavy -> Grams {
-    var needed: Grams = attempt portions.together(450, PortionCount(loaves))
-    return portions.larger(needed, 2000)
+function flour_for(loaves: LoafCount) fails TooHeavy -> FlourWeight {
+    var needed: FlourWeight = attempt portions.together(450g, PortionCount(loaves))
+    return portions.larger(needed, 2000g)
 }
 
 /// Bakes `loaves` loaves with flour from the `in_store` sacks in the pantry.
@@ -34,7 +34,7 @@ function flour_for(loaves: LoafCount) fails TooHeavy -> Grams {
 public action bake_loaves(
     loaves: LoafCount,
     in_store: SackCount
-) fails TooHeavy, FlourShort -> Grams {
-    var flour: Grams = attempt flour_for(loaves)
+) fails TooHeavy, FlourShort -> FlourWeight {
+    var flour: FlourWeight = attempt flour_for(loaves)
     return attempt pantry.take_flour(flour, in_store)
 }

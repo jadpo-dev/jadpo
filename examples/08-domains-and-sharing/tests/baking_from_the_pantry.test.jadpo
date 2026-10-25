@@ -3,20 +3,20 @@
 // fixtures, called through their domain, and everything in `shared/`. It
 // can't call `pantry`'s private `sacks` library.
 
-use shared/types { Grams }
+use shared/types { FlourWeight }
 use pantry/failures { FlourShort }
 use pantry
 use sales
 
 test "a bake bigger than the sacks in store is refused" {
-    // One 16-kilogram sack covers 30 loaves of 450 grams, but not 40.
-    var used: Grams = attempt sales.bake_loaves(30, 1)
-    assert used == 13500
+    // One 16-kilogram sack covers 30 loaves of 450g, but not 40.
+    var used: FlourWeight = attempt sales.bake_loaves(30, 1)
+    assert used == 13500g
     assert sales.bake_loaves(40, 1) fails FlourShort
 }
 
 test "a day's flour is more than one sack" {
-    assert pantry.take_flour(16001, 1) fails FlourShort
-    var taken: Grams = attempt pantry.take_flour(16001, pantry.a_days_flour())
-    assert taken == 16001
+    assert pantry.take_flour(16001g, 1) fails FlourShort
+    var taken: FlourWeight = attempt pantry.take_flour(16001g, pantry.a_days_flour())
+    assert taken == 16001g
 }

@@ -23,7 +23,7 @@ const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
     ),
     (
         "docs/language/03-logic.md",
-        "Pence(attempt price(a) + attempt price(b))",
+        "Stock(attempt stock_of(a) + attempt stock_of(b))",
         "area 3 question 11 shows `attempt` inside an expression, which it rejects",
     ),
     (

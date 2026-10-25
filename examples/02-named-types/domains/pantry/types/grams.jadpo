@@ -1,9 +1,0 @@
-// A type used by more than one file lives in its domain's `types/`
-// folder, one type per file, named after it. `weigh_flour` and
-// `price_flour` both use `Grams`, so it lives here rather than in either
-// of them.
-
-/// A weight in grams. Never negative, and with no upper limit.
-type Grams = Int {
-    min: 0
-}

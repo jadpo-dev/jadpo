@@ -904,9 +904,9 @@ type Tag = Text {
     max_length: 20
 }
 
-type Grams = Int {
-    min: 0
-    max: 100000
+type ParcelWeight = Mass {
+    min: 0g
+    max: 100kg
 }
 
 /// What is printed on a parcel.
@@ -920,7 +920,7 @@ type Delivery = Enum {
     pickup
     courier: {
         company: Tag
-        weight: Grams
+        weight: ParcelWeight
     }
 }
 
@@ -928,15 +928,16 @@ entity Parcel {
     id: Uuid
     label: Label
     tags: List<Tag>
-    weights: Map<Tag, Grams>
+    weights: Map<Tag, ParcelWeight>
     delivery: Delivery
     second_label: Label?  // `NULL` when it is `none`
 }
 ```
 
 A parcel going by courier keeps `{"tag": "courier", "company": "Swift",
-"weight": 920}` in `delivery`, one to be picked up `"pickup"`, and its
-`weights` `{"box": 120, "loaf": 800}`, keys in their canonical order.
+"weight": {"value": "0.92", "unit": "kg"}}` in `delivery`, one to be picked
+up `"pickup"`, and its `weights` `{"box": {"value": "0.12", "unit": "kg"},
+"loaf": {"value": "0.8", "unit": "kg"}}`, keys in their canonical order.
 
 - **What a stored value holds:** what that JSON holds, values built on the
   built-in and standard types, enums, and `Object`s made of them, in

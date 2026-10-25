@@ -5,17 +5,17 @@ test "scaling multiplies every ingredient's weight" {
         ingredients: [
             Ingredient {
                 name: "Flour"
-                weight: 200
+                weight: 200g
             },
             Ingredient {
                 name: "Sugar"
-                weight: 150
+                weight: 150g
             }
         ]
         allergens: [Hazard.gluten, Hazard.egg]
     }
     var double: Recipe = scale_recipe(sponge, 2).recipe
-    assert list.map(double.ingredients, ingredient -> ingredient.weight) == [400, 300]
+    assert list.map(double.ingredients, ingredient -> ingredient.weight) == [400g, 300g]
     assert double.allergens == sponge.allergens
 }
 
@@ -24,15 +24,15 @@ test "ingredients over 5 kg go on the floor scale, in recipe order" {
         ingredients: [
             Ingredient {
                 name: "Flour"
-                weight: 600
+                weight: 600g
             },
             Ingredient {
                 name: "Salt"
-                weight: 10
+                weight: 10g
             },
             Ingredient {
                 name: "Water"
-                weight: 520
+                weight: 520g
             }
         ]
         allergens: [Hazard.gluten]

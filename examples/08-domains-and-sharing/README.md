@@ -51,8 +51,8 @@ target/release/jadpo fmt --check examples/08-domains-and-sharing
   <!-- try {"file": "domains/pantry/actions/take_flour.jadpo", "replace": "public action take_flour", "with": "action take_flour", "check": ["visibility.private_cross_domain"]} -->
 - In `a_days_flour.jadpo`, delete `public`. `jadpo check` reports `visibility.private_cross_domain` where `sales`'s test and the scenario call it.
   <!-- try {"file": "domains/pantry/fixtures/a_days_flour.jadpo", "replace": "public fixture a_days_flour", "with": "fixture a_days_flour", "check": ["visibility.private_cross_domain"]} -->
-- In `tests/baking_from_the_pantry.test.jadpo`, add `assert sacks.grams_in(1) == 16000`. `jadpo check` reports `visibility.private_cross_domain`: a scenario can't use `pantry`'s private library, though the pantry's own tests can.
-  <!-- try {"file": "tests/baking_from_the_pantry.test.jadpo", "replace": "    assert pantry.take_flour(16001, 1) fails FlourShort\n", "with": "    assert pantry.take_flour(16001, 1) fails FlourShort\n    assert sacks.grams_in(1) == 16000\n", "check": ["visibility.private_cross_domain"]} -->
+- In `tests/baking_from_the_pantry.test.jadpo`, add `var one: FlourWeight = attempt sacks.weight_in(1)` and `assert one == 16kg`. `jadpo check` reports `visibility.private_cross_domain`: a scenario can't use `pantry`'s private library, though the pantry's own tests can.
+  <!-- try {"file": "tests/baking_from_the_pantry.test.jadpo", "replace": "    assert pantry.take_flour(16001g, 1) fails FlourShort\n", "with": "    assert pantry.take_flour(16001g, 1) fails FlourShort\n    var one: FlourWeight = attempt sacks.weight_in(1)\n    assert one == 16kg\n", "check": ["visibility.private_cross_domain"]} -->
 - In `bake_loaves.jadpo`, delete the line `use pantry`. `jadpo check` reports `import.missing` at `pantry.take_flour`: a call into another domain needs the domain imported.
   <!-- try {"file": "domains/sales/actions/bake_loaves.jadpo", "replace": "use pantry\n", "with": "", "check": ["import.missing"]} -->
 - Then read [09-bakery-orders](../09-bakery-orders/README.md).

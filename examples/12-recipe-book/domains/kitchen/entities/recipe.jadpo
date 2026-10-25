@@ -7,7 +7,7 @@
 // batch is for owners only; `old_reference` is for no request at all.
 
 use kitchen/entities { Baker, Bakery }
-use kitchen/types { OldReference, Pence, RecipeName, StaffRole }
+use kitchen/types { OldReference, RecipeName, StaffRole, Sterling }
 
 /// How a bakery makes something.
 entity Recipe {
@@ -19,7 +19,7 @@ entity Recipe {
         on_delete: OnDelete.restricted
     }
     name: RecipeName
-    batch_cost: Pence {
+    batch_cost: Sterling {
         policy: {
             read: [StaffRole.owner]
             update: [StaffRole.owner]

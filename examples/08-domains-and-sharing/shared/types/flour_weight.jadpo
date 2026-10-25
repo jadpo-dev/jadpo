@@ -1,0 +1,10 @@
+// `shared/` holds pure types and libraries used by more than one domain,
+// in the same folders a domain has. `FlourWeight` is used by both `pantry`
+// and `sales`, so it lives here. Promotion is a move, not a rewrite: the
+// type keeps its name, so nothing that uses it changes.
+
+/// A weight of flour, up to 100 kilograms.
+type FlourWeight = Mass {
+    min: 0g
+    max: 100kg
+}

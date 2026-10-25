@@ -98,9 +98,9 @@ type CakeQuote = Output {
 }
 
 // Every field is a type of its own, written `Owner.field`: here
-// `CakeLine.each` is `Pence` with the field's `max: 6000` added. Returning
-// it, rather than `Pence`, lets `quote_cake` build a `CakeLine` that the
-// compiler knows is valid; a plain `Pence` might be over £60.
+// `CakeLine.each` is `Sterling` with the field's `max: 6000` added. Returning
+// it, rather than `Sterling`, lets `quote_cake` build a `CakeLine` that the
+// compiler knows is valid; a plain `Sterling` might be over £60.
 
 /// The price of one cake of `size`.
 function size_price(size: CakeSize) -> CakeLine.each {
@@ -108,9 +108,9 @@ function size_price(size: CakeSize) -> CakeLine.each {
     // one; here it gives a value, one for each variant. Example 05 shows
     // every form of `match`.
     return match size {
-        CakeSize.small -> 1800
-        CakeSize.medium -> 2600
-        CakeSize.large -> 3800
+        CakeSize.small -> CakeLine.each(money.from_minor(1800, Currency.gbp))
+        CakeSize.medium -> CakeLine.each(money.from_minor(2600, Currency.gbp))
+        CakeSize.large -> CakeLine.each(money.from_minor(3800, Currency.gbp))
     }
 }
 

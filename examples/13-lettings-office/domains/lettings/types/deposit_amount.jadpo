@@ -1,4 +1,6 @@
-/// A deposit, in pence.
-type DepositAmount = Int {
+/// A deposit, held as whole pence and never negative.
+type DepositAmount = Money {
+    currency: Currency.gbp
     min: 0
+    rounding: Rounding.half_even
 }

@@ -1,9 +1,9 @@
-use shared/types { Grams }
+use shared/types { FlourWeight }
 use shared/failures { TooHeavy }
 
 test "a delivery adds its sacks to the pantry" {
-    var total: Grams = attempt restock(2, 3)
-    assert total == 80000
+    var total: FlourWeight = attempt restock(2, 3)
+    assert total == 80kg
 }
 
 test "more than the scales can weigh is refused" {

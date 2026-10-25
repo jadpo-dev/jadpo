@@ -2,7 +2,7 @@
 // does, so it may set and read a field no request may.
 
 use kitchen/entities { Recipe }
-use kitchen/types { KitchenStaff }
+use kitchen/types { KitchenStaff, Sterling }
 use kitchen/fixtures { northwind }
 
 test "an import keeps the old system's reference" {
@@ -11,7 +11,7 @@ test "an import keeps the old system's reference" {
         crew.bakery.id,
         crew.baker.id,
         "Rye sourdough",
-        450,
+        Sterling(money.from_minor(450, Currency.gbp)),
         "R-000123"
     )
     var brought_over: Recipe = attempt Recipe.get(rye.id)

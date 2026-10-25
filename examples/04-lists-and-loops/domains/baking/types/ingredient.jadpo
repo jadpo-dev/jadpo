@@ -1,7 +1,7 @@
-use baking/types { Grams, IngredientName }
+use baking/types { IngredientName, IngredientWeight }
 
 /// One ingredient of a recipe and how much of it.
 type Ingredient = Object {
     name: IngredientName
-    weight: Grams
+    weight: IngredientWeight
 }

@@ -1,0 +1,4 @@
+/// A weight of an ingredient, never negative.
+type IngredientWeight = Mass {
+    min: 0g
+}

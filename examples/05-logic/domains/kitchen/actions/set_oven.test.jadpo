@@ -1,6 +1,6 @@
 test "bread keyed in for the top shelf is turned down and browns" {
     assert set_oven("BREAD", 2, true) == OvenSetting {
-        temperature: 210
+        temperature: 210degC
         crust: Crust.browned
         steam: "steam on"
     }
@@ -11,15 +11,15 @@ test "the oven sets nothing for a bake it doesn't know" {
 }
 
 test "bread is turned down on the upper shelves" {
-    assert turned_down(Bake.bread, 2) == 210
-    assert turned_down(Bake.bread, 1) == 220
-    assert turned_down(Bake.bread, 0) == 230
+    assert turned_down(Bake.bread, 2) == 210degC
+    assert turned_down(Bake.bread, 1) == 220degC
+    assert turned_down(Bake.bread, 0) == 230degC
 }
 
 test "pastry is turned down above the middle, meringue never" {
-    assert turned_down(Bake.pastry, 1) == 190
-    assert turned_down(Bake.pastry, -1) == 200
-    assert turned_down(Bake.meringue, 2) == 100
+    assert turned_down(Bake.pastry, 1) == 190degC
+    assert turned_down(Bake.pastry, -1) == 200degC
+    assert turned_down(Bake.meringue, 2) == 100degC
 }
 
 test "the lowest and highest shelves change the crust" {

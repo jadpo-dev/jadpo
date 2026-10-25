@@ -3,10 +3,10 @@
 // caller, which runs it without policy, to set up the menu they need.
 
 use bakery/entities { Cake }
-use bakery/types { CakeName, Flavour, Pence }
+use bakery/types { CakeName, Flavour, Sterling }
 
 /// Puts a cake on the menu.
-action add_cake(name: CakeName, flavour: Flavour, price: Pence) -> Cake {
+action add_cake(name: CakeName, flavour: Flavour, price: Sterling) -> Cake {
     return Cake.create {
         set: {
             name: name
