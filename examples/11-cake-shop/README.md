@@ -62,8 +62,8 @@ cd examples/11-cake-shop && ../../target/release/jadpo routes
 
 - In `cakes.jadpo`, delete the first route's `authentication: RouteAuthentication.none`. Reading the menu now needs someone signed in, and the menu's route test fails with `test.assertion_failed`: it gets 401, not 200.
   <!-- try {"file": "domains/bakery/routes/cakes.jadpo", "replace": "    GET / {\n        authentication: RouteAuthentication.none\n", "with": "    GET / {\n", "test": ["test.assertion_failed"], "failed": 1} -->
-- In `quote_parcel.jadpo`, change `box_weight + packing_weight` to `box_weight + 3m`. `jadpo check` reports `type.arithmetic_operand`: `m` is minutes, so the sum adds a `Duration` to a `Mass`.
-  <!-- try {"file": "domains/bakery/actions/quote_parcel.jadpo", "replace": "box_weight + packing_weight", "with": "box_weight + 3m", "check": ["type.arithmetic_operand"]} -->
+- In `quote_parcel.jadpo`, change `3lb` to `3m`. `jadpo check` reports `type.arithmetic_operand`: `m` is minutes, so the sum adds a `Duration` to a `Mass`.
+  <!-- try {"file": "domains/bakery/actions/quote_parcel.jadpo", "replace": "1.2kg + 3lb", "with": "1.2kg + 3m", "check": ["type.arithmetic_operand"]} -->
 - In `cake.jadpo`, change `read: [Access.public]` to `read: [Access.authenticated]`. `jadpo check` reports `policy.public_grant_missing`: the menu's routes let anyone call them, and only someone signed in may read a cake.
   <!-- try {"file": "domains/bakery/entities/cake.jadpo", "replace": "read: [Access.public]", "with": "read: [Access.authenticated]", "check": ["policy.public_grant_missing"]} -->
 - In `order.jadpo`, change `read: [customer_id, outlet_id]` to `read: [customer_id]`. The counter's test fails with `test.assertion_failed`: an outlet's counter can no longer read the orders it hands over, so its list is empty.
