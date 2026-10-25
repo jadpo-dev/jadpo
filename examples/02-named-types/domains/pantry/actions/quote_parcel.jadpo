@@ -1,0 +1,29 @@
+use pantry/types { SackWeight }
+
+/// Printed on the parcel. Anything that isn't two letters and six digits
+/// can't be a `ParcelLabel`, so every one in the program is valid.
+type ParcelLabel = Text {
+    pattern: "[A-Z]{2}[0-9]{6}"
+}
+
+/// What a courier charges for each kilogram, in pounds.
+type ShippingRate = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
+}
+
+/// What a parcel costs to send, VAT included.
+type ShippingQuote = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
+}
+
+/// What it costs to send `label`: the flour plus a box and a tin, by the
+/// kilogram, with VAT.
+action quote_parcel(label: ParcelLabel, flour: SackWeight, rate: ShippingRate) -> ShippingQuote {
+    // Units of one kind mix freely: grams, kilograms and pounds make a `Mass`.
+    var parcel: Mass = flour + 1.2kg + 800g + 3lb
+    // Dividing by 1kg gives a plain number of kilograms; `* 120%` adds 20% VAT.
+    // Adding minutes (`3m`) to a weight, or euros to pounds, would not compile.
+    return ShippingQuote(rate * (parcel / 1kg) * 120%)
+}

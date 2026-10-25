@@ -14,6 +14,53 @@ a person owns the intent and permission decisions.
 [Examples](examples/README.md) · [Explore with your agent](#explore-with-claude-code-or-codex) ·
 [Roadmap](docs/roadmap.md) · [Contribute](CONTRIBUTING.md)
 
+## What Jadpo code looks like
+
+Quoting what a parcel of flour costs to send. This is a real file from the
+[named types example](examples/02-named-types/README.md):
+
+```jadpo
+use pantry/types { SackWeight }
+
+/// Printed on the parcel. Anything that isn't two letters and six digits
+/// can't be a `ParcelLabel`, so every one in the program is valid.
+type ParcelLabel = Text {
+    pattern: "[A-Z]{2}[0-9]{6}"
+}
+
+/// What a courier charges for each kilogram, in pounds.
+type ShippingRate = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
+}
+
+/// What a parcel costs to send, VAT included.
+type ShippingQuote = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
+}
+
+/// What it costs to send `label`: the flour plus a box and a tin, by the
+/// kilogram, with VAT.
+action quote_parcel(label: ParcelLabel, flour: SackWeight, rate: ShippingRate) -> ShippingQuote {
+    // Units of one kind mix freely: grams, kilograms and pounds make a `Mass`.
+    var parcel: Mass = flour + 1.2kg + 800g + 3lb
+    // Dividing by 1kg gives a plain number of kilograms; `* 120%` adds 20% VAT.
+    // Adding minutes (`3m`) to a weight, or euros to pounds, would not compile.
+    return ShippingQuote(rate * (parcel / 1kg) * 120%)
+}
+```
+
+What the compiler checks here:
+
+- **Units convert exactly.** Kilograms, grams and pounds add up to a `Mass`; adding minutes to a weight is a compile error.
+- **Money keeps its currency.** A pound amount can't be added to euros, and a rate scales it: `* 120%` is "add 20% VAT".
+- **A value can't exist invalid.** A `ParcelLabel` that isn't two letters and six digits is rejected, and a bad literal fails when the project compiles.
+- **Mistakes surface before anything runs.** `jadpo check` finds all of the above without executing the code.
+
+The [source](examples/02-named-types/domains/pantry/actions/quote_parcel.jadpo)
+has its [tests](examples/02-named-types/domains/pantry/actions/quote_parcel.test.jadpo) beside it.
+
 ## Explore with Claude Code or Codex
 
 Want a guided introduction? Give your coding assistant this prompt. It can
@@ -150,21 +197,10 @@ target/release/jadpo check --json examples/01-first-project
 See [tooling](docs/language/14-tooling.md) for development servers, native
 and Workers builds, editor support, commands and their implementation status.
 
-## What Jadpo code looks like
+## Failures a caller must handle
 
-A type gives a value a meaning and its validation rules. This one comes
-from the [bakery example](examples/09-bakery-orders/README.md):
-
-```jadpo
-type Sterling = Money {
-    currency: Currency.gbp
-    min: 0
-    rounding: Rounding.half_even
-}
-```
-
-An action makes its failures and recovery choices visible. This excerpt
-from the same example handles an unknown or wrong-currency discount code
+Failures are part of an action's signature. This excerpt from the
+[bakery example](examples/09-bakery-orders/README.md) handles an unknown or wrong-currency discount code
 by charging full price, while passing other failures to its caller:
 
 ```jadpo

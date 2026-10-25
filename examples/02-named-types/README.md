@@ -19,7 +19,8 @@ checked against that type's rules.
 4. **Text.** Lengths, a whole-text `pattern`, refinements and widening, joining with `+`, and string escapes. See `actions/label_jar.jadpo` and [area 2, Named types](../../docs/language/02-values-and-types.md#named-types).
 5. **Time.** `Instant`, `CalendarDate` and `Duration` with bounds, and two moments with different meanings compared through the type both are built on. See `actions/check_delivery.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
 6. **Identities, contacts and links.** `Uuid` with a `version`, `Email`, `Url`, `IpAddress` and `format: TextFormat.email`, each answer about them a yes or no of its own type. See `actions/check_note.jadpo` and [area 2, Built-in types](../../docs/language/02-values-and-types.md#built-in-types).
-7. **Signatures use named types.** No parameter or result is a bare `Int` or `Bool`, and each yes-or-no answer has a type saying what it means. Every file; [area 2, Signatures use named types](../../docs/language/02-values-and-types.md#signatures-use-named-types).
+7. **Mixed units, money rates and a validated label.** `flour + 1.2kg + 800g + 3lb` is a `Mass`, `rate * (parcel / 1kg) * 120%` adds VAT to money, and a `ParcelLabel` can't hold an invalid value. See `actions/quote_parcel.jadpo` and [area 2, What the standard types do](../../docs/language/02-values-and-types.md#what-the-standard-types-do).
+8. **Signatures use named types.** No parameter or result is a bare `Int` or `Bool`, and each yes-or-no answer has a type saying what it means. Every file; [area 2, Signatures use named types](../../docs/language/02-values-and-types.md#signatures-use-named-types).
 
 Each action's tests sit beside it, in `<file>.test.jadpo`.
 
@@ -53,6 +54,8 @@ target/release/jadpo fmt --check examples/02-named-types
 
 - In `label_jar.test.jadpo`, change `"RY-042"` to `"ry-042"`. `jadpo check` reports `type.invalid_literal`: the pattern must match the whole text.
   <!-- try {"file": "domains/pantry/actions/label_jar.test.jadpo", "replace": "\"RY-042\"", "with": "\"ry-042\"", "check": ["type.invalid_literal"]} -->
+- In `quote_parcel.jadpo`, change `3lb` to `3m`. `jadpo check` reports `type.arithmetic_operand`: `m` is minutes, a `Duration`, which can't be added to a `Mass`.
+  <!-- try {"file": "domains/pantry/actions/quote_parcel.jadpo", "replace": "800g + 3lb", "with": "800g + 3m", "check": ["type.arithmetic_operand"]} -->
 - In `weigh_flour.jadpo`, change `total_weight(each, sacks)` to `total_weight(temperature, sacks)`. `jadpo check` reports `type.mismatch`: a `StoreTemperature` is never a `SackWeight`: each is its own kind of quantity.
   <!-- try {"file": "domains/pantry/actions/weigh_flour.jadpo", "replace": "total_weight(each, sacks)", "with": "total_weight(temperature, sacks)", "check": ["type.mismatch"]} -->
 - In `label_jar.jadpo`, change `ShelfName`'s `max_length: 12` to `max_length: 50`. `jadpo check` reports `type.constraint_loosened`: a refinement can only tighten what it builds on, and `JarName` allows at most 40.
