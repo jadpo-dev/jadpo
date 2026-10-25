@@ -16,50 +16,85 @@ a person owns the intent and permission decisions.
 
 ## What Jadpo code looks like
 
-Quoting what a parcel of flour costs to send. This is a real file from the
-[named types example](examples/02-named-types/README.md):
+A customer asks for the postage on one of their cake orders. The example is
+the [online cake shop](examples/11-cake-shop/README.md); each block is from
+the file named above it.
+
+`domains/bakery/types/parcel_label.jadpo`
 
 ```jadpo
-use pantry/types { SackWeight }
-
-/// Printed on the parcel. Anything that isn't two letters and six digits
-/// can't be a `ParcelLabel`, so every one in the program is valid.
+/// Printed on a parcel: two letters and six digits. Anything else can't be
+/// a `ParcelLabel`, so every one in the program is valid.
 type ParcelLabel = Text {
     pattern: "[A-Z]{2}[0-9]{6}"
 }
+```
 
-/// What a courier charges for each kilogram, in pounds.
-type ShippingRate = Money {
-    currency: Currency.gbp
-    rounding: Rounding.half_even
+`domains/bakery/actions/quote_parcel.jadpo`
+
+```jadpo
+/// The parcel to post an order in.
+type ParcelRequest = Input {
+    label: ParcelLabel
 }
 
-/// What a parcel costs to send, VAT included.
-type ShippingQuote = Money {
-    currency: Currency.gbp
-    rounding: Rounding.half_even
-}
-
-/// What it costs to send `label`: the flour plus a box and a tin, by the
-/// kilogram, with VAT.
-action quote_parcel(label: ParcelLabel, flour: SackWeight, rate: ShippingRate) -> ShippingQuote {
-    // Units of one kind mix freely: grams, kilograms and pounds make a `Mass`.
-    var parcel: Mass = flour + 1.2kg + 800g + 3lb
-    // Dividing by 1kg gives a plain number of kilograms; `* 120%` adds 20% VAT.
-    // Adding minutes (`3m`) to a weight, or euros to pounds, would not compile.
-    return ShippingQuote(rate * (parcel / 1kg) * 120%)
+/// Postage for an order: its cakes plus a box, by the kilogram, with VAT.
+action quote_parcel(order_id: Order.id, input: ParcelRequest) fails OrderNotFound -> ParcelQuote {
+    // Policy applies here: another customer's order is `OrderNotFound`.
+    var order: OrderView = attempt order_by_id(order_id)
+    // Grams, kilograms and pounds add up as a `Mass`.
+    var weight: Mass = 450g * order.quantity + 1.2kg + 3lb
+    var per_kilo: Postage = Postage(money.from_minor(200, Currency.gbp))
+    // `* 120%` adds 20% VAT; adding euros or minutes would not compile.
+    return ParcelQuote {
+        label: input.label
+        postage: Postage(per_kilo * (weight / 1kg) * 120%)
+    }
 }
 ```
 
-What the compiler checks here:
+`domains/bakery/routes/account_orders.jadpo`
 
-- **Units convert exactly.** Kilograms, grams and pounds add up to a `Mass`; adding minutes to a weight is a compile error.
-- **Money keeps its currency.** A pound amount can't be added to euros, and a rate scales it: `* 120%` is "add 20% VAT".
-- **A value can't exist invalid.** A `ParcelLabel` that isn't two letters and six digits is rejected, and a bad literal fails when the project compiles.
-- **Mistakes surface before anything runs.** `jadpo check` finds all of the above without executing the code.
+```jadpo
+routes AccountOrders {
+    prefix: /account/orders
+    // ...
 
-The [source](examples/02-named-types/domains/pantry/actions/quote_parcel.jadpo)
-has its [tests](examples/02-named-types/domains/pantry/actions/quote_parcel.test.jadpo) beside it.
+    /// Quotes the postage for one of the customer's orders.
+    POST /{order_id: Order.id}/parcel {
+        input: ParcelRequest
+        output: ParcelQuote
+        run: quote_parcel(order_id, input)
+    }
+}
+```
+
+`domains/bakery/entities/order.jadpo`
+
+```jadpo
+entity Order {
+    // ...
+
+    policy: {
+        create: [customer_id]
+        read: [customer_id, outlet_id]
+        update: [customer_id]
+    }
+}
+```
+
+What the compiler enforces here:
+
+- **No ignored failures.** `quote_parcel` declares `fails OrderNotFound`; `attempt` passes it on, and anything that calls the action must handle it or declare it too.
+- **Orders stay private.** The `Order` policy lets only the customer it points at read the order, and policy is added to every query, so asking for someone else's order gives `OrderNotFound`, as if it didn't exist.
+- **Exact arithmetic across units.** Grams, kilograms and pounds add up to a `Mass`; adding minutes to it, or euros to pounds, does not compile.
+- **VAT is `* 120%`.** Money can't be mixed with a bare percentage by `+`, and the currency and rounding come from the type.
+- **A label can't exist invalid.** A `ParcelLabel` that doesn't match the pattern is refused, and a bad literal fails when the project compiles.
+
+The route's input, output and failure are also recorded in the API's
+[committed record](examples/11-cake-shop/api/main.jadpo_record), and `jadpo check` fails if they disagree.
+The [action](examples/11-cake-shop/domains/bakery/actions/quote_parcel.jadpo) has [tests](examples/11-cake-shop/domains/bakery/actions/quote_parcel.test.jadpo) beside it, and the
+[route tests](examples/11-cake-shop/domains/bakery/routes/account_orders.test.jadpo) check the privacy rule through real requests.
 
 ## Explore with Claude Code or Codex
 

@@ -1,0 +1,7 @@
+use bakery/types { ParcelLabel, Postage }
+
+/// What posting an order in a labelled parcel costs.
+type ParcelQuote = Output {
+    label: ParcelLabel
+    postage: Postage
+}

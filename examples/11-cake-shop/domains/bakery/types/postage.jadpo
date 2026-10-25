@@ -1,0 +1,5 @@
+/// A postage charge in pounds, rounded to the penny.
+type Postage = Money {
+    currency: Currency.gbp
+    rounding: Rounding.half_even
+}

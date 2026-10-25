@@ -1,0 +1,5 @@
+/// Printed on a parcel: two letters and six digits. Anything else can't be
+/// a `ParcelLabel`, so every one in the program is valid.
+type ParcelLabel = Text {
+    pattern: "[A-Z]{2}[0-9]{6}"
+}

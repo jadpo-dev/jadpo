@@ -1,8 +1,0 @@
-test "a parcel is charged by weight with VAT" {
-    // 2kg of flour + 1.2kg + 800g + 3lb (1.36kg) = 5.36kg;
-    // at £2.00 a kilogram that is £10.72, and 120% of it is £12.86.
-    var rate: ShippingRate = ShippingRate(money.from_minor(200, Currency.gbp))
-    assert quote_parcel("GB123456", 2kg, rate) == ShippingQuote(
-        money.from_minor(1286, Currency.gbp)
-    )
-}
