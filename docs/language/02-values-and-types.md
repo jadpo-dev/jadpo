@@ -303,6 +303,13 @@ test "calendar and clock arithmetic" {
 - **Formatting follows the locale** the same way everywhere.
 - **Agents can't hand-roll a broken `Money`,** and a reviewer who reads
   `Money` knows exactly what it means.
+- **Hand-rolled versions are found for you.** `jadpo suggest` scans a
+  project for money, durations, units, points and loops written by hand
+  (`price * 100`, `timeout_ms: Int`, `"£" + text.from(pence)`) and names
+  the standard type or operation to use; the agent makes the edit. A miss
+  it should have caught is taught with `jadpo suggest found`, and with
+  your approval `jadpo suggest share` sends what was learned to Jadpo, so
+  the signals improve for everyone ([tooling](14-tooling.md#suggestions)).
 
 [Area 19](19-standard-library.md#the-standard-types) has the full list and
 every operation.
