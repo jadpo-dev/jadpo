@@ -157,9 +157,9 @@ jobs:
   # in the `wasm32` job, which the 12 minutes couldn't hold.
   compiled:
     runs-on: ubuntu-24.04
-    # The corpus step takes about 9 minutes and saving the cache about one
-    # more, which 12 minutes no longer held (2026-10-22).
-    timeout-minutes: 20
+    # The corpus and the golden todo's native cases run side by side, each
+    # about 10 to 16 minutes, plus building and saving the cache.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
