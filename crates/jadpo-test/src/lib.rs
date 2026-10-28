@@ -157,8 +157,9 @@ pub struct Options {
     /// batch run it started is run to its end at the test's clock, its
     /// pages, rows and calls kept in the test's record, so compiled code's
     /// runs and an export's rows are compared too. `jadpo test` leaves a
-    /// run as it started (area 13, "Caches and events") until question
-    /// 18's batches in tests are built.
+    /// run as it started (area 13, "Caches and events") until batches in
+    /// tests (area 13, "Provider calls and capabilities in tests") are
+    /// built.
     pub batches: bool,
 }
 

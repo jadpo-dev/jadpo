@@ -1,4 +1,4 @@
-//! Declared deployables (area 14, question 14; area 11, question 24;
+//! Declared deployables (area 14, "Deployables"; area 11, question 24;
 //! roadmap chunk 8.1o2): `application { deployables: { } }` names each
 //! program the app is built into, what it serves and runs and its
 //! target; an app that declares none has one, `app`, with no target. A
@@ -510,7 +510,7 @@ fn counted_in(store: &str, connection: &str, deployables: &str) -> Vec<String> {
 #[test]
 fn on_workers_rate_limits_are_counted_in_a_store() {
     // A Worker that serves an API needs a store, since its instances share
-    // no memory (area 16, question 6).
+    // no memory (area 16, "Rate limits").
     assert_eq!(
         counted_in("", "", &declared(WASM, NATIVE)),
         [

@@ -1,7 +1,7 @@
 //! Two versions of a library package with translations, held side by side
-//! (area 11, "Wording two versions of a package", decided 2026-10-20;
-//! chunk 7.1c3): while the app holds two versions, it words each under a
-//! key carrying the version (`postcodes_v3: { }`), as its names carry it;
+//! (area 11, "Two versions side by side, lazy loading and the package
+//! cache"): while the app holds two versions, it words each under a key
+//! carrying the version (`postcodes_v3: { }`), as its names carry it;
 //! with one held, the key is the folder's name. A group whose key no
 //! longer fits what is held is named with the key to use, and the root
 //! record's lines follow the wording to its new key.

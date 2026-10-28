@@ -1,5 +1,4 @@
-//! Whole values compared field by field (area 13, question 15: "`==` on
-//! records and lists, with a field-by-field diff on failure"): each field,
+//! Whole values compared field by field (area 13, "Comparing values"): each field,
 //! item or key whose values differ, going into records, variants of the
 //! same case, lists, sets and maps.
 

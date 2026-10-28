@@ -206,7 +206,7 @@ pub fn sort_by(
 }
 
 /// [`sort_by`] with text keys ordered by `locale`'s collation (a BCP 47
-/// tag) rather than by code point (area 19, question 26); the checker
+/// tag) rather than by code point (area 19, "Slugs and text order"); the checker
 /// gives `locale:` only with a text key.
 pub fn sort_by_locale(
     items: &[Value],

@@ -438,7 +438,7 @@ impl Codecs<'_> {
             Codec::Enum { ty, variants } => match json {
                 serde_json::Value::String(name) => {
                     // A standard enum's code is read ignoring case (area
-                    // 19, question 22): `gb` typed into a form is `GB`.
+                    // 19, "Closed value sets are enums"): `gb` typed into a form is `GB`.
                     let coded = jadpo_std::standard::stored_by_code(ty).is_some()
                         || jadpo_std::standard_type(ty).is_some();
                     match variants.iter().find(|v| {

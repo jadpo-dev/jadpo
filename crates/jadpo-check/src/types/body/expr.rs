@@ -128,7 +128,7 @@ impl Body<'_> {
                     return;
                 }
                 // `[]` where a map is expected is an empty map (area 19,
-                // question 8), whose length a named map's rules check.
+                // "Sets and maps"), whose length a named map's rules check.
                 Ty::Map(..) if list.exprs().next().is_none() => {
                     if let Err(problem) =
                         literal::check(self.table, expected, &Const::List(Vec::new()))
@@ -695,7 +695,7 @@ impl Body<'_> {
     }
 
     /// A `random` operation reads the generator, an effect only actions
-    /// have, as the clock is (area 19, question 19).
+    /// have, as the clock is (area 19, "Randomness").
     pub(super) fn random_read(&mut self, span: jadpo_diag::Span, written: &str) {
         if !self.context.is_pure() {
             return;
@@ -767,7 +767,7 @@ impl Body<'_> {
             return Ty::Error;
         };
         let name = text(variant);
-        // `Enum.all` (area 19, question 22): every variant, in the enum's
+        // `Enum.all` (area 19, "Closed value sets are enums"): every variant, in the enum's
         // order, for an enum whose variants carry no data; a closed list's
         // retired codes aren't offered.
         if name == "all" && !variants.iter().any(|v| v.name == name) {
@@ -832,8 +832,7 @@ impl Body<'_> {
         }
     }
 
-    /// A closed list's withdrawn code written as a value (area 19, question
-    /// 22): stored data still reads it, but new code doesn't write it,
+    /// A closed list's withdrawn code written as a value (area 19, "Closed value sets are enums"): stored data still reads it, but new code doesn't write it,
     /// unless a decline gives the reason, such as reading old records.
     fn retired_variant(&mut self, host: &str, variant: &str, expr: &Expr) {
         let Some(list) = jadpo_std::standard::closed_list(host) else {

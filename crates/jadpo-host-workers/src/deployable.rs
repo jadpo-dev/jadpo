@@ -355,7 +355,7 @@ async fn stores_current(deployable: &Deployable, host: &WorkersHost, log: &Log) 
 }
 
 /// The runtime's request from Workers' `Request`: its body read whole or,
-/// once it passes the runtime's limit (area 7, question 5), marked too
+/// once it passes the runtime's limit (area 7, "Deadline and body limit"), marked too
 /// large and never held, so the runtime answers 413. On Workers there is
 /// no connection's address: the client's comes from `CF-Connecting-IP`.
 /// `None` when it can't be read.

@@ -148,7 +148,7 @@ agent must remember to update. The repository can retain both behaviour and
 rationale, reducing drift between requirements, architecture documents,
 implementation, tests, and operational reality.
 
-An early illustrative rule was:
+An illustration, not Jadpo syntax:
 
 ```text
 rule cancellation_window {
@@ -162,8 +162,8 @@ rule cancellation_window {
 }
 ```
 
-The exact syntax is historical, but the requirement remains: an agent changing
-the system should see both what it does and why.
+The requirement is that an agent changing the system sees both what it
+does and why.
 
 ## 6. Scope
 
@@ -178,13 +178,9 @@ The language is initially for conventional web/SaaS backends:
 - declared third-party services;
 - tests, migrations, docs, and audits.
 
-The working hypothesis is that roughly ten to fifteen semantic primitives may
-cover most of this domain: `app`, `entity`, `value`, `input`, `output`, `query`,
-`action`, `route`, `policy`, `event`, `job`, `service`, `test`, and perhaps an
-explicit `decision`/`rule` concept.
-
-This is not a commitment that those boundaries are correct. Complete examples
-must prove them.
+A small set of semantic primitives should cover most of this domain; the
+[language specification](language/README.md) defines them, and the teaching
+examples test them.
 
 ## 7. Opinionation and escape hatches
 

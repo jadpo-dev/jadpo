@@ -548,9 +548,9 @@ pub fn classify(lookup: &Lookup<'_>, ty: &Ty) -> Class {
     match lookup.representation(ty) {
         Some(Prim::Text | Prim::PresentationText) => Class::Kind(ParamKind::Text),
         Some(Prim::Int | Prim::Decimal) => Class::Kind(ParamKind::Number),
-        // Written `{price, number, currency}` (area 19, question 16).
+        // Written `{price, number, currency}` (area 19, "`Money` and the operator table").
         Some(Prim::Money) => Class::Kind(ParamKind::Money),
-        // Written `{rate, number, percent}` (area 19, question 16).
+        // Written `{rate, number, percent}` (area 19, "`Money` and the operator table").
         Some(Prim::Percentage) => Class::Kind(ParamKind::Percent),
         _ => Class::Unsupported,
     }

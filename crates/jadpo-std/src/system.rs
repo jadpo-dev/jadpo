@@ -178,7 +178,7 @@ pub const CIRCUIT_BREAKERS: SystemTable = SystemTable {
     indexes: &[],
 };
 
-/// A subscriber's handled record (area 12, "Outbox placement, settled";
+/// A subscriber's handled record (area 12, "Outbox placement";
 /// chunk 6.1b): in the store its action writes, committed with its
 /// writes, so a repeated delivery finds it and does nothing. Keyed by the
 /// delivery's `id`, which the outbox's store holds: no reference across
@@ -629,7 +629,7 @@ pub const BATCH_CANCELS: SystemTable = SystemTable {
 };
 
 /// What an operator did to a delivery or a schedule's run with `jadpo
-/// deliveries` (area 12, "What an operator sees"; area 14, question 13;
+/// deliveries` (area 12, "What an operator sees"; area 14, "Operator commands";
 /// chunk 6.12), in the store the item is in, written by the statement
 /// that acts on it: when, what (`retry`, `dismiss`, `cancel`,
 /// `resolve_done`, `resolve_not_done`), the item and its state then,

@@ -2,7 +2,7 @@
 title: Values and types
 area: 2
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 ---
 
 # Values and types
@@ -31,13 +31,28 @@ The raw material for your own types.
 |---|---|
 | `Bool` | `true` or `false` |
 | `Int` | An exact 64-bit integer |
-| `Decimal` | An exact decimal with a required `scale` (see Review, question 8) |
+| `Decimal` | An exact decimal with a required `scale` (question 8) |
 | `Text` | Unicode text |
 | `Bytes` | A sequence of bytes |
 | `Uuid` | A universally unique identifier |
 
 There is no `Float`: arithmetic on `Decimal` is exact, and its maths belongs to
-the `decimal` namespace (area 19).
+the `decimal` namespace (area 19). Text from outside is normalised to NFC as
+it is decoded at a boundary, before its rules are checked.
+
+Any UUID version is accepted by default and normalised to lowercase, and new
+identities are version 7. A named type can pin a version, which governs both
+what it accepts and what it generates (question 13):
+
+```jadpo check project=q13-uuid-versions
+entity Order {
+    id: Uuid  // generated as version 7
+}
+
+type PartnerRef = Uuid {
+    version: UuidVersion.v4  // accepts and generates only version 4
+}
+```
 
 ### Standard types
 
@@ -417,22 +432,20 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 | `min_length`, `max_length` | `Text`, `Bytes`, `List<T>`, `Set<T>`, `Map<K, V>` | whole number | Inclusive bounds; text counts Unicode characters, collections count items |
 | `pattern` | `Text` | string | A regular expression the text must match |
 | `format` | `Text` | `email` | The text must be an email address |
-| `dimensions` | a type built on `Vector` | whole number, 1 to 16,000 | Exactly that many items (area 19, chunk 5.5s2) |
-| `distance` | a type built on `Vector` | a `VectorDistance`: `cosine` (the default), `euclidean` or `inner_product` | How its vectors are compared: `ai.distance` and its index follow it (area 21, chunk 5.5v1) |
+| `dimensions` | a type built on `Vector` | whole number, 1 to 16,000 | Exactly that many items (area 19) |
+| `distance` | a type built on `Vector` | a `VectorDistance`: `cosine` (the default), `euclidean` or `inner_product` | How its vectors are compared: `ai.distance` and its index follow it (area 21) |
 
 Each constraint is written `name: value`, one per line. There are no other
 constraints and no custom validation functions.
 
-Built in chunk 1.9: a refinement can only add to the rules of the type it
-builds on, so a `max` below an inherited `min` (or the other way round, for
-lengths and durations too) is `type.constraint_contradiction`, and so is a
-`Decimal` refinement whose `scale` differs from the one it inherits, since
-the scale decides how the value is stored and sent; since chunk 5.5h4, so
-is a currency other than the one it inherits, a `Money` type's `currency:`
-or a rate type's `from:` and `to:` (area 19), and since chunk 5.5s2 a
-vector type's `dimensions:` other than the one it inherits or outside
-its lengths. Since chunk 2.7, a bound
-looser than the one it inherits (`max_length: 50` on a type with
+A refinement can only add to the rules of the type it builds on, so a
+`max` below an inherited `min` (or the other way round, for lengths and
+durations too) is `type.constraint_contradiction`, and so is a `Decimal`
+refinement whose `scale` differs from the one it inherits, since the scale
+decides how the value is stored and sent. So is a currency other than the
+one it inherits, a `Money` type's `currency:` or a rate type's `from:` and
+`to:` (area 19), and a vector type's `dimensions:` other than the one it
+inherits or outside its lengths. A bound looser than the one it inherits (`max_length: 50` on a type with
 `max_length: 40`) is `type.constraint_loosened`. The same settings rules
 hold for the fields of every type with fields, entities and events included;
 the settings later areas add to an entity's or event's fields (`generated`,
@@ -476,7 +489,7 @@ or any `Int`-based type for `Quantity`, a decimal literal such as `0.0` (not
 between two named types: the value is re-checked against the target's rules.
 A value that may be `none` builds nothing: `Quantity(maybe)` with
 `maybe: Count?` is `type.constructor_input`, and `match` handles the
-absent case first (built in chunk 2.11).
+absent case first.
 
 ```jadpo check project=convert
 type Stock = Int {
@@ -563,7 +576,7 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 - **A validated built-in type's check is `format`.** A type built on
   `Email`, `Url` or `IpAddress` checks its text, and when the value isn't
   already built on the same type, that check is the `format` rule and can
-  break (built in chunk 2.7). An `Email` already is an address, and so is
+  break. An `Email` already is an address, and so is
   text whose own type has `format: TextFormat.email`, the same check.
 - **Every failure is `invalid_value`.** At runtime the failure records the
   rule that broke, such as `max: 12`, or the built-in type whose check
@@ -649,7 +662,7 @@ function inside_range(n: Count) fails OrderTooLarge -> CakeCount {
 }
 ```
 
-What counts as proof, exactly (built in chunk 2.6):
+What counts as proof, exactly:
 
 - **A comparison bounds a number.** `<`, `<=`, `>`, `>=`, `==` and `!=`
   between two numbers bound each side by the other side's range: a
@@ -813,9 +826,90 @@ function edited(before: CustomerNote, after: CustomerNote) -> NoteWasEdited {
 `Email`, `Url`, `IpAddress`, objects, enums, field types and `Unit` are
 allowed. Inside a body, locals can still hold built-in types.
 
-## Objects
+## One form for every type
 
-> **Decided on 2026-10-12, built in chunk 1.4.** Every object type is `type Name = Base { ... }`; there are no `value`, `input` or `output` keywords.
+Every type is declared the same way, `type Name = Base { ... }` (questions
+10, 18 and 19). The base says what the type is built from, and the block
+holds the details: rules for a number or text, fields for an object,
+variants for an enum. `entity` stays separate because an entity is
+more than a type (storage, actions, queries and policy).
+
+```jadpo check project=one-form file=names.jadpo hidden
+type ReceiptId = Uuid {}
+
+type DeclineReason = Text {
+    max_length: 200
+}
+
+type OrderNote = Text {
+    max_length: 500
+}
+
+type OrderLineRequest = Input {
+    sku: StockCode
+}
+
+entity Order {
+    id: Uuid
+    total: ItemPrice
+}
+```
+
+```jadpo check project=one-form file=main.jadpo
+type ItemPrice = Decimal {  // rules on a number
+    scale: 2
+    min: 0.00
+}
+
+type StockCode = Text {  // rules on text
+    pattern: "[A-Z]{3}-[0-9]{4}"
+}
+
+type OrderId = Uuid {}  // a new identity type with no extra rules
+
+type OrderLine = Object {  // fields
+    sku: StockCode
+    price: ItemPrice
+}
+
+type OrderStatus = Enum {  // variants
+    pending
+    paid
+    shipped
+}
+
+type PaymentOutcome = Enum {  // variants that carry fields
+    pending
+    paid: {
+        receipt_id: ReceiptId
+    }
+    declined: {
+        reason: DeclineReason
+    }
+}
+
+type CreateOrder = Input {  // an object arriving from outside
+    lines: List<OrderLineRequest>
+    note: OrderNote {
+        optional: true
+    }
+}
+
+type OrderView = Output {  // an object sent back
+    id: Order.id
+    total: ItemPrice
+}
+```
+
+- `Object`, `Enum`, `Input` and `Output` are only ever used as a base here.
+  There is no anonymous object written inline; every shape has a name.
+- `Input` objects may have `optional` and `default` fields and are the only
+  objects a route accepts. `Output` objects are the only objects a route
+  returns.
+- There are no `value`, `enum`, `input` or `output` keywords, and the
+  `types/` folder holds only `type` declarations.
+
+## Objects
 
 An object is a fixed set of named fields. The base after `=` says what the
 object is for:
@@ -965,12 +1059,9 @@ A field's type is always a type: a type's name, a field type such as
 a block. A value written there, whether a call (`TicketStatus("open")`), a
 literal or an enum's variant (`TicketStatus.open`), is `type.not_a_type`,
 naming the field, in every block of fields: an object's, an input's, an
-event's, a failure's, a variant's, an entity's and `config { }`'s settings
-(chunk 7.9f).
+event's, a failure's, a variant's, an entity's and `config { }`'s settings.
 
 ### Rules across fields
-
-> **Decided on 2026-10-17 (area 19, question 15), built in chunk 5.5t.**
 
 A field's rules say what one value may be. A rule across fields says how
 the values of one object relate: a booking ends after it starts, a
@@ -1075,9 +1166,9 @@ test "a booking that ends before it starts is refused" {
   fields, never rules: a type built from `Booking` writes the rule again if
   it holds there too. Only an `Object`, `Input` or `Output` has rules
   (`type.rule_outside_object`); events, failures, messages, enums and
-  refinements have none, and a rule on an entity, which the database would
-  check and a write would map, is left for Richard.
-- **The standard object types have rules too** (area 19, chunk 5.5t2): an
+  refinements have none. A rule on an entity, which the database would
+  check and a write would map, is not designed yet.
+- **The standard object types have rules too** (area 19): an
   `InstantRange`'s `start_not_after_end`, a `PostalAddress`'s
   `postal_code_of_country`, each named, proved, attempted and reported as
   a rule written here is. Area 19 lists them.
@@ -1175,9 +1266,131 @@ error: `Booking { ... }` can't fail, so it takes no `attempt`
 check failed: 1 error, 1 file
 ```
 
-## Absent values
+## Building a type from other types
 
-> **Decided on 2026-10-12, built in chunk 1.4.** Objects and inputs use `type Name = Object { ... }` and `type Name = Input { ... }`, and (question 20) `optional` and `default` go in a settings block after the field's type.
+Most object types in a real application are slices of an entity or of another
+object: a create input, a patch input where every field is optional, a public
+view, a list summary, a v2 response that adds a field. Instead of writing each
+field out (`title: Todo.title`), a type's body can copy fields from other
+types. The body keeps its ordinary `Output { }` form; four kinds of line build
+it, **read from top to bottom**, each changing the result of the lines above:
+
+| Line | Does |
+|---|---|
+| `include: [Todo]` | adds every field of each listed type (types only; never on an `Input`) |
+| `pick: [Todo.id, Todo.title]` | adds just the listed fields, each keeping its own name |
+| `omit: [Todo.internal_note]` | removes fields present at that point |
+| `bar: User.bar` | a written field: replaces a field of the same name above, or adds a new one |
+
+```jadpo check project=building file=names.jadpo hidden
+type TodoTitle = Text {
+    max_length: 200
+}
+
+type TodoStatus = Enum {
+    open
+    done
+}
+
+type DayCount = Int {
+    min: 0
+}
+
+type Quantity = Int {
+    min: 1
+}
+
+entity User {
+    id: Uuid
+    email: Email
+}
+
+entity Todo {
+    id: Uuid
+    title: TodoTitle
+    status: TodoStatus
+    due_at: Instant?
+    deleted_at: Instant?
+}
+
+type OrderLineView = Output {
+    quantity: Quantity
+}
+
+type Order = Object {
+    id: Uuid
+    lines: List<OrderLineView>
+}
+```
+
+```jadpo check project=building file=main.jadpo
+type TodoView = Output {
+    pick: [Todo.id, Todo.title, Todo.status, Todo.due_at]
+}
+
+type TodoDetail = Output {
+    include: [Todo]
+    omit: [Todo.deleted_at]
+    owner_email: User.email
+}
+
+type PatchTodo = Input {
+    pick: [Todo.title, Todo.due_at]
+    optional: all
+}
+
+type OrderView = Output {
+    include: [Order]
+    lines: List<OrderLineView>  // replaces Order.lines with a view of each line
+}
+
+type TodoReminder = Object {
+    pick: [Todo.id, Todo.title, Todo.due_at]
+    owner_email: User.email
+    days_overdue: DayCount
+}
+```
+
+Rules:
+
+- **Top to bottom.** The same kind of line may appear more than once, and the
+  formatter keeps the order written, because order matters here.
+- **Fields keep their declared order.** Copied fields stand where their
+  `include` or `pick` line is, an `include`'s in the order its type
+  declares them and a `pick`'s in the order listed; a written field that
+  replaces a copied one takes its place. Values, hover and the manifest
+  (each field's `order`) follow it.
+- **Lists are always in brackets**, even with one entry: `include: [Todo]`.
+- **`omit` removes only what is there.** Omitting a field that is not present
+  at that point is an error, which catches typos and fields since removed.
+- **Written fields win.** A field you write replaces any field of the same
+  name above it, visibly; otherwise it is added.
+- **Copied fields never silently replace copied fields.** An `include` or
+  `pick` that would replace a field brought in by an earlier `include` or
+  `pick` is an error: resolve it with `omit` or by writing the field. Copied
+  fields are not visible in the declaration, so a clash there would change a
+  type unseen when a source type gains a field.
+- **No `include` on an `Input`.** Taking every field of `User` would accept
+  any field added to `User` later (the mass-assignment bug). Inputs `pick` or
+  write their fields. Generated fields such as `id` and `created_at` can never
+  appear in an `Input`.
+- **`optional`** makes the listed fields, or `all`, optional, only on an
+  `Input`.
+- **Copied fields follow their source.** Renaming `Todo.title` renames it in
+  every type that copies it, and its validation rules come with it.
+- **No type includes itself.** An `include` that leads back to its own type,
+  directly or through another, is `type.copy_cycle`.
+- **Every built type has a name;** there are no inline types in signatures.
+  Hover, and `jadpo inspect TodoDetail` (not built yet), show the final
+  fields and where each came from (`title ← Todo.title`,
+  `lines ← written, replaces Order.lines`).
+- **Outputs may `include`.** A field added to `Todo` later reaches
+  `TodoDetail`, and the committed API record (area 7) shows the addition in
+  review; fields policy hides from clients stay hidden at runtime (area 9).
+- `include`, `pick`, `omit` and `optional` are reserved and cannot be field
+  names.
+
+## Absent values
 
 There is no `null` or `undefined`. A type followed by `?` may hold `none`, and
 reading it means handling both cases, usually with `match` (area 3). `null`,
@@ -1247,8 +1460,6 @@ A value can widen through `?`: a `Customer.email?` can be used where an
 
 ## Enums
 
-> **Decided on 2026-10-12, built in chunk 1.4.** Enums are `type Name = Enum { ... }`; there is no `enum` keyword.
-
 An enum is a closed list of named alternatives. Variants are always written
 with their enum's name.
 
@@ -1316,9 +1527,9 @@ wire a plain variant is its name as a string (`"open"`), and a variant with
 fields is an object with a `tag` naming the variant plus its fields. Enums have
 no methods or display labels. Wording for people comes from translations: a
 domain's language files may give each value of an enum a wording, which a
-template then writes out (area 10, "Enums with wording", decided
-2026-10-16). A variant is a name, or a name with a block of its fields;
-one given a label, `open: "Open"`, is `type.enum_label` (chunk 7.9f).
+template then writes out (area 10, "Enums with wording"). A variant is a
+name, or a name with a block of its fields; one given a label,
+`open: "Open"`, is `type.enum_label`.
 
 ## Collections
 
@@ -1353,30 +1564,44 @@ type Basket = Output {
 A collection keeps its element type: a `List<Customer.email>` is not a
 `List<Email>`, and nothing converts one collection into another:
 `List<Tag>(names)` is `type.constructor_input`, since only a named type is
-built from a value (built in chunk 2.7). A named collection type is one,
+built from a value. A named collection type is one,
 so it is built from a collection of its items, as the next section shows.
 
 Lists can be built and walked: a list literal is written in square
 brackets, its items taking the list's element type (`["urgent", "home"]`),
 `for` walks a list (area 3, Loops), and `list.count`,
 `list.contains`, `list.map` and `list.filter` take one
-(Review, question 4). A list literal written where a set is expected is a
+(question 4). A list literal written where a set is expected is a
 set (question 5). `for` walks a set too, in the canonical order ("Set
 order"), and a map through its keys, `for key in map.keys(prices)`; the
 `set.` and `map.` operations search and rebuild them (area 19). `[]`
 written where a map is expected is an empty map, to which `map.with` adds
-entries; a map literal with entries is still to design.
+entries; a map literal with entries is not designed yet.
 
-> Amended 2026-10-17 by area 19 (questions 6 and 8): `collection.`
-> becomes `list.`, beside new `set.` and `map.` namespaces, with a habit
-> error whose edit writes the right one (built in chunk 5.5b); `for` walks a set in
-> the canonical order above; a map is walked through `map.keys`; and `[]`
-> written where a map is expected is an empty map (built in chunk 5.5c). A map
-> literal with entries is still this area's to design. Text from outside
-> is normalised to NFC as it is decoded at a boundary (built in chunk
-> 5.5f: every text a request carries, before its rules are checked), and
-> named rules across an object's fields are a change to this area, built
-> in chunk 5.5t.
+At a boundary a `Set<T>` is a JSON array and a `Map<K, V>` a JSON object
+(question 5):
+
+```text
+{ "tags": ["urgent", "home"], "weights": { "urgent": 3, "home": 1 } }
+```
+
+An array that repeats a value is refused where a set is expected. A map in
+an `Input` or `Output`, however nested, is keyed by a type built on `Text`
+or `Uuid`, because JSON object keys are text (`type.map_key_boundary`); a
+standard named collection such as `LocalisedText` is sent as its entry
+says. A set literal that repeats a value is `type.invalid_literal`. A list
+written where a named set type is expected (`type Tags = Set<TagName> {}`)
+is a set, so `[b, a]` equals `[a, b]`; and since equal computed items
+collapse, a set literal's `min_length` counts only its distinct literals,
+or one value when it has any items, so `[a, b]` into a set type with
+`min_length: 2` is `type.invalid_literal`.
+
+A set has no order code can use: no index and no first item; where order
+matters, sort it or use a `List`. Everything that shows a set (JSON,
+reports, `for`) uses one canonical order, the same in interpreted and
+compiled code: by value, numbers numerically, text by Unicode code point,
+enum variants in declaration order, objects and tagged unions field by
+field in declared order. This is the "Set order" the rules below refer to.
 
 ### Named collection construction
 
@@ -1386,8 +1611,7 @@ checks only the collection's own rules: the `min_length` and `max_length`
 of the type and of the types it builds on. When one can break, the
 construction takes `attempt` and an arm for each, or `invalid:` for all
 of them, and the declared lengths and the conditions around it prove it
-as they prove any construction, so a proven one is plain (built in chunk
-2.11).
+as they prove any construction, so a proven one is plain.
 
 ```jadpo check project=named-collections file=types.jadpo hidden
 type GuestName = Text {
@@ -1555,6 +1779,11 @@ check failed: 1 error, 1 file
   different types.
 - **Nothing unwraps.** A named type never becomes its built-in representation
   except through arithmetic and comparison operators.
+
+`Customer.id` and `Supplier.id` stay distinct even when both are version 4
+UUIDs. A function that genuinely accepts either takes an enum whose
+variants carry each one, which keeps the choice explicit; your own code has
+no generics or unions (area 3, [Generic code](03-logic.md#generic-code)).
 
 ## Values never change
 
@@ -2458,8 +2687,7 @@ check failed: 1 error, 1 file
 
 ### `type.constraint_loosened`
 
-A refinement can only add to the rules of the type it builds on (built in
-chunk 2.7). Every rule along the chain still holds, so a looser bound would
+A refinement can only add to the rules of the type it builds on. Every rule along the chain still holds, so a looser bound would
 never apply and would only mislead the reader:
 
 ```jadpo check project=e-constraint-loosened expect=type.constraint_loosened
@@ -3182,796 +3410,53 @@ check failed: 1 error, 1 file
 
 ### Status
 
-Built by the new compiler in chunk 1.4, with the later chunks named in
-each section: construction failures by rule (2.5), conditions as proof
-(2.6), the soundness fixes (2.7) and named collection construction (2.11).
-Walking and searching sets and maps, and `[]` as an empty map, came with
-the standard library in chunk 5.5c (area 19), and rules across fields in
-chunk 5.5t. Not built yet: a map literal
-with entries, which no roadmap chunk builds yet; and the JSON forms of
-sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
-4.1. The built-in `PluralCount` and the `Message` base came with
-translations as messages in chunk 5.4c (area 10); `TextDirection` and
-`TranslationReview` came in chunk 5.4d. The file, batch and
-service types and the `Document` base come with the features that use
-them: `CsvFormat` with the standard library (chunk 5.5), `OAuthGrant` with
-packages (Phase 7), and the rest after the first build. `BatchRun`,
-`BatchProgress` with its `BatchState`, `RowProblem` and `ImportSummary`
-came with batches in chunk 6.4 (area 12): only the runtime builds one, a
-program reads their fields, and an entity field keeps a `BatchRun` as its
-JSON; `File` and `FileContents` came with the `files` capability's first
-part in chunk 6.4b (area 16): only the runtime builds either, an entity
-field keeps a `File` as its JSON, and a program reads neither's parts yet;
-`ExportSummary` and `CsvFormat` came with the file helpers' writers in
-chunk 6.4b2 (area 19, "Data formats"): only the runtime builds an
-`ExportSummary`, whose `file` an entity's `File` field keeps, and
-`CsvFormat` is a standard enum of `spreadsheet` and `standard`.
-
-### Consistency with the rest of the language
-
-- **Two spellings for objects and enums.** `value X { }` and
-  `type X = Object { }` produce the same thing, as do `enum X { }` and
-  `type X = Enum { }`. The golden app uses only the keyword forms.
-- **`input` and `output` are keywords without a meaning.** Boundary roles are not type categories, yet `input` and `output`
-  declare objects, and nothing stops an `output` being a route's input.
-- **`=` appears only in `type`.** `type Stock = Int { }` uses `=`; `value`,
-  `enum`, `entity` and `failure` do not. Flagged in area 1 for the syntax pass.
-- **The block after a field's type changes vocabulary.** On a `value`,
-  `label: ProductName { max_length: 12 }` holds constraints; on an entity,
-  `id: Uuid { generated: identity }` and `owner_id: User.id { role: ... }` hold
-  settings in the same position, and a generated timestamp is written
-  `created_at: Instant generated { on: create }` instead.
-- **Field facts are split between trailing words and blocks.** `optional`,
-  `default 25` and `generated { ... }` trail the type; `immutable: true` and
-  `generated: identity` go in the block.
-- **Constraint values are spelled three ways.** `format: email` is a bare
-  name, `pattern: "..."` a string, `min: 0` a number. List size reuses
-  `max_length`.
-- **Five ways to make a value.** `Quantity(1)` for named types,
-  `Customer.email(x)` for field types, `Product { ... }` for objects,
-  `TicketStatus.open` for plain variants and `PaymentOutcome.paid { ... }` for
-  payload variants. Each is deliberate, but `Type(...)` works for every named
-  type except enums.
-- **Braces hold one item per line, except in two places.** Match patterns
-  bind payload fields as a comma list, `PaymentOutcome.paid { receipt_id, paid_at }`,
-  while the same shorthand in construction, `Product { name }`, is an error.
-  Import lists are the other comma list (area 1).
-- **Dotted names mean different things by position.** `Customer.email` is a
-  type in a signature, a field read in an expression and a constructor when
-  called. Variant field types take three parts, `PaymentOutcome.declined.reason`.
-- **Duration literals exist only in configuration.** `default: 30d` is valid in
-  a config block but not in an expression or a constraint.
-- **Narrowing is strict in one place and lax in another.** Entity `create`
-  requires `Todo.status(TodoStatus.open)`; building a `value` accepts
-  `TicketStatus.open` directly.
-
-### Decided: one form for every type
-
-Decided on 2026-10-12 (questions 10, 18 and 19). Every type is declared the
-same way: `type Name = Base { ... }`. The base says what the type is built
-from, and the block holds the details: rules for a number or text, fields for
-an object, variants for an enum. `entity` stays separate because an entity is
-more than a type (storage, actions, queries and policy).
-
-```jadpo check project=one-form file=names.jadpo hidden
-type ReceiptId = Uuid {}
-
-type DeclineReason = Text {
-    max_length: 200
-}
-
-type OrderNote = Text {
-    max_length: 500
-}
-
-type OrderLineRequest = Input {
-    sku: StockCode
-}
-
-entity Order {
-    id: Uuid
-    total: ItemPrice
-}
-```
-
-```jadpo check project=one-form file=main.jadpo
-type ItemPrice = Decimal {  // rules on a number
-    scale: 2
-    min: 0.00
-}
-
-type StockCode = Text {  // rules on text
-    pattern: "[A-Z]{3}-[0-9]{4}"
-}
-
-type OrderId = Uuid {}  // a new identity type with no extra rules
-
-type OrderLine = Object {  // fields
-    sku: StockCode
-    price: ItemPrice
-}
-
-type OrderStatus = Enum {  // variants
-    pending
-    paid
-    shipped
-}
-
-type PaymentOutcome = Enum {  // variants that carry fields
-    pending
-    paid: {
-        receipt_id: ReceiptId
-    }
-    declined: {
-        reason: DeclineReason
-    }
-}
-
-type CreateOrder = Input {  // an object arriving from outside
-    lines: List<OrderLineRequest>
-    note: OrderNote {
-        optional: true
-    }
-}
-
-type OrderView = Output {  // an object sent back
-    id: Order.id
-    total: ItemPrice
-}
-```
-
-- `Object`, `Enum`, `Input` and `Output` are only ever used as a base here.
-  There is no anonymous object written inline; every shape has a name.
-- `Input` objects may have `optional` and `default` fields and are the only
-  objects a route accepts. `Output` objects are the only objects a route
-  returns, and when derived they may only `pick`.
-- `value`, `enum`, `input` and `output` disappear as keywords, and the
-  `types/` folder holds only `type` declarations.
-
-### Decided: building a type from other types
-
-*Revised 2026-10-13 (Richard): replaces `Output from Todo { pick: [...] }`.*
-
-Most object types in a real application are slices of an entity or of another
-object: a create input, a patch input where every field is optional, a public
-view, a list summary, a v2 response that adds a field. Instead of writing each
-field out (`title: Todo.title`), a type's body can copy fields from other
-types. The body keeps its ordinary `Output { }` form; four kinds of line build
-it, **read from top to bottom**, each changing the result of the lines above:
-
-| Line | Does |
-|---|---|
-| `include: [Todo]` | adds every field of each listed type (types only; never on an `Input`) |
-| `pick: [Todo.id, Todo.title]` | adds just the listed fields, each keeping its own name |
-| `omit: [Todo.internal_note]` | removes fields present at that point |
-| `bar: User.bar` | a written field: replaces a field of the same name above, or adds a new one |
-
-```jadpo check project=building file=names.jadpo hidden
-type TodoTitle = Text {
-    max_length: 200
-}
-
-type TodoStatus = Enum {
-    open
-    done
-}
-
-type DayCount = Int {
-    min: 0
-}
-
-type Quantity = Int {
-    min: 1
-}
-
-entity User {
-    id: Uuid
-    email: Email
-}
-
-entity Todo {
-    id: Uuid
-    title: TodoTitle
-    status: TodoStatus
-    due_at: Instant?
-    deleted_at: Instant?
-}
-
-type OrderLineView = Output {
-    quantity: Quantity
-}
-
-type Order = Object {
-    id: Uuid
-    lines: List<OrderLineView>
-}
-```
-
-```jadpo check project=building file=main.jadpo
-type TodoView = Output {
-    pick: [Todo.id, Todo.title, Todo.status, Todo.due_at]
-}
-
-type TodoDetail = Output {
-    include: [Todo]
-    omit: [Todo.deleted_at]
-    owner_email: User.email
-}
-
-type PatchTodo = Input {
-    pick: [Todo.title, Todo.due_at]
-    optional: all
-}
-
-type OrderView = Output {
-    include: [Order]
-    lines: List<OrderLineView>  // replaces Order.lines with a view of each line
-}
-
-type TodoReminder = Object {
-    pick: [Todo.id, Todo.title, Todo.due_at]
-    owner_email: User.email
-    days_overdue: DayCount
-}
-```
-
-Rules:
-
-- **Top to bottom.** The same kind of line may appear more than once, and the
-  formatter keeps the order written, because order matters here.
-- **Fields keep their declared order.** Copied fields stand where their
-  `include` or `pick` line is, an `include`'s in the order its type
-  declares them and a `pick`'s in the order listed; a written field that
-  replaces a copied one takes its place. Values, hover and the manifest
-  (each field's `order`) follow it (built in chunk 2.7).
-- **Lists are always in brackets**, even with one entry: `include: [Todo]`.
-- **`omit` removes only what is there.** Omitting a field that is not present
-  at that point is an error, which catches typos and fields since removed.
-- **Written fields win.** A field you write replaces any field of the same
-  name above it, visibly; otherwise it is added.
-- **Copied fields never silently replace copied fields.** An `include` or
-  `pick` that would replace a field brought in by an earlier `include` or
-  `pick` is an error: resolve it with `omit` or by writing the field. Copied
-  fields are not visible in the declaration, so a clash there would change a
-  type unseen when a source type gains a field.
-- **No `include` on an `Input`.** Taking every field of `User` would accept
-  any field added to `User` later (the mass-assignment bug). Inputs `pick` or
-  write their fields. Generated fields such as `id` and `created_at` can never
-  appear in an `Input`.
-- **`optional`** makes the listed fields, or `all`, optional, only on an
-  `Input`.
-- **Copied fields follow their source.** Renaming `Todo.title` renames it in
-  every type that copies it, and its validation rules come with it.
-- **No type includes itself.** An `include` that leads back to its own type,
-  directly or through another, is `type.copy_cycle` (chunk 1.9).
-- **Every built type has a name;** there are no inline types in signatures.
-  Hover and `jadpo inspect TodoDetail` show the final fields and where each
-  came from (`title ← Todo.title`, `lines ← written, replaces Order.lines`).
-- **Outputs may `include`.** A field added to `Todo` later reaches
-  `TodoDetail`, and the committed API record (area 7) shows the addition in
-  review; fields policy hides from clients stay hidden at runtime (area 9).
-  This replaces the earlier "an `Output` may only `pick`" rule.
-- `include`, `pick`, `omit` and `optional` are reserved and cannot be field
-  names.
-
-### Decided changes in examples
-
-Every decision on this page, shown as code with all the others applied.
-They describe the language after the rework, so they are shown without being
-compiled; exact syntax for logic is settled in area 3.
-
-#### Q1: a runtime check that can fail
-
-```jadpo fragment
-type QuantityOutOfRange = Failure {
-    kind: FailureKind.invalid_value
-}
-
-action double_quantity(quantity: Quantity) fails QuantityOutOfRange -> Quantity {
-    var doubled: Quantity = attempt Quantity(quantity * 2) {
-        max: QuantityOutOfRange
-    }
-    return doubled
-}
-```
-
-A literal needs no `attempt`: `var quantity: Quantity = 0` is rejected while
-compiling.
-
-#### Q2: an object's fields follow their own rules
-
-```jadpo check project=q2-badge file=users.jadpo hidden
-entity User {
-    id: Uuid
-    display_name: Text {
-        max_length: 80
-    }
-}
-
-type BadgeNameTooLong = Failure {
-    kind: FailureKind.invalid_value
-}
-```
-
-```jadpo check project=q2-badge
-type Badge = Object {
-    name: Text {
-        max_length: 12
-    }
-}
-
-action make_badge(user: User) fails BadgeNameTooLong -> Badge {
-    // user.display_name allows 80 characters and the field 12, so the
-    // name is built first, where its failure is mapped; the object
-    // literal never fails.
-    var name: Badge.name = attempt Badge.name(user.display_name) {
-        max_length: BadgeNameTooLong
-    }
-    return Badge {
-        name: name
-    }
-}
-```
-
-#### Q3: `optional` only on inputs, read as nullable
-
-```jadpo check project=q3-optional file=names.jadpo hidden
-type Nickname = Text {
-    max_length: 30
-}
-```
-
-```jadpo check project=q3-optional file=update_profile.jadpo
-type UpdateProfile = Input {
-    nickname: Nickname {
-        optional: true
-    }
-}
-
-action update_profile(request: UpdateProfile) -> Nickname? {
-    var nickname: Nickname? = request.nickname  // left out reads as none
-    return nickname
-}
-```
-
-`optional: true` on a field of a `type Profile = Object { ... }` is an error: an object
-built inside the application always states every field.
-
-#### Q4: lists you can build, count and loop over
-
-```jadpo fragment
-var tags: List<TagName> = ["urgent", "home"]
-var count: TagCount = TagCount(list.count(tags))
-var has_urgent: Bool = list.contains(tags, "urgent")
-
-for tag in tags {
-    // tag is a TagName
-}
-```
-
-`list.map` and `list.filter` take a function as an argument, which
-depends on area 3's answer on passing functions.
-
-#### Q5: sets and maps in JSON
-
-```jadpo fragment
-type RetagTodo = Input {
-    tags: Set<TagName>
-    weights: Map<TagName, Weight>
-}
-```
-
-```text
-{ "tags": ["urgent", "home"], "weights": { "urgent": 3, "home": 1 } }
-```
-
-`["urgent", "urgent"]` is rejected as a duplicate. `Map<Instant, Weight>` at a
-boundary is a compile error, because JSON object keys are text. Built in
-chunk 1.9: a map in an `Input` or `Output`, however nested, is keyed by a type
-built on `Text` or `Uuid` (`type.map_key_boundary`; a standard named
-collection such as `LocalisedText` is sent as its entry says, chunk 5.5w2), and a set literal that
-repeats a value is `type.invalid_literal`. Built in chunk 2.7: a list
-written where a named set type is expected (`type Tags = Set<TagName> {}`)
-is a set, so `[b, a]` equals `[a, b]`; and since equal computed items
-collapse, a set literal's `min_length` counts only its distinct literals,
-or one value when it has any items, so `[a, b]` into a set type with
-`min_length: 2` is `type.invalid_literal`.
-
-#### Q6: no transparent aliases
-
-```jadpo fragment
-type OrderId = Uuid {}    // a new type: an OrderId is not a CustomerId
-type OrderId = Uuid       // rejected: reads like an alias in other languages
-```
-
-#### Q7: converting between types only by constructing
-
-```jadpo fragment
-var total: Stock = Stock(per_pack * packs)    // the only way across
-var raw: Int = per_pack as Int                    // rejected: there is no cast
-```
-
-#### Q8: numbers by range and scale
-
-```jadpo fragment
-type Quantity = Int {
-    min: 1
-    max: 1000          // fits a smallint column; JSON number
-}
-
-type LedgerAmount = Int {
-    min: 0             // no max: bigint column; JSON string when large
-}
-
-type ItemPrice = Decimal {
-    scale: 2
-    min: 0.00          // numeric(p, 2); JSON "12.50"
-}
-
-var share: ItemPrice = decimal.divide(total, people, rounding: Rounding.half_even)
-```
-
-#### Q9: patterns match the whole text and are checked while compiling
-
-```jadpo fragment
-type StockCode = Text {
-    pattern: "[A-Z]{3}-[0-9]{4}"
-}
-
-var sku: StockCode = "ABC-1234"   // checked while compiling
-var bad: StockCode = "ABC-1234x"  // compile error: the whole text must match
-
-type Doubled = Text {
-    pattern: "(a+)+\\1"         // rejected: backreferences are not allowed
-}
-```
-
-#### Q11: which built-in types a signature may use
-
-```jadpo fragment
-type ReminderTime = Instant {}
-
-function opening_hours(zone: Zone) -> OpeningHours { ... }      // allowed: closed enum
-function remind_at(at: Instant) -> Reminder { ... }             // rejected: what instant?
-function remind_at(at: ReminderTime) -> Reminder { ... }        // allowed: named
-function tag_all(tags: List<Text>) -> TagSet { ... }            // rejected: element is raw Text
-```
-
-#### Q12: `==` compares contents
-
-```jadpo fragment
-var a: OrderLine = OrderLine {
-    sku: "ABC-1234"
-    price: 5.00
-}
-var b: OrderLine = OrderLine {
-    sku: "ABC-1234"
-    price: 5.00
-}
-var same: Bool = a == b         // true: same contents (false today)
-```
-
-#### Q13: UUID versions
-
-```jadpo check project=q13-uuid-versions
-entity Order {
-    id: Uuid  // generated as version 7
-}
-
-type PartnerRef = Uuid {
-    version: UuidVersion.v4  // accepts and generates only version 4
-}
-```
-
-#### Q15: literals take the type they go into
-
-```jadpo fragment
-var price: ItemPrice = 0.00                          // checked while compiling
-var line: OrderLine = OrderLine {
-    quantity: 1                                  // 1 becomes a Quantity
-}
-
-function first_quantity() -> Quantity {
-    return 1
-}
-```
-
-#### Q16: every variable states its type
-
-```jadpo fragment
-var total: Stock = Stock(per_pack * packs)
-var todo: Todo = attempt Todo.get(id)
-
-for line in order.lines {       // a loop binding takes its type from the list
-    var subtotal: Stock = line.total
-}
-```
-
-#### Q17: fixed options are written `Type.value`
-
-```jadpo check project=q17-options
-type ContactEmail = Text {
-    format: TextFormat.email
-}
-
-type PartnerRef = Uuid {
-    version: UuidVersion.v4
-}
-
-type TodoNotFound = Failure {
-    kind: FailureKind.not_found  // was: kind: NotFound
-}
-```
-
-#### Q20: field settings in a block
-
-```jadpo fragment
-type ListProducts = Input {
-    name: ProductName {
-        optional: true
-    }
-    page_size: PageSize {
-        default: 25
-    }
-}
-
-type RenameProduct = Input {
-    name: ProductName
-    subtitle: ProductName? {
-        default: none
-    }
-}
-```
-
-This is the form configuration already uses:
-
-```jadpo fragment
-mail_sender: Email {
-    binding: "MAIL_SENDER"
-}
-```
-
-#### Deferred to area 3: one argument, several types
-
-`Customer.id` and `Supplier.id` stay distinct even when both are version 4
-UUIDs, so neither can be passed where the other is expected. A function that
-genuinely accepts either would take an enum whose variants carry each one,
-which keeps the choice explicit:
-
-```jadpo fragment
-type PartyId = Enum {
-    customer: {
-        id: Customer.id
-    }
-    supplier: {
-        id: Supplier.id
-    }
-}
-```
-
-Whether functions should also accept several types directly (generics or
-unions) is a logic question and is settled in area 3.
+Everything on this page is built except a map literal with entries, which
+is not designed yet, and `FileUpload`, `UploadSlot`, `SearchText`, `OAuthGrant`,
+`AnyObject` and the `Document` base, which come with the features that use
+them. Only the runtime builds a `BatchRun`, `BatchProgress`, `RowProblem`,
+`ImportSummary`, `ExportSummary`, `File` or `FileContents`. A program reads
+the batch types' fields, an entity field keeps a `BatchRun` or a `File` as
+its JSON, and a program can't read a `File`'s or a `FileContents`'s parts
+yet.
 
 ### Carried to later areas
 
-Agreed or raised while reviewing this area; recorded in the area it belongs
-to when that page is written.
-
 | Item | Area | Status |
 |---|---|---|
-| Match arms use `->`, the same arrow as return types; `=>` is removed | 3 | Richard's call, 2026-10-12 |
-| A function argument that accepts several types: today an `Enum` whose variants carry each type; whether to add generics or unions | 3 | Open |
-| Failure `kind` values become lower_snake_case (`kind: FailureKind.not_found`), following the setting-options decision | 4 | Follows from a decision |
+| Match arms use `->`, the same arrow as return types; there is no `=>` | 3 | Decided |
+| A function argument that accepts several types: an `Enum` whose variants carry each type, with no generics or unions | 3 | Decided in area 3, question 16 |
+| Failure `kind` values are written `FailureKind.not_found`, following the setting-options decision | 4 | Follows from a decision |
 | Entity field settings (`identity`, `unique`, `references`, `generated`) go in the field's block, following question 20 | 5 | Follows from a decision |
-| The remaining syntax-review findings (`docs/language/research/syntax-review.md`) | 3 to 14 | Input to each page |
-| A package input that takes any of the app's object types, serialised as JSON (Postmark's template variables, Stripe's metadata) | 2, 11 | Decided 2026-10-16: the built-in `AnyObject` |
+| A package input that takes any of the app's object types, serialised as JSON (Postmark's template variables, Stripe's metadata) | 2, 11 | Decided: the built-in `AnyObject` |
 | `5%` as a percentage literal (`free_space_floor:`, area 16) | 2 | Follows from a decision |
-
-### Open questions
-
-1. **How does a runtime `Type(value)` failure reach the caller?** Today it
-   escapes as an internal fault. The language already maps expected failures
-   with clauses on fallible operations (`missing: TodoNotFound`,
-   `conflict: TodoMutationConflict`). *Decided 2026-10-12:* make runtime
-   construction a fallible operation that needs `attempt` and an
-   `invalid: SomeFailure` clause naming an `InvalidValue`-kind failure, as in
-   `attempt Quantity(count) invalid: QuantityOutOfRange`. Literal construction
-   stays infallible because it is checked while compiling. This mirrors Rust's
-   `TryFrom` (failure is in the signature) rather than Kotlin's `require`
-   (an exception), and closes TYPE-001. *Revised 2026-10-14:* the failure
-   is mapped by rule in a block after the call,
-   `attempt Quantity(count) { max: QuantityTooLarge }`, with `invalid:`
-   covering every rule without an arm of its own ("Construction failures
-   by rule").
-2. **Should building an object check fields against their declared type or
-   their field type?** Object construction uses the declared type and skips
-   field rules; `create` demands the exact field type, which is why the golden
-   app writes `Todo.status(TodoStatus.open)`. *Decided 2026-10-12:* one rule for
-   both: accept the declared type or anything that widens to it, and run the
-   field's own rules at that point (fallible under question 1 only when the
-   field adds rules). *Revised 2026-10-14:* an object literal never fails; a
-   field whose value might break its rules is built first, on its own line. Identifier safety is unaffected, because a reference
-   field's declared type is itself a field type (`customer_id: Customer.id`
-   still rejects `supplier.id`), and the noise disappears from the golden app.
-3. **Where may `optional` be used, and what type does reading it give?**
-   *Decided 2026-10-12:* only on `input` fields, and reading one gives `T?`
-   (absent reads as `none`). Only the update `patch:` form keeps the
-   omitted-versus-`none` distinction. `default` is likewise input-only. This
-   removes the `undefined` leak; TypeScript's `field?: T` reading as
-   `T | undefined` is the same idea.
-4. **Which collection operations come first?** Collections are declared but
-   cannot be built, counted or iterated. *Decided 2026-10-12:* build list
-   literals (`[a, b]`), `for item in items` (the recommended loop form) and a small namespaced set:
-   `list.count`, `list.contains`, `list.map`,
-   `list.filter`. Keep collections invariant (Kotlin and Rust do;
-   TypeScript's covariant arrays are unsound). Closes TYPE-002 for lists.
-5. **How are `Set` and `Map` written in JSON?** They compile at boundaries but
-   are always rejected. *Decided 2026-10-12:* a `Set<T>` is a JSON array that is
-   rejected if it has duplicates; a `Map<K, V>` is a JSON object and is allowed
-   only when `K` is text-based or `Uuid`-based. Other key types are a compile
-   error at a boundary.
-6. **Transparent aliases (TYPE-003)?** *Decided 2026-10-12:* no, and close the
-   issue. Every `type` stays a new type. Also reject the block-less
-   `type OrderId = Uuid`: in TypeScript, Rust and Kotlin that shape is a
-   transparent alias, so an agent or reviewer will misread it. Require
-   `type OrderId = Uuid {}`.
-7. **Is explicit construction the only way to reach a value's
-   representation (TYPE-004)?** Today any named type converts to any other
-   with the same representation through its constructor, re-checking rules,
-   and operators work on the representation. *Decided 2026-10-12:* yes, and close
-   the issue: no `as` cast and no unwrap escape hatch. The golden app has not
-   needed one.
-8. **Which number types, and what are they at runtime?** In the archived
-   TypeScript target `Int` silently lost precision past 2^53 and `Decimal`
-   was a JavaScript float, which is
-   wrong for money (JavaScript has one number type, a 64-bit float, plus
-   `BigInt` since 2020, and no decimal). *Decided 2026-10-12 (agreed in discussion):* no sized types
-   such as `Int32` or `UInt8`. Size is a storage detail; the business rule is
-   the range you declare with `min` and `max`, and the compiler picks the
-   database column from it (`smallint`, `integer`, `bigint`). `Int` is an
-   exact 64-bit integer where overflow is an error, never a silent wrap; JSON
-   carries it as a number when the declared range fits JavaScript's safe range
-   and as a string otherwise. `Decimal` is exact, with a required `scale:`
-   (`type ItemPrice = Decimal { scale: 2 }`); operations that can produce extra
-   places, such as division or percentages, must name a rounding mode from
-   the standard library. JSON carries a `Decimal` as a string (`"12.50"`).
-   PostgreSQL stores `numeric(p, s)`; SQLite has no exact decimal, so it stores
-   a scaled integer. No `Float` until an application needs approximate
-   measurement, and then as its own explicit type so money can never use it
-   by accident. Compare C#'s `decimal`, Java's `BigDecimal` and Python's
-   unbounded `int`.
-9. **What do `pattern` and `format` mean exactly?** *Decided 2026-10-12:* a
-   pattern must match the whole text, uses a regular-expression subset with
-   no backreferences or lookaround (RE2-style, so it runs in linear time and
-   behaves the same on every target), is compiled and checked at compile time,
-   and is applied to literals. `format` accepts only `email`; `Url` and
-   `IpAddress` are types, not formats. Every constraint must fit its base type,
-   and contradictory or repeated bounds are errors.
-10. **One spelling per kind of type?** *Decided 2026-10-12:* every type is
-    `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and
-    `Output`; see "One form for every type" above. Only `Input` objects may
-    use `optional` and `default`, a route accepts only an `Input` and returns
-    only an `Output`.
-
-11. **Which built-in types does the signature rule cover?** *Decided 2026-10-12:*
-    keep it for representation types and `Instant`, `CalendarDate`, `Time` and
-    `Duration` (a bare `Instant` parameter has the same ambiguity as a bare
-    `Int`), allow the closed prelude enums `Zone`, `Locale` and `Weekday`, and
-    close the gaps: check collection element types and reject inline `Object`
-    parameters.
-12. **What does `==` mean on objects, lists and payload variants?**
-    *Decided 2026-10-12:* structural equality, field by field, with sets and maps
-    compared as sets, as in Rust's derived `PartialEq`, Kotlin data classes and
-    Elixir. The alternative of rejecting `==` on objects would force agents to
-    write field-by-field comparisons by hand.
-
-13. **Which UUIDs?** *Decided 2026-10-12:* any version is accepted by
-    default and normalised to lowercase; new identities are version 7, which
-    is time-ordered and keeps indexes compact; a named type can pin a version,
-    `type PartnerRef = Uuid { version: UuidVersion.v4 }`, which governs both what is
-    accepted and what is generated (for example where a version 7 ID would
-    reveal sensitive creation times, or another system dictates the version).
-
-14. **Adopt derived types?** See "Building a type from other types" above. *Decided 2026-10-12 (agreed in discussion, with new fields listed directly and lists in brackets):*
-    yes, with exactly `pick`, `omit` and `optional` plus listed new fields,
-    named results only, and outputs restricted to `pick`. This covers create,
-    patch, view, summary and versioned shapes without TypeScript's anonymous
-    type algebra, whose expanded types reviewers and error messages cannot
-    name.
-    *Revised 2026-10-13 (Richard):* the syntax changed to body lines read top
-    to bottom (`include:`, `pick:`, `omit:`, written fields), keeping the
-    plain `Output { }` header; see "Building a type from other types".
-
-15. **Should a literal take on the type it is going into?** Today
-    `var price: ItemPrice = 0.0`, `return 0.0` and `Item { price: 0.0 }` are all
-    errors; you must write `ItemPrice(0.0)`. *Decided 2026-10-12 (agreed in discussion):* yes, for literals
-    only. Where the expected type is known (a variable's declared type, a
-    return, a field or an argument), a literal becomes that type and its rules
-    are checked while compiling, so `var price: ItemPrice = 0.0` and `return 1`
-    from a function returning `Quantity` just work. Computed values still need
-    `ItemPrice(x)`, so a constructor in code always means a real check or a change
-    of type. Write the type once: `var price: ItemPrice = 0.0`, never
-    `var price: ItemPrice = ItemPrice(0.0)`, and the formatter rewrites
-    `var price = ItemPrice(0.0)` to that form. Rust adapts literals to built-in
-    integer types but not to its newtypes; this goes one step further because
-    the check still happens at compile time.
-
-16. **Must every variable declare its type?** Today `var total = per_pack * packs`
-    is allowed and infers a plain `Int`; the mismatch only surfaces later,
-    where `total` is returned as `Stock`. *Decided 2026-10-12 (agreed in discussion):* yes: every `var`
-    states its type (`var total: Stock = Stock(per_pack * packs)`), while
-    loop and `match` bindings take theirs from what they bind. The reader sees
-    each value's type where it is introduced, a wrong type is reported on the
-    line that made it, and there is one rule with no exceptions to remember.
-    The cost is verbosity, which falls on the agent writing the code rather
-    than the person reviewing it, and literal typing (question 15) removes
-    most of the repetition: `var price: ItemPrice = 0.0`. Most modern languages
-    (TypeScript, Rust, Go, Kotlin) infer local types instead; Jadpo's
-    audience, code written by agents and reviewed by people, favours the
-    explicit form.
-
-17. **How is a setting with a fixed set of options written?** *Decided
-    2026-10-12, revised the same day (Richard):* always as an enum value,
-    `Type.value`, the same form as in code: `version: UuidVersion.v7`,
-    `format: TextFormat.email`, `kind: FailureKind.not_found`,
-    `on_delete: OnDelete.cascade`. Genuine quantities such as `min`, `max`
-    and `scale` stay numbers. A bare word in a setting is therefore always a
-    name you declared (`store: cache`), and a fixed option is unmistakable;
-    the type name says where the choices are listed. Value names read as a
-    value or a moment, never a verb (`Generated.on_create`, not
-    `Generated.create`). This replaces the first version of this decision,
-    which wrote bare names in settings.
-
-18. **What replaces `value`?** *Decided 2026-10-12:* `value` is dropped. An
-    object used inside the application is `type Name = Object { fields }`,
-    the same form as every other type (question 10).
-
-19. **Remove anonymous `Object`?** *Decided 2026-10-12:* yes. `Object` is
-    only used as a base in a `type` declaration; an unnamed shape written
-    inline as a field type or inside `List<...>` is an error.
-
-20. **Should field settings go in a block?** Today an input field's settings
-    trail its type separated by spaces (`name: ProductName optional`,
-    `page_size: PageSize default 25`), while configuration fields already use
-    a block (`mail_sender: Email { binding: "MAIL_SENDER" }`).
-    *Decided 2026-10-12 (agreed in discussion):* one rule everywhere: a field's settings go in a block
-    after its type, one `name: value` per line (`optional: true`,
-    `default: 25`, `default: none`). It reads like every other block in the
-    language and gives later settings an obvious place. Entity field settings
-    (`identity`, `unique`, `references`, `generated`) follow the same rule,
-    to be confirmed in area 5.
 
 ### Decisions
 
-Decided by Richard from 2026-10-12, each on the date shown. Status, above, says what is built.
-
-| Topic | Decision | Date |
-|---|---|---|
-| Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime. The mapping's form was revised on 2026-10-14 (below) | 2026-10-12 |
-| Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first (built in chunk 2.5) | 2026-10-12 |
-| Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, and conditions as proof in chunk 2.6, as "Conditions as proof" describes | 2026-10-14 |
-| Rules across fields | An `Object`, `Input` or `Output` names rules across its fields, `rule ends_after_start: ends > starts`: a `Bool` over its own fields only, checked whenever a value is made, the first broken one reported; an object literal that may break one is mapped with `attempt` by the rule's name or `invalid:`, and a rule the declared ranges or a condition prove needs no arm (Richard, area 19's question 15; built as "Rules across fields" says) | 2026-10-17 |
-| `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
-| Collection operations | List literals, `for item in items`, `list.count` and `list.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
-| Set order | A set has no order code can use: no index and no first item; where order matters, sort explicitly or use a `List`. Everything that shows a set (JSON, reports, iteration once `for` takes sets) uses one guaranteed canonical order, the same in interpreted and compiled code: by value, numbers numerically, text by Unicode code point, enum variants in declaration order, objects and tagged unions field by field in declared order (Richard) | 2026-10-14 |
-| Named collection construction | A named collection type is built from a collection whose items are already its item type, as an ordinary construction that checks only the collection's own rules: `attempt Names(found) { min_length: NoNames }`, with the usual arms, `invalid:` and proof. Items are never converted in the same step: a `Text` becomes a `Name` where it is built, each with its own arms. `List<T>(xs)` stays an error (Richard). Built in chunk 2.11, which also settled: a list is built only from a list, never a set, which has no order to keep; a set from a set or a list, dropping repeats in the canonical order, with the list proving its `max_length` and a `min_length` of at most 1; a map from a map of the same keys and values; another named collection of the same item type is built like any value, its declared lengths counting as proof; field types with collection rules are built the same way | 2026-10-14 |
-| `Set` and `Map` encoding | A `Set` is a JSON array rejected if it has duplicates; a `Map` is a JSON object with text- or UUID-based keys only | 2026-10-12 |
-| Transparent aliases | None; every `type` is a new type; `type X = Uuid` without a block is rejected | 2026-10-12 |
-| Representation access | No cast and no unwrap; constructing is the only conversion | 2026-10-12 |
-| Number types | No sized types; ranges set storage; `Int` is exact 64-bit with overflow an error; `Decimal` is exact with a required `scale`; JSON carries large `Int` and every `Decimal` as strings; no `Float` until needed | 2026-10-12 |
-| `pattern` and `format` | A pattern matches the whole text, uses a linear-time subset with no backreferences or lookaround, is checked while compiling and applies to literals; `format` accepts only `email`; constraints must fit their base and contradictions are errors | 2026-10-12 |
-| Type spellings | Every type is `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and `Output`; `value`, `enum`, `input` and `output` keywords are removed; only `Input` may have optional or default fields; routes accept `Input` and return `Output` | 2026-10-12 |
-| Signature rule scope | Applies to representation types and `Instant`, `CalendarDate`, `Time`, `Duration`; `Zone`, `Locale` and `Weekday` may be used directly; list element types are checked | 2026-10-12 |
-| Equality | `==` compares contents field by field on objects, lists and enum payloads; sets and maps compare as sets | 2026-10-12 |
-| UUID versions | Any version accepted by default, normalised to lowercase; new identities are version 7; a named type can pin one, `type PartnerRef = Uuid { version: v4 }`, governing what is accepted and generated (Written `UuidVersion.v4` under the revised question 17.) | 2026-10-12 |
-| Derived types | `type X = Base from Source { pick/omit/optional, then new fields }`; named results only; `Output` may only `pick`; generated fields never in an `Input` (Superseded 2026-10-13: see "Building types".) | 2026-10-12 |
-| Building types | Body lines read top to bottom: `include: [Type]` (all fields; never on an `Input`), `pick: [Type.field]`, `omit: [Type.field]` (only what is present), written fields replace or add; copied fields never silently replace copied fields; lists always bracketed; `optional` on `Input` only (Richard) | 2026-10-13 |
-| Literal typing | A literal takes the expected type where it is known and is checked while compiling; computed values need an explicit constructor | 2026-10-12 |
-| Variable types | Every `var` states its type; loop and `match` bindings take theirs from what they bind | 2026-10-12 |
-| Setting options | A setting with a fixed set of options takes an enum value written `Type.value` (`version: UuidVersion.v7`, `kind: FailureKind.not_found`, `on_delete: OnDelete.cascade`); a bare word in a setting is always a declared name; option values read as values or moments, not verbs; quantities stay numbers (revised 2026-10-12, Richard) | 2026-10-12 |
-| Object keyword | `value` is dropped; objects are `type Name = Object { fields }` | 2026-10-12 |
-| `Object` | Only a base in a `type` declaration; no anonymous inline objects | 2026-10-12 |
-| Field settings | A field's settings go in a block after its type, one per line (`optional: true`, `default: 25`) | 2026-10-12 |
-| Lists | Square brackets are the only way to write a list: `pick: [Todo.id, Todo.title]`, `[create, read]`; braces never hold comma lists; signatures keep their commas (parameters, `fails A, B`) | 2026-10-12 |
-| Messages and `PluralCount` | `Message` is a type base for translated messages, its fields the placeholders; `PluralCount` is a built-in whole number that picks a plural form, and `TextDirection` a locale's direction; enums still have no display labels, and their wording for people lives in translations (Richard, area 10) | 2026-10-16 |
-| Types from the services decisions | `File`, `FileUpload`, `UploadSlot` and `FileContents` (what `store.read` returns, refused by the format helpers); `BatchRun`, `BatchProgress`, `RowProblem`, `ImportSummary`, `ExportSummary` and `CsvFormat`; `SearchText`; `OAuthGrant`, only in a connection's `credential:`; `AnyObject`, any of the app's object types as a package input, sent in its JSON form; the `Document` base; the batch types' fields as listed under "Built-in types" (Richard, areas 11, 12 and 16) | 2026-10-16 |
+| Topic | Decision |
+|---|---|
+| Runtime construction (question 1) | A runtime `Type(value)` check is fallible: it needs `attempt` and a block mapping each rule that can break to an `invalid_value` failure, `invalid:` covering the rest (see [Construction failures by rule](#construction-failures-by-rule)). A literal is checked while compiling and never fails at runtime. The failure is in the signature, as with Rust's `TryFrom`, rather than an exception. |
+| Object construction (question 2) | Building an object or creating an entity accepts the declared type or anything that widens to it. An object literal never fails: a field whose value might break its own rules is built first, on its own line. Identifiers stay apart, because a reference field's declared type is itself a field type (`customer_id: Customer.id` still rejects `supplier.id`). |
+| `optional` and `default` (question 3) | Only on `Input` fields; reading an optional field gives `T?`, a field left out reading as `none`; only the update `patch:` form keeps omitted and `none` apart. TypeScript's `field?: T`, read as `T` or `undefined`, is the same idea. |
+| Collection operations (question 4) | List literals (`[a, b]`), `for item in items`, `list.count`, `list.contains`, `list.map` and `list.filter`. Collections stay invariant, as in Kotlin and Rust; TypeScript's covariant arrays are unsound. |
+| `Set` and `Map` in JSON (question 5) | A `Set<T>` is a JSON array, refused if it has duplicates; a `Map<K, V>` is a JSON object, allowed at a boundary only when `K` is built on `Text` or `Uuid`. |
+| Transparent aliases (question 6) | None: every `type` is a new type. The block-less `type OrderId = Uuid` is refused, because in TypeScript, Rust and Kotlin that shape is a transparent alias, so an agent or reviewer would misread it. |
+| Representation access (question 7) | No `as` cast and no unwrap; constructing is the only conversion, and operators work on the representation. |
+| Number types (question 8) | No sized types such as `Int32` or `UInt8`: size is a storage detail, and the business rule is the range declared with `min` and `max`, from which the compiler picks the database column (`smallint`, `integer`, `bigint`). `Int` is an exact 64-bit integer whose overflow is an error, never a silent wrap; JSON carries it as a number when the declared range fits JavaScript's safe range and as a string otherwise. `Decimal` is exact, with a required `scale:`; operations that can produce extra places, such as division or percentages, name a rounding mode (`decimal.divide(total, people, rounding: Rounding.half_even)`). JSON carries a `Decimal` as a string (`"12.50"`); PostgreSQL stores `numeric(p, s)` and SQLite, which has no exact decimal, a scaled integer. No `Float` until an application needs approximate measurement, and then as its own explicit type, so money can never use it by accident. |
+| `pattern` and `format` (question 9) | A pattern matches the whole text, uses a regular-expression subset with no backreferences or lookaround (RE2-style, so it runs in linear time and behaves the same on every target), is checked while compiling and applies to literals. `format` accepts only `email`; `Url` and `IpAddress` are types, not formats. Every constraint fits its base type, and contradictory or repeated bounds are errors. |
+| Type spellings (question 10) | Every type is `type Name = Base { ... }`, including `Object`, `Enum`, `Input` and `Output` (see [One form for every type](#one-form-for-every-type)); only an `Input` may have optional or default fields; a route accepts only an `Input` and returns only an `Output`. |
+| Signature rule scope (question 11) | Representation types and `Instant`, `CalendarDate`, `Time` and `Duration` are never in a signature unnamed, since a bare `Instant` parameter is as ambiguous as a bare `Int`; the closed enums `Zone`, `Locale` and `Weekday` may be used directly; collection element types are checked, and inline `Object` parameters refused. |
+| Equality (question 12) | `==` compares contents field by field on objects, lists and enum payloads, with sets and maps compared as sets, as in Rust's derived `PartialEq`, Kotlin data classes and Elixir. Refusing `==` on objects would force agents to write field-by-field comparisons by hand. |
+| UUID versions (question 13) | Any version accepted by default and normalised to lowercase; new identities are version 7, which is time-ordered and keeps indexes compact; a named type can pin one, `version: UuidVersion.v4`, governing what is accepted and generated, for example where a version 7 ID would reveal creation times or another system dictates the version. |
+| Building types (question 14) | Body lines read top to bottom: `include:`, `pick:`, `omit:` and written fields, under the plain `Output { }` header; see [Building a type from other types](#building-a-type-from-other-types). Named results only, which covers create, patch, view, summary and versioned shapes without TypeScript's anonymous type algebra, whose expanded types reviewers and error messages cannot name. |
+| Literal typing (question 15) | Where the expected type is known (a variable's declared type, a return, a field or an argument), a literal becomes that type and its rules are checked while compiling, so `var price: ItemPrice = 0.0` and `return 1` from a function returning `Quantity` just work. Computed values still need `ItemPrice(x)`, so a constructor in code always means a real check or a change of type. The type is written once: `var price: ItemPrice = 0.0`, never `var price: ItemPrice = ItemPrice(0.0)`, and the formatter rewrites `var price = ItemPrice(0.0)` to that form. |
+| Variable types (question 16) | Every `var` states its type (`var total: Stock = Stock(per_pack * packs)`); loop and `match` bindings take theirs from what they bind. The reader sees each value's type where it is introduced, and a wrong type is reported on the line that made it. The verbosity falls on the agent writing the code rather than the person reviewing it, and literal typing removes most of it. |
+| Setting options (question 17) | A setting with a fixed set of options takes an enum value, `Type.value`, the same form as in code: `version: UuidVersion.v7`, `format: TextFormat.email`, `kind: FailureKind.not_found`, `on_delete: OnDelete.cascade`. Quantities such as `min`, `max` and `scale` stay numbers. A bare word in a setting is therefore always a name you declared (`store: cache`), and the type name says where the choices are listed. Option values read as a value or a moment, never a verb (`Generated.on_create`, not `Generated.create`). |
+| Object keyword (question 18) | An object used inside the application is `type Name = Object { fields }`; there is no `value` keyword. |
+| `Object` (question 19) | Only a base in a `type` declaration; an unnamed shape written inline as a field type or inside `List<...>` is an error. |
+| Field settings (question 20) | A field's settings go in a block after its type, one `name: value` per line (`optional: true`, `default: 25`, `default: none`), as every other block reads; entity field settings follow the same rule (area 5). |
+| Rules across fields | An `Object`, `Input` or `Output` names rules across its fields, `rule ends_after_start: ends > starts`; see [Rules across fields](#rules-across-fields) (area 19, "Validating mid-program"). |
+| Set order | One canonical order for everything that shows a set; see [Collections](#collections). |
+| Named collection construction | A named collection type is built from a collection whose items are already its item type, checking only the collection's own rules; see [Named collection construction](#named-collection-construction). |
+| Lists | Square brackets are the only way to write a list: `pick: [Todo.id, Todo.title]`, `[create, read]`; braces never hold comma lists, apart from a `use` line's names (area 1); signatures keep their commas (parameters, `fails A, B`). |
+| Messages and `PluralCount` | `Message` is a type base for translated messages, its fields the placeholders; `PluralCount` is a built-in whole number that picks a plural form, and `TextDirection` a locale's direction; enums have no display labels, and their wording for people lives in translations (area 10). |
+| Types from the services decisions | `File`, `FileUpload`, `UploadSlot`, `FileContents`, the batch types, `CsvFormat`, `SearchText`, `OAuthGrant`, `AnyObject` and the `Document` base, as [Other built-in types](#other-built-in-types) lists them (areas 11, 12 and 16). |

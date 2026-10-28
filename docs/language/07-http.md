@@ -2,7 +2,7 @@
 title: HTTP
 area: 7
 status: decided
-checked-with: jadpo chunk-4.9 (2026-10-16)
+checked-with: this checkout's jadpo on every gate run
 rules:
   - route.*
   - api.*
@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20), and from a `GET` running a query that gives one in chunk 5.5u8 (area 6). `settle:`, waiting for follow-on work, in chunk 6.3 (area 12). A model's answer streamed as server-sent events, in chunk 5.5v6 (area 21).
+> Built, but for what the [status](#status) lists as not built yet.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -25,7 +25,7 @@ and queries; statuses come from failure kinds (area 4).
 ## Route groups
 
 Every route belongs to a named group in its domain's `routes/` folder, one
-group per file, named after the group (decided in area 1).
+group per file, named after the group (area 1).
 
 ```jadpo fragment
 // domains/planning/routes/todos.jadpo
@@ -50,11 +50,18 @@ routes Todos {
   one file.
 - Routes are never `public` (area 1); who may call one is authentication's
   and policy's job (areas 8 and 9).
+- Hovering over a route in the editor shows its full method and path, and
+  `jadpo routes` lists every route with its full path, file, API,
+  authentication and the query or action it runs.
+- A route is an entry `GET /path { }` inside its group, keyed by method
+  and path, which is how HTTP, OpenAPI, logs and every framework name a
+  route; it is the colon rule's one exception (area 3). A named form
+  (`route get_todo { method: ... path: ... }`) would add a third name to
+  keep in step with the action and the URL.
 
 ## Paths and placeholders
 
-A placeholder is typed where it appears and reaches the action by its name
-(question 2):
+A placeholder is typed where it appears and reaches the action by its name:
 
 ```jadpo fragment
 PATCH /{todo_id: Todo.id} {
@@ -75,8 +82,8 @@ PATCH /{todo_id: Todo.id} {
 ## One input
 
 A route takes at most one `input:`, an `Input` type (area 2). Its source
-follows the method (question 2): the query string for `GET` and `DELETE`,
-the JSON body for `POST`, `PUT` and `PATCH`.
+follows the method: the query string for `GET` and `DELETE`, the JSON
+body for `POST`, `PUT` and `PATCH`.
 
 ```jadpo fragment
 type ListTodos = Input {
@@ -105,24 +112,21 @@ GET / {
   named once, and never credentials (`Authorization`, cookies, `X-Jadpo-*`),
   which authentication owns (area 8).
 - Unknown keys and fields are refused. A `GET` or `DELETE` never reads a
-  body, and a body is limited to 1 MB (question 5).
+  body, and a body is limited to 1 MB, with no setting, answering 413.
 - A body is read only when it is sent as JSON (`Content-Type:
   application/json`, or another `application/…+json` type), so a form a
   browser posts from another site never reaches an action. A query string
   or a body a route doesn't read is unknown input, like an unknown field.
 
-> Amended 2026-10-17 by area 19 (question 21): text in a request is
-> normalised to Unicode NFC as it is decoded, so equal text compares
-> equal (built in chunk 5.5f, for the body, the path, the query string
-> and headers alike, before the input's rules are checked). The page
-> examples that named a variable `text` were renamed in that chunk, since
-> `text` is a reserved standard namespace.
+- Text in a request is normalised to Unicode NFC as it is decoded (area
+  19), in the body, the path, the query string and headers alike, before
+  the input's rules are checked, so equal text compares equal.
 
 ## Output and status
 
 `output:` names an `Output` type and must be exactly the action's result,
 so the route shows its contract without opening the action. The success
-status is `status:` (question 3):
+status is `status:`:
 
 | `status:` | HTTP | Needs |
 |---|---|---|
@@ -177,7 +181,8 @@ produce (area 4).
 
 `run:` calls one named action, passing placeholders, `input` and the caller
 (area 8) as ordinary arguments. A `GET` calls a named query instead, so it
-can never write (question 4):
+can never write, as HTTP's safe methods promise, and a read needs no
+wrapper action:
 
 ```jadpo fragment
 GET /{todo_id: Todo.id} {
@@ -212,19 +217,19 @@ GET /devices {
 ## Time limits
 
 Every route has a deadline: 10 seconds unless `deadline:` says otherwise,
-and never more than 60 (question 5). When it passes, the runtime starts no
+and never more than 60, since a hung request holds a database connection.
+When it passes, the runtime starts no
 new work, commits nothing and answers 504 `deadline_exceeded`. That holds
 for work that never waits too, such as a long calculation: the runtime
 checks the deadline as the work runs, and a body that finishes past it
 commits nothing. Compiled code checks it as the interpreter does, every
 4,096 calls, loop turns and inline-function calls, in a function's loops
 and inside an operation's inline function as in an action's, an action's
-loop giving the thread back to the requests beside it as it checks
-(chunk 8.4a). The deadline
+loop giving the thread back to the requests beside it as it checks. The deadline
 covers integration calls, which have their own shorter timeouts (area 11):
 each call's `timeout:` times its attempts, summed along the longest way
 through the route's action, must fit within it (area 11's
-`route.calls_past_deadline`, built in chunk 7.5e). Longer work answers
+`route.calls_past_deadline`). Longer work answers
 `status: SuccessStatus.accepted` and continues in a subscriber, or the
 route waits for it with `settle:`.
 
@@ -242,8 +247,7 @@ POST /import {
 
 An action does its own database work and leaves the rest, such as a second
 provider call, to subscribers (area 12). When the client wants the finished
-result rather than `202`, the route waits for that work with `settle:`
-(Richard, 2026-10-15):
+result rather than `202`, the route waits for that work with `settle:`:
 
 ```jadpo fragment
 POST /orders {
@@ -272,7 +276,7 @@ POST /orders {
   the route stops waiting at once and answers 202; so does a delivery the
   request couldn't claim, and a batch run the action started, which is
   long work no route waits on, so a route whose action starts a batch
-  answers 202 (area 12, "Schedule and batch defaults", 2026-10-19).
+  answers 202 (area 12, "Schedule and batch defaults").
   Waiting stops at the first such piece, and the rest is left for after
   the response, the retry to the outbox's sweep.
 - Then the route runs `answer:`, a named query given `result` (the
@@ -322,8 +326,7 @@ A route sends a model's answer as it is written, piece by piece, when
 what it runs returns an `AiStream`, the text `ai.stream` asks a model
 for (area 21). It is sent as server-sent events, the HTML standard's
 `text/event-stream`, the shape OpenAI's and Anthropic's APIs stream in;
-there are no WebSockets (area 21, question 6). Decided and built in
-chunk 5.5v6.
+there are no WebSockets (area 21).
 
 ```jadpo check project=ai-stream file=app.jadpo hidden
 application {
@@ -521,16 +524,16 @@ data: {"error":{"code":"unavailable","message":"A dependency is temporarily unav
   counted from when the action asked, and the route's deadline, counted
   from when the request was matched; past it, `error`. That each
   `timeout:` an action reaches leaves room inside its route's deadline is
-  checked with the deadlines of the route's other outside calls (chunk
-  7.5e), a stream's counted once, since it asks once (chunk 7.7e): at its
-  default, 25 seconds, a streaming route gives itself `deadline:`.
+  checked with the deadlines of the route's other outside calls, a
+  stream's counted once, since it asks once: at its default, 25 seconds,
+  a streaming route gives itself `deadline:`.
 - **A client that goes away** stops the stream: the runtime stops reading
   the model's answer and closes its connection to the provider at once,
   so nothing more is spent. What the action committed stays committed.
   On every host: natively the body is a chunked one fed as each event is
   read; on Workers a `ReadableStream` pulled as the client reads, and a
   client that goes away ends the request, which ends the model's call
-  with it (chunk 8.2h).
+  with it.
 - **Answers 200 and waits for nothing.** A streaming route takes no other
   `status:` and no `settle:` (`route.stream_invalid`).
 - **Idempotency.** A stream is never kept for a repeat: an
@@ -632,16 +635,14 @@ test "a refusal before the first piece is the desk's own failure" {
 The runtime always serves `GET /health/live` (the process runs) and
 `GET /health/ready` (every store declared in `app.jadpo` answers within two
 seconds; integrations are reported as unchecked). There is nothing to write,
-and neither path is part of an API's OpenAPI or record (question 6).
-
-Built in chunk 9.1d2b: the route table carries the checked provider-package
-connection names in sorted order. Readiness reports each as `unchecked`
-without making a provider call, whether stores are ready or unavailable.
+and neither path is part of an API's OpenAPI or record. Readiness lists
+each provider-package connection by name, sorted, as `unchecked`, without
+making a provider call, whether stores are ready or unavailable.
 
 ## APIs and versions
 
 Most applications have one API. One with several audiences (public, admin,
-partners, webhooks) declares them in `app.jadpo`, like stores (question 7):
+partners, webhooks) declares them in `app.jadpo`, like stores:
 
 ```jadpo fragment
 // app.jadpo
@@ -670,44 +671,69 @@ routes AdminOrders {
 
 - With nothing declared there is one API, `main`, at `/`. A group names its
   API with `api:` (default `main`), and its prefix starts with the API's.
-- Each API has its own OpenAPI document, record and default authentication
-  (area 8), and serves its OpenAPI document at `<prefix>/openapi.json`
+- Each API has its own OpenAPI document, record and default
+  authentication. Its entry lists the sign-in methods it accepts,
+  `authentication: [AuthenticationMethod.browser_session,
+  AuthenticationMethod.api_token]`, which a route group or route may only
+  narrow (area 8). Each API serves its OpenAPI document at `<prefix>/openapi.json`
   unless its entry says `serve_openapi: false` (see [OpenAPI](#openapi)).
 - A new major version is another API (`v2: { prefix: /v2 }`), declared only
-  when a break must live beside the old version. Deleting `v1` makes the
-  compiler report every group and type left unused.
+  when a break must live beside the old version; Stripe's dated versions
+  with response rewriting suit a large public API and are not worth their
+  cost here. Deleting `v1` makes the compiler report every group and type
+  left unused.
 
 ## Webhooks
 
-A provider's webhooks are generated from its package, not written (area 11,
-amending question 8 on 2026-10-13): a connection with a webhook secret gets
+A provider's webhooks are generated from its package, not written (area
+11): a connection with a webhook secret gets
 `POST /webhooks/<connection>` in the `webhooks` API, whose runtime checks
 the signature over the raw body, drops repeats by the provider's event id,
 answers a handshake where the package names one, and writes each event to
 the outbox for subscribers (area 12). A webhook that needs a reply runs
 the app's answering action inside the request (area 11, "Receiving from
-outside", 2026-10-16). Its path can change; it cannot be switched off.
+outside"). Its path can change; it cannot be switched off.
 
-Built in chunk 7.7 (area 11, "Chosen in chunk 7.7"): the route is
+The route is
 `<prefix>/<connection>` under the prefix of the `webhooks` API the app
 declares, whose record and OpenAPI document list it, or `/webhooks/<connection>`
 outside every declared API; `jadpo routes` shows it as `generated webhook`
 with `signature` for its authentication, and an app route at its path is
-`route.path_overlap`. Replies and handshakes come with chunk 7.7b.
+`route.path_overlap` (area 11's decisions). Replies and handshakes are
+area 11's ("Webhook replies, handshakes and further signature schemes").
 
-Two senders still reach ordinary routes (decided 2026-10-16): a system that
+Two senders reach ordinary routes: a system that
 signs webhooks and has no package gets the app's own integration in
 `shared/providers/`, whose webhooks are generated the same way; a partner
 with an agreement signs in as a `Service` with a service key (area 8) and
 calls an ordinary route.
 
+## Idempotent writes
+
+Every route but a `GET` honours `Idempotency-Key` (the IETF draft
+Stripe's design became). HTTP calls `PUT` and `DELETE` idempotent, but a
+retried `DELETE` answers 404 where the first answered 204, and the action
+behind any write may raise events or call providers. The runtime handles
+the key entirely; the action never sees it. Before the action runs, the
+runtime claims the key, scoped to the caller; afterwards it keeps the
+response with a digest of the request, in the action's transaction, for
+24 hours. A repeat gets the kept response; the same key with a different
+request fails `idempotency_key_reused` (422); a repeat while the first is
+running fails `conflict` (409). Successes and failures the action returns
+are kept; `unavailable` and internal failures are not, so a retry runs
+again. Integration calls in the action send keys derived from it (area
+11). An API can require the key with `idempotency: Idempotency.required`,
+and OpenAPI lists the header. The details are under Decisions,
+"Idempotency keys".
+
 ## How failures reach the client
 
-Decided in area 4: one envelope with `code`, `message`, `request_id` and the
-failure's client fields under `details`; the status comes from the kind;
+One envelope with `code`, `message`, `request_id` and the failure's
+client fields under `details` (area 4); the status comes from the kind;
 `x-request-id` repeats the id. Bad input lists each problem without its
 value, naming the field by its path in the `Input`, with list positions as
-numbers (question 9):
+numbers, the names the OpenAPI schema uses (JSON Pointer's
+`/lines/2/quantity` reads worse beside a form field):
 
 ```json
 {
@@ -762,8 +788,7 @@ host has no clock; `jadpo dev` doesn't start (`cli.dev_start_failed`, "The
 system clock can't be read").
 
 The envelope's `message` stays fixed English. Text for people in client
-apps comes from the app's language files (area 10, decided 2026-10-16,
-built in chunk 5.4d): every failure a route can produce has wording in every
+apps comes from the app's language files (area 10): every failure a route can produce has wording in every
 supported locale, keyed by its code with its client fields as placeholders,
 and client fields that are dates or numbers stay values on the wire for the
 client to format in its own language.
@@ -776,10 +801,9 @@ a provider package's webhooks (area 11), each API's
 `GET <prefix>/openapi.json` (below), and connecting and disconnecting an
 OAuth grant, `POST /connections/<name>/start`,
 `GET /connections/<name>/callback` and `POST /connections/<name>/disconnect`
-(areas 8 and 11). Jadpo generates endpoints
-only, never pages: the app's frontend owns every page (decided
-2026-10-16). Generated routes appear in `jadpo routes`, the API record and
-OpenAPI like any route, marked generated (question 12).
+(areas 8 and 11). Jadpo generates endpoints only, never pages: the app's
+frontend owns every page. Generated routes appear in `jadpo routes`, the
+API record and OpenAPI like any route, marked generated.
 
 - A generated route takes a `path:` setting where its feature is
   configured (`magic_link: { path: "/login" }`), or `generate_routes: false`,
@@ -787,8 +811,7 @@ OpenAPI like any route, marked generated (question 12).
   operations (`magic_links.request`, `magic_links.redeem`,
   `sessions.start`), which keep every protection.
 - Webhook routes can change path but cannot be switched off, and so can
-  passkeys', whose bodies are WebAuthn's rather than the app's (area 8,
-  chosen in chunk 5.5z).
+  passkeys', whose bodies are WebAuthn's rather than the app's (area 8).
 - A generated route's response shape is fixed; only its path changes.
 
 ## Rate-limited requests
@@ -819,19 +842,19 @@ of the SHA-256 of the API's record.
 Each route's responses follow from what it runs: 403 where policy can
 refuse what it or an action it calls does, 503 where it uses a store, and
 an `Idempotency-Key` that promises a repeat the first response only where
-that response is kept.
+that response is kept. Every route shows its security scheme.
 
-Beside each document, `jadpo check` writes (and `jadpo build` will write)
-`<api>.failures.<locale>.json`
+Beside each document, `jadpo check` writes (and `jadpo build` is to
+write, not built yet) `<api>.failures.<locale>.json`
 for each supported locale: each reachable failure's code mapped to
 `{ "text": "…{next_slot}…", "formats": { "next_slot": "date_time" } }`, the
 same shape for every code. `formats` lists only the placeholders the
 client must format, each `number`, `decimal`, `date`, `date_time` or
 `duration`, decided by the client field's type (area 10,
-"Failures for client apps"; decided 2026-10-16).
+"Failures for client apps").
 
-**Served, and readable by other Jadpo apps** (decided 2026-10-16, Richard,
-area 11's "Packages from other Jadpo apps"):
+**Served, and readable by other Jadpo apps** (area 11, "Packages from
+other Jadpo apps"):
 
 - **Every API serves its document** at `<prefix>/openapi.json` by default
   (`/v1/openapi.json`, `/openapi.json` for `main` at `/`), under the API's
@@ -850,7 +873,7 @@ area 11's "Packages from other Jadpo apps"):
   Jadpo app's document imports as an exact provider package with no
   corrections or recordings.
 
-Built in chunk 7.2. Each API with a document serves it at
+Each API with a document serves it at
 `<prefix>/openapi.json`, and its record lists the route as the runtime's:
 
 ```text
@@ -869,7 +892,7 @@ GET /v1/openapi.json
   to `build/openapi/<api>.json`, as `application/json`; like any route that
   takes no input, a query string or a body is 422 `invalid_input`. A route
   the application writes at the same path is `route.path_overlap`.
-- **The fields' shapes** (chosen in chunk 7.2):
+- **The fields' shapes:**
 
 | Field | On | Holds |
 |---|---|---|
@@ -880,21 +903,21 @@ GET /v1/openapi.json
 
 - **Each operation is tagged with its route group**, and the group's `///`
   description is the tag's, so an importer names a resource after it.
-- **`x-jadpo-events` waits for publishing events outward** (area 12, "Event
-  transport"): an application publishes no event to another yet, so no
+- **`x-jadpo-events` waits for publishing events outward** (area 12, "Where
+  events travel"): an application publishes no event to another yet, so no
   document carries it.
 
 ## The public API record
 
-A breaking change is caught at review, not by a client in production
-(question 10, researched in [the proposals](research/07-http-proposals.md)).
-Each API has a committed, readable record, `api/main.jadpo_record`, of its
+A breaking change is caught at review, not by a client in production, as
+Kotlin's API validator and Microsoft's API Extractor catch one. Each API
+has a committed, readable record, `api/main.jadpo_record`, of its
 routes, fields and failure codes. `jadpo check` fails while it disagrees with
 the source and `jadpo api update` rewrites it, so every API change is a diff
 of one file.
 
 The record is written in the [record format](18-records-and-manifest.md#what-is-committed-and-why)
-(area 18, decided 2026-10-16, built in chunk 7.0): its first line says
+(area 18): its first line says
 what generated it and which command updates it, a hand edit is
 `record.edited`, and a record out of date is `record.out_of_date`.
 
@@ -1113,13 +1136,19 @@ change that needs one (a database drop, a policy weakening, a new domain):
 one file in `acceptances/` per decision, listing the changes it allows,
 counted only in the change that adds it. `acceptances/` and `api/` are owned
 in CODEOWNERS, so the host's review shows who approved it. Telling breaking
-changes apart and requiring their acceptance come after the first build
-(area 18, "Status"); until then the record's diff is what a reviewer reads.
+changes apart and requiring their acceptance are not built yet (area 18,
+"Status"); until they are, the record's diff is what a reviewer reads.
+
+## Write revisions
+
+Not built yet. Every write returns a `Jadpo-Revision` header, and browsers
+get the same value as a cookie; a client that sends it back skips caches
+(area 6), and one that does not may see a cached copy up to its `keep:`.
 
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's real output. Most examples are one loose file (area 1), so
+compiler's real output. Most examples are one loose file (area 1), so
 the route sits beside what it runs; in a project each lives in its own
 folder.
 
@@ -1175,7 +1204,7 @@ check failed: 1 error, 1 file
 
 ### `route.item_unknown`
 
-A route holds `authentication:` (area 8), `input:`, `output:`, `status:`, `deadline:` and `run:` (with `rate_limit:` and `settle:` from later chunks); the old `success:`, `query:`, `path:` and `headers:` items are gone:
+A route holds `authentication:` (area 8), `input:`, `output:`, `status:`, `deadline:`, `run:`, `rate_limit:` and `settle:`; `success:`, `query:`, `path:` and `headers:` are not route items:
 
 ```jadpo check project=e-item-unknown expect=route.item_unknown
 type Memo = Text {
@@ -1579,7 +1608,7 @@ check failed: 1 error, 1 file
 ```
 
 What returns `Unit` sends nothing, so the route answers 204 rather than
-naming an `output:` (Phase 6 review, chunk 6.6b):
+naming an `output:`:
 
 ```jadpo check project=e-output-required-unit expect=route.output_required
 type Memo = Text {
@@ -1835,7 +1864,7 @@ check failed: 1 error, 1 file
 
 ### `route.query_field_unsupported`
 
-A `GET` or `DELETE` reads its input from the query string, which holds scalars, enums and lists of them (an amount of money, a quantity and a `ZonedTime`, which JSON sends as objects, are objects here too, chunk 5.5w2):
+A `GET` or `DELETE` reads its input from the query string, which holds scalars, enums and lists of them (an amount of money, a quantity and a `ZonedTime`, which JSON sends as objects, are objects here too):
 
 ```jadpo check project=e-query-field-unsupported expect=route.query_field_unsupported
 type Memo = Text {
@@ -2300,7 +2329,7 @@ check failed: 1 error, 1 file
 ```
 
 A placeholder typed with a field its type doesn't declare is
-`type.unknown_field` at its type, as any field type is (chunk 6.6d):
+`type.unknown_field` at its type, as any field type is:
 
 ```jadpo check project=e-placeholder-unknown-field expect=type.unknown_field
 type NoteText = Text {
@@ -2649,8 +2678,7 @@ check failed: 1 error, 1 file
 ### `route.header_credential`
 
 Credentials and Jadpo's own headers belong to authentication (area 8),
-and `Idempotency-Key` to the runtime, which reads it before anything runs
-(question 17):
+and `Idempotency-Key` to the runtime, which reads it before anything runs:
 
 ```jadpo check project=e-header-credential expect=route.header_credential
 type Memo = Text {
@@ -3119,314 +3147,144 @@ check failed: 1 error, 1 file
 
 ### Status
 
-Built in chunks 4.1 and 4.2. `jadpo check` checks route groups, their
-prefixes and APIs (with `idempotency:`), methods and typed placeholders,
-the one input (from the query string for `GET` and `DELETE`, the JSON body
-otherwise, and `header:` fields), `output:` and `status:`, `deadline:`'s
-range and what `run:` calls, every route of the project against the others
-and the health paths, and each API's record; it writes one OpenAPI document
-per API to `build/openapi/`. The runtime's HTTP component routes a request,
-decodes and checks its input (each problem as `{ field, rule }`), runs the
-action or query, and answers with the output or the failure envelope, its
-`request_id` and `x-request-id`, with the status the failure's kind sets; it
-answers `HEAD` and `OPTIONS` itself and counts the default rate limits. It
-refuses a body over 1 MB, stops a route at its deadline without committing,
-answers `/health/live` and `/health/ready`, and keeps each write's
+Built. `jadpo check` checks route groups, their prefixes and APIs (with
+`idempotency:`), methods and typed placeholders, the one input (from the
+query string for `GET` and `DELETE`, the JSON body otherwise, and
+`header:` fields), `output:` and `status:`, `deadline:`'s range and what
+`run:` calls, every route of the project against the others and the health
+paths, and each API's record; it writes one OpenAPI document per API to
+`build/openapi/`. The runtime's HTTP component routes a request, decodes
+and checks its input (each problem as `{ field, rule }`), runs the action
+or query, and answers with the output or the failure envelope, its
+`request_id` and `x-request-id`, with the status the failure's kind sets;
+it answers `HEAD` and `OPTIONS` itself and counts the default rate limits.
+It reads a body only as JSON, refuses a query string or body a route
+doesn't read and a header it can't read, refuses a body over 1 MB, stops a
+route at its deadline without committing, even work that never waits,
+runs an action again on a concurrent change found as it commits, answers
+`/health/live` and `/health/ready`, and keeps each write's
 `Idempotency-Key` with its response. `jadpo dev` serves it and reloads on
 save, `jadpo routes` lists the routes and `jadpo api update` writes the
-records. Since chunk 7.0 (area 18) each record is `api/<api>.jadpo_record`
-in the record format, with no `version:` line, and the OpenAPI version is
-a hash of it. Since chunk 7.2 each API serves its own document at
-`<prefix>/openapi.json` (`serve_openapi: false` turns it off), listed in
-its record, its document and `jadpo routes`, and the documents carry the
-`x-jadpo` fields area 11's importer reads ("OpenAPI").
+records, each `api/<api>.jadpo_record` in the record format with no
+`version:` line; the OpenAPI version is a hash of it. Each API serves its
+own document at `<prefix>/openapi.json` (`serve_openapi: false` turns it
+off), listed in its record, its document and `jadpo routes`, and the
+documents carry the `x-jadpo` fields area 11's importer reads ("OpenAPI").
+OpenAPI derives each route's responses from what it runs and shows
+`ZonedTime`, `Zone` and a mixed enum as they are sent. Natively, a client
+has 10 seconds for its headers and 30 for its body, and the server holds
+at most 1,024 connections and 10 database connections per store per
+worker.
 
-Since chunk 4.3 (area 8) every route needs a signed-in caller unless it
-says `authentication: RouteAuthentication.none`, each API lists the sign-in
-methods it accepts, a route passes `current_principal` to what it runs, a
-signed-in caller's requests count against its own rate limit, and its
-idempotency keys are its own. Since chunk 4.4 (area 9) policy decides what
-each route reaches, and OpenAPI lists the 403 `not_permitted` on every
-route that runs an action that writes or is listed under `actions:`.
-Since chunk 4.4c (area 8) a `GET` runs `sessions.tokens` and
-`<Service>.keys` itself, and the record and OpenAPI describe the
-`IssuedToken` and `IssuedKey` it sends.
+Every route needs a signed-in caller unless it says
+`authentication: RouteAuthentication.none`; each API lists the sign-in
+methods it accepts, named in its record; a route passes
+`current_principal` to what it runs; a signed-in caller's requests count
+against its own rate limit, and its idempotency keys are its own; a
+request with a credential on a route anyone may call counts against its
+address before it runs (area 8). Policy decides what each route reaches,
+and OpenAPI lists the 403 `not_permitted` on every route that runs an
+action that writes or is listed under `actions:` (area 9). A `GET` runs
+`sessions.tokens` and `<Service>.keys` itself, and the record and OpenAPI
+describe the `IssuedToken` and `IssuedKey` it sends (area 8).
 
-Since chunk 4.9 (the Phase 4 review) the runtime reads a body only as
-JSON, refuses a query string or body a route doesn't read and a header it
-can't read, stops work that never waits at its deadline, runs an action
-again on a concurrent change found as it commits, and counts a request
-with a credential on a route anyone may call against its address before
-it runs; OpenAPI derives each route's responses from what it runs and
-shows `ZonedTime`, `Zone` and a mixed enum as they are sent, and the record names each
-API's sign-in methods. Natively, a client has 10 seconds for its headers
-and 30 for its body, and the server holds at most 1,024 connections and 10
-database connections per store per worker.
+A route may send a `FeatureCollection<G, P>` bare, its properties held to
+what an `Output` may hold and, where an action returns it, to the fields
+every caller may read (area 9); OpenAPI describes RFC 7946's object and
+the record names it with its type arguments. A `GET` sends one a query
+gives (area 6, "A query giving a map layer"), held to field policy where
+the query is declared. A route waits for the work its action set off with
+`settle:` ("Waiting for follow-on work", and
+`route.settle_invalid`). A route whose action returns an `AiStream` sends
+a model's answer as server-sent events ("Streaming a model's answer", and
+`route.stream_invalid`).
 
-Since chunk 5.5u7 (area 20) a route may send a `FeatureCollection<G, P>`
-bare, its properties held to what an `Output` may hold and, where an
-action returns it, to the fields every caller may read (area 9); OpenAPI
-describes RFC 7946's object and the record names it with its type
-arguments. Since chunk 5.5u8 a `GET` sends one a query gives (area 6, "A
-query giving a map layer"), held to field policy where the query is
-declared.
-
-Since chunk 6.3 a route waits for the work its action set off with
-`settle:` (area 12): the runtime delivers its events and their
-follow-ons while the request waits, then answers with `answer:`'s query
-and the route's status, or 202 past `within:` or while a delivery waits
-to retry; OpenAPI and the record show both answers, and a repeat with
-the same `Idempotency-Key` runs the query again ("Waiting for follow-on
-work", and `route.settle_invalid`).
-
-Since chunk 5.5v6 a route whose action returns an `AiStream` sends a
-model's answer as server-sent events as it is written: `piece` events,
-then `done`, or an `error` event for a failure after the first piece;
-OpenAPI lists it as `text/event-stream` with `x-jadpo-stream`, the record
-as `output AiStream (server-sent events)`, and a route test reads its
-`pieces` ("Streaming a model's answer", and `route.stream_invalid`).
-
-Not yet: `x-jadpo-events`, which waits for publishing events outward
-(area 12); a route's own `rate_limit:` and the Redis
-store for rate limits (area 16); classifying breaking changes and their
-acceptances (after the first build, area 18); the `Jadpo-Revision` header,
-which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
-is written.
+Not built yet: `x-jadpo-events`, which waits for publishing events
+outward (area 12); a route's own `rate_limit:` and the Redis store for
+rate limits (area 16); classifying breaking changes and their acceptances
+(area 18); the `Jadpo-Revision` header, which comes with caches (area 6).
+Each is `toolchain.not_built_yet` where it is written.
 
 ### Consistency with the rest of the language
 
-- **`query` means three things**: the route item, the `query` declaration
-  and the `query required` expression. One `input:` removes the route item.
-- **`success:` is also a `match` arm** (`success(value)`); `status:` removes
-  the clash.
-- **Four names for request data**: `path.x`, `query.x`, `headers.x` and
-  `input`. Proposed: placeholders by their own name, and `input`.
-- **`headers:` is an anonymous shape** with a sentence-like `from "..."` and a
-  trailing `optional`, against area 2's named types and settings blocks.
-- **Two behaviour forms** (`run:` and inline `action:`), and the inline form
-  puts `fails` after a colon.
-- **`auth: none`** abbreviates a word spelled in full elsewhere
-  (`authentication browser_session`); area 8 settles it.
-- **`routes` is plural** while other keywords are singular and their folders
-  plural (`schedule` in `schedules/`). It names a group, so it is kept, and
-  the folder `routes/` still matches it.
+- **`routes` is plural** while other keywords are singular and their
+  folders plural (`schedule` in `schedules/`). It names a group, so it is
+  kept, and the folder `routes/` still matches it.
 - **The default API is `main`**, like the default store, and not `public`,
   which already means "visible to other domains".
-- **Health is the only route with special rules** today; making it generated
-  removes them.
 
 ### Carried to later areas
 
-| Item | Area | Status |
-|---|---|---|
-| Route authentication: `authentication: RouteAuthentication.none` and `.fresh`, each API's default, how the caller is passed (`current_principal`) | 8 | Input to area 8 |
-| Webhook signature checking over the raw body, declared with the provider's integration | 8, 11 | Input to areas 8 and 11 |
-| Policy on routes and the `not_permitted` answer | 9 | Input to area 9 |
-| A new root folder for records and acceptances (`api/`, `acceptances/`) in area 1's fixed root list | 1 | Depends on question 10 |
-| Database drops and store moves accepted with the shared `acceptance` form | 5 | Depends on question 10 |
-| Policy weakening and new domains accepted with the shared form, enforced through the approval protocol | 9, 1 | Depends on question 10 |
-| Integration timeouts inside a route's deadline | 11 | Input to area 11 |
-| Background work after `status: SuccessStatus.accepted`; webhook events processed by subscribers | 12 | Input to area 12 |
-| Calling routes in tests | 13 | Input to area 13 |
-| `toolchain.target_liveness_not_local`, raised only by `jadpo build`; the `jadpo api update` command and CI's record check | 14 | Input to area 14 |
-| `precondition_failed` for `If-Match` (from area 4); until then a concurrent change answers 409 through area 5's check | 7 | Deferred |
-| Response headers: `Location` for created records, caching, `ETag` | 7 | Deferred |
-| Streaming responses that fail after headers are sent (ROUTE-002, from area 4) | 7 | Decided and built in chunk 5.5v6: an `error` event ("Streaming a model's answer") |
-| Per-route rate limits (`rate_limited`) | 7 | Deferred |
-
-### Open questions
-
-1. **How are route groups written and checked?** Area 1 decided named groups
-   with a checked prefix, but not what is checked. *Recommendation:*
-   `routes Todos { prefix: /todos ... }`; the prefix's fixed segments joined
-   with `_` must give the file name (`/admin/orders` in
-   `admin_orders.jadpo`); prefixes never repeat or nest, so a URL leads to
-   one file. This is area 1's research rule K5 without its separate
-   "surface" naming. Rails and Laravel group routes the same way
-   (`scope "/admin"`, `Route::prefix('admin')`) but check nothing.
-   *Richard asked (2026-10-12)* how a prefix with a placeholder works
-   (`/projects/{project_id}/todos`). *Revised recommendation:* a prefix may
-   hold typed placeholders, `prefix: /projects/{project_id: Project.id}/todos`,
-   available to every route in the group; the file name joins the fixed
-   segments (`projects_todos.jadpo`). Prefixes may then share a start
-   (`/projects` and `/projects/{project_id}/todos`), so the rule becomes:
-   every URL matches exactly one group, checked by the compiler. Without
-   this, a multi-tenant app's routes (`/orgs/{org_id}/...`) would all pile
-   into one group in the wrong domain. *Decided 2026-10-12:* the revised recommendation.
-2. **One input per route, with placeholders typed in the path?** Today
-   `path:`, `query:`, `headers:` and `input:`. *Recommendation:* yes:
-   `GET /{todo_id: Todo.id}`, the value read as `todo_id`; one `input:` whose
-   source follows the method (query string for `GET` and `DELETE`, body
-   otherwise); headers as `header:` settings on `Input` fields. This removes
-   two anonymous shapes and one meaning of `query` (syntax review top 10,
-   item 6). FastAPI and ASP.NET infer each parameter's source the same way. *Decided 2026-10-12:* yes, as recommended.
-3. **`status:` and a checked `output:`?** *Recommendation:* rename
-   `success:` to `status:` taking a `SuccessStatus`: `SuccessStatus.ok`,
-   `SuccessStatus.created`, `SuccessStatus.accepted` or
-   `SuccessStatus.no_content`; `output:` must be an `Output` and exactly the
-   action's result type, and is required unless the status is
-   `SuccessStatus.no_content`. This fixes today's 500 on
-   a mismatch and the silent `null` body. *Decided 2026-10-12:* yes, as recommended.
-4. **What may `run:` call?** Area 3 left a route calling a query to area 7.
-   *Recommendation:* a `GET` calls a named query and every other method a
-   named action, so a `GET` never writes (HTTP's "safe" methods), and no
-   wrapper action is needed for a read. Inline route actions and calls to
-   plain functions go. *Decided 2026-10-12:* yes, as recommended.
-5. **Default deadline and body limit?** Today neither. *Recommendation:* a
-   10-second deadline unless `deadline:` says otherwise, at most 60 seconds;
-   a 1 MB body limit answering 413, with no setting until an application
-   needs one. Fastify defaults to a 1 MB body and Express to 100 KB; a hung
-   request without a deadline holds a database connection. *Decided 2026-10-12:* yes, as recommended.
-6. **Should health be generated only?** *Recommendation:* yes: fixed
-   `/health/live` and `/health/ready`, readiness from the stores declared in
-   `app.jadpo` with a two-second check, no authored liveness and no
-   `health { }` syntax. Everything it needs is already declared. *Decided 2026-10-12:* yes, as recommended.
-7. **How are audiences and versions declared?** *Recommendation:* an
-   `apis: { }` block in `application`, `main` at `/` implied; a group names
-   its API with `api:`; one OpenAPI document, record and default
-   authentication per API. A new major version is another API, declared only
-   when a break must coexist with the old version. Stripe's dated versions
-   with response rewriting suit a large public API and are not worth their
-   cost here. *Decided 2026-10-12:* yes, as recommended.
-8. **How are inbound webhooks written?** *Recommendation:* as ordinary routes
-   in a `webhooks` API, with the provider's signature check as their
-   authentication (areas 8 and 11), a unique rule on the provider's event id
-   so redeliveries do nothing, and the work in a subscriber. No webhook
-   keyword. *Decided 2026-10-12:* yes, as recommended.
-9. **How is a field named in `{ field, rule }`?** Area 4 left the format to
-   area 7. *Recommendation:* the `Input` field's path, with list positions as
-   numbers (`lines.2.quantity`), the names the OpenAPI schema uses; a header
-   field by its field name. JSON Pointer (`/lines/2/quantity`, used in
-   RFC 9457 examples) is more standard but reads worse beside a form field;
-   Stripe uses `lines[2][quantity]`. *Decided 2026-10-12:* yes, as recommended.
-10. **How are breaking API changes caught and accepted?** Area 4 carried the
-    record here, with Richard's idea of one acceptance mechanism.
-    *Recommendation:* option C in [the proposals](research/07-http-proposals.md):
-    a committed readable record per API (`api/main.api`, now
-    `api/main.jadpo_record`) that `jadpo check`
-    compares, as Kotlin's API validator and Microsoft's API Extractor do;
-    changes that can break a client need an `acceptance` file written by a
-    person, one per change and used once, in the same form for database
-    drops, policy weakening and new domains; the `acceptances/` folder is
-    owned in CODEOWNERS so the host's review records who approved it. *Decided 2026-10-12:* yes, as recommended.
-    *Revised 2026-10-16 (Richard, area 18):* the record is named
-    `api/main.jadpo_record`, like every committed generated file.
-11. **How does a write's revision reach the client?** (carried from area 6)
-    Area 6 lets a client that just wrote skip caches by its revision. What
-    are the response header and cookie (`jadpo-revision`) called, and must
-    non-browser clients echo the revision back?
-    *Decided 2026-10-12:* every write returns a `Jadpo-Revision` header and
-    browsers get the same value as a cookie; a client that sends it back skips
-    caches; one that does not may see a cached copy up to its `keep:`.
-12. **Where do generated authentication routes and security schemes
-    appear?** (carried from area 8) Does the generated `POST /auth/exchange`
-    appear in the route inventory and OpenAPI, and how is each route's
-    security scheme shown?
-    *Decided 2026-10-12:* yes: generated routes appear in the route list and
-    OpenAPI like any route, marked generated; every route shows its security
-    scheme in OpenAPI.
-    *Extended 2026-10-16 (Richard, area 11):* so does each API's served
-    `GET <prefix>/openapi.json`, which also appears in the API record.
-13. **How does an API declare its accepted authentication methods?**
-    (carried from area 8) Area 8 has each API list its methods,
-    `authentication: [AuthenticationMethod.browser_session, AuthenticationMethod.api_token]`,
-    with a route only narrowing them; the `apis: { }` example above shows
-    none, and the text mentions only a "default authentication". Where does
-    the list go?
-    *Decided 2026-10-12:* in each API's entry in `apis: { }`, as
-    `authentication: [...]`; a route group or route may only narrow it.
-14. **What do route tests send and get back?** (carried from area 13) Area
-    13's tests use a `request { }` form returning a `Response` with its
-    `status`, `code` and typed output. Does this page define that form and
-    type?
-    *Decided 2026-10-12:* area 13 owns the `request { }` form and the
-    `Response` type (`status`, `code`, typed output, headers); this page links
-    to it.
-15. **Does a route show the URL it answers?** *Decided 2026-10-12
-    (Richard):* yes: hovering over a route shows its full method and path,
-    and `jadpo routes` lists every route with its full path, file, API,
-    authentication and the query or action it runs.
-16. **Is a route written `GET /path { }`?** Every other declaration starts
-    with a keyword and a name; a route entry starts with its method and path
-    and has no colon. *Recommendation:* keep it. The group is the declaration
-    (`routes Todos { }`, keyword first); routes are its entries, keyed by
-    method and path, which is how HTTP, OpenAPI, logs and every framework
-    name a route. A named form (`route get_todo { method: Method.get path:
-    ... }`) adds a third name to keep in step with the action and the URL,
-    and hides the URL among settings. The colon rule names this as its one
-    exception. *Decided 2026-10-12:* yes, as recommended.
-17. **Are writes idempotent out of the box?** Nothing on this page covers a
-    client retrying a write after a timeout. *Recommendation:* yes, for every
-    method except `GET` (`POST`, `PUT`, `PATCH` and `DELETE`): HTTP calls
-    `PUT` and `DELETE` idempotent, but a retried `DELETE` answers 404 where
-    the first answered 204, and the action behind any write may raise events
-    or call providers. A client may send `Idempotency-Key` (the IETF draft
-    Stripe's design became). The runtime handles it entirely; the action
-    never sees the key. Before the action runs it looks the key up, scoped to
-    the caller; after, it stores the key, a hash of the request and the
-    response in the main store, in the same transaction as the action's
-    writes and events, for 24 hours. A repeat returns the stored response;
-    the same key with a different request fails `idempotency_key_reused`
-    (422); a repeat while the first is running fails `conflict` (409).
-    Successes and failures the action returns are stored; `unavailable` and
-    internal failures are not, so a retry runs again. Integration calls in
-    the action send keys derived from it (area 11). An API can require the
-    key with `idempotency: Idempotency.required`; OpenAPI lists the header. *Decided 2026-10-12:* yes, as recommended.
+| Item | Area |
+|---|---|
+| Route authentication: `authentication: RouteAuthentication.none` and `.fresh`, each API's default, how the caller is passed (`current_principal`) | 8 |
+| Webhook signature checking over the raw body, declared with the provider's integration | 8, 11 |
+| Policy on routes and the `not_permitted` answer | 9 |
+| A root folder for records and acceptances (`api/`, `acceptances/`) in area 1's fixed root list | 1 |
+| Database drops and store moves accepted with the shared `acceptance` form | 5 |
+| Policy weakening and new domains accepted with the shared form, enforced through the approval protocol | 9, 1 |
+| Integration timeouts inside a route's deadline | 11 |
+| Background work after `status: SuccessStatus.accepted`; webhook events processed by subscribers | 12 |
+| Calling routes in tests | 13 |
+| `toolchain.target_liveness_not_local`, raised only by `jadpo build`; the `jadpo api update` command and CI's record check | 14 |
+| `precondition_failed` for `If-Match` (from area 4); until then a concurrent change answers 409 through area 5's check (deferred) | 7 |
+| Response headers: `Location` for created records, caching, `ETag` (deferred) | 7 |
+| Per-route rate limits (`rate_limited`) (deferred) | 7 |
 
 ### Decisions
 
-| Topic | Decision | Date |
-|---|---|---|
-| Route groups | Carried from area 1: named route groups with a prefix the compiler checks, one group per file in the domain's `routes/` folder, named after the group | 2026-10-12 |
-| Triggers | Carried from area 1: routes call actions; routes are never `public` | 2026-10-12 |
-| Documentation comments | Carried from area 1: `///` comments feed OpenAPI | 2026-10-12 |
-| Route types | Carried from area 2: routes accept `Input` and return `Output` | 2026-10-12 |
-| Colon rule | Carried from area 3: every route item is `name: value`; a route entry, keyed by method and path, is the one exception | 2026-10-12 |
-| Failure responses | Carried from area 4: one envelope with `code`, `message`, `request_id` and client `details`; status from the kind; no status mapping on routes; `x-request-id` header | 2026-10-12 |
-| Invalid input | Carried from area 4: each problem as `{ field, rule }`, never the value; area 7 sets the field format | 2026-10-12 |
-| Shared acceptance | Carried from areas 1 and 5: new domains, policy changes and database drops need an explicit acceptance; area 7 designs the shared mechanism | 2026-10-12 |
-| Route groups and prefix check | `routes Todos { prefix: ... }`; file name from the prefix's fixed segments; prefixes may hold typed placeholders; every URL matches exactly one group | 2026-10-12 |
-| One input and typed placeholders | Placeholders typed in the path; one `input:` whose source follows the method; headers as `header:` on `Input` fields | 2026-10-12 |
-| `status:` and checked `output:` | `status: SuccessStatus.x`; `output:` must be an `Output` and exactly the action's result type, required unless `no_content` | 2026-10-12 |
-| What `run:` calls | A `GET` calls a named query, every other method a named action; no inline route actions (amended in chunk 4.4c: a `GET` also runs `sessions.tokens` and `<Service>.keys`, area 8) | 2026-10-12 |
-| Deadline and body limit | 10-second default deadline, `deadline:` up to 60 seconds; 1 MB body limit answering 413 | 2026-10-12 |
-| Health | Generated only: `/health/live` and `/health/ready`, readiness from the declared stores | 2026-10-12 |
-| APIs and versions | `apis: { }` in `application`, `main` at `/` implied; a group names its API with `api:`; one OpenAPI document and record per API; a new major version is another API | 2026-10-12 |
-| Webhooks | Ordinary routes in a `webhooks` API; the provider's signature check as authentication; a unique rule on the provider's event id; work in a subscriber (Amended 2026-10-13 by area 11: provider webhooks are generated from the package and arrive as events; no route is written) | 2026-10-12 |
-| Field path format | The `Input` field's dotted path with list positions as numbers (`lines.2.quantity`) | 2026-10-12 |
-| API record and acceptance | Committed readable record per API (`api/main.api`) compared by `jadpo check`; breaking changes need a person-written acceptance file, one per change, the same form for drops, policy weakening and new domains; `acceptances/` owned in CODEOWNERS (Revised 2026-10-16: `api/main.jadpo_record`, area 18) | 2026-10-12 |
-| Write revision header | `Jadpo-Revision` header on every write, a cookie for browsers; sending it back skips caches | 2026-10-12 |
-| Generated authentication routes in OpenAPI | Listed like any route, marked generated; every route shows its security scheme | 2026-10-12 |
-| Accepted authentication methods per API | `authentication: [...]` in each API's entry in `apis: { }`; groups and routes may only narrow it | 2026-10-12 |
-| Route URL shown | Hover shows a route's full method and path; `jadpo routes` lists every route with path, file, API, authentication and what it runs (Richard) | 2026-10-12 |
-| Route test request and `Response` | Owned by area 13; this page links to it | 2026-10-12 |
-| Route declaration form | `GET /path { }` entries inside a `routes` group, keyed by method and path; the one exception to the colon rule | 2026-10-12 |
-| Idempotent writes | Every non-`GET` route honours `Idempotency-Key`, handled entirely by the runtime: stored with the response in the action's transaction for 24 hours, scoped to the caller; reuse with a different request is 422, in flight is 409; `unavailable` and internal failures not stored; `idempotency: Idempotency.required` per API | 2026-10-12 |
-| Expired idempotency keys | A lookup ignores a key older than 24 hours; the runtime deletes expired keys in batches from its own minute tick (area 12), so the table holds about a day of keys (Richard, from an outside review) | 2026-10-15 |
-| Route readings (chosen in chunk 4.1) | `output:` may also be a `List` or `Page` of an `Output`, as a query returns them; a placeholder or `input` a route never passes to what it runs is an error (`route.binding_unused`); a header field may not read `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie` or `X-Jadpo-*`; besides a type's own rules, input problems name `required`, `unknown_field`, `type` (the wrong JSON kind), `variant` and `duplicate`, and text that isn't a UUID, an instant or a date breaks `format`; an `Int` is a JSON number only when its declared range has both ends within JavaScript's safe integers, a string otherwise, as area 2 decides, and a number is accepted for it either way | 2026-10-15 |
-| Runtime answers (chosen in chunk 4.1) | Unmatched paths answer 404 `route_not_found`, a known path with another method 405 `method_not_allowed` with `Allow`; defects answer 500 `internal_fault` with "The server failed to answer the request."; a declared failure without a `message:` gets its kind's message; `request_id` is `req_` and 16 hexadecimal digits, on every response as `x-request-id` | 2026-10-15 |
-| OpenAPI and the record (chosen in chunk 4.1) | The record is the wire contract: routes in path order, then each `input`, `output`, object and enum by name with each field's wire type and rules, then each failure code with its status, message and client fields; `version:` rises by one when `jadpo api update` changes it and starts at 1. An OpenAPI document's title is the project folder's name until `app.jadpo` names the application, and its version the record's (0 before one exists). A record out of date fails `jadpo check` but doesn't stop `jadpo test` or `jadpo dev` | 2026-10-15 |
-| Default rate limits until sign-in (chosen in chunk 4.1) | (Amended in chunk 4.3: a signed-in caller's requests count against its own allowance, 600 a minute, and the rest against their address; area 8's Decisions.) With no one signed in yet, every request counts against its address (the client's, as area 10's `client_address:` chooses it: the connection's own unless the application trusts a proxy's header; chunk 5.1c): 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it | 2026-10-15 |
-| Request guarantees (chosen in chunk 4.2) | A body over 1 MB answers 413 before routing; the host stops holding it there, reading and dropping up to 16 MB more so the client reads the answer. A route's deadline counts from when it is matched: when it passes, the running work is dropped with its open transaction, which the store rolls back, and a claimed key is given up; an action's commit runs after its body, outside the deadline, so a request that committed never answers 504, and its message is "The request ran out of time, and nothing it did was kept." A `GET` never takes part, whatever headers it sends | 2026-10-15 |
-| Health (chosen in chunk 4.2) | `/health/live` answers 200 `{"status":"live"}`; `/health/ready` runs `SELECT 1` on each PostgreSQL store an entity lives in, within two seconds in all, and answers 200 `{"status":"ready","stores":{"main":"ready"},"integrations":{}}`, or 503 with `not_ready` and each store that didn't answer as `unavailable`; integrations appear by name as `unchecked` once area 11 builds them. Both answer `HEAD` and `OPTIONS`, any other method 405, with `Cache-Control: no-store`; they are answered before the rate limits, so probes are never refused; a route on either path is `route.path_overlap`. Each worker (natively a worker thread, on Workers an isolate) reuses its last readiness answer for a second, so probes cost a store at most one `SELECT 1` a second per worker (amended in chunk 4.10) | 2026-10-15 |
-| Idempotency keys (chosen in chunk 4.2) | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. Until sign-in (4.3) every caller is the scope `anonymous` (amended in chunk 4.3: a signed-in caller's keys are kept under `user <id>`, and a route anyone may call keeps `anonymous`). The request's digest covers its method, path, query string, the headers its input reads and its body, byte for byte (superseded in chunk 5.8a: its route and what it says decoded, every secret value left out). A key is claimed in one statement of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one statement of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes; an action that writes no store keeps none, since running it again changes nothing, until area 12's `events: { store: }` names one (built in chunk 6.1b: an action that writes no store but emits keeps its keys beside its events, in the store `events: { store: }` names; one that does neither still keeps none. Amended in chunk 7.9a: one that makes a changing call keeps them there too, beside the record of its steps, and OpenAPI says so; with no store at all its calls' keys are still derived from the client's key, never the request's id) | 2026-10-15 |
-| `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
-| Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
-| Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |
-| Failure wording for clients | Every failure a route can produce is worded in every supported locale in the app's language files; `jadpo build` writes `<api>.failures.<locale>.json` beside each OpenAPI document; dates and numbers stay values for the client to format; `message` stays English (Richard, area 10) | 2026-10-16 |
-| Generated routes | Endpoints only, never pages; `path:` where the feature is configured or `generate_routes: false` over generated operations that keep every protection; webhook routes change path but cannot be switched off; response shapes fixed (Richard) | 2026-10-16 |
-| Rate-limited response | `429`, code `rate_limited`, `Retry-After` and the IETF `RateLimit` and `RateLimit-Policy` headers, wording from translations (Richard) | 2026-10-16 |
-| Serving OpenAPI | Every API serves its OpenAPI document at `<prefix>/openapi.json` under its own default authentication, `serve_openapi: false` to turn it off; the route is listed, marked generated, in its own OpenAPI document, its API record and `jadpo routes` (Richard, area 11) | 2026-10-16 |
-| `x-jadpo` fields | Jadpo's OpenAPI documents carry `x-jadpo-changes`, `x-jadpo-idempotency`, `x-jadpo-failure` (`code`, `kind`), `x-jadpo-constraints` and `x-jadpo-events`; other tools ignore them; area 11's importer reads them to make an exact package (Richard, area 11) | 2026-10-16 |
-| Serving OpenAPI and its fields (chosen in chunk 7.2) | The served route needs a signed-in caller by any method its API accepts, unless the API accepts no built method, when anyone may read it; it answers with `build/openapi/<api>.json`'s bytes and refuses input; the record lists it as `generated openapi`. `x-jadpo-changes` is `true` for a route that runs an action; `x-jadpo-idempotency` gives `header`, `required`, `keeps`, `window`, `max_length`, `in_use` and `reused`; `x-jadpo-failure` is on each declared failure's schema; `x-jadpo-constraints` is a field's type as the record writes it; each operation is tagged with its group. `x-jadpo-events` waits for publishing events outward. The document's title is the project folder's name, held by the project itself so the plan can serve it | 2026-10-20 |
-| API record name | `api/<api>.jadpo_record`, replacing `api/main.api`: readable, starting with the line that says what wrote it, a hand edit an error (Richard, area 18) | 2026-10-16 |
-| Webhook senders without a package | A signing system with no package gets the app's own integration in `shared/providers/`; a partner with an agreement calls an ordinary route as a `Service` with a service key (Richard, area 11) | 2026-10-16 |
-| Request reading (chosen in chunk 4.9) | A body is read only with a JSON `Content-Type` (`application/json` or `application/…+json`, any parameters, any case), else 400 `invalid_request` "A request body is JSON, sent with `Content-Type: application/json`."; a header value that isn't printable ASCII (spaces and tabs allowed) is 400 `invalid_request` "A header's value isn't printable ASCII.", whichever header it is, so a credential or key is never dropped; a route that reads no query string answers each key it gets as `{ field: <key>, rule: unknown_field }`, and one that reads no body answers a body that isn't blank as `{ field: "", rule: unknown_field }`, 422 `invalid_input`, before anything runs; a page's cursor that isn't one of its query's is 422 `invalid_input` with `{ field: <its path in the input>, rule: format }` | 2026-10-16 |
-| Deadlines on work that never waits (chosen in chunk 4.9) | The runtime reads the host's monotonic clock against the route's deadline: the interpreter checks it every 4,096 steps and stops the body there, and any body that finishes past the deadline, stopped or not, is answered 504 `deadline_exceeded` with nothing committed and its claimed key given up. Each of those checks also gives the worker thread back, so the other requests it serves carry on while such a body computes (amended in chunk 4.10) | 2026-10-16 |
-| A concurrent change at commit (chosen in chunk 4.9) | A change another transaction made, found as the action commits, runs the whole action again, as area 6 says, within the same three attempts and the route's deadline, then 503 `unavailable`; a claim that lapsed and was taken before the commit is `unavailable` too, with nothing kept | 2026-10-16 |
-| OpenAPI responses (chosen in chunk 4.9) | Every route lists 400, 413, 422, 429, 500 and 504, since any request can be unreadable, too large or carry unknown input; 503 `unavailable` where what it runs uses a store; 403 where policy can refuse its action or one it calls; a write's 409 and 422 for a key only where a key is claimed, and its `Idempotency-Key` described by what is kept: the response, nothing for a response that starts or ends a session or carries a new credential, or nothing at all for an action that writes no store. A `Time` is a string `09:30` (seconds and milliseconds when it has them), and a mixed enum's plain variant is its name as a string constant. *Superseded in chunk 5.2 (area 10):* there is no time of day; a `ZonedTime` is an object of its `instant`, a `date-time` string, and its `zone`, an IANA name, both required and nothing else; a `Zone` is sent as its IANA name (`Europe/London`) and a `Locale` as its BCP 47 tag (`en-GB`), and OpenAPI lists them so; a `Duration` is ISO 8601 in JSON, query strings, paths and headers alike | 2026-10-16 |
-| Sign-in methods in the record (chosen in chunk 4.9) | Each API's record starts with `authentication:` and the methods it accepts, its own list or every declared one, when `authentication.jadpo` declares any; a route that selects one kind of caller says `caller: user` or `caller: service` | 2026-10-16 |
-| Native request limits (chosen in chunk 4.9) | A client has 10 seconds to send a request's headers and 30 its body, else the connection is closed without an answer; the server holds at most 1,024 connections, closing one past that as it is accepted; each worker opens at most 10 connections per store, a transaction past that waiting for one, inside the route's deadline. Configuration may set them once area 10 does | 2026-10-16 |
-| `Idempotency-Key` as input (chosen in chunk 4.9) | An `Input` field may not read `Idempotency-Key`, which the runtime reads before anything runs: `route.header_credential`, "`Idempotency-Key` belongs to the runtime" | 2026-10-16 |
-| A map layer as output (Richard, 2026-10-19) | Besides an `Output`, or a `List` or `Page` of one, a route may send a `FeatureCollection<G, P>` (area 20) bare, because mapping libraries fetch a layer as RFC 7946 GeoJSON; its properties type `P` is held to what an `Output` may hold, so only fields declared for clients leave the server. `route.output_not_output`'s reason names it. Built in chunk 5.5u7 | 2026-10-19 |
-| Streaming a model's answer (chunk 5.5v6) | A route whose action returns an `AiStream` (area 21) names `output: AiStream` and sends it as server-sent events, `text/event-stream` with `Cache-Control: no-store`, once the action has committed and the first piece has come: each `piece` event `{"text": ...}` as it is read, then `done` (`{}`), or `error` with the failure envelope, `unavailable` (`internal_fault` for a defect), for anything that stops it part-way; one `event:` and one `data:` line of compact JSON per event; no `id:`, no `retry:`, `Last-Event-ID` not read, so a stream can't be resumed; a failure before the first piece answers as any route's does. The stream ends by the call's `timeout:` and the route's deadline, whichever is first, and a client that goes away closes the provider's connection. Only `SuccessStatus.ok` and no `settle:` (`route.stream_invalid`); the response is never kept for an `Idempotency-Key` repeat; OpenAPI's 200 is `text/event-stream` with each event's data in `x-jadpo-stream`; the record says `output AiStream (server-sent events)`; a route test's `Response` has `pieces` in place of `output`. The standard shape, chosen conservatively, since area 21 (question 6) chose server-sent events | 2026-10-20 |
+| Topic | Decision |
+|---|---|
+| Route groups | Carried from area 1: named route groups with a prefix the compiler checks, one group per file in the domain's `routes/` folder, named after the group |
+| Triggers | Carried from area 1: routes call actions; routes are never `public` |
+| Documentation comments | Carried from area 1: `///` comments feed OpenAPI |
+| Route types | Carried from area 2: routes accept `Input` and return `Output` |
+| Colon rule | Carried from area 3: every route item is `name: value`; a route entry, keyed by method and path, is the one exception |
+| Failure responses | Carried from area 4: one envelope with `code`, `message`, `request_id` and client `details`; status from the kind; no status mapping on routes; `x-request-id` header |
+| Invalid input | Carried from area 4: each problem as `{ field, rule }`, never the value; area 7 sets the field format |
+| Shared acceptance | Carried from areas 1 and 5: new domains, policy changes and database drops need an explicit acceptance; area 7 designs the shared mechanism |
+| Route groups and prefix check | `routes Todos { prefix: ... }`; file name from the prefix's fixed segments; prefixes may hold typed placeholders; every URL matches exactly one group |
+| One input and typed placeholders | Placeholders typed in the path; one `input:` whose source follows the method; headers as `header:` on `Input` fields |
+| `status:` and checked `output:` | `status: SuccessStatus.x`; `output:` must be an `Output` and exactly the action's result type, required unless `no_content` |
+| What `run:` calls | A `GET` calls a named query, every other method a named action; no inline route actions; a `GET` also runs `sessions.tokens` and `<Service>.keys` (area 8) |
+| Deadline and body limit | 10-second default deadline, `deadline:` up to 60 seconds; 1 MB body limit answering 413 |
+| Health | Generated only: `/health/live` and `/health/ready`, readiness from the declared stores |
+| APIs and versions | `apis: { }` in `application`, `main` at `/` implied; a group names its API with `api:`; one OpenAPI document and record per API; a new major version is another API |
+| Webhooks | Provider webhooks are generated from the package and arrive as events (area 11): `POST /webhooks/<connection>` in the `webhooks` API, the provider's signature checked over the raw body, repeats dropped by the provider's event id, the work in a subscriber; no route is written |
+| Field path format | The `Input` field's dotted path with list positions as numbers (`lines.2.quantity`) |
+| API record and acceptance | Committed readable record per API (`api/<api>.jadpo_record`) compared by `jadpo check`; breaking changes need a person-written acceptance file, one per decision (area 18), the same form for drops, policy weakening and new domains; `acceptances/` owned in CODEOWNERS |
+| Write revision header | `Jadpo-Revision` header on every write, a cookie for browsers; sending it back skips caches |
+| Generated authentication routes in OpenAPI | Listed like any route, marked generated; every route shows its security scheme |
+| Accepted authentication methods per API | `authentication: [...]` in each API's entry in `apis: { }`; groups and routes may only narrow it |
+| Route URL shown | Hover shows a route's full method and path; `jadpo routes` lists every route with path, file, API, authentication and what it runs |
+| Route test request and `Response` | Owned by area 13; this page links to it |
+| Route declaration form | `GET /path { }` entries inside a `routes` group, keyed by method and path; the one exception to the colon rule |
+| Idempotent writes | Every non-`GET` route honours `Idempotency-Key`, handled entirely by the runtime: stored with the response in the action's transaction for 24 hours, scoped to the caller; reuse with a different request is 422, in flight is 409; `unavailable` and internal failures not stored; `idempotency: Idempotency.required` per API |
+| Expired idempotency keys | A lookup ignores a key older than 24 hours; the runtime deletes expired keys in batches from its own minute tick (area 12), so the table holds about a day of keys |
+| Route readings | `output:` may also be a `List` or `Page` of an `Output`, as a query returns them; a placeholder or `input` a route never passes to what it runs is an error (`route.binding_unused`); a header field may not read `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie` or `X-Jadpo-*`; besides a type's own rules, input problems name `required`, `unknown_field`, `type` (the wrong JSON kind), `variant` and `duplicate`, and text that isn't a UUID, an instant or a date breaks `format`; an `Int` is a JSON number only when its declared range has both ends within JavaScript's safe integers, a string otherwise, as area 2 decides, and a number is accepted for it either way |
+| Runtime answers | Unmatched paths answer 404 `route_not_found`, a known path with another method 405 `method_not_allowed` with `Allow`; defects answer 500 `internal_fault` with "The server failed to answer the request."; a declared failure without a `message:` gets its kind's message; `request_id` is `req_` and 16 hexadecimal digits, on every response as `x-request-id` |
+| OpenAPI and the record | The record is the wire contract: routes in path order, then each `input`, `output`, object and enum by name with each field's wire type and rules, then each failure code with its status, message and client fields; it holds no version, and an OpenAPI document's version is the first 12 hex digits of the record's SHA-256. An OpenAPI document's title is the project folder's name until `app.jadpo` names the application. A record out of date fails `jadpo check` but doesn't stop `jadpo test` or `jadpo dev` |
+| Default rate limits | A signed-in caller's requests count against its own allowance, 600 a minute (area 8's Decisions); every other request counts against its address (the client's, as area 10's `client_address:` chooses it: the connection's own unless the application trusts a proxy's header): 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it |
+| Request guarantees | A body over 1 MB answers 413 before routing; the host stops holding it there, reading and dropping up to 16 MB more so the client reads the answer. A route's deadline counts from when it is matched: when it passes, the running work is dropped with its open transaction, which the store rolls back, and a claimed key is given up; an action's commit runs after its body, outside the deadline, so a request that committed never answers 504, and its message is "The request ran out of time, and nothing it did was kept." A `GET` never takes part, whatever headers it sends |
+| Health details | `/health/live` answers 200 `{"status":"live"}`; `/health/ready` runs `SELECT 1` on each PostgreSQL store an entity lives in, within two seconds in all, and answers 200 `{"status":"ready","stores":{"main":"ready"},"integrations":{}}`, or 503 with `not_ready` and each store that didn't answer as `unavailable`; provider connections appear by name as `unchecked`. Both answer `HEAD` and `OPTIONS`, any other method 405, with `Cache-Control: no-store`; they are answered before the rate limits, so probes are never refused; a route on either path is `route.path_overlap`. Each worker (natively a worker thread, on Workers an isolate) reuses its last readiness answer for a second, so probes cost a store at most one `SELECT 1` a second per worker |
+| Idempotency keys | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. A signed-in caller's keys are kept under `user <id>`, and a route anyone may call keeps `anonymous`. The request's digest covers its route and what it says, decoded, every secret value left out ("How failures reach the client"). A key is claimed in one statement of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one statement of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes. An action that writes no store but emits keeps its keys beside its events, in the store `events: { store: }` names (area 12), and one that makes a changing call keeps them there too, beside the record of its steps, as OpenAPI says; one that does none of these keeps none, since running it again changes nothing, and its calls' keys are still derived from the client's key, never the request's id |
+| `jadpo dev` | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names, else each store's `url:` setting (area 10), else a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one |
+| Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query |
+| Route authentication | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest |
+| Failure wording for clients | Every failure a route can produce is worded in every supported locale in the app's language files; `jadpo build` writes `<api>.failures.<locale>.json` beside each OpenAPI document; dates and numbers stay values for the client to format; `message` stays English (area 10) |
+| Generated routes | Endpoints only, never pages; `path:` where the feature is configured or `generate_routes: false` over generated operations that keep every protection; webhook routes change path but cannot be switched off; response shapes fixed |
+| Rate-limited response | `429`, code `rate_limited`, `Retry-After` and the IETF `RateLimit` and `RateLimit-Policy` headers, wording from translations |
+| Serving OpenAPI | Every API serves its OpenAPI document at `<prefix>/openapi.json` under its own default authentication, `serve_openapi: false` to turn it off; the route is listed, marked generated, in its own OpenAPI document, its API record and `jadpo routes` (area 11) |
+| `x-jadpo` fields | Jadpo's OpenAPI documents carry `x-jadpo-changes`, `x-jadpo-idempotency`, `x-jadpo-failure` (`code`, `kind`), `x-jadpo-constraints` and `x-jadpo-events`; other tools ignore them; area 11's importer reads them to make an exact package (area 11) |
+| Serving OpenAPI and its fields | The served route needs a signed-in caller by any method its API accepts, unless the API accepts no built method, when anyone may read it; it answers with `build/openapi/<api>.json`'s bytes and refuses input; the record lists it as `generated openapi`. `x-jadpo-changes` is `true` for a route that runs an action; `x-jadpo-idempotency` gives `header`, `required`, `keeps`, `window`, `max_length`, `in_use` and `reused`; `x-jadpo-failure` is on each declared failure's schema; `x-jadpo-constraints` is a field's type as the record writes it; each operation is tagged with its group. `x-jadpo-events` waits for publishing events outward. The document's title is the project folder's name, held by the project itself so the plan can serve it |
+| API record name | `api/<api>.jadpo_record`: readable, starting with the line that says what wrote it, a hand edit an error (area 18) |
+| Webhook senders without a package | A signing system with no package gets the app's own integration in `shared/providers/`; a partner with an agreement calls an ordinary route as a `Service` with a service key (area 11) |
+| Request reading | A body is read only with a JSON `Content-Type` (`application/json` or `application/…+json`, any parameters, any case), else 400 `invalid_request` "A request body is JSON, sent with `Content-Type: application/json`."; a header value that isn't printable ASCII (spaces and tabs allowed) is 400 `invalid_request` "A header's value isn't printable ASCII.", whichever header it is, so a credential or key is never dropped; a route that reads no query string answers each key it gets as `{ field: <key>, rule: unknown_field }`, and one that reads no body answers a body that isn't blank as `{ field: "", rule: unknown_field }`, 422 `invalid_input`, before anything runs; a page's cursor that isn't one of its query's is 422 `invalid_input` with `{ field: <its path in the input>, rule: format }` |
+| Deadlines on work that never waits | The runtime reads the host's monotonic clock against the route's deadline: the interpreter checks it every 4,096 steps and stops the body there, and any body that finishes past the deadline, stopped or not, is answered 504 `deadline_exceeded` with nothing committed and its claimed key given up. Each of those checks also gives the worker thread back, so the other requests it serves carry on while such a body computes |
+| A concurrent change at commit | A change another transaction made, found as the action commits, runs the whole action again, as area 6 says, within the same three attempts and the route's deadline, then 503 `unavailable`; a claim that lapsed and was taken before the commit is `unavailable` too, with nothing kept |
+| OpenAPI responses | Every route lists 400, 413, 422, 429, 500 and 504, since any request can be unreadable, too large or carry unknown input; 503 `unavailable` where what it runs uses a store; 403 where policy can refuse its action or one it calls; a write's 409 and 422 for a key only where a key is claimed, and its `Idempotency-Key` described by what is kept: the response, nothing for a response that starts or ends a session or carries a new credential, or nothing at all for an action that writes no store. A mixed enum's plain variant is its name as a string constant. There is no time of day (area 10); a `ZonedTime` is an object of its `instant`, a `date-time` string, and its `zone`, an IANA name, both required and nothing else; a `Zone` is sent as its IANA name (`Europe/London`) and a `Locale` as its BCP 47 tag (`en-GB`), and OpenAPI lists them so; a `Duration` is ISO 8601 in JSON, query strings, paths and headers alike |
+| Sign-in methods in the record | Each API's record starts with `authentication:` and the methods it accepts, its own list or every declared one, when `authentication.jadpo` declares any; a route that selects one kind of caller says `caller: user` or `caller: service` |
+| Native request limits | A client has 10 seconds to send a request's headers and 30 its body, else the connection is closed without an answer; the server holds at most 1,024 connections, closing one past that as it is accepted; each worker opens at most 10 connections per store, a transaction past that waiting for one, inside the route's deadline. Configuration doesn't set them |
+| `Idempotency-Key` as input | An `Input` field may not read `Idempotency-Key`, which the runtime reads before anything runs: `route.header_credential`, "`Idempotency-Key` belongs to the runtime" |
+| A map layer as output | Besides an `Output`, or a `List` or `Page` of one, a route may send a `FeatureCollection<G, P>` (area 20) bare, because mapping libraries fetch a layer as RFC 7946 GeoJSON; its properties type `P` is held to what an `Output` may hold, so only fields declared for clients leave the server. `route.output_not_output`'s reason names it |
+| Streaming a model's answer | A route whose action returns an `AiStream` (area 21) names `output: AiStream` and sends it as server-sent events, `text/event-stream` with `Cache-Control: no-store`, once the action has committed and the first piece has come: each `piece` event `{"text": ...}` as it is read, then `done` (`{}`), or `error` with the failure envelope, `unavailable` (`internal_fault` for a defect), for anything that stops it part-way; one `event:` and one `data:` line of compact JSON per event; no `id:`, no `retry:`, `Last-Event-ID` not read, so a stream can't be resumed; a failure before the first piece answers as any route's does. The stream ends by the call's `timeout:` and the route's deadline, whichever is first, and a client that goes away closes the provider's connection. Only `SuccessStatus.ok` and no `settle:` (`route.stream_invalid`); the response is never kept for an `Idempotency-Key` repeat; OpenAPI's 200 is `text/event-stream` with each event's data in `x-jadpo-stream`; the record says `output AiStream (server-sent events)`; a route test's `Response` has `pieces` in place of `output`. The standard shape, since area 21 chose server-sent events |

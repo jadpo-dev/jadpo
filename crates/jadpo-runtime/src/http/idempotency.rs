@@ -1,4 +1,4 @@
-//! Idempotent writes (area 7, question 17): every route but a `GET`
+//! Idempotent writes (area 7, "Idempotent writes"): every route but a `GET`
 //! honours an `Idempotency-Key` a client sends, entirely in the runtime, so
 //! the action never sees it. Keys live in the `jadpo_idempotency_keys`
 //! system table of the store the action writes (area 5, "System tables").

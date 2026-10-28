@@ -1,4 +1,4 @@
-//! "Swap for the standard ..." (area 14 and area 19, question 4; chunk
+//! "Swap for the standard ..." (area 14 and area 19, "A release adding a standard type"; chunk
 //! 5.5a2): the quick fix on `type.standard_clash` and
 //! `type.standard_exists`, whose edit is the one `jadpo fix <name> swap`
 //! makes (both run `jadpo_check::fixes`), and which is unavailable, with

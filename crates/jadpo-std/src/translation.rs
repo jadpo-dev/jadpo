@@ -7,7 +7,7 @@
 //! brace is doubled, `{{` writing `{` and `}}` writing `}`. An amount of
 //! money is the one field written with a style, `{price, number,
 //! currency}`, through the same formatter as `text.format` (area 19,
-//! question 16). Where a
+//! "`Money` and the operator table"). Where a
 //! message has an enum field or a `PluralCount` field, a language gives one
 //! wording for each value of the enum or each plural form it needs, and
 //! the field picks which is written.
@@ -170,15 +170,15 @@ pub enum Piece {
 }
 
 /// What follows a field's name in `{price, number, currency}`, the style
-/// a wording writes an amount of money with (area 19, question 16).
+/// a wording writes an amount of money with (area 19, "`Money` and the operator table").
 pub const CURRENCY_STYLE: &str = ", number, currency";
 
 /// What follows a field's name in `{rate, number, percent}`, the style a
-/// wording writes a percentage with (area 19, question 16).
+/// wording writes a percentage with (area 19, "`Money` and the operator table").
 pub const PERCENT_STYLE: &str = ", number, percent";
 
 /// The style a field is written with, after its name: one of the two a
-/// wording has (area 19, question 16).
+/// wording has (area 19, "`Money` and the operator table").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Style {
     /// `{price, number, currency}`: an amount of money.

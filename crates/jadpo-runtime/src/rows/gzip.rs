@@ -1,5 +1,5 @@
 //! A gzip file unpacked as a file helper reads it (area 16, "Files"; area
-//! 12, "Rows and formats"; chunk 6.4b3): only when the helper is given
+//! 12, "Batches: work over many items"): only when the helper is given
 //! `max_unpacked_size:`, which the caller holds the unpacked bytes to, and
 //! pure, fed the compressed bytes a window at a time and giving the unpacked
 //! ones as far as it is asked.

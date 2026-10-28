@@ -1,4 +1,4 @@
-//! `jadpo routes` (area 7, question 15): every route with its full method
+//! `jadpo routes` (area 7, "Route URL shown"): every route with its full method
 //! and path, what it runs, its authentication and where it is written,
 //! grouped by API. Authentication is `required` for a route that needs a
 //! signed-in caller, `none` for one anyone may call and `fresh` for one

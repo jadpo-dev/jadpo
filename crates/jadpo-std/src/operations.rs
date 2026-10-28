@@ -30,7 +30,7 @@ pub enum Kind {
     Enum(&'static str),
     /// A value built on one of these built-in types: `T` in its stub,
     /// fixed by the argument, so a result of the same kind keeps the
-    /// argument's named type (area 10, question 6).
+    /// argument's named type (area 10, "Instant arithmetic").
     OneOf(&'static [Builtin]),
     /// A standard-library type the checker knows by name: an object,
     /// whose fields the runtime builds as a record, or a type held as text
@@ -106,7 +106,7 @@ pub struct Param {
     pub by_type: bool,
     /// A count or a position: the checker rules a negative one out while
     /// compiling, as `never_zero` rules out a zero divisor (area 19,
-    /// question 7): a literal isn't below 0 and a value's type has a
+    /// "Cutting from either end"): a literal isn't below 0 and a value's type has a
     /// `min` of at least 0, so the operation never counts from the other
     /// end. On a list, each item: a literal list's items aren't below 0
     /// and its item type has a `min` of at least 0 (`money.allocate`'s
@@ -139,8 +139,7 @@ pub struct Param {
     /// "Text"): `text.pad_start`'s `fill:`, a text literal of exactly one
     /// code point.
     pub character: bool,
-    /// The text whose length the result never passes (area 19, question
-    /// 29, `at_most_length_of`): the result is never longer than this
+    /// The text whose length the result never passes (area 19, "`at_most_length_of`", `at_most_length_of`): the result is never longer than this
     /// argument, so constructing a type from it can't break a
     /// `max_length` the argument's own type keeps.
     pub bounds_length: bool,
@@ -158,7 +157,7 @@ pub struct Param {
 }
 
 /// A condition an operation fails on unless an option settles it (area
-/// 10, question 7): the call's `attempt` maps it by `key`, as a
+/// 10, "Time library and formatting"): the call's `attempt` maps it by `key`, as a
 /// construction's broken rule is mapped (area 2). It applies while the
 /// option named `option` applies and is left out, or given as anything
 /// but a written value other than `reject`. One with no option is
@@ -481,7 +480,7 @@ const SCALE: Param = Param {
     ..param("scale", INT)
 };
 
-/// The maths on `Decimal` (area 19, "Numbers", question 18): each result
+/// The maths on `Decimal` (area 19, "Numbers"): each result
 /// is correctly rounded to `scale:` by `rounding:`, the same on every
 /// target, by its parameters before those two.
 const fn maths(
@@ -805,7 +804,7 @@ const fn map(
     }
 }
 
-/// A `money` operation (area 19, "Money and payments", question 16), by
+/// A `money` operation (area 19, "Money and payments"), by
 /// its parameters and result; amounts are whole numbers of minor units.
 const fn money(
     op: Op,
@@ -828,7 +827,7 @@ const fn money(
 
 const MONEY: Kind = Kind::Builtin(Builtin::Money);
 
-/// A `units` operation (area 19, "Physical quantities", question 17).
+/// A `units` operation (area 19, "Physical quantities").
 const fn units(
     op: Op,
     name: &'static str,
@@ -1162,7 +1161,7 @@ pub const OPERATIONS: &[Operation] = &[
         COLOUR,
         "colour::with_lightness",
     ),
-    // Cryptography (area 19, "Hashing and cryptography", question 9): one
+    // Cryptography (area 19, "Hashing and cryptography"): one
     // construction per job and no algorithm choices, each one function in
     // `jadpo-value`'s `crypto` module. A `key:` is a key setting, written
     // `key: config.<name>` and nowhere else, so the checker owns the place
@@ -1300,7 +1299,7 @@ pub const OPERATIONS: &[Operation] = &[
             "decimal::abs",
         )
     },
-    // The maths (area 19, "Numbers", question 18), each one function in
+    // The maths (area 19, "Numbers"), each one function in
     // `jadpo-value`'s `decimal` module: an angle is in radians, `sqrt`'s
     // value and `power`'s exponent are never negative, which the checker
     // proves, and `ln` fails with `out_of_range` unless its value is
@@ -1647,7 +1646,7 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::Builtin(Builtin::Bool),
         "geo::within",
     ),
-    // SHA-256 (area 19, "Hashing and cryptography", question 24): a
+    // SHA-256 (area 19, "Hashing and cryptography"): a
     // digest is `Bytes`, written as text by `encoding`.
     Operation {
         op: Op::HashSha256,
@@ -1710,7 +1709,7 @@ pub const OPERATIONS: &[Operation] = &[
         SAME_WHOLE,
         "integer::min",
     ),
-    // JSON in memory (area 19, "Data formats", question 14), through the
+    // JSON in memory (area 19, "Data formats"), through the
     // wire's codecs (areas 2 and 7): `json.read` is given the codec of the
     // type `as:` names, and `json.write` the codec of its value's type,
     // which the plan numbers per call, so both run in `jadpo-value`'s
@@ -1888,8 +1887,7 @@ pub const OPERATIONS: &[Operation] = &[
         "list::slice",
     ),
     // Text keys go by code point, as queries sort them, or by a locale's
-    // rules with `locale:`, through ICU4X's collator (area 19, question
-    // 26); `locale:` means nothing for a key that isn't text.
+    // rules with `locale:`, through ICU4X's collator (area 19, "Slugs and text order"); `locale:` means nothing for a key that isn't text.
     list(
         Op::ListSortBy,
         "sort_by",
@@ -2167,7 +2165,7 @@ pub const OPERATIONS: &[Operation] = &[
             "money::sum",
         )
     },
-    // Randomness (area 19, "Randomness", question 19): each reads the
+    // Randomness (area 19, "Randomness"): each reads the
     // generator, the operating system's outside tests and one seeded per
     // test in them, so it is called only in actions, as `clock.now` is
     // ([`Op::reads_generator`]). Each is one function in `jadpo-value`'s
@@ -2585,7 +2583,7 @@ pub const OPERATIONS: &[Operation] = &[
         namespace: "text",
         name: "from",
         // `form:` writes a closed list's code in another code system (area
-        // 19, question 22).
+        // 19, "Closed value sets are enums").
         params: &[
             param("value", Kind::Contract),
             by_type("form", Kind::Enum(crate::CodeForm::NAME)),
@@ -2716,8 +2714,7 @@ pub const OPERATIONS: &[Operation] = &[
         TEXT,
         "text::upper",
     ),
-    // The `units` operations (area 19, "Physical quantities", question
-    // 17): making a quantity from a number and a unit, reading one in a
+    // The `units` operations (area 19, "Physical quantities"): making a quantity from a number and a unit, reading one in a
     // unit, and adding a list of one kind up. `+`, `-`, comparisons and the
     // products and quotients are the operator table's.
     units(
@@ -2789,7 +2786,7 @@ pub const OPERATIONS: &[Operation] = &[
 /// Operations that moved, by their old name and their new one: a call by
 /// the old name is `semantic.standard_operation_moved`, whose edit writes
 /// the new one (area 19). `temporal.format` became the time types'
-/// `text.format` (question 2).
+/// `text.format` (area 19, "The contract, generated").
 pub const MOVED: &[(&str, &str)] = &[("temporal.format", "text.format")];
 
 /// Where `namespace.name` moved to, if it did.
@@ -2806,7 +2803,7 @@ pub fn moved(namespace: &str, name: &str) -> Option<&'static str> {
 /// Namespaces that moved whole, each with the namespaces it became: a
 /// call `collection.<name>` is `semantic.standard_operation_moved`, whose
 /// edit writes `list.`, `set.` or `map.` by what its first argument is, a
-/// list unless it is a set or a map (area 19, question 6). The old name
+/// list unless it is a set or a map (area 19, "One namespace per type"). The old name
 /// stays reserved, so the habit is always caught.
 pub const MOVED_NAMESPACES: &[(&str, &[&str])] = &[("collection", &["list", "set", "map"])];
 

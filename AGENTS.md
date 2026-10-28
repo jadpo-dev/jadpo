@@ -54,7 +54,7 @@ lines. Codex never merges these pull requests or enables auto merge.
   needs a language choice the pages do not make, stop and ask Richard with a
   recommendation.
 - Every user-facing screen (CLI output, generated pages) follows the
-  [CLI design language](docs/language/research/14-cli-design-language.md) and
+  [CLI design language](docs/cli-design-language.md) and
   is designed with the design skills in `.agents/skills/` before it is built.
 - Update the roadmap only when a chunk finishes or the order changes.
 - Keep the process lean (Richard, 2026-10-15):

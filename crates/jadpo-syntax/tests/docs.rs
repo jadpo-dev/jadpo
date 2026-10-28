@@ -1,5 +1,5 @@
 //! The documentation's examples as parser tests (docs/compiler-runtime.md
-//! §2.9, chunk 1.2): every example of the decided syntax parses without a
+//! §2.7, "Specification examples become tests"): every example of the decided syntax parses without a
 //! syntax error, and every example of any age parses into a tree that holds
 //! its text exactly.
 

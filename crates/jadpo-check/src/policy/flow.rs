@@ -1962,8 +1962,7 @@ impl Walk<'_> {
 
     /// A transition's `when:` tests fields of the record it changes, and
     /// refusing it shows what they hold, so every caller who may run it
-    /// may read each one (area 9, "Restricted fields in conditions and
-    /// orders").
+    /// may read each one (area 9, "Field restrictions").
     /// Whether it reported a problem.
     fn condition(
         &mut self,

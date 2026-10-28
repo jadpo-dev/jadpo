@@ -1,4 +1,4 @@
-//! The `random` namespace (area 19, "Randomness", question 19): tokens,
+//! The `random` namespace (area 19, "Randomness"): tokens,
 //! codes, whole numbers, shuffles and samples, each made from the random
 //! bytes it is given.
 //!

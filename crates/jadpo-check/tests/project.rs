@@ -333,7 +333,7 @@ fn domains_see_only_what_others_make_public() {
 
 #[test]
 fn a_scenario_sees_only_what_domains_make_public() {
-    // Area 13, question 1: a test in the root `tests/` folder sees what
+    // Area 13, "What a test can reach": a test in the root `tests/` folder sees what
     // another domain would see. A test beside its subject sees its whole
     // domain.
     assert_eq!(

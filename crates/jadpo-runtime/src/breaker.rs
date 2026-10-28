@@ -30,8 +30,8 @@
 //! - **The alert** is raised by the tick, once per outage, recorded on
 //!   the breaker's row as a schedule's are on its state (chunk 6.9).
 //!
-//! Chosen where the pages leave it open (area 12, "Chosen in chunk
-//! 7.2b"): [`OPEN_AFTER`] failures in a row, a first pause of
+//! Chosen where the pages leave it open (area 12, "When a provider
+//! keeps failing"): [`OPEN_AFTER`] failures in a row, a first pause of
 //! [`PAUSE_MS`] doubling after each failed probe up to [`PAUSE_CAP_MS`].
 //!
 //! [`Source::Live`]: crate::capability::Source::Live

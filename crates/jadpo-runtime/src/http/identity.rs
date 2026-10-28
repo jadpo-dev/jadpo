@@ -1008,8 +1008,8 @@ pub async fn issued(
     Stored::Value(Value::list(items))
 }
 
-/// A `GET` route that lists tokens or keys itself (area 8, "Listing tokens
-/// and keys from a `GET`"): `holder`'s, as `sessions.tokens` and
+/// A `GET` route that lists tokens or keys itself (area 8, "Listing from a
+/// `GET` route"): `holder`'s, as `sessions.tokens` and
 /// `Service.keys` list them in an action, in a boundary of its own as a
 /// one-statement read at repeatable read, limited by the holder's record's
 /// `read` grants like any query.

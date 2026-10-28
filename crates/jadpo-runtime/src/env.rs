@@ -7,7 +7,7 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Env {
     /// Seeds what an invocation decides at random, new identities and
-    /// what `random` gives (area 19, question 19), so a test that uses
+    /// what `random` gives (area 19, "Randomness"), so a test that uses
     /// them reproduces. A test's comes from its key alone, never from the
     /// run or the order tests run in, so a rerun gives it the same values.
     /// `None` in a deployable: what it decides at random takes the host's

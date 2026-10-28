@@ -691,7 +691,7 @@ impl Ctx<'_> {
             used.push(field.name.clone());
             if let Some((_, kind)) = allowed.iter().find(|(name, _)| *name == field.name) {
                 // An amount of money and a percentage are each written with
-                // its style, and nothing else is (area 19, question 16).
+                // its style, and nothing else is (area 19, "`Money` and the operator table").
                 if jadpo_std::translation::Style::of(*kind) != field.style {
                     clean = false;
                     self.problems

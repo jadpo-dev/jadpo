@@ -679,7 +679,7 @@ impl Names<'_> {
             return;
         }
         // A scenario in the root `tests/` folder sees what another domain
-        // would see: only what a domain makes public (area 13, question 1).
+        // would see: only what a domain makes public (area 13, "What a test can reach").
         // So does a seed calling a fixture: a private fixture is its own
         // domain's (area 13, decided 2026-10-14).
         let outside = *self.ownership == Ownership::Root

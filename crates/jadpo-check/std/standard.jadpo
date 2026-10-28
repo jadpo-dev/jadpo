@@ -235,7 +235,7 @@ public type CountrySubdivision = Enum {}
 /// the prefix zero: `192.0.2.0/24`, `2001:db8::/32`.
 public type Cidr = Text {}
 
-/// A colour in sRGB with its alpha (area 19, question 13), each channel
+/// A colour in sRGB with its alpha (area 19, "`Colour`"), each channel
 /// from 0 to 255, written `#1e6fd9`, or `#1e6fd980` when it isn't opaque.
 /// `colour`'s operations convert, mix and compare colours.
 public type Colour = Object {
@@ -1630,7 +1630,7 @@ public type BloodPressure = Object {
 /// `5.5 mmol/L`. Health data.
 public type BloodGlucose = Concentration {}
 
-// The geospatial types (area 19, "Geospatial: a future area", chunk 5.5s):
+// The geospatial types (area 19, "Geospatial types"):
 // positions in WGS84 by `latitude` and `longitude`, never a pair, and the
 // geometries made of them, sent as GeoJSON (RFC 7946), whose `[longitude,
 // latitude]` order exists only on the wire. Storing one and the `geo.`

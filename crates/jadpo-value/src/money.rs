@@ -1,4 +1,4 @@
-//! `Money` (area 19, "Money and payments", question 16): its operations
+//! `Money` (area 19, "Money and payments"): its operations
 //! and the operator table's rows for it, defined once for both executors.
 //! An amount is a whole number of its currency's minor units, so adding
 //! and comparing are exact; `*` and `/` by a number round to a whole minor

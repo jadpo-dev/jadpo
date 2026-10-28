@@ -302,7 +302,7 @@ impl Alert {
         format!("{} {of}", self.id())
     }
 
-    /// Its log event (area 14, question 13: alerts are log events the
+    /// Its log event (area 14, "Operator commands": alerts are log events the
     /// hosting platform's alerting picks up), times as RFC 3339 text,
     /// never a value from the app's data.
     pub fn event(&self) -> serde_json::Value {

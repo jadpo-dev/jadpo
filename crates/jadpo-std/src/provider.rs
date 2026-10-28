@@ -155,7 +155,7 @@ pub fn wire_parts(standard: &str) -> Option<Vec<&'static str>> {
 }
 
 /// The common names a part of a standard type goes by, from the shape
-/// `type.standard_exists` matches (area 19, question 5): a `Money`'s
+/// `type.standard_exists` matches (area 19, "Distinctive shapes only"): a `Money`'s
 /// `amount`, `value`, `cents`; a `Point`'s `lat` and `lng`.
 fn shape_names(standard: &str, meaning: &str) -> &'static [&'static str] {
     crate::standard_type(standard)

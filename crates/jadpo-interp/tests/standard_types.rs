@@ -1,5 +1,5 @@
 //! The one harness every standard type runs through, at runtime (area 19,
-//! "Every standard type meets one contract", question 2): for each data
+//! "Every standard type meets one contract"): for each data
 //! entry in `jadpo_std::standard`, its valid examples read from their
 //! canonical text and write it back, are shown to people as the entry
 //! says, round-trip through JSON in the shape the entry names and through

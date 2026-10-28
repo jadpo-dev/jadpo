@@ -66,7 +66,7 @@ pub struct SubscriberPlan {
     /// The tenant a delivery is limited to.
     pub tenant: TenantFrom,
     /// The store its action writes, where its handled record commits with
-    /// its writes (area 12, "Outbox placement, settled"), or, writing
+    /// its writes (area 12, "Outbox placement"), or, writing
     /// none, the one its events are kept in, where its handled record
     /// commits with them (chunk 6.6a); `None` when it does neither, as a
     /// capability's delivery, whose record alone says it was sent.

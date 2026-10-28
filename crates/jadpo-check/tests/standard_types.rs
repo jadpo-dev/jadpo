@@ -1,5 +1,5 @@
 //! The one harness every standard type runs through, in the checker (area
-//! 19, "Every standard type meets one contract", question 2): each type's
+//! 19, "Every standard type meets one contract"): each type's
 //! stub declaration agrees with its data entry in `jadpo-std`, and the
 //! contract's calls and `<` accept a value of the type exactly as its entry
 //! says. `jadpo-runtime`'s `standard_types` tests are the runtime's half,

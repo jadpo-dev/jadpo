@@ -1,5 +1,5 @@
-//! Cloudflare Queues' consumer on Workers (roadmap chunk 8.2k; area 11,
-//! "Chosen in chunk 7.7c2"; area 14, "A Workers deployable"): a warehouse
+//! Cloudflare Queues' consumer on Workers (area 11, "The Cloudflare
+//! Queues driver"; area 14, "A Workers deployable"): a warehouse
 //! built for Workers that receives a queue on Cloudflare Queues
 //! (`Driver.cloudflare_queues`) and records each shipment its messages tell
 //! it of. Its Wrangler file names the queue's consumer by Wrangler's own

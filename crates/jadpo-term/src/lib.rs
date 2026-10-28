@@ -1,4 +1,4 @@
-//! The CLI design language (docs/language/research/14-cli-design-language.md):
+//! The CLI design language (docs/cli-design-language.md):
 //! how everything `jadpo` prints looks, in rich, plain and JSON output.
 //!
 //! [`Style::detect`] decides a stream's mode, colour, palette and symbols from

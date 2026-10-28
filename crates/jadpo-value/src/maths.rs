@@ -1,4 +1,4 @@
-//! Maths on `Decimal` (area 19, "Numbers", question 18): `sqrt`, `power`,
+//! Maths on `Decimal` (area 19, "Numbers"): `sqrt`, `power`,
 //! `exp`, `ln`, `sin`, `cos`, `atan2` and `pi`, each correctly rounded to
 //! the `scale:` asked for by the `rounding:` named, by Jadpo's own integer
 //! arithmetic, so every target gives the same digits.

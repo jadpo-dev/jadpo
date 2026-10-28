@@ -2,7 +2,7 @@
 title: Reads and writes
 area: 6
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 ---
 
 # Reads and writes
@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"). Built in chunk 5.5u8: a query giving a map layer, a `FeatureCollection<G, P>` a `GET` route sends ("A query giving a map layer"). Built in chunk 5.8c: a result type with a rule across its fields is refused (`query.result_rule`). Built in chunk 6.3b: a standard operation with an exact SQL form in a condition, with an index on its expression ("Operations in conditions"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Everything on this page is built unless it says "Not built yet". The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL.
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -21,7 +21,7 @@ The examples follow the golden todo app's `planning` domain: `User`,
 ## Named queries
 
 Every read is a named query, one per file in its domain's `queries/` folder
-(decided in areas 1 and 5). A query is one read: which entity, which
+(areas 1 and 5). A query is one read: which entity, which
 records, in what order, and how many. The result type says how many records
 come back, so there is no separate word for it:
 
@@ -149,44 +149,6 @@ page exists. Its text is fixed when the project is compiled: a
 inside an action reads in the action's transaction; called from a test, it
 runs in a short transaction of its own.
 
-::: today
-
-Queries sit inside the entity with a required `freshness:` setting. The body
-is ordinary statements around a read expression that names its own
-cardinality (`required`, `optional`, `many` or `page`):
-
-```jadpo project=today-query
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: Text
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    query by_id(todo_id: Todo.id)
-    freshness: authoritative
-        fails TodoNotFound
-        -> Todo
-    {
-        return attempt query required Todo {
-            where: id == todo_id
-            missing: TodoNotFound
-        }
-    }
-}
-```
-
-:::
-
 ## Filters
 
 Each `where:` line is one condition, and a record must meet all of them.
@@ -288,30 +250,21 @@ worked out in the query are refused, and so is a function applied to a
 field, but for the operations below; values
 are parameters and their fields, literals, enum values, lists of those and
 `clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
-accepted wherever a literal is, since it is a value fixed while compiling
-(decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
+accepted wherever a literal is, since it is a value fixed while compiling.
+`<` and the other orderings take numbers, times, dates and
 durations, as they do in a body (area 3). A field may be passed to three
 kinds of operation. `ai.distance` (area 21) is compared with a bound. A
 `geo.` test (`geo.within`, `geo.contains` or `geo.intersects`) takes a
 geometry field first and a parameter after, on a `where:` line of its
 own or joined by `and`, and a GiST index serves it: the index finds the
 records and Jadpo's own code decides each, so the query gives the code's
-answer ([area 20](20-geospatial.md), "Queries", built in chunk 5.5u5).
+answer ([area 20](20-geospatial.md), "Queries").
 And a standard operation with an exact SQL form stands where the field
 would ("Operations in conditions", below). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
 absent; that is what `where_present:` is for. The compiler creates the
 indexes the conditions and order need (area 5).
-
-::: today
-
-Only page queries can test more than one field, by chaining `and:`, and
-optional filters use `matches optional` and `<= optional`. Every other query
-accepts exactly one `field == value`, and a nullable field cannot be tested
-at all. The page example is under the next section.
-
-:::
 
 ### Operations in conditions
 
@@ -321,8 +274,7 @@ field is its first argument, and every other argument is written out, a
 literal, a constant or an enum value such as `Rounding.half_even`. The
 database works the operation out with that form, which gives exactly what
 the operation gives in code, so the query keeps the records `list.filter`
-would keep with the same operation (decided 2026-10-19, built in chunk
-6.3b). Its result is compared with a value as a field's is, by `==`, `!=`,
+would keep with the same operation. Its result is compared with a value as a field's is, by `==`, `!=`,
 `in` and, for numbers, times, dates and durations, the orderings; an
 operation that gives a `Bool` is the condition itself.
 
@@ -525,12 +477,12 @@ offset is slow and skips or repeats records when rows are added.
 A vector field is ordered by nearness instead, `order: [F nearest v]`,
 the only order of a query returning `List<Nearest<T>>`, with
 `ai.distance(F, v)` compared with a bound in `where:` (area 21, "The
-nearest-neighbour query", built in chunk 5.5v1b).
+nearest-neighbour query").
 A point field is ordered by distance, nearest first, with
 `order: [geo.distance(F, p) asc]`, the only order of a list, beside
 `where: geo.within(F, p, distance: d)` on the same field and point, which
 bounds what is sorted; records are sorted by the distance `geo.distance`
-gives, then `id` (area 20, question 4, built in chunk 5.5u5).
+gives, then `id` (area 20).
 
 ```jadpo check project=page-input file=types.jadpo hidden
 type TodoStatus = Enum {
@@ -562,77 +514,6 @@ order fields are required ones, since the next page starts after the last
 record's values. Text sorts by code point, as Jadpo compares it, whatever
 the database's collation; an enum, a `Bool` or a structured field can't be
 sorted by, since the database and Jadpo would disagree on their order.
-
-::: today
-
-The page shape is spelled out by hand: a cursor type repeating the order
-fields, a page type, `project:`, and `cursor:` written like a constructor
-call. `limit:` may come from the request here but must be a literal
-everywhere else, and `offset:` is required on lists and includes.
-
-```jadpo project=today-page
-enum TodoStatus {
-    open
-    completed
-}
-
-type PageSize = Int {
-    min: 1
-    max: 100
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    owner_id: Uuid
-    status: TodoStatus
-    created_at: Instant generated { on: create }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    query page_todos(owner_id: Todo.owner_id, input: ListTodos)
-    freshness: authoritative
-        -> TodoPage
-    {
-        return attempt query page Todo -> TodoPage {
-            where: owner_id == owner_id
-            and: status matches optional input.status
-            order_by: created_at desc, id desc
-            after: optional input.after
-            limit: input.page_size
-            project: TodoView
-            cursor: TodoCursor(created_at, id)
-        }
-    }
-}
-
-input ListTodos {
-    status: Todo.status optional
-    page_size: PageSize default 25
-    after: TodoCursor optional
-}
-
-value TodoCursor {
-    created_at: Todo.created_at
-    id: Todo.id
-}
-
-output TodoView {
-    id: Todo.id
-    status: Todo.status
-}
-
-output TodoPage {
-    items: List<TodoView>
-    next: TodoCursor?
-}
-```
-
-:::
 
 ## Counts, sums and groups
 
@@ -951,8 +832,7 @@ currency is the one its type fixes, sent as a parameter.
   may read, as an output's fields are (area 9,
   `policy.output_field_unproved`).
 
-Aggregates are the decided exception to "a query computes nothing"
-(area 19, questions 21 and 28): a time bucket and an average are written
+Aggregates are the exception to "a query computes nothing" (area 19): a time bucket and an average are written
 with their standard operations' SQL forms, and the rest are PostgreSQL's
 `count`, `sum`, `min` and `max`, so an aggregate query is always one
 statement, however many records it counts.
@@ -1376,64 +1256,7 @@ of the keys the records hold, and a list through a `LATERAL` subquery that
 orders and limits each record's list on its own. Includes nest up to two levels, stay inside the
 domain, and reach another store only to fetch records by `id`. A parent is
 included even when its lifecycle hides it, because the reference still
-holds (question 10).
-
-::: today
-
-The parent declares each child list as an `inverse`, the include writes
-five settings on one line, and the result has a `parent:` field holding the
-whole record:
-
-```jadpo project=today-include
-failure UserNotFound {
-    kind: NotFound
-    code: "user_not_found"
-}
-
-entity User {
-    id: Uuid { generated: identity }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        inverse todos: many Todo via: Todo.owner_id
-    }
-
-    query with_todos(user_id: User.id)
-    freshness: authoritative
-        fails UserNotFound
-        -> UserTodos
-    {
-        return attempt query required User {
-            where: id == user_id
-            include: todos into: UserTodos order_by: id asc limit: 100 offset: 0
-            missing: UserNotFound
-        }
-    }
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    owner_id: User.id
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-        references owner_id: User.id as: owner on_delete: cascade
-    }
-}
-
-output UserTodos {
-    parent: User
-    todos: List<Todo>
-}
-```
-
-:::
+holds.
 
 ## The operations every entity gets
 
@@ -1451,13 +1274,11 @@ domains call that domain's public actions.
 | `Todo.delete(todo)` | removes the record, or runs the lifecycle's `delete` transition |
 | `User.disable(user)` | runs a lifecycle transition, named after it |
 
-Built since chunk 3.3, the lifecycle's transitions since chunk 3.4. An
-`update`, `delete` or transition takes the record loaded earlier in the action, or its
-`id`: by `id` it fails with the entity's not-found failure when no record
-has it (chosen in chunk 3.3, since area 5's lifecycle writes
-`Todo.delete(todo_id)` and this table `Todo.delete(todo)`). An update gives
-its fields in `set:` or the request's changes with `patch:`, never both, and
-`when_supplied:` goes with `patch:` (chosen in chunk 3.3). A create and an
+An `update`, `delete` or transition takes the record loaded earlier in
+the action, or its `id`: by `id` it fails with the entity's not-found
+failure when no record has it. An update gives its fields in `set:` or the
+request's changes with `patch:`, never both, and `when_supplied:` goes with
+`patch:`. A create and an
 update give back the record as stored; a delete gives nothing. Each fills
 the store's own fields: a new version 7 `id` (`Ctx::new_id`, from the
 invocation's seed) on create, and the operation's clock in each generated
@@ -1507,7 +1328,7 @@ record as stored; through `delete`, it gives nothing. Its block takes only
 update and delete it reaches only a record `visible:` lets through, so a
 hidden one is the entity's not-found failure. A `when:` that asks more than
 `visible:` can refuse a record that is there, and that refusal is mapped in
-`conflict:` like a rule, keyed by the transition (chosen in chunk 3.4):
+`conflict:` like a rule, keyed by the transition:
 
 ```jadpo check project=transition file=planning.jadpo hidden
 type UserName = Text {
@@ -1565,13 +1386,12 @@ statement asks whether the user is there and visible, which tells
 `UserDisabled` from `UserNotFound`. `jadpo sql disable_user` shows both.
 
 Nothing else is an entity operation: `Todo.fetch(todo_id)` is
-`semantic.unknown_callee` (checked since chunk 1.9), while `Todo.title(value)`
+`semantic.unknown_callee`, while `Todo.title(value)`
 still builds a value of the field's type (area 2).
 
 `TodoNotFound` is the domain's failure of that name in `failures/`, or one
 the compiler provides with kind `not_found` when the domain declares none:
-public, with no fields, placed at the entity in the graph (chosen in chunk
-3.3). A read or write gives each field typed `<Entity>.id` of a declared one
+public, with no fields, placed at the entity in the graph. A read or write gives each field typed `<Entity>.id` of a declared one
 the `id` it looked for. A write that cannot fail needs no `attempt` (area
 3).
 
@@ -1653,81 +1473,9 @@ changes only when one was supplied. A value built without one of its
 optional `Input` fields remembers it was left out, which only a patch
 reads; it still equals one given `none`. A field whose type isn't nullable
 (`title` above) can't be cleared, so `none` given to it is the same as
-leaving it out and the patch keeps the stored value (chosen in chunk 3.10:
-a check error can't tell, since forwarding an optional value such as a
-page's `next` cursor into an optional field is ordinary code).
-
-::: today
-
-Writes are expressions that only an action inside the entity may use.
-`update` and `delete` find their record with `where:` and must map
-`missing:` and `conflict:` every time; `create` puts its mapping after the
-closing brace:
-
-```jadpo project=today-write
-failure TodoNotFound {
-    kind: NotFound
-    code: "todo_not_found"
-}
-
-failure EmptyPatch {
-    kind: InvalidValue
-    code: "empty_patch"
-}
-
-failure TodoConflict {
-    kind: Conflict
-    code: "todo_conflict"
-}
-
-entity Todo {
-    id: Uuid { generated: identity }
-    title: Text
-    due_at: Instant?
-    reminder_sent_at: Instant?
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action add(title: Todo.title)
-        fails TodoConflict
-        -> Todo
-    {
-        return attempt create Todo {
-            title: title
-            due_at: none
-            reminder_sent_at: none
-        } conflict: TodoConflict
-    }
-
-    action edit(todo_id: Todo.id, input: EditTodo)
-        fails TodoNotFound, EmptyPatch, TodoConflict
-        -> Todo
-    {
-        return attempt update required Todo {
-            where: id == todo_id
-            patch: input
-            empty: EmptyPatch
-            set: {
-                reminder_sent_at: none when input.due_at supplied
-            }
-            missing: TodoNotFound
-            conflict: TodoConflict
-        }
-    }
-}
-
-input EditTodo {
-    title: Todo.title optional
-    due_at: Todo.due_at optional
-}
-```
-
-:::
+leaving it out and the patch keeps the stored value. It is not an error,
+since forwarding an optional value such as a page's `next` cursor into an
+optional field is ordinary code.
 
 ## When a write is refused
 
@@ -1811,12 +1559,12 @@ its delete cascades to. A reference's value names a record that is surely
 there when it is read from a record loaded earlier in the action
 (`owner.id`, or a loaded record's own reference to that entity) or is
 `none`; any other value may name one that isn't, so the write can fail with
-that entity's not-found failure, which `attempt` passes on (chosen in chunk
-3.3: the transaction's snapshot holds a record loaded in it, and a
-concurrent delete of it is a concurrent change). The runtime maps the
+that entity's not-found failure, which `attempt` passes on. A loaded
+record is surely there because the transaction's snapshot holds it, and a
+concurrent delete of it is a concurrent change. The runtime maps the
 store's constraint name back to the rule (area 5 names every constraint).
 An action whose failure its caller handles with `match` runs inside a
-savepoint (chosen in chunk 3.10): when it fails, everything it wrote is
+savepoint: when it fails, everything it wrote is
 undone, a refused write among them, and the caller carries on in a
 transaction the failure didn't end, since an action is all-or-nothing
 whoever calls it. One that passes its failure on with `attempt` needs none:
@@ -1834,7 +1582,7 @@ outside call comes before its writes and carries an idempotency key, so a
 rerun repeats it harmlessly (area 11). A changing call with no key is the
 exception: once it has gone out, the action isn't run again but stops as
 `outcome_unknown`, for an operator, since sending it again could act twice
-(area 16, "Parked, never sent again blindly"; chunk 7.9a). An action with
+(area 16, "Parked, never sent again blindly"). An action with
 several changing calls is the other: once its record exists, a rerun
 replays the recorded calls and keeps the record's `clock.now` ("Several
 outside calls", below). After three
@@ -1854,8 +1602,7 @@ record runs at read committed instead ("Counters and other one-step
 updates", below). Catching a client that edits a stale copy across two
 requests is HTTP's `If-Match` (area 7).
 
-Built in chunk 3.3. An action that loads a record runs at repeatable read
-(every action did until chunk 3.7), so its snapshot is taken at its first
+An action that loads a record runs at repeatable read, so its snapshot is taken at its first
 statement and a record it loaded is the record as of then; an `update` or `delete` of a row another transaction
 changed since is PostgreSQL's serialisation failure, which the driver
 reports as a concurrent change. The runtime then rolls the transaction
@@ -1869,8 +1616,7 @@ earlier action returned) is checked only as far as its row is still there.
 
 ### Outside calls hold no transaction
 
-No transaction is open while an action waits on a provider (Richard,
-2026-10-15). What an action reads before its outside call runs in a short
+No transaction is open while an action waits on a provider. What an action reads before its outside call runs in a short
 read-only snapshot that closes before the call goes out; the transaction
 opens after the call returns, and the action's writes and any later reads
 run in it. Reads between two outside calls get a snapshot of their own. A
@@ -1885,17 +1631,16 @@ never widens the window in which another request's change forces a rerun.
 The guarantee is the one repeatable read gives: every record the action
 writes is checked against the copy it loaded.
 
-Built in chunk 7.4, at the capability seam every outside call goes
-through:
+This is done at the capability seam every outside call goes through:
 
 - **The snapshot is what the action has only read.** An action's
   transaction still begins at its first store operation, at its level. If
   it has run nothing but reads when a call goes out, it is the snapshot:
   it reads the row versions of the records it loaded (one statement per
   table, `xmin` by `id`) and rolls back, before the call is sent. Once it
-  has written, a call is refused as before (`call_in_transaction`), so no
+  has written, a call is refused (`call_in_transaction`), so no
   transaction is ever open while a call is out. An action with no call
-  keeps its one transaction, unchanged.
+  keeps its one transaction.
 - **The transaction after the call.** The next store operation begins a
   new transaction at the same level, in the same store. Reads after a call
   run in it; if another call comes before any write, they were a snapshot
@@ -1918,11 +1663,11 @@ through:
   attempts. Its keyed calls take the same steps again, so each repeats
   under the key it was first sent with (area 11); a change found at the
   commit of a route's or a delivery's held transaction does the same. An
-  unkeyed change that went out stops it as `outcome_unknown` instead
-  (chunk 7.9a). A reference to a record
+  unkeyed change that went out stops it as `outcome_unknown` instead.
+  A reference to a record
   loaded before a call that was deleted while the call was out is a
   concurrent change too, so the rerun's fresh read finds the record gone.
-- **A batch's items** (chunk 7.4b). An item of a run whose `each:` action
+- **A batch's items.** An item of a run whose `each:` action
   makes outside calls is a batch of its own (area 12, "How a run is
   kept"), so its calls go out with no transaction open, as any action's
   do, and its writes and the run's position commit after them under these
@@ -1931,7 +1676,7 @@ through:
 
 ### Several outside calls
 
-Decided 2026-10-16 (Richard). An action may make up to 8 changing calls in
+An action may make up to 8 changing calls in
 order (area 12, "Several changing calls in one action"). For reads and
 writes this changes three things and keeps the rest:
 
@@ -1960,11 +1705,11 @@ step took effect is warned at compile time, naming the fixes: check with a
 read before the first call, record what happened and finish in a
 subscriber, or undo as another step (area 12).
 
-Built in chunk 7.4b, for the order: a write placed before a later outside
-call is [`data.write_before_call`](#data-write-before-call), reported at
-the write and naming the last call it comes before, so checked code never
-reaches the runtime's `call_in_transaction`, which stays as the guard.
-Chosen there, each the most conservative reading:
+A write placed before a later outside call is
+[`data.write_before_call`](#data-write-before-call), reported at the write
+and naming the last call it comes before, so checked code never reaches the
+runtime's `call_in_transaction`, which stays as the guard. Each part of the
+rule takes the most conservative reading:
 
 - **What writes.** An entity's write; a session or key operation that
   changes one; starting a run (`batches.each` and the file helpers keep
@@ -2059,55 +1804,6 @@ action recheck_prices(
 }
 ```
 
-::: today
-
-An action that calls two entities' writing actions must say
-`consistency: atomic`, and an entity action that writes a record it was
-handed needs `guard: reload` or `guard: revision`. Nothing checks for
-concurrent change on PostgreSQL (see Status).
-
-```jadpo project=today-atomic
-entity Project {
-    id: Uuid { generated: identity }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action open() -> Project {
-        return attempt create Project {}
-    }
-}
-
-entity Board {
-    id: Uuid { generated: identity }
-
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action open() -> Board {
-        return attempt create Board {}
-    }
-}
-
-action open_project_with_board()
-consistency: atomic
-    -> Board
-{
-    var project = Project.open()
-    return Board.open()
-}
-```
-
-:::
-
 ## Counters and other one-step updates
 
 When a new value depends only on the stored one, the database works it out
@@ -2117,10 +1813,9 @@ in one step and nothing needs checking. On the right of `set:`,
 record's `id` instead of a loaded record, and its values may use only
 parameters, constants, `clock.now` and the record's stored fields, so no
 increment is ever lost. A constant here is a `constant` declaration
-(area 3, decided 2026-10-16, built in chunk 5.3e).
+(area 3).
 
-Which isolation level an action runs at follows from what it does (Richard,
-2026-10-15). An action that loads no record, neither itself nor through any
+Which isolation level an action runs at follows from what it does. An action that loads no record, neither itself nor through any
 action it calls, runs at PostgreSQL's read committed level: of two requests
 counting the same row at once, the second waits for the first, adds to its
 count and commits, and neither reruns. An action that loads a record runs at
@@ -2152,18 +1847,18 @@ action view_video(video_id: Video.id) fails VideoNotFound -> Video {
 }
 ```
 
-Built in chunk 3.3: the statement is `UPDATE "video" SET "view_count" =
+The statement is `UPDATE "video" SET "view_count" =
 ("view_count" + $1), ...`, and no row is `VideoNotFound`. The database works
 a stored field out with `+` and `-`, which give the same result in SQL as
-in Jadpo (`+` joining text is written `||`, since chunk 3.10), under constructions the declared ranges prove (`ViewCount(...)`
+in Jadpo (`+` joining text is written `||`), under constructions the declared ranges prove (`ViewCount(...)`
 here, since a count of at least 0 plus 1 is at least 0); anything else needs
 the record loaded first. A decimal added to a stored field may not have more
 decimal places than the field's `scale`, since PostgreSQL would round the
 sum its own way (half away from zero) rather than Jadpo's: a literal by its
 own places, any other value by its type's `scale`, and one whose type sets
-none is refused (`data.stored_decimal_scale`, built in chunk 3.4).
+none is refused (`data.stored_decimal_scale`).
 
-Built in chunk 3.7. An action loads a record when it reads one (`get`, or
+An action loads a record when it reads one (`get`, or
 a query with what it includes), is handed one (a parameter whose type
 holds a record, such as `video: Video`, or a list or object holding one),
 writes one back (an `update`, `delete` or transition of a record rather
@@ -2192,8 +1887,7 @@ read.
 A query or `Todo.get` inside a `for` loop is a compile error, because it
 would read once per item. Read the whole set with one query using `in`.
 Writes inside a loop are allowed: the list is bounded and every write joins
-the action's transaction. An outside call inside a loop is not (area 3,
-decided 2026-10-16): a loop of calls is `batches.each` (area 12). A batch that should keep partial progress is a
+the action's transaction. An outside call inside a loop is not (area 3): a loop of calls is `batches.each` (area 12). A batch that should keep partial progress is a
 schedule or subscriber handling one item per action (area 3).
 
 ```jadpo check project=by-ids file=planning.jadpo hidden
@@ -2275,10 +1969,9 @@ an action that never names it, so the error names the cause:
 `store.action_spans_stores`, below, points at the write or the call that
 brings in the second store.
 
-Built in chunk 3.3: the check, counting every action an action calls. At
-run time an action's transaction is begun in the store its first store
+At run time an action's transaction is begun in the store its first store
 operation names. Reading another store outside the transaction is not
-built yet, so since chunk 3.10 an action that reads a second store, itself
+built yet, so an action that reads a second store, itself
 or through an action it calls, is `toolchain.not_built_yet` at the read or
 call that brings it in, rather than a fault as it runs:
 
@@ -2356,7 +2049,7 @@ query a route runs directly to show data (area 7): it may be served from the
 cache its query file declares (area 5). A client still sees its own writes:
 every write response carries a revision, and a request carrying a revision
 newer than the cache skips it. The build lists every query call with where
-it reads from.
+it reads from. Not built yet: caches, which need the Redis driver.
 
 | Call | Reads from |
 |---|---|
@@ -2374,7 +2067,7 @@ route GET /todos {
 
 ## Entities in Redis
 
-Decided 2026-10-16 (Richard). An entity in a Redis store (area 5) is read
+An entity in a Redis store (area 5) is read
 and written through the same queries and operations as any entity, but
 Redis keeps no indexes of its own, so only what Jadpo can keep a key or a
 set for is allowed:
@@ -2399,7 +2092,7 @@ set for is allowed:
 - **One store per action** applies as everywhere: an action writing a Redis
   entity writes nothing in another store.
 
-These are built with the Redis driver, after the first build.
+Not built yet: there is no Redis driver.
 
 ## Reads across domains
 
@@ -2415,8 +2108,7 @@ var owners: List<OwnerView> = identity.users_by_ids(owner_ids)
 ## Errors
 
 Every error this area's reads and writes can produce, with an example
-that triggers it and the new compiler's actual output. The last section
-keeps the archived compiler's errors for settings the rework dropped.
+that triggers it and the compiler's actual output.
 
 ### Queries
 
@@ -2960,8 +2652,7 @@ error: `manual_pages * 2` is worked out, and a query computes nothing
 check failed: 1 error, 1 file
 ```
 
-A constant counts as a literal here (decided 2026-10-16, built in chunk
-5.3e), so this is accepted. Arithmetic on a constant inside the query is
+A constant counts as a literal here, so this is accepted. Arithmetic on a constant inside the query is
 still worked out, and still this error: give the result a constant of its
 own.
 
@@ -3170,7 +2861,7 @@ check failed: 1 error, 1 file
 ```
 
 A value's type must keep it at 1 or more too, since PostgreSQL refuses a
-negative `LIMIT` and 0 reads nothing (chunk 3.10):
+negative `LIMIT` and 0 reads nothing:
 
 ```jadpo check project=e-limit-range-type expect=query.limit_range
 type Title = Text {
@@ -3793,13 +3484,12 @@ check failed: 1 error, 1 file
 
 ### Writes
 
-Since chunk 3.3. The archived compiler's write errors are gone with its
-syntax: a write that isn't an entity's is `data.write_not_entity`; a
+A write that isn't an entity's is `data.write_not_entity`; a
 section a write doesn't take (`missing:`, `where:`, `empty:`) is
 `data.write_section_unexpected`; an update with nothing to change is
 `data.write_section_required`; a field given twice or unknown in `set:` is
 area 2's `type.duplicate_field` or `type.unknown_field`; and the conflict
-mappings are below. Since chunk 7.4b a write placed before a later outside
+mappings are below. A write placed before a later outside
 call is `data.write_before_call`.
 
 ### `data.write_before_call`
@@ -4523,319 +4213,23 @@ error: `checkout` writes two stores
 check failed: 1 error, 5 files
 ```
 
-### Ownership, transactions and freshness
-
-### `data.raw_query_outside_named_query`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes under question 1: an action has no read expression to write.
-
-```jadpo project=e-raw-query-outside-named-query expect=data.raw_query_outside_named_query
-entity Customer {
-    id: Uuid
-    identity: id
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-
-action load_customer(id: Customer.id) -> Customer? {
-    return attempt query optional Customer {
-        where: id == id
-    }
-}
-```
-
-### `data.mutation_owner_required`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Changes meaning under question 5: the owning domain's actions may write.
-
-```jadpo project=e-mutation-owner-required expect=data.mutation_owner_required
-entity Session {
-    id: Uuid
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-}
-
-action save_session(id: Session.id) -> Session {
-    return attempt create Session {
-        id: id
-    }
-}
-```
-
-### `data.query_freshness_required`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes: area 3 removed callable settings.
-
-```jadpo project=e-query-freshness-required expect=data.query_freshness_required
-entity Customer {
-    id: Uuid
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    query by_id(id: Customer.id) -> Customer? {
-        return attempt query optional Customer {
-            where: id == id
-        }
-    }
-}
-```
-
-### `data.freshness_invalid`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes with `freshness:`.
-
-```jadpo project=e-freshness-invalid expect=data.freshness_invalid
-entity Customer {
-    id: Uuid
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    query by_id(id: Customer.id)
-    freshness: cached
-        -> Customer?
-    {
-        return attempt query optional Customer {
-            where: id == id
-        }
-    }
-}
-```
-
-### `data.consistency_required`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes: every action is all-or-nothing (area 3).
-
-```jadpo project=e-consistency-required expect=data.consistency_required
-entity Customer {
-    id: Uuid
-    identity: id
-    persistence {
-        store: primary
-        role: authority
-    }
-    action register(id: Customer.id) -> Customer {
-        return attempt create Customer { id: id }
-    }
-}
-
-entity Account {
-    id: Uuid
-    identity: id
-    persistence {
-        store: primary
-        role: authority
-    }
-    action open(id: Account.id) -> Account {
-        return attempt create Account { id: id }
-    }
-}
-
-action register_both(customer_id: Customer.id, account_id: Account.id) -> Account {
-    var customer = Customer.register(customer_id)
-    return Account.open(account_id)
-}
-```
-
-### `data.consistency_invalid`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes with `consistency:`.
-
-```jadpo project=e-consistency-invalid expect=data.consistency_invalid
-type Count = Int {}
-
-action bump(n: Count)
-consistency: eventual
-    -> Count
-{
-    return n
-}
-```
-
-### `data.atomic_domain_mismatch`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Becomes "an action writes two stores" (area 5).
-
-```jadpo project=e-atomic-domain-mismatch expect=data.atomic_domain_mismatch
-entity Customer {
-    id: Uuid
-    identity: id
-    persistence {
-        store: primary
-        role: authority
-    }
-    action register(id: Customer.id) -> Customer {
-        return attempt create Customer { id: id }
-    }
-}
-
-entity LedgerEntry {
-    id: Uuid
-    identity: id
-    persistence {
-        store: ledger
-        role: authority
-    }
-    action record(id: LedgerEntry.id) -> LedgerEntry {
-        return attempt create LedgerEntry { id: id }
-    }
-}
-
-action register_and_record(customer_id: Customer.id, entry_id: LedgerEntry.id)
-    consistency: atomic
-    -> LedgerEntry
-{
-    var customer = Customer.register(customer_id)
-    return LedgerEntry.record(entry_id)
-}
-```
-
-### `data.value_receiver_guard_required`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes: area 5 removed `self` and `guard:`, and every write checks for concurrent change.
-
-```jadpo project=e-value-receiver-guard-required expect=data.value_receiver_guard_required
-failure CustomerNotFound {
-    kind: NotFound
-    code: "customer_not_found_guard"
-}
-
-failure CustomerConflict {
-    kind: Conflict
-    code: "customer_conflict_guard"
-}
-
-entity Customer {
-    id: Uuid
-    email: Email
-    identity: id
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action change_email(self: value, email: Customer.email)
-        fails CustomerNotFound, CustomerConflict
-        -> Customer
-    {
-        return attempt update required Customer {
-            where: id == self.id
-            set: { email: email }
-            missing: CustomerNotFound
-            conflict: CustomerConflict
-        }
-    }
-}
-```
-
-### `data.mutation_guard_invalid`
-
-> The archived compiler's error: the rework drops entity-owned operations, `freshness:` and `consistency:`, so this mistake no longer exists in the new language.
-
-Goes with `guard:`.
-
-```jadpo project=e-mutation-guard-invalid expect=data.mutation_guard_invalid
-failure CustomerNotFound {
-    kind: NotFound
-    code: "customer_not_found"
-}
-
-failure CustomerConflict {
-    kind: Conflict
-    code: "customer_conflict"
-}
-
-entity Customer {
-    id: Uuid
-    email: Email
-    identity: id
-
-    persistence {
-        store: primary
-        role: authority
-    }
-
-    action change_email(self: value, email: Customer.email)
-    guard: optimistic
-        fails CustomerNotFound, CustomerConflict
-        -> Customer
-    {
-        return attempt update required Customer {
-            where: id == self.id
-            set: { email: email }
-            missing: CustomerNotFound
-            conflict: CustomerConflict
-        }
-    }
-}
-```
-
 ## Review
 
 ### Status
 
-Found by compiling with `jadpo check` and by building the golden todo app
-and reading the generated TypeScript and SQL; nothing was run against a live
-database.
-
-- **No concurrent-change check on PostgreSQL (read from generated code).**
-  An action's transaction runs at PostgreSQL's default isolation (read
-  committed) with no revision on records. `update` re-reads its row under
-  `FOR UPDATE`, so the write itself is consistent, but a decision taken on an
-  earlier read can rest on a value another request has since changed (a lost
-  update). SQLite starts every action with `BEGIN IMMEDIATE`, which
-  serialises writers, so the two engines behave differently.
-- **Only page queries can filter on more than one field (compiled).** `and:`
-  in a `many` query gives four unrelated syntax errors; `required`,
-  `optional` and `many` accept exactly one `field == value`.
-- **A `many` query without `limit:` reads every matching row (compiled).**
-- **`limit:` follows two rules (compiled):** a page takes it from the
-  request; a `many` query or include needs a literal, and `offset:` is
-  required beside it.
-- **Top-level actions can neither read nor write (compiled).** Both are
-  errors (`data.raw_query_outside_named_query`,
-  `data.mutation_owner_required`), so the decided `actions/` folder cannot
-  hold the golden app's actions until the rework lands.
-- **The golden app re-checks visibility by hand (read from generated SQL).**
-  Every read already adds `deleted_at IS NULL`, so `Todo.by_id`'s `match` on
-  `deleted_at` never fires, and `patch_todo` binds `var existing` and never
-  uses it.
-- **`create` puts its conflict mapping outside the braces;** inside, it is
-  read as a field (verified by the syntax review).
+- **Reading another store** outside an action's transaction is not built
+  yet: it is `toolchain.not_built_yet` ("One store per action").
+- **Caches and entities in Redis** are not built yet: there is no Redis
+  driver ("Where a read comes from", "Entities in Redis").
+- **A rerun's time bound** is not built yet: the runtime counts attempts
+  only ("All-or-nothing actions and concurrent changes").
+- **Money, ranges and fields kept as JSON** aren't compared in a query yet
+  ("Operations in conditions").
 
 ### Consistency with the rest of the language
 
 - **Qualified fields.** This page writes `Todo.status` in every condition,
-  while area 5's decided lifecycle writes `visible: deleted_at == none` and
+  while area 5's lifecycle writes `visible: deleted_at == none` and
   `when: deleted_at == none` with bare fields. One rule for every condition
   on a record would mean qualifying those too.
 - **`set:` everywhere.** Create, update, counters and lifecycle transitions
@@ -4843,193 +4237,87 @@ database.
 - **Two not-found mappings.** `Todo.get` reports the entity's own failure,
   while a query maps `missing:` itself, because a query can be about
   something other than one record (`ProjectBoardView`).
-- **`Page<T>` is a standard generic type,** like `List<T>`; area 3 ruled out
-  generics only in your own code.
-- **`order:` replaces `order_by:`** and is a list, following area 2's list
-  decision.
-- **The route example runs a query,** which area 3's table lists as
-  something a route may not do; area 7 decides.
+- **`Page<T>` is a standard generic type,** like `List<T>`; area 3 rules
+  out generics only in your own code.
 
 ### Carried to later areas
 
 | Item | Area | Status |
 |---|---|---|
-| A route may run a query directly for a display read; the write revision header and cookie (`jadpo-revision`) and whether non-browser clients echo it; `If-Match` checked against a record's revision with `precondition_failed` | 7 | Input to area 7 |
-| Policy filters in queries, the cache policy key, concealment of hidden and unpermitted records alike | 9 | Input to area 9 |
-| Children of a hidden parent (question 10): the policy side, such as whether a hidden owner's todos stay readable by others | 9 | Depends on question 10 |
-| Exports and reports that read a large set: a schedule paging through a query, and whether a consistent snapshot read is needed | 12 | Input to area 12 |
+| A route running a query for a display read; the write revision header and cookie; `If-Match` checked against a record's revision | 7 | Answered by area 7: a `GET` runs a query, and every write returns a `Jadpo-Revision` header; `If-Match` is deferred there |
+| Policy filters in queries, the cache policy key, concealment of hidden and unpermitted records alike | 9 | Answered by area 9: policy is compiled into each query's `WHERE` |
+| Children of a hidden parent: the policy side, such as whether a hidden owner's todos stay readable by others | 9 | Input to area 9 |
+| Exports and reports that read a large set, and whether they need a consistent snapshot read | 12 | Answered by area 12: no snapshot reads; keyset pages |
 | Asserting in tests how many records and database queries a query can cost | 13 | Input to area 13 |
-| The build report: each query call's source (store or cache), its row bound and query count, and the indexes it needs | 14 | Input to area 14 |
-| Counts and sums in queries, and totals kept on an entity in the same transaction (computed fields, from the stores mapping §1.8) | 6 | Deferred. Amended 2026-10-17 by area 19 (questions 21 and 28): aggregate queries (`count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using standard operations with SQL forms) are decided in principle; designed and built in chunk 5.6c ("Counts, sums and groups"); totals kept on an entity stay deferred |
-| `expiry:` on lossy-store entities hides expired records from queries and updates like `visible:` | 5 | Answered by area 5 question 15 (2026-10-16): `expires_after:` |
-| Several changing calls: the record, replay and `diverged` | 12 | Question 16 |
+| The build report: each query call's source (store or cache), its row bound and query count, and the indexes it needs | 14 | Area 14's query report |
+| Counts and sums in queries, and totals kept on an entity in the same transaction | 6 | Aggregate queries are built ("Counts, sums and groups"); totals kept on an entity are deferred |
+| `expiry:` on lossy-store entities hiding expired records from queries and updates like `visible:` | 5 | Answered by area 5: `expires_after:` |
+| Several changing calls: the record, replay and `diverged` | 12 | Answered: "Several outside calls" |
 
 ### Open questions
 
-1. **What does a query look like?** Today a query is a callable with a
-   statement body around a read expression with its own cardinality word,
-   five clause grammars, and hand-written cursor and page types (the syntax
-   review's top-10 items 3 and 4). *Recommendation:* a query is one
-   declarative read: `from:`, stacked `where:` lines, `order:`, `limit:` or
-   `page:`, `include:`, `missing:`; how many records it returns follows from
-   its result type. Composition happens in actions. This is Ecto's and
-   Prisma's shape rather than a SQL-like expression language; see
-   [the query proposals](research/06-reads-and-writes-proposals.md) for the
-   alternatives. *Decided 2026-10-12:* yes, as recommended.
-2. **How are filters written?** *Recommendation:* fields qualified with
-   their entity; each `where:` line must hold; comparisons, `and`, `or`,
-   `not`, `== none` and `in`; `where_present:` for a request's optional
-   filters, replacing `matches optional` and `<= optional`; only conditions
-   an index can serve. *Decided 2026-10-12:* yes, as recommended.
-3. **How are order and pages written?** *Recommendation:* `order: [field
-   direction]` with `id` added as the tie-break, so
-   `type.query_order_not_deterministic` goes; every list bounded by a
-   literal or a type's `max:`; keyset pages only, through the standard
-   `Page<T>` and an opaque `PageCursor`; no offset. Relay and Prisma
-   both recommend cursors over offsets for the same reasons. *Decided 2026-10-12:* yes, as recommended.
-4. **How are children and parents included?** *Recommendation:* an
-   `include:` block whose entries name a reference field: this entity's own
-   reference gives the parent, another entity's reference gives children (a
-   list needing `order:` and `limit:`, or one record when the reference is
-   unique). Nesting up to two levels, within the domain, and across stores
-   only by `id`. Other domains' data comes from their public queries. *Decided 2026-10-12:* yes, as recommended.
-5. **Which operations does every entity get?** *Recommendation:* `get`,
-   `create`, `update` (with `set:` or `patch:`), `delete`, and one per
-   lifecycle transition, called through the entity; only actions in the
-   owning domain may call the writing ones, which replaces today's rule
-   that only entity-owned actions write. *Decided 2026-10-12:* yes, as recommended.
-6. **What do failed writes report?** *Recommendation:* a missing record
-   reports the entity's `<Entity>NotFound`, provided by the compiler unless
-   the domain declares it; every unique rule and `restrict` reference a
-   write can break is mapped in `conflict:`, keyed by the rule, with no
-   catch-all and no `TodoMutationConflict`. Rails and Django raise one
-   generic error per constraint type and leave mapping to the developer;
-   here the compiler knows the rules, so it can insist. *Decided 2026-10-12:* yes, as recommended.
-7. **Does an empty patch fail?** *Recommendation:* no: it changes nothing
-   and succeeds, as JSON Merge Patch (RFC 7396) specifies, so `empty:` and
-   `failure.patch_empty_not_invalid_value` go. Conditional writes become
-   `when_supplied: { field: { ... } }`, replacing `x when input.f supplied`. *Decided 2026-10-12:* yes, as recommended.
-8. **What happens when a record changed since it was loaded?**
-   *Recommendation:* the runtime reruns the whole action within the
-   existing retry budget, then fails `unavailable`; on PostgreSQL through
-   repeatable-read isolation. Rails (`lock_version`) and Entity Framework
-   raise an error the developer must handle; Jadpo can rerun because an
-   action has no outside effects before it commits. *Decided 2026-10-12:* yes, as recommended.
-9. **How are counters updated?** *Recommendation:* an update by `id` whose
-   values use `Entity.field` for the stored value
-   (`Post.view_count + 1`), computed by the database in one step and never
-   rerun; PostgreSQL's own documentation recommends exactly this for
-   increments. *Decided 2026-10-12:* yes, as recommended.
-10. **Are children hidden with their parent?** Today they stay visible, and
-    a required include of a hidden parent reads as missing.
-    *Recommendation:* visibility never spreads: a child stays visible until
-    its own lifecycle hides it, and an include of its parent returns the
-    parent even when hidden, because the reference still holds. The action
-    that hides a parent runs its children's transitions when they should go
-    too. Rails' `paranoia` gem hides deleted parents from associations by
-    default and the resulting `nil` parents are its most common complaint. *Decided 2026-10-12:* yes, as recommended.
-11. **Are reads inside a loop allowed?** *Recommendation:* no: a query or
-    `get` inside `for` is a compile error, and the fix is one query with
-    `in`. Rails needed `strict_loading` to catch the same "one read per
-    item" mistake after the fact. *Decided 2026-10-12:* yes, as recommended.
-12. **Where may a cache serve a read?** *Recommendation:* only a query a
-    route runs directly; every read inside an action, policy and
-    authentication goes to the store, and a client that just wrote skips
-    caches by its revision. This makes the call site, not a `freshness:`
-    setting, decide, as area 3 decided. *Decided 2026-10-12:* yes, as recommended.
-13. **Do policy conditions shape query plans and indexes, and is PostgreSQL
-    row-level security generated?** (carried from area 9) Area 9 sends
-    generated query plans, indexes for policy conditions, and row-level
-    security as optional defence in depth generated from the same policy to
-    this page. Which of these does the compiler generate?
-    *Decided 2026-10-12 (row-level security only):* not now. Policy compiled
-    into each query's `WHERE` is the protection; row-level security comes
-    later as an opt-in setting on a PostgreSQL store, generated from the same
-    policy. *Decided 2026-10-12 (the rest):* fields a policy condition
-    filters on get indexes, as `where:` fields do.
-14. **How do caches behave in tests?** (carried from area 13) Once the Redis
-    adapter exists, do tests read through declared caches or straight from
-    the store, and how does a test check a cached read? *Decided 2026-10-12:*
-    `jadpo test` supplies an in-memory cache that behaves like Redis and is
-    emptied between tests, so tests run production's code paths; a test
-    checks a cached read by reading, writing elsewhere and reading again.
-15. **Can a one-step update refuse when the stored value would break a
-    rule?** Raised 2026-10-15 by an outside review. Taking stock
-    (`Product.stock - quantity`) can't be a one-step update today, because
-    the declared ranges can't prove the result stays at 0 or above, so the
-    action loads the product first, and buyers racing on one product rerun
-    each other; in a flash sale that uses up the three-attempt budget.
-    *Recommendation:* a stored-value construction in `set:` may map the
-    rules it can break, as any construction does (area 2):
-    `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The
-    database checks the condition in the same statement (`WHERE "stock" >=
-    $1`), and no row updated is the mapped failure, so the update stays one
-    step and never reruns. Open.
-16. **What do several outside calls in one action change about reads and
-    writes?** (from area 12, 2026-10-16) *Decided 2026-10-16 (Richard):*
-    the writes come after the last call, with no transaction open during
-    any call; the runtime's step record is written in short transactions
-    of its own and deleted in the action's commit; a rerun after a
-    concurrent change replays recorded steps with the record's `clock.now`,
-    stopping as `diverged` if a fresh read changes a request.
-17. **Which queries does an entity in Redis support?** (from area 5
-    question 15) *Decided 2026-10-16 (Richard):* get, create, update and
-    delete by `id`; lookup by a `unique:` field; listing and counting by
-    equality on one field in `indexes:`, in creation order; revision
-    checks; policy grants of simple equality on the record's own fields,
-    checked after reading. Joins and `include`, ranges, other orderings,
-    `matches` and other grants are compile errors naming PostgreSQL.
+1. **Can a one-step update refuse when the stored value would break a
+   rule?** Taking stock (`Product.stock - quantity`) can't be a one-step
+   update, because the declared ranges can't prove the result stays at 0
+   or above, so the action loads the product first, and buyers racing on
+   one product rerun each other; in a flash sale that uses up the
+   three-attempt budget. *Recommendation:* a stored-value construction in
+   `set:` may map the rules it can break, as any construction does (area
+   2): `stock: Stock(Product.stock - quantity) { min: OutOfStock }`. The
+   database checks the condition in the same statement (`WHERE "stock" >=
+   $1`), and no row updated is the mapped failure, so the update stays one
+   step and never reruns.
 
 ### Decisions
 
-The rows marked "Carried" were decided in earlier areas and bind this page.
+Rows starting "From area" were decided in that area and bind this page.
 
-| Topic | Decision | Date |
-|---|---|---|
-| Query placement | Carried from areas 1 and 5 (Richard): every query lives in its domain's `queries/` folder, one per file; generated operations stay on the entity | 2026-10-12 |
-| Action placement | Carried from areas 1 and 5 (Richard): every action lives in `actions/`, one per file; written actions are called by name | 2026-10-12 |
-| Inverses | Carried from area 5: parents do not declare children; a query includes children by naming the child's reference field | 2026-10-12 |
-| Receivers | Carried from area 5: no `self`; `todo: Todo` is a loaded record and `todo_id: Todo.id` a reference; `guard:` goes | 2026-10-12 |
-| Callable settings | Carried from area 3: none; every action is all-or-nothing, writes check for concurrent change, reads are current unless they read a declared cache | 2026-10-12 |
-| Mapping form | Carried from area 4: `condition: Failure` inside the operation's block; the original failure kept as the internal cause | 2026-10-12 |
-| Stores and caches | Carried from area 5: an action writes at most one store; caches are copies for display reads only, with a required `keep:` | 2026-10-12 |
-| Loops | Carried from area 3: `for` over a `List` only | 2026-10-12 |
-| Query shape | One declarative read: `from:`, stacked `where:`, `order:`, `limit:` or `page:`, `include:`, `missing:`; the result type sets how many records come back | 2026-10-12 |
-| Filters | Fields qualified with their entity; every `where:` line must hold; comparisons, `and`, `or`, `not`, `== none`, `in`; `where_present:` for optional filters; only conditions an index can serve | 2026-10-12 |
-| Selected columns | The generated SQL selects only the columns the result type needs, plus `order:` fields for the cursor and fields a policy checks outside the database | 2026-10-12 |
-| Page types | `Page<T>` (items and next), `PageCursor` and `PageSize` (1 to 100) are built in; an app may declare its own `Int` type with a `max:` for a different limit | 2026-10-12 |
-| Row-level security | Not now; later an opt-in setting on a PostgreSQL store, generated from policy. The compiled `WHERE` is the protection | 2026-10-12 |
-| Order and pages | `order: [field direction]` with `id` added as the tie-break; every list bounded by a literal or a type's `max:`; keyset pages only, no offset | 2026-10-12 |
-| Includes | `include:` names a reference field: own reference gives the parent, another entity's gives children (ordered and limited); two levels, within the domain, across stores only by `id` | 2026-10-12 |
-| Entity operations | `get`, `create`, `update` (`set:` or `patch:`), `delete` and one per lifecycle transition; only actions in the owning domain call the writing ones | 2026-10-12 |
-| Write failures | Missing record gives `<Entity>NotFound` (provided unless declared); every unique rule and restricted reference a write can break mapped in `conflict:`, no catch-all | 2026-10-12 |
-| Empty patch | Succeeds and changes nothing (RFC 7396); conditional writes use `when_supplied: { }` | 2026-10-12 |
-| Concurrent change | The runtime reruns the whole action within the retry budget, then fails `unavailable`; repeatable-read isolation on PostgreSQL | 2026-10-12 |
-| Counters | An update by `id` using `Entity.field` for the stored value (`Post.view_count + 1`), done by the database in one step | 2026-10-12 |
-| Hidden parents | Visibility never spreads; an include of a hidden parent returns it; the action that hides a parent runs its children's transitions when they should go too | 2026-10-12 |
-| Reads in loops | A query or `get` inside `for` is a compile error; the fix is one query with `in` | 2026-10-12 |
-| Cache reads | Only a query a route runs directly may be served from a cache; reads in actions, policy and authentication go to the store; a client that just wrote skips caches | 2026-10-12 |
-| Policy in query plans | Policy compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in | 2026-10-12 |
-| Caches in tests | `jadpo test` supplies an in-memory cache that behaves like Redis, emptied between tests | 2026-10-12 |
-| Write targets | Chosen in chunk 3.3: `update` and `delete` take the record loaded earlier or its `id`; by `id` no record is the entity's not-found failure; a delete gives nothing | 2026-10-14 |
-| Update sections | Chosen in chunk 3.3: `set:` or `patch:`, never both; `when_supplied:` only with `patch:`, never setting a field the patch has or one another entry sets | 2026-10-14 |
-| Provided not-found failure | Chosen in chunk 3.3: kind `not_found`, public, no fields, placed at its entity | 2026-10-14 |
-| References that hold | Chosen in chunk 3.3: a reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure | 2026-10-14 |
-| Stored values | Chosen in chunk 3.3: an update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove | 2026-10-14 |
-| `none` to a field that can't be cleared | Chosen in chunk 3.10: `none` given to an optional `Input` field whose type isn't nullable is the same as leaving it out, so a patch keeps the stored value | 2026-10-15 |
-| Refusals in a called action | Chosen in chunk 3.3, widened in chunk 3.10: an action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on | 2026-10-15 |
-| Transitions as operations | Chosen in chunk 3.4: `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records | 2026-10-15 |
-| A transition's `when:` refusing | Chosen in chunk 3.4: a `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found | 2026-10-15 |
-| Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale`; built in chunk 3.4 as `data.stored_decimal_scale`, a value whose type sets no `scale` counting as too many (Richard) | 2026-10-15 |
-| Isolation by what an action does | An action that loads no record, itself or through any action it calls, runs at read committed, so concurrent counters on one row both commit without a rerun; any other action runs at repeatable read. Corrects "as the action's first statement it never reruns", which PostgreSQL refuses at repeatable read (Richard, from an outside review). Built in chunk 3.7 | 2026-10-15 |
-| What loads a record | Chosen in chunk 3.7: reading one (`get`, a query and its includes); being handed one (a parameter whose type holds a record, which area 5 calls a loaded record, so a record authentication loads for an action counts too); writing one back (an `update`, `delete` or transition of a record rather than its `id`, wherever the record came from); and a transition whose `when:` can refuse a visible record, whose second statement must share the first one's snapshot. A create (its references checked by the store in the same statement), an update, delete or unguarded transition by `id`, and a counter load nothing | 2026-10-15 |
-| Isolation of fixtures and tests | Chosen in chunk 3.7: a fixture is decided as an action is; each action or fixture a test calls begins its own transaction at its own level; a read or write a test runs itself, and whatever else runs outside an action (migrations, purge), runs at repeatable read | 2026-10-15 |
-| Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action (Richard, from an outside review) | 2026-10-15 |
-| Several outside calls | Writes after the last call; no transaction during calls; the step record in the runtime's own short transactions, deleted in the commit; a rerun replays with the record's `clock.now` and stops as `diverged` when a fresh read changes a request; a write refusable after a step took effect is warned (Richard, area 12) | 2026-10-16 |
-| Writes before calls | Chosen in chunk 7.4b: a write placed before a later outside call, on any way through the body, directly or through an action it calls, is `data.write_before_call`, not declinable, at the write and naming the last call it comes before; starting or cancelling a run writes, and a run's `each:` and `finished:` are the run's | 2026-10-20 |
-| Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden (Richard) | 2026-10-16 |
-| Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |
-| Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |
-| Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement. Built in chunk 5.6c, as "Counts, sums and groups" sets out (area 19, questions 21 and 28) | 2026-10-18 |
-| Standard operations in `where:` (Phase 5 review) | Allowed where the operation has an exact SQL form, with a derived expression index, once conditions share one lowering (chunk 6.3b); refused as `query.condition_unsupported` until then (Richard, as recommended). Built in chunk 6.3b, as "Operations in conditions" sets out | 2026-10-19 |
-| A query giving a map layer (Phase 5 review) | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields (Richard, as recommended after chunk 5.5u7). Built in chunk 5.5u8 | 2026-10-19 |
+| Topic | Decision |
+|---|---|
+| Query placement | From areas 1 and 5: every query lives in its domain's `queries/` folder, one per file; generated operations stay on the entity |
+| Action placement | From areas 1 and 5: every action lives in `actions/`, one per file; written actions are called by name |
+| Inverses | From area 5: parents do not declare children; a query includes children by naming the child's reference field |
+| Receivers | From area 5: no `self`; `todo: Todo` is a loaded record and `todo_id: Todo.id` a reference; there is no `guard:` |
+| Callable settings | From area 3: none; every action is all-or-nothing, writes check for concurrent change, reads are current unless they read a declared cache |
+| Mapping form | From area 4: `condition: Failure` inside the operation's block; the original failure kept as the internal cause |
+| Stores and caches | From area 5: an action writes at most one store; caches are copies for display reads only, with a required `keep:` |
+| Loops | From area 3: `for` over a `List` only |
+| Query shape | One declarative read: `from:`, stacked `where:`, `order:`, `limit:` or `page:`, `include:`, `missing:`; the result type sets how many records come back; composition happens in actions |
+| Filters | Fields qualified with their entity; every `where:` line must hold; comparisons, `and`, `or`, `not`, `== none`, `in`; `where_present:` for optional filters; only conditions an index can serve |
+| Selected columns | The generated SQL selects only the columns the result type needs, plus `order:` fields for the cursor and fields a policy checks outside the database |
+| Page types | `Page<T>` (items and next), `PageCursor` and `PageSize` (1 to 100) are built in; an app may declare its own `Int` type with a `max:` for a different limit |
+| Row-level security | Not now; later an opt-in setting on a PostgreSQL store, generated from policy. The compiled `WHERE` is the protection |
+| Order and pages | `order: [field direction]` with `id` added as the tie-break; every list bounded by a literal or a type's `max:`; keyset pages only, no offset |
+| Includes | `include:` names a reference field: own reference gives the parent, another entity's gives children (ordered and limited); two levels, within the domain, across stores only by `id` |
+| Entity operations | `get`, `create`, `update` (`set:` or `patch:`), `delete` and one per lifecycle transition; only actions in the owning domain call the writing ones |
+| Write failures | Missing record gives `<Entity>NotFound` (provided unless declared); every unique rule and restricted reference a write can break mapped in `conflict:`, no catch-all, since the compiler knows which rules each write can break |
+| Empty patch | Succeeds and changes nothing (RFC 7396); conditional writes use `when_supplied: { }` |
+| Concurrent change | The runtime reruns the whole action within the retry budget, then fails `unavailable`; repeatable-read isolation on PostgreSQL |
+| Counters | An update by `id` using `Entity.field` for the stored value (`Post.view_count + 1`), done by the database in one step |
+| Hidden parents | Visibility never spreads; an include of a hidden parent returns it; the action that hides a parent runs its children's transitions when they should go too |
+| Reads in loops | A query or `get` inside `for` is a compile error; the fix is one query with `in` |
+| Cache reads | Only a query a route runs directly may be served from a cache; reads in actions, policy and authentication go to the store; a client that just wrote skips caches |
+| Policy in query plans | Policy compiled into each query's `WHERE`; fields a policy condition filters on get indexes; row-level security later, opt-in |
+| Caches in tests | `jadpo test` supplies an in-memory cache that behaves like Redis, emptied between tests, so tests run production's code paths; a test checks a cached read by reading, writing elsewhere and reading again |
+| Write targets | `update` and `delete` take the record loaded earlier or its `id`; by `id` no record is the entity's not-found failure; a delete gives nothing |
+| Update sections | `set:` or `patch:`, never both; `when_supplied:` only with `patch:`, never setting a field the patch has or one another entry sets |
+| Provided not-found failure | Kind `not_found`, public, no fields, placed at its entity |
+| References that hold | A reference's value read from a record loaded earlier (its `id`, or its reference to the same entity) or `none` names a record that is there; any other value may not, and the write can fail with that entity's not-found failure |
+| Stored values | An update by `id` works a stored field out only with `+` and `-`, under constructions the declared ranges prove |
+| `none` to a field that can't be cleared | `none` given to an optional `Input` field whose type isn't nullable is the same as leaving it out, so a patch keeps the stored value |
+| Refusals in a called action | An action whose failure its caller handles with `match` runs inside a savepoint, so its failure undoes all it wrote, a refusal among it, and the caller carries on |
+| Transitions as operations | `Entity.<transition>(record or id)`, an update of the fields its `set:` gives, giving back the record (nothing through `delete`); its block takes only `conflict:`; it reaches only visible records |
+| A transition's `when:` refusing | A `when:` that asks more than `visible:` can refuse a record that is there, a conflict mapped in `conflict:` keyed by the transition (`User.disable: UserDisabled`), with no catch-all; one that asks only what `visible:` asks can't, since a hidden record is not found |
+| Counter decimals | A decimal added to or subtracted from a stored field in a counter update may not have more decimal places than the field's `scale` (`data.stored_decimal_scale`), a value whose type sets no `scale` counting as too many |
+| Isolation by what an action does | An action that loads no record, itself or through any action it calls, runs at read committed, so concurrent counters on one row both commit without a rerun; any other action runs at repeatable read |
+| What loads a record | Reading one (`get`, a query and its includes); being handed one (a parameter whose type holds a record, which area 5 calls a loaded record, so a record authentication loads for an action counts too); writing one back (an `update`, `delete` or transition of a record rather than its `id`, wherever the record came from); and a transition whose `when:` can refuse a visible record, whose second statement must share the first one's snapshot. A create (its references checked by the store in the same statement), an update, delete or unguarded transition by `id`, and a counter load nothing |
+| Isolation of fixtures and tests | A fixture is decided as an action is; each action or fixture a test calls begins its own transaction at its own level; a read or write a test runs itself, and whatever else runs outside an action (migrations, purge), runs at repeatable read |
+| Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action |
+| Several outside calls | Writes after the last call; no transaction during calls; the step record in the runtime's own short transactions, deleted in the commit; a rerun replays with the record's `clock.now` and stops as `diverged` when a fresh read changes a request; a write refusable after a step took effect is warned (area 12) |
+| Writes before calls | A write placed before a later outside call, on any way through the body, directly or through an action it calls, is `data.write_before_call`, not declinable, at the write and naming the last call it comes before; starting or cancelling a run writes, and a run's `each:` and `finished:` are the run's |
+| Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden |
+| Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity |
+| Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too |
+| Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement, as "Counts, sums and groups" sets out |
+| Standard operations in `where:` | Allowed where the operation has an exact SQL form, with a derived expression index, as "Operations in conditions" sets out |
+| A query giving a map layer | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields |

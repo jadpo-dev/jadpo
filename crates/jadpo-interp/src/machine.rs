@@ -1374,7 +1374,7 @@ impl<'p> Machine<'p> {
                     _ => (false, false, None),
                 };
                 // `[]` where a map goes is an empty map; the checker allows
-                // no items there (area 19, question 8).
+                // no items there (area 19, "Sets and maps").
                 let list = if map && items.is_empty() {
                     Value::Map(Rc::default())
                 } else if set {

@@ -2,7 +2,7 @@
 title: Project layout and modules
 area: 1
 status: decided
-checked-with: this checkout's jadpo on every gate run (archived examples: v0 3ce094d0)
+checked-with: this checkout's jadpo on every gate run
 ---
 
 # Project layout and modules
@@ -19,8 +19,7 @@ fixed folders, named after the declarations they hold (`entities/`,
 `actions/`, `queries/` and so on), with one primary declaration per file,
 named after it, first in the file, and nothing else in the file that it
 doesn't use. A file's path follows from its domain and what it declares.
-[Decided layout](#decided-layout) gives the full rules, which the compiler
-builds (chunks 1.3 and 1.9).
+[Decided layout](#decided-layout) gives the full rules.
 
 A single file, or a folder with no `app.jadpo` above it, is checked as loose
 files: one implicit domain with the layout rules off.
@@ -30,19 +29,16 @@ files: one implicit domain with the layout rules off.
 File order and declaration order never matter: a declaration can refer to
 one defined later or in another file. Names are unique across the whole
 project, so a second `Count` in another file is an error (see
-`semantic.duplicate_declaration` below). The one exception, decided
-2026-10-16 and built in chunk 5.3d: a private function or type needs
-a name unique only within its domain (see [Files and names](#files-and-names)),
-as does a private constant (area 3, decided 2026-10-16, built in chunk
-5.3e).
+`semantic.duplicate_declaration` below). The one exception: a private
+function, type or constant needs a name unique only within its domain (see
+[Files and names](#files-and-names)).
 
 ## Domains instead of modules
 
 There are no modules. A domain owns everything in it and is the visibility
 boundary: a declaration is private to its domain unless marked `public`,
 and a call into another domain names it (`inventory.reserve_stock(...)`).
-Each file names where its other names come from on `use` lines
-(decided 2026-10-14, built in chunk 3.5). See
+Each file names where its other names come from on `use` lines. See
 [Ownership and calls replace modules](#ownership-and-calls-replace-modules)
 and [Imports](#imports).
 
@@ -65,13 +61,12 @@ are not allowed: `VatRate`, not `VATRate`.
 Control-flow and declaration words are reserved (question 7): none of them
 names a declaration, field, parameter, variable or variant, and using one is
 `syntax.expected_name`. They are `action`, `and`, `assert`, `attempt`,
-`else`, `emit`, `entity`, `fails`, `false`, `fixture`, `for`, `function`,
-`if`, `in`, `library`, `match`, `mut`, `none`, `not`, `or`, `package`,
-`propagate`, `provide`, `public`, `query`, `reject`, `resource`, `return`,
-`routes`, `schedule`, `seed`, `subscriber`, `test`, `true`, `type`, `use`
-and `var`; `constant` joins them with constants (area 3, decided
-2026-10-16, built in chunk 5.3e), and `decline` with declinable errors
-(question 11, decided 2026-10-17, built in chunk 5.4b). A setting the language defines may still use one as its key
+`constant`, `decline`, `else`, `emit`, `entity`, `fails`, `false`,
+`fixture`, `for`, `function`, `if`, `in`, `library`, `match`, `mut`,
+`none`, `not`, `or`, `package`, `propagate`, `provide`, `public`, `query`,
+`reject`, `resource`, `return`, `routes`, `schedule`, `seed`,
+`subscriber`, `test`, `true`, `type`, `use` and `var`. A setting the
+language defines may still use one as its key
 (`package: Stripe.v2024_06_20` in a connection, `test:` in configuration).
 
 These words mean something only where the language expects them, and stay
@@ -79,9 +74,9 @@ usable as names everywhere else: `asc` and `desc` (a query's order), `end`
 (templates), `matches` (the pattern operator), `input` and `value`, and the
 words that open a declaration with no name, `acceptance`, `application`,
 `authentication`, `config`, `flags`, `locales`, `migration`, `policy`,
-`principal` and `suggestions` (area 14, chunk 5.5y). `include`, `pick`, `omit` and `optional` build a type's fields,
+`principal` and `suggestions` (area 14). `include`, `pick`, `omit` and `optional` build a type's fields,
 so they name anything but a field (area 2), and the standard-library and
-generated namespaces (`collection`, `clock`, `config` ...) name no domain
+generated namespaces (`list`, `clock`, `config` ...) name no domain
 or library.
 
 ## Comments
@@ -105,8 +100,7 @@ answered.
 Most rules report plain mistakes, which only a fix answers. A few are
 judgement calls, where the code can be right as written: two helpers that
 match today but differ on purpose, two constants that share a value by
-coincidence. These rules are *declinable* (question 11, decided
-2026-10-17, built in chunk 5.4b): the author fixes the finding, or
+coincidence. These rules are *declinable* (question 11): the author fixes the finding, or
 declines it on the declaration itself with a reason, in a line directly
 above the declaration or member, after its `///` comments. A decline is
 the first child of the declaration or member below it: `///` comments,
@@ -147,18 +141,30 @@ required: a missing or blank one is `decline.no_reason`, and the finding
 stays declined meanwhile, so one error shows, not two. An agent or a
 person may decline; every declinable error's `next:` ends with ``, or
 write `decline <rule>: "<why>"` above it if this is deliberate``.
-Declinable today: [`library.similar_exists`](#library-similar-exists),
-area 3's [`constant.similar_exists`](03-logic.md#constant-similar-exists),
-area 21's [`query.nearest_exact`](21-ai.md#query-nearest-exact)
-(chunk 5.5v1c) and area 12's
-[`type.batch_order_updatable`](12-jobs-and-events.md#type-batch-order-updatable),
-a batch walking a query in an order an update can change (chunk 6.4b3),
-and area 12's [`step.late_failure`](12-jobs-and-events.md#step-late-failure),
-a failure that can end an action for good after a changing call took
-effect (chunk 7.5e);
-the other judgement calls question 11 lists join as their rules are
-built. Naming any other rule, or one Jadpo doesn't have,
-is [`decline.not_declinable`](#decline-not-declinable), which names the
+The declinable rules:
+
+| Rule | Area | Reports |
+|---|---|---|
+| [`library.similar_exists`](#library-similar-exists) | 1 | A library function already does the same |
+| [`constant.similar_exists`](03-logic.md#constant-similar-exists) | 3 | Another constant of the same type holds the same value |
+| `translation.field_unused` | 10 | No wording in a language uses one of a message's fields |
+| `package.standard_candidate` | 11 | A provider field looks like a standard type the package doesn't use |
+| [`type.batch_order_updatable`](12-jobs-and-events.md#type-batch-order-updatable) | 12 | A batch walks a query ordered by a field an update can change |
+| [`step.late_failure`](12-jobs-and-events.md#step-late-failure) | 12 | An action can fail for good after a changing call took effect |
+| `email.field_unused` | 16 | An email's field is written by no template and no subject |
+| `email.health_problem` | 16 | An email's template fails a check of the mail health score |
+| `rate_limits.counted_in_memory` | 16 | A deployable built for Workers would count its rate limits in each instance's memory |
+| `type.standard_exists` | 19 | A type has a standard type's shape under another name |
+| `type.variant_retired` | 19 | Code writes a retired code |
+| [`query.nearest_exact`](21-ai.md#query-nearest-exact) | 21 | Nearest-neighbour order on a vector too long for an index reads every record |
+
+Each can be right as written: two helpers can differ on purpose, two
+constants can share a value by coincidence (a VAT rate and a fee), a shape
+can match a standard type by chance, and code that reads old records names
+a withdrawn code on purpose. Plain mistakes are never declinable, including
+area 11's integration retries that outlast a route's deadline, which can't
+work as written. Naming any other rule, or one Jadpo doesn't have, is
+[`decline.not_declinable`](#decline-not-declinable), which names the
 nearest declinable rule.
 
 A decline whose rule no longer fires there is
@@ -176,16 +182,20 @@ gives each rule's `declinable`, and `jadpo check --json` and
 `jadpo declines list` shows every decline with its rule, place and
 reason, and `jadpo declines clear` removes them, so each finding comes
 back to be fixed or declined again; both take `--rule <id>`, a path and
-`--json` (area 14). `clear` stops on syntax errors, as every command
+`--json` (area 14). `clear` is for after a new standard type lands, after a
+compiler upgrade makes a rule smarter, and for a periodic sweep. It stops on syntax errors, as every command
 that writes source does; `list` lists regardless. When a reason doesn't
 fit beside its row, every reason goes on the lines under its row,
 wrapped. In the editor, "Decline with a reason" on a declinable finding
 writes the line with an empty reason for the author to fill in, and
 "Remove decline" on a decline line removes it; both run the same code as
-the commands. `jadpo approval` will list every decline a change adds or edits
-when it is built (area 18). A rule triggered by time passing (area 16's
-expired flag, not built yet) is judged at today's date by `check` and at
-the commit's date by `jadpo build`, and isn't declinable.
+the commands. `jadpo approval` lists every decline a change adds or edits,
+so declining by reflex shows in review (area 18); it is not built yet. A
+rule triggered by time passing (area 16's expired flag, not built yet) is
+judged at today's date by `check`, so CI fails a new change, and at the
+commit's date by `jadpo build`, so rebuilding a merged revision for a
+hotfix is never blocked by a date passing. It isn't declinable: extending
+the date is the reviewed choice.
 
 ```text
 $ jadpo declines list
@@ -206,11 +216,10 @@ $ jadpo declines clear --rule library.similar_exists
 ## Errors
 
 Every error this area can produce, with an example that triggers it and the
-new compiler's real output from `jadpo check`. An example without `app.jadpo`
+compiler's real output from `jadpo check`. An example without `app.jadpo`
 is checked as loose files, one implicit domain with the layout rules off; the
-layout examples are small projects. One decided error is not built yet:
-`layout.asset_unreferenced` waits for the reference forms of areas 11 and
-16.
+layout examples are small projects. `layout.asset_unreferenced` is not
+built yet: it waits for the reference forms of areas 11 and 16.
 
 ### `toolchain.empty_project`
 
@@ -259,7 +268,7 @@ check failed: 1 error, 2 files
 ```
 
 The error names both declarations and their files, and says which of two
-cases it is (decided 2026-10-16, Richard; built in chunk 5.3d). If the two
+cases it is. If the two
 are written the same way, ignoring layout, comments and `public`, it is a
 copy: remove one and use the other, or move it to `shared/` if two domains
 need it. If they differ, they are two things with one name: rename one. It
@@ -324,9 +333,8 @@ error: `Address` is declared twice in `billing`
 check failed: 1 error, 5 files
 ```
 
-Built with these readings, which the decision left open: the next step
-says "Rename one of them" without naming `jadpo rename`, which comes with
-the command (area 14, question 5); a name contains another's words when
+The next step says "Rename one of them" without naming `jadpo rename`,
+which is not built yet (area 14, "Renaming"). A name contains another's words when
 its words, split as the file name splits them, include them in order
 (`ShippingAddress` and `format_address` contain `Address`'s); the list
 gives each file's path from the project root, as every other error does,
@@ -818,8 +826,8 @@ check failed: 1 error, 4 files
 
 ### `visibility.public_reaches_private`
 
-Everything a public declaration's signature names is public too (2026-10-16,
-from area 11's package surface; built in chunk 7.1), since whoever uses it
+Everything a public declaration's signature names is public too (area 11),
+since whoever uses it
 has to build or handle it: a public action's parameters, result and failures,
 a public type's fields, a public library's functions' signatures. A type in
 `shared/` or the standard library is everyone's already:
@@ -1611,8 +1619,7 @@ check failed: 1 error, 1 file
 
 A top-level `var` is this error too, and its `next:` points to `constant`,
 because at the top of a file a fixed value is a constant (area 3,
-[Constants](03-logic.md#constants); decided 2026-10-16 by Richard, built in
-chunk 5.3e):
+[Constants](03-logic.md#constants)):
 
 ```jadpo check project=e-expected-declaration-var expect=syntax.expected_declaration
 type VatRate = Decimal {
@@ -1843,67 +1850,28 @@ check failed: 1 error, 1 file
 
 ### Status
 
-The compiler builds the decided layout (chunks 1.3 and 1.9), with each
-rule's real output under [Errors](#errors).
+The compiler builds the decided layout, with each rule's real output under
+[Errors](#errors).
 
 | Feature | Status |
 |---|---|
-| Root, domains and their folders | Built (chunk 1.3): a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. |
-| Files and names | Built (chunks 1.3 and 1.9): one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name (chunk 1.9). |
-| Names per domain | Built (chunk 5.3d): private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` refusing a name in use comes with `rename` (area 14). |
+| Root, domains and their folders | Built: a file where the layout has no place for it is `layout.unknown_location`, and a declaration in the wrong folder `layout.wrong_folder`; a folder or file with no `app.jadpo` above it is checked as loose files. |
+| Files and names | Built: one primary declaration per file, named after it; names unique project-wide; the round-trip and folded-collision rules, with the exception for a type folding to its callable's name. |
+| Names per domain | Built: private functions and types unique only within their domain, each domain's code reading its own; their identity keys carrying the domain, with promotion to `shared/` writing a registry line; `semantic.duplicate_declaration` saying copy or clash and listing the names in use with the same words. `jadpo rename` is not built yet (area 14). |
 | Order independence | Built: declaration and file order never matter. |
-| Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
+| Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused`. |
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
-| Similar helpers | Built (chunk 1.7): `library.similar_exists`, a declinable error (chunk 5.4b). |
-| Declinable errors | Built (chunk 5.4b): no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` listing declines comes with records (area 18), and the date rule with expired flags (area 16). |
-| Constants | Built (chunk 5.3e): `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
-| Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
-| A file holds only what its primary declaration uses | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. Chunk 3.9 also had `jadpo fmt` move the primary declaration to the top; chunk 5.5h3 replaced that with the next row. |
-| Definition before use | Built (chunk 5.5h3): `jadpo fmt` writes each file's declarations before the first one that uses them, the primary declaration last, ties by kind (constants, types, failures, helpers) and then by the order the primary first reaches them, declarations that use each other in written order, and `jadpo fmt --check` fails on a file out of it. Test, root and loose files, which have no primary declaration, keep their order. |
-| Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
-| Packages | Built (chunk 7.1): the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; area 11's "Chosen in chunk 7.1" records the choices. |
-| `.jadpo_record` files and the reachability rule | Decided 2026-10-16, not built: today's compiler writes `api/main.api`; the rename, the header line and the hand-edit check, and the rule that everything reachable from a public declaration is public, have no chunk on the roadmap yet. |
-
-### Consistency with the rest of the language
-
-- **Two ways to organise a project.** Folders carry roles (`entities/`,
-  `routes/`) while modules carry visibility, and the two are unrelated: a file's
-  folder says nothing about its module and vice versa.
-- **Import lists are the only comma-separated brace block.** Every other `{ }`
-  block in the language holds one `name: value` item per line; `import m { A, b }`
-  holds a comma list on one line. The 2026-10-14 `use <folder> { Names }`
-  keeps one, deliberately: see [Imports](#imports).
-- **Three call spellings, by rule.** Your own functions are called bare
-  (`add_delivery(x)`), the standard library is always qualified
-  (`temporal.in_zone(x)`), and the generated entity operations go through
-  the entity (`Todo.get(id)`). This is deliberate (the qualifier shows who owns the
-  operation) and consistently enforced.
-- **Declaration headers differ.** `type Name = Base { }` uses `=`, while
-  `entity Name { }`, `failure Name { }` and `service Name { }` do not. This
-  spans several areas and is flagged for the end-of-review syntax pass.
-- **Separation risks duplication, not breakage.** Every name is unique
-  wherever it can be used (a private function or type within its domain,
-  everything else across the project), so every reference resolves to one
-  declaration wherever it lives, but an agent working in one domain can
-  write a helper that already exists in another, and since 2026-10-16 two
-  domains may each hold a private one with the same name. Placement cannot prevent
-  two copies. Mitigations: agents look things up in the compiler's project map
-  (`jadpo inspect`, the language server) rather than browsing folders, and a
-  possible compiler warning for near-identical functions or types.
-  The compiler also generates a catalogue of every library function with its
-  signature and documentation comment; the Jadpo agent skill tells agents to
-  consult it before writing a helper. Nothing is maintained by hand.
+| Similar helpers | Built: `library.similar_exists`, a declinable error. |
+| Declinable errors | Built: no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` (area 18) and the date rule for expired flags (area 16) are not built yet. |
+| Constants | Built: `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
+| Imports | Built: `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
+| A file holds only what its primary declaration uses | Built: `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. |
+| Definition before use | Built: `jadpo fmt` writes each file's declarations before the first one that uses them, and `jadpo fmt --check` fails on a file out of that order. |
+| Referenced assets | Not built yet: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
+| Packages | Built: the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; area 11 records the choices. |
 
 ### Decided layout
-
-Shaped in discussion with Richard on 2026-10-11 and 12, on top of three
-pieces of research in `docs/language/research/` (what developers like and
-dislike in other frameworks' layouts, six realistic applications from this
-todo app up to a 72-entity platform, and candidate layouts tested against
-them) and an independent review of this proposal against that research and
-fresh evidence. Decided on 2026-10-12, and built in chunks 1.3 and 1.9
-except where a part says otherwise.
 
 **The shape.** Every project has the same shape at every size. The root holds
 a fixed set of files and folders. All application code lives in business
@@ -1998,24 +1966,23 @@ build/
   `policy.jadpo`, `flags.jadpo`, `jadpo.lock`,
   `ignored_suggestions.jadpo_record`, `taught_suggestions.jadpo_record`,
   `domains/`, `shared/`, `packages/`, `database/`, `api/`,
-  `acceptances/`, `translations/`, `tests/` and `build/` (`packages/`
-  replaced the root `providers/` on 2026-10-16, area 11; the suggestions a
-  team ignores, written by `jadpo suggest ignore`, joined on 2026-10-17,
-  and the patterns it taught, written by `jadpo suggest found`, on
-  2026-10-18, area 14, "Suggestions"). The hidden `.jadpo/`
+  `acceptances/`, `translations/`, `tests/` and `build/`.
+  `jadpo suggest ignore` writes the suggestions a team ignores, and
+  `jadpo suggest found` the patterns it taught (area 14, "Suggestions").
+  The hidden `.jadpo/`
   folder holds local, untracked state and is never read as source.
 - `packages/` holds only installed packages, each in
   `packages/<name>/<version>/`, committed, read-only and checked against its
   digest in `jadpo.lock`; everything the app's authors wrote lives in
   `domains/` and `shared/`, whatever kind it is, so the app's own
-  integrations are in `shared/providers/` (area 11, 2026-10-16). A package
+  integrations are in `shared/providers/` (area 11). A package
   is laid out as `shared/` is, under the same rules.
 - `app.jadpo` also records the project's Jadpo language version.
 - The root `translations/` holds only the app's wording for text it did
   not write, one `<locale>.jadpo` file each, grouped by owner (`jadpo: { }`
   for Jadpo's own, a library package's name for its); an application's
   messages live in the domain that uses them, or in `shared/translations/`
-  (area 10, revised 2026-10-16).
+  (area 10).
 - A `.jadpo` file anywhere else is an error. Folders with no `.jadpo` files
   (`docs/`, `.github/`) are ignored.
 - There is no `env.jadpo`. `config.jadpo` declares every setting; values come
@@ -2039,28 +2006,28 @@ build/
   whose parts depend on each other stays large; size alone is not a reason to
   split.
 - `jadpo domain rename`, `split` and `merge` commands do the moves and update
-  every call.
+  every call. Not built yet.
 - A domain contains only these folders, each named after its declaration
   keyword, and only when they have files. No subfolders; revisit if any
   folder in a real application passes about 60 files.
 
 | Folder | Holds | Notes |
 |---|---|---|
-| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches; the generated operations (`Todo.get`, create, update, delete) belong to it | Queries, actions and failures each have their own folder (areas 4 and 5, 2026-10-12) |
+| `entities/` | One entity per file: its fields, unique rules, lifecycle, policy and record caches; the generated operations (`Todo.get`, create, update, delete) belong to it | Queries, actions and failures each have their own folder (areas 4 and 5) |
 | `types/` | Types used by more than one file in the domain | Single-use ones live beside their user |
-| `failures/` | One failure per file, every failure the domain raises | Added 2026-10-12 (area 4); failures raised by two or more domains go in `shared/failures/` |
-| `actions/` | Every action, one per file | Called by name (`complete_todo(todo_id)`); called by triggers or, if `public`, by other domains (decided 2026-10-12) |
-| `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | Decided in area 5 (2026-10-12) |
-| `libraries/` | Named groups of helper functions and constants, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)`, `pricing.vat_rate` (constants decided 2026-10-16, area 3) |
+| `failures/` | One failure per file, every failure the domain raises | Failures raised by two or more domains go in `shared/failures/` (area 4) |
+| `actions/` | Every action, one per file | Called by name (`complete_todo(todo_id)`); called by triggers or, if `public`, by other domains |
+| `queries/` | Every query, one per file, whatever it reads; a query's cache sits in its file | Area 5 |
+| `libraries/` | Named groups of helper functions and constants, e.g. `library rounding` | Called like the standard library: `rounding.half_even(x)`, `pricing.vat_rate` (constants: area 3) |
 | `routes/` | Named route groups with a prefix the compiler checks | HTTP trigger: the URL is written in the source |
-| `schedules/` | Time triggers: when to run which action | Replaces "jobs" |
+| `schedules/` | Time triggers: when to run which action | |
 | `events/` | Event definitions | |
-| `subscribers/` | Event triggers, including long-running coordination | Replaces durable "workflows" |
-| (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Amended 2026-10-13 by area 11, revised 2026-10-16; the `integrations/` folder and `integration` keyword are gone |
-| `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`), and the domain's own email partials, laid out the same way | Added 2026-10-13 (Richard, area 16); partials 2026-10-20 |
-| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18; named `sources.json` until the records are renamed, 2026-10-16) | Added 2026-10-16 (Richard, area 10); a message a second domain uses goes in `shared/translations/`. Built in chunk 5.4c: the folder is one `layout.unknown_location` lists, and a language file's name is a locale, not its `translations { }` |
-| `prompts/` | One `type X = Prompt` per file, each with its text in `<name>.prompt` beside it, two sections, `# Instructions` and `# Request` (area 21) | Added 2026-10-18 (Richard, area 21); a prompt a second domain uses goes in `shared/prompts/`, as a message does. Built in chunk 5.5v2 |
-| `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Added 2026-10-16 (Richard, area 16) |
+| `subscribers/` | Event triggers, including long-running coordination | |
+| (none) | Third-party APIs are provider packages: connections in `app.jadpo`; installed packages in root `packages/`, pinned in `jadpo.lock`; the app's own in `shared/providers/` | Area 11; there is no `integrations/` folder and no `integration` keyword |
+| `emails/` | Email types and their templates, one email per name (`welcome_email.jadpo`, `welcome_email.html`, `welcome_email.txt`), and the domain's own email partials, laid out the same way | Area 16 |
+| `translations/` | One `type X = Message` per file, one `translations { }` language file per locale named after it (`de_de.jadpo`), wording the domain's messages, failures, enums and email subjects, and the generated, committed `sources.jadpo_record` (area 18) | Area 10; a message a second domain uses goes in `shared/translations/`. A language file is named after its locale, not after its `translations { }` |
+| `prompts/` | One `type X = Prompt` per file, each with its text in `<name>.prompt` beside it, two sections, `# Instructions` and `# Request` (area 21) | Area 21; a prompt a second domain uses goes in `shared/prompts/`, as a message does |
+| `documents/` | Document types and their templates, one document per name (`invoice_document.jadpo`, `invoice_document.html`), rendered to HTML or PDF by the `documents` capability | Area 16. Not built yet: until the `documents` capability is, a file in `documents/` is `layout.unknown_location` |
 | `fixtures/` | Test data shared by several test files in the domain | |
 
 #### Files and names
@@ -2071,26 +2038,33 @@ build/
   helpers used only by that file live in it too. A declaration any other
   file uses (its own test file aside) has a file of its own, named after it,
   so every name a `use` line brings in is `<folder>/<name>.jadpo`
-  (2026-10-14, see [Imports](#imports)).
+  (see [Imports](#imports)).
 - Everything in a file besides its primary declaration is used by the
   primary declaration, directly or through one another. One that only the
   file's tests use, or nothing uses, is dead code, reported as
   `layout.unused_declaration` like an unused shared declaration, so a file
-  never collects helpers for something else (2026-10-15, Richard; built in
-  chunk 3.9).
+  never collects helpers for something else. The primary declaration is
+  the one of the folder's kind named after the file (the first of that kind
+  when the file is misnamed), or the seed in `database/seeds/`. One another
+  file uses is moved by `layout.promotion_required`, not reported unused.
+  While the primary, or a declaration it uses, writes a name that names
+  nothing, perhaps a misspelling of the one it meant, nothing beside it is
+  called unused, as with imports. Test files, root files and loose files
+  have no primary declaration, and a library's functions keep their own
+  rule: one nothing calls is unused.
 - Definitions come before their use: after any opening comment and the
   `use` lines, every declaration in a file comes before the first one that
   uses it, so the primary declaration comes last, read with the context of
-  the constants and types it needs (2026-10-17, Richard, replacing
-  2026-10-15's "the primary declaration comes first"). Ties are broken by
+  the constants and types it needs. Ties are broken by
   kind (constants, then types, then failures, then helpers) and within a
   kind by the order the primary declaration first reaches them;
   declarations that refer to each other keep their written order among
-  themselves. `jadpo fmt` writes this order and `jadpo fmt --check` fails on
-  a file out of it (built in chunk 5.5h3). A file with no primary
+  themselves, and constants written together stay together. `jadpo fmt`
+  writes this order and `jadpo fmt --check` fails on a file out of it. A
+  file with no primary
   declaration (a test file, a root file, a loose file) keeps its written
   order. Reaching follows the primary's names in the order it first writes
-  them, into each declaration before the next (chosen in chunk 5.5h3). A
+  them, into each declaration before the next. A
   declaration nothing reaches (reported as `layout.unused_declaration`)
   goes after the reached ones of its kind, in written order, and a
   declaration still waits for what it uses whatever its kind, so a constant
@@ -2101,8 +2075,8 @@ build/
   exception: a private `function` or `type` (other than a failure or an
   email, `type X = Failure` or `EmailMessage`) needs a name unique only
   within its domain, whether it has a file of its own or sits beside the
-  declaration that uses it (2026-10-16, Richard; built in chunk 5.3d). A private `constant` follows the same rule (area 3,
-  2026-10-16, Richard; built in chunk 5.3e). Everything else stays unique across the project:
+  declaration that uses it. A private `constant` follows the same rule
+  (area 3). Everything else stays unique across the project:
   - anything `public`, and anything in `shared/` or the root files;
   - every other kind of declaration, whatever its visibility, since most
     have a name outside the code: entities (tables), failures (public error
@@ -2130,25 +2104,24 @@ build/
   private name can only be imported inside its own domain, where it is
   unique, and anything importable across domains is unique across the
   project, so `import.missing` can still name the exact `use` line.
-- Rejected (2026-10-16): making each whole domain a namespace. Tables,
-  error codes, OpenAPI schema names, event names and identity keys all need
-  one unique name anyway, so it would only move the prefix into generated
-  names, and `Customer` would mean different things by folder in a diff.
+- A domain is not a namespace. Tables, error codes, OpenAPI schema names,
+  event names and identity keys all need one unique name anyway, so a
+  namespace per domain would only move the prefix into generated names, and
+  `Customer` would mean different things by folder in a diff.
 - A clash is `semantic.duplicate_declaration`, which says whether the two
   are a copy (use the existing one, or move it to `shared/`) or two things
-  with one name (rename one with `jadpo rename`), never invents a name, and
-  lists the names in use containing the same word. `jadpo rename` refuses a
+  with one name (rename one), never invents a name, and lists the names in
+  use containing the same word. `jadpo rename`, not built yet, refuses a
   new name already in use before editing anything (area 14). An agent
-  working in parallel merges `main` before pushing, runs `jadpo check` (it
-  builds nothing: 0.2 s on the 66-file library-loans example), fixes any
+  working in parallel merges `main` before pushing, runs `jadpo check`
+  (it builds nothing, so it is quick), fixes any
   clash, then pushes; generated CI runs `jadpo check` first so a clash fails
   in seconds (area 14, [Tools for agents](14-tooling.md#tools-for-agents)).
 - One exception to file-name uniqueness: a type declared in the same file
   as an action, query or function may fold to that callable's name, as an
   input does (`type CreateTodo = Input` beside `action create_todo` in
   `actions/create_todo.jadpo`), because only one file carries the name. If
-  the type is promoted to its own file, the rule applies again. Built in
-  chunk 1.9.
+  the type is promoted to its own file, the rule applies again.
 - Tests sit beside their subject as `<name>.test.jadpo`. Scenarios that span
   several domains go in the root `tests/`. The kind of test (pure,
   action, route, schedule) is known from what it calls, so it is not a
@@ -2162,21 +2135,21 @@ build/
   second file in the domain uses it, it must move to a file of its own in the
   domain's `types/`, `failures/` or `libraries/`; when a second domain does,
   to `shared/` (pure types, failures, libraries and messages only; a
-  message moves to `shared/translations/`, 2026-10-16). A constant
-  (area 3) is placed as a helper function is: used by one file it sits at
-  the top of that file, and used by a second it moves into a library and
-  is read through it, `pricing.vat_rate` (2026-10-16, Richard; built in
-  chunk 5.3e). `shared/emails/`
+  message moves to `shared/translations/`). A constant (area 3) is placed
+  as a helper function is: used by one file it sits at the top of that
+  file, never as a primary declaration, and used by a second it moves into
+  a library and is read through it, `pricing.vat_rate`, so a library holds
+  functions and constants. `shared/emails/`
   holds only the app's optional email layout, `layout.html` and
-  `layout.txt` (area 16, 2026-10-16), and the email partials every
-  domain's emails may include, each a `type X = EmailPartial` with its
-  templates beside it (area 16, 2026-10-20; built in chunk 7.3c), and `shared/documents/` only its
+  `layout.txt`, and the email partials every domain's emails may include,
+  each a `type X = EmailPartial` with its templates beside it (area 16),
+  and `shared/documents/` only its
   optional document layout, `layout.html`. `shared/providers/` holds the
   app's own integrations, each in `shared/providers/<name>/<version>/` in
-  exactly the package format (area 11, 2026-10-16); they are not promoted
+  exactly the package format (area 11); they are not promoted
   there, but written there from the start. Moving to the
   right folder is not enough: `DiscountCode` in `types/basket.jadpo` used by
-  another file must move to `types/discount_code.jadpo` (2026-10-14). Tests never count as users, a route only counts when
+  another file must move to `types/discount_code.jadpo`. Tests never count as users, a route only counts when
   nothing else uses the type, and a failure counts where it is raised.
 - Promotion is required: the compiler reports it with a one-step fix, applied
   through the editor or `jadpo fmt --layout`, never silently on save.
@@ -2188,34 +2161,39 @@ build/
   behaviour cannot change.
 - Promoting a private function or type to `shared/` makes its name unique
   across the project, so a private one of the same name in another domain
-  then clashes, as `semantic.duplicate_declaration`. The move writes one
-  line in the identity registry, so it reads as a move and not as a removal
-  and an addition (area 18, question 8; 2026-10-16, built in chunk 5.3d:
+  then clashes, as `semantic.duplicate_declaration`. The identity key of a
+  function or type declared in a domain carries the domain, so the move
+  writes one line in the identity registry, and it reads as a move and not
+  as a removal and an addition (area 18, "Stable identity").
   `layout.promotion_required`'s edits for a type moving to `shared/types/`
-  add the line to `database/identities.jadpo_record` (`database/identities.json`
-  before chunk 7.0), so `jadpo fmt --layout`
-  writes it. A failure raised by a second domain gets no edit, so its move
-  by hand writes no line, and a library keeps its name in `shared/`, so
-  its functions' keys need none).
+  add the line to `database/identities.jadpo_record`, so
+  `jadpo fmt --layout` writes it. A failure raised by a second domain gets
+  no edit, so moving it by hand writes no line, and a library keeps its
+  name in `shared/`, so its functions' keys need none.
 - A helper that depends on one domain's types (`order_math.total(order)`)
   stays in that domain and becomes public when another domain calls it.
   Depending on two domains' types is an error that needs a design decision.
   Making a helper generic, for example extracting `pricing.sum(amounts)` for
   `ordering` and `payments` to share, is a deliberate refactor.
-- Two constants of the same type holding the same value get the
-  `constant.similar_exists` warning, so parallel agents each inventing
-  `vat_rate` find each other's (area 3, 2026-10-16; built in chunk 5.3e).
+- Two constants of the same type holding the same value are the
+  declinable `constant.similar_exists`, so parallel agents each inventing
+  `vat_rate` find each other's (area 3).
 - Duplicates are caught at the point of writing: when a new helper looks like
   an existing one, `jadpo check` says so and names it ("a similar library
   exists: `rounding.half_even` in `shared/libraries/rounding.jadpo`"). The
   compiler also generates a catalogue of every library function with its
-  signature, documentation comment and callers.
+  signature, documentation comment and callers, and the Jadpo agent skill
+  tells agents to consult it before writing a helper. Agents look things
+  up in the compiler's project map (the language server) rather than
+  browsing folders. Placement alone can't prevent two copies: two domains
+  may each hold a private helper with the same name.
 - A function's description is written once, as a `///` comment above it.
   The catalogue, the caller list and the domains that use it are computed
   and shown in the editor, never written into source files.
 - Before shared or public code changes, its reach is visible in three ways:
   find-references in the editor, a `jadpo impact <name>`
-  command listing calling domains, entry points and covering tests, and
+  command (not built yet) listing calling domains, entry points and
+  covering tests, and
   `jadpo check` itself reporting which domains a change affects and running
   their tests.
 
@@ -2239,8 +2217,8 @@ build/
   or roll back together in one database transaction. Another domain never touches the entities
   directly. If a domain ever moves to its own database, the compiler rejects
   the shared transaction rather than losing the all-or-nothing guarantee.
-- **Everything reachable from a public declaration is public** (Richard,
-  2026-10-16, from area 11's package surface). A type in a public action's,
+- **Everything reachable from a public declaration is public** (area 11).
+  A type in a public action's,
   query's, library's or event's signature, and a failure it can raise,
   must itself be public (or shared), checked on every compile; an internal
   failure is mapped or handled before it leaves. A package's public surface
@@ -2257,19 +2235,17 @@ build/
   own name, never through its domain, so `pantry.sacks.grams_in(1)` or
   `pantry.nonexistent.thing(x)` is `semantic.unknown_callee`; only a
   connection's operations take three names (area 11). A call that reaches
-  nothing is always reported, never left to fail when it runs (built in
-  chunk 2.7).
-- There are no `module` headers. Imports came back on 2026-10-14 in a
-  different form: see [Imports](#imports).
+  nothing is always reported, never left to fail when it runs.
+- There are no `module` headers; each file names where its names come
+  from on `use` lines: see [Imports](#imports).
 
 #### Imports
 
-Decided by Richard on 2026-10-14 and built in chunk 3.5. With
-no imports, a name read in one file could be declared in that file, in its
-domain's `types/`, `failures/` or `entities/`, in `shared/`, or in another
-domain: an agent had to search for it and a reader had to click through
-files. Imports make the place every name comes from readable from the file
-itself, without searching.
+Imports make the place every name comes from readable from the file
+itself, without searching. Without them, a name read in one file could be
+declared in that file, in its domain's `types/`, `failures/` or
+`entities/`, in `shared/`, or in another domain, and an agent would have to
+search for it.
 
 Each `use` line names a folder, then the names it brings in, written exactly
 as the code uses them, so finding a name in the page finds its import:
@@ -2297,18 +2273,13 @@ use menu
   fixed per language version and can't be declared by a project. An
   entity's generated operations (`Todo.get(id)`) come with the entity.
 
-  *Amended 2026-10-17 by area 19 (questions 6 and 30):* the standard
-  library's namespaces are `list`, `set`, `map`, `range`, `integer`,
-  `decimal`, `money`, `units`, `text`, `markup`, `hash`, `encoding`,
-  `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`, `temporal`,
-  `locale`, `colour`, `media`, `web` and `semver`, with `geo` and `ai`
-  when their areas land; `collection.` becomes `list.`, `set.` or
-  `map.`. Each is reserved by `semantic.standard_namespace_reserved`
-  from the chunk that adds it; fields and named arguments keep every
-  word (`note.text`, `set:`). The names that clashed were renamed in
-  those chunks: `text` in 5.5f, which renamed the examples in areas 2,
-  3, 7, 8, 9 and 16, and `range` in 5.5c, which renamed area
-  10's `deliveries_in(range:)` to `deliveries_in(arrivals:)`.
+  The standard library's namespaces are `list`, `set`, `map`, `range`,
+  `integer`, `decimal`, `money`, `units`, `text`, `markup`, `hash`,
+  `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`,
+  `temporal`, `locale`, `colour`, `media`, `web`, `semver`, `geo` and `ai`
+  (area 19, "One namespace per type" and "Reserved namespaces"). Each is reserved by
+  `semantic.standard_namespace_reserved`; fields and named arguments keep
+  every word (`note.text`, `set:`).
 - **Calls into another domain keep the domain's name at the call.** `use menu`
   brings in the domain, and its public actions, queries and fixtures are
   called as `menu.stock_item(...)`, so a call that crosses domains is
@@ -2324,7 +2295,7 @@ use menu
   `jadpo fmt` or the editor adds a missing import and removes an unused one.
   Every name a file can import is unique where it can import it (a private
   function or type within its own domain, anything importable across
-  domains across the project, 2026-10-16), so the import for a name is
+  domains across the project), so the import for a name is
   never in doubt and a forgotten one is fixed, not a compile failure for an
   agent.
   `jadpo check` still reports an import that names nothing, and one the
@@ -2333,12 +2304,11 @@ use menu
   use of a name, in a body, a signature or a `use` line, opens its
   declaration in its `.jadpo` file.
 
-This brings back the one comma-separated `{ }` list in the language (see
-[Consistency](#consistency-with-the-rest-of-the-language)), accepted because
-the names have to appear exactly as the code writes them.
+This is the one comma-separated `{ }` list in the language, where every
+other block holds one `name: value` item per line, accepted because the
+names have to appear exactly as the code writes them.
 
-Built in chunk 3.5, with these readings (each on the
-[Decisions](#decisions) table):
+How the lines are written and checked:
 
 - **Where the lines go.** `use` lines open the file, below the comments
   that open it up to a blank line. `jadpo fmt` sorts them as the example
@@ -2392,8 +2362,7 @@ Built in chunk 3.5, with these readings (each on the
 - **Committed generated files share one extension, `.jadpo_record`**, and
   stay next to what they describe: `api/<api>.jadpo_record`,
   `database/identities.jadpo_record`, each `translations/sources.jadpo_record`
-  and each installed package's `surface.jadpo_record` (decided 2026-10-16,
-  replacing `.api` and `.json`). Each is in Jadpo's readable format and
+  and each installed package's `surface.jadpo_record`. Each is in Jadpo's readable format and
   starts with a line saying what wrote it and which command updates it;
   `jadpo check` regenerates it and a hand edit is an error naming that
   command. `jadpo.lock` keeps its name. `jadpo records` lists them all and
@@ -2476,224 +2445,52 @@ connections: {
 }
 ```
 
-#### What the compiler would check
-
-New errors would include `layout.unknown_location`, `layout.wrong_folder`,
-`layout.file_name_mismatch`, `layout.promotion_required`,
-`layout.unused_declaration`, `layout.test_without_subject`,
-`layout.asset_unreferenced`, `layout.route_prefix_mismatch`,
-`naming.round_trip`, `naming.folded_collision`, `naming.generic_name`,
-`visibility.private_cross_domain`, `layout.call_direction` and a
-`library.similar_exists` warning.
-
-Built on 2026-10-13 (chunk 1.3): `jadpo check` reports all of these except
-`layout.asset_unreferenced` and `library.similar_exists`, which followed
-with the graph's digests in chunk 1.7; each has its
-example and real output under [Errors](#errors). A folder or file checked
-without an `app.jadpo` above it is treated as loose files, one implicit
-domain with the layout rules off, as a single file is. Resolution covers
-names in signatures, type blocks and calls; lower-case names used as values
-are checked with the logic of bodies (area 3).
-
 #### Decided in later areas
 
 Route group syntax (area 7), the `schedule` keyword (area 12), integrations
 and provider API versions (area 11), translation file format (area 10) and the
-migration workflow (area 5). The layout only reserves their folders. Area 10
-decided translations on 2026-10-16: they moved from a root-only folder into
-each domain's and `shared/`'s `translations/`. Area 11 decided packages on
-2026-10-16: installed packages in the root `packages/`, the app's own
-integrations in `shared/providers/`, both laid out as `shared/` is.
-
-### Open questions
-
-1. **`domains/` folder, or domains directly at the root?**
-   *Decided 2026-10-12 (see Decisions):* keep `domains/`. Every root entry is then fixed by the
-   language and projects differ only inside it, so nobody has to tell a domain
-   from a reserved folder.
-2. **Should the dot always name the owner of what you call?** This reverses
-   the current rule that your own functions are called without a prefix.
-   *Decided 2026-10-12 (see Decisions):* yes. Libraries read exactly like the standard library,
-   imports disappear (missing imports are among the most common reasons LLM
-   code fails to compile), and every call says where its function lives.
-   Exact syntax is confirmed in area 3.
-3. **Should creating a domain need human approval?** An agent that hits a
-   cross-domain error might add a domain or reshuffle code rather than ask.
-   *Decided 2026-10-12 (see Decisions):* yes: a new or renamed domain appears in the approval
-   review like a policy change, because it changes who owns what.
-4. **How is policy protected from agent edits?** Entity policy lives in the
-   entity file. *Decided 2026-10-12 (see Decisions):* protect it through the approval check,
-   which already fingerprints policy, so any policy change needs human
-   approval wherever it lives.
-5. **Multiple deployables (API, worker, back-office) as declarations in one
-   project, not separate projects?** *Decided 2026-10-12 (see Decisions):* declarations. Each
-   deployable selects its routes, schedules and subscribers and is compiled
-   from what it reaches.
-6. **Large entity files.** An order entity in a real shop could reach 800
-   lines. *Decided 2026-10-12 (see Decisions):* no companion files for now; the formatter keeps a
-   fixed section order. Revisit with measured sizes from the order/payment app.
-7. **Reserved words.** *Decided 2026-10-12 (see Decisions):* build the chosen policy:
-   control-flow and declaration words are fully reserved, with a short explicit
-   list of words such as `input` and `value` that can be used as names. Built
-   in chunk 1.9; the exact lists are under [Naming](#naming).
-8. **Documentation comments.** *Decided 2026-10-12 (see Decisions):* add `///` comments that
-   attach to the following declaration and flow into generated documentation,
-   the library catalogue and OpenAPI descriptions.
-9. **Formatter owns layout within a file.** *Decided 2026-10-12 (see Decisions):* the formatter
-   decides blank lines (one between declarations) and section order within a
-   file, so equivalent code always looks identical.
-10. **Root `api/` and `acceptances/` folders** (carried from area 7). Area 7
-   keeps each API's record in `api/` and a person's acceptance of a breaking
-   change in `acceptances/`, but the decided root list allows only the entries
-   above. *Recommendation:* add both folders to the fixed root. *Decided 2026-10-13 (area 18):* yes; the root also gains `providers/` and `jadpo.lock` (area 11).
-   *Revised 2026-10-16 (Richard, area 11):* the root `providers/` becomes
-   `packages/`, holding only installed packages; the app's own
-   integrations move to `shared/providers/`.
-11. **No warnings: every finding an error, some of them declinable?**
-   *Decided 2026-10-17 (see Decisions):* yes, as recommended; built in
-   chunk 5.4b (see [Declining a judgement call](#declining-a-judgement-call)).
-   Until then a warning never
-   failed `check` (`library.similar_exists`, built in chunk 1.7, and
-   `constant.similar_exists`, chunk 5.3e), so an agent could leave one in
-   place for ever and nobody decided it. The proposal:
-   - **No warning severity.** Every finding is an error. Some rules are
-     *declinable*: the author applies the fix, or declines on the
-     declaration itself with a required reason. An agent or a person may
-     decline.
-   - **One decline form for every declaration** (type, field, function,
-     action, constant): a line directly above it, where a `///` comment
-     sits, naming the rule and the reason.
-
-     ```jadpo fragment
-     decline library.similar_exists: "Rounds to the nearest 5p for the till; rounding.capped rounds down"
-     function till_round(price: Sterling) -> Sterling { ... }
-     ```
-
-     `decline` becomes a reserved word; the reason is non-empty text; a
-     decline covers that one rule on that one declaration. A decline whose
-     rule no longer fires there is an error (`decline.unused`), so declines
-     don't outlive their reason, and naming a rule that can't be declined is
-     `decline.not_declinable`.
-   - **Compared with a per-rule option** such as area 19's
-     `not_standard: "..."`: an option needs a new name per rule, fits only
-     where a declaration has a settings block (types, fields, entities; not
-     functions or actions, which have none, area 3), and can't be listed
-     or cleared by one command. *Recommendation:* the generic form, so
-     `not_standard:` becomes `decline type.standard_exists: "..."`.
-   - **Declinable rules are the judgement calls:**
-
-     | Rule | Area | Why it can be right to decline |
-     |---|---|---|
-     | `library.similar_exists` | 1 | Two helpers can differ on purpose |
-     | `constant.similar_exists` | 3 | Two constants can share a value by coincidence (a VAT rate and a fee) |
-     | `type.standard_exists` (decided 2026-10-17) | 19 | A shape can match a standard type by chance |
-     | `type.variant_retired` (decided 2026-10-17) | 19 | Code that reads old records names a withdrawn code on purpose |
-     | `type.batch_order_updatable` (area 12's question 13; built in chunk 6.4b3) | 12 | A field that can change only in a way that never moves a record behind the walk |
-     | `email.field_unused` (built in chunk 7.3) | 16 | A field kept for the next version of an email's templates |
-     | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
-     | Rate limits counted in memory | 16 | One instance, by design |
-     | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |
-     | `step.late_failure`, a failure after a changing call (decided 2026-10-16 in area 11's question 26; built in chunk 7.5e) | 12 | The condition may be unable to change |
-     | #88's warnings (an unhandled failure, an unused template field) | #88 | Sorted when #88 merges |
-
-     Plain mistakes are never declinable: every other rule, including area
-     11's integration retries that outlast a route's deadline, which can't
-     work as written.
-   - **Rules triggered by time passing** (area 16's flag past its
-     `expires:` date) are judged at today's date by `check`, so CI fails a
-     new change, but at the revision's commit date by `jadpo build`, so
-     rebuilding a merged revision for a hotfix is never blocked by a date
-     passing. They aren't declinable: extending the date is the reviewed
-     choice (area 16).
-   - **Seeing declines.** The approval report (`jadpo approval`, area 18)
-     lists every decline a change adds or edits with its reason, so
-     declining by reflex shows in review. `jadpo declines list` prints
-     every decline: rule, place and reason, filtered by `--rule <id>` and a
-     path, with `--json`.
-   - **Resetting them.** `jadpo declines clear`, with the same filters,
-     removes the decline lines, so each finding comes back and `check`
-     fails until it is fixed or declined again, which is the point. It is
-     for after a new standard type lands, after a compiler upgrade makes a
-     rule smarter, and for a periodic sweep. The editor's "Decline with a
-     reason" and "Remove decline" code actions run the same code as the
-     commands, as "Make this a setting" and `jadpo config move` share one
-     (area 10). Output follows the
-     [CLI design language](research/14-cli-design-language.md):
-
-     ```text
-     $ jadpo declines list --rule type.standard_exists
-     Declines
-       type.standard_exists  domains/maps/types/grid_square.jadpo:3  Grid squares, not WGS84 degrees
-       type.standard_exists  domains/quotes/types/quote.jadpo:5      A quote's figure, not money owed
-
-     ✓ 2 declines · 1 rule · 2 files
-
-     $ jadpo declines clear --rule type.standard_exists
-     ✓ Removed 2 declines from 2 files
-
-     → jadpo check  shows each finding again, to fix or decline
-     ```
-   - **Cost.** The two built warnings become declinable errors, so code
-     that passes `check` today can fail it; `warning` leaves the CLI design
-     language's closed set of headline words and area 14's error shape;
-     the language server shows them as errors.
-
-   *Recommendation:* yes, and a roadmap chunk **"Declinable errors" `opus ·
-   high`** right after 5.4, before 5.5 builds `type.standard_exists`: the
-   `decline` line, `decline.unused` and `decline.not_declinable`, the two
-   built warnings converted, `jadpo declines list` and `clear`, the
-   editor's code actions on the same path, the approval report's list, and
-   the date rule for time-triggered checks. Added to the roadmap as 5.4b.
+migration workflow (area 5) are settled in their areas; the layout only
+reserves their folders.
 
 ### Decisions
 
-Decided by Richard from 2026-10-12, each on the date shown. Status, above, says what is built.
-
-| Topic | Decision | Date |
-|---|---|---|
-| Shape | Same at every size: fixed root, all code in one level of domains, the same fixed folders in every domain, no subfolders | 2026-10-12 |
-| Folder names | Each folder is named for what its files contain, usually the declaration keyword in plural; `values/` becomes `types/`, `workflows/` becomes `actions/`; `failures/` holds `type X = Failure` declarations (area 4) | 2026-10-12 |
-| Triggers | Routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
-| Root files | `app.jadpo`, `config.jadpo`, `authentication.jadpo`, `policy.jadpo`; no `env.jadpo` | 2026-10-12 |
-| Compiler data | Visible `database/` folder for the identity registry, migrations and seeds, not a hidden folder | 2026-10-12 |
-| Tests | Beside their subject; cross-domain scenarios in root `tests/`; no folder per test kind | 2026-10-12 |
-| Domain naming | Folder name is the domain name; business-area names; junk-drawer names rejected | 2026-10-12 |
-| Cross-domain writes | Public actions, sharing the caller's transaction; events for reactions that need not be all-or-nothing | 2026-10-12 |
-| Promotion | Required with a one-step fix; demotion never forced | 2026-10-12 |
-| Helpers | Descriptions written once as `///`; catalogue, callers and impact computed; duplicates flagged by `jadpo check` | 2026-10-12 |
-| Domains folder | Domains live in `domains/`, so every root entry is fixed by the language | 2026-10-12 |
-| Call naming | The dot names the owner of what you call; own-domain actions and queries are bare; no imports (Amended 2026-10-14: imports are back, see Imports) | 2026-10-12 |
-| New domains | Creating or renaming a domain appears in the approval review, like a policy change | 2026-10-12 |
-| Policy protection | Through the approval check wherever policy lives, not by file path | 2026-10-12 |
-| Deployables | Declarations in one project, each compiled from what it reaches | 2026-10-12 |
-| Large entities | No companion files for now; revisit with measured sizes from the order/payment app | 2026-10-12 |
-| Reserved words | Control-flow and declaration words fully reserved, with a short explicit list of usable names | 2026-10-12 |
-| Documentation comments | `///` comments attach to the next declaration and feed generated docs, the library catalogue and OpenAPI | 2026-10-12 |
-| Formatting | The formatter owns blank lines and section order within a file | 2026-10-12 |
-| Names folding together | A type may fold to the name of the callable declared in the same file (an input named after its action); everywhere else `naming.folded_collision` applies | 2026-10-13 |
-| Keywords match folders | `schedule` (folder `schedules/`), `integration` (`integrations/`) and `library` (`libraries/`) replace `job` and `service` (Amended 2026-10-13 by area 11: `integration` and `integrations/` are gone; external services are provider packages) | 2026-10-12 |
-| Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` | 2026-10-12 |
-| Query and action placement | Every query lives in its domain's `queries/` folder and every action in `actions/`, one per file; written ones are called by name; entity files hold the data definition and the generated operations (area 5, Richard) | 2026-10-12 |
-| Root `api/` and `acceptances/` folders | Added to the fixed root, with `providers/` and `jadpo.lock` (areas 11 and 18) (Revised 2026-10-16: `packages/` replaces `providers/`) | 2026-10-13 |
-| Emails folder | Each domain may have `emails/`, holding email types and their templates (from area 16) | 2026-10-13 |
-| Translations folder | Each domain, and `shared/`, may have `translations/`, holding `Message` types one per file and one `translations { }` file per locale; a message a second domain uses is promoted to `shared/translations/`; the root `translations/` holds only the app's wording for Jadpo's and library packages' text, grouped by owner (Richard, area 10) | 2026-10-16 |
-| Flags and monitoring files | `flags.jadpo` joins the fixed root; each domain may hold one `monitoring.jadpo` directly in its folder (Richard, from the architecture plan) | 2026-10-13 |
-| Public fixtures | A fixture may be `public`, offered to other domains' tests, fixtures and seeds and to scenarios in root `tests/`, which call it through its domain (`planning.alice_with_todos()`); only tests, fixtures and seeds ever call a fixture, and a private one stays its own domain's. Area 13 wins over the earlier rule here that `public` on a fixture was `visibility.public_not_allowed` (Richard) | 2026-10-14 |
-| Unused `public` | `public` on a declaration nothing outside its domain uses is the error `visibility.public_unused`, whose edit removes `public`. Users are another domain's code, root `tests/` scenarios, and the signature of another public declaration that is itself used outside; the domain's own tests don't count. A package's public members are its interface to other projects and are exempt (area 11) (Richard) | 2026-10-14 |
-| Imports | Every name not declared in a file is imported with `use <folder> { Names }`, own domain included; built-ins are never imported; another domain is brought in with `use <domain>` and its calls keep the domain's name; a test file sees its subject's declarations; the formatter adds and removes imports; go to definition works from every use of a name. Reverses "no imports" (Richard) | 2026-10-14 |
-| A file per shared name | A declaration any other file uses has a file of its own named after it; supporting declarations used only by their file (and its test) stay in it (Richard) | 2026-10-14 |
-| Imports: where and in what order | `use` lines open the file, below its opening comments up to a blank line; sorted names before domains, root files, then `shared/`, then each domain's folders by domain name, folders in the layout's order, then `use <domain>` lines; names in the braces sorted; one name per line past 100 columns; `use` is reserved (chunk 3.5) | 2026-10-15 |
-| Imports: errors | Five rules, each with its edit: `import.missing`, `import.unknown` (folder, domain or name not there, or the wrong folder), `import.unused`, `import.unneeded` (built-in, own declaration, test subject's, own domain) and `import.duplicate`; privacy stays `visibility.private_cross_domain` at the use, and nothing the file can't use is asked to be imported (chunk 3.5) | 2026-10-15 |
-| Imports: fixing | `jadpo fmt` applies the import edits once every file parses, then formats; `--check` fails on a file whose imports would change; `--layout` makes the moves `layout.promotion_required` asks for (chunk 3.5) | 2026-10-15 |
-| Imports: before a promotion, provided failures, loose files, migrations, generated namespaces | A declaration beside another file's main one is imported from that file's folder until promoted; an entity's provided not-found failure comes from the entity's folder; loose files have no imports, and a `use` line there is `import.unknown`; a migration's `changes.jadpo`, which `jadpo migrate new` writes and which names what changed (`Todo.rank:`), imports nothing; `clock` and `config` need no import; while a name the file writes names nothing, no import is called unused (chunk 3.5) | 2026-10-15 |
-| A file per shared name: where it applies | A second declaration in any domain or `shared/` file, `types/` and `libraries/` included, moves to a file of its own once another file uses it; one only its own file uses stays; the edit makes the move, and `jadpo fmt --layout` makes it and updates the imports (chunk 3.5) | 2026-10-15 |
-| A file holds only what its primary declaration uses | The primary declaration is the one of the folder's kind named after the file (the first of that kind when the file is misnamed), or the seed in `database/seeds/`; every type or helper function beside it is used by it, directly or through one another, or is `layout.unused_declaration`. Tests never count. One another file uses is moved by `layout.promotion_required`, not reported unused. While the primary, or a declaration it uses, writes a name that names nothing, perhaps a misspelling of the one it meant, nothing beside it is called unused, as with imports. Test files, root files and loose files have no primary declaration, and a library's functions keep their own rule: one nothing calls is unused (chunk 3.9) | 2026-10-15 |
-| The primary declaration first (replaced 2026-10-17 by Definition before use) | `jadpo fmt` moves the primary declaration below the file's opening comments, up to their last blank line, and its `use` lines; it takes the comments written above it and the one after it on its line, and everything else keeps its written order. `jadpo fmt --check` fails on a file whose primary declaration isn't first; loose files keep their order (chunk 3.9) | 2026-10-15 |
-| Definition before use (Richard) | Every declaration before the first one that uses it, so the primary declaration comes last; ties by kind (constants, types, failures, helpers), then by the order the primary first reaches them; mutual references keep their written order; `jadpo fmt` writes it and `--check` fails on a file out of it. Replaces "the primary declaration first" (2026-10-15). Built in chunk 5.5h3, which chose: a file with no primary declaration keeps its order; reaching is depth-first through the primary's names in written order; a declaration waits for what it uses whatever its kind; a declaration nothing reaches goes after the reached ones of its kind; constants written together stay together | 2026-10-17 |
-| Names per domain | A private function or type (not a failure, an email, or a type an API's record names) needs a name unique only within its domain; everything public, in `shared/` or the root files, and every other kind (entities, failures, events, actions, queries, routes, schedules, subscribers, services, fixtures, emails) stays unique across the project, as do domain, library and standard-library names among themselves. Why: agents in parallel workspaces on different domains would otherwise clash on private helper names at merge; imports stay exact. Rejected: a namespace per domain, which only moves the prefix into tables, error codes, OpenAPI and event names, and makes one name mean different things by folder. The identity key of a function or type declared in a domain carries the domain, and promotion to `shared/` writes a registry move line (amends area 18's question 8). `semantic.duplicate_declaration` says copy or clash, never invents a name, and lists the names in use with the same word; `jadpo rename` refuses a name in use; agents merge `main` and run `jadpo check` before pushing, and generated CI runs `jadpo check` first. Built in chunk 5.3d, but for `jadpo rename`, which comes with the command (Richard) | 2026-10-16 |
-| Constants in the layout | A `constant` (area 3) is placed and shared as a helper function is: used by one file it sits at the top of that file, never as a primary declaration, and used by a second it moves into a library and is read through it (`pricing.vat_rate`), so a library holds functions and constants; a private constant needs a name unique only within its domain; `constant` is reserved; a top-level `var` is `syntax.expected_declaration` whose `next:` writes `constant`; two constants of one type holding one value warn `constant.similar_exists`. Built in chunk 5.3e (Richard) | 2026-10-16 |
-| Packages in the layout | The root `packages/` holds only installed packages, `packages/<name>/<version>/`, committed, read-only and checked against `jadpo.lock`; the app's own integrations live in `shared/providers/<name>/<version>/` in the package format; a package is laid out as `shared/` is; `use packages/…` always names installed code (Richard, area 11) | 2026-10-16 |
-| Documents folder | Each domain may have `documents/`, holding document types and their HTML templates; `shared/documents/` holds only the optional `layout.html` (Richard, area 16) | 2026-10-16 |
-| Reachable from public | A type or failure reachable from a public declaration's signature must itself be public, in domains and packages alike, checked on every compile (Richard, area 11) | 2026-10-16 |
-| Records | Committed generated files are `.jadpo_record` files beside what they describe (`api/main.jadpo_record`, `database/identities.jadpo_record`, `translations/sources.jadpo_record`, `surface.jadpo_record`), readable, each starting with the line that says what wrote it; a hand edit is an error; `jadpo.lock` keeps its name (Richard, area 18) | 2026-10-16 |
-| Declinable errors (question 11) | No warning severity: every finding is an error, and the judgement-call rules (question 11's table) are declinable. A declaration declines one rule with a `decline <rule>: "<reason>"` line directly above it, the reason required; an agent or a person may decline; a decline whose rule no longer fires is `decline.unused`, and naming a rule that can't be declined is `decline.not_declinable`. Plain mistakes are never declinable. `jadpo approval` lists every decline a change adds or edits; `jadpo declines list` and `clear`, with `--rule <id>`, a path and `--json`, show and reset them through the same code as the editor's actions. A rule triggered by time passing (area 16's expired flag) is judged at today's date by `check` and at the commit's date by `jadpo build`, so it blocks new changes but never the rebuild of a merged revision (Richard) | 2026-10-17 |
+| Topic | Decision |
+|---|---|
+| Shape | Same at every size: fixed root, all code in one level of domains, the same fixed folders in every domain, no subfolders |
+| `domains/` folder (question 1) | Domains live in `domains/`, so every root entry is fixed by the language, projects differ only inside it, and nobody has to tell a domain from a reserved folder |
+| Call naming (question 2) | The dot names the owner of what you call, so every call says where its function lives and libraries read exactly like the standard library; your own domain's actions and queries are called bare (area 3) |
+| New domains (question 3) | Creating or renaming a domain appears in the approval review like a policy change, because it changes who owns what; otherwise an agent that hits a cross-domain error might add a domain or reshuffle code rather than ask |
+| Policy protection (question 4) | Through the approval check, which fingerprints policy, so any policy change needs human approval wherever it lives, not by file path |
+| Deployables (question 5) | An API, a worker or a back office are declarations in one project, not separate projects; each selects its routes, schedules and subscribers and is compiled from what it reaches |
+| Large entities (question 6) | No companion files; the formatter keeps a fixed section order. Revisit with measured sizes from the order and payment app |
+| Reserved words (question 7) | Control-flow and declaration words are fully reserved, with a short explicit list of words that can be used as names; the lists are under [Naming](#naming) |
+| Documentation comments (question 8) | `///` comments attach to the next declaration and feed generated documentation, the library catalogue and OpenAPI descriptions |
+| Formatting (question 9) | The formatter decides blank lines (one between declarations) and section order within a file, so equivalent code always looks identical |
+| Root `api/` and `acceptances/` folders (question 10) | Both are in the fixed root: `api/` keeps each API's record and `acceptances/` a person's acceptance of a breaking change (areas 7 and 18), beside `packages/` and `jadpo.lock` (area 11) |
+| Declinable errors (question 11) | No warning severity: every finding is an error, and the judgement calls are declinable with a `decline <rule>: "<reason>"` line directly above the declaration, the reason required; see [Declining a judgement call](#declining-a-judgement-call). One generic form rather than a per-rule option, which would need a new name per rule, fits only declarations with a settings block and can't be listed or cleared by one command |
+| Folder names | Each folder is named for what its files contain, usually the declaration keyword in plural; `failures/` holds `type X = Failure` declarations (area 4) |
+| Keywords match folders | `schedule` (folder `schedules/`) and `library` (`libraries/`); external services are provider packages (area 11) |
+| Triggers | Routes, schedules and subscribers each call actions; durable workflows are subscribers |
+| Root files | `app.jadpo`, `config.jadpo`, `authentication.jadpo`, `policy.jadpo` and `flags.jadpo`; no `env.jadpo` |
+| Monitoring files | Each domain may hold one `monitoring.jadpo` directly in its folder. The place is built; what it declares, area 16's thresholds, is not built yet |
+| Compiler data | A visible `database/` folder for the identity registry, migrations and seeds, not a hidden folder |
+| Tests | Beside their subject; cross-domain scenarios in root `tests/`; no folder per test kind |
+| Domain naming | The folder name is the domain name; business-area names; junk-drawer names rejected |
+| Cross-domain writes | Public actions, sharing the caller's transaction; events for reactions that need not be all-or-nothing |
+| Promotion | Required, with a one-step fix; demotion never forced |
+| Helpers | Descriptions written once as `///`; catalogue, callers and impact computed; duplicates flagged by `jadpo check` |
+| Unnamed singletons | Declarations that exist once per project carry no name: `application { }`, `config { }`, `principal { }`, `locales { }` |
+| Query and action placement | Every query in its domain's `queries/` folder and every action in `actions/`, one per file, called by name; entity files hold the data definition and the generated operations (area 5) |
+| Names folding together | A type may fold to the name of the callable declared in the same file (an input named after its action); everywhere else `naming.folded_collision` applies |
+| Emails, translations, prompts and documents folders | Each domain may have `emails/` (area 16), `translations/` (area 10), `prompts/` (area 21) and `documents/` (area 16); the root `translations/` holds only the app's wording for Jadpo's and library packages' text, grouped by owner |
+| Public fixtures | A fixture may be `public`, offered to other domains' tests, fixtures and seeds and to root `tests/` scenarios, which call it through its domain; only tests, fixtures and seeds ever call a fixture (area 13) |
+| Unused `public` | `public` on a declaration nothing outside its domain uses is `visibility.public_unused`; a package's public members are exempt (area 11) |
+| Reachable from public | A type or failure reachable from a public declaration's signature must itself be public, in domains and packages alike |
+| Imports | Every name not declared in a file is imported with `use <folder> { Names }`, own domain included; built-ins never are; `jadpo fmt` writes and sorts them; see [Imports](#imports) |
+| A file per shared name | A declaration any other file uses has a file of its own named after it; supporting declarations used only by their file (and its test) stay in it |
+| A file holds only what its primary declaration uses | Everything beside the primary declaration is used by it, or is `layout.unused_declaration`; see [Files and names](#files-and-names) |
+| Definition before use | Every declaration comes before the first one that uses it, so the primary declaration comes last; see [Files and names](#files-and-names) |
+| Names per domain | A private function, type or constant needs a name unique only within its domain, so agents in parallel workspaces don't clash on private helper names at merge; a domain is not a namespace. See [Files and names](#files-and-names) |
+| Constants in the layout | A `constant` is placed and shared as a helper function is (area 3) |
+| Packages in the layout | The root `packages/` holds only installed packages, checked against `jadpo.lock`; the app's own integrations live in `shared/providers/` in the package format; `use packages/…` always names installed code (area 11) |
+| Records | Committed generated files are readable `.jadpo_record` files beside what they describe, each starting with the line that says what wrote it; a hand edit is an error; `jadpo.lock` keeps its name (area 18) |

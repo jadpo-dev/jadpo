@@ -220,8 +220,8 @@ x509-parser = { version = "=0.16.0", default-features = false }
 rsa = { version = "=0.9.10", default-features = false }
 p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
 # gzip for the file helpers' reads given `max_unpacked_size:` (area 12,
-# "Rows and formats"; chunk 6.4b3; jadpo-runtime, and jadpo-cli for a
-# Workers module's size gzipped, chunk 8.2b): miniz_oxide's
+# "Batches: work over many items"; jadpo-runtime, and jadpo-cli for a
+# Workers module's size gzipped): miniz_oxide's
 # streaming inflate, MIT OR Zlib OR Apache-2.0, pure Rust with `adler2` as
 # its one dependency and built for wasm32, unpacking a window at a time so
 # a run never holds more than it reads. The gzip members around the

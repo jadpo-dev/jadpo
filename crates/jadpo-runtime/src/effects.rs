@@ -101,7 +101,7 @@ impl Keys {
 /// Why an effect gave no value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Refused {
-    /// A condition its call's `attempt` maps (area 10, question 7): its
+    /// A condition its call's `attempt` maps (area 10, "Time library and formatting"): its
     /// rule; how a report names it; and, for `mismatch`, the
     /// `DecodeProblem` a failure mapped from it receives, its first
     /// problem's field and rule, never the value (area 19, "Data
@@ -235,8 +235,7 @@ pub fn run(
             crypto(ctx, effects, op, json, values)
         }
         // `random` reads the invocation's random bytes: the host's
-        // generator, a test's seed or a recorded run's (area 19, question
-        // 19).
+        // generator, a test's seed or a recorded run's (area 19, "Randomness").
         Effect::Std { op, .. } if op.reads_generator() => {
             jadpo_value::random::run(op, values, &mut |bytes: &mut [u8]| ctx.random_bytes(bytes))
                 .map_err(Refused::Fault)

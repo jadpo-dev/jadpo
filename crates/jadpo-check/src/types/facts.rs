@@ -291,7 +291,7 @@ pub fn named<'db>(db: &'db dyn Db, project: Project, name: &str) -> Vec<Callable
         None => (None, name),
     };
     // A function's key carries its domain, `billing.format_address` (area
-    // 18, question 8, amended 2026-10-16); a domain is never a library's
+    // 18, "Stable identity", amended 2026-10-16); a domain is never a library's
     // name.
     let (domain, library) = match library {
         Some(domain) if lookup.is_domain(domain) => (Some(domain), None),

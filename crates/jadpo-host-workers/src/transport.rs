@@ -33,16 +33,16 @@
 //!   to: a seventh waits for one, within whatever its driver gives the
 //!   connection to open.
 //! - **A stream reads and writes through one reader and one writer for
-//!   its socket's life** (chunk 8.4e), each taken at its first read or
+//!   its socket's life**, each taken at its first read or
 //!   write and released only to upgrade it, between them: taking a reader
 //!   or a writer and releasing its lock for every read and write was about
-//!   half of what workerd spent on a booking (§2.11). It closes its socket
+//!   half of what workerd spent on a booking (§2.6, "The Workers host"). It closes its socket
 //!   when dropped.
-//! - **A connection ends within the invocation that opened it** (chunk
-//!   8.4e). workerd never settles a promise of an invocation that has
+//! - **A connection ends within the invocation that opened it**.
+//!   workerd never settles a promise of an invocation that has
 //!   ended, and what waits on one is never given back: before, each
 //!   booking's connection was left waiting for its goodbye to go, some
-//!   20 KB of the module's memory kept for the isolate's life (§2.11). So
+//!   20 KB of the module's memory kept for the isolate's life (§2.6, "The Workers host"). So
 //!   the transport counts the connections' tasks it has started
 //!   ([`Tasks`]), which the invocation's host, once dropped, keeps the
 //!   invocation for ([`crate::WorkersHost`]); and shutting a stream down

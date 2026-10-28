@@ -1,5 +1,5 @@
-// The `list` namespace (area 19, "Lists"; `collection` until chunk 5.5b,
-// question 6). Each operation is listed, typed, in `jadpo-std`'s operation
+// The `list` namespace (area 19, "Lists" and "One namespace per
+// type"). Each operation is listed, typed, in `jadpo-std`'s operation
 // table, which names the Rust function in `jadpo-value` that runs it; a
 // test holds these stubs to that table.
 //

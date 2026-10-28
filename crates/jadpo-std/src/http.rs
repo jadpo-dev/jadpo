@@ -22,12 +22,12 @@ use crate::{AuthenticationMethod, Builtin, ClientAddressSource, HttpMethod, Succ
 pub const DEFAULT_DEADLINE_MS: u32 = 10_000;
 /// The longest deadline a route may give.
 pub const MAX_DEADLINE_MS: u32 = 60_000;
-/// The largest body a request may send (area 7, question 5), answered 413
+/// The largest body a request may send (area 7, "Deadline and body limit"), answered 413
 /// past it.
 pub const BODY_LIMIT: usize = 1024 * 1024;
 
 /// How long a stored response answers a repeat of its request (area 7,
-/// question 17): a lookup ignores a key kept longer.
+/// "Idempotent writes"): a lookup ignores a key kept longer.
 pub const IDEMPOTENCY_KEEP_MS: i64 = 24 * 60 * 60 * 1000;
 /// The longest `Idempotency-Key` the runtime takes, in characters.
 pub const IDEMPOTENCY_KEY_MAX: usize = 255;
@@ -1188,7 +1188,7 @@ pub struct RateLimit {
 }
 
 /// The limit on a signed-in caller when nothing says otherwise: 600 a
-/// minute (area 16, question 6).
+/// minute (area 16, "Rate limits").
 pub const CALLER_LIMIT: RateLimit = RateLimit {
     requests: 600,
     window_ms: 60_000,

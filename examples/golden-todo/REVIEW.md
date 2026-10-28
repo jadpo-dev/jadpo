@@ -10,8 +10,8 @@ not external validation and cannot satisfy the P10R review or first-user gates.
 ## 2026-10-02 lifecycle/service semantic successor freeze
 
 Independent RM-205 and RM-301 reviews accept their separate semantic contracts
-for implementation; [lifecycle](../../docs/lifecycle-plan.md) and
-[service](../../docs/service-plan.md) link exact candidate provenance and findings.
+for implementation; the lifecycle and
+service plans linked exact candidate provenance and findings.
 The service successor has a scoped policy identity amendment and a separately
 pinned JOB-001 replacement, preserving pressure app/policy/acceptance bytes and
 the other 43 case IDs. No HTTP/job/lifecycle execution or final independent
@@ -22,7 +22,7 @@ P10R experiment approval is supplied by these contract reviews.
 The owner selected: keep `User.email` provisioning-only and omit it from the
 self-service todo-list response. `policy.jadpo` is unchanged. The predecessor
 acceptance bytes are preserved in
-[`acceptance-before-rm107-email-decision.json`](../../tests/validation/golden-baseline/acceptance-before-rm107-email-decision.json)
+`acceptance-before-rm107-email-decision.json`
 (SHA-256 `acfc317db191764ebef1714f22af2f37e6ae1b93c2c609c195527197ef252ab0`).
 The successor digest is
 `3bed090059de86e35d72fb7a61b0fab365990d909e118b4f5f39b7b10ba56608`.
@@ -128,7 +128,7 @@ unchanged. The addition is in `examples/golden-todo-migration`; this is an
 explicit successor configuration revision, not a silent frozen-source edit or
 independent approval. Baseline candidate/migration digests and historical
 diagnostics are retained in
-[provenance](../../tests/validation/golden-baseline/provenance.json).
+provenance.
 
 | Changed successor file | Before SHA-256 | After SHA-256 |
 |---|---|---|

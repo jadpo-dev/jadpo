@@ -1,8 +1,8 @@
 //! The OpenAPI importer (area 11, "Where packages come from"; chunk 7.2):
 //! an OpenAPI 3 document, read once, as a provider package.
 //!
-//! What it reads, and how (each choice is in area 11's "Chosen in chunk
-//! 7.2"):
+//! What it reads, and how (each choice is in area 11's "How the OpenAPI
+//! importer reads a document"):
 //!
 //! - **Operations** by path, then `get`, `put`, `post`, `delete` and
 //!   `patch`, grouped into resources by their first tag, or else by their
@@ -376,7 +376,7 @@ fn fits_as_field(name: &str) -> bool {
 }
 
 /// Whether `name` reads as a variant's name; `all` is the enum's own list
-/// (area 19, question 22).
+/// (area 19, "Closed value sets are enums").
 fn fits_as_variant(name: &str) -> bool {
     let text = format!("type T = Enum {{\n    {name}\n}}\n");
     name != "all" && !jadpo_syntax::parse_file(&text).has_errors()

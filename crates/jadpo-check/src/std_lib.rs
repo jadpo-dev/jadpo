@@ -330,7 +330,7 @@ impl StdNames {
                         };
                         // A keyword takes a trailing `_` where it is
                         // declared (`function in_`), as a reserved word does
-                        // as an enum's variant (area 19, question 22); a
+                        // as an enum's variant (area 19, "Closed value sets are enums"); a
                         // call writes it after `.`, `units.in`, where any
                         // word is a name.
                         if let Some(stem) = name.strip_suffix('_')
@@ -547,7 +547,7 @@ impl StdNames {
     }
 
     /// Every reserved namespace name: standard and generated (area 19,
-    /// question 30).
+    /// "Reserved namespaces").
     pub fn reserved(&self, name: &str) -> bool {
         self.namespace(name).is_some()
     }
@@ -581,7 +581,7 @@ mod tests {
         assert_eq!(names.namespace("temporal"), Some(Namespace::Standard));
         assert_eq!(names.namespace("list"), Some(Namespace::Standard));
         // `collection` moved to `list`, `set` and `map`, and stays reserved
-        // for the habit error (area 19, question 6).
+        // for the habit error (area 19, "One namespace per type").
         assert_eq!(names.namespace("collection"), Some(Namespace::Standard));
         assert!(names.reserved("collection") && names.reserved("list"));
         assert!(names.operations("collection").is_empty());

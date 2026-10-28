@@ -10,7 +10,8 @@ by LLMs and reviewed by people. Start with the [project introduction](../README.
 |---|---|
 | [Roadmap](roadmap.md) | The only list of outstanding work: the delivery plan, one chunk per session |
 | [Language specification](language/README.md) | Twenty-one areas, all decided; the source of truth for what Jadpo means. The rendered decision log collects every decision |
-| [Compiler and runtime architecture](compiler-runtime.md) | The graph-centred build approach (§1) and, from roadmap chunk 0.4, the architecture |
+| [Compiler and runtime architecture](compiler-runtime.md) | The graph-centred build approach (§1) and the architecture |
+| [CLI design language](cli-design-language.md) | How every CLI screen and generated page looks |
 | [Vision](vision.md) | Why Jadpo exists and who it is for |
 
 Checks run with `python3 tools/verify.py`.

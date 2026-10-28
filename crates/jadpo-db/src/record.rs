@@ -1,6 +1,6 @@
-//! The `.jadpo_record` format (area 18, "The record format", decided
-//! 2026-10-16; docs/language/research/jadpo-record-format.md): how every
-//! committed file Jadpo generates is written.
+//! The `.jadpo_record` format (docs/language/18-records-and-manifest.md,
+//! "The record format"): how every committed file Jadpo generates is
+//! written.
 //!
 //! A record starts with two lines, the header comment naming what it was
 //! generated from and the command that updates it, then `record <kind>

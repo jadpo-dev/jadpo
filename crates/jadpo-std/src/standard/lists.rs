@@ -1,5 +1,5 @@
 //! The closed lists of commerce, health, travel and the other published
-//! standards (area 19, "The standard types", question 22; chunk 5.5m): each
+//! standards (area 19, "The standard types"): each
 //! a built-in enum, read ignoring case and written as its authority's
 //! code, in the order of its codes. A list whose codes are written the same
 //! in every language (`FOB`, `B2`, `O-`) is shown by its code; one whose

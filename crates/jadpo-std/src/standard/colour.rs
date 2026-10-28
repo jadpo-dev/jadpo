@@ -1,4 +1,4 @@
-//! `Colour` (area 19, "Colour", question 13, chunk 5.5p): `red`, `green`,
+//! `Colour` (area 19, "Colour"): `red`, `green`,
 //! `blue` and `alpha`, each 0 to 255, in sRGB (IEC 61966-2-1), written as
 //! CSS Color 4 writes a hex colour, `#rrggbb` or `#rrggbbaa`. `colour`'s
 //! operations, which go through linear light, CIE XYZ and OKLab, are

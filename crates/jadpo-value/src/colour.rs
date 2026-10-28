@@ -1,4 +1,4 @@
-//! `colour`'s operations (area 19, "Colour", question 13, chunk 5.5p),
+//! `colour`'s operations (area 19, "Colour"),
 //! each giving an sRGB `Colour`, or WCAG 2's contrast ratio.
 //!
 //! The conversions are CSS Color 4's (its sample code, `conversions.js`):

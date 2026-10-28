@@ -165,7 +165,7 @@ impl Body<'_> {
     }
 
     /// `<Entity>NotFound`: the domain's failure of that name, or the one
-    /// the compiler provides when it declares none (area 6, question 6). A
+    /// the compiler provides when it declares none (area 6, "Write failures"). A
     /// read or write fills each of its fields typed `<Entity>.id` with the
     /// `id` it looked for; a declared one with other fields can't be
     /// raised yet.
@@ -198,8 +198,7 @@ impl Body<'_> {
         missing
     }
 
-    /// A read inside a `for` loop reads once per item (area 6, question
-    /// 11).
+    /// A read inside a `for` loop reads once per item (area 6, "Reads in loops").
     pub(super) fn read_in_loop(&mut self, span: Span, written: &str) {
         if self.loops == 0 {
             return;
@@ -1077,7 +1076,7 @@ impl Body<'_> {
     }
 
     /// `when_supplied: { field: { ... } }`: further fields set when the
-    /// patch's request supplied `field` (area 6, question 7). Each field
+    /// patch's request supplied `field` (area 6, "Empty patch"). Each field
     /// it sets, with its value.
     fn when_supplied(
         &mut self,
@@ -1654,8 +1653,7 @@ impl Body<'_> {
     // --- conflicts ----------------------------------------------------------
 
     /// `conflict: { Rule: Failure }`: each rule the write can break mapped
-    /// once to a `conflict` failure, with no catch-all (area 6, question
-    /// 6). The arms that map a rule.
+    /// once to a `conflict` failure, with no catch-all (area 6, "Write failures"). The arms that map a rule.
     #[allow(clippy::too_many_arguments)]
     fn conflicts(
         &mut self,

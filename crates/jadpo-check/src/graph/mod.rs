@@ -68,7 +68,7 @@ pub fn kind_of(kind: &ItemKind) -> Option<Kind> {
 /// The key of the project declaration called `name` (not a library
 /// function), when it has a node: its kind and the born name of its
 /// identity, which carries its domain for a function or type declared in a
-/// domain (area 18, question 8, amended 2026-10-16).
+/// domain (area 18, "Stable identity", amended 2026-10-16).
 pub fn declaration_key(symbols: &dyn NameView, name: &str) -> Option<Key> {
     let symbol = symbols
         .declared(name)
@@ -273,7 +273,7 @@ pub fn callable_key(
 
 /// A test's key: the subject it sits beside (its file's name without
 /// `.test`) and its sentence, with no path, so moving the domain it is in
-/// keeps it (area 18, question 8; decided in the Phase 1 review).
+/// keeps it (area 18, "Stable identity"; decided in the Phase 1 review).
 pub(crate) fn test_key(registry: &jadpo_graph::Registry, path: &str, sentence: &str) -> Key {
     let subject = jadpo_db::locate(path, jadpo_db::Layout::Loose).stem;
     registry.key(Kind::Test, &format!("{subject} \"{sentence}\""), None)

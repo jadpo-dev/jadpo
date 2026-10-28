@@ -5,7 +5,7 @@
 # application's own nouns (todo, invoice, customer) to make a check pass.
 
 # Words the language itself defines: `Enum.all` lists an enum's variants
-# (area 19, question 22), and the standard types' names and parts
+# (area 19, "Closed value sets are enums"), and the standard types' names and parts
 all
 end
 first_day
