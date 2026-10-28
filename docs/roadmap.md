@@ -27,13 +27,6 @@ lives in git history.
 
 Saying **"continue the roadmap"** starts this routine; it runs unattended.
 
-Richard, 2026-10-23: Phase 9 dependent chunks may build and run their full
-gate on exact unmerged prerequisite commits, merged into their own chunk
-branch in dependency order. Record those commits and dependent pull requests;
-review and PR merges remain pending. Codex opens pull requests without auto
-merge and never merges them. A prerequisite need not reach `main` before a
-dependent chunk can complete its own build and full gate.
-
 1. Take the first chunk below that is not ticked. Its tag (`opus · high`)
    is the model and effort it needs. Say in one line which chunk is next and
    its tag, then carry on without waiting. The building is done by a
@@ -182,9 +175,7 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 8 built, and chunk 8.3's spike measured it;
 their confirmed findings are the chunks below, taken before 8.2n and
 Phase 9, in this order: 8.4a, 8.4b, 8.4c and 8.4d side by side, then
-8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i and 8.4j beside any of them. The gap to Bun is not accepted: Phase 9 closes
-it (Richard, 2026-10-22). Claude builds these; Codex builds Phase 9
-once 8.4c, 8.4e and 8.4f have merged (AGENTS.md, "Who builds what").
+8.4e (after 8.4c), 8.4f and 8.4g side by side, then 8.4h. 8.4i and 8.4j beside any of them.
 
 - [x] **8.4a Phase 8 review fixes: compiled parity**: §2.5, "Differential
   test"; area 3, "Recursion"; area 7, "Time limits".
@@ -233,7 +224,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   44 cases passing, and compare it with Jadpo's Wasm build under the 9.1d4
   method. The headline pairs are native against Bun and Node, and Wasm
   against TypeScript on workerd, led by CPU time per request, cold start and
-  p95 (Richard, 2026-10-24).
+  p95 (Richard, 2026-10-24). Native's CPU time per request against Bun's
+  and Node's is measured too, since native serves on every core and they
+  on one.
 - [x] **9.1b Runtime performance**: compiler/runtime §2.6 and §2.11; `tools/bench/README.md` (9.1b1–9.1b5, including 9.1b1a).
 - [x] **9.1b1 Bounded delivery sweeps and the backlog**: compiler/runtime §2.6, "Bounded delivery sweeps", and §2.11; `tools/bench/README.md`.
 - [x] **9.1b1a Warm delivery comparison**: compiler/runtime §2.11; `tools/bench/README.md`.
@@ -247,10 +240,13 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   TypeScript app and Node; results published with the method. Include the
   10,000-delivery backlog and the runtime improvements' before/after results.
   Real edge measurement is required before Phase 9 finishes.
-- [ ] **9.2 Optimise WebAssembly** `opus · xhigh` after 9.1a, 9.1d and 9.1b, until it matches the Bun app on throughput
-  and p95, or Richard accepts a measured gap. The earlier experiments reached
-  about 79% of Bun's throughput and list what to try next
-  (measured on earlier experiments).
+- [ ] **9.2 Optimise WebAssembly** `opus · xhigh`, only if 9.1d5 shows a
+  gap: until Jadpo's Wasm build matches TypeScript on workerd, and native
+  matches Bun and Node, on CPU time per request, cold start and p95, or
+  Richard accepts a measured gap. Bun is not the Wasm build's comparison
+  (Richard, 2026-10-28). If 9.1d5 shows no gap, this chunk is ticked as
+  not needed and what follows stays as the place to start when one
+  appears.
   From chunk 8.1p: typed values in compiled bodies (a struct or enum per
   type, locals and parameters typed, a `Value` made only at the runtime's
   entry points), if profiling shows a body's own work matters beside the
