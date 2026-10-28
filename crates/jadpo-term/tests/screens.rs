@@ -49,7 +49,7 @@ fn plain_diagnostic_matches_area_14() {
   reason: Jadpo could not find this name. Did you mean `title`?
   next: Use `title` instead of `titel` (agent)
   rule: cli.unknown_command
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.unknown_command.md
 "
     );
 }
@@ -68,7 +68,7 @@ fn rich_diagnostic_matches_the_design_language() {
   reason    Jadpo could not find this name. Did you mean `title`?
   next      Use `title` instead of `titel` (agent)
   rule      cli.unknown_command
-  help      docs/language/14-tooling.html#command-errors
+  help      docs/errors/cli.unknown_command.md
 "
     );
 }
@@ -143,7 +143,7 @@ fn a_diagnostic_without_a_place_has_no_location_or_frame() {
   reason: Jadpo has no command with this name. Did you mean `help`?
   next: Use `jadpo help` instead of `jadpo hlep` (agent)
   rule: cli.unknown_command
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.unknown_command.md
 "
     );
 }
@@ -432,7 +432,7 @@ fn inline_code_in_a_value_wraps_whole() {
   next      Run it inside a project, or give a file or folder:
             `jadpo check <path>` (agent)
   rule      toolchain.project_not_found
-  help      docs/language/14-tooling.html#the-jadpo-command
+  help      docs/errors/toolchain.project_not_found.md
 "
     );
     let long = Diagnostic::new(&rule::TOOLCHAIN_PROJECT_NOT_FOUND, "No project here")

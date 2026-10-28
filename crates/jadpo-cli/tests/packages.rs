@@ -295,7 +295,7 @@ fn show_names_what_it_cant_find() {
   reason: The project holds `postcodes`. Did you mean `postcodes`?
   next: Use `jadpo package show postcodes` (agent)
   rule: cli.package_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.package_arguments.md
 "
     );
     let declaration = jadpo(&root, &["package", "show", "postcodes", "uk.pars"]);
@@ -306,7 +306,7 @@ fn show_names_what_it_cant_find() {
   reason: Its public surface holds `uk.parse`, `UkPostcode`, `WrittenPostcode` and `InvalidPostcode`. Did you mean `uk.parse`?
   next: Use `jadpo package show postcodes uk.parse` (agent)
   rule: cli.package_arguments
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/cli.package_arguments.md
 "
     );
     let none = jadpo(&root, &["package", "show"]);
@@ -395,7 +395,7 @@ fn check_runs_the_publishing_bar_and_writes_the_surface() {
   reason: `jadpo package check` writes what changed from the surface; whoever releases it writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
   next: Write why 2.0.0 is released under `## 2.0.0` in CHANGELOG.md, after the list (agent)
   rule: publish.changelog_missing
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/publish.changelog_missing.md
 
 Publishing bar
   compiles      passed                        no errors
@@ -708,7 +708,7 @@ public type EnteredPostcode = Text {
   reason: Since 2.0.0, `function uk.parse` changed and `type WrittenPostcode` was removed, which an app using 2.0.0 may rely on. A breaking change is a new major version: a new package beside this one.
   next: Put back what changed, or publish the change as `Postcodes.v3` in a folder of its own (human)
   rule: publish.breaking_change
-  help: docs/language/14-tooling.html#command-errors
+  help: docs/errors/publish.breaking_change.md
 "
         ),
         "{}",
@@ -762,7 +762,7 @@ public type GeoPoint = Object {
   reason: `GeoPoint` has only a latitude (`lat`) and a longitude (`lng`), which is the standard `Point`. Packages that each declare their own disagree on order and on names, and an app has to convert between them.
   next: Use `Point` in the package's public types, converting at the edge with `geo.from_lat_lng` or `geo.from_lng_lat` where the provider sends a pair, or write `decline type.standard_exists: \"<why>\"` above it if this is deliberate (agent)
   rule: type.standard_exists
-  help: docs/language/19-standard-library.html#type-standard-exists
+  help: docs/errors/type.standard_exists.md
 "
         ),
         "{}",

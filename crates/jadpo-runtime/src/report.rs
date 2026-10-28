@@ -380,7 +380,7 @@ impl Report {
                 // The one runtime problem the catalogue has a rule for.
                 rule: matches!(fault.kind, FaultKind::NotBuiltYet(_)).then_some(ReportRule {
                     id: "toolchain.not_built_yet",
-                    help: "docs/language/03-logic.html#toolchain-not-built-yet",
+                    help: "docs/errors/toolchain.not_built_yet.md",
                 }),
             },
         }
